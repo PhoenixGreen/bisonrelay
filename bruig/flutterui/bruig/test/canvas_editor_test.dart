@@ -738,8 +738,9 @@ void main() {
             kind == ElementKind.object3d) {
           continue;
         }
-        // Synth modules are put down as a rack, by the Synth chip.
-        if (kind == ElementKind.synth) {
+        // Synth modules are put down as a rack, by the Synth chip, and a
+        // task card from a module's settings, beside its rack.
+        if (kind == ElementKind.synth || kind == ElementKind.synthTask) {
           expect(find.text("Synth"), findsOneWidget);
           continue;
         }

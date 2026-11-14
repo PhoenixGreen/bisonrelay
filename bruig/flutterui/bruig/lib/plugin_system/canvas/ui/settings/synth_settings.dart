@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -141,6 +142,12 @@ List<Widget> synthSettings(
                             onPressed: () => controller.lookAllSynths(l),
                           )),
                       ]),
+                      CanvasTextButton(
+                        key: const ValueKey("synthAddTask"),
+                        label: "Add a task card",
+                        icon: Icons.checklist,
+                        onPressed: () => controller.addSynthTask(e),
+                      ),
                       CanvasDropdown<SynthModuleKind?>(
                         key: const ValueKey("synthAdd"),
                         label: "Add a module",
@@ -169,3 +176,145 @@ String _choiceLabel(String v) => switch (v) {
       "bandpass" => "Band-pass",
       _ => v,
     };
+
+/// synthTaskSettings are a task card's: what it says, its target set
+/// from the rack, and its checks -- each worded, a knob's range set, or
+/// taken out.
+List<Widget> synthTaskSettings(
+  BuildContext context,
+  CanvasController controller,
+  SynthTaskElement e,
+  SettingsWrite write,
+  VoidCallback begin,
+  VoidCallback commit,
+) {
+  // Each word typed fits the card to what it now says.
+  void live(SynthTaskElement next) => write(controller.fitSynthTask(next));
+  void now(SynthTaskElement next) {
+    live(next);
+    commit();
+  }
+
+  var (met, of) = controller.checkSynthTask(e);
+  return [
+    elementPanel(context, controller, e, write, begin, commit,
+        contentOpen: true,
+        bits: [
+          PanelBit(PanelSection.content,
+              summary:
+                  e.target == null ? "No target yet" : "$met of $of checks met",
+              children: [
+                CanvasControlGroup(
+                    label: "Task",
+                    help: "What the student is to make.",
+                    children: [
+                      CanvasTextField(
+                        key: const ValueKey("synthTaskTitle"),
+                        label: "Title",
+                        value: e.title,
+                        width: 240,
+                        onChanged: (v) => live(e.copyWith(title: v)),
+                        onCommit: commit,
+                      ),
+                      CanvasTextField(
+                        key: const ValueKey("synthTaskText"),
+                        label: "Words",
+                        value: e.text,
+                        width: 240,
+                        maxLines: 4,
+                        onChanged: (v) => live(e.copyWith(text: v)),
+                        onCommit: commit,
+                      ),
+                    ]),
+                CanvasControlGroup(
+                    label: "Target",
+                    help: "Make the sound on the rack, then set it as the "
+                        "target: the card keeps it to be heard, and checks "
+                        "everything that differs from the rack's start. "
+                        "Reset the rack after, for the student.",
+                    children: [
+                      panelRow([
+                        cell(CanvasTextButton(
+                          key: const ValueKey("synthTaskTarget"),
+                          label: "Set target from the rack",
+                          primary: e.target == null,
+                          onPressed: () => controller.setSynthTarget(e),
+                        )),
+                      ]),
+                      panelRow([
+                        cell(CanvasTextButton(
+                          key: const ValueKey("synthTaskHear"),
+                          label: "▶ Hear it",
+                          onPressed: e.target == null
+                              ? null
+                              : () => controller.hearSynthTarget(e),
+                        )),
+                        cell(CanvasTextButton(
+                          key: const ValueKey("synthTaskReset"),
+                          label: "↺ Reset the rack",
+                          onPressed: controller.resetAllSynths,
+                        )),
+                      ]),
+                    ]),
+                if (e.checks.isNotEmpty)
+                  CanvasControlGroup(
+                      label: "Checks",
+                      help: "Ticked on the card as the patch meets each.",
+                      children: [
+                        for (var (i, c) in e.checks.indexed) ...[
+                          panelRow([
+                            cell(
+                                CanvasTextField(
+                                  key: ValueKey("synthCheck$i"),
+                                  label: "Check ${i + 1}",
+                                  value: c.label,
+                                  onChanged: (v) => live(e.copyWith(checks: [
+                                    for (var (j, x) in e.checks.indexed)
+                                      j == i ? x.copyWith(label: v) : x
+                                  ])),
+                                  onCommit: commit,
+                                ),
+                                flex: 4),
+                            cell(
+                                CanvasIconButton(
+                                  key: ValueKey("synthCheckOut$i"),
+                                  icon: Icons.close,
+                                  tooltip: "",
+                                  onPressed: () => now(e.copyWith(checks: [
+                                    for (var (j, x) in e.checks.indexed)
+                                      if (j != i) x
+                                  ])),
+                                ),
+                                width: 36),
+                          ]),
+                          if (c.kind == SynthCheckKind.value)
+                            panelRow([
+                              cell(CanvasNumberField(
+                                key: ValueKey("synthCheckMin$i"),
+                                label: "From",
+                                value: c.min,
+                                decimals: 3,
+                                onChanged: (v) => live(e.copyWith(checks: [
+                                  for (var (j, x) in e.checks.indexed)
+                                    j == i ? x.copyWith(min: v) : x
+                                ])),
+                                onCommit: commit,
+                              )),
+                              cell(CanvasNumberField(
+                                key: ValueKey("synthCheckMax$i"),
+                                label: "To",
+                                value: c.max,
+                                decimals: 3,
+                                onChanged: (v) => live(e.copyWith(checks: [
+                                  for (var (j, x) in e.checks.indexed)
+                                    j == i ? x.copyWith(max: v) : x
+                                ])),
+                                onCommit: commit,
+                              )),
+                            ]),
+                        ],
+                      ]),
+              ]),
+        ]),
+  ];
+}

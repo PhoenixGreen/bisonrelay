@@ -2,8 +2,11 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
@@ -296,6 +299,23 @@ void main() {
     expect((await at(a, probe)).computeLuminance(), greaterThan(0.5));
     expect((await at(d, probe)).computeLuminance(), lessThan(0.05));
     if (Platform.environment["SYNTH_PNG"] case var path?) {
+      // With a card beside the rack, its target set from a changed patch.
+      var card = SynthTaskElement(
+          const ElementBase(id: "card", x: 20, y: 20, width: 210, height: 200),
+          title: "Make a soft, slow pad",
+          text: "Patch the modules so a key fades in slowly and sounds warm.",
+          checks: [
+            SynthCheck(SynthCheckKind.choice, "Oscillator wave: Saw",
+                module: osc.id, setting: "wave", choice: "sawtooth"),
+            SynthCheck(SynthCheckKind.value, "Oscillator Level at least 50%",
+                module: osc.id, setting: "level", min: 0.5, max: 1),
+          ]);
+      var rec = ui.PictureRecorder();
+      paintSynthTask(ui.Canvas(rec), card.bounds, card, doc);
+      var img = await rec.endRecording().toImage(260, 240);
+      var png = await img.toByteData(format: ui.ImageByteFormat.png);
+      File(path.replaceFirst(".png", "_card.png"))
+          .writeAsBytesSync(png!.buffer.asUint8List());
       for (var (img, name) in [(a, "analogue"), (d, "digital")]) {
         var png = await img.toByteData(format: ui.ImageByteFormat.png);
         File(path.replaceFirst(".png", "_$name.png"))
@@ -411,6 +431,41 @@ void main() {
     });
   });
 
+  testWidgets("a digital screen dragged: the envelope's corners, the filter",
+      (tester) async {
+    var c = CanvasController(page, audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.addSynthRack();
+    var at = await staged(tester, c);
+    Future<void> drag(SynthModuleElement e, Offset from, Offset by) async {
+      var g = await tester.startGesture(at(on(e, from)));
+      for (var i = 1; i <= 4; i++) {
+        await g.moveBy(by / 4);
+        await tester.pump();
+      }
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    // Analogue, the screen is only looked at: a drag on it moves nothing
+    // of the envelope's.
+    var env = of(c, SynthModuleKind.env);
+    var screen = synthPanelOf(SynthModuleKind.env).screen!;
+    await drag(env, synthEnvPoints(env, screen).a, const Offset(60, 0));
+    expect(of(c, SynthModuleKind.env).value("a"), env.value("a"));
+    c.lookAllSynths(SynthLook.digital);
+    await tester.pump();
+    env = of(c, SynthModuleKind.env);
+    await drag(env, synthEnvPoints(env, screen).a, const Offset(40, 0));
+    expect(of(c, SynthModuleKind.env).value("a"), greaterThan(0.1),
+        reason: "the attack corner dragged right: slower");
+    expect(of(c, SynthModuleKind.env).base.x, env.base.x);
+    var filter = of(c, SynthModuleKind.filter);
+    var fs = synthPanelOf(SynthModuleKind.filter).screen!;
+    await drag(filter, fs.center, const Offset(-50, 0));
+    expect(of(c, SynthModuleKind.filter).value("cutoff"), lessThan(6000));
+  });
+
   testWidgets("its settings: a slider, the lock, start, reset all, add",
       (tester) async {
     var c = CanvasController(page, audioEngine: FakeEngine({}));
@@ -461,5 +516,119 @@ void main() {
             .whereType<SynthModuleElement>()
             .every((e) => e.look == SynthLook.digital),
         isTrue);
+  });
+
+  group("a task card", () {
+    /// pad makes the prototype's soft, slow pad on [c]'s rack.
+    void pad(CanvasController c) {
+      SynthModuleElement m(SynthModuleKind k) => of(c, k);
+      c.setSynth(m(SynthModuleKind.osc).withChoice("wave", "sawtooth"));
+      c.plugSynth(
+          m(SynthModuleKind.osc), "out", m(SynthModuleKind.filter), "in");
+      c.plugSynth(
+          m(SynthModuleKind.filter), "out", m(SynthModuleKind.amp), "in");
+      c.plugSynth(
+          m(SynthModuleKind.keys), "gate", m(SynthModuleKind.env), "gate");
+      c.plugSynth(
+          m(SynthModuleKind.env), "env", m(SynthModuleKind.amp), "gain");
+      c.setSynth(
+          m(SynthModuleKind.env).withValue("a", 0.8).withValue("r", 1.2));
+      c.setSynth(m(SynthModuleKind.filter).withValue("cutoff", 900));
+    }
+
+    test("its target set from the rack: checks of what differs, met there",
+        () async {
+      var engine = FakeEngine({});
+      var c = CanvasController(page, audioEngine: engine);
+      addTearDown(c.dispose);
+      c.addSynthRack();
+      c.addSynthTask(of(c, SynthModuleKind.osc));
+      SynthTaskElement card() =>
+          c.document.elements.whereType<SynthTaskElement>().single;
+      expect(
+          c.document.elements
+              .whereType<SynthModuleElement>()
+              .any((m) => m.bounds.overlaps(card().bounds)),
+          isFalse,
+          reason: "over no module");
+      pad(c);
+      var before = card().height;
+      c.setSynthTarget(card());
+      var labels = [for (var x in card().checks) x.label];
+      expect(labels, contains("Oscillator wave: Saw"));
+      expect(labels, contains("The Filter's out into the Amp's in"));
+      expect(labels, contains("The Keyboard's gate into the Envelope's gate"));
+      expect(labels.where((l) => l.startsWith("Envelope Att")), hasLength(1));
+      expect(labels.where((l) => l.contains("Speaker")), isEmpty,
+          reason: "the speaker's cable was there from the start");
+      expect(card().height, greaterThan(before), reason: "grown to its list");
+      var (met, of_) = c.checkSynthTask(card());
+      expect(met, of_);
+      c.resetAllSynths();
+      expect(c.checkSynthTask(card()).$1, 0, reason: "the student's to do");
+      // Kept.
+      var back = elementFromJson(card().toJson()) as SynthTaskElement;
+      expect([for (var x in back.checks) x.label], labels);
+      expect(back.target!.wiring, card().target!.wiring);
+      // Heard: the chord, on the target, through the speaker.
+      c.hearSynthTarget(card());
+      for (var i = 0; i < 5; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect([for (var n in engine.notes) n.$2], [57, 60, 64]);
+      expect(engine.parts.last.patch!.wiring, card().target!.wiring);
+    });
+
+    testWidgets("its buttons on the stage, pressed without picking it",
+        (tester) async {
+      var engine = FakeEngine({});
+      var c = CanvasController(page, audioEngine: engine);
+      addTearDown(c.dispose);
+      c.addSynthRack();
+      c.addSynthTask(of(c, SynthModuleKind.osc));
+      pad(c);
+      c.setSynthTarget(
+          c.document.elements.whereType<SynthTaskElement>().single);
+      c.clearSelection();
+      var at = await staged(tester, c);
+      var card = c.document.elements.whereType<SynthTaskElement>().single;
+      var l = synthTaskLayout(card, null);
+      var s = synthTaskScale(card.bounds);
+      await tester.tapAt(at(card.bounds.topLeft + l.hear.center * s));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect([for (var n in engine.notes) n.$2], containsAll([57, 60, 64]));
+      await tester.tapAt(at(card.bounds.topLeft + l.check.center * s));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.selection, {card.id});
+      // The chord let go before the test ends.
+      await tester.pump(const Duration(seconds: 3));
+    });
+  });
+
+  test("copied together, modules patched to each other; a speaker its own", () {
+    var c = CanvasController(page, audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.addSynthRack();
+    var osc = of(c, SynthModuleKind.osc), amp = of(c, SynthModuleKind.amp);
+    var speaker = of(c, SynthModuleKind.out);
+    c.selectMany({osc.id, amp.id, speaker.id});
+    c.duplicateSelected();
+    var copies = {
+      for (var id in c.selection)
+        (c.document.elementById(id) as SynthModuleElement).module:
+            c.document.elementById(id) as SynthModuleElement
+    };
+    expect(copies[SynthModuleKind.amp]!.inputs["in"]!.module,
+        copies[SynthModuleKind.osc]!.id);
+    expect(copies[SynthModuleKind.out]!.inputs["in"]!.module,
+        copies[SynthModuleKind.amp]!.id);
+    expect(copies[SynthModuleKind.osc]!.inputs["pitch"]!.module,
+        of(c, SynthModuleKind.keys).id,
+        reason: "the keyboard wasn't copied: still from it");
+    var ch = copies[SynthModuleKind.out]!.channel;
+    expect(ch, isNot(speaker.channel));
+    var part = (c.document.elementById(ch) as AudioElement).instrument!;
+    expect(part.patch!.byId(copies[SynthModuleKind.osc]!.id), isNotNull,
+        reason: "its own channel plays its own patch");
   });
 }

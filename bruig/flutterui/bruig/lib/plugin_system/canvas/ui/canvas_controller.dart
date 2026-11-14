@@ -125,6 +125,9 @@ import 'package:bruig/plugin_system/canvas/model/play.dart' show
 import 'package:gamepads/gamepads.dart' show Gamepads, NormalizedGamepadEvent;
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart'
     show newElement, newInstrument, synthRack, synthModule;
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart'
+    show synthTaskLayout, synthTaskScale;
 import 'package:bruig/plugin_system/canvas/model/notation.dart' show splitKey;
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
@@ -2056,14 +2059,18 @@ class CanvasController extends ChangeNotifier {
     if (_selection.isEmpty) return;
     var next = _document;
     var made = <String>{};
+    var ids = <String, String>{};
     for (var element in selectedElements) {
       var copy = element
           .withId(newElementId())
           .withBase(x: element.x + 24, y: element.y + 24);
       next = next.addElement(copy);
       made.add(copy.id);
+      ids[element.id] = copy.id;
     }
-    apply(next);
+    // Synth modules copied together patched to each other, not the
+    // originals.
+    apply(synthCopied(next, ids));
     _selection = made;
     notifyListeners();
   }
@@ -2124,6 +2131,7 @@ class CanvasController extends ChangeNotifier {
     if (_clipboard.isEmpty) return;
     var next = _document;
     var made = <String>{};
+    var ids = <String, String>{};
     var elsewhere = <String>{};
     for (var element in _clipboard) {
       CanvasElement copy;
@@ -2165,9 +2173,10 @@ class CanvasController extends ChangeNotifier {
         }
       }
       made.add(copy.id);
+      ids[element.id] = copy.id;
       next = next.addElement(copy);
     }
-    apply(next);
+    apply(synthCopied(next, ids));
     _backgroundSelected = false;
     _focusedPlayer = null;
     _selection = made;
@@ -2184,7 +2193,7 @@ class CanvasController extends ChangeNotifier {
     var copy = element
         .withId(newElementId())
         .withBase(x: element.x + _pasteOffset, y: element.y + _pasteOffset);
-    apply(_document.addElement(copy));
+    apply(synthCopied(_document.addElement(copy), {id: copy.id}));
     _backgroundSelected = false;
     _focusedPlayer = null;
     _selection = {copy.id};
@@ -3351,6 +3360,9 @@ class CanvasController extends ChangeNotifier {
   /// _synthPressed is each keyboard module's keys held, by element id.
   final Map<String, Set<int>> _synthPressed = {};
 
+  /// _synthTarget lets go of a task card's target once it has been heard.
+  Timer? _synthTarget;
+
   /// _pressedOn is each instrument with keys held, as it was when they were
   /// pressed: let go through it whatever has changed since -- the scene
   /// turned, the element deleted -- so no note is left ringing.
@@ -4337,6 +4349,7 @@ class CanvasController extends ChangeNotifier {
     _previewDir?.delete(recursive: true).catchError((_) => _previewDir!);
     _disposed = true;
     _partTimer?.cancel();
+    _synthTarget?.cancel();
     _warpTimer?.cancel();
     for (var a in _arps.values) {
       a.timer?.cancel();

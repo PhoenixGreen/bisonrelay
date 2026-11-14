@@ -139,4 +139,86 @@ extension CanvasSynths on CanvasController {
         _document, kind, Offset(near.bounds.right + near.width * 0.08, near.y));
     addElement(m.copyWith(look: near.look).startHere());
   }
+
+  // ----------------------------------------------------------- task cards
+
+  /// synthSpeakerFor is the speaker task card [card] is about: its own, or
+  /// the first there is.
+  SynthModuleElement? synthSpeakerFor(SynthTaskElement card) {
+    var speakers = [
+      for (var e in _document.elements)
+        if (e is SynthModuleElement && e.module == SynthModuleKind.out) e
+    ];
+    return speakers.where((s) => s.id == card.speaker).firstOrNull ??
+        speakers.firstOrNull;
+  }
+
+  /// addSynthTask puts a task card down where it covers no module: at
+  /// the rack's top left (above the keyboard, where the prototype's card
+  /// was), else to the left of the rack, else beside [near].
+  void addSynthTask(SynthModuleElement near) {
+    var card = newElement(ElementKind.synthTask, _document) as SynthTaskElement;
+    var mods = _document.elements.whereType<SynthModuleElement>().toList();
+    var left = mods.map((m) => m.x).reduce(math.min);
+    var top = mods.map((m) => m.y).reduce(math.min);
+    var gap = near.width * 0.06;
+    var size = card.bounds.size;
+    var place = [
+      Offset(left, top),
+      Offset(left - size.width - gap, top),
+      Offset(near.bounds.right + gap, near.y),
+    ].firstWhere(
+        (o) => o.dx >= 0 && !mods.any((m) => m.bounds.overlaps(o & size)),
+        orElse: () => Offset(near.bounds.right + gap, near.y));
+    addElement(card.rebase(card.base.copyWith(x: place.dx, y: place.dy)));
+  }
+
+  /// setSynthTarget makes the rack as it is now [card]'s target: the patch
+  /// its speaker hears, to be heard, and a check of everything that
+  /// differs from the rack's start (see synthChecksFor). The card grows to
+  /// show them.
+  void setSynthTarget(SynthTaskElement card) {
+    var speaker = synthSpeakerFor(card);
+    if (speaker == null) return;
+    var target = synthPatchOf(_document.elements, speaker.id);
+    var next = card.copyWith(
+        target: target,
+        speaker: speaker.id,
+        checks: synthChecksFor(target,
+            _document.elements.whereType<SynthModuleElement>().toList()));
+    var h = synthTaskLayout(next, null).height * synthTaskScale(card.bounds);
+    replaceElement(next.rebase(next.base.copyWith(height: h)));
+  }
+
+  /// fitSynthTask is [card] grown or shrunk to what it says.
+  SynthTaskElement fitSynthTask(SynthTaskElement card) =>
+      card.rebase(card.base.copyWith(
+          height: synthTaskLayout(card, null).height *
+              synthTaskScale(card.bounds))) as SynthTaskElement;
+
+  /// hearSynthTarget plays [card]'s target: a chord of A, C and E held a
+  /// few seconds, through its speaker's channel, as the prototype's did.
+  void hearSynthTarget(SynthTaskElement card) {
+    var target = card.target;
+    var speaker = synthSpeakerFor(card);
+    var ch = speaker == null ? null : synthChannel(speaker);
+    if (target == null || ch == null) return;
+    var part =
+        ch.instrument!.copyWith(sound: InstrumentSound.patch, patch: target);
+    const keys = [57, 60, 64];
+    _synthTarget?.cancel();
+    for (var k in keys) {
+      unawaited(audio.noteOn(ch.id, part, k, 90));
+    }
+    _synthTarget = Timer(const Duration(milliseconds: 2600), () {
+      for (var k in keys) {
+        audio.noteOff(ch.id, k);
+      }
+    });
+  }
+
+  /// checkSynthTask is how many of [card]'s checks the patch meets, of how
+  /// many.
+  (int, int) checkSynthTask(SynthTaskElement card) =>
+      (card.checks.where((c) => c.met(_document)).length, card.checks.length);
 }

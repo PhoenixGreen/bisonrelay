@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
@@ -121,6 +123,9 @@ enum _DragMode {
   /// synthCable a cable carried from a jack. See _pressSynth.
   synthKnob,
   synthCable,
+
+  /// synthScreen is a digital envelope's or filter's screen dragged on.
+  synthScreen,
 
   /// copies is copies of an element reused dragged on their own -- those
   /// picked, or made by an Alt-drag. See _moveCopies.
@@ -337,6 +342,10 @@ class CanvasStageState extends State<CanvasStage>
   /// it is now.
   (SynthModuleElement, int)? _synthKey;
   (String, SynthKnob, double, Offset)? _synthKnob;
+
+  /// _synthScreen is a digital module's screen being dragged: its module,
+  /// and what was taken (see synthScreenGrab).
+  (String, String)? _synthScreen;
   ({
     SynthModuleElement from,
     String port,
@@ -1578,6 +1587,11 @@ class CanvasStageState extends State<CanvasStage>
         controller.beginInteraction();
         _synthKnob = (e.id, knob, knob.turn(e.value(knob.key)), doc);
         setState(() => _mode = _DragMode.synthKnob);
+      case SynthPartKind.screen:
+        if (e.fixed) break;
+        controller.beginInteraction();
+        _synthScreen = (e.id, part.port);
+        setState(() => _mode = _DragMode.synthScreen);
       case SynthPartKind.option:
         if (e.fixed) break;
         var name = synthChoiceOf(e.module)!;
@@ -1608,6 +1622,28 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
+  /// _pressSynthTask answers a task card's buttons: its target heard, or
+  /// the patch checked against it.
+  void _pressSynthTask(SynthTaskElement card, SynthTaskButton b) {
+    if (controller.selection.length != 1 ||
+        controller.selection.first != card.id) {
+      controller.selectOnly(card.id);
+    }
+    switch (b) {
+      case SynthTaskButton.hear:
+        controller.hearSynthTarget(card);
+      case SynthTaskButton.check:
+        if (card.checks.isEmpty) return;
+        var (met, of) = controller.checkSynthTask(card);
+        var snack = SnackBarModel.of(context);
+        if (met == of) {
+          snack.success("That's it: ${card.title.toLowerCase()}.");
+        } else {
+          snack.error("Not yet: ${of - met} of $of still to do. See the list.");
+        }
+    }
+  }
+
   /// _turnSynthKnob turns the knob being dragged: a whole turn over 150
   /// pixels up, as the prototype's; with Shift, four times finer.
   void _turnSynthKnob(Offset doc) {
@@ -1629,8 +1665,9 @@ class CanvasStageState extends State<CanvasStage>
       controller.synthKeyUp(e, key);
       return true;
     }
-    if (_synthKnob != null) {
+    if (_synthKnob != null || _synthScreen != null) {
       _synthKnob = null;
+      _synthScreen = null;
       controller.endInteraction();
       setState(() => _mode = _DragMode.none);
       return true;
@@ -2335,6 +2372,13 @@ class CanvasStageState extends State<CanvasStage>
     // A synth module's controls answer a press whether it is picked or not,
     // as a rack's do; its panel otherwise is what picks and moves it.
     if (element is SynthModuleElement && _pressSynth(element, doc)) return;
+    if (element is SynthTaskElement) {
+      if (synthTaskButtonAt(element, doc) case var b?) {
+        _pressSynthTask(element, b);
+        _mode = _DragMode.none;
+        return;
+      }
+    }
 
     // A selected button is tried by clicking it and moved by dragging it,
     // so the action waits for pointer-up, where the distance travelled is
@@ -5610,6 +5654,14 @@ class CanvasStageState extends State<CanvasStage>
         _applyCounterPart(doc);
       case _DragMode.synthKnob:
         _turnSynthKnob(doc);
+      case _DragMode.synthScreen:
+        if (_synthScreen case (var id, var grab)?) {
+          if (document.elementById(id) case SynthModuleElement e) {
+            controller.setSynth(
+                synthScreenDragged(e, grab, synthPanelPoint(e, doc)),
+                transient: true);
+          }
+        }
       case _DragMode.synthCable:
         if (_synthCable case var c?) {
           setState(() => _synthCable = (

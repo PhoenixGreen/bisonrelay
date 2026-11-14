@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
@@ -1561,6 +1562,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
     case ElementKind.synth:
       return SynthModuleElement.fromJson(json, base) ??
           ShapeElement.fromJson(json, base);
+    case ElementKind.synthTask:
+      return SynthTaskElement.fromJson(json, base);
   }
 }
 

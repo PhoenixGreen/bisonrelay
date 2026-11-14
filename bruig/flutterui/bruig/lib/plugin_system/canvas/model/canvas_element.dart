@@ -48,7 +48,9 @@ enum ElementKind {
   camera("Camera"),
   object3d("3D object"),
   // One module of a synth, patched to others with cables.
-  synth("Synth module");
+  synth("Synth module"),
+  // What to make on a synth rack, and checks of the patch.
+  synthTask("Synth task");
 
   final String label;
   const ElementKind(this.label);

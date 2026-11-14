@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'dart:typed_data';
@@ -1185,6 +1187,9 @@ void paintElement(
       case SheetElement e:
         arriving(canvas, bounds, const ElementAnimation(), pose,
             () => paintSheetElement(canvas, bounds, e, document, frame));
+      case SynthTaskElement e:
+        arriving(canvas, bounds, const ElementAnimation(), pose,
+            () => paintSynthTask(canvas, bounds, e, document));
       case SynthModuleElement e:
         arriving(
             canvas,

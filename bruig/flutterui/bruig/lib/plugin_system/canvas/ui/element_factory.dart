@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
@@ -97,6 +98,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // A module's panel, at the rack's scale.
     ElementKind.synth =>
       synthPanelOf(SynthModuleKind.osc).size * synthUnit(document),
+    // A card that fits above the starting rack's keyboard, as the
+    // prototype's did.
+    ElementKind.synthTask => const Size(270, 160) * synthUnit(document),
   };
 }
 
@@ -367,6 +371,15 @@ CanvasElement newElement(
     case ElementKind.synth:
       return SynthModuleElement(base.copyWith(name: "Oscillator"),
           module: SynthModuleKind.osc);
+
+    case ElementKind.synthTask:
+      return SynthTaskElement(base.copyWith(name: "Synth task"),
+          speaker: document.elements
+                  .whereType<SynthModuleElement>()
+                  .where((m) => m.module == SynthModuleKind.out)
+                  .firstOrNull
+                  ?.id ??
+              "");
 
     case ElementKind.camera:
       // On the whole page, where it shows everything, to be drawn in and

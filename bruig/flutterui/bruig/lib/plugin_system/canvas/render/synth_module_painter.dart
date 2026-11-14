@@ -159,6 +159,13 @@ SynthPanel _layout(SynthModuleKind kind) {
 /// synthToPanel is the panel point under [point] on [e], in document space;
 /// null off the panel.
 Offset? synthToPanel(SynthModuleElement e, Offset point) {
+  var q = synthPanelPoint(e, point);
+  return (Offset.zero & synthPanelOf(e.module).size).contains(q) ? q : null;
+}
+
+/// synthPanelPoint is [point], in document space, as a point on [e]'s
+/// panel -- on it or not: a drag that runs off it.
+Offset synthPanelPoint(SynthModuleElement e, Offset point) {
   var p = synthPanelOf(e.module);
   var local = point;
   if (e.rotation != 0) {
@@ -169,8 +176,7 @@ Offset? synthToPanel(SynthModuleElement e, Offset point) {
             d.dx * math.sin(a) + d.dy * math.cos(a));
   }
   var (s, at) = synthPanelFit(e.bounds, p);
-  var q = (local - at) / s;
-  return (Offset.zero & p.size).contains(q) ? q : null;
+  return (local - at) / s;
 }
 
 /// synthJackAt is jack [port] (an output, with [out]) of [e], in document
@@ -738,21 +744,18 @@ class _Panel {
   }
 
   void _envScreen(Rect r) {
-    const pad = 9.0;
-    const maxes = {"a": 3.0, "d": 3.0, "r": 4.0};
-    var susW = r.width * 0.16;
-    var seg = (r.width - 2 * pad - susW) / 3;
-    double w(String k) => math.sqrt(e.value(k) / maxes[k]!) * seg;
+    var p = synthEnvPoints(e, r);
+    var pad = p.pad;
     double y(double v) => r.bottom - pad - v * (r.height - 2 * pad);
     var s = e.value("s");
-    var x0 = r.left + pad, xa = x0 + w("a"), xd = xa + w("d");
-    var xs = xd + susW, xr = xs + w("r");
+    var x0 = p.x0, xa = p.a.dx, xd = p.ds.dx;
+    var xs = xd + p.susW, xr = p.r.dx;
     var pts = [
       Offset(x0, y(0)),
-      Offset(xa, y(1)),
-      Offset(xd, y(s)),
+      p.a,
+      p.ds,
       Offset(xs, y(s)),
-      Offset(xr, y(0)),
+      p.r,
     ];
     _trace(pts, base: y(0));
     if (!analogue) {
@@ -1421,7 +1424,7 @@ void paintSynthCable(ui.Canvas canvas, Offset a, Offset b, Color col, double s,
 // ------------------------------------------------------------ presses
 
 /// SynthPartKind is what on a panel can be pressed.
-enum SynthPartKind { key, knob, option, jack, reset, look }
+enum SynthPartKind { key, knob, option, jack, reset, look, screen }
 
 /// SynthPart is what is under a press on a module: a key (by number), a
 /// knob or option (by place), a jack (by name, and whether an output), or
@@ -1472,11 +1475,15 @@ SynthPart? synthPartAt(SynthModuleElement e, Offset point) {
   }
   if (p.look.inflate(2).contains(q)) return const SynthPart(SynthPartKind.look);
   if (p.keys case var r?) {
-    if (synthKeyAt(r, q) case var k?)
+    if (synthKeyAt(r, q) case var k?) {
       return SynthPart(SynthPartKind.key, index: k);
+    }
   }
   for (var (i, r) in p.options.indexed) {
     if (r.contains(q)) return SynthPart(SynthPartKind.option, index: i);
+  }
+  if (synthScreenGrab(e, q) case var g?) {
+    return SynthPart(SynthPartKind.screen, port: g);
   }
   for (var (i, r) in p.knobs.indexed) {
     if (r.contains(q)) return SynthPart(SynthPartKind.knob, index: i);
@@ -1496,4 +1503,84 @@ SynthPart? synthPartAt(SynthModuleElement e, Offset point) {
     }
   }
   return null;
+}
+
+// ------------------------------------------------------------ screens dragged
+
+/// synthEnvPoints are an envelope screen's corners in [r] for [e]: where
+/// the attack peaks, where the decay meets the sustain, and where the
+/// release ends -- as _envScreen draws them.
+({
+  Offset a,
+  Offset ds,
+  Offset r,
+  double x0,
+  double seg,
+  double susW,
+  double pad
+}) synthEnvPoints(SynthModuleElement e, Rect r) {
+  const pad = 9.0;
+  var susW = r.width * 0.16;
+  var seg = (r.width - 2 * pad - susW) / 3;
+  double w(String k) => math.sqrt(e.value(k) / _envMax[k]!) * seg;
+  double y(double v) => r.bottom - pad - v * (r.height - 2 * pad);
+  var x0 = r.left + pad, xa = x0 + w("a"), xd = xa + w("d");
+  var xs = xd + susW;
+  return (
+    a: Offset(xa, y(1)),
+    ds: Offset(xd, y(e.value("s"))),
+    r: Offset(xs + w("r"), y(0)),
+    x0: x0,
+    seg: seg,
+    susW: susW,
+    pad: pad,
+  );
+}
+
+const _envMax = {"a": 3.0, "d": 3.0, "r": 4.0};
+
+/// synthScreenGrab is what on a digital envelope or filter screen is
+/// under panel point [q]: an envelope's corner ("a", "ds", "r") or the
+/// filter's curve ("f"). Null on an analogue panel, which is only looked
+/// at, as hardware's is.
+String? synthScreenGrab(SynthModuleElement e, Offset q) {
+  if (e.look != SynthLook.digital) return null;
+  var r = synthPanelOf(e.module).screen;
+  if (r == null || !r.inflate(4).contains(q)) return null;
+  if (e.module == SynthModuleKind.filter) return "f";
+  if (e.module != SynthModuleKind.env) return null;
+  var p = synthEnvPoints(e, r);
+  var near = [("a", p.a), ("ds", p.ds), ("r", p.r)]
+    ..sort((x, y) => (x.$2 - q).distance.compareTo((y.$2 - q).distance));
+  return (near.first.$2 - q).distance <= 20 ? near.first.$1 : null;
+}
+
+/// synthScreenDragged is [e] with what [grab] took on its screen dragged
+/// to panel point [q]: an envelope's attack, decay and sustain, or
+/// release; the filter's cutoff (across) and resonance (up).
+SynthModuleElement synthScreenDragged(
+    SynthModuleElement e, String grab, Offset q) {
+  var r = synthPanelOf(e.module).screen!;
+  if (e.module == SynthModuleKind.filter) {
+    const lo = 20.0, hi = 20000.0, dbHi = 24.0, dbLo = -36.0;
+    var f = lo *
+        math.pow(hi / lo, ((q.dx - r.left - 7) / (r.width - 14)).clamp(0, 1));
+    var db = dbHi - (q.dy - r.top - 5) / (r.height - 10) * (dbHi - dbLo);
+    var res = (math.pow(10, db / 20) - 0.7) / 0.97;
+    return e
+        .withValue("cutoff", f.clamp(40, 16000).toDouble())
+        .withValue("res", res.clamp(0.1, 20).toDouble());
+  }
+  var p = synthEnvPoints(e, r);
+  double inv(double dx, String k) =>
+      (_envMax[k]! * math.pow(math.max(0.0, dx) / p.seg, 2))
+          .clamp(k == "a" ? 0.001 : 0.01, _envMax[k]!)
+          .toDouble();
+  return switch (grab) {
+    "a" => e.withValue("a", inv(q.dx - p.x0, "a")),
+    "ds" => e.withValue("d", inv(q.dx - p.a.dx, "d")).withValue("s",
+        ((r.bottom - p.pad - q.dy) / (r.height - 2 * p.pad)).clamp(0.0, 1.0)),
+    "r" => e.withValue("r", inv(q.dx - (p.ds.dx + p.susW), "r")),
+    _ => e,
+  };
 }

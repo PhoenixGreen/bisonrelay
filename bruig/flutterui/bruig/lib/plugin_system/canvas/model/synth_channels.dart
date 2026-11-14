@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'dart:convert';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -83,3 +84,56 @@ List<SynthModuleElement> synthSpeakersHearing(CanvasDocument doc, String id) =>
             synthPatchOf(doc.elements, e.id).byId(id) != null)
           e,
     ];
+
+/// synthCopied is [doc] with the synth parts of a copy made whole: [ids]
+/// maps each element copied to its copy, already in [doc]. A copy's cables
+/// from modules copied with it come from their copies (its start's too); a
+/// cable from one not copied stays where it was. A copied speaker gets a
+/// channel of its own, a copy of its original's; a copied task card is
+/// about the copied modules where they were copied with it.
+CanvasDocument synthCopied(CanvasDocument doc, Map<String, String> ids) {
+  SynthPlug plug(SynthPlug p) =>
+      (module: ids[p.module] ?? p.module, port: p.port);
+  Map<String, SynthPlug> plugs(Map<String, SynthPlug> m) =>
+      {for (var MapEntry(:key, :value) in m.entries) key: plug(value)};
+  var next = doc;
+  for (var copyId in ids.values) {
+    var e = next.elementById(copyId);
+    if (e is SynthModuleElement) {
+      var s = e.start;
+      var made = e.copyWith(
+          inputs: plugs(e.inputs),
+          start: s == null
+              ? null
+              : SynthModule(e.id, e.module,
+                  values: s.values,
+                  choices: s.choices,
+                  inputs: plugs(s.inputs)));
+      if (e.module == SynthModuleKind.out && e.channel.isNotEmpty) {
+        var ch = next.elementById(e.channel);
+        if (ch is AudioElement) {
+          var own = ch.withId(newElementId());
+          next = next.addElement(own);
+          made = made.copyWith(channel: own.id);
+        }
+      }
+      next = next.withElement(made);
+    } else if (e is SynthTaskElement) {
+      next = next.withElement(e.copyWith(
+          speaker: ids[e.speaker] ?? e.speaker,
+          target: e.target == null
+              ? null
+              : SynthPatch([
+                  for (var m in e.target!.modules)
+                    SynthModule(ids[m.id] ?? m.id, m.kind,
+                        values: m.values,
+                        choices: m.choices,
+                        inputs: plugs(m.inputs))
+                ], ids[e.target!.speaker] ?? e.target!.speaker),
+          checks: [
+            for (var c in e.checks) c.remapped(ids),
+          ]));
+    }
+  }
+  return next;
+}
