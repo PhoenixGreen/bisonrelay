@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/musicxml.dart';
+import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart' show keyNames;
 import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart'
     show sheetFifths;
@@ -176,6 +177,36 @@ List<Widget> sheetSettings(
                   "lines above are already the next page's. "
                   "Its key, worked out, is the Scale effect's where the "
                   "instrument has one, else the one its notes are heard in."),
+              // The score it shows, written in the Score Studio.
+              if (e.score.isNotEmpty && controller.scoreById(e.score) != null)
+                CanvasTextButton(
+                  key: const ValueKey("sheetStudio"),
+                  label: "Edit in the Score Studio",
+                  icon: Icons.edit_note,
+                  onPressed: () => controller.openScoreStudio(e.score),
+                )
+              else ...[
+                CanvasTextButton(
+                  key: const ValueKey("sheetNewScore"),
+                  label: followed == null
+                      ? "New score"
+                      : "Make a score of its notes",
+                  icon: Icons.queue_music,
+                  onPressed: () =>
+                      controller.openScoreStudio(controller.newScoreFor(e)),
+                ),
+                CanvasTextButton(
+                  key: const ValueKey("sheetSampleScore"),
+                  label: "Start from “Ode to Joy”",
+                  icon: Icons.library_music_outlined,
+                  onPressed: () => controller.openScoreStudio(
+                      controller.newScoreFor(e, score: odeToJoy())),
+                ),
+                const CanvasHint(
+                    "A score is written in the Score Studio, as MuseScore "
+                    "writes one: every part plays on a channel of its own, "
+                    "and the sheet shows the part you choose."),
+              ],
               CanvasTextButton(
                 key: const ValueKey("sheetImport"),
                 label: "Open MusicXML…",

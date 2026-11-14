@@ -892,6 +892,24 @@ class MusicScore {
     return s;
   }
 
+  /// placeAt is where [seconds] into the playing of [order] is: which
+  /// played bar (by index in [order]), its bar, and how many quarters into
+  /// it; null before the start and past the end.
+  ({int played, int bar, double at})? placeAt(
+      List<PlayedBar> order, double seconds) {
+    if (seconds < 0) return null;
+    var s = 0.0;
+    for (var (i, p) in order.indexed) {
+      var spq = 60 / tempoAt(p.bar);
+      var len = barQuarters(p.bar) * spq;
+      if (seconds < s + len) {
+        return (played: i, bar: p.bar, at: (seconds - s) / spq);
+      }
+      s += len;
+    }
+    return null;
+  }
+
   /// lengthQuarters is how long the playing is.
   double lengthQuarters([List<PlayedBar>? order]) {
     var o = order ?? playOrder();

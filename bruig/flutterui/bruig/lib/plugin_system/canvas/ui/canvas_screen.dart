@@ -37,6 +37,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:provider/provider.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_studio_3d.dart';
+import 'package:bruig/plugin_system/canvas/ui/score_studio.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // canvas_screen.dart is the Canvas section: a sidebar, the canvas, a settings
@@ -558,10 +559,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
-      valueListenable: _controller.studio3dOpen,
-      builder: (context, studio3d, _) =>
-          studio3d ? _studio3dPage(context) : _canvasPage(context));
+  Widget build(BuildContext context) => ValueListenableBuilder<String?>(
+      valueListenable: _controller.scoreStudio,
+      builder: (context, score, _) => score != null
+          ? _scoreStudioPage(context, score)
+          : ValueListenableBuilder<bool>(
+              valueListenable: _controller.studio3dOpen,
+              builder: (context, studio3d, _) =>
+                  studio3d ? _studio3dPage(context) : _canvasPage(context)));
+
+  /// _scoreStudioPage is the Score Studio, given the whole page in place of
+  /// the canvas: see score_studio.dart.
+  Widget _scoreStudioPage(BuildContext context, String score) {
+    var client = Provider.of<ClientModel>(context);
+    var theme = ThemeNotifier.of(context);
+    return ScreenWithChatSideMenu(
+        client,
+        contentAreaFrame(
+            theme,
+            ScoreStudio(
+                controller: _controller,
+                scoreId: score,
+                onDone: _controller.closeScoreStudio)));
+  }
 
   /// _studio3dPage is the Character Studio, given the whole page in place of
   /// the canvas: see character_studio_3d.dart.

@@ -3138,6 +3138,10 @@ class CanvasController extends ChangeNotifier {
   /// the canvas (character_studio_3d.dart).
   final ValueNotifier<bool> studio3dOpen = ValueNotifier(false);
 
+  /// scoreStudio is the score the Score Studio has the page for, by id, or
+  /// null while the canvas has it (score_studio.dart).
+  final ValueNotifier<String?> scoreStudio = ValueNotifier(null);
+
   /// studio3dElement is the 3D character the Studio was opened to change,
   /// if it was opened for one.
   String? studio3dElement;
