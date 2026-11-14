@@ -1,0 +1,322 @@
+import 'dart:ui' as ui;
+
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/score_edit.dart';
+import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
+import 'package:bruig/plugin_system/canvas/render/score_engraver.dart';
+import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
+import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+import 'canvas_audio_fake.dart';
+
+// canvas_score_sheet_test.dart is a Sheet music element showing a part of a
+// score (Ken, 2026-11-14): engraved from the score, a page at a time; the
+// playhead the canvas's own, put on a note by a press on the sheet, stepped
+// a note at a time, drawn or left as the highlight alone; the part's
+// keyboard under it lit with what is under the playhead.
+
+const sheetBox = Rect.fromLTWH(40, 40, 1200, 420);
+
+/// lesson is a controller with the sample score and a sheet on its piano
+/// part, at 24 frames a second.
+CanvasController lesson({int lines = 2, bool playhead = true}) {
+  var c = CanvasController(
+      const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.wide, width: 1280),
+          frames: 24 * 60,
+          frameRate: 24),
+      audioEngine: FakeEngine({}));
+  var sheet = SheetElement(
+      ElementBase(
+          id: "sheet",
+          x: sheetBox.left,
+          y: sheetBox.top,
+          width: sheetBox.width,
+          height: sheetBox.height),
+      lines: lines,
+      playhead: playhead);
+  c.addElement(sheet);
+  c.newScoreFor(sheet, score: odeToJoy());
+  c.selectOnly("sheet");
+  return c;
+}
+
+SheetElement sheetOf(CanvasController c) =>
+    c.document.elementById("sheet") as SheetElement;
+
+/// frameOf is the frame of [seconds] into the part's playing.
+int frameOf(CanvasController c, double seconds) {
+  var ch = c.sheetKeyboard(sheetOf(c))!;
+  return ch.clip.at + (seconds * 24 - 1e-6).ceil();
+}
+
+/// placeOf is where on the canvas [sheet] draws event [id] at [frame].
+Offset placeOf(CanvasController c, String id, {int? frame}) {
+  var view = sheetViewOf(sheetOf(c), sheetBox, c.document, frame ?? c.frame)!;
+  var hit = view.engraved.hits
+      .firstWhere((h) => h.kind == ScoreHitKind.event && h.event == id);
+  return view.origin + hit.rect.center * view.scale;
+}
+
+void main() {
+  test("kept: the playhead's setting", () {
+    var e = elementFromJson(
+            SheetElement(const ElementBase(id: "s"), playhead: false).toJson())
+        as SheetElement;
+    expect(e.playhead, isFalse);
+    expect(
+        (elementFromJson(SheetElement(const ElementBase(id: "s")).toJson())
+                as SheetElement)
+            .playhead,
+        isTrue);
+  });
+
+  test("a page at a time, turned to the one the playhead is on", () {
+    var c = lesson(lines: 1);
+    addTearDown(c.dispose);
+    var e = sheetOf(c);
+    // Eight more bars: more than one system of the piano part alone.
+    c.setScore(c.scoreById(e.score)!.insertBars(5, 8));
+    var first = sheetViewOf(e, sheetBox, c.document, frameOf(c, 0))!;
+    expect(first.place!.bar, 0);
+    var s = c.scoreById(e.score)!;
+    var order = s.playOrder();
+    var at = s.secondsAt(order, order.last.start + 1);
+    var late = sheetViewOf(e, sheetBox, c.document, frameOf(c, at))!;
+    expect(late.place!.bar, 12);
+    expect(late.window.top, greaterThan(first.window.top),
+        reason: "turned to the page with bar 5");
+  });
+
+  test("one hand: only its staff", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var right = sheetOf(c).copyWith(hands: PracticeHands.right);
+    var view = sheetViewOf(right, sheetBox, c.document, 0)!;
+    expect({for (var h in view.engraved.hits) h.staff}, {0});
+    expect(sheetStaves(view.part, PracticeHands.left), {1});
+  });
+
+  test("stepped a note at a time, and back to the start", () async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var e = sheetOf(c);
+    c.sheetToStart(e);
+    var start = c.frame;
+    expect(start, frameOf(c, 0));
+    // Crotchets at 112: a beat is 60/112 s.
+    c.stepSheet(e, 1);
+    expect(c.frame, frameOf(c, 60 / 112));
+    // Stepped onto, a note is under the playhead at once: lit and heard
+    // (bar 2's F4 starts 2.68 s in, between frames 64 and 65).
+    var ch = c.sheetKeyboard(e)!;
+    var back = c.frame;
+    for (var i = 0; i < 4; i++) {
+      c.stepSheet(e, 1);
+    }
+    // What is under the playhead, not what a step is still holding.
+    expect(ch.instrument!.sounding((c.frame - ch.clip.at) / 24), contains(65));
+    // Stepped quickly, only the last step's notes are held.
+    expect(c.heldKeys(ch.id), {65, 43, 50});
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    expect(c.heldKeys(ch.id), isEmpty, reason: "let go after a moment");
+    c.frame = back;
+    c.stepSheet(e, 1);
+    expect(c.frame, frameOf(c, 2 * 60 / 112));
+    c.stepSheet(e, -1);
+    expect(c.frame, frameOf(c, 60 / 112));
+    c.sheetToStart(e);
+    expect(c.frame, start);
+    c.stepSheet(e, -1);
+    expect(c.frame, start, reason: "nothing before the first");
+  });
+
+  test("a press on a note: the playhead goes to it", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var s = c.scoreById(sheetOf(c).score)!;
+    var third = s.parts[0].staves[0].bars[1][2]; // bar 2, beat 3
+    expect(c.sheetPressed(sheetOf(c), sheetBox, placeOf(c, third.id)), isTrue);
+    expect(c.frame, frameOf(c, 6 * 60 / 112));
+    // Off the staves, nothing.
+    var was = c.frame;
+    expect(
+        c.sheetPressed(
+            sheetOf(c), sheetBox, sheetBox.bottomRight - const Offset(2, 2)),
+        isFalse);
+    expect(c.frame, was);
+  });
+
+  test("a repeated bar: the time round nearest where the playhead is", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var s = c.scoreById(sheetOf(c).score)!;
+    var order = s.playOrder();
+    // Second time through bar 1.
+    var second = order.indexWhere((p) => p.bar == 0 && p.pass == 2);
+    c.frame = frameOf(c, s.secondsAt(order, order[second].start + 0.5));
+    var first = s.parts[0].staves[0].bars[0][0];
+    c.sheetPressed(sheetOf(c), sheetBox, placeOf(c, first.id));
+    expect(c.frame, frameOf(c, s.secondsAt(order, order[second].start)));
+  });
+
+  Future<int> orangeIn(CanvasController c) async {
+    var rec = ui.PictureRecorder();
+    paintSheetElement(
+        ui.Canvas(rec), sheetBox, sheetOf(c), c.document, c.frame);
+    var img = await rec.endRecording().toImage(1280, 720);
+    var raw = (await img.toByteData())!;
+    var n = 0;
+    for (var i = 0; i < raw.lengthInBytes; i += 4) {
+      var r = raw.getUint8(i), g = raw.getUint8(i + 1), b = raw.getUint8(i + 2);
+      if (r > 200 && g > 80 && g < 120 && b < 70) n++;
+    }
+    return n;
+  }
+
+  test("drawn from the score: the playhead, or the highlight alone", () async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    c.frame = frameOf(c, 60 / 112 * 1.5);
+    var shown = await orangeIn(c);
+    c.replaceElement(sheetOf(c).copyWith(playhead: false));
+    var lit = await orangeIn(c);
+    expect(shown, greaterThan(lit + 50), reason: "the line is drawn");
+    expect(lit, greaterThan(0), reason: "the note under it is still lit");
+  });
+
+  test("its keyboard under it, lit with what is under the playhead", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var e = sheetOf(c);
+    expect(c.sheetKeyboard(e)!.base.visible, isFalse);
+    c.showSheetKeyboard(e, true);
+    var keys = c.sheetKeyboard(e)!;
+    expect(keys.base.visible, isTrue);
+    expect(keys.base.y, greaterThanOrEqualTo(sheetBox.bottom));
+    expect(keys.base.width, sheetBox.width);
+    // Its keys reach the part's lowest note (G2) and highest (G4).
+    expect(keys.instrument!.lowKey, 36);
+    expect(keys.instrument!.highKey, greaterThanOrEqualTo(67));
+    c.sheetToStart(e);
+    // Bar 1 beat 1: E4 in the right hand, C3 G3 in the left.
+    expect(c.audioState(keys).keys, {64, 48, 55});
+    c.showSheetKeyboard(e, false);
+    expect(c.sheetKeyboard(e)!.base.visible, isFalse);
+  });
+
+  test("practice marks fall on the score's events", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var view = sheetViewOf(sheetOf(c), sheetBox, c.document, 0)!;
+    var notes = view.channel.instrument!.notes;
+    var i = notes.indexWhere((n) => n.key == 64 && n.start == 0);
+    var marks = sheetEventMarks(view, {i: const Color(0xFF00FF00)});
+    var first = view.score.parts[0].staves[0].bars[0][0];
+    expect(marks, {first.id: const Color(0xFF00FF00)});
+  });
+
+  testWidgets("on the stage: the sheet picked, a press puts the playhead",
+      (tester) async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var key = GlobalKey<CanvasStageState>();
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: SizedBox(
+                  width: 1600,
+                  height: 1000,
+                  child: CanvasStage(key: key, controller: c)))),
+    ));
+    await tester.pumpAndSettle();
+    var page = key.currentState!.pageRect;
+    var scale = page.width / 1280;
+    var s = c.scoreById(sheetOf(c).score)!;
+    var target = s.parts[0].staves[0].bars[2][1]; // bar 3, beat 2
+    await tester.tapAt(page.topLeft + placeOf(c, target.id) * scale);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(c.frame, frameOf(c, 9 * 60 / 112));
+    expect(sheetOf(c).base.x, sheetBox.left, reason: "a press, not a move");
+  });
+
+  testWidgets("its settings step the playhead, turn the line off, show keys",
+      (tester) async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => SingleChildScrollView(
+          child: SizedBox(
+            width: 320,
+            child: CanvasControlScope(
+              maxWidth: 280,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: elementSettings(context, c, c.selected!)),
+            ),
+          ),
+        ),
+      ))),
+    ));
+    await tester.pump();
+    Future<void> press(String key) async {
+      var f = find.byKey(ValueKey(key));
+      await tester.ensureVisible(f);
+      await tester.tap(f);
+      await tester.pump();
+    }
+
+    await press("sheetStart");
+    var start = c.frame;
+    await press("sheetStepOn");
+    expect(c.frame, greaterThan(start));
+    await press("sheetStepBack");
+    expect(c.frame, start);
+    await press("sheetKeyboard");
+    expect(c.sheetKeyboard(sheetOf(c))!.base.visible, isTrue);
+    var line = find.byKey(const ValueKey("sheetPlayhead"));
+    await tester.ensureVisible(line);
+    await tester.tap(line);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text("Highlight only").last);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(sheetOf(c).playhead, isFalse);
+  });
+}

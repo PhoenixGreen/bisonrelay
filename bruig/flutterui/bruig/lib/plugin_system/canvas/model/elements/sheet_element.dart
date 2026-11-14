@@ -65,6 +65,11 @@ class SheetElement extends CanvasElement {
   /// the playhead reaches the last.
   final int lines;
 
+  /// playhead is whether the playhead's line is drawn; off, the notes under
+  /// it are lit and that is all (Ken: "sometimes the highlight will be
+  /// enough").
+  final bool playhead;
+
   const SheetElement(
     super.base, {
     this.follows = "",
@@ -78,6 +83,7 @@ class SheetElement extends CanvasElement {
     this.tempo = 1,
     this.key,
     this.lines = 2,
+    this.playhead = true,
   });
 
   @override
@@ -95,7 +101,8 @@ class SheetElement extends CanvasElement {
       hands: hands,
       tempo: tempo,
       key: key,
-      lines: lines);
+      lines: lines,
+      playhead: playhead);
 
   SheetElement copyWith({
     String? follows,
@@ -110,6 +117,7 @@ class SheetElement extends CanvasElement {
     int? key,
     bool autoKey = false,
     int? lines,
+    bool? playhead,
   }) =>
       SheetElement(base,
           follows: follows ?? this.follows,
@@ -122,7 +130,8 @@ class SheetElement extends CanvasElement {
           hands: hands ?? this.hands,
           tempo: (tempo ?? this.tempo).clamp(0.4, 1.2),
           key: autoKey ? null : (key ?? this.key)?.clamp(-7, 7),
-          lines: (lines ?? this.lines).clamp(1, 8));
+          lines: (lines ?? this.lines).clamp(1, 8),
+          playhead: playhead ?? this.playhead);
 
   @override
   Map<String, dynamic> props() => {
@@ -137,6 +146,7 @@ class SheetElement extends CanvasElement {
         if (tempo != 1) "tempo": tempo,
         if (key case var k?) "key": k,
         if (lines != 2) "lines": lines,
+        if (!playhead) "playhead": false,
       };
 
   factory SheetElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -152,5 +162,6 @@ class SheetElement extends CanvasElement {
           .copyWith(
               tempo: jsonDouble(json["tempo"], 1),
               key: json["key"] is num ? (json["key"] as num).toInt() : null,
-              lines: json["lines"] is num ? (json["lines"] as num).toInt() : 2);
+              lines: json["lines"] is num ? (json["lines"] as num).toInt() : 2,
+              playhead: json["playhead"] != false);
 }

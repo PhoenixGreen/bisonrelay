@@ -272,6 +272,50 @@ List<Widget> sheetSettings(
                 },
                 onCommit: commit,
               ),
+              // A score part's playhead, by hand (Ken, 2026-11-14): to a
+              // note pressed on the sheet, or a note at a time.
+              if (e.score.isNotEmpty) ...[
+                CanvasTextButton(
+                  key: const ValueKey("sheetStart"),
+                  label: "To the start",
+                  icon: Icons.skip_previous,
+                  onPressed: () => controller.sheetToStart(e),
+                ),
+                CanvasTextButton(
+                  key: const ValueKey("sheetStepBack"),
+                  label: "Back a note",
+                  icon: Icons.chevron_left,
+                  onPressed: () => controller.stepSheet(e, -1),
+                ),
+                CanvasTextButton(
+                  key: const ValueKey("sheetStepOn"),
+                  label: "On a note",
+                  icon: Icons.chevron_right,
+                  onPressed: () => controller.stepSheet(e, 1),
+                ),
+                CanvasDropdown<bool>(
+                  key: const ValueKey("sheetPlayhead"),
+                  label: "Playhead",
+                  value: e.playhead,
+                  width: 150,
+                  options: const [(true, "Show"), (false, "Highlight only")],
+                  onChanged: (v) => now(e.copyWith(playhead: v)),
+                ),
+                if (controller.sheetKeyboard(e) case var keys?)
+                  CanvasTextButton(
+                    key: const ValueKey("sheetKeyboard"),
+                    label: keys.base.visible
+                        ? "Hide its keyboard"
+                        : "Show its keyboard",
+                    icon: Icons.piano,
+                    onPressed: () =>
+                        controller.showSheetKeyboard(e, !keys.base.visible),
+                  ),
+                const CanvasHint(
+                    "With the sheet picked, press a note on it and the "
+                    "playhead goes there. The notes under the playhead are "
+                    "lit, on the sheet and on its keyboard."),
+              ],
               CanvasTextButton(
                 key: const ValueKey("practiceGo"),
                 label: going ? "Stop" : "Practise",

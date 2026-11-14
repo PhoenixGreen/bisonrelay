@@ -639,6 +639,37 @@ extension CanvasGame on CanvasController {
   /// so its bars are this canvas's bars -- and writes [sheet] in its key.
   /// One change to undo. Answers why not.
   String? importScore(SheetElement sheet, MusicXmlScore score) {
+    // A sheet showing a score part: the file becomes that score, its part
+    // the one the sheet shows, on the same channel.
+    if (sheet.score.isNotEmpty && scoreById(sheet.score) != null) {
+      var was = scoreById(sheet.score)!;
+      var part = was.partById(sheet.part) ?? was.parts.first;
+      var tempo = score.tempo ?? 100;
+      var made = scoreFromNotes(sheet.score, score.played(tempo),
+          title: score.title,
+          instrument: part.instrument,
+          tempo: tempo,
+          beats: score.beatsPerBar,
+          beatUnit: score.beatUnit,
+          fifths: score.fifths);
+      made = made.copyWith(parts: [
+        made.parts.first.copyWith(name: part.name, channel: part.channel),
+      ]);
+      // The part keeps its id, so the sheet still shows it.
+      made = MusicScore.fromJson({
+        ...made.toJson(),
+        "parts": [
+          {...made.parts.first.toJson(), "id": part.id}
+        ],
+      });
+      beginInteraction();
+      apply(scoreRemoved(_document, sheet.score));
+      addScore(made);
+      apply(_document.withElement(sheet.copyWith(
+          key: score.fifths, title: sheet.title.isEmpty ? score.title : null)));
+      endInteraction();
+      return null;
+    }
     var e = _document.elementById(sheet.follows);
     if (e is! AudioElement || e.instrument == null) {
       return "Choose the instrument it shows first.";

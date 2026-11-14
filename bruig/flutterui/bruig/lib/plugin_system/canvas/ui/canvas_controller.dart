@@ -104,6 +104,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
+import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart'
     show macroValue;

@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
     show MidiEffectKind;
 import 'package:bruig/plugin_system/canvas/model/notation.dart';
+import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:flutter/painting.dart';
 
 // sheet_painter.dart engraves a Score (see model/notation.dart) in Bravura,
@@ -785,6 +786,23 @@ Score sheetScore(InstrumentPart part, AudioSettings audio, {int? fifths}) {
 void paintSheetElement(ui.Canvas canvas, Rect bounds, SheetElement e,
     CanvasDocument? document, int frame) {
   var look = SheetLook(paper: e.paper, ink: e.ink, title: e.title);
+  // A part of a score: engraved from the score itself (score_sheet.dart).
+  if (document != null) {
+    if (sheetViewOf(e, bounds, document, frame) case var view?) {
+      var marks = sheetMarksOf?.call(e) ?? const SheetMarks();
+      paintScoreSheet(canvas, bounds, e, view,
+          marks: sheetEventMarks(view, {
+            for (var MapEntry(key: i, value: m) in marks.marks.entries)
+              i: switch (m) {
+                NoteMark.right => _right,
+                NoteMark.wrong => _wrong,
+                NoteMark.missed => _missed,
+              },
+            for (var i in marks.waiting) i: _next,
+          }));
+      return;
+    }
+  }
   var followed = document?.elementById(e.follows);
   var part = followed is AudioElement ? followed.instrument : null;
   if (document == null || followed is! AudioElement || part == null) {

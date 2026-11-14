@@ -24,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -319,6 +320,11 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _keyDown is an instrument's key held under the pointer.
   (AudioElement, int)? _keyDown;
+
+  /// _pendingSheet is a selected score sheet pressed: let go where it was
+  /// pressed, the playhead goes to the note there (see sheetPressed).
+  SheetElement? _pendingSheet;
+  Offset _pendingSheetAt = Offset.zero;
 
   /// _pendingVideo is the same for a selected video's controls.
   VideoElement? _pendingVideo;
@@ -2205,6 +2211,18 @@ class CanvasStageState extends State<CanvasStage>
         _beginTransform(_DragMode.move, null);
         return;
       }
+    }
+
+    // A selected sheet showing a score part: a press that stays put moves
+    // the playhead to the note there; one that travels moves the sheet.
+    if (element is SheetElement &&
+        element.score.isNotEmpty &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id) {
+      _pendingSheet = element;
+      _pendingSheetAt = doc;
+      _beginTransform(_DragMode.move, null);
+      return;
     }
 
     // A selected instrument's keys: down, the note sounds at once, and let
@@ -5884,6 +5902,21 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.none;
       _handle = null;
       _toggleSeries(legend, legendAt);
+      return;
+    }
+
+    var sheet = _pendingSheet;
+    _pendingSheet = null;
+    if (sheet != null &&
+        (event.localPosition - _pressedAt).distance <= _buttonClickSlop) {
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      controller.sheetPressed(
+          sheet,
+          sheet.movedBoundsAt(controller.frame, controller.document,
+              live: controller.liveMotion),
+          _pendingSheetAt);
       return;
     }
 
