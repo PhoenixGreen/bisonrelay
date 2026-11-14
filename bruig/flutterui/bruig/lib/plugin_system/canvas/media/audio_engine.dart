@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
     show PitchReading;
@@ -139,6 +140,12 @@ abstract class AudioEngine {
   /// the mod wheel, the pitch bend, expression -- nought to one. An engine
   /// with no instruments of its own leaves it.
   void control(String channel, MidiControl control, double value);
+
+  /// livePatch sets the synth patch channel [channel]'s instrument plays,
+  /// as a knob on a module turns: the notes sounding go on in it where it
+  /// is wired as they were (see Sampler.patch). An engine with no
+  /// instruments of its own leaves it.
+  void livePatch(String channel, SynthPatch patch);
 
   /// levels is how loud a channel -- or with no [channel], the master -- is
   /// coming out right now, left and right, nought to one. For the meters;

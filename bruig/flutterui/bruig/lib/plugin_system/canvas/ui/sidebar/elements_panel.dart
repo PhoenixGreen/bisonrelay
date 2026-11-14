@@ -59,6 +59,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.sheet => Icons.queue_music,
       ElementKind.camera => Icons.videocam_outlined,
       ElementKind.object3d => Icons.view_in_ar,
+      ElementKind.synth => Icons.cable,
     };
 
 class CanvasElementsPanel extends StatelessWidget {
@@ -78,6 +79,8 @@ class CanvasElementsPanel extends StatelessWidget {
                 // An instrument is an Audio element playing a part, so it sits after
                 // the speaker.
                 if (kind == ElementKind.audio) _AddInstrument(controller),
+                // A synth of modules to patch, after the instruments.
+                if (kind == ElementKind.audio) _AddSynth(controller),
               ],
             ],
           ),
@@ -180,6 +183,48 @@ class _AddInstrument extends StatelessWidget {
                     fontSize: 10, color: theme.colors.onSurfaceVariant),
                 textAlign: TextAlign.center),
           ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// _AddSynth is the chip that puts down a synth: the prototype's rack of
+/// modules, ready to patch, its speaker on a channel of its own.
+class _AddSynth extends StatelessWidget {
+  final CanvasController controller;
+  const _AddSynth(this.controller);
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        key: const ValueKey("addSynth"),
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => controller.addSynthRack(),
+        child: Container(
+          width: 76,
+          constraints: const BoxConstraints(minHeight: 62),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: theme.colors.outlineVariant),
+            color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
+          ),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.cable,
+                    size: 20, color: theme.colors.onSurfaceVariant),
+                const SizedBox(height: 4),
+                Text("Synth",
+                    style: TextStyle(
+                        fontSize: 10, color: theme.colors.onSurfaceVariant),
+                    textAlign: TextAlign.center),
+              ]),
         ),
       ),
     );

@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'package:clock/clock.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -113,6 +116,11 @@ import 'package:flutter/services.dart';
 /// _DragMode is what the pointer is currently doing.
 enum _DragMode {
   none,
+
+  /// synthKnob is a synth module's knob turned by a drag up or down, and
+  /// synthCable a cable carried from a jack. See _pressSynth.
+  synthKnob,
+  synthCable,
 
   /// copies is copies of an element reused dragged on their own -- those
   /// picked, or made by an Alt-drag. See _moveCopies.
@@ -321,6 +329,21 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _keyDown is an instrument's key held under the pointer.
   (AudioElement, int)? _keyDown;
+
+  /// _synthKey is a synth keyboard module's key held under the pointer;
+  /// _synthKnob a module's knob being turned -- its module, knob, where it
+  /// was, and where the press began; _synthCable a cable being carried --
+  /// from which jack, the cable it was lifted out of if it was, and where
+  /// it is now.
+  (SynthModuleElement, int)? _synthKey;
+  (String, SynthKnob, double, Offset)? _synthKnob;
+  ({
+    SynthModuleElement from,
+    String port,
+    bool out,
+    (SynthModuleElement, String)? lifted,
+    Offset at,
+  })? _synthCable;
 
   /// _pendingSheet is a selected score sheet pressed: let go where it was
   /// pressed, the playhead goes to the note there (see sheetPressed).
@@ -1524,6 +1547,129 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _applyCounterPart moves that piece to wherever the pointer is.
+  /// _pressSynth answers a press on synth module [e]'s controls: a key
+  /// sounds, a knob turns as the press moves up or down (double-clicked,
+  /// back to the teacher's start), an option is chosen, ↺ and the look
+  /// switch do what they say, and a jack starts a cable -- out of an input
+  /// that has one, that cable lifted to go elsewhere. A locked module's
+  /// knobs, options and ↺ stay as they are. False on its panel itself.
+  bool _pressSynth(SynthModuleElement e, Offset doc) {
+    var part = synthPartAt(e, doc);
+    if (part == null) return false;
+    if (controller.selection.length != 1 ||
+        controller.selection.first != e.id) {
+      controller.selectOnly(e.id);
+    }
+    _mode = _DragMode.none;
+    switch (part.kind) {
+      case SynthPartKind.key:
+        controller.synthKeyDown(e, part.index);
+        _synthKey = (e, part.index);
+      case SynthPartKind.knob:
+        if (e.fixed) break;
+        var knob = synthKnobs[e.module]![part.index];
+        var twice = clock.now().difference(_lastClickAt) < _doubleClickWindow;
+        _lastClickAt =
+            twice ? DateTime.fromMillisecondsSinceEpoch(0) : clock.now();
+        if (twice) {
+          controller.setSynth(e.withValue(knob.key, e.startValue(knob.key)));
+          break;
+        }
+        controller.beginInteraction();
+        _synthKnob = (e.id, knob, knob.turn(e.value(knob.key)), doc);
+        setState(() => _mode = _DragMode.synthKnob);
+      case SynthPartKind.option:
+        if (e.fixed) break;
+        var name = synthChoiceOf(e.module)!;
+        controller
+            .setSynth(e.withChoice(name, synthChoices[name]![part.index]));
+      case SynthPartKind.reset:
+        if (!e.fixed) controller.resetSynth(e);
+      case SynthPartKind.look:
+        controller.setSynth(e.copyWith(
+            look: e.look == SynthLook.analogue
+                ? SynthLook.digital
+                : SynthLook.analogue));
+      case SynthPartKind.jack:
+        controller.beginInteraction();
+        var plug = part.out ? null : e.inputs[part.port];
+        var source = plug == null ? null : document.elementById(plug.module);
+        _synthCable = source is SynthModuleElement
+            ? (
+                from: source,
+                port: plug!.port,
+                out: true,
+                lifted: (e, part.port),
+                at: doc
+              )
+            : (from: e, port: part.port, out: part.out, lifted: null, at: doc);
+        setState(() => _mode = _DragMode.synthCable);
+    }
+    return true;
+  }
+
+  /// _turnSynthKnob turns the knob being dragged: a whole turn over 150
+  /// pixels up, as the prototype's; with Shift, four times finer.
+  void _turnSynthKnob(Offset doc) {
+    var (id, knob, from, start) = _synthKnob ?? (null, null, 0.0, Offset.zero);
+    var e = id == null ? null : document.elementById(id);
+    if (e is! SynthModuleElement || knob == null) return;
+    var travel = (start.dy - doc.dy) * _scale / (_shiftHeld ? 600 : 150);
+    controller.setSynth(e.withValue(knob.key, knob.at(from + travel)),
+        transient: true);
+  }
+
+  /// _releaseSynth ends what a press on a synth module began: the key let
+  /// go, the knob's turn one change to undo, the cable plugged into the
+  /// jack it is dropped on -- or, lifted out and dropped on nothing, taken
+  /// out. True where there was one.
+  bool _releaseSynth(Offset doc) {
+    if (_synthKey case (var e, var key)?) {
+      _synthKey = null;
+      controller.synthKeyUp(e, key);
+      return true;
+    }
+    if (_synthKnob != null) {
+      _synthKnob = null;
+      controller.endInteraction();
+      setState(() => _mode = _DragMode.none);
+      return true;
+    }
+    var cable = _synthCable;
+    if (cable == null) return false;
+    _synthCable = null;
+    var onto = synthJackUnder(document.elements, doc);
+    var plugged = false;
+    if (onto case (var into, var port, var out)? when out != cable.out) {
+      var (src, srcPort) = cable.out ? (cable.from, cable.port) : (into, port);
+      var (dst, dstPort) = cable.out ? (into, port) : (cable.from, cable.port);
+      if (cable.lifted case (var was, var input)?
+          when was.id != dst.id || input != dstPort) {
+        controller.unplugSynth(
+            document.elementById(was.id) as SynthModuleElement, input);
+      }
+      plugged = controller.plugSynth(src, srcPort,
+          document.elementById(dst.id) as SynthModuleElement, dstPort);
+      if (!plugged) {
+        var a = (cable.out ? cable.from : into)
+            .module
+            .output(cable.out ? cable.port : port);
+        var b = dst.module.input(dstPort);
+        SnackBarModel.of(context).error(a == null || b == null
+            ? "Patch from an output to an input."
+            : "That doesn't fit: a ${a.signal.name} jack goes to a "
+                "${a.signal.name} jack.");
+      }
+    } else if (cable.lifted case (var was, var input)?) {
+      // Pulled out and let go of: the cable comes out.
+      controller.unplugSynth(
+          document.elementById(was.id) as SynthModuleElement, input);
+    }
+    controller.endInteraction();
+    setState(() => _mode = _DragMode.none);
+    return true;
+  }
+
   void _applyCounterPart(Offset doc) {
     var id = _counterPart;
     var element = id == null ? null : document.elementById(id);
@@ -2185,6 +2331,10 @@ class CanvasStageState extends State<CanvasStage>
       setState(() => _marquee = Rect.fromPoints(doc, doc));
       return;
     }
+
+    // A synth module's controls answer a press whether it is picked or not,
+    // as a rack's do; its panel otherwise is what picks and moves it.
+    if (element is SynthModuleElement && _pressSynth(element, doc)) return;
 
     // A selected button is tried by clicking it and moved by dragging it,
     // so the action waits for pointer-up, where the distance travelled is
@@ -5458,6 +5608,18 @@ class CanvasStageState extends State<CanvasStage>
         _applyPart(doc, chartLabel: false);
       case _DragMode.counterPart:
         _applyCounterPart(doc);
+      case _DragMode.synthKnob:
+        _turnSynthKnob(doc);
+      case _DragMode.synthCable:
+        if (_synthCable case var c?) {
+          setState(() => _synthCable = (
+                from: c.from,
+                port: c.port,
+                out: c.out,
+                lifted: c.lifted,
+                at: doc
+              ));
+        }
       case _DragMode.imageFrame:
         _applyFraming(doc);
       case _DragMode.imageLayerMove ||
@@ -5877,6 +6039,7 @@ class CanvasStageState extends State<CanvasStage>
       controller.endInteraction();
       return;
     }
+    if (_releaseSynth(_toDocument(event.localPosition))) return;
     // Let go before it was held long enough, so it was a press after all.
     _legendHold?.cancel();
     _legendHold = null;
@@ -6926,6 +7089,24 @@ class CanvasStageState extends State<CanvasStage>
                     ),
                   ),
                 ),
+              // A cable being carried from a jack.
+              if (_synthCable case var c?)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _CarriedCable(
+                          synthJackAt(c.from, c.port, out: c.out),
+                          c.at,
+                          synthSignalColour((c.out
+                                  ? c.from.module.output(c.port)
+                                  : c.from.module.input(c.port))!
+                              .signal),
+                          synthScaleOf(c.from),
+                          _scale,
+                          _origin),
+                    ),
+                  ),
+                ),
               if (_editorFor() case var editor?) editor,
               if (_typingField() case var typing?) typing,
               if (_brushRing() case var ring?) ring,
@@ -7318,4 +7499,32 @@ class _RulerLayer extends CustomPainter {
       old.scale != scale ||
       old.origin != origin ||
       old.page != page;
+}
+
+/// _CarriedCable is a synth cable being carried from a jack, dashed, to
+/// the pointer.
+class _CarriedCable extends CustomPainter {
+  final Offset? jack;
+  final Offset at;
+  final Color colour;
+  final double panelScale, scale;
+  final Offset origin;
+  const _CarriedCable(this.jack, this.at, this.colour, this.panelScale,
+      this.scale, this.origin);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var from = jack;
+    if (from == null) return;
+    paintSynthCable(canvas, from * scale + origin, at * scale + origin, colour,
+        panelScale * scale,
+        dashed: true);
+  }
+
+  @override
+  bool shouldRepaint(_CarriedCable old) =>
+      old.jack != jack ||
+      old.at != at ||
+      old.scale != scale ||
+      old.origin != origin;
 }

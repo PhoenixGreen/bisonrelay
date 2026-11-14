@@ -738,6 +738,11 @@ void main() {
             kind == ElementKind.object3d) {
           continue;
         }
+        // Synth modules are put down as a rack, by the Synth chip.
+        if (kind == ElementKind.synth) {
+          expect(find.text("Synth"), findsOneWidget);
+          continue;
+        }
         expect(find.text(kind.label), findsWidgets, reason: kind.name);
       }
 

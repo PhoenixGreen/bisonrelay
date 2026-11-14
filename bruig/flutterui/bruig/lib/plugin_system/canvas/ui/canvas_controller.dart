@@ -1,3 +1,8 @@
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart'
+    show SynthShow, synthShowOf;
+import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'dart:async';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
@@ -119,7 +124,7 @@ import 'package:bruig/plugin_system/canvas/model/play.dart' show
         gameSoundStop;
 import 'package:gamepads/gamepads.dart' show Gamepads, NormalizedGamepadEvent;
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart'
-    show newElement, newInstrument;
+    show newElement, newInstrument, synthRack, synthModule;
 import 'package:bruig/plugin_system/canvas/model/notation.dart' show splitKey;
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
@@ -202,6 +207,7 @@ part 'controller/timeline_clips.dart';
 part 'controller/copies.dart';
 part 'controller/cast.dart';
 part 'controller/scores.dart';
+part 'controller/synths.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -350,6 +356,10 @@ class CanvasController extends ChangeNotifier {
     sliceAudioReader = (id) => CanvasController.clipAudio(id);
     // A sheet's playbar shows pause while this canvas plays.
     sheetPlaying = () => playing;
+    // The synth modules on the stage: their keys held, their time.
+    synthShowOf = (e, frame) => SynthShow(
+        seconds: frame / math.max(1, _document.frameRate),
+        held: synthHeld(e.id));
   }
 
   CanvasDocument _document;
@@ -1686,6 +1696,8 @@ class CanvasController extends ChangeNotifier {
     // A linked copy changed in what it shares changes its Cast member, and
     // every other copy with it (see cast.dart).
     next = castSynced(_document, next);
+    // Each synth speaker's channel plays the patch its modules make.
+    next = synthSynced(next);
 
     // A picture's frame takes in what was put past it once a change is made,
     // not at every step of a drag, whose sums start from where things were
@@ -3335,6 +3347,9 @@ class CanvasController extends ChangeNotifier {
 
   /// _held is each instrument's keys held down live, by element id.
   final Map<String, Set<int>> _held = {};
+
+  /// _synthPressed is each keyboard module's keys held, by element id.
+  final Map<String, Set<int>> _synthPressed = {};
 
   /// _pressedOn is each instrument with keys held, as it was when they were
   /// pressed: let go through it whatever has changed since -- the scene

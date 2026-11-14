@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
@@ -532,6 +533,15 @@ class DartAudioEngine implements AudioEngine {
   void noteOff(String channel, int key) => _remote
       ? _send(["noteOff", channel, key])
       : _live[channel]?.$2.sampler.noteOff(key);
+
+  @override
+  void livePatch(String channel, SynthPatch patch) {
+    if (_remote) {
+      _send(["patch", channel, patch]);
+    } else {
+      _live[channel]?.$2.sampler.patch = patch;
+    }
+  }
 
   @override
   void control(String channel, MidiControl control, double value) => _remote

@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/synth_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sheet_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
@@ -144,6 +146,9 @@ List<Widget> elementSettings(
   if (element is SheetElement) {
     return sheetSettings(context, controller, element, write, begin, commit,
         panel: true);
+  }
+  if (element is SynthModuleElement) {
+    return synthSettings(context, controller, element, write, begin, commit);
   }
 
   // Every other element in sections, as a picture is: where it is, its

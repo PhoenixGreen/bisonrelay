@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
@@ -490,6 +491,8 @@ class _Worker {
         _fill();
       case "noteOff":
         live[m[1]]?.$2.sampler.noteOff(m[2] as int);
+      case "patch":
+        live[m[1]]?.$2.sampler.patch = m[2] as SynthPatch;
       case "control":
         live[m[1]]?.$2.sampler.control(m[2], m[3] as double);
     }

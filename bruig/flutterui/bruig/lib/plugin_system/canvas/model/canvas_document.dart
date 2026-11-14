@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
@@ -1557,6 +1558,9 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return SpriteElement.fromJson(json, base);
     case ElementKind.tileMap:
       return TileMapElement.fromJson(json, base);
+    case ElementKind.synth:
+      return SynthModuleElement.fromJson(json, base) ??
+          ShapeElement.fromJson(json, base);
   }
 }
 

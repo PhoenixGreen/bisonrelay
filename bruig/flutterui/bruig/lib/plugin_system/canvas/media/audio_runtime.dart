@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
@@ -237,6 +238,12 @@ class AudioRuntime extends ChangeNotifier {
     }
     _controlsWaiting[(channel, control)] = value;
     _ready();
+  }
+
+  /// livePatch sets the synth patch channel [channel] plays, live; before
+  /// the engine has started there is nothing sounding to change.
+  void livePatch(String channel, SynthPatch patch) {
+    if (_started) engine.livePatch(channel, patch);
   }
 
   /// _controlsWaiting are the controllers moved before the engine started.

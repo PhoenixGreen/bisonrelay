@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
@@ -136,6 +137,12 @@ class FakeEngine implements AudioEngine {
   @override
   void control(String channel, MidiControl control, double value) =>
       controls.add((channel, control, value));
+
+  /// patches are the live patches set, in order.
+  final List<(String, SynthPatch)> patches = [];
+  @override
+  void livePatch(String channel, SynthPatch patch) =>
+      patches.add((channel, patch));
   @override
   void setPlacement(String key, Heard? heard) =>
       heard == null ? placements.remove(key) : placements[key] = heard;

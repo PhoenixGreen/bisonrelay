@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
@@ -91,6 +94,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.camera => Size(wide, short),
     // A square, a third of the page high: a model fitted whole in it.
     ElementKind.object3d => Size(short * 0.4, short * 0.4),
+    // A module's panel, at the rack's scale.
+    ElementKind.synth =>
+      synthPanelOf(SynthModuleKind.osc).size * synthUnit(document),
   };
 }
 
@@ -356,6 +362,12 @@ CanvasElement newElement(
     case ElementKind.object3d:
       return Object3dElement(base.copyWith(name: "3D object"));
 
+    // An oscillator by itself; the Synth chip puts down a whole rack (see
+    // synthRack).
+    case ElementKind.synth:
+      return SynthModuleElement(base.copyWith(name: "Oscillator"),
+          module: SynthModuleKind.osc);
+
     case ElementKind.camera:
       // On the whole page, where it shows everything, to be drawn in and
       // moved from there (see CameraElement); on a 3D stage, where the stage's
@@ -409,4 +421,71 @@ CanvasElement newElement(
           design: CharacterDesign(
               id: "", name: "", body: "Vivi", updated: DateTime(2026)));
   }
+}
+
+/// synthUnit is how big a synth module's panel unit is on [document]: a
+/// rack of the prototype's seven fits the page.
+double synthUnit(CanvasDocument document) =>
+    math.min(document.size.width / 1150, document.size.height / 760);
+
+/// synthModule makes a module of [kind] with its top left at [at], at
+/// the rack's scale.
+SynthModuleElement synthModule(
+    CanvasDocument document, SynthModuleKind kind, Offset at,
+    {String? id, Map<String, double> values = const {}}) {
+  var size = synthPanelOf(kind).size * synthUnit(document);
+  return SynthModuleElement(
+      ElementBase(
+          id: id ?? newElementId(),
+          name: kind.label,
+          x: at.dx,
+          y: at.dy,
+          width: size.width,
+          height: size.height),
+      module: kind,
+      values: values);
+}
+
+/// synthRack is the prototype's starting rack (Ken approved, 2026-11-14):
+/// a keyboard, an oscillator, an envelope, a filter, an LFO, an amp and a
+/// speaker, the keyboard's pitch patched into the oscillator, through the
+/// amp to the speaker -- the rest there to be patched in. Centred on
+/// [center]; the speaker's channel [channel].
+List<SynthModuleElement> synthRack(CanvasDocument document,
+    {Offset? center, required String channel}) {
+  var u = synthUnit(document);
+  var mid = center ?? document.size.rect.center;
+  // The prototype's places, in its rack's units (1150 by 760), centred.
+  var origin = mid - const Offset(575, 380) * u;
+  Offset at(double x, double y) => origin + Offset(x, y) * u;
+  var ids = {
+    for (var k in ["k", "o", "e", "f", "l", "a", "s"]) k: newElementId()
+  };
+  SynthPlug plug(String id, String port) => (module: ids[id]!, port: port);
+  var mods = [
+    synthModule(document, SynthModuleKind.keys, at(24, 470), id: ids["k"]),
+    synthModule(document, SynthModuleKind.osc, at(320, 30), id: ids["o"]),
+    synthModule(document, SynthModuleKind.env, at(320, 420), id: ids["e"]),
+    synthModule(document, SynthModuleKind.filter, at(600, 30),
+        id: ids["f"], values: {"cutoff": 6000}),
+    synthModule(document, SynthModuleKind.lfo, at(600, 420),
+        id: ids["l"], values: {"rate": 0.6}),
+    synthModule(document, SynthModuleKind.amp, at(880, 30), id: ids["a"]),
+    synthModule(document, SynthModuleKind.out, at(880, 400), id: ids["s"]),
+  ];
+  var inputs = {
+    ids["o"]!: {"pitch": plug("k", "pitch")},
+    ids["a"]!: {"in": plug("o", "out")},
+    ids["s"]!: {"in": plug("a", "out")},
+  };
+  return [
+    for (var m in mods)
+      () {
+        var e = m.copyWith(
+            inputs: inputs[m.id] ?? const {},
+            channel: m.module == SynthModuleKind.out ? channel : null);
+        // Where students reset to: as it starts.
+        return e.startHere();
+      }(),
+  ];
 }

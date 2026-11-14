@@ -46,7 +46,9 @@ enum ElementKind {
   sheet("Sheet music"),
   // The part of the page shown, moved by clips.
   camera("Camera"),
-  object3d("3D object");
+  object3d("3D object"),
+  // One module of a synth, patched to others with cables.
+  synth("Synth module");
 
   final String label;
   const ElementKind(this.label);

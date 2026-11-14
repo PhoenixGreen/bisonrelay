@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/render/model3d/model3d_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
@@ -461,6 +463,10 @@ void _paintScene(
     for (var i = 0; i < lensed; i++) {
       canvas.restore();
     }
+  }
+  // Synth cables over every module, as they hang over a rack.
+  if (elements.any((e) => e is SynthModuleElement)) {
+    paintSynthCables(canvas, elements);
   }
 }
 
@@ -1179,6 +1185,15 @@ void paintElement(
       case SheetElement e:
         arriving(canvas, bounds, const ElementAnimation(), pose,
             () => paintSheetElement(canvas, bounds, e, document, frame));
+      case SynthModuleElement e:
+        arriving(
+            canvas,
+            bounds,
+            const ElementAnimation(),
+            pose,
+            () => paintSynthModule(canvas, bounds, e,
+                show: synthShowOf?.call(e, frame) ??
+                    SynthShow(seconds: frame / (document?.frameRate ?? 24))));
       case AudioElement e:
         arriving(
             canvas,
