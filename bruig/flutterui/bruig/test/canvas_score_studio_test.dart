@@ -14,6 +14,9 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:bruig/plugin_system/canvas/model/fretting.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show guitarStrings;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -306,6 +309,39 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     expect(scoreOf(c).event(other.id)!.chord, "D7");
+    await settled(tester);
+  });
+
+  // Ken, 2026-11-14: "specify in the studio which chord position should
+  // be used and when not specified the common ... chord".
+  testWidgets("a guitar chord's box: its positions offered, one chosen",
+      (tester) async {
+    var c = await studio(tester);
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    var strum = scoreOf(c).parts.firstWhere((p) => p.strum);
+    var e = strum.staves[0].bars[0].firstWhere((x) => x.chord != null);
+    // The first strum's notes: those struck together.
+    List<int> struck() {
+      var notes = c.scoreChannel("ode", strum.id)!.instrument!.notes;
+      var t0 = notes.first.start;
+      return [
+        for (var n in notes)
+          if (n.start < t0 + 0.2) n.key
+      ]..sort();
+    }
+
+    var before = struck();
+    expect(before, guitarChord(e.chord!)!.keysOn(guitarStrings)..sort(),
+        reason: "the common shape, with none chosen");
+    var paper = tester.getTopLeft(find.byKey(const ValueKey("scorePaper")));
+    await tester
+        .tapAt(paper + (state.markPlace(e.id, MarkKind.diagram) as Offset));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("scoreShapeMenu-1")));
+    await tester.pumpAndSettle();
+    expect(scoreOf(c).event(e.id)!.shape, 1);
+    var after = struck();
+    expect(after, guitarChord(e.chord!, 1)!.keysOn(guitarStrings)..sort());
     await settled(tester);
   });
 

@@ -1,6 +1,7 @@
+import 'package:bruig/plugin_system/canvas/model/fretting.dart'
+    show FretPlace, placesAt;
 import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart'
     show PatchWatch;
-import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart'
     show SynthShow, synthShowOf;
 import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
@@ -3360,6 +3361,10 @@ class CanvasController extends ChangeNotifier {
 
   /// _held is each instrument's keys held down live, by element id.
   final Map<String, Set<int>> _held = {};
+
+  /// _heldPlaces are where on a neck each instrument's keys held were
+  /// pressed, by element id and key.
+  final Map<String, Map<int, FretPlace>> _heldPlaces = {};
 
   /// _synthPressed is each keyboard module's keys held, by element id.
   final Map<String, Set<int>> _synthPressed = {};

@@ -143,6 +143,7 @@ extension CanvasInstruments on CanvasController {
       return AudioState(
           playing: playing,
           keys: {...part.sounding(seconds), ...?_held[e.id]},
+          places: {...placesAt(part, seconds), ...?_heldPlaces[e.id]},
           recording: _recording && _recordsInto(e),
           next: practised != null && practised.$2.id == e.id
               ? {for (var i in _waiting) part.notes[i].key}
@@ -159,10 +160,12 @@ extension CanvasInstruments on CanvasController {
 
   /// noteOn presses [key] on instrument [e]: heard at once, through its
   /// channel, and written down while recording.
-  void noteOn(AudioElement e, int key, {int velocity = 100}) {
+  void noteOn(AudioElement e, int key, {int velocity = 100, FretPlace? place}) {
     var part = e.instrument;
     if (part == null) return;
     if (!(_held.putIfAbsent(e.id, () => {})).add(key)) return;
+    // Where on the neck it was pressed, to light it there.
+    if (place != null) (_heldPlaces[e.id] ??= {})[key] = place;
     _pressedOn[e.id] = e;
     _heard();
     _soundOn(e, part, key, velocity);
@@ -440,6 +443,7 @@ extension CanvasInstruments on CanvasController {
   /// _release lets go of [key] on [e], the pedal or not.
   void _release(AudioElement e, int key) {
     if (!(_held[e.id]?.remove(key) ?? false)) return;
+    _heldPlaces[e.id]?.remove(key);
     if (_held[e.id]?.isEmpty ?? false) {
       _held.remove(e.id);
       _pressedOn.remove(e.id);

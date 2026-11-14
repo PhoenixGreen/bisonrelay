@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/fretting.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
@@ -178,7 +179,9 @@ abstract final class MarkKind {
       rehearsal = "mark",
       tempo = "tempo",
       jump = "jump",
-      hairpin = "hairpin";
+      hairpin = "hairpin",
+      // A guitar chord's box, under its symbol.
+      diagram = "diagram";
   static String lyric(int verse) => "lyr$verse";
 }
 
@@ -241,6 +244,11 @@ class ScoreEvent {
   /// dynamic's. The printed dynamic is not changed by it.
   final int? velocity;
 
+  /// shape is which guitar position its chord symbol is played in, by its
+  /// place in guitarChordShapes: null for the common one -- the open chord
+  /// where there is one (Ken, 2026-11-14).
+  final int? shape;
+
   /// sizes are markings drawn bigger or smaller than their own size, by
   /// kind (see MarkKind): a dynamic resized by its handle.
   final Map<String, double> sizes;
@@ -261,6 +269,7 @@ class ScoreEvent {
       this.lyrics = const [],
       this.grace = false,
       this.velocity,
+      this.shape,
       this.sizes = const {},
       this.offsets = const {}});
 
@@ -297,6 +306,8 @@ class ScoreEvent {
     bool? grace,
     int? velocity,
     bool noVelocity = false,
+    int? shape,
+    bool noShape = false,
     Map<String, double>? sizes,
     Map<String, Offset>? offsets,
   }) =>
@@ -316,6 +327,7 @@ class ScoreEvent {
           velocity: noVelocity
               ? null
               : (velocity ?? this.velocity)?.clamp(1, 127).toInt(),
+          shape: noShape ? null : shape ?? this.shape,
           sizes: sizes ?? this.sizes,
           offsets: offsets ?? this.offsets);
 
@@ -341,6 +353,7 @@ class ScoreEvent {
         if (lyrics.any((l) => l.isNotEmpty)) "lyr": lyrics,
         if (grace) "grace": true,
         if (velocity case var v?) "vel": v,
+        if (shape case var sh?) "shape": sh,
         if (sizes.isNotEmpty) "size": sizes,
         if (offsets.isNotEmpty) "off": _offsetsToJson(offsets),
       };
@@ -371,6 +384,7 @@ class ScoreEvent {
         grace: jsonBool(j["grace"], false),
         velocity:
             j["vel"] is num ? (j["vel"] as num).toInt().clamp(1, 127) : null,
+        shape: j["shape"] is num ? (j["shape"] as num).toInt() : null,
         sizes: {
           if (j["size"] case Map m)
             for (var e in m.entries)
@@ -984,6 +998,7 @@ class MusicScore {
     for (var (si, staff) in p.staves.indexed) {
       var dyn = Dynamic.mf;
       String? chord;
+      int? shape;
       // Ties: in each voice, the keys held on from its last event, and
       // their notes' places in out.
       var held = <int, Map<int, int>>{};
@@ -995,7 +1010,10 @@ class MusicScore {
           var at = t[e.voice] ?? 0;
           t[e.voice] = at + e.quarters;
           if (e.dyn case var d? when d.lasting) dyn = d;
-          if (e.chord case var c?) chord = c;
+          if (e.chord case var c?) {
+            chord = c;
+            shape = e.shape;
+          }
           if (e.grace) continue;
           var was = held[e.voice] ?? const <int, int>{};
           var now = <int, int>{};
@@ -1020,7 +1038,16 @@ class MusicScore {
           var len = e.quarters * spq * hold;
           var v = (e.velocity ?? vel.round()).clamp(1, 127);
           if (e.slash) {
-            var keys = chordKeys(chord ?? "C");
+            // A guitar holds the chord's shape (the one chosen, or the
+            // common one); a bass plays its bass; anything else the chord's
+            // notes in a guitar's range.
+            var keys = switch (p.kind.look) {
+              InstrumentLook.guitar =>
+                guitarChord(chord ?? "C", shape)?.keysOn(guitarStrings) ??
+                    chordKeys(chord ?? "C"),
+              InstrumentLook.bass => bassChordKeys(chord ?? "C"),
+              _ => chordKeys(chord ?? "C"),
+            };
             if (e.strum == Strum.up) keys = keys.reversed.toList();
             for (var (k, key) in keys.indexed) {
               var gap = k * (e.strum == Strum.up ? 0.012 : 0.018);

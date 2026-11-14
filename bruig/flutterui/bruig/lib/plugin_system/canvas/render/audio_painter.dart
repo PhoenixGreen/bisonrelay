@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/fretting.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -30,13 +31,19 @@ class AudioState {
   /// next are the keys a practice take is waiting for, lit blue.
   final Set<int> next;
 
+  /// places are where a neck's keys sounding are played, by key: the
+  /// string and fret pressed, or the part's fingering (see fretting.dart).
+  /// A key with none is placed with the others sounding.
+  final Map<int, FretPlace> places;
+
   const AudioState(
       {this.playing = false,
       this.muted = false,
       this.volume = 1,
       this.keys = const {},
       this.recording = false,
-      this.next = const {}});
+      this.next = const {},
+      this.places = const {}});
 
   factory AudioState.idle(AudioElement e) =>
       AudioState(muted: e.clip.muted, volume: e.clip.volume);
@@ -52,7 +59,8 @@ class AudioState {
     return AudioState(
         muted: e.clip.muted,
         volume: e.clip.volume,
-        keys: part.sounding(seconds));
+        keys: part.sounding(seconds),
+        places: placesAt(part, seconds));
   }
 }
 
@@ -119,6 +127,7 @@ void paintAudio(ui.Canvas canvas, Rect bounds, AudioElement e, AudioState state,
     paintKeyboard(canvas, bounds, part,
         lit: state.keys,
         next: state.next,
+        places: state.places,
         accent: e.accent,
         recording: state.recording);
     return;

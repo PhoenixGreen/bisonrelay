@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/fretting.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -116,6 +117,19 @@ KeyboardLayout keyboardLayout(InstrumentPart part, Rect bounds,
   return KeyboardLayout(title, board, keys);
 }
 
+/// neckPlaceAt is the string and fret of [part]'s neck under [p], as
+/// [layout] lays it out; null off the neck, or for an instrument with none.
+FretPlace? neckPlaceAt(KeyboardLayout layout, InstrumentPart part, Offset p) {
+  if (part.look != InstrumentLook.guitar && part.look != InstrumentLook.bass) {
+    return null;
+  }
+  // The neck's places are laid out a string at a time, nut to body.
+  for (var (i, k) in layout.keys.indexed) {
+    if (k.rect.contains(p)) return (i ~/ (frets + 1), i % (frets + 1));
+  }
+  return null;
+}
+
 /// fretX is where fret [n] is between the nut at [nut] and the end of the
 /// neck at [end]: closer together up the neck, as a string's halving is.
 double fretX(double nut, double end, int n) {
@@ -128,6 +142,7 @@ double fretX(double nut, double end, int n) {
 void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
     {Set<int> lit = const {},
     Set<int> next = const {},
+    Map<int, FretPlace> places = const {},
     Color accent = const Color(0xFF3D7EFF),
     bool recording = false}) {
   var layout = keyboardLayout(part, bounds);
@@ -162,7 +177,7 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
     return;
   }
   if (part.look == InstrumentLook.guitar || part.look == InstrumentLook.bass) {
-    _paintNeck(canvas, layout, part, lit, next, accent);
+    _paintNeck(canvas, layout, part, lit, next, accent, places);
     return;
   }
   var line = Paint()
@@ -209,6 +224,7 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
 void paintPlayingSurface(
     ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
     {Set<int> lit = const {},
+    Map<int, FretPlace> places = const {},
     Color accent = const Color(0xFF3D7EFF),
     Map<int, String> letters = const {},
     Color face = _padFace,
@@ -218,7 +234,7 @@ void paintPlayingSurface(
         letters: letters, face: face, ink: ink);
   } else if (part.look == InstrumentLook.guitar ||
       part.look == InstrumentLook.bass) {
-    _paintNeck(canvas, layout, part, lit, const {}, accent);
+    _paintNeck(canvas, layout, part, lit, const {}, accent, places);
   }
 }
 
@@ -348,7 +364,8 @@ void _paintPads(ui.Canvas canvas, KeyboardLayout layout, Set<int> lit,
 }
 
 void _paintNeck(ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
-    Set<int> lit, Set<int> next, Color accent) {
+    Set<int> lit, Set<int> next, Color accent,
+    [Map<int, FretPlace> placed = const {}]) {
   var board = layout.board;
   var strings =
       part.look == InstrumentLook.guitar ? guitarStrings : bassStrings;
@@ -386,16 +403,21 @@ void _paintNeck(ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
           ..strokeWidth = 1 + (strings.length - i) * 0.35);
   }
   // Where each note sounding is played: a finger on its fret, or a ring at
-  // the nut for an open string.
+  // the nut for an open string -- where it was pressed, or as the part is
+  // fingered; the rest placed together, as a hand would hold them.
   for (var (keys, colour) in [(lit, accent), (next, const Color(0xFF3D7EFF))]) {
-    for (var key in keys) {
-      var at = fretFor(key, strings);
-      if (at == null) continue;
-      var (string, fret) = at;
+    var own = {
+      for (var k in keys)
+        if (placed[k] case var p?) k: p
+    };
+    var rest = neckPlaces(keys.where((k) => !own.containsKey(k)), strings,
+        busy: {for (var p in own.values) p.$1});
+    for (var (string, fret) in [...own.values, ...rest]) {
       var y = board.bottom - (string + 0.5) * band;
       var x = fret == 0
           ? (board.left + nut) / 2
-          : (fretX(nut, board.right, fret - 1) + fretX(nut, board.right, fret)) /
+          : (fretX(nut, board.right, fret - 1) +
+                  fretX(nut, board.right, fret)) /
               2;
       canvas.drawCircle(Offset(x, y), band * 0.32, Paint()..color = colour);
     }

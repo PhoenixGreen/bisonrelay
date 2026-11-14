@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show mapEquals;
+import 'package:bruig/plugin_system/canvas/model/fretting.dart' show FretPlace;
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -904,6 +906,9 @@ class _KeyboardState extends State<_Keyboard> {
   /// _held are the keys down, each with the notes it plays.
   final Map<int, List<int>> _held = {};
 
+  /// _placed is where on a neck each key was last pressed.
+  final Map<int, FretPlace> _placed = {};
+
   /// _pressed is the key each pointer holds down, by pointer: kept on the
   /// state, not in the build, so the press that let go finds the key it
   /// played -- a rebuild between the two once left it sounding (Ken).
@@ -941,7 +946,8 @@ class _KeyboardState extends State<_Keyboard> {
     if (_held.containsKey(key)) return;
     var notes = [for (var d in _chords[_chord].$2) key + d];
     for (var n in notes) {
-      c.noteOn(widget.element, n, velocity: velocity);
+      c.noteOn(widget.element, n,
+          velocity: velocity, place: n == key ? _placed[key] : null);
     }
     setState(() => _held[key] = notes);
   }
@@ -1048,7 +1054,11 @@ class _KeyboardState extends State<_Keyboard> {
     return _played(
       key: const ValueKey("instrumentKeys"),
       hit: (p) => switch (layout.keyAt(p)) {
-        (var key, var depth)? => (key, velocity(depth)),
+        (var key, var depth)? => () {
+            // Where on a neck it is pressed, to light it there.
+            if (neckPlaceAt(layout, part, p) case var at?) _placed[key] = at;
+            return (key, velocity(depth));
+          }(),
         null => null,
       },
       child: CustomPaint(
@@ -1056,6 +1066,10 @@ class _KeyboardState extends State<_Keyboard> {
         size: size,
         painter: _SurfacePainter(layout, part,
             down: {for (var n in _held.values) ...n},
+            places: {
+              for (var k in _held.keys)
+                if (_placed[k] case var at?) k: at
+            },
             // The computer key each pad is played by, as Letters asks.
             letters: drums && _labels == 0
                 ? {
@@ -1275,12 +1289,14 @@ class _SurfacePainter extends CustomPainter {
   final KeyboardLayout layout;
   final InstrumentPart part;
   final Set<int> down;
+  final Map<int, FretPlace> places;
   final Map<int, String> letters;
   final Color face;
   final Color ink;
   final Color accent;
   _SurfacePainter(this.layout, this.part,
       {required this.down,
+      this.places = const {},
       required this.accent,
       required this.face,
       required this.ink,
@@ -1289,7 +1305,12 @@ class _SurfacePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) =>
       paintPlayingSurface(canvas, layout, part,
-          lit: down, accent: accent, letters: letters, face: face, ink: ink);
+          lit: down,
+          places: places,
+          accent: accent,
+          letters: letters,
+          face: face,
+          ink: ink);
 
   @override
   bool shouldRepaint(_SurfacePainter old) =>
@@ -1300,7 +1321,8 @@ class _SurfacePainter extends CustomPainter {
       old.ink != ink ||
       old.letters.length != letters.length ||
       !old.down.containsAll(down) ||
-      !down.containsAll(old.down);
+      !down.containsAll(old.down) ||
+      !mapEquals(old.places, places);
 }
 
 /// _Wheel is a bend or mod wheel: dragged up and down; the bend wheel

@@ -184,6 +184,12 @@ List<Widget> sheetSettings(
                     e.showMarks,
                     (v) => e.copyWith(showMarks: v)
                   ),
+                  (
+                    "sheetShowDiagrams",
+                    "Guitar chord boxes",
+                    e.showDiagrams,
+                    (v) => e.copyWith(showDiagrams: v)
+                  ),
                 ])
                   CanvasToggle(
                       key: ValueKey(key),

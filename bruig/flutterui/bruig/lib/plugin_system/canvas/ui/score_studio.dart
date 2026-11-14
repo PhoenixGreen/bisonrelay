@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/fretting.dart'
+    show guitarChordShapes;
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -1045,6 +1047,11 @@ class _ScoreStudioState extends State<ScoreStudio> {
         }
         return;
       }
+      if (kind == MarkKind.diagram) {
+        // A chord's box offers its other places on the neck.
+        _chooseShape(s, id, global);
+        return;
+      }
       if (kind == MarkKind.strum) {
         // A click turns a strum the other way.
         var e = s.event(id);
@@ -1156,6 +1163,38 @@ class _ScoreStudioState extends State<ScoreStudio> {
       return ("lyr", best, verse.clamp(0, s.verses));
     }
     return null;
+  }
+
+  /// _chooseShape offers the places on the neck event [id]'s chord can be
+  /// played, the common one first (Ken, 2026-11-14: "specify in the studio
+  /// which chord position should be used").
+  Future<void> _chooseShape(MusicScore s, String id, Offset global) async {
+    var e = s.event(id);
+    var chord = e?.chord;
+    if (chord == null) return;
+    var shapes = guitarChordShapes(chord);
+    if (shapes.length < 2) return;
+    var picked = await showMenu<int>(
+      context: context,
+      position:
+          RelativeRect.fromLTRB(global.dx, global.dy, global.dx, global.dy),
+      items: [
+        for (var (i, sh) in shapes.indexed)
+          CheckedPopupMenuItem(
+              key: ValueKey("scoreShapeMenu-$i"),
+              value: i,
+              checked: (e!.shape ?? 0) == i,
+              child: Text(
+                  "${sh.name}   ${sh.frets.map((f) => f?.toString() ?? "x").join(" ")}")),
+      ],
+    );
+    var now = score;
+    if (picked == null || now == null || now.event(id) == null) return;
+    edit(now.withEvent(
+        id,
+        (x) => picked == 0
+            ? x.copyWith(noShape: true)
+            : x.copyWith(shape: picked)));
   }
 
   /// _redrawDynamic offers the dynamics in place of event [id]'s.

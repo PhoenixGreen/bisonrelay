@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show InstrumentLook;
+import 'package:bruig/plugin_system/canvas/model/fretting.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -49,6 +52,10 @@ class EngraveOptions {
   /// verse is the one verse of lyrics shown, or null for every verse.
   final int? verse;
 
+  /// diagrams is whether a guitar part's chords are drawn as chord boxes
+  /// under their symbols, as a chord chart draws them (Ken, 2026-11-14).
+  final bool diagrams;
+
   final Color paper, ink;
 
   const EngraveOptions(
@@ -66,6 +73,7 @@ class EngraveOptions {
       this.marks = true,
       this.bars,
       this.verse,
+      this.diagrams = true,
       this.paper = const Color(0xFFFBFAF6),
       this.ink = const Color(0xFF1D1C1A)});
 
@@ -142,6 +150,10 @@ class _Staff {
   double top = 0;
   _Staff(this.part, this.partIndex, this.index, this.staff);
   bool get strum => part.strum;
+
+  /// boxed is whether its chords are drawn as chord boxes.
+  bool boxed(EngraveOptions o) =>
+      o.diagrams && part.kind.look == InstrumentLook.guitar;
 }
 
 /// _BarPlace is a bar laid out: its x, width and the x of each time.
@@ -216,9 +228,96 @@ _Heading _heading(MusicScore s, EngraveOptions o) {
 /// of a system's markings sits: endings, rehearsal marks, the tempo.
 typedef _Rows = ({double ending, double mark, double tempo});
 
+/// _paintChordBox draws [shape] as a chord chart does, its top left at
+/// [at]: a cross over a string not played, a ring over an open one, the
+/// nut (or the lowest fret's number, up the neck), four frets of six
+/// strings, a dot on each note held -- a bar across a barre -- and the
+/// finger on each under it. Answers where it is.
+Rect _paintChordBox(
+    ui.Canvas canvas, GuitarShape shape, Offset at, double sp, Color ink) {
+  var gap = sp * 1.1, fret = sp * 1.25;
+  var w = gap * 5, h = fret * 4;
+  var grid = Rect.fromLTWH(at.dx, at.dy + sp * 1.3, w, h);
+  var low = shape.lowestFret;
+  var high = shape.frets.whereType<int>().fold(0, math.max);
+  // Up the neck where it does not fit the first four frets.
+  var first = high <= 4 ? 1 : low;
+  var line = Paint()
+    ..color = ink
+    ..strokeWidth = sp * 0.09;
+  for (var i = 0; i < 6; i++) {
+    var x = grid.left + i * gap;
+    canvas.drawLine(Offset(x, grid.top), Offset(x, grid.bottom), line);
+  }
+  for (var f = 0; f <= 4; f++) {
+    var y = grid.top + f * fret;
+    canvas.drawLine(Offset(grid.left, y), Offset(grid.right, y), line);
+  }
+  if (first == 1) {
+    canvas.drawRect(
+        Rect.fromLTWH(
+            grid.left - sp * 0.05, grid.top - sp * 0.3, w + sp * 0.1, sp * 0.3),
+        Paint()..color = ink);
+  } else {
+    var t = _text("${first}fr", sp * 1.0, ink, weight: FontWeight.w700);
+    t.paint(
+        canvas,
+        Offset(grid.left - t.width - sp * 0.35,
+            grid.top + fret * 0.5 - t.height / 2));
+  }
+  var thin = Paint()
+    ..color = ink
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = sp * 0.11;
+  var fingers = shape.fingers;
+  for (var (i, f) in shape.frets.indexed) {
+    var x = grid.left + i * gap;
+    var mark = Offset(x, grid.top - sp * 0.85);
+    if (f == null) {
+      var d = sp * 0.38;
+      canvas.drawLine(mark - Offset(d, d), mark + Offset(d, d), thin);
+      canvas.drawLine(mark + Offset(-d, d), mark + Offset(d, -d), thin);
+    } else if (f == 0) {
+      canvas.drawCircle(mark, sp * 0.4, thin);
+    } else {
+      var row = f - first;
+      if (row < 0 || row > 3) continue;
+      canvas.drawCircle(Offset(x, grid.top + (row + 0.5) * fret), sp * 0.45,
+          Paint()..color = ink);
+    }
+    if (fingers[i] case var n?) {
+      var t = _text("$n", sp * 0.95, ink, weight: FontWeight.w600);
+      t.paint(canvas, Offset(x - t.width / 2, grid.bottom + sp * 0.25));
+    }
+  }
+  // A barre: one finger across the strings at the lowest fret.
+  var barred = [
+    for (var (i, n) in fingers.indexed)
+      if (n == 1 && shape.frets[i] == low) i
+  ];
+  if (barred.length >= 2 && low - first >= 0 && low - first <= 3) {
+    var y = grid.top + (low - first + 0.5) * fret;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTRB(
+                grid.left + barred.first * gap - sp * 0.36,
+                y - sp * 0.3,
+                grid.left + barred.last * gap + sp * 0.36,
+                y + sp * 0.3),
+            Radius.circular(sp * 0.3)),
+        Paint()..color = ink);
+  }
+  return Rect.fromLTRB(
+      at.dx - sp * 1.8, at.dy, grid.right + sp * 0.4, grid.bottom + sp * 1.4);
+}
+
 /// _chordRow is how far above its staff's top line a chord symbol's top is:
 /// over the strum marks on a strum staff.
 double _chordRow(bool strum) => strum ? 5.0 : 3.2;
+
+/// _boxRows is how many spaces a chord box takes under its symbol: the
+/// open and unplayed strings' marks, four frets, the fingers' numbers.
+const _boxRows = 8.5;
 
 /// EngravedSystem is one line of bars across the page.
 class EngravedSystem {
@@ -417,7 +516,9 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
       // symbols, and over the first staff endings, rehearsal marks and the
       // tempo.
       var level = s.strum ? 2.8 : 1.4;
-      if (_hasChords(s, sys)) level = _chordRow(s.strum) + 0.3;
+      if (_hasChords(s, sys)) {
+        level = _chordRow(s.strum) + (s.boxed(o) ? _boxRows : 0) + 0.3;
+      }
       if (i == 0) {
         var ending = 0.0, mark = 0.0, tempo = 0.0;
         if (sys.any((p) => score.bars[p.bar].endings.isNotEmpty)) {
@@ -1089,9 +1190,21 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             pl.bar,
             event: e.id);
       }
-      // The chord symbol.
+      // The chord symbol -- over its box, on a guitar's part.
+      var boxed = st.boxed(o);
+      if (e.chord case var c? when boxed) {
+        if (guitarChord(c, e.shape) case var shape?) {
+          var at =
+              Offset(x - sp * 0.4, top - sp * (_chordRow(st.strum) + 6.3)) +
+                  off(e.offsets, MarkKind.diagram);
+          var r = _paintChordBox(canvas, shape, at, sp, colour);
+          markHit(MarkKind.diagram, r, st.part.id, st.index, pl.bar,
+              event: e.id);
+        }
+      }
       if (e.chord case var c?) {
-        var at = Offset(x - sp * 0.2, top - sp * _chordRow(st.strum)) +
+        var at = Offset(x - sp * 0.2,
+                top - sp * (_chordRow(st.strum) + (boxed ? _boxRows : 0))) +
             off(e.offsets, MarkKind.chord);
         var t = _text(c, sp * 1.6, colour, weight: FontWeight.w800);
         t.paint(canvas, at);

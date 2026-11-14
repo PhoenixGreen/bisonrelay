@@ -2445,7 +2445,9 @@ class CanvasStageState extends State<CanvasStage>
           keyboardLayout(element.instrument!, element.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion));
       if (keys.keyAt(doc) case (var key, var depth)?) {
-        controller.noteOn(element, key, velocity: (50 + depth * 77).round());
+        controller.noteOn(element, key,
+            velocity: (50 + depth * 77).round(),
+            place: neckPlaceAt(keys, element.instrument!, doc));
         _keyDown = (element, key);
         _beginTransform(_DragMode.move, null);
         return;

@@ -261,7 +261,7 @@ EngravedScore _engraved(
   var bars = sheetBars(e, s);
   var key = "$part|${(staves.toList()..sort()).join(",")}|$title|"
       "${e.showTitle}${e.showSubtitle}${e.showComposer}${e.showTempo}"
-      "${e.showNames}${e.showMarks}|$bars";
+      "${e.showNames}${e.showMarks}${e.showDiagrams}|$bars";
   return cache[key] ??= layoutScore(
       s,
       EngraveOptions(
@@ -275,6 +275,7 @@ EngravedScore _engraved(
           tempoed: e.showTempo,
           names: e.showNames,
           marks: e.showMarks,
+          diagrams: e.showDiagrams,
           bars: bars,
           title: title,
           width: 860));

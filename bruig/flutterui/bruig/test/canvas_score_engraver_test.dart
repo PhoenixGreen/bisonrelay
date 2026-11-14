@@ -238,4 +238,34 @@ void main() {
     expect(leftOf(const EngraveOptions(names: false)),
         lessThan(leftOf(const EngraveOptions()) - 40));
   });
+
+  test("a guitar part's chords as boxes; switched off, the symbols alone",
+      () async {
+    var s = odeToJoy();
+    var strum = s.parts.firstWhere((p) => p.strum);
+    var withChords = {
+      for (var b in strum.staves[0].bars)
+        for (var e in b)
+          if (e.chord != null) e.id
+    };
+    var on = await painted(layoutScore(s, const EngraveOptions()));
+    expect({
+      for (var h in on.hits)
+        if (h.mark == MarkKind.diagram) h.event
+    }, withChords);
+    // Only on the guitar: the piano's chord symbols are not boxed.
+    var pianoChords = {
+      for (var b in s.parts.first.staves[0].bars)
+        for (var e in b)
+          if (e.chord != null) e.id
+    };
+    expect(
+        on.hits.where(
+            (h) => h.mark == MarkKind.diagram && pianoChords.contains(h.event)),
+        isEmpty);
+    var off =
+        await painted(layoutScore(s, const EngraveOptions(diagrams: false)));
+    expect(off.hits.where((h) => h.mark == MarkKind.diagram), isEmpty);
+    expect(off.height, lessThan(on.height), reason: "no room kept for them");
+  });
 }

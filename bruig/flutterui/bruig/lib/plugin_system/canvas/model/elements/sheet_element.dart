@@ -88,6 +88,10 @@ class SheetElement extends CanvasElement {
   /// showMarks is whether its rehearsal marks are drawn.
   final bool showMarks;
 
+  /// showDiagrams is whether a guitar part's chords are drawn as chord
+  /// boxes under their symbols.
+  final bool showDiagrams;
+
   /// box is its frame: corners, a border, and room round the music (its
   /// fill is [paper]).
   final BoxSpec box;
@@ -118,6 +122,7 @@ class SheetElement extends CanvasElement {
     this.playbar = true,
     this.showNames = true,
     this.showMarks = true,
+    this.showDiagrams = true,
     this.box = sheetBox,
     this.fromBar = 0,
     this.toBar = 0,
@@ -151,6 +156,7 @@ class SheetElement extends CanvasElement {
       playbar: playbar,
       showNames: showNames,
       showMarks: showMarks,
+      showDiagrams: showDiagrams,
       box: box,
       fromBar: fromBar,
       toBar: toBar);
@@ -176,6 +182,7 @@ class SheetElement extends CanvasElement {
     bool? playbar,
     bool? showNames,
     bool? showMarks,
+    bool? showDiagrams,
     BoxSpec? box,
     int? fromBar,
     int? toBar,
@@ -200,6 +207,7 @@ class SheetElement extends CanvasElement {
           playbar: playbar ?? this.playbar,
           showNames: showNames ?? this.showNames,
           showMarks: showMarks ?? this.showMarks,
+          showDiagrams: showDiagrams ?? this.showDiagrams,
           box: box ?? this.box,
           fromBar: math.max(0, fromBar ?? this.fromBar),
           toBar: math.max(0, toBar ?? this.toBar));
@@ -225,6 +233,7 @@ class SheetElement extends CanvasElement {
         if (!playbar) "playbar": false,
         if (!showNames) "showNames": false,
         if (!showMarks) "showMarks": false,
+        if (!showDiagrams) "showDiagrams": false,
         "box": box.toJson(),
         if (fromBar > 0) "fromBar": fromBar,
         if (toBar > 0) "toBar": toBar,
@@ -252,6 +261,7 @@ class SheetElement extends CanvasElement {
               playbar: json["playbar"] != false,
               showNames: json["showNames"] != false,
               showMarks: json["showMarks"] != false,
+              showDiagrams: json["showDiagrams"] != false,
               box: json["box"] is Map<String, dynamic>
                   ? BoxSpec.fromJson(json["box"] as Map<String, dynamic>)
                   : sheetBox,
