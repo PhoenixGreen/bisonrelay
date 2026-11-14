@@ -130,6 +130,22 @@ extension CanvasSynths on CanvasController {
     _synthLive();
   }
 
+  /// _synthLanesLive sends each speaker whose knobs are keyed its patch as
+  /// they are on this frame, as the playhead moves: a key played over the
+  /// timeline hears them turn, as the part's rendered notes do.
+  void _synthLanesLive() {
+    for (var e in _document.elements) {
+      if (e is! SynthModuleElement || e.module != SynthModuleKind.out) continue;
+      var ch = synthChannel(e);
+      var patch = ch?.instrument?.patch;
+      if (ch == null || patch == null || patch.lanes.isEmpty) continue;
+      var t = (_frame - ch.clip.at) / math.max(1, _document.frameRate);
+      var now = patch.at(t);
+      audio.livePatch(e.channel, now);
+      _synthWatches[e.id]?.patch = now;
+    }
+  }
+
   /// _synthLive sends each speaker's patch to its channel as it is now: a
   /// note held goes on in it, its knob heard turning.
   void _synthLive() {

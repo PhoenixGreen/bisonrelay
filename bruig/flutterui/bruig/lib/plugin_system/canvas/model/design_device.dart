@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -128,7 +130,39 @@ const designParams = [
   DeviceParam("cell", "Tile size", 2, 512, 32, "px"),
   DeviceParam("light", "Light", 0, 4294967295, 0, "argb"),
   DeviceParam("lightTo", "Light to", 0, 4294967295, 0, "argb"),
+  // Synth modules' knobs, by kind (see synthKnobs): keyed, the sound turns
+  // with them (see synth_channels.dart).
+  DeviceParam("synth.osc.octave", "Octave", -2, 2, 0, "#"),
+  DeviceParam("synth.osc.detune", "Fine", -50, 50, 0, "#"),
+  DeviceParam("synth.osc.level", "Level", 0, 1, 0.8),
+  DeviceParam("synth.osc.mod", "Mod", 0, 24, 12, "st"),
+  DeviceParam("synth.noise.level", "Level", 0, 1, 0.5),
+  DeviceParam("synth.env.a", "Attack", 0.001, 3, 0.02, "s"),
+  DeviceParam("synth.env.d", "Decay", 0.01, 3, 0.25, "s"),
+  DeviceParam("synth.env.s", "Sustain", 0, 1, 0.6),
+  DeviceParam("synth.env.r", "Release", 0.01, 4, 0.4, "s"),
+  DeviceParam("synth.lfo.rate", "Rate", 0.05, 20, 4, "Hz"),
+  DeviceParam("synth.lfo.depth", "Depth", 0, 1, 0.5),
+  DeviceParam("synth.filter.cutoff", "Cutoff", 40, 16000, 2400, "Hz"),
+  DeviceParam("synth.filter.res", "Resonance", 0.1, 20, 1, "×"),
+  DeviceParam("synth.filter.amount", "Amount", 0, 6, 3, "×"),
+  DeviceParam("synth.amp.level", "Level", 0, 1, 0.8),
+  DeviceParam("synth.mixer.a", "A", 0, 1, 0.8),
+  DeviceParam("synth.mixer.b", "B", 0, 1, 0.8),
+  DeviceParam("synth.mixer.c", "C", 0, 1, 0.8),
+  DeviceParam("synth.delay.time", "Time", 0.02, 1, 0.3, "s"),
+  DeviceParam("synth.delay.feedback", "Repeats", 0, 0.95, 0.4),
+  DeviceParam("synth.delay.mix", "Mix", 0, 1, 0.35),
+  DeviceParam("synth.reverb.size", "Size", 0, 1, 0.6),
+  DeviceParam("synth.reverb.damp", "Damp", 0, 1, 0.4),
+  DeviceParam("synth.reverb.mix", "Mix", 0, 1, 0.3),
+  DeviceParam("synth.scope.zoom", "Zoom", 0.5, 8, 2, "×"),
+  DeviceParam("synth.out.volume", "Volume", 0, 1, 0.7),
 ];
+
+/// synthDesignId is Design's id for knob [key] of a [kind] module.
+String synthDesignId(SynthModuleKind kind, String key) =>
+    "synth.${kind.name}.$key";
 
 /// designPlace are Design's settings kept on the device: moves from where
 /// the element rests.
@@ -421,6 +455,15 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
               (e, v) => (e as AudioElement).copyWith(accent: _colour(v))),
           ..._box((e) => (e as AudioElement).box,
               (e, b) => (e as AudioElement).copyWith(box: b)),
+        ],
+      // Its knobs: keyed, the sound turns with them.
+      SynthModuleElement m => [
+          for (var k in synthKnobs[m.module]!)
+            DesignSetting(
+                synthDesignId(m.module, k.key),
+                m.module.label,
+                (e) => (e as SynthModuleElement).value(k.key),
+                (e, v) => (e as SynthModuleElement).withValue(k.key, v)),
         ],
       SheetElement _ => [
           DesignSetting(

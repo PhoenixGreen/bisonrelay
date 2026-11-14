@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // synth_patch.dart is a synth built of modules patched together (Ken,
 // 2026-11-14: "instrument components ... as separate, placeable canvas
 // elements ... chainable on the canvas with patch cables"): a keyboard, an
@@ -228,7 +230,47 @@ class SynthPatch {
 
   /// speaker is the module that is heard, by id.
   final String speaker;
-  const SynthPatch(this.modules, this.speaker);
+
+  /// lanes are knobs turned as it plays -- keyed in the Chain's Design --
+  /// each "module/knob" its values [laneRate] a second from the part's
+  /// start, held at the last past the end. See at.
+  final Map<String, List<double>> lanes;
+  final double laneRate;
+  const SynthPatch(this.modules, this.speaker,
+      {this.lanes = const {}, this.laneRate = 24});
+
+  /// withLanes is it with [lanes], [rate] a second.
+  SynthPatch withLanes(Map<String, List<double>> lanes, double rate) =>
+      SynthPatch(modules, speaker, lanes: lanes, laneRate: rate);
+
+  /// at is it [t] seconds into its part: each knob in a lane where the
+  /// lane has it then, between its steps. Itself with no lanes.
+  SynthPatch at(double t) {
+    if (lanes.isEmpty) return this;
+    var turned = <String, Map<String, double>>{};
+    var x = math.max(0.0, t * laneRate);
+    for (var MapEntry(:key, :value) in lanes.entries) {
+      if (value.isEmpty) continue;
+      var slash = key.lastIndexOf("/");
+      if (slash < 0) continue;
+      var i = x.floor();
+      double v;
+      if (i >= value.length - 1) {
+        v = value.last;
+      } else {
+        var f = x - i;
+        v = value[i] * (1 - f) + value[i + 1] * f;
+      }
+      (turned[key.substring(0, slash)] ??= {})[key.substring(slash + 1)] = v;
+    }
+    return SynthPatch([
+      for (var m in modules)
+        if (turned[m.id] case var vs?)
+          m.copyWith(values: {...m.values, ...vs})
+        else
+          m
+    ], speaker, lanes: lanes, laneRate: laneRate);
+  }
 
   SynthModule? byId(String id) => modules.where((m) => m.id == id).firstOrNull;
 
@@ -245,14 +287,32 @@ class SynthPatch {
   Map<String, dynamic> toJson() => {
         "speaker": speaker,
         "modules": [for (var m in modules) m.toJson()],
+        if (lanes.isNotEmpty) ...{
+          "lanes": lanes,
+          "laneRate": laneRate,
+        },
       };
 
   static SynthPatch? fromJson(Object? j) {
     if (j is! Map || j["speaker"] is! String) return null;
-    return SynthPatch([
-      for (var m in (j["modules"] is List ? j["modules"] as List : const []))
-        if (SynthModule.fromJson(m) case var x?) x,
-    ], j["speaker"] as String);
+    return SynthPatch(
+        [
+          for (var m
+              in (j["modules"] is List ? j["modules"] as List : const []))
+            if (SynthModule.fromJson(m) case var x?) x,
+        ],
+        j["speaker"] as String,
+        lanes: {
+          if (j["lanes"] case Map l)
+            for (var e in l.entries)
+              if (e.key is String && e.value is List)
+                e.key as String: [
+                  for (var v in e.value as List)
+                    if (v is num) v.toDouble()
+                ],
+        },
+        laneRate:
+            j["laneRate"] is num ? (j["laneRate"] as num).toDouble() : 24);
   }
 
   /// heard are the modules the speaker's sound comes from, sources first:

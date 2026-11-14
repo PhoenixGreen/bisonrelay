@@ -1,3 +1,8 @@
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_channels.dart'
+    show synthSpeakersHearing;
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -599,6 +604,19 @@ Future<StageResult?> buildEpubStage(
     below.add(e);
   }
   if (still.isNotEmpty || first) await flatten();
+  // Synth cables over every module, as the page draws them: a picture of
+  // their own on top, which a press goes through.
+  if (drawn.any((e) => e is SynthModuleElement)) {
+    var recorder = ui.PictureRecorder();
+    paintSynthCables(start(recorder), drawn);
+    var picture = recorder.endRecording();
+    try {
+      var sprite = await sheets.alone(picture, pageBox);
+      if (sprite != null) items.add(EpubSlab(sprite));
+    } finally {
+      picture.dispose();
+    }
+  }
   await sheets.close();
 
   var built = [
@@ -909,6 +927,12 @@ class _LayerMaker {
     }
     if (e case AudioElement a when a.instrument != null && a.visible) {
       if (await _keysLayer(a) case var layer?) return layer;
+    }
+    // A synth's keyboard module: played as an instrument is, its keys
+    // sounding the patch its speaker plays.
+    if (e case SynthModuleElement k
+        when k.module == SynthModuleKind.keys && k.visible) {
+      if (await _synthKeysLayer(k) case var layer?) return layer;
     }
     var names = [
       for (var f = 0; f < frames; f++)
@@ -1229,6 +1253,64 @@ class _LayerMaker {
     // Its sound, for the reader to play it.
     EpubKeyboard? keyboard;
     if (await _keySounds(a, [for (var k in lit) k.key])
+        case (var file, var low)?) {
+      clips.add(file);
+      keyboard = EpubKeyboard(
+          Rect.fromLTRB(bounds.left * pixels, bounds.top * pixels,
+              bounds.right * pixels, bounds.bottom * pixels),
+          lit,
+          file.href,
+          low,
+          keyStep);
+    }
+    return _layerOf(parts, keyboard: keyboard);
+  }
+
+  /// _synthKeysLayer is a synth's keyboard module as a book plays it: the
+  /// module at rest, each key lit while the reader presses it, and the
+  /// keys' sounds -- the patch as it is set, played through the speaker
+  /// it is patched to (rendered, as an instrument's are: its knobs are not
+  /// turned in a book). Null where it reaches no speaker.
+  Future<EpubLayer?> _synthKeysLayer(SynthModuleElement keys) async {
+    var speaker = synthSpeakersHearing(page, keys.id).firstOrNull;
+    var ch = speaker == null ? null : page.elementById(speaker.channel);
+    if (ch is! AudioElement || ch.instrument == null) return null;
+    var bounds = keys.bounds;
+    var parts = <EpubPart>[];
+    var rest = await drawn((c) => paintSynthModule(c, bounds, keys), bounds);
+    if (rest != null) parts.add(EpubPart(rest));
+    var panel = synthPanelOf(keys.module);
+    var (s, at) = synthPanelFit(bounds, panel);
+    Rect onPage(Rect r) => Rect.fromLTRB(at.dx + r.left * s, at.dy + r.top * s,
+        at.dx + r.right * s, at.dy + r.bottom * s);
+    var kr = panel.keys!;
+    var ww = kr.width / synthKeyboardWhites.length;
+    var places = [
+      for (var (i, k) in synthKeyboardWhites.indexed)
+        (k, Rect.fromLTWH(kr.left + i * ww, kr.top, ww, kr.height), false),
+      for (var (k, r) in synthBlackKeys(kr)) (k, r, true),
+    ];
+    var lit = <({int key, Rect rect, bool black, EpubSprite lit})>[];
+    for (var (key, r, black) in places) {
+      var rect = onPage(r);
+      var pic = await drawn(
+          (c) =>
+              paintSynthModule(c, bounds, keys, show: SynthShow(held: {key})),
+          rect);
+      if (pic == null) continue;
+      lit.add((
+        key: key,
+        rect: Rect.fromLTRB(
+            (rect.left - bounds.left) * pixels,
+            (rect.top - bounds.top) * pixels,
+            (rect.right - bounds.left) * pixels,
+            (rect.bottom - bounds.top) * pixels),
+        black: black,
+        lit: pic
+      ));
+    }
+    EpubKeyboard? keyboard;
+    if (await _keySounds(ch, [for (var k in lit) k.key])
         case (var file, var low)?) {
       clips.add(file);
       keyboard = EpubKeyboard(
@@ -2185,6 +2267,12 @@ bool _changes(CanvasElement e, int frames, CanvasDocument page) {
   }
   // An instrument on the page is played by the reader, its keys lit.
   if (e is AudioElement && e.instrument != null && e.visible) return true;
+  // And so is a synth's keyboard module.
+  if (e is SynthModuleElement &&
+      e.module == SynthModuleKind.keys &&
+      e.visible) {
+    return true;
+  }
   var rate = page.frameRate;
   Keyframe poseAt(int f) => poseWithMotion(e, f, page);
   var first = poseAt(0);

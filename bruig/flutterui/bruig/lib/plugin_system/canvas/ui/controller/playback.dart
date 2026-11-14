@@ -839,6 +839,7 @@ extension CanvasPlayback on CanvasController {
       }
     }
     _syncTimeline();
+    _synthLanesLive();
     _notifyPlayhead(false);
   }
 

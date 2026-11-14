@@ -178,6 +178,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart'
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show
         cameraFraming,
+        designedNow,
         cameraHalfExtents,
         cameraLookAt,
         LiveMotion,
@@ -1701,7 +1702,9 @@ class CanvasController extends ChangeNotifier {
     // every other copy with it (see cast.dart).
     next = castSynced(_document, next);
     // Each synth speaker's channel plays the patch its modules make.
-    next = synthSynced(next);
+    var designing = next;
+    next = synthSynced(next,
+        designedAt: (e, f) => designedNow(e, f, designing));
 
     // A picture's frame takes in what was put past it once a change is made,
     // not at every step of a drag, whose sums start from where things were

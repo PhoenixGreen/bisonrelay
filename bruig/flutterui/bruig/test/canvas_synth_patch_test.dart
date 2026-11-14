@@ -310,4 +310,39 @@ void main() {
     w.advance(48000);
     expect(w.done, isTrue);
   });
+
+  test("a knob turned as it plays: lanes, stepped between, kept", () {
+    var p = SynthPatch(basic(), "s").withLanes({
+      "o/level": [0, 1, 1],
+      "o/detune": [10]
+    }, 2);
+    var half = p.at(0.25);
+    expect(half.byId("o")!.value("level"), closeTo(0.5, 1e-9));
+    expect(half.byId("o")!.value("detune"), 10, reason: "one value: held");
+    expect(p.at(5).byId("o")!.value("level"), 1, reason: "past the end");
+    expect(p.at(0.25).wiring, p.wiring);
+    var back = SynthPatch.fromJson(p.toJson())!;
+    expect(back.lanes["o/level"], [0, 1, 1]);
+    expect(back.laneRate, 2);
+  });
+
+  test("rendered with a filter's cutoff swept: dull first, bright after", () {
+    var mods = [
+      mod("k", SynthModuleKind.keys),
+      mod("o", SynthModuleKind.osc,
+          choices: {"wave": "sawtooth"}, inputs: {"pitch": "k.pitch"}),
+      mod("f", SynthModuleKind.filter,
+          values: {"cutoff": 300, "res": 0.1}, inputs: {"in": "o.out"}),
+      mod("a", SynthModuleKind.amp, inputs: {"in": "f.out"}),
+      mod("s", SynthModuleKind.out, inputs: {"in": "a.out"}),
+    ];
+    var part = InstrumentPart(
+        sound: InstrumentSound.patch,
+        patch: SynthPatch(mods, "s").withLanes({
+          "f/cutoff": [for (var i = 0; i <= 10; i++) i < 5 ? 300.0 : 12000.0]
+        }, 10),
+        notes: [MidiNote(45, 0, 1, 100)]);
+    var x = renderPart(part, null).$1;
+    expect(roughness(x, 0.1, 0.4), lessThan(roughness(x, 0.6, 0.9) * 0.5));
+  });
 }

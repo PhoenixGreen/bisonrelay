@@ -2,13 +2,17 @@ import 'dart:typed_data';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/design_device.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -682,5 +686,65 @@ void main() {
     c.synthKeyUp(of(c, SynthModuleKind.keys), 69);
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(c.synthShowFor(osc, 0).wave, isNull, reason: "died away");
+  });
+
+  test("a knob keyed in the Chain's Design: the sound turns with it", () {
+    var c = CanvasController(page, audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.addSynthRack();
+    var osc = of(c, SynthModuleKind.osc);
+    var id = synthDesignId(SynthModuleKind.osc, "level");
+    expect([for (var (_, ids) in designChoices(osc)) ...ids], contains(id));
+    var d = const MotionDevice(MotionDeviceKind.design, id: "d0")
+        .withKey(id, 0, 0)
+        .withKey(id, 2, 1);
+    c.replaceElement(
+        osc.withBase(motion: osc.base.motion.copyWith(devices: [d])));
+    var ch = c.synthChannel(of(c, SynthModuleKind.out))!;
+    var lane = ch.instrument!.patch!.lanes["${osc.id}/level"]!;
+    var rate = c.document.frameRate;
+    expect(lane.first, closeTo(0, 1e-6));
+    expect(lane[rate], closeTo(0.5, 0.02), reason: "a second in: half way");
+    expect(lane[2 * rate], closeTo(1, 1e-6));
+    expect(ch.instrument!.patch!.at(1).byId(osc.id)!.value("level"),
+        closeTo(0.5, 0.02));
+    // A knob not keyed: no lanes.
+    c.replaceElement(of(c, SynthModuleKind.osc)
+        .withBase(motion: osc.base.motion.copyWith(devices: const [])));
+    expect(c.synthChannel(of(c, SynthModuleKind.out))!.instrument!.patch!.lanes,
+        isEmpty);
+  });
+
+  testWidgets("in a book: the keyboard module played, the cables over all",
+      (tester) async {
+    var root = Directory.systemTemp.createTempSync("canvas_synth_epub");
+    CanvasStorage.rootOverride = root.path;
+    addTearDown(() {
+      CanvasStorage.rootOverride = null;
+      root.deleteSync(recursive: true);
+    });
+    await tester.runAsync(() async {
+      var c = CanvasController(page, audioEngine: FakeEngine({}));
+      c.addSynthRack();
+      var keys = of(c, SynthModuleKind.keys);
+      var built = (await buildEpubStage(c.document, 0,
+          pixels: 1, width: 1280, height: 720))!;
+      var layer = built.stage.layers.firstWhere((l) => l.id == keys.id);
+      var kb = layer.keyboard!;
+      expect(kb.keys, hasLength(13), reason: "every key, lit");
+      expect(kb.keys.where((k) => k.black), hasLength(5));
+      expect(kb.low, 60);
+      var file = built.files.firstWhere((f) => f.href == kb.sound);
+      expect(file.bytes.length, greaterThan(20000),
+          reason: "the patch's sound, a slice a key");
+      // After the keyboard: the still modules, then the cables over them.
+      var items = built.stage.items;
+      var after = items.sublist(
+          items.indexWhere((i) => i is EpubLayer && i.id == keys.id) + 1);
+      expect(after, hasLength(2));
+      expect(after.every((i) => i is EpubSlab), isTrue,
+          reason: "the cables, a picture over every module");
+      c.dispose();
+    });
   });
 }

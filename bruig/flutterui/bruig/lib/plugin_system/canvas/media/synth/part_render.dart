@@ -152,7 +152,18 @@ Future<SoundFont?> loadSoundBank() async {
   // and a scale's both landing there, or drawn so -- are let go by the last
   // of them, as keys played live are, not cut short by the first.
   var holding = <int, int>{};
+  // Knobs turned as it plays: the patch set again at each lane step.
+  var patch = part.sound == InstrumentSound.patch ? part.patch : null;
+  var lanes = patch != null && patch.lanes.isNotEmpty ? patch : null;
+  var step = -1;
   while (at < total) {
+    if (lanes != null) {
+      var now = (at / mixRate * lanes.laneRate).floor();
+      if (now != step) {
+        step = now;
+        sampler.patch = lanes.at(at / mixRate);
+      }
+    }
     // Controllers are set before this block's notes, so a pedal down at a
     // note's start holds it.
     for (var (control, cursor) in curves) {
