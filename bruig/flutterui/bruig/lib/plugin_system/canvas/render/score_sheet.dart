@@ -77,14 +77,28 @@ Map<SheetBarPart, Rect> sheetBarParts(Rect bar) {
   return out;
 }
 
+/// sheetTrackLine is the line a playbar's [track] draws: its fill along it.
+Rect sheetTrackLine(Rect track) {
+  var h = track.height * 0.14;
+  return Rect.fromLTWH(track.left, track.center.dy - h / 2, track.width, h);
+}
+
+/// sheetKnobRadius is how big a playbar's knob is on [track].
+double sheetKnobRadius(Rect track) => sheetTrackLine(track).height * 1.6;
+
 /// sheetPlaying says whether the canvas is playing, for the playbar's play
 /// button to show pause; set by the editor (and nothing, in a video).
 bool Function()? sheetPlaying;
 
 /// paintSheetBar draws [e]'s playbar in [bar]: its buttons in the sheet's
 /// ink on a tint of it, and the track filled as far as [progress].
+///
+/// A book draws the track's fill and knob as pictures of their own, moved by
+/// its clock: [knob] false leaves the knob out. [sheetTrackLine] and
+/// [sheetKnobRadius] say where they are.
 void paintSheetBar(
-    ui.Canvas canvas, Rect bar, SheetElement e, double progress, bool playing) {
+    ui.Canvas canvas, Rect bar, SheetElement e, double progress, bool playing,
+    {bool knob = true}) {
   var ink = e.ink;
   var r = bar.height * 0.22;
   canvas.drawRRect(
@@ -145,8 +159,8 @@ void paintSheetBar(
               fill);
         }
       case SheetBarPart.track:
-        var h = box.height * 0.14;
-        var t = Rect.fromLTWH(box.left, c.dy - h / 2, box.width, h);
+        var t = sheetTrackLine(box);
+        var h = t.height;
         canvas.drawRRect(RRect.fromRectAndRadius(t, Radius.circular(h / 2)),
             Paint()..color = ink.withValues(alpha: 0.18));
         var done = progress.clamp(0.0, 1.0);
@@ -155,8 +169,10 @@ void paintSheetBar(
                 Rect.fromLTWH(t.left, t.top, t.width * done, h),
                 Radius.circular(h / 2)),
             Paint()..color = const Color(0xFFE2622B));
-        canvas.drawCircle(Offset(t.left + t.width * done, c.dy), h * 1.6,
-            Paint()..color = const Color(0xFFE2622B));
+        if (knob) {
+          canvas.drawCircle(Offset(t.left + t.width * done, c.dy), h * 1.6,
+              Paint()..color = const Color(0xFFE2622B));
+        }
     }
   }
 }
@@ -260,40 +276,61 @@ SheetView? sheetViewOf(
 /// paintScoreSheet draws [view] in [bounds]: the paper, the page of the
 /// part, the notes under the playhead lit, practice marks by event, and the
 /// playhead unless [e] shows the highlight only.
+///
+/// A book draws it a piece at a time (see epub_layers.dart): [lit] in place
+/// of what is under the playhead, [head] whether the playhead is drawn,
+/// [progress] and [playing] for the playbar, [bar] whether it is drawn.
 void paintScoreSheet(
     ui.Canvas canvas, Rect bounds, SheetElement e, SheetView view,
-    {Map<String, Color> marks = const {}}) {
+    {Map<String, Color> marks = const {},
+    Set<String>? lit,
+    bool? head,
+    double? progress,
+    bool? playing,
+    bool bar = true,
+    bool knob = true}) {
   canvas.drawRRect(RRect.fromRectAndRadius(bounds, const Radius.circular(6)),
       Paint()..color = e.paper);
-  var playing = <String>{};
-  for (var n in partNotesOf(view.score, view.part.id)) {
-    if (n.note.start <= view.seconds + 1e-6 &&
-        n.note.end > view.seconds + 1e-6) {
-      playing.add(n.event);
-    }
-  }
+  var sounding = lit ?? sheetSounding(view);
   canvas.save();
   canvas.clipRect(bounds);
   canvas.translate(view.origin.dx, view.origin.dy);
   canvas.scale(view.scale);
   paintScore(canvas, view.engraved,
       state: ScorePaintState(
-          playing: playing,
+          playing: sounding,
           marks: marks,
           // The paper is the box's, drawn once above; the music in the
           // sheet's own ink.
           paper: const Color(0x00000000),
           ink: e.ink,
-          playhead: e.playhead && view.place != null
+          playhead: (head ?? e.playhead) && view.place != null
               ? (bar: view.place!.bar, at: view.place!.at)
               : null));
   canvas.restore();
-  if (sheetBarRect(e, bounds) case var bar?) {
-    var total = view.score
-        .secondsAt(view.score.playOrder(), view.score.lengthQuarters());
-    paintSheetBar(canvas, bar, e, total <= 0 ? 0 : view.seconds / total,
-        sheetPlaying?.call() ?? false);
+  if (sheetBarRect(e, bounds) case var strip? when bar) {
+    paintSheetBar(canvas, strip, e, progress ?? sheetProgress(view),
+        playing ?? sheetPlaying?.call() ?? false,
+        knob: knob);
   }
+}
+
+/// sheetSounding are the events of [view]'s part under its playhead.
+Set<String> sheetSounding(SheetView view) => {
+      for (var n in partNotesOf(view.score, view.part.id))
+        if (n.note.start <= view.seconds + 1e-6 &&
+            n.note.end > view.seconds + 1e-6)
+          n.event
+    };
+
+/// sheetLength is how long [s] plays, in seconds.
+double sheetLength(MusicScore s) =>
+    s.secondsAt(s.playOrder(), s.lengthQuarters());
+
+/// sheetProgress is how far through its playing [view]'s playhead is.
+double sheetProgress(SheetView view) {
+  var total = sheetLength(view.score);
+  return total <= 0 ? 0 : (view.seconds / total).clamp(0.0, 1.0);
 }
 
 /// sheetOnsets are the frames where a note of [e]'s part (the staves it

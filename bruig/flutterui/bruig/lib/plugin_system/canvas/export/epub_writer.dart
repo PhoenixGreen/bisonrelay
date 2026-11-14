@@ -475,6 +475,11 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         border-style: solid; border-color: transparent transparent
         transparent #ffffff; }
       .hit.on .play { display: none; }
+      /* A score sheet's play button: its pause shown while the page plays. */
+      .hit.bar .pp { display: none; position: absolute; left: 0; top: 0;
+        width: 100%; height: 100%; }
+      .hit.bar .pp span { position: absolute; display: block; }
+      .playing .hit.bar .pp { display: block; }
       .stage { position: absolute; left: 0; top: 0; overflow: hidden;
         width: ${page.width}px; height: ${page.height}px; }
       .stage .page { position: absolute; left: 0; top: 0; }
@@ -563,7 +568,7 @@ String _stageTag(
     '<div class="stage" id="stage" data-frames="${stage.frames}" '
         'data-rate="${stage.rate}" data-marks="${_attr(marks)}" '
         'data-autoplay="${stage.autoplay && stage.animates}" '
-        'data-intro="${stage.animates}">',
+        'data-intro="${stage.animates && !stage.ownPlay}">',
     if (page.soundtrack case var sound?)
       '<audio id="soundtrack" src="${_attr(sound)}" preload="auto"></audio>',
   ];
@@ -696,6 +701,19 @@ String _stageTag(
         for (var MapEntry(key: mask, value: s) in layer.switched.entries) {
           out.add("  ${_spriteTag(s, "sw", false, box, mask: mask)}");
         }
+        // A score sheet's playbar: buttons the page's clock answers.
+        for (var c in layer.controls) {
+          var r = c.rect;
+          var data = [
+            for (var MapEntry(:key, :value) in c.data.entries)
+              'data-$key="${_attr(value)}"',
+          ].join(" ");
+          out.add('  <button type="button" class="hit bar" '
+              'data-act="${_attr(c.act)}" data-target="film" $data '
+              'aria-label="${_attr(c.label)}" '
+              'style="${box(r.left, r.top, r.width, r.height)}">'
+              '${c.inner}</button>');
+        }
         for (var (bit, r) in layer.legend) {
           out.add('  <button type="button" class="hit legend" '
               'data-act="series" data-target="${_attr(layer.id)}" '
@@ -751,7 +769,7 @@ String _stageTag(
   // no script shows -- and, for one that does, a Play over it and a bar of
   // how much has loaded. Pressed, it plays from the top with its sound,
   // which a reader lets start only on a press.
-  if (stage.animates && poster != null) {
+  if (stage.animates && !stage.ownPlay && poster != null) {
     var w = page.width.toDouble(), h = page.height.toDouble();
     var barH = math.max(6.0, h * 0.006);
     // The bar where the Play will be, and the Play in its place once all
@@ -1115,16 +1133,35 @@ const String _mediaScript = r"""(function () {
     }
     // Where the sound has got to, when it is the clock: playing, and not
     // past its end.
+    // A sound that says it plays but whose time stands still is not the
+    // clock: Apple Books can go on reporting where a sound began while it
+    // plays on (Ken, 2026-11-14: the playbar stuck on the first note while
+    // the music played). Followed only while its time moves.
+    var soundAt = -1, soundMoved = 0;
     var heard = function () {
       var a = soundtrack;
-      if (!a || a.paused || a.seeking || a.readyState < 3) return -1;
+      if (!a || a.paused || a.seeking || a.readyState < 3) { soundAt = -1; return -1; }
       if (isFinite(a.duration) && a.currentTime >= a.duration - 0.05) return -1;
-      return a.currentTime;
+      var at = a.currentTime;
+      if (at !== soundAt) { soundAt = at; soundMoved = now(); return at; }
+      if (now() - soundMoved > 400) return -1;
+      // Between the times a reader gives (Apple Books gives them in steps),
+      // where it has got to since: the page is not pulled back to the last
+      // step, which stuttered the notes (Ken, 2026-11-14).
+      return at + (now() - soundMoved) / 1000 * (a.playbackRate || 1);
     };
 
     var now = function () { return window.performance && performance.now ? performance.now() : Date.now(); };
-    var later = window.requestAnimationFrame ? function (f) { window.requestAnimationFrame(f); }
-      : function (f) { setTimeout(function () { f(now()); }, 16); };
+    // The next tick: on the next frame drawn, or a twentieth of a second on
+    // whichever comes first -- a reader can hold back the frames of a page
+    // it opened before showing it (Ken, 2026-11-14: in Apple Books the page
+    // played only once it had been left and come back to).
+    var later = function (f) {
+      var ran = false;
+      var once = function () { if (ran) return; ran = true; f(now()); };
+      if (window.requestAnimationFrame) window.requestAnimationFrame(once);
+      setTimeout(once, 50);
+    };
     var holding = function () { return holdUntil > now(); };
     var follow = function () {
       var on = playing && !holding();
@@ -1142,6 +1179,7 @@ const String _mediaScript = r"""(function () {
     };
     var pause = function () {
       playing = false;
+      if (document.body && document.body.classList) document.body.classList.remove("playing");
       anims.forEach(function (a) { try { a.pause(); a.currentTime = t * 1000; } catch (e) {} });
       follow();
     };
@@ -1149,6 +1187,7 @@ const String _mediaScript = r"""(function () {
       if (playing || frames <= 1) return;
       if (t >= length) { counts = {}; place(0); }
       playing = true;
+      if (document.body && document.body.classList) document.body.classList.add("playing");
       // With a soundtrack, everything starts when its sound does: a sound
       // takes a moment to start, and the page would be ahead of it.
       var started = false;
@@ -1230,8 +1269,30 @@ const String _mediaScript = r"""(function () {
       later(tick);
     };
     // The playhead's buttons are aimed at "film": see filmTarget.
-    media.film = { clock: true, act: function (act, f) {
+    media.film = { clock: true, act: function (act, f, b, x) {
       switch (act) {
+        // A score sheet's playbar: a note on or back, along its track.
+        case "next": case "prev": {
+          var list = (b && b.getAttribute("data-frames") || "").split(",")
+            .filter(function (s) { return s !== ""; }).map(Number);
+          if (!list.length) return;
+          var cur = t * rate, to = null, i;
+          if (act === "next") {
+            for (i = 0; i < list.length; i++) if (list[i] > cur + 0.5) { to = list[i]; break; }
+            if (to === null) to = list[list.length - 1];
+          } else {
+            for (i = list.length - 1; i >= 0; i--) if (list[i] < cur - 0.5) { to = list[i]; break; }
+            if (to === null) to = list[0];
+          }
+          stopAt = -1; place(to / rate); return;
+        }
+        case "seek": {
+          var r = b.getBoundingClientRect();
+          var p = r.width > 0 ? Math.max(0, Math.min(1, (x - r.left) / r.width)) : 0;
+          var a0 = parseInt(b.getAttribute("data-from") || "0", 10);
+          var a1 = parseInt(b.getAttribute("data-to") || "0", 10);
+          stopAt = -1; place((a0 + p * (a1 - a0)) / rate); return;
+        }
         case "restart": stopAt = -1; counts = {}; place(0); if (!playing) play(); return;
         case "goto": stopAt = -1; pause(); place(f / rate); return;
         case "playfrom": stopAt = -1; place(f / rate); if (!playing) play(); return;
@@ -1336,7 +1397,7 @@ const String _mediaScript = r"""(function () {
 
   all("[data-act]").forEach(function (b) {
     var touched = 0;
-    function run() {
+    function run(x) {
       // A click that starts reactions: see media.react.
       if (b.getAttribute("data-act") === "react") {
         if (media.react) media.react("click:" + b.getAttribute("data-target"));
@@ -1345,7 +1406,7 @@ const String _mediaScript = r"""(function () {
       var t = media[b.getAttribute("data-target")];
       if (!t) return;
       var frame = parseInt(b.getAttribute("data-frame") || "0", 10);
-      if (t.clock) { t.act(b.getAttribute("data-act"), frame); return; }
+      if (t.clock) { t.act(b.getAttribute("data-act"), frame, b, x); return; }
       if (t.layer) {
         if (b.getAttribute("data-act") === "showhide") {
           t.layer.style.display = t.layer.style.display === "none" ? "" : "none";
@@ -1377,12 +1438,13 @@ const String _mediaScript = r"""(function () {
     b.addEventListener("touchend", function (e) {
       keep(e);
       touched = Date.now();
-      run();
+      var touch = e.changedTouches && e.changedTouches[0];
+      run(touch ? touch.clientX : 0);
     }, false);
     b.addEventListener("click", function (e) {
       keep(e);
       if (Date.now() - touched < 800) return;
-      run();
+      run(e.clientX);
     }, false);
   });
 })();

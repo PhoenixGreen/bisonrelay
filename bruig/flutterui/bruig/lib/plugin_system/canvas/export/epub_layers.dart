@@ -28,13 +28,18 @@ import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_looks.dart'
     show looksReach;
+import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/score_engraver.dart';
+import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
@@ -137,6 +142,21 @@ class EpubReaction {
 
 /// EpubLayer is one element that moves, can be shown and hidden, or changes
 /// under the pointer.
+/// EpubControl is a button on a layer that the page's clock answers: a
+/// Sheet music element's playbar (Ken, 2026-11-14). [act] is what it asks
+/// of the clock, [rect] where it is in page pixels, [data] what else it
+/// says (the frames to step between, the span to seek along), [inner] what
+/// is drawn in it (a pause for the play button, shown while it plays).
+class EpubControl {
+  final String act;
+  final Rect rect;
+  final Map<String, String> data;
+  final String inner;
+  final String label;
+  const EpubControl(this.act, this.rect,
+      {this.data = const {}, this.inner = "", this.label = ""});
+}
+
 class EpubLayer {
   /// id is the element's, which a Show-or-hide button names.
   final String id;
@@ -174,6 +194,9 @@ class EpubLayer {
   /// reactions are the clips it plays on a click or after another clip.
   final List<EpubReaction> reactions;
 
+  /// controls are the buttons on it that the page's clock answers.
+  final List<EpubControl> controls;
+
   const EpubLayer({
     required this.id,
     this.visible = true,
@@ -187,6 +210,7 @@ class EpubLayer {
     this.legend = const [],
     this.switched = const {},
     this.reactions = const [],
+    this.controls = const [],
   });
 
   /// moves is whether anything on it changes with the playhead.
@@ -249,6 +273,10 @@ class EpubStage {
   final List<EpubKey> vignette;
   final double vignetteSoft;
 
+  /// ownPlay is whether the page is played by a playbar of its own (a
+  /// score sheet's): no start screen over it, and nothing until pressed.
+  final bool ownPlay;
+
   const EpubStage({
     required this.items,
     required this.frames,
@@ -263,6 +291,7 @@ class EpubStage {
     this.lens = const {},
     this.vignette = const [],
     this.vignetteSoft = 0.5,
+    this.ownPlay = false,
   });
 
   Iterable<EpubLayer> get layers => items.whereType<EpubLayer>();
@@ -583,17 +612,23 @@ Future<StageResult?> buildEpubStage(
                 key: sheets.placed(value),
             },
             reactions: l.reactions,
+            controls: l.controls,
           ),
         _ => item,
       },
   ];
 
+  // A score sheet's playbar plays the page (Ken, 2026-11-14: "rather than
+  // the ugly play button").
+  var ownPlay =
+      drawn.any((e) => e is SheetElement && e.playbar && e.score.isNotEmpty);
   var stage = EpubStage(
     items: built,
     frames: frames,
     rate: page.frameRate,
     marks: page.actions,
-    autoplay: autoplay,
+    autoplay: autoplay && !ownPlay,
+    ownPlay: ownPlay,
     timeline: timeline && frames > 1,
     backdropVideo: backdropVideo,
     clickable: [
@@ -829,6 +864,14 @@ class _LayerMaker {
         pose: _poseKeys(),
       );
     }
+    // A score sheet and an instrument: pictures switched on and off and
+    // moved by the clock, never a film (see _sheetLayer).
+    if (e case SheetElement s) {
+      if (await _sheetLayer(s) case var layer?) return layer;
+    }
+    if (e case AudioElement a when a.instrument != null && a.visible) {
+      if (await _keysLayer(a) case var layer?) return layer;
+    }
     var names = [
       for (var f = 0; f < frames; f++)
         _lookAt(e, f, poseAt(f), frames, page.frameRate, poseAt: poseAt),
@@ -881,6 +924,253 @@ class _LayerMaker {
       switched: await _legend(),
       reactions: _reactions(),
     );
+  }
+
+  /// drawn records [paint] on the page's canvas and packs what it drew over
+  /// [crop] (document units) as a picture.
+  Future<EpubSprite?> drawn(void Function(ui.Canvas c) paint, Rect crop) async {
+    var recorder = ui.PictureRecorder();
+    paint(start(recorder));
+    var p = recorder.endRecording();
+    try {
+      return await sheets.add(
+          p,
+          Rect.fromLTRB(crop.left * pixels, crop.top * pixels,
+              crop.right * pixels, crop.bottom * pixels));
+    } finally {
+      p.dispose();
+    }
+  }
+
+  /// _onOff is a picture's opacity at each frame: there while [on] says.
+  List<EpubKey> _onOff(bool Function(int f) on) => _compact([
+        for (var f = 0; f < frames; f++) {"opacity": on(f) ? "1" : "0"},
+      ]);
+
+  EpubLayer _layerOf(List<EpubPart> parts,
+      {List<EpubControl> controls = const []}) {
+    var box = e.bounds;
+    return EpubLayer(
+      id: e.id,
+      visible: e.visible,
+      originX: e.turnedAboutCentre(e.anchorIn(box), box.center).dx * pixels,
+      originY: e.turnedAboutCentre(e.anchorIn(box), box.center).dy * pixels,
+      pose: _poseKeys(),
+      parts: parts,
+      controls: controls,
+    );
+  }
+
+  /// _sheetLayer is a score sheet as a book plays it (Ken, 2026-11-14): each
+  /// page of its systems a picture, there while that page shows; each note
+  /// lit a picture of its own, there while it sounds; the playhead a line
+  /// moved along by the clock; and its playbar, buttons the clock answers --
+  /// to the start, a note back, play and pause, a note on, and the track.
+  Future<EpubLayer?> _sheetLayer(SheetElement s) async {
+    var bounds = s.bounds;
+    var views = [
+      for (var f = 0; f < frames; f++) sheetViewOf(s, bounds, page, f),
+    ];
+    if (views.any((v) => v == null)) return null;
+    var vs = views.cast<SheetView>();
+    double pageOf(SheetView v) => v.window.top;
+    var parts = <EpubPart>[];
+    var sp = vs.first.engraved.options.space;
+    // The pages, each as it is at rest.
+    var pages = <double, SheetView>{};
+    for (var v in vs) {
+      pages.putIfAbsent(pageOf(v), () => v);
+    }
+    for (var MapEntry(key: top, value: v) in pages.entries) {
+      var pic = await drawn(
+          (c) => paintScoreSheet(c, bounds, s, v,
+              lit: const {},
+              head: false,
+              progress: 0,
+              playing: false,
+              knob: false),
+          bounds);
+      if (pic == null) continue;
+      parts.add(EpubPart(pic, keys: _onOff((f) => pageOf(vs[f]) == top)));
+      // Each note lit, where it is on this page, while it sounds.
+      var lit = <String, Set<int>>{};
+      for (var (f, w) in vs.indexed) {
+        if (pageOf(w) != top) continue;
+        for (var id in sheetSounding(w)) {
+          (lit[id] ??= {}).add(f);
+        }
+      }
+      for (var MapEntry(key: id, value: on) in lit.entries) {
+        var hit = v.engraved.hits
+            .where((h) => h.kind == ScoreHitKind.event && h.event == id)
+            .firstOrNull;
+        if (hit == null) continue;
+        // The head and its stem: up or down from it.
+        var r = hit.rect.inflate(sp * 0.2);
+        r = Rect.fromLTRB(
+            r.left, r.top - sp * 3.6, r.right + sp * 1.6, r.bottom + sp * 3.6);
+        var crop = Rect.fromLTRB(
+            v.origin.dx + r.left * v.scale,
+            v.origin.dy + r.top * v.scale,
+            v.origin.dx + r.right * v.scale,
+            v.origin.dy + r.bottom * v.scale);
+        var pic = await drawn(
+            (c) => paintScoreSheet(c, bounds, s, v,
+                lit: {id},
+                head: false,
+                progress: 0,
+                playing: false,
+                bar: false),
+            crop.intersect(bounds));
+        if (pic == null) continue;
+        parts.add(EpubPart(pic, keys: _onOff(on.contains)));
+      }
+      // The playhead: one line a system, moved along it.
+      if (s.playhead) {
+        for (var (si, sys) in v.engraved.systems.indexed) {
+          var at = <int, double>{};
+          for (var (f, w) in vs.indexed) {
+            if (pageOf(w) != top || w.place == null) continue;
+            var x = w.engraved.xOf(w.place!.bar, w.place!.at);
+            if (x == null || x.$2 != si) continue;
+            at[f] = w.origin.dx + (x.$1 + sp * 0.5) * w.scale;
+          }
+          if (at.isEmpty) continue;
+          var x0 = at.values.first;
+          var y0 = v.origin.dy + (sys.top) * v.scale;
+          var y1 = v.origin.dy + (sys.bottom) * v.scale;
+          var line = await drawn((c) {
+            var paint = ui.Paint()
+              ..color = const ui.Color(0xFFE2622B)
+              ..strokeWidth = math.max(1.5, sp * 0.25 * v.scale);
+            c.drawLine(Offset(x0, y0), Offset(x0, y1), paint);
+          }, Rect.fromLTRB(x0 - sp, y0 - 2, x0 + sp, y1 + 2).intersect(bounds));
+          if (line == null) continue;
+          parts.add(EpubPart(line,
+              keys: _compact([
+                for (var f = 0; f < frames; f++)
+                  {
+                    "opacity": at.containsKey(f) ? "1" : "0",
+                    "transform":
+                        "translate(${_n(((at[f] ?? x0) - x0) * pixels, 2)}px,0px)",
+                  },
+              ])));
+        }
+      }
+    }
+    // The playbar: the track filled as far as the clock has got, and its
+    // buttons the clock answers.
+    var controls = <EpubControl>[];
+    if (sheetBarRect(s, bounds) case var bar?) {
+      var parts0 = sheetBarParts(bar);
+      var track = parts0[SheetBarPart.track]!;
+      var total = sheetLength(vs.first.score);
+      var channel = vs.first.channel;
+      var from = channel.clip.at;
+      var to = channel.clip.at + (total * rate).round();
+      double done(int f) => sheetProgress(vs[f]);
+      // The filled track, revealed from the left; the knob slid along.
+      var line = sheetTrackLine(track);
+      var orange = ui.Paint()..color = const ui.Color(0xFFE2622B);
+      var fill = await drawn(
+          (c) => c.drawRRect(
+              ui.RRect.fromRectAndRadius(
+                  line, ui.Radius.circular(line.height / 2)),
+              orange),
+          line.inflate(1));
+      if (fill != null) {
+        parts.add(EpubPart(fill,
+            keys: const [],
+            clipKeys: _compact([
+              for (var f = 0; f < frames; f++)
+                {
+                  "clip-path":
+                      "inset(0px ${_n((1 - done(f)) * 100, 2)}% 0px 0px)",
+                },
+            ])));
+      }
+      var radius = sheetKnobRadius(track);
+      var knob = await drawn(
+          (c) =>
+              c.drawCircle(Offset(line.left, line.center.dy), radius, orange),
+          Rect.fromCircle(
+              center: Offset(line.left, line.center.dy), radius: radius + 1));
+      if (knob != null) {
+        parts.add(EpubPart(knob,
+            keys: _compact([
+              for (var f = 0; f < frames; f++)
+                {
+                  "transform":
+                      "translate(${_n(done(f) * line.width * pixels, 2)}px,0px)",
+                },
+            ])));
+      }
+      Rect px(Rect r) => Rect.fromLTRB(
+          r.left * pixels, r.top * pixels, r.right * pixels, r.bottom * pixels);
+      var onsets = sheetOnsets(s, page).join(",");
+      // A pause over the play button while it plays: the bar's tint over the
+      // paper, and two bars.
+      var play = parts0[SheetBarPart.play]!;
+      var tint = ui.Color.alphaBlend(
+          s.ink.withValues(alpha: 0.07), s.paper.withValues(alpha: 1));
+      var u = play.height * 0.16 * pixels;
+      var pause = '<span class="pp" style="background:${_cssColour(tint)}">'
+          '<span style="left:${_n(play.width * pixels / 2 - u * 0.75, 2)}px;'
+          'top:${_n(play.height * pixels / 2 - u * 1.1, 2)}px;'
+          'width:${_n(u * 0.5, 2)}px;height:${_n(u * 2.2, 2)}px;'
+          'background:${_cssColour(s.ink)}"></span>'
+          '<span style="left:${_n(play.width * pixels / 2 + u * 0.25, 2)}px;'
+          'top:${_n(play.height * pixels / 2 - u * 1.1, 2)}px;'
+          'width:${_n(u * 0.5, 2)}px;height:${_n(u * 2.2, 2)}px;'
+          'background:${_cssColour(s.ink)}"></span></span>';
+      var first = sheetOnsets(s, page).firstOrNull ?? from;
+      controls = [
+        EpubControl("goto", px(parts0[SheetBarPart.start]!),
+            data: {"frame": "$first"}, label: "To the start"),
+        EpubControl("prev", px(parts0[SheetBarPart.back]!),
+            data: {"frames": onsets}, label: "A note back"),
+        EpubControl("toggle", px(play), inner: pause, label: "Play"),
+        EpubControl("next", px(parts0[SheetBarPart.on]!),
+            data: {"frames": onsets}, label: "A note on"),
+        EpubControl("seek", px(track),
+            data: {"from": "$from", "to": "$to"}, label: "How far it has got"),
+      ];
+    }
+    return _layerOf(parts, controls: controls);
+  }
+
+  /// _keysLayer is an instrument as a book plays it: its keys at rest, and
+  /// each key it plays lit, a picture of its own there while it sounds.
+  Future<EpubLayer?> _keysLayer(AudioElement a) async {
+    var part = a.instrument!;
+    var bounds = a.bounds;
+    var parts = <EpubPart>[];
+    var rest = await drawn(
+        (c) => paintAudio(c, bounds, a, AudioState(muted: a.clip.muted)),
+        bounds);
+    if (rest != null) parts.add(EpubPart(rest));
+    var on = <int, Set<int>>{};
+    for (var f = 0; f < frames; f++) {
+      for (var k in AudioState.atFrame(a, f, rate).keys) {
+        (on[k] ??= {}).add(f);
+      }
+    }
+    var layout = keyboardLayout(part, bounds);
+    // White keys first, the black ones over them.
+    for (var black in [false, true]) {
+      for (var key in layout.keys) {
+        if (key.black != black) continue;
+        var frames0 = on[key.key];
+        if (frames0 == null) continue;
+        var pic = await drawn(
+            (c) => paintAudio(
+                c, bounds, a, AudioState(muted: a.clip.muted, keys: {key.key})),
+            key.rect);
+        if (pic == null) continue;
+        parts.add(EpubPart(pic, keys: _onOff(frames0.contains)));
+      }
+    }
+    return _layerOf(parts);
   }
 
   /// _reactions are [e]'s clips that start on a click or after another
@@ -1391,6 +1681,11 @@ ElementAnimation? _elementAnimation(CanvasElement e) => switch (e) {
       _ => null,
     };
 
+/// _cssColour is [c] as CSS.
+String _cssColour(ui.Color c) =>
+    "rgba(${(c.r * 255).round()},${(c.g * 255).round()},${(c.b * 255).round()},"
+    "${c.a.toStringAsFixed(3)})";
+
 /// _compact is a value a frame as keyframes: only where something changes,
 /// and either end of a stretch where nothing does.
 List<EpubKey> _compact(List<Map<String, String>> byFrame) {
@@ -1762,6 +2057,16 @@ Future<ui.Image> _fromPixels(Uint8List rgba, int width, int height) {
 /// any frame of a page [frames] long.
 bool _changes(CanvasElement e, int frames, CanvasDocument page) {
   if (frames <= 1) return false;
+  // A score sheet lights its notes and moves its playhead as the page
+  // plays; an instrument lights its keys.
+  if (e is SheetElement && sheetViewOf(e, e.bounds, page, 0) != null) {
+    return true;
+  }
+  if (e is AudioElement &&
+      (e.instrument?.notes.isNotEmpty ?? false) &&
+      e.visible) {
+    return true;
+  }
   var rate = page.frameRate;
   Keyframe poseAt(int f) => poseWithMotion(e, f, page);
   var first = poseAt(0);

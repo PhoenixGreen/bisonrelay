@@ -1444,7 +1444,14 @@ function wait(ms) {
   for (var s = 0; s < ms; s += 16) {
     now += 16;
     anims.forEach(function (a) { if (a.playing) a.currentTime += 16; });
-    players.forEach(function (m) { if (!m.paused) m.currentTime += 0.016 * (m.playbackRate || 1); });
+    players.forEach(function (m) {
+      if (m.paused || m.stuck) return;
+      if (m.step) {
+        // Its time told only every [step] seconds, as a reader may.
+        m.trueTime = (m.trueTime === undefined ? m.currentTime : m.trueTime) + 0.016 * (m.playbackRate || 1);
+        m.currentTime = Math.floor(m.trueTime / m.step) * m.step;
+      } else m.currentTime += 0.016 * (m.playbackRate || 1);
+    });
     var q = queue; queue = [];
     q.forEach(function (f) { f(now); });
   }
@@ -1452,6 +1459,15 @@ function wait(ms) {
 // The sound held back, as a reader's may be, by [ms].
 function lag(ms) {
   players.forEach(function (m) { if (m.id === "soundtrack") m.currentTime -= ms / 1000; });
+}
+// The sound playing on while its time stands still, as Apple Books can
+// report it.
+function stick() {
+  players.forEach(function (m) { if (m.id === "soundtrack") m.stuck = true; });
+}
+// The sound's time told in steps of [ms].
+function steps(ms) {
+  players.forEach(function (m) { if (m.id === "soundtrack") m.step = ms / 1000; });
 }
 // The start screen's Play, pressed.
 function begin() {
@@ -1469,6 +1485,8 @@ ${steps.map((s) {
         return switch (p[0]) {
           "wait" => "wait(${p[1]}); report();",
           "lag" => "lag(${p[1]}); report();",
+          "stick" => "stick(); report();",
+          "steps" => "steps(${p[1]}); report();",
           "begin" => "begin(); report();",
           _ => "press('${p[1]}'); report();",
         };
@@ -1704,6 +1722,65 @@ ${steps.map((s) {
           reason: "left where it was, not put back to the page's time");
       expect(t(seen[4]), closeTo((sound["t"] as num).toDouble(), 0.05),
           reason: "the page gone back to the sound");
+    });
+
+    // Ken, 2026-11-14, in Apple Books: "the music plays but the playbar
+    // sticks on the first note it plays". A sound whose time stands still
+    // while it plays is not the clock.
+    testWidgets("the sound's time standing still, the page plays on",
+        (tester) async {
+      if (node.isEmpty) return markTestSkipped("node is not installed");
+      var ffmpeg = await tester.runAsync(ffmpegPath);
+      if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
+      Uint8List? bytes;
+      await tester.runAsync(() async {
+        var tone = path.join(root.path, "tone.flac");
+        await Process.run(ffmpeg, [
+          "-hide_banner", "-loglevel", "error", "-y", //
+          "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+          "-t", "3", tone,
+        ]);
+        var toneId = (await CanvasMedia.saveFile(MediaKind.audio, tone))!;
+        var doc = CanvasDocument(
+          size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+          frameRate: 12,
+          scenes: [
+            CanvasScene(id: "one", frames: 36, elements: [
+              sliding(),
+              AudioElement(
+                  const ElementBase(
+                      id: "s", width: 40, height: 40, visible: false),
+                  clip: MediaClip(
+                      playlist: [MediaSource(assetId: toneId, length: 3)],
+                      timed: true)),
+              button("t", 10,
+                  const ButtonAction(kind: ButtonActionKind.togglePlay)),
+            ]),
+          ],
+        );
+        bytes =
+            (await renderDocument(doc, as: DocumentAs.interactiveEpub))!.data;
+      });
+      var seen = await tester.runAsync(() => drive(bytes!, [
+            "stick",
+            "press b0",
+            "wait 1500",
+          ]));
+      expect(t(seen![3]), greaterThan(0.9),
+          reason: "on by its own clock, not held at the sound's start");
+      // Its time told in quarter-second steps: the page goes on steadily,
+      // never pulled back to the last step (the notes stuttered).
+      var stepped = await tester.runAsync(() => drive(bytes!, [
+            "steps 250",
+            "press b0",
+            "wait 800",
+            for (var i = 0; i < 8; i++) "wait 130",
+          ]));
+      var times = [for (var r in stepped!.skip(3)) t(r)];
+      for (var i = 1; i < times.length; i++) {
+        expect(times[i] - times[i - 1], closeTo(0.13, 0.05),
+            reason: "step $i: $times");
+      }
     });
 
     // The Rain, at half speed on the canvas, went round twice as fast in
