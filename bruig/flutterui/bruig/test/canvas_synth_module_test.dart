@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -312,6 +313,39 @@ void main() {
           ]);
       var rec = ui.PictureRecorder();
       paintSynthTask(ui.Canvas(rec), card.bounds, card, doc);
+      // The new modules, and an oscillator's screen showing a live wave.
+      var shown = [
+        SynthModuleKind.delay,
+        SynthModuleKind.reverb,
+        SynthModuleKind.scope
+      ];
+      var w = Float32List(1024);
+      for (var i = 0; i < w.length; i++) {
+        w[i] = 0.6 * (2 * ((i / 109.1) % 1) - 1);
+      }
+      var rec2 = ui.PictureRecorder();
+      var cv = ui.Canvas(rec2);
+      cv.drawColor(const Color(0xFF101114), BlendMode.src);
+      for (var (i, k) in shown.indexed) {
+        for (var (j, look) in SynthLook.values.indexed) {
+          var p = synthPanelOf(k);
+          var e = SynthModuleElement(
+              ElementBase(
+                  id: "m$i$j",
+                  x: 10 + i * 250,
+                  y: 10 + j * 330,
+                  width: p.size.width,
+                  height: p.size.height),
+              module: k,
+              look: look);
+          paintSynthModule(cv, e.bounds, e,
+              show: SynthShow(wave: w, level: 0.3));
+        }
+      }
+      var img2 = await rec2.endRecording().toImage(770, 680);
+      var png2 = await img2.toByteData(format: ui.ImageByteFormat.png);
+      File(path.replaceFirst(".png", "_new.png"))
+          .writeAsBytesSync(png2!.buffer.asUint8List());
       var img = await rec.endRecording().toImage(260, 240);
       var png = await img.toByteData(format: ui.ImageByteFormat.png);
       File(path.replaceFirst(".png", "_card.png"))
@@ -630,5 +664,23 @@ void main() {
     var part = (c.document.elementById(ch) as AudioElement).instrument!;
     expect(part.patch!.byId(copies[SynthModuleKind.osc]!.id), isNotNull,
         reason: "its own channel plays its own patch");
+  });
+
+  test("a key held: the screens show what the modules are doing", () async {
+    var c = CanvasController(page, audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.addSynthRack();
+    var osc = of(c, SynthModuleKind.osc), amp = of(c, SynthModuleKind.amp);
+    expect(c.synthShowFor(osc, 0).wave, isNull, reason: "nothing held");
+    c.synthKeyDown(of(c, SynthModuleKind.keys), 69);
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    var wave = c.synthShowFor(osc, 0).wave!;
+    expect(wave.length, greaterThan(500));
+    expect(c.synthShowFor(amp, 0).level, greaterThan(0.1));
+    expect(c.synthShowFor(of(c, SynthModuleKind.env), 0).wave, isNull,
+        reason: "not patched in: not watched");
+    c.synthKeyUp(of(c, SynthModuleKind.keys), 69);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(c.synthShowFor(osc, 0).wave, isNull, reason: "died away");
   });
 }

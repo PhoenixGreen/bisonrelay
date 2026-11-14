@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart'
+    show PatchWatch;
+import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart'
     show SynthShow, synthShowOf;
 import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
@@ -360,9 +363,7 @@ class CanvasController extends ChangeNotifier {
     // A sheet's playbar shows pause while this canvas plays.
     sheetPlaying = () => playing;
     // The synth modules on the stage: their keys held, their time.
-    synthShowOf = (e, frame) => SynthShow(
-        seconds: frame / math.max(1, _document.frameRate),
-        held: synthHeld(e.id));
+    synthShowOf = synthShowFor;
   }
 
   CanvasDocument _document;
@@ -3363,6 +3364,13 @@ class CanvasController extends ChangeNotifier {
   /// _synthTarget lets go of a task card's target once it has been heard.
   Timer? _synthTarget;
 
+  /// _synthWatches are the notes being watched on each speaker, by its
+  /// id, for the screens (see PatchWatch); _synthTick plays them on and
+  /// redraws, _synthClock how long since it last did.
+  final Map<String, PatchWatch> _synthWatches = {};
+  Timer? _synthTick;
+  final Stopwatch _synthClock = Stopwatch();
+
   /// _pressedOn is each instrument with keys held, as it was when they were
   /// pressed: let go through it whatever has changed since -- the scene
   /// turned, the element deleted -- so no note is left ringing.
@@ -4350,6 +4358,7 @@ class CanvasController extends ChangeNotifier {
     _disposed = true;
     _partTimer?.cancel();
     _synthTarget?.cancel();
+    _synthTick?.cancel();
     _warpTimer?.cancel();
     for (var a in _arps.values) {
       a.timer?.cancel();

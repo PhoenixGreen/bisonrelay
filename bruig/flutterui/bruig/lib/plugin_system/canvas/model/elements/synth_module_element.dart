@@ -271,6 +271,20 @@ final synthKnobs = <SynthModuleKind, List<SynthKnob>>{
     SynthKnob("b", "B", 0, 1, _pct),
     SynthKnob("c", "C", 0, 1, _pct),
   ],
+  SynthModuleKind.delay: [
+    SynthKnob("time", "Time", 0.02, 1, _secs, log: true),
+    SynthKnob("feedback", "Repeats", 0, 0.95, _pct),
+    SynthKnob("mix", "Mix", 0, 1, _pct),
+  ],
+  SynthModuleKind.reverb: [
+    SynthKnob("size", "Size", 0, 1, _pct),
+    SynthKnob("damp", "Damp", 0, 1, _pct),
+    SynthKnob("mix", "Mix", 0, 1, _pct),
+  ],
+  SynthModuleKind.scope: [
+    SynthKnob("zoom", "Zoom", 0.5, 8, (v) => "${v.toStringAsFixed(1)}×",
+        log: true),
+  ],
   SynthModuleKind.out: [SynthKnob("volume", "Volume", 0, 1, _pct)],
 };
 
@@ -298,6 +312,9 @@ String synthPanelName(SynthModuleKind kind) => switch (kind) {
       SynthModuleKind.env => "ADSR",
       SynthModuleKind.lfo => "LFO",
       SynthModuleKind.filter => "VCF",
+      SynthModuleKind.delay => "DLY",
+      SynthModuleKind.reverb => "REV",
+      SynthModuleKind.scope => "SCOPE",
       SynthModuleKind.amp => "VCA",
       SynthModuleKind.mixer => "MIX",
       SynthModuleKind.out => "OUT",

@@ -75,6 +75,8 @@ double _screenHeight(SynthModuleKind k) => switch (k) {
       SynthModuleKind.filter => 82,
       SynthModuleKind.amp => 64,
       SynthModuleKind.out => 76,
+      SynthModuleKind.delay || SynthModuleKind.reverb => 56,
+      SynthModuleKind.scope => 120,
       SynthModuleKind.keys || SynthModuleKind.mixer => 0,
     };
 
@@ -242,6 +244,9 @@ Color synthAccent(SynthModuleKind k) => switch (k) {
       SynthModuleKind.keys => const Color(0xFF9AA4B2),
       SynthModuleKind.noise => const Color(0xFFE879A6),
       SynthModuleKind.mixer => const Color(0xFFC0C6D0),
+      SynthModuleKind.delay => const Color(0xFF4DD0E1),
+      SynthModuleKind.reverb => const Color(0xFFB388FF),
+      SynthModuleKind.scope => const Color(0xFF8DFFB0),
     };
 
 /// _panelColours are an analogue panel's face and printing.
@@ -259,6 +264,18 @@ Color synthAccent(SynthModuleKind k) => switch (k) {
       SynthModuleKind.noise => (
           const Color(0xFF8E2F2A),
           const Color(0xFFF7E9E4)
+        ),
+      SynthModuleKind.delay => (
+          const Color(0xFF2E4A6B),
+          const Color(0xFFE6EEF7)
+        ),
+      SynthModuleKind.reverb => (
+          const Color(0xFF4B3A5E),
+          const Color(0xFFF0E9F7)
+        ),
+      SynthModuleKind.scope => (
+          const Color(0xFF2A2A2C),
+          const Color(0xFFECEBE6)
         ),
       _ => (const Color(0xFFD9D9D5), const Color(0xFF1D1D1B)),
     };
@@ -521,6 +538,12 @@ class _Panel {
         _filterScreen(r);
       case SynthModuleKind.out:
         _scope(r);
+      case SynthModuleKind.scope:
+        _bigScope(r);
+      case SynthModuleKind.delay:
+        _echoScreen(r);
+      case SynthModuleKind.reverb:
+        _roomScreen(r);
       default:
     }
     c.restore();
@@ -717,6 +740,86 @@ class _Panel {
     }
     _trace(pts);
   }
+
+  /// _bigScope is the Scope module's screen: what passes through it,
+  /// steadied on a rising crossing, [zoom] times closer.
+  void _bigScope(Rect r) {
+    var wave = show.wave;
+    if (wave == null || wave.isEmpty || _rms(wave) < 0.0005) {
+      _trace([Offset(r.left, r.center.dy), Offset(r.right, r.center.dy)]);
+      _label("NO SIGNAL", Offset(r.left + 6, r.top + 5));
+      return;
+    }
+    var zoom = e.value("zoom");
+    var n = (wave.length / zoom).round().clamp(16, wave.length);
+    var s0 = 0;
+    for (var i = 1; i < wave.length - n; i++) {
+      if (wave[i - 1] < 0 && wave[i] >= 0) {
+        s0 = i;
+        break;
+      }
+    }
+    n = math.min(n, wave.length - s0);
+    var peak = 0.05;
+    for (var i = 0; i < n; i++) {
+      peak = math.max(peak, wave[s0 + i].abs());
+    }
+    _trace([
+      for (var i = 0; i < n; i++)
+        Offset(r.left + i / (n - 1) * r.width,
+            r.center.dy - wave[s0 + i] / peak * r.height * 0.42)
+    ], base: r.center.dy);
+    _label("${zoom.toStringAsFixed(1)}×", Offset(r.right - 6, r.top + 5),
+        right: true);
+  }
+
+  /// _echoScreen draws the delay's repeats: a bar for the sound, then one
+  /// each [time] after it, each [feedback] the last's height.
+  void _echoScreen(Rect r) {
+    var time = e.value("time"), fb = e.value("feedback"), mix = e.value("mix");
+    var span = 2.0; // seconds across
+    var base = r.bottom - 6;
+    var h = r.height - 14;
+    var dry = Paint()..color = (analogue ? _phosphor : accent);
+    var wet = Paint()
+      ..color = (analogue ? _phosphor : accent).withValues(alpha: 0.7);
+    var bw = 3.0;
+    c.drawRect(
+        Rect.fromLTWH(r.left + 6, base - h * (1 - mix), bw, h * (1 - mix)),
+        dry);
+    var level = mix;
+    for (var t = time; t < span && level > 0.01; t += time) {
+      var x = r.left + 6 + t / span * (r.width - 12);
+      c.drawRect(Rect.fromLTWH(x, base - h * level, bw, h * level), wet);
+      level *= fb;
+    }
+    _label(_secsLabel(time), Offset(r.right - 6, r.top + 5), right: true);
+  }
+
+  /// _roomScreen draws the reverb's tail: how long it rings, how dark.
+  void _roomScreen(Rect r) {
+    var size = e.value("size"), damp = e.value("damp"), mix = e.value("mix");
+    var long = 0.15 + 0.85 * size;
+    var rnd = math.Random(11);
+    var pts = <Offset>[];
+    for (var x = 0.0; x <= r.width - 12; x += 2) {
+      var t = x / (r.width - 12);
+      var env = mix * math.exp(-t / (long * 0.45));
+      var jag = 1 - damp * 0.7;
+      pts.add(Offset(
+          r.left + 6 + x,
+          r.center.dy -
+              (rnd.nextDouble() * 2 - 1) * env * jag * r.height * 0.42 -
+              0));
+    }
+    _trace(pts, base: r.center.dy);
+    _label("${(1 + 4 * size).toStringAsFixed(1)} s",
+        Offset(r.right - 6, r.top + 5),
+        right: true);
+  }
+
+  static String _secsLabel(double v) =>
+      v < 1 ? "${(v * 1000).round()} ms" : "${v.toStringAsFixed(2)} s";
 
   void _lfoScreen(Rect r) {
     var shape = e.choice("shape");

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
@@ -248,5 +249,65 @@ void main() {
     r.fillRange(0, 4800, 0);
     sampler.render(l, r, 4800);
     expect(rms(l, 0, 0.1), closeTo(before / 2, before * 0.05));
+  });
+
+  /// through is [basic] with [fx] between the amp and the speaker.
+  List<SynthModule> through(SynthModule fx) => [
+        ...basic().where((m) => m.id != "s"),
+        mod(fx.id, fx.kind, values: fx.values, inputs: {"in": "a.out"}),
+        mod("s", SynthModuleKind.out, inputs: {"in": "${fx.id}.out"}),
+      ];
+
+  test("a delay: the note again, a delay's time later, quieter", () {
+    var x = played(
+        through(const SynthModule("d", SynthModuleKind.delay,
+            values: {"time": 0.2, "feedback": 0.5, "mix": 0.5})),
+        seconds: 0.05,
+        tail: 1.5);
+    var dry = played(basic(), seconds: 0.05, tail: 1.5);
+    expect(rms(dry, 0.22, 0.24), lessThan(1e-4), reason: "nothing then dry");
+    var first = rms(x, 0.21, 0.24), second = rms(x, 0.41, 0.44);
+    expect(first, greaterThan(0.01), reason: "the echo, 0.2 s on");
+    expect(second, closeTo(first * 0.5, first * 0.15),
+        reason: "the next, at the feedback's level");
+  });
+
+  test("a reverb: a tail after the note ends; a scope changes nothing", () {
+    var wet = played(
+        through(const SynthModule("r", SynthModuleKind.reverb,
+            values: {"size": 0.8, "mix": 0.5})),
+        seconds: 0.2,
+        tail: 2);
+    expect(rms(wet, 0.4, 0.7), greaterThan(0.002),
+        reason: "the room rings on after the key is let go");
+    var seen = played(through(const SynthModule("v", SynthModuleKind.scope)));
+    var plain = played(basic());
+    expect(rms(seen, 0.1, 0.4), closeTo(rms(plain, 0.1, 0.4), 1e-6));
+  });
+
+  test("a note watched: each module's sound, its envelope, until it ends", () {
+    var w = PatchWatch(
+        SynthPatch([
+          ...basic().where((m) => m.id != "a"),
+          mod("e", SynthModuleKind.env,
+              values: {"a": 0.1, "r": 0.1}, inputs: {"gate": "k.gate"}),
+          mod("a", SynthModuleKind.amp,
+              inputs: {"in": "o.out", "gain": "e.env"}),
+        ], "s"),
+        69);
+    w.advance(2400);
+    var mid = w.valueOf("e");
+    expect(mid, closeTo(0.5, 0.05), reason: "half way up a 0.1 s attack");
+    var osc = w.waveOf("o")!;
+    var crossings = 0;
+    for (var i = 1; i < osc.length; i++) {
+      if (osc[i - 1] < 0 && osc[i] >= 0) crossings++;
+    }
+    // 1024 samples of 440 Hz: about nine and a half cycles.
+    expect(crossings, inInclusiveRange(9, 10));
+    expect(w.levelOf("s"), greaterThan(0), reason: "the speaker heard");
+    w.release();
+    w.advance(48000);
+    expect(w.done, isTrue);
   });
 }

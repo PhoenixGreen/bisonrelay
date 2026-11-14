@@ -87,6 +87,36 @@ enum SynthModuleKind {
     "b": 0.8,
     "c": 0.8,
   }, <String, String>{}),
+  // An echo: what comes in, again and again, quieter each time. Its time
+  // can be moved by a control patched in.
+  delay("Delay", [
+    (name: "in", signal: SynthSignal.audio),
+    (name: "time", signal: SynthSignal.mod),
+  ], [
+    (name: "out", signal: SynthSignal.audio),
+  ], {
+    "time": 0.3,
+    "feedback": 0.4,
+    "mix": 0.35,
+  }, <String, String>{}),
+  // A room: what comes in, blurred into a tail.
+  reverb("Reverb", [
+    (name: "in", signal: SynthSignal.audio),
+  ], [
+    (name: "out", signal: SynthSignal.audio),
+  ], {
+    "size": 0.6,
+    "damp": 0.4,
+    "mix": 0.3,
+  }, <String, String>{}),
+  // A big screen of what passes through it, passed on as it is.
+  scope("Scope", [
+    (name: "in", signal: SynthSignal.audio),
+  ], [
+    (name: "out", signal: SynthSignal.audio),
+  ], {
+    "zoom": 2,
+  }, <String, String>{}),
   out("Speaker", [
     (name: "in", signal: SynthSignal.audio),
   ], [], {

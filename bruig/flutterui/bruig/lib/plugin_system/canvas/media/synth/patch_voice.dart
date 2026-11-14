@@ -35,7 +35,12 @@ class PatchGraph {
   /// heard: its longest gated envelope's release.
   final double release;
 
-  PatchGraph._(this.patch, this.nodes, this.inputs, this.gated, this.release);
+  /// tail is how long its echoes and rooms ring on after that: the
+  /// longest delay's repeats dying away, the largest reverb's tail.
+  final double tail;
+
+  PatchGraph._(
+      this.patch, this.nodes, this.inputs, this.gated, this.release, this.tail);
 
   factory PatchGraph(SynthPatch patch) {
     var nodes = patch.heard;
@@ -65,7 +70,20 @@ class PatchGraph {
         release = math.max(release, m.value("r"));
       }
     }
-    return PatchGraph._(patch, nodes, inputs, gated, release);
+    var tail = 0.0;
+    for (var m in nodes) {
+      if (m.kind == SynthModuleKind.delay) {
+        // Repeats until a thousandth of the first: time × ln(0.001)/ln(fb).
+        var fb = m.value("feedback").clamp(0.0, 0.95);
+        var t = fb <= 0.001
+            ? m.value("time")
+            : m.value("time") * math.log(0.001) / math.log(fb);
+        tail = math.max(tail, math.min(8.0, t + 0.1));
+      } else if (m.kind == SynthModuleKind.reverb) {
+        tail = math.max(tail, 1 + 4 * m.value("size").clamp(0.0, 1.0));
+      }
+    }
+    return PatchGraph._(patch, nodes, inputs, gated, release, tail);
   }
 
   /// wiring is its patch's: see SynthPatch.wiring.
@@ -86,6 +104,15 @@ class PatchVoice extends Voice {
   final Float64List _phase, _level, _z1, _z2;
   final Int8List _stage; // 0 attack, 1 decay, 2 sustain, 3 release, 4 done
   double _sinceRelease = 0;
+
+  /// _echoes and _rooms are each delay's and reverb's state, made as it is
+  /// first heard.
+  final Map<int, _Echo> _echoes = {};
+  final Map<int, _Room> _rooms = {};
+
+  /// onSample is told of every node's outputs each sample, for a screen to
+  /// show what a module is putting out (see patchScopes).
+  void Function(List<Float64List> outs)? onSample;
 
   PatchVoice(super.key, int velocity, this.graph)
       : _f0 = 440 * math.pow(2, (key - 69) / 12).toDouble(),
@@ -188,16 +215,27 @@ class PatchVoice extends Voice {
             out[0] = _in(k, "a", 0) * m.value("a") +
                 _in(k, "b", 0) * m.value("b") +
                 _in(k, "c", 0) * m.value("c");
+          case SynthModuleKind.delay:
+            var time = (m.value("time") * (1 + 0.5 * _in(k, "time", 0)))
+                .clamp(0.01, 1.0);
+            out[0] = (_echoes[k] ??= _Echo()).step(_in(k, "in", 0), time,
+                m.value("feedback").clamp(0.0, 0.95), m.value("mix"));
+          case SynthModuleKind.reverb:
+            out[0] = (_rooms[k] ??= _Room()).step(_in(k, "in", 0),
+                m.value("size"), m.value("damp"), m.value("mix"));
+          case SynthModuleKind.scope:
+            out[0] = _in(k, "in", 0);
           case SynthModuleKind.out:
             if (m.id == graph.patch.speaker) {
               heard = _in(k, "in", 0) * m.value("volume");
             }
         }
       }
+      onSample?.call(_out);
       var v = heard * _velocity * 0.5;
       l[i] += v;
       r[i] += v;
-      if (released && _sinceRelease > graph.release + 0.06) {
+      if (released && _sinceRelease > graph.release + graph.tail + 0.06) {
         done = true;
         return;
       }
@@ -276,5 +314,170 @@ class PatchVoice extends Voice {
       "bandpass" => v1,
       _ => v2,
     };
+  }
+}
+
+/// _Echo is a delay line a second long, read between samples.
+class _Echo {
+  final Float32List _line = Float32List(mixRate + 2);
+  int _at = 0;
+
+  double step(double x, double time, double feedback, double mix) {
+    var n = _line.length;
+    var back = time * mixRate;
+    var r = _at - back;
+    while (r < 0) {
+      r += n;
+    }
+    var i = r.floor() % n, f = r - r.floor();
+    var y = _line[i] * (1 - f) + _line[(i + 1) % n] * f;
+    _line[_at] = x + y * feedback;
+    _at = (_at + 1) % n;
+    return x * (1 - mix) + y * mix;
+  }
+}
+
+/// _Room is a small Schroeder-Moorer reverb, as Freeverb's: four damped
+/// combs side by side, then two allpasses.
+class _Room {
+  static const _combs = [1116, 1188, 1277, 1356];
+  static const _passes = [556, 441];
+  final List<Float32List> _comb = [
+    for (var n in _combs) Float32List((n * mixRate / 44100).round())
+  ];
+  final List<Float32List> _pass = [
+    for (var n in _passes) Float32List((n * mixRate / 44100).round())
+  ];
+  final List<int> _ci = [0, 0, 0, 0], _pi = [0, 0];
+  final List<double> _low = [0, 0, 0, 0];
+
+  double step(double x, double size, double damp, double mix) {
+    var fb = 0.7 + 0.28 * size.clamp(0.0, 1.0);
+    var d = damp.clamp(0.0, 1.0) * 0.4;
+    var input = x * 0.15;
+    var wet = 0.0;
+    for (var c = 0; c < 4; c++) {
+      var line = _comb[c];
+      var y = line[_ci[c]];
+      _low[c] = y * (1 - d) + _low[c] * d;
+      line[_ci[c]] = input + _low[c] * fb;
+      _ci[c] = (_ci[c] + 1) % line.length;
+      wet += y;
+    }
+    for (var a = 0; a < 2; a++) {
+      var line = _pass[a];
+      var b = line[_pi[a]];
+      line[_pi[a]] = wet + b * 0.5;
+      wet = b - wet;
+      _pi[a] = (_pi[a] + 1) % line.length;
+    }
+    return x * (1 - mix) + wet * mix;
+  }
+}
+
+/// PatchWatch is a note played on a patch to be looked at rather than
+/// heard: a voice kept going alongside the one heard, a stretch at a time,
+/// each module's latest output kept -- for its screen to show its real
+/// sound, its meter its real level, its envelope where it is.
+class PatchWatch {
+  final int key;
+  PatchVoice _voice;
+  final int _keep;
+  final Map<String, Float32List> _rings = {};
+  int _at = 0, _filled = 0;
+  Float32List _l = Float32List(0), _r = Float32List(0);
+
+  PatchWatch(SynthPatch patch, this.key, {int keep = 1024})
+      : _keep = keep,
+        _voice = PatchVoice(key, 100, PatchGraph(patch)) {
+    _watch();
+  }
+
+  void _watch() {
+    _rings.clear();
+    var nodes = _voice.graph.nodes;
+    for (var m in nodes) {
+      _rings[m.id] = Float32List(_keep);
+    }
+    var speaker = _voice.graph.patch.speaker;
+    _voice.onSample = (outs) {
+      for (var (k, m) in nodes.indexed) {
+        if (m.id == speaker) continue;
+        _rings[m.id]![_at] = outs[k][0];
+      }
+    };
+  }
+
+  SynthPatch get patch => _voice.graph.patch;
+
+  /// patch set to one wired alike goes on in it; otherwise the note starts
+  /// again in the new one.
+  set patch(SynthPatch p) {
+    var next = PatchGraph(p);
+    if (next.wiring == _voice.graph.wiring) {
+      _voice.graph = next;
+      return;
+    }
+    var wasReleased = _voice.released;
+    _voice = PatchVoice(key, 100, next);
+    if (wasReleased) _voice.release();
+    _at = _filled = 0;
+    _watch();
+  }
+
+  bool get released => _voice.released;
+  bool get done => _voice.done;
+  void release() => _voice.release();
+
+  /// has is whether module [id] is in what is watched.
+  bool has(String id) => _rings.containsKey(id);
+
+  /// advance plays [samples] more of it.
+  void advance(int samples) {
+    if (_voice.done) return;
+    if (_l.length < samples) {
+      _l = Float32List(samples);
+      _r = Float32List(samples);
+    }
+    var speaker = _rings[_voice.graph.patch.speaker];
+    for (var i = 0; i < samples; i++) {
+      _l[0] = 0;
+      _r[0] = 0;
+      _voice.render(_l, _r, 1);
+      speaker?[_at] = _l[0];
+      _at = (_at + 1) % _keep;
+      if (_filled < _keep) _filled++;
+      if (_voice.done) break;
+    }
+  }
+
+  /// waveOf is module [id]'s latest output, oldest first.
+  Float32List? waveOf(String id) {
+    var ring = _rings[id];
+    if (ring == null) return null;
+    var out = Float32List(_filled);
+    for (var i = 0; i < _filled; i++) {
+      out[i] = ring[(_at - _filled + i + _keep) % _keep];
+    }
+    return out;
+  }
+
+  /// levelOf is how loud module [id] is now, its output's RMS.
+  double levelOf(String id) {
+    var ring = _rings[id];
+    if (ring == null || _filled == 0) return 0;
+    var s = 0.0;
+    for (var i = 0; i < _filled; i++) {
+      var v = ring[(_at - 1 - i + _keep) % _keep];
+      s += v * v;
+    }
+    return math.sqrt(s / _filled);
+  }
+
+  /// valueOf is module [id]'s output this moment: where an envelope is.
+  double valueOf(String id) {
+    var ring = _rings[id];
+    if (ring == null || _filled == 0) return 0;
+    return ring[(_at - 1 + _keep) % _keep];
   }
 }

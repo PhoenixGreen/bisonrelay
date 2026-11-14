@@ -47,6 +47,13 @@ extension CanvasSynths on CanvasController {
     for (var ch in on) {
       noteOn(ch, key, velocity: velocity);
     }
+    // Watched on each speaker it reaches, for the screens.
+    for (var s in synthSpeakersHearing(_document, keys.id)) {
+      if (synthChannel(s)?.instrument?.patch case var patch?) {
+        _synthWatches[s.id] = PatchWatch(patch, key);
+      }
+    }
+    _synthTicking();
     keysHeld.value++;
   }
 
@@ -58,7 +65,59 @@ extension CanvasSynths on CanvasController {
         noteOff(ch, key);
       }
     }
+    for (var w in _synthWatches.values) {
+      if (w.key == key) w.release();
+    }
     keysHeld.value++;
+  }
+
+  /// _synthTicking keeps the watched notes playing on, and the stage
+  /// redrawing them, about thirty times a second until they have died away.
+  void _synthTicking() {
+    if (_synthTick != null) return;
+    _synthClock
+      ..reset()
+      ..start();
+    _synthTick = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      var samples = (_synthClock.elapsedMicroseconds * mixRate / 1e6)
+          .round()
+          .clamp(0, mixRate ~/ 10);
+      _synthClock
+        ..reset()
+        ..start();
+      for (var w in _synthWatches.values) {
+        w.advance(samples);
+      }
+      _synthWatches.removeWhere((_, w) => w.done);
+      keysHeld.value++;
+      if (_synthWatches.isEmpty) {
+        _synthTick?.cancel();
+        _synthTick = null;
+      }
+    });
+  }
+
+  /// synthShowFor is what module [e] is doing on the stage: the keys held
+  /// on a keyboard, and on the rest what the note watched on a speaker it
+  /// reaches is making of it -- its sound, its level, where its envelope
+  /// is.
+  SynthShow synthShowFor(SynthModuleElement e, int frame) {
+    var seconds = frame / math.max(1, _document.frameRate);
+    if (e.module == SynthModuleKind.keys) {
+      return SynthShow(seconds: seconds, held: synthHeld(e.id));
+    }
+    for (var w in _synthWatches.values) {
+      if (!w.has(e.id)) continue;
+      // The speaker's own is what is heard; an amp's, what it lets out.
+      var id = e.id;
+      return SynthShow(
+          seconds: seconds,
+          held: w.released ? const {} : {w.key},
+          level: w.levelOf(id),
+          env: e.module == SynthModuleKind.env ? w.valueOf(id) : null,
+          wave: w.waveOf(id));
+    }
+    return SynthShow(seconds: seconds);
   }
 
   /// synthHeld are the keys held on keyboard module [id].
@@ -78,6 +137,7 @@ extension CanvasSynths on CanvasController {
       if (e is! SynthModuleElement || e.module != SynthModuleKind.out) continue;
       if (synthChannel(e)?.instrument?.patch case var patch?) {
         audio.livePatch(e.channel, patch);
+        _synthWatches[e.id]?.patch = patch;
       }
     }
   }
