@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart' show BoxSpec;
 
 // sheet_element.dart is Sheet music: the part of the instrument it follows,
 // engraved (see notation.dart and sheet_painter.dart) with a playhead, and
@@ -83,6 +85,18 @@ class SheetElement extends CanvasElement {
   /// need, where the sheet shows one instrument.
   final bool showNames;
 
+  /// showMarks is whether its rehearsal marks are drawn.
+  final bool showMarks;
+
+  /// box is its frame: corners, a border, and room round the music (its
+  /// fill is [paper]).
+  final BoxSpec box;
+
+  /// fromBar and toBar are the bars it shows and plays, from the first to
+  /// the last (Ken, 2026-11-14: "show bars 5 to 8"), counted from one;
+  /// nought for the score's own first or last.
+  final int fromBar, toBar;
+
   const SheetElement(
     super.base, {
     this.follows = "",
@@ -103,7 +117,15 @@ class SheetElement extends CanvasElement {
     this.showTempo = true,
     this.playbar = true,
     this.showNames = true,
+    this.showMarks = true,
+    this.box = sheetBox,
+    this.fromBar = 0,
+    this.toBar = 0,
   });
+
+  /// sheetBox is a sheet's frame as it starts: round corners, no border,
+  /// the music to its edges.
+  static const sheetBox = BoxSpec(borderRadius: 6, padding: 0);
 
   @override
   ElementKind get kind => ElementKind.sheet;
@@ -127,7 +149,11 @@ class SheetElement extends CanvasElement {
       showComposer: showComposer,
       showTempo: showTempo,
       playbar: playbar,
-      showNames: showNames);
+      showNames: showNames,
+      showMarks: showMarks,
+      box: box,
+      fromBar: fromBar,
+      toBar: toBar);
 
   SheetElement copyWith({
     String? follows,
@@ -149,6 +175,10 @@ class SheetElement extends CanvasElement {
     bool? showTempo,
     bool? playbar,
     bool? showNames,
+    bool? showMarks,
+    BoxSpec? box,
+    int? fromBar,
+    int? toBar,
   }) =>
       SheetElement(base,
           follows: follows ?? this.follows,
@@ -168,7 +198,11 @@ class SheetElement extends CanvasElement {
           showComposer: showComposer ?? this.showComposer,
           showTempo: showTempo ?? this.showTempo,
           playbar: playbar ?? this.playbar,
-          showNames: showNames ?? this.showNames);
+          showNames: showNames ?? this.showNames,
+          showMarks: showMarks ?? this.showMarks,
+          box: box ?? this.box,
+          fromBar: math.max(0, fromBar ?? this.fromBar),
+          toBar: math.max(0, toBar ?? this.toBar));
 
   @override
   Map<String, dynamic> props() => {
@@ -190,6 +224,10 @@ class SheetElement extends CanvasElement {
         if (!showTempo) "showTempo": false,
         if (!playbar) "playbar": false,
         if (!showNames) "showNames": false,
+        if (!showMarks) "showMarks": false,
+        "box": box.toJson(),
+        if (fromBar > 0) "fromBar": fromBar,
+        if (toBar > 0) "toBar": toBar,
       };
 
   factory SheetElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -212,5 +250,12 @@ class SheetElement extends CanvasElement {
               showComposer: json["showComposer"] != false,
               showTempo: json["showTempo"] != false,
               playbar: json["playbar"] != false,
-              showNames: json["showNames"] != false);
+              showNames: json["showNames"] != false,
+              showMarks: json["showMarks"] != false,
+              box: json["box"] is Map<String, dynamic>
+                  ? BoxSpec.fromJson(json["box"] as Map<String, dynamic>)
+                  : sheetBox,
+              fromBar:
+                  json["fromBar"] is num ? (json["fromBar"] as num).toInt() : 0,
+              toBar: json["toBar"] is num ? (json["toBar"] as num).toInt() : 0);
 }

@@ -3146,6 +3146,10 @@ class CanvasController extends ChangeNotifier {
   /// null while the canvas has it (score_studio.dart).
   final ValueNotifier<String?> scoreStudio = ValueNotifier(null);
 
+  /// _rangeEnd is the frame a sheet's range of bars stops playing at (see
+  /// playSheet), or null.
+  int? _rangeEnd;
+
   /// studio3dElement is the 3D character the Studio was opened to change,
   /// if it was opened for one.
   String? studio3dElement;

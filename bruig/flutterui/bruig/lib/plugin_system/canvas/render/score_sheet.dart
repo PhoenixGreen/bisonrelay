@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart'
+    show paintBoxBorder, paintBoxFill;
 import 'package:bruig/plugin_system/canvas/render/score_engraver.dart';
 import 'package:flutter/painting.dart';
 
@@ -52,8 +54,51 @@ enum SheetBarPart { start, back, play, on, track }
 /// sheet.
 Rect? sheetBarRect(SheetElement e, Rect bounds) {
   if (!e.playbar || e.score.isEmpty) return null;
-  var h = (bounds.height * 0.085).clamp(18.0, 44.0);
-  return Rect.fromLTWH(bounds.left, bounds.top, bounds.width, h);
+  // Inside its frame's room, along the top.
+  var room = e.box.inner(bounds);
+  var h = (room.height * 0.085).clamp(18.0, 44.0);
+  return Rect.fromLTWH(room.left, room.top, room.width, h);
+}
+
+/// sheetBars are the bars [e] shows of [s], the first and the last,
+/// counted from nought.
+(int, int) sheetBars(SheetElement e, MusicScore s) {
+  var last = math.max(0, s.barCount - 1);
+  var a = e.fromBar > 0 ? (e.fromBar - 1).clamp(0, last) : 0;
+  var b = e.toBar > 0 ? (e.toBar - 1).clamp(a, last) : last;
+  return (a, b);
+}
+
+/// sheetSpan is where in the part's playing [e]'s bars play, in seconds:
+/// from the first time its first bar starts to the end of its last bar
+/// after that -- the whole playing for a sheet of every bar.
+(double, double) sheetSpan(SheetElement e, MusicScore s) {
+  var order = s.playOrder();
+  if (order.isEmpty) return (0, 0);
+  var (a, b) = sheetBars(e, s);
+  var i = math.max(0, order.indexWhere((p) => p.bar == a));
+  var j = order.indexWhere((p) => p.bar == b, i);
+  if (e.toBar <= 0 || j < 0) j = order.length - 1;
+  if (e.fromBar <= 0) i = 0;
+  return (
+    s.secondsAt(order, order[i].start),
+    s.secondsAt(order, order[j].start + s.barQuarters(order[j].bar))
+  );
+}
+
+/// sheetFrames is [sheetSpan] in [doc]'s frames, from [e]'s part's
+/// channel's start: where its play starts and stops. Null without a part.
+(int, int)? sheetFrames(SheetElement e, CanvasDocument doc) {
+  var s = doc.scores.where((x) => x.id == e.score).firstOrNull;
+  var part = s?.partById(e.part);
+  var channel = part == null ? null : doc.elementById(part.channel);
+  if (s == null || channel is! AudioElement) return null;
+  var (from, to) = sheetSpan(e, s);
+  var rate = math.max(1, doc.frameRate);
+  return (
+    channel.clip.at + (from * rate - 1e-6).ceil(),
+    channel.clip.at + (to * rate).round()
+  );
 }
 
 /// sheetBarParts are where each piece of a playbar in [bar] is: four
@@ -213,9 +258,10 @@ EngravedScore _engraved(
     MusicScore s, String part, Set<int> staves, SheetElement e) {
   var cache = _layouts[s] ??= {};
   var title = e.title.isNotEmpty ? e.title : s.title;
+  var bars = sheetBars(e, s);
   var key = "$part|${(staves.toList()..sort()).join(",")}|$title|"
       "${e.showTitle}${e.showSubtitle}${e.showComposer}${e.showTempo}"
-      "${e.showNames}";
+      "${e.showNames}${e.showMarks}|$bars";
   return cache[key] ??= layoutScore(
       s,
       EngraveOptions(
@@ -228,6 +274,8 @@ EngravedScore _engraved(
           credited: e.showComposer,
           tempoed: e.showTempo,
           names: e.showNames,
+          marks: e.showMarks,
+          bars: bars,
           title: title,
           width: 860));
 }
@@ -242,11 +290,14 @@ SheetView? sheetViewOf(
   var channel = part == null ? null : doc.elementById(part.channel);
   if (s == null || part == null || channel is! AudioElement) return null;
   var es = _engraved(s, part.id, sheetStaves(part, e.hands), e);
-  // Under the playbar, if it has one.
-  if (sheetBarRect(e, bounds) case var bar?) {
+  // Inside its frame's room, and under the playbar if it has one.
+  var bar = sheetBarRect(e, bounds);
+  bounds = e.box.inner(bounds);
+  if (bar != null) {
     bounds =
         Rect.fromLTRB(bounds.left, bar.bottom, bounds.right, bounds.bottom);
   }
+  if (bounds.width <= 0 || bounds.height <= 0) return null;
   var seconds = (frame - channel.clip.at) / math.max(1, doc.frameRate);
   var order = s.playOrder();
   var place = s.placeAt(order, seconds);
@@ -289,11 +340,14 @@ void paintScoreSheet(
     bool? playing,
     bool bar = true,
     bool knob = true}) {
-  canvas.drawRRect(RRect.fromRectAndRadius(bounds, const Radius.circular(6)),
-      Paint()..color = e.paper);
+  // Its frame: the paper (or what fills the box) inside its corners, and
+  // the border over the music, after it.
+  var frame = e.box.copyWith(fill: e.paper);
+  paintBoxFill(canvas, bounds, frame);
   var sounding = lit ?? sheetSounding(view);
   canvas.save();
-  canvas.clipRect(bounds);
+  canvas.clipRRect(frame.rounded(bounds));
+  canvas.clipRect(e.box.inner(bounds));
   canvas.translate(view.origin.dx, view.origin.dy);
   canvas.scale(view.scale);
   paintScore(canvas, view.engraved,
@@ -309,10 +363,11 @@ void paintScoreSheet(
               : null));
   canvas.restore();
   if (sheetBarRect(e, bounds) case var strip? when bar) {
-    paintSheetBar(canvas, strip, e, progress ?? sheetProgress(view),
+    paintSheetBar(canvas, strip, e, progress ?? sheetProgress(e, view),
         playing ?? sheetPlaying?.call() ?? false,
         knob: knob);
   }
+  paintBoxBorder(canvas, bounds, frame);
 }
 
 /// sheetSounding are the events of [view]'s part under its playhead.
@@ -328,9 +383,9 @@ double sheetLength(MusicScore s) =>
     s.secondsAt(s.playOrder(), s.lengthQuarters());
 
 /// sheetProgress is how far through its playing [view]'s playhead is.
-double sheetProgress(SheetView view) {
-  var total = sheetLength(view.score);
-  return total <= 0 ? 0 : (view.seconds / total).clamp(0.0, 1.0);
+double sheetProgress(SheetElement e, SheetView view) {
+  var (from, to) = sheetSpan(e, view.score);
+  return to <= from ? 0 : ((view.seconds - from) / (to - from)).clamp(0.0, 1.0);
 }
 
 /// sheetOnsets are the frames where a note of [e]'s part (the staves it
@@ -349,8 +404,11 @@ List<int> sheetOnsets(SheetElement e, CanvasDocument doc) {
   };
   var rate = math.max(1, doc.frameRate);
   var frames = <int>{};
+  // Only those in its bars, as they play in its span.
+  var (from, to) = sheetSpan(e, s);
   for (var n in partNotesOf(s, part.id)) {
     if (!mine.contains(n.event)) continue;
+    if (n.note.start < from - 1e-6 || n.note.start >= to - 1e-6) continue;
     // A strum's strings are a moment apart: its first is the onset.
     // The first frame the note has started by, so that at its onset it is
     // lit and heard (rounded, a frame could fall just before it).

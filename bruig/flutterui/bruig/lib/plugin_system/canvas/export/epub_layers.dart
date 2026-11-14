@@ -1103,11 +1103,9 @@ class _LayerMaker {
     if (sheetBarRect(s, bounds) case var bar?) {
       var parts0 = sheetBarParts(bar);
       var track = parts0[SheetBarPart.track]!;
-      var total = sheetLength(vs.first.score);
-      var channel = vs.first.channel;
-      var from = channel.clip.at;
-      var to = channel.clip.at + (total * rate).round();
-      double done(int f) => sheetProgress(vs[f]);
+      // Its bars as they play: all of them, or the range it shows.
+      var (from, to) = sheetFrames(s, page) ?? (0, frames);
+      double done(int f) => sheetProgress(s, vs[f]);
       // The filled track, revealed from the left; the knob slid along.
       var line = sheetTrackLine(track);
       var orange = ui.Paint()..color = const ui.Color(0xFFE2622B);
@@ -1168,7 +1166,14 @@ class _LayerMaker {
             data: {"frame": "$first"}, label: "To the start"),
         EpubControl("prev", px(parts0[SheetBarPart.back]!),
             data: {"frames": onsets}, label: "A note back"),
-        EpubControl("toggle", px(play), inner: pause, label: "Play"),
+        // A range of bars: play starts at its first bar (if the playhead is
+        // not in it) and stops at the end of its last.
+        s.fromBar > 0 || s.toBar > 0
+            ? EpubControl("range", px(play),
+                data: {"from": "$from", "to": "$to"},
+                inner: pause,
+                label: "Play")
+            : EpubControl("toggle", px(play), inner: pause, label: "Play"),
         EpubControl("next", px(parts0[SheetBarPart.on]!),
             data: {"frames": onsets}, label: "A note on"),
         EpubControl("seek", px(track),

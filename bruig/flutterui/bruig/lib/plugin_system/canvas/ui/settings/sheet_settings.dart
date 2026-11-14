@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show InstrumentLook;
 import 'package:bruig/plugin_system/canvas/model/musicxml.dart';
 import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart' show keyNames;
@@ -176,12 +178,65 @@ List<Widget> sheetSettings(
                     e.showNames,
                     (v) => e.copyWith(showNames: v)
                   ),
+                  (
+                    "sheetShowMarks",
+                    "Rehearsal marks",
+                    e.showMarks,
+                    (v) => e.copyWith(showMarks: v)
+                  ),
                 ])
                   CanvasToggle(
                       key: ValueKey(key),
                       label: label,
                       value: on,
                       onChanged: (v) => now(set(v))),
+              // Which bars it shows and plays (Ken, 2026-11-14: "show bars 5
+              // to 8"): nought for the score's own first or last.
+              if (e.score.isNotEmpty) ...[
+                CanvasNumberField(
+                  key: const ValueKey("sheetFromBar"),
+                  label: "From bar",
+                  value: (e.fromBar > 0 ? e.fromBar : 1).toDouble(),
+                  min: 1,
+                  max:
+                      (controller.scoreById(e.score)?.barCount ?? 1).toDouble(),
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(fromBar: v.round() <= 1 ? 0 : v.round()));
+                  },
+                  onCommit: commit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("sheetToBar"),
+                  label: "To bar",
+                  value: (e.toBar > 0
+                          ? e.toBar
+                          : controller.scoreById(e.score)?.barCount ?? 1)
+                      .toDouble(),
+                  min: 1,
+                  max:
+                      (controller.scoreById(e.score)?.barCount ?? 1).toDouble(),
+                  onChanged: (v) {
+                    begin();
+                    var last = controller.scoreById(e.score)?.barCount ?? 1;
+                    write(e.copyWith(toBar: v.round() >= last ? 0 : v.round()));
+                  },
+                  onCommit: commit,
+                ),
+                const CanvasHint(
+                    "The bars it shows and plays: its Play starts at the "
+                    "first and stops at the end of the last."),
+              ],
+              // Its frame: corners, a border, and room round the music --
+              // filled with its paper.
+              boxGroup(
+                  e.box.copyWith(fill: e.paper),
+                  (box) => write(e.copyWith(box: box, paper: box.fill)),
+                  begin,
+                  commit,
+                  label: "Frame",
+                  fillLabel: "Paper",
+                  remember: "sheetFrame"),
               // Its key: worked out, or chosen. 99 is "worked out".
               CanvasDropdown<int>(
                 key: const ValueKey("sheetKey"),
@@ -350,16 +405,30 @@ List<Widget> sheetSettings(
                   options: const [(true, "Show"), (false, "Highlight only")],
                   onChanged: (v) => now(e.copyWith(playhead: v)),
                 ),
-                if (controller.sheetKeyboard(e) case var keys?)
+                if (controller.sheetKeyboard(e) case var keys?) ...[
+                  // The part's own instrument, drawn as the one it is
+                  // played on: keys, a guitar's or a bass's neck, pads.
+                  CanvasDropdown<InstrumentLook>(
+                    key: const ValueKey("sheetInstrumentLook"),
+                    label: "Instrument",
+                    value: keys.instrument!.look,
+                    width: 190,
+                    options: [
+                      for (var l in InstrumentLook.values) (l, l.label)
+                    ],
+                    onChanged: (l) => controller.setInstrument(
+                        keys, keys.instrument!.copyWith(look: l)),
+                  ),
                   CanvasTextButton(
                     key: const ValueKey("sheetKeyboard"),
                     label: keys.base.visible
-                        ? "Hide its keyboard"
-                        : "Show its keyboard",
+                        ? "Hide its instrument"
+                        : "Show its instrument",
                     icon: Icons.piano,
                     onPressed: () =>
                         controller.showSheetKeyboard(e, !keys.base.visible),
                   ),
+                ],
                 const CanvasHint(
                     "With the sheet picked, press a note on it and the "
                     "playhead goes there. The notes under the playhead are "

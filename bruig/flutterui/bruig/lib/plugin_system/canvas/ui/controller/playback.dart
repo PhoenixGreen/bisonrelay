@@ -270,6 +270,7 @@ extension CanvasPlayback on CanvasController {
   }
 
   void pause() {
+    _rangeEnd = null;
     if (_practice != null) _endPractice();
     // Stopped, the slots stop with it -- and a recording is kept: what was
     // played is in the part, and what the slots played on the timeline.
@@ -800,6 +801,13 @@ extension CanvasPlayback on CanvasController {
     }
     if (next >= _document.frames) next = 0;
     var was = _frame;
+    // Playing a sheet's range of bars: it stops at the end of the last.
+    if (_rangeEnd case var end? when next >= end || next < was) {
+      _rangeEnd = null;
+      _frame = math.max(0, end - 1);
+      pause();
+      return;
+    }
     _frame = next;
     if (_practice != null) _practiceStep(was, next);
 

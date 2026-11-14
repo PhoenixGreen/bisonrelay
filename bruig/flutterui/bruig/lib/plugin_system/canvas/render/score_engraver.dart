@@ -39,6 +39,13 @@ class EngraveOptions {
   /// none, the music starts further left.
   final bool names;
 
+  /// marks is whether rehearsal marks are drawn (and room kept for them).
+  final bool marks;
+
+  /// bars are the bars laid out, the first and last (from nought), or null
+  /// for every one.
+  final (int, int)? bars;
+
   /// verse is the one verse of lyrics shown, or null for every verse.
   final int? verse;
 
@@ -56,6 +63,8 @@ class EngraveOptions {
       this.tempoed = true,
       this.title,
       this.names = true,
+      this.marks = true,
+      this.bars,
       this.verse,
       this.paper = const Color(0xFFFBFAF6),
       this.ink = const Color(0xFF1D1C1A)});
@@ -303,7 +312,10 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
 
   // Each bar's onsets across the staves shown, and its natural width.
   var bars = <_BarPlace>[];
-  for (var b = 0; b < score.barCount; b++) {
+  var (firstBar, lastBar) = o.bars ?? (0, score.barCount - 1);
+  firstBar = firstBar.clamp(0, math.max(0, score.barCount - 1));
+  lastBar = lastBar.clamp(firstBar, math.max(0, score.barCount - 1));
+  for (var b = firstBar; b <= lastBar; b++) {
     var q = score.barQuarters(b);
     var times = <double>{};
     for (var s in staves) {
@@ -412,7 +424,7 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
           ending = level + 1.6;
           level = ending + 0.4;
         }
-        if (sys.any((p) => score.bars[p.bar].mark.isNotEmpty)) {
+        if (o.marks && sys.any((p) => score.bars[p.bar].mark.isNotEmpty)) {
           mark = level + 2.6;
           level = mark + 0.3;
         }
@@ -790,7 +802,10 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
       var fifths = s.keyAt(sys.first.bar);
       x = _paintKey(canvas, fifths, clef, x, bottom, sp, ink);
       if (first) {
-        _paintTime(canvas, s.beats, s.beatUnit, x + sp * 0.4, top, sp, ink);
+        // As the time is where it starts: a range of bars after a change
+        // opens in the time changed to.
+        var (beats, unit) = s.timeAt(sys.first.bar);
+        _paintTime(canvas, beats, unit, x + sp * 0.4, top, sp, ink);
       }
     }
 
@@ -873,7 +888,7 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             .paint(canvas, Offset(p.x + sp * 0.8, y + sp * 0.2));
       }
       // A rehearsal mark, above the chord symbols (and any ending).
-      if (info.mark.isNotEmpty) {
+      if (info.mark.isNotEmpty && o.marks) {
         var at = Offset(p.x - sp * 0.2, topStaff - sp * es._rows[si].mark) +
             off(info.offsets, MarkKind.rehearsal);
         var t = _text(info.mark, sp * 1.5, ink, weight: FontWeight.w800);

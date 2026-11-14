@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
+import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -159,6 +160,30 @@ void main() {
       ]) {
         expect(script, contains(bit), reason: bit);
       }
+      c.dispose();
+    });
+  });
+
+  testWidgets("a range of bars: its Play plays them, its track goes along them",
+      (tester) async {
+    await tester.runAsync(() async {
+      var c = sheet.lesson();
+      c.replaceElement(sheet.sheetOf(c).copyWith(fromBar: 2, toBar: 3));
+      var (start, end) = sheetFrames(sheet.sheetOf(c), c.document)!;
+      var built = (await buildEpubStage(c.document, 0,
+          pixels: 1, width: 1280, height: 720))!;
+      var s = built.stage.layers.firstWhere((l) => l.id == "sheet");
+      var play = s.controls.firstWhere((b) => b.label == "Play");
+      expect(play.act, "range");
+      expect([play.data["from"], play.data["to"]], ["$start", "$end"]);
+      var seek = s.controls.firstWhere((b) => b.act == "seek");
+      expect([seek.data["from"], seek.data["to"]], ["$start", "$end"]);
+      var steps = s.controls
+          .firstWhere((b) => b.act == "next")
+          .data["frames"]!
+          .split(",")
+          .map(int.parse);
+      expect(steps.every((f) => f >= start && f < end), isTrue);
       c.dispose();
     });
   });

@@ -10,6 +10,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/score_edit.dart';
 import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
+import 'package:bruig/plugin_system/canvas/model/music_score.dart'
+    show MarkKind;
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show InstrumentLook;
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart' show BoxSpec;
 import 'package:bruig/plugin_system/canvas/render/score_engraver.dart';
 import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
@@ -590,5 +595,145 @@ void main() {
     var back =
         elementFromJson(e.copyWith(showNames: false).toJson()) as SheetElement;
     expect(back.showNames, isFalse);
+  });
+
+  // Ken, 2026-11-14: "the ability to pick a range of bars to display and
+  // playback on canvas" -- "show bars 5 to 8".
+  group("a range of bars", () {
+    test("only those bars shown, and its span where they play", () {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var e = sheetOf(c).copyWith(fromBar: 2, toBar: 3);
+      var view = sheetViewOf(e, sheetBox, c.document, 0)!;
+      expect({
+        for (var h in view.engraved.hits)
+          if (h.kind == ScoreHitKind.staff) h.bar
+      }, {
+        1,
+        2
+      });
+      var s = c.scoreById(e.score)!;
+      var (from, to) = sheetSpan(e, s);
+      // Bars 2 and 3, the first time through: beats 4 to 12 at 112.
+      expect(from, closeTo(4 * 60 / 112, 1e-9));
+      expect(to, closeTo(12 * 60 / 112, 1e-9));
+      var back = elementFromJson(e.toJson()) as SheetElement;
+      expect([back.fromBar, back.toBar], [2, 3]);
+    });
+
+    test("its Play starts at its first bar and stops at its last's end", () {
+      var c = lesson();
+      addTearDown(c.dispose);
+      c.replaceElement(sheetOf(c).copyWith(fromBar: 2, toBar: 3));
+      var e = sheetOf(c);
+      var (start, end) = sheetFrames(e, c.document)!;
+      c.frame = 0;
+      var play = sheetBarParts(sheetBarRect(e, sheetBox)!)[SheetBarPart.play]!;
+      c.sheetPressed(e, sheetBox, play.center);
+      expect(c.playing, isTrue);
+      expect(c.frame, start, reason: "from the range's first bar");
+      for (var i = 0; i < end - start + 5 && c.playing; i++) {
+        c.tickForTest();
+      }
+      expect(c.playing, isFalse, reason: "stopped at its end");
+      expect(c.frame, end - 1);
+      // Its steps keep within it.
+      c.sheetToStart(e);
+      expect(c.frame, start);
+      for (var i = 0; i < 40; i++) {
+        c.stepSheet(e, 1);
+      }
+      expect(c.frame, lessThan(end));
+    });
+
+    test("its rehearsal marks hidden, and the room for them", () async {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var e = sheetOf(c);
+      Future<SheetView> painted(SheetElement x) async {
+        var rec = ui.PictureRecorder();
+        paintSheetElement(ui.Canvas(rec), sheetBox, x, c.document, 0);
+        rec.endRecording().dispose();
+        return sheetViewOf(x, sheetBox, c.document, 0)!;
+      }
+
+      var shown = await painted(e);
+      expect(shown.engraved.hits.where((h) => h.mark == MarkKind.rehearsal),
+          hasLength(1));
+      var hidden = await painted(e.copyWith(showMarks: false));
+      expect(hidden.engraved.hits.where((h) => h.mark == MarkKind.rehearsal),
+          isEmpty);
+    });
+  });
+
+  test("its frame: room round the music, corners and a border", () async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var e = sheetOf(c).copyWith(
+        playbar: false,
+        box: const BoxSpec(
+            padding: 30,
+            borderWidth: 6,
+            borderColor: Color(0xFF0000FF),
+            borderRadius: 12));
+    var view = sheetViewOf(e, sheetBox, c.document, 0)!;
+    expect(view.origin.dy + view.window.top * view.scale,
+        greaterThanOrEqualTo(sheetBox.top + 30 - 0.01),
+        reason: "the music inside the room");
+    var rec = ui.PictureRecorder();
+    paintSheetElement(ui.Canvas(rec), sheetBox, e, c.document, 0);
+    var img = await rec.endRecording().toImage(1280, 720);
+    var raw = (await img.toByteData())!;
+    int at(int x, int y) => (y * img.width + x) * 4;
+    // The border on the left edge, half way down.
+    var i = at(sheetBox.left.toInt() + 2, sheetBox.center.dy.toInt());
+    expect([raw.getUint8(i), raw.getUint8(i + 1), raw.getUint8(i + 2)],
+        [0, 0, 255]);
+    var back = elementFromJson(e.toJson()) as SheetElement;
+    expect(back.box.padding, 30);
+  });
+
+  testWidgets("its instrument shown as another: a guitar's neck",
+      (tester) async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => SingleChildScrollView(
+          child: SizedBox(
+            width: 320,
+            child: CanvasControlScope(
+              maxWidth: 280,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: elementSettings(context, c, c.selected!)),
+            ),
+          ),
+        ),
+      ))),
+    ));
+    await tester.pump();
+    var look = find.byKey(const ValueKey("sheetInstrumentLook"));
+    await tester.ensureVisible(look);
+    await tester.tap(look);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text("Guitar").last);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(
+        c.sheetKeyboard(sheetOf(c))!.instrument!.look, InstrumentLook.guitar);
+    expect(find.text("Show its instrument"), findsOneWidget);
   });
 }

@@ -108,6 +108,21 @@ extension CanvasScores on CanvasController {
 
   // ----------------------------------------------- a sheet's playhead
 
+  /// playSheet plays [sheet]'s bars: a range of them from its first bar (if
+  /// the playhead is not already in it), stopping at the end of its last
+  /// (Ken, 2026-11-14: "pick a range of bars to display and playback").
+  void playSheet(SheetElement sheet) {
+    var span = sheetFrames(sheet, _document);
+    var ranged = sheet.fromBar > 0 || sheet.toBar > 0;
+    if (span == null || !ranged) {
+      play();
+      return;
+    }
+    if (_frame < span.$1 || _frame >= span.$2 - 1) frame = span.$1;
+    play();
+    _rangeEnd = span.$2;
+  }
+
   /// sheetToStart puts the playhead at the start of [sheet]'s part.
   void sheetToStart(SheetElement sheet) {
     var on = sheetOnsets(sheet, _document);
@@ -146,18 +161,14 @@ extension CanvasScores on CanvasController {
             if (playing) {
               pause();
             } else {
-              play();
+              playSheet(sheet);
             }
           case SheetBarPart.track:
-            var s = scoreById(sheet.score);
-            var e = sheetKeyboard(sheet);
-            if (s == null || e == null) return true;
-            var total = s.secondsAt(s.playOrder(), s.lengthQuarters());
+            // Along its bars as they play: all of them, or its range.
+            var span = sheetFrames(sheet, _document);
+            if (span == null) return true;
             var f = ((point.dx - r.left) / r.width).clamp(0.0, 1.0);
-            _sheetGo(
-                sheet,
-                e.clip.at +
-                    (total * f * math.max(1, _document.frameRate)).round(),
+            _sheetGo(sheet, span.$1 + ((span.$2 - span.$1) * f).round(),
                 sound: false);
         }
         return true;
@@ -201,10 +212,12 @@ extension CanvasScores on CanvasController {
     }
     frame = to;
     if (!sound) return;
-    var view = sheetViewOf(sheet, Rect.zero, _document, to);
-    if (view == null) return;
-    var e = view.channel;
-    var keys = e.instrument!.sounding(view.seconds).toList();
+    // What sounds there on its part's own channel.
+    var e = sheetKeyboard(sheet);
+    if (e == null) return;
+    var keys = e.instrument!
+        .sounding((to - e.clip.at) / math.max(1, _document.frameRate))
+        .toList();
     // The last step's notes let go first, however soon this one comes.
     _releaseStepped();
     for (var k in keys) {

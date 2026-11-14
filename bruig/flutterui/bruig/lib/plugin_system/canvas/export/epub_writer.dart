@@ -1321,14 +1321,26 @@ const String _mediaScript = r"""(function () {
             for (i = list.length - 1; i >= 0; i--) if (list[i] < cur - 0.5) { to = list[i]; break; }
             if (to === null) to = list[0];
           }
-          stopAt = -1; place(to / rate); return;
+          place(to / rate); return;
+        }
+        // A range of bars played: from its first bar if the playhead is
+        // not in it, stopping at the end of its last.
+        case "range": {
+          if (playing) { pause(); return; }
+          var r0 = parseInt(b.getAttribute("data-from") || "0", 10);
+          var r1 = parseInt(b.getAttribute("data-to") || "0", 10);
+          var here = t * rate;
+          if (here < r0 - 0.5 || here >= r1 - 0.5) place(r0 / rate);
+          stopAt = r1;
+          play();
+          return;
         }
         case "seek": {
           var r = b.getBoundingClientRect();
           var p = r.width > 0 ? Math.max(0, Math.min(1, (x - r.left) / r.width)) : 0;
           var a0 = parseInt(b.getAttribute("data-from") || "0", 10);
           var a1 = parseInt(b.getAttribute("data-to") || "0", 10);
-          stopAt = -1; place((a0 + p * (a1 - a0)) / rate); return;
+          place((a0 + p * (a1 - a0)) / rate); return;
         }
         case "restart": stopAt = -1; counts = {}; place(0); if (!playing) play(); return;
         case "goto": stopAt = -1; pause(); place(f / rate); return;
