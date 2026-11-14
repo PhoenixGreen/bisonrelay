@@ -484,6 +484,7 @@ class _Worker {
         }
         had.$2.sampler
           ..shape = part.shape
+          ..patch = part.sound == InstrumentSound.patch ? part.patch : null
           ..noteOn(m[3] as int, m[4] as int);
         // Into the next block now, rather than at the pump's next tick.
         _fill();

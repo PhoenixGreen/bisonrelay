@@ -524,6 +524,7 @@ class DartAudioEngine implements AudioEngine {
     // Its shape as it is now: changed in its editor, the next note has it.
     held.$2.sampler
       ..shape = sound.shape
+      ..patch = sound.sound == InstrumentSound.patch ? sound.patch : null
       ..noteOn(key, velocity);
   }
 

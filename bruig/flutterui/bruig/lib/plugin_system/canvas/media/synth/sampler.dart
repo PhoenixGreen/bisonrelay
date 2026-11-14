@@ -6,6 +6,8 @@ import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart'
     show InstrumentLook, MidiControl;
 import 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 
 // sampler.dart plays notes: a bank's samples where there is a bank (see
 // soundfont.dart), otherwise built-in piano, drum and plucked voices, so an
@@ -698,6 +700,28 @@ class Sampler {
   InstrumentShape shape;
   final List<Voice> _voices = [];
 
+  /// patch is the synth patch it plays, where it plays one (see
+  /// patch_voice.dart): set as it plays, the next note has it -- and,
+  /// wired as before, the notes sounding hear a setting changed at once.
+  SynthPatch? get patch => _graph?.patch;
+  set patch(SynthPatch? p) {
+    if (p == null) {
+      _graph = null;
+      return;
+    }
+    if (identical(p, _graph?.patch)) return;
+    var next = PatchGraph(p);
+    // Wired alike: the voices sounding go on in the new one.
+    if (_graph != null && _graph!.wiring == next.wiring) {
+      for (var v in _voices) {
+        if (v is PatchVoice) v.graph = next;
+      }
+    }
+    _graph = next;
+  }
+
+  PatchGraph? _graph;
+
   /// maxVoices is how many sound at once: past it the oldest let-go note
   /// is cut, then the oldest of all.
   static const int maxVoices = InstrumentShape.maxVoices;
@@ -707,8 +731,11 @@ class Sampler {
       this.bank = 0,
       this.program = 0,
       this.look = InstrumentLook.keyboard,
-      this.shape = const InstrumentShape()})
-      : preset = font?.preset(bank, program);
+      this.shape = const InstrumentShape(),
+      SynthPatch? patch})
+      : preset = font?.preset(bank, program) {
+    this.patch = patch;
+  }
 
   int get sounding => _voices.length;
 
@@ -797,7 +824,10 @@ class Sampler {
     var started = <Voice>[];
     var f = font, p = preset;
     var own = shape.envelope;
-    if (f != null && p != null) {
+    if (_graph case var graph?) {
+      // A synth patch: every module it is built of, a voice of its own.
+      started.add(PatchVoice(key, velocity, graph));
+    } else if (f != null && p != null) {
       for (var z in f.zones(p, key, velocity)) {
         started.add(_SfVoice(key, velocity, z, f.samples, enveloped: !own));
       }

@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonInt, jsonDouble, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:crypto/crypto.dart';
 
 export 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
@@ -122,7 +123,11 @@ enum InstrumentSound {
 
   /// slices are a sound cut at its hits, each played by a key of its own:
   /// see SliceKit.
-  slices("Slices of a sound");
+  slices("Slices of a sound"),
+
+  /// patch is a synth of modules patched together on the canvas: see
+  /// InstrumentPart.patch and synth_patch.dart.
+  patch("Synth patch");
 
   final String label;
   const InstrumentSound(this.label);
@@ -296,6 +301,10 @@ class InstrumentPart {
   /// of a step). The notes themselves are left as drawn.
   final double quantise, swing;
 
+  /// patch is the synth patch it plays where its sound is
+  /// [InstrumentSound.patch]: the modules on the canvas wired to it.
+  final SynthPatch? patch;
+
   /// score is the score part its notes are made from, as
   /// "scoreId/partId" (see music_score.dart), or "" for notes of its own.
   /// Made from a score, its notes are the score's: edited there, not here.
@@ -324,6 +333,7 @@ class InstrumentPart {
     this.quantise = 0,
     this.swing = 0,
     this.score = "",
+    this.patch,
   });
 
   /// slices are what it plays where its sound is [InstrumentSound.slices].
@@ -430,6 +440,8 @@ class InstrumentPart {
     double? quantise,
     double? swing,
     String? score,
+    SynthPatch? patch,
+    bool noPatch = false,
   }) {
     var k = (keys ?? this.keys).clamp(12, 88);
     return InstrumentPart(
@@ -450,6 +462,7 @@ class InstrumentPart {
       quantise: (quantise ?? this.quantise).clamp(0.0, 1.0),
       swing: (swing ?? this.swing).clamp(0.0, 1.0),
       score: score ?? this.score,
+      patch: noPatch ? null : patch ?? this.patch,
     );
   }
 
@@ -471,6 +484,7 @@ class InstrumentPart {
         if (quantise > 0) "quantise": quantise,
         if (swing > 0) "swing": swing,
         if (score.isNotEmpty) "score": score,
+        if (patch case var p?) "patch": p.toJson(),
       };
 
   factory InstrumentPart.fromJson(Map<String, dynamic> json) =>
@@ -503,6 +517,7 @@ class InstrumentPart {
         quantise: jsonDouble(json["quantise"], 0),
         swing: jsonDouble(json["swing"], 0),
         score: json["score"] is String ? json["score"] as String : "",
+        patch: SynthPatch.fromJson(json["patch"]),
       );
 }
 

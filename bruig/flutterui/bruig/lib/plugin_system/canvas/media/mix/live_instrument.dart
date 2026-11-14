@@ -27,7 +27,8 @@ class LiveInstrument implements TrackSource {
             font: part.sound == InstrumentSound.builtin ? null : font,
             bank: part.bank,
             program: part.program,
-            look: part.look);
+            look: part.look,
+            patch: part.sound == InstrumentSound.patch ? part.patch : null);
 
   @override
   int get frames => 1 << 40;
@@ -52,4 +53,6 @@ class LiveInstrument implements TrackSource {
 String liveWhich(InstrumentPart part, SoundFont? font) =>
     "${part.look.name}:${part.sound.name}:${part.bank}:${part.program}:"
     "${font != null && part.sound != InstrumentSound.builtin}:"
-    "${part.sound == InstrumentSound.slices ? part.slices?.key : null}";
+    "${part.sound == InstrumentSound.slices ? part.slices?.key : null}:"
+    // A patch rewired is another instrument; one only set otherwise plays on.
+    "${part.sound == InstrumentSound.patch ? part.patch?.wiring : null}";
