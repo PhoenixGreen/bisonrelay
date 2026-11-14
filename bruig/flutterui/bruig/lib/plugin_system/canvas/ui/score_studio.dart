@@ -96,6 +96,9 @@ class _ScoreStudioState extends State<ScoreStudio> {
   /// _scale is the paper's drawn size to the score's own.
   double _scale = 1;
 
+  @visibleForTesting
+  double get scale => _scale;
+
   /// placeOf is where on the paper event [id] is drawn: for tests.
   @visibleForTesting
   Offset placeOf(String id) =>
@@ -121,6 +124,16 @@ class _ScoreStudioState extends State<ScoreStudio> {
     return Offset(x, y) * _scale;
   }
 
+  /// handlePlace is where on the paper the picked marking's handle [i] is:
+  /// for tests.
+  @visibleForTesting
+  Offset handlePlace(int i) {
+    var pm = _markPick!;
+    var hit = _engraved!.hits.firstWhere((h) =>
+        h.kind == ScoreHitKind.mark && h.mark == pm.kind && h.event == pm.id);
+    return scoreMarkHandles(hit, _engraved!.options.space)[i] * _scale;
+  }
+
   /// markPlace is where on the paper event [id]'s marking [kind] is drawn:
   /// for tests.
   @visibleForTesting
@@ -140,6 +153,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
 
   @override
   void dispose() {
+    _typed.dispose();
+    _typedFocus.dispose();
     c.removeListener(_changed);
     _noteOff?.cancel();
     _focus.dispose();
@@ -277,6 +292,11 @@ class _ScoreStudioState extends State<ScoreStudio> {
     }
     var s = score;
     if (s == null) return KeyEventResult.ignored;
+    // Typing in a field (a title, a lyric on the score) is typing, not the
+    // Studio's keys.
+    if (FocusManager.instance.primaryFocus != _focus) {
+      return KeyEventResult.ignored;
+    }
     var k = ev.logicalKey;
     var meta = HardwareKeyboard.instance.isMetaPressed ||
         HardwareKeyboard.instance.isControlPressed;
@@ -284,6 +304,25 @@ class _ScoreStudioState extends State<ScoreStudio> {
     var alt = HardwareKeyboard.instance.isAltPressed;
     if (meta && k == LogicalKeyboardKey.keyZ) {
       shift ? c.redo() : c.undo();
+      return KeyEventResult.handled;
+    }
+    // ⌘L a lyric, ⌘K a chord symbol, on the note picked, as MuseScore.
+    if (meta && sel != null && k == LogicalKeyboardKey.keyL) {
+      startTyping("lyr", sel!);
+      return KeyEventResult.handled;
+    }
+    if (meta && sel != null && k == LogicalKeyboardKey.keyK) {
+      startTyping("ch", sel!);
+      return KeyEventResult.handled;
+    }
+    if ((k == LogicalKeyboardKey.delete || k == LogicalKeyboardKey.backspace) &&
+        _markPick != null) {
+      // The marking picked goes.
+      var pm = _markPick!;
+      edit(pm.kind == MarkKind.hairpin
+          ? s.removeSpanner(pm.id)
+          : s.setDynamic(pm.id, null));
+      setState(() => _markPick = null);
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.space) {
@@ -542,13 +581,15 @@ class _ScoreStudioState extends State<ScoreStudio> {
     );
   }
 
-  Widget _music(BuildContext context, int code, {double size = 22}) =>
-      Text(String.fromCharCode(code),
-          style: TextStyle(
-              fontFamily: "Bravura",
-              fontSize: size,
-              height: 1,
-              color: ThemeNotifier.of(context).colors.onSurface));
+  /// _music is a Bravura glyph in a toolbar button, its baseline at
+  /// [baseline] of the button's height: drawn, not set as text, so that no
+  /// text size can push a quaver's flag out of the top (Ken, 2026-11-14).
+  Widget _music(BuildContext context, int code,
+          {double size = 18, double baseline = 0.78}) =>
+      CustomPaint(
+          size: const Size(34, 32),
+          painter: _GlyphPainter(code, size, baseline,
+              ThemeNotifier.of(context).colors.onSurface));
 
   Widget _toolbar(BuildContext context, MusicScore s) {
     final colors = ThemeNotifier.of(context).colors;
@@ -572,9 +613,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
                 on: (input ? value : e?.value ?? value) == v,
                 tip: "$name ($key)",
                 onTap: () => pickValue(v),
-                child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: _music(context, code))),
+                child: _music(context, code)),
             const SizedBox(width: 4),
           ],
           _tool(context,
@@ -594,10 +633,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
             } else if (sel != null) {
               edit(s.deleteEvent(sel!));
             }
-          },
-              child: Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: _music(context, 0xE4E5, size: 20))),
+          }, child: _music(context, 0xE4E5, size: 20, baseline: 0.5)),
           const SizedBox(width: 4),
           _tool(context,
               key: const ValueKey("scoreTie"),
@@ -618,10 +654,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
                 on: false,
                 tip: name, onTap: () {
               if (sel != null) edit(s.setAlter(sel!, alter));
-            },
-                child: Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: _music(context, code, size: 20))),
+            }, child: _music(context, code, size: 20, baseline: 0.62)),
             const SizedBox(width: 4),
           ],
           gap(),
@@ -646,6 +679,37 @@ class _ScoreStudioState extends State<ScoreStudio> {
                     style: TextStyle(
                         fontWeight: FontWeight.w700, color: colors.onSurface))),
             const SizedBox(width: 4),
+          ],
+          // On the note picked: a chord symbol or a lyric typed on the
+          // score, a strum turned down or up.
+          if (e != null && sel != null) ...[
+            gap(),
+            StudioPill(
+                key: const ValueKey("scoreTypeChord"),
+                label: "Chord",
+                tooltip: "Type its chord symbol on the score (⌘K)",
+                onTap: () => startTyping("ch", sel!)),
+            const SizedBox(width: 4),
+            if (!e.isRest && !e.slash)
+              StudioPill(
+                  key: const ValueKey("scoreTypeLyric"),
+                  label: "Lyric",
+                  tooltip: "Type its words on the score (⌘L); space or a "
+                      "hyphen moves on to the next note",
+                  onTap: () => startTyping("lyr", sel!)),
+            if (e.slash) ...[
+              StudioPill(
+                  key: const ValueKey("scoreStrumDown"),
+                  label: "⊓ Down",
+                  selected: e.strum == Strum.down,
+                  onTap: () => edit(s.setStrum(sel!, Strum.down))),
+              const SizedBox(width: 4),
+              StudioPill(
+                  key: const ValueKey("scoreStrumUp"),
+                  label: "V Up",
+                  selected: e.strum == Strum.up,
+                  onTap: () => edit(s.setStrum(sel!, Strum.up))),
+            ],
           ],
           gap(),
           _tool(context,
@@ -729,6 +793,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
                 at: cursor!.at
               )
             : null,
+        pickedMark: _markPick,
         playhead: playhead);
     return Container(
       color: colors.surfaceContainerLowest,
@@ -736,40 +801,265 @@ class _ScoreStudioState extends State<ScoreStudio> {
         var scale = _scale = math.min(
             1.6, math.max(0.5, (box.maxWidth - 32) / es.options.width));
         Offset toScore(Offset local) => local / scale;
+        var typing = _typing == null ? null : _typingPlace(s, es);
         return SingleChildScrollView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Center(
-            child: GestureDetector(
-              key: const ValueKey("scorePaper"),
-              behavior: HitTestBehavior.opaque,
-              // A drag starts where it was pressed: a marking is picked up
-              // there, not where the drag was first seen.
-              dragStartBehavior: DragStartBehavior.down,
-              onTapUp: (d) => _tap(s, es, toScore(d.localPosition)),
-              onPanStart: (d) => _dragStart(s, es, toScore(d.localPosition)),
-              onPanUpdate: (d) => _dragMove(s, toScore(d.localPosition)),
-              onPanEnd: (_) => _dragEnd(),
-              child: Container(
-                decoration: BoxDecoration(boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.18),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6)),
-                ]),
-                child: CustomPaint(
-                  size: Size(es.options.width * scale, es.height * scale),
-                  painter: _ScorePainter(es, state, scale),
+            child: Stack(clipBehavior: Clip.none, children: [
+              // A press on a marking (or a picked one's handle) is a drag
+              // from the start, so the page's scroll cannot take it; one
+              // that does not move is a click after all (see _dragEnd).
+              RawGestureDetector(
+                behavior: HitTestBehavior.opaque,
+                gestures: {
+                  _MarkDrag: GestureRecognizerFactoryWithHandlers<_MarkDrag>(
+                      () => _MarkDrag(), (r) {
+                    r.dragStartBehavior = DragStartBehavior.down;
+                    r.grabs = (local) => _grabs(es, toScore(local));
+                    r.onStart = (d) {
+                      _pressGlobal = d.globalPosition;
+                      _dragStart(s, es, toScore(d.localPosition));
+                    };
+                    r.onUpdate = (d) => _dragMove(es, toScore(d.localPosition));
+                    r.onEnd = (_) => _dragEnd(es);
+                  }),
+                },
+                child: GestureDetector(
+                  key: const ValueKey("scorePaper"),
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (d) =>
+                      _tap(s, es, toScore(d.localPosition), d.globalPosition),
+                  child: Container(
+                    decoration: BoxDecoration(boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6)),
+                    ]),
+                    child: CustomPaint(
+                      size: Size(es.options.width * scale, es.height * scale),
+                      painter: _ScorePainter(es, state, scale),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              // A lyric or chord being typed, on the score where it goes.
+              if (typing != null)
+                Positioned(
+                  left: typing.dx * scale,
+                  top: typing.dy * scale,
+                  child: _inlineEditor(context, s, scale),
+                ),
+            ]),
           ),
         );
       }),
     );
   }
 
-  void _tap(MusicScore s, EngravedScore es, Offset p) {
+  // ----------------------------------------- typing on the score
+
+  /// _typing is a lyric (kind "lyr", its verse) or a chord symbol (kind
+  /// "ch") being typed on the score, on event [event].
+  ({String kind, String event, int verse})? _typing;
+  late final _typed = TextEditingController();
+  late final _typedFocus = FocusNode(debugLabel: "scoreInline");
+
+  /// _typingPlace is where, on the engraving, the text being typed goes.
+  Offset? _typingPlace(MusicScore s, EngravedScore es) {
+    var t = _typing!;
+    var at = s.find(t.event);
+    var ev = es.hits
+        .where((h) => h.kind == ScoreHitKind.event && h.event == t.event)
+        .firstOrNull;
+    if (at == null || ev == null) return null;
+    var staff = es.hits
+        .where((h) =>
+            h.kind == ScoreHitKind.staff &&
+            h.part == at.part &&
+            h.staff == at.staff &&
+            h.bar == at.bar)
+        .firstOrNull;
+    if (staff == null) return null;
+    var sp = es.options.space;
+    var bottom = staff.bottom;
+    if (t.kind == "ch") {
+      var strum = s.partById(at.part)!.strum;
+      return Offset(ev.rect.left - sp * 0.4,
+          bottom - sp * 4 - sp * (strum ? 5.0 : 3.2) - sp * 0.3);
+    }
+    return Offset(ev.rect.left - sp * 1.4,
+        bottom + sp * 4.6 + t.verse * sp * 2.3 - sp * 0.3);
+  }
+
+  /// startTyping opens the lyric ([kind] "lyr", [verse]) or chord ("ch")
+  /// editor on event [id], with what it says now.
+  void startTyping(String kind, String id, {int verse = 0}) {
+    var s = score;
+    var e = s?.event(id);
+    if (e == null) return;
+    setState(() {
+      input = false;
+      sel = id;
+      _markPick = null;
+      _typing = (kind: kind, event: id, verse: verse);
+      _typed.text = kind == "ch"
+          ? e.chord ?? ""
+          : verse < e.lyrics.length
+              ? e.lyrics[verse]
+              : "";
+      _typed.selection =
+          TextSelection(baseOffset: 0, extentOffset: _typed.text.length);
+    });
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _typedFocus.requestFocus());
+  }
+
+  /// _commitTyped writes what is typed into the score.
+  void _commitTyped(String text) {
+    var t = _typing;
+    var s = score;
+    if (t == null || s == null || s.event(t.event) == null) return;
+    var e = s.event(t.event)!;
+    if (t.kind == "ch") {
+      if ((e.chord ?? "") != text.trim()) edit(s.setChord(t.event, text));
+    } else {
+      var was = t.verse < e.lyrics.length ? e.lyrics[t.verse] : "";
+      if (was != text.trim()) edit(s.setLyric(t.event, t.verse, text.trim()));
+    }
+  }
+
+  /// _typeOn writes what is typed and moves to the next note (a lyric) or
+  /// event (a chord) in the staff, as MuseScore's space and hyphen do.
+  void _typeOn(String text) {
+    _commitTyped(text);
+    var t = _typing!;
+    var next = nextEvent(score!, t.event, notes: t.kind != "ch");
+    if (next == null) {
+      _stopTyping(commit: false);
+      return;
+    }
+    startTyping(t.kind, next, verse: t.verse);
+  }
+
+  void _stopTyping({bool commit = true}) {
+    if (_typing == null) return;
+    if (commit) _commitTyped(_typed.text);
+    setState(() => _typing = null);
     _focus.requestFocus();
+  }
+
+  Widget _inlineEditor(BuildContext context, MusicScore s, double scale) {
+    final colors = ThemeNotifier.of(context).colors;
+    var chord = _typing!.kind == "ch";
+    var sp = 8.0 * scale;
+    return Focus(
+      onKeyEvent: (node, ev) {
+        if (ev is KeyDownEvent && ev.logicalKey == LogicalKeyboardKey.escape) {
+          _stopTyping(commit: false);
+          return KeyEventResult.handled;
+        }
+        if (ev is KeyDownEvent && ev.logicalKey == LogicalKeyboardKey.tab) {
+          _typeOn(_typed.text);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: SizedBox(
+        key: const ValueKey("scoreInline"),
+        width: sp * (chord ? 9 : 8),
+        height: sp * 2.6,
+        child: TextField(
+          controller: _typed,
+          focusNode: _typedFocus,
+          textAlign: chord ? TextAlign.left : TextAlign.center,
+          style: TextStyle(
+              fontSize: sp * (chord ? 1.6 : 1.45),
+              fontWeight: chord ? FontWeight.w800 : FontWeight.w600,
+              color: const Color(0xFF1D1C1A)),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding:
+                EdgeInsets.symmetric(horizontal: sp * 0.4, vertical: sp * 0.4),
+            filled: true,
+            fillColor: const Color(0xFFFFFFFF),
+            enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: colors.primary, width: 1.5)),
+            focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: colors.primary, width: 2)),
+          ),
+          onChanged: (t) {
+            // A space moves on; so, for a lyric, does a hyphen, which is
+            // kept: the word goes on into the next note.
+            if (t.endsWith(" ")) {
+              _typeOn(t.trim());
+            } else if (!chord && t.endsWith("-") && t.trim().length > 1) {
+              _typeOn(t.trim());
+            }
+          },
+          onSubmitted: (t) => _stopTyping(),
+          onTapOutside: (_) => _stopTyping(),
+        ),
+      ),
+    );
+  }
+
+  // ----------------------------------------- pressing the paper
+
+  /// _markPick is the marking picked (a dynamic, a hairpin): drawn with the
+  /// handles that size or stretch it.
+  ({String kind, String id})? _markPick;
+
+  DateTime _lastTap = DateTime(0);
+  Offset _lastTapAt = Offset.zero;
+
+  void _tap(MusicScore s, EngravedScore es, Offset p, Offset global) {
+    if (_typing != null) _stopTyping();
+    _focus.requestFocus();
+    var now = DateTime.now();
+    var twice = now.difference(_lastTap) < const Duration(milliseconds: 350) &&
+        (p - _lastTapAt).distance < es.options.space;
+    _lastTap = now;
+    _lastTapAt = p;
+    var mark = es.markAt(p);
+    if (mark != null && mark.event != null) {
+      var kind = mark.mark!;
+      var id = mark.event!;
+      if (twice) {
+        if (kind == MarkKind.dynamic) {
+          _redrawDynamic(s, id, global);
+        } else if (kind == MarkKind.chord) {
+          startTyping("ch", id);
+        } else if (kind.startsWith("lyr")) {
+          startTyping("lyr", id, verse: int.tryParse(kind.substring(3)) ?? 0);
+        }
+        return;
+      }
+      if (kind == MarkKind.strum) {
+        // A click turns a strum the other way.
+        var e = s.event(id);
+        if (e != null) {
+          edit(s.setStrum(id, e.strum == Strum.up ? Strum.down : Strum.up));
+        }
+        return;
+      }
+      if (kind == MarkKind.dynamic || kind == MarkKind.hairpin) {
+        setState(() {
+          _markPick = (kind: kind, id: id);
+          if (kind == MarkKind.dynamic) sel = id;
+        });
+        return;
+      }
+    }
+    if (_markPick != null) setState(() => _markPick = null);
+    if (twice) {
+      // Twice on the chord line over a note, or the lyric line under one:
+      // type there.
+      if (_lineAt(s, es, p) case (var kind, var id, var verse)?) {
+        startTyping(kind, id, verse: verse);
+        return;
+      }
+    }
     var area = es.staffAt(p);
     if (input && area != null) {
       // A note where it is clicked, on the grid of the value chosen.
@@ -813,12 +1103,134 @@ class _ScoreStudioState extends State<ScoreStudio> {
     }
   }
 
+  /// _lineAt is the chord line over a staff ("ch") or a lyric line under it
+  /// ("lyr", its verse) at [p], with the event nearest across: a note for a
+  /// lyric, anything for a chord.
+  (String, String, int)? _lineAt(MusicScore s, EngravedScore es, Offset p) {
+    var sp = es.options.space;
+    for (var h in es.hits) {
+      if (h.kind != ScoreHitKind.staff) continue;
+      if (p.dx < h.rect.left || p.dx > h.rect.right) continue;
+      var top = h.bottom - sp * 4;
+      var chordLine = p.dy >= top - sp * 6.5 && p.dy < top - sp * 0.6;
+      var lyricLine = p.dy > h.bottom + sp * 3.8 &&
+          p.dy < h.bottom + sp * (4.6 + 2.3 * (s.verses + 1));
+      if (!chordLine && !lyricLine) continue;
+      String? best;
+      var bestD = double.infinity;
+      for (var e in es.hits) {
+        if (e.kind != ScoreHitKind.event ||
+            e.part != h.part ||
+            e.staff != h.staff ||
+            e.bar != h.bar) {
+          continue;
+        }
+        if (lyricLine && (s.event(e.event!)?.isRest ?? true)) continue;
+        var d = (e.rect.center.dx - p.dx).abs();
+        if (d < bestD) {
+          bestD = d;
+          best = e.event;
+        }
+      }
+      if (best == null) continue;
+      if (chordLine) return ("ch", best, 0);
+      var verse = ((p.dy - (h.bottom + sp * 4.6)) / (sp * 2.3)).floor();
+      return ("lyr", best, verse.clamp(0, s.verses));
+    }
+    return null;
+  }
+
+  /// _redrawDynamic offers the dynamics in place of event [id]'s.
+  Future<void> _redrawDynamic(MusicScore s, String id, Offset global) async {
+    var picked = await showMenu<Dynamic>(
+      context: context,
+      position:
+          RelativeRect.fromLTRB(global.dx, global.dy, global.dx, global.dy),
+      items: [
+        for (var d in Dynamic.values)
+          PopupMenuItem(
+              key: ValueKey("scoreDynamicMenu-${d.name}"),
+              value: d,
+              child: Text(d.name,
+                  style: const TextStyle(
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w700))),
+      ],
+    );
+    var now = score;
+    if (picked == null || now == null || now.event(id) == null) return;
+    edit(now.withEvent(id, (e) => e.copyWith(dyn: picked)));
+  }
+
+  // ----------------------------------------- dragging on the paper
+
+  /// _handle is a picked marking's handle being dragged: which (0 a
+  /// dynamic's corner or a hairpin's start, 1 a hairpin's end), and the
+  /// marking's rect and size when it began.
+  int? _handle;
+  Rect _handleRect = Rect.zero;
+  double _handleWas = 1;
+
+  /// _grabs is whether a press at [p] is on a marking, or on the picked
+  /// marking's handle: a drag to claim at once.
+  bool _grabs(EngravedScore es, Offset p) {
+    if (es.markAt(p) != null) return true;
+    if (_markPick case var pm?) {
+      var hit = es.hits
+          .where((h) =>
+              h.kind == ScoreHitKind.mark &&
+              h.mark == pm.kind &&
+              h.event == pm.id)
+          .firstOrNull;
+      if (hit != null) {
+        var sp = es.options.space;
+        return scoreMarkHandles(hit, sp)
+            .any((h) => (h - p).distance < sp * 1.2);
+      }
+    }
+    return false;
+  }
+
+  Offset _pressGlobal = Offset.zero, _pressAt = Offset.zero;
+  double _travelled = 0;
+
   void _dragStart(MusicScore s, EngravedScore es, Offset p) {
+    _pressAt = p;
+    _travelled = 0;
+    if (_typing != null) _stopTyping();
+    var sp = es.options.space;
+    // A picked marking's handle.
+    if (_markPick case var pm?) {
+      var hit = es.hits
+          .where((h) =>
+              h.kind == ScoreHitKind.mark &&
+              h.mark == pm.kind &&
+              h.event == pm.id)
+          .firstOrNull;
+      if (hit != null) {
+        var handles = scoreMarkHandles(hit, sp);
+        for (var (i, h) in handles.indexed) {
+          if ((h - p).distance < sp * 1.2) {
+            _handle = i;
+            _drag = hit;
+            _dragFrom = p;
+            _handleRect = hit.rect;
+            _handleWas = s.event(pm.id)?.sizeOf(MarkKind.dynamic) ?? 1;
+            c.beginInteraction();
+            return;
+          }
+        }
+      }
+    }
     var m = es.markAt(p);
     if (m == null) return;
+    _handle = null;
     _drag = m;
     _dragFrom = p;
     _dragWas = switch (m) {
+      _ when m.mark == MarkKind.hairpin =>
+        s.spanners.where((x) => x.id == m.event).firstOrNull?.offset ??
+            Offset.zero,
       ScoreHit(event: var id?) => s.event(id)?.offsets[m.mark] ?? Offset.zero,
       _ when m.mark == MarkKind.tempo =>
         s.offsets[MarkKind.tempo] ?? Offset.zero,
@@ -827,23 +1239,75 @@ class _ScoreStudioState extends State<ScoreStudio> {
     c.beginInteraction();
   }
 
-  void _dragMove(MusicScore s, Offset p) {
+  void _dragMove(EngravedScore es, Offset p) {
+    _travelled = math.max(_travelled, (p - _pressAt).distance);
     var m = _drag;
-    if (m == null) return;
+    var s = score;
+    if (m == null || s == null) return;
+    var kind = m.mark!;
+    if (_handle case var h?) {
+      if (kind == MarkKind.dynamic) {
+        // The corner pulled out or in: the dynamic as much bigger.
+        var from = (_dragFrom - _handleRect.topLeft).distance;
+        var to = (p - _handleRect.topLeft).distance;
+        edit(s.resizedEventMark(
+            m.event!, MarkKind.dynamic, _handleWas * to / math.max(1, from)));
+      } else if (kind == MarkKind.hairpin) {
+        // An end pulled to another note of its staff.
+        if (_noteTimeAt(s, es, m, p) case var t?) {
+          edit(s.withSpanner(m.event!, (sn) {
+            var start = h == 0 ? t : sn.from, end = h == 0 ? sn.to : t;
+            bool before(ScoreTime a, ScoreTime b) =>
+                a.bar < b.bar || (a.bar == b.bar && a.at <= b.at);
+            return before(start, end) ? sn.copyWith(from: start, to: end) : sn;
+          }));
+        }
+      }
+      return;
+    }
     var to = _dragWas + (p - _dragFrom);
     to = Offset(to.dx.roundToDouble(), to.dy.roundToDouble());
-    var kind = m.mark!;
-    edit(m.event != null
-        ? s.movedEventMark(m.event!, kind, to)
-        : kind == MarkKind.tempo
-            ? s.movedScoreMark(kind, to)
-            : s.movedBarMark(m.bar, kind, to));
+    edit(kind == MarkKind.hairpin
+        ? s.withSpanner(m.event!, (sn) => sn.copyWith(offset: to))
+        : m.event != null
+            ? s.movedEventMark(m.event!, kind, to)
+            : kind == MarkKind.tempo
+                ? s.movedScoreMark(kind, to)
+                : s.movedBarMark(m.bar, kind, to));
   }
 
-  void _dragEnd() {
-    if (_drag == null) return;
+  /// _noteTimeAt is the note start nearest [p] across, in the staff of
+  /// hairpin [m].
+  ScoreTime? _noteTimeAt(MusicScore s, EngravedScore es, ScoreHit m, Offset p) {
+    ScoreTime? best;
+    var bestD = double.infinity;
+    for (var h in es.hits) {
+      if (h.kind != ScoreHitKind.event ||
+          h.part != m.part ||
+          h.staff != m.staff) {
+        continue;
+      }
+      var d = (h.rect.center.dx - p.dx).abs() +
+          (h.rect.center.dy - p.dy).abs() * 0.2;
+      if (d < bestD) {
+        bestD = d;
+        best = (bar: h.bar, at: h.at);
+      }
+    }
+    return best;
+  }
+
+  void _dragEnd(EngravedScore es) {
+    var was = _drag;
     _drag = null;
+    _handle = null;
+    if (was == null) return;
     c.endInteraction();
+    // A press that did not travel is a click: on a strum mark, a dynamic.
+    if (_travelled < es.options.space * 0.4) {
+      var s = score;
+      if (s != null) _tap(s, es, _pressAt, _pressGlobal);
+    }
   }
 
   // ------------------------------------------------------------- the side
@@ -1230,7 +1694,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
             ),
             (
               "Tempo",
-              "♩ =",
+              "Tempo",
               "${s.tempo.round()}",
               (t) => s.copyWith(tempo: double.tryParse(t) ?? s.tempo)
             ),
@@ -1280,6 +1744,49 @@ class _ScoreStudioState extends State<ScoreStudio> {
   }
 }
 
+/// _MarkDrag is a pan that claims its pointer at once where [grabs] says
+/// the press is on something to drag (a marking), so that the scroll the
+/// paper is in never takes it.
+class _MarkDrag extends PanGestureRecognizer {
+  bool Function(Offset local)? grabs;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    if (grabs?.call(event.localPosition) ?? false) {
+      resolve(GestureDisposition.accepted);
+    }
+  }
+}
+
+/// _GlyphPainter draws one Bravura glyph centred across its box, its
+/// baseline a share of the way down.
+class _GlyphPainter extends CustomPainter {
+  final int code;
+  final double size, baseline;
+  final Color colour;
+  _GlyphPainter(this.code, this.size, this.baseline, this.colour);
+
+  @override
+  void paint(Canvas canvas, Size box) {
+    var t = TextPainter(
+      text: TextSpan(
+          text: String.fromCharCode(code),
+          style: TextStyle(
+              fontFamily: "Bravura", fontSize: size, height: 1, color: colour)),
+      textDirection: TextDirection.ltr,
+      textScaler: TextScaler.noScaling,
+    )..layout();
+    var base = t.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+    t.paint(canvas,
+        Offset((box.width - t.width) / 2, box.height * baseline - base));
+  }
+
+  @override
+  bool shouldRepaint(_GlyphPainter old) =>
+      old.code != code || old.colour != colour || old.size != size;
+}
+
 class _ScorePainter extends CustomPainter {
   final EngravedScore es;
   final ScorePaintState state;
@@ -1302,6 +1809,7 @@ class _ScorePainter extends CustomPainter {
       !old.state.playing.containsAll(state.playing) ||
       old.state.picked.join() != state.picked.join() ||
       old.state.cursor != state.cursor ||
+      old.state.pickedMark != state.pickedMark ||
       old.state.playhead != state.playhead;
 }
 

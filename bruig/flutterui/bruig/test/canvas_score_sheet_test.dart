@@ -1,8 +1,10 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
@@ -318,5 +320,139 @@ void main() {
     await tester.tap(find.text("Highlight only").last);
     await tester.pump(const Duration(milliseconds: 600));
     expect(sheetOf(c).playhead, isFalse);
+  });
+
+  // Ken, 2026-11-14: "when I export as video ... the notes on the piano
+  // don't show". A frame made with nothing live lights the keys as the
+  // editor does while it plays.
+  test("made into a video, its keyboard lights the notes under the playhead",
+      () async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    c.showSheetKeyboard(sheetOf(c), true);
+    var keys = c.sheetKeyboard(sheetOf(c))!;
+    Future<int> amber(int frame) async {
+      var img = await renderFrame(c.document, frame: frame);
+      var raw = (await img.toByteData())!;
+      var w = img.width;
+      var scale = w / 1280;
+      var box = Rect.fromLTWH(
+          keys.base.x, keys.base.y, keys.base.width, keys.base.height);
+      var n = 0;
+      for (var y = (box.top * scale).toInt();
+          y < box.bottom * scale && y < img.height;
+          y++) {
+        for (var x = (box.left * scale).toInt(); x < box.right * scale; x++) {
+          var i = (y * w + x) * 4;
+          var r = raw.getUint8(i),
+              g = raw.getUint8(i + 1),
+              b = raw.getUint8(i + 2);
+          // The accent's amber, lightened on a white key, darkened on a black.
+          if (r > 170 && r > g + 25 && g > b + 40) n++;
+        }
+      }
+      img.dispose();
+      return n;
+    }
+
+    // The first chord sounds at the start; long after the last, nothing.
+    var playing = await amber(frameOf(c, 0.1));
+    var after = await amber(24 * 50);
+    expect(playing, greaterThan(after + 200));
+  });
+
+  // Ken, 2026-11-14: "changing the Paper colour only changes the head of
+  // the sheet music ... not possible to make the paper transparent ... the
+  // Ink colour isn't working".
+  Future<(ByteData, int)> drawn(SheetElement e, CanvasDocument doc) async {
+    var rec = ui.PictureRecorder();
+    paintSheetElement(ui.Canvas(rec), sheetBox, e, doc, 0);
+    var img = await rec.endRecording().toImage(1280, 720);
+    var raw = (await img.toByteData())!;
+    return (raw, img.width);
+  }
+
+  test("its paper and ink: the whole sheet's, the paper down to none",
+      () async {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var e = sheetOf(c);
+    var view = sheetViewOf(e, sheetBox, c.document, 0)!;
+    // A blank place inside the engraving: right of the last bar line's
+    // end, on the first system's height between its staves.
+    var blank = view.origin +
+        Offset(view.engraved.options.width - 4,
+                view.engraved.systems.first.top + 8) *
+            view.scale;
+    int at(ByteData raw, int w, Offset p, int ch) =>
+        raw.getUint8((p.dy.toInt() * w + p.dx.toInt()) * 4 + ch);
+
+    var green = e.copyWith(paper: const Color(0xFF20C060));
+    var (raw, w) = await drawn(green, c.document);
+    expect([
+      at(raw, w, blank, 0),
+      at(raw, w, blank, 1),
+      at(raw, w, blank, 2)
+    ], [
+      0x20,
+      0xC0,
+      0x60
+    ], reason: "the paper under the music too");
+
+    var none = e.copyWith(paper: const Color(0x00FFFFFF));
+    (raw, w) = await drawn(none, c.document);
+    expect(at(raw, w, blank, 3), 0, reason: "no paper: nothing drawn there");
+
+    int reds(ByteData raw) {
+      var n = 0;
+      for (var i = 0; i < raw.lengthInBytes; i += 4) {
+        if (raw.getUint8(i) > 200 &&
+            raw.getUint8(i + 1) < 60 &&
+            raw.getUint8(i + 2) < 60) {
+          n++;
+        }
+      }
+      return n;
+    }
+
+    var (plain, _) = await drawn(e.copyWith(playhead: false), c.document);
+    var (red, _) = await drawn(
+        e.copyWith(ink: const Color(0xFFFF0000), playhead: false), c.document);
+    expect(reds(red), greaterThan(reds(plain) + 500),
+        reason: "the music in red ink");
+  });
+
+  // "the title, subtitle and composer information isn't being shown in
+  // the canvas ... a hide/show button for each".
+  test("its heading: title, subtitle, composer and tempo, each shown or not",
+      () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var e = sheetOf(c);
+    // How far down the first staff is: below whatever heading is shown.
+    double headed(SheetElement x) => sheetViewOf(x, sheetBox, c.document, 0)!
+        .engraved
+        .hits
+        .firstWhere((h) => h.kind == ScoreHitKind.staff)
+        .bottom;
+    var all = headed(e);
+    var none = headed(e.copyWith(
+        showTitle: false,
+        showSubtitle: false,
+        showComposer: false,
+        showTempo: false));
+    expect(all, greaterThan(none + 8 * 8), reason: "room made for the heading");
+    // Each on its own takes its row away.
+    for (var off in [
+      e.copyWith(showTitle: false),
+      e.copyWith(showSubtitle: false),
+      e.copyWith(showComposer: false),
+      e.copyWith(showTempo: false),
+    ]) {
+      expect(headed(off), lessThan(all));
+    }
+    var back = elementFromJson(e.copyWith(showComposer: false).toJson())
+        as SheetElement;
+    expect([back.showTitle, back.showComposer], [true, false]);
   });
 }

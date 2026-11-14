@@ -75,13 +75,25 @@ Map<String, Color> sheetEventMarks(SheetView view, Map<int, Color> byNote) {
   return out;
 }
 
-EngravedScore _engraved(MusicScore s, String part, Set<int> staves) {
+EngravedScore _engraved(
+    MusicScore s, String part, Set<int> staves, SheetElement e) {
   var cache = _layouts[s] ??= {};
-  var key = "$part|${(staves.toList()..sort()).join(",")}";
+  var title = e.title.isNotEmpty ? e.title : s.title;
+  var key = "$part|${(staves.toList()..sort()).join(",")}|$title|"
+      "${e.showTitle}${e.showSubtitle}${e.showComposer}${e.showTempo}";
   return cache[key] ??= layoutScore(
       s,
       EngraveOptions(
-          parts: {part}, staves: {part: staves}, heading: false, width: 860));
+          parts: {part},
+          staves: {part: staves},
+          heading:
+              e.showTitle || e.showSubtitle || e.showComposer || e.showTempo,
+          titled: e.showTitle,
+          subtitled: e.showSubtitle,
+          credited: e.showComposer,
+          tempoed: e.showTempo,
+          title: title,
+          width: 860));
 }
 
 /// sheetViewOf is [e] showing its score part at [frame] in [bounds], or
@@ -93,7 +105,7 @@ SheetView? sheetViewOf(
   var part = s?.partById(e.part);
   var channel = part == null ? null : doc.elementById(part.channel);
   if (s == null || part == null || channel is! AudioElement) return null;
-  var es = _engraved(s, part.id, sheetStaves(part, e.hands));
+  var es = _engraved(s, part.id, sheetStaves(part, e.hands), e);
   var seconds = (frame - channel.clip.at) / math.max(1, doc.frameRate);
   var order = s.playOrder();
   var place = s.placeAt(order, seconds);
@@ -108,8 +120,9 @@ SheetView? sheetViewOf(
   var lines = math.max(1, e.lines);
   var first = (on ~/ lines) * lines;
   var last = math.min(systems.length, first + lines) - 1;
-  var window = Rect.fromLTRB(
-      0, systems[first].top, es.options.width, systems[last].bottom);
+  // The first page has the heading over it.
+  var window = Rect.fromLTRB(0, first == 0 ? 0 : systems[first].top,
+      es.options.width, systems[last].bottom);
   var scale =
       math.min(bounds.width / window.width, bounds.height / window.height);
   var drawn = window.size * scale;
@@ -142,6 +155,10 @@ void paintScoreSheet(
       state: ScorePaintState(
           playing: playing,
           marks: marks,
+          // The paper is the box's, drawn once above; the music in the
+          // sheet's own ink.
+          paper: const Color(0x00000000),
+          ink: e.ink,
           playhead: e.playhead && view.place != null
               ? (bar: view.place!.bar, at: view.place!.at)
               : null));

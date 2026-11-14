@@ -168,4 +168,19 @@ void main() {
     expect(ph, greaterThan(none + 100));
     expect(playing, greaterThan(none + 20));
   });
+
+  // Ken, 2026-11-14: the strum's slash "moved down one line and
+  // repositioned to line up with the bottom of the stem".
+  test("a strum's slash on the second line, under its stem", () {
+    var s = odeToJoy();
+    var es = layoutScore(s, const EngraveOptions());
+    var sp = es.options.space;
+    var e = s.parts[2].staves[0].bars[0][0];
+    var head = es.hits
+        .firstWhere((h) => h.kind == ScoreHitKind.event && h.event == e.id);
+    var staff = es.hits.firstWhere(
+        (h) => h.kind == ScoreHitKind.staff && h.part == "gtr" && h.bar == 0);
+    expect(head.rect.center.dy, closeTo(staff.bottom - sp, 0.5),
+        reason: "centred on the second line");
+  });
 }

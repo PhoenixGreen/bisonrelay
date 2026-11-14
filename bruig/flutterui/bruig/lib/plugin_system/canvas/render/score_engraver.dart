@@ -28,8 +28,12 @@ class EngraveOptions {
   final Set<String>? parts;
   final Map<String, Set<int>>? staves;
 
-  /// heading is whether the title, composer and tempo are drawn.
+  /// heading is whether the title, composer and tempo are drawn; each can
+  /// be left out on its own ([titled], [subtitled], [credited], [tempoed]),
+  /// and [title] is drawn in place of the score's own where it is given.
   final bool heading;
+  final bool titled, subtitled, credited, tempoed;
+  final String? title;
 
   /// verse is the one verse of lyrics shown, or null for every verse.
   final int? verse;
@@ -42,9 +46,16 @@ class EngraveOptions {
       this.parts,
       this.staves,
       this.heading = true,
+      this.titled = true,
+      this.subtitled = true,
+      this.credited = true,
+      this.tempoed = true,
+      this.title,
       this.verse,
       this.paper = const Color(0xFFFBFAF6),
       this.ink = const Color(0xFF1D1C1A)});
+
+  bool get showsTempo => heading && tempoed;
 
   bool showsPart(String id) => parts == null || parts!.contains(id);
   bool showsStaff(String part, int staff) =>
@@ -142,6 +153,41 @@ class _BarPlace {
     }
     return xs.last;
   }
+}
+
+/// _Heading is where the heading's rows go, each null where it is not
+/// drawn, and the y below them all.
+typedef _Heading = ({
+  double? title,
+  double? subtitle,
+  double? credits,
+  double end
+});
+
+_Heading _heading(MusicScore s, EngraveOptions o) {
+  var sp = o.space;
+  if (!o.heading) return (title: null, subtitle: null, credits: null, end: sp);
+  var y = sp * 2;
+  double? title, subtitle, credits;
+  var name = o.title ?? s.title;
+  if (o.titled && name.isNotEmpty) {
+    title = y;
+    y += sp * 4;
+  }
+  if (o.subtitled && s.subtitle.isNotEmpty) {
+    subtitle = y;
+    y += sp * 2.5;
+  }
+  if (o.credited && (s.composer.isNotEmpty || s.lyricist.isNotEmpty)) {
+    credits = y;
+    y += sp * 2;
+  }
+  return (
+    title: title,
+    subtitle: subtitle,
+    credits: credits,
+    end: y + sp * 0.5
+  );
 }
 
 /// _Rows are how far above its first staff's top line, in spaces, each row
@@ -323,7 +369,7 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
   }
 
   // Down the page: the heading, then each system's staves.
-  var y = o.heading ? sp * 10.5 : sp * 1;
+  var y = _heading(score, o).end;
   var systems = <EngravedSystem>[];
   var staffTops = <Map<_Staff, double>>[];
   var rows = <_Rows>[];
@@ -348,7 +394,7 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
           mark = level + 2.6;
           level = mark + 0.3;
         }
-        if (si == 0 && o.heading) {
+        if (si == 0 && o.showsTempo) {
           tempo = level + 2.4;
           level = tempo;
         }
@@ -439,8 +485,10 @@ void _layoutEvents(EngravedScore es) {
           var at = t[e.voice] ?? 0;
           t[e.voice] = at + e.quarters;
           var x = p.xAt(at);
+          // A strum's slash on the second line: from the bottom line up to
+          // the middle, where its stem starts (Ken, 2026-11-14).
           var ys = e.slash
-              ? [bottom - sp * 2]
+              ? [bottom - sp]
               : e.isRest
                   ? [bottom - sp * 2]
                   : [
@@ -460,6 +508,9 @@ void _layoutEvents(EngravedScore es) {
           var headW = sp * 1.18;
           pl.stemX = pl.up ? x + headW - sp * 0.06 : x + sp * 0.06;
           if (e.slash) {
+            // Out of the slash's top end.
+            pl.stemX =
+                x + _glyphW(e.value >= 2 ? 0xE103 : 0xE101, sp * 4) - sp * 0.08;
             // A strum's stem stays in the staff, to the top line.
             pl.tip = top + sp * 0.1;
           } else if (!e.isRest) {
@@ -500,12 +551,23 @@ class ScorePaintState {
   final Map<String, Color> marks;
   final ({String part, int staff, int bar, double at})? cursor;
   final ({int bar, double at})? playhead;
+
+  /// pickedMark is the marking picked (its kind, and its event's or
+  /// spanner's id): outlined with its handles.
+  final ({String kind, String id})? pickedMark;
+
+  /// paper and ink, given, are drawn in place of the options' (a Sheet
+  /// music element's own colours); a paper with no opacity is no paper.
+  final Color? paper, ink;
   const ScorePaintState(
       {this.playing = const {},
       this.picked = const {},
       this.marks = const {},
       this.cursor,
-      this.playhead});
+      this.playhead,
+      this.pickedMark,
+      this.paper,
+      this.ink});
 }
 
 const _playingColour = Color(0xFFE2622B);
@@ -557,9 +619,10 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     ScorePaintState state = const ScorePaintState()}) {
   canvas.save();
   canvas.translate(origin.dx, origin.dy);
-  var o = es.options, sp = o.space, ink = o.ink, s = es.score;
+  var o = es.options, sp = o.space, s = es.score;
+  var ink = state.ink ?? o.ink, paper = state.paper ?? o.paper;
   canvas.drawRect(
-      Rect.fromLTWH(0, 0, o.width, es.height), Paint()..color = o.paper);
+      Rect.fromLTWH(0, 0, o.width, es.height), Paint()..color = paper);
   var line = Paint()
     ..color = ink
     ..strokeWidth = math.max(0.8, sp * 0.13);
@@ -585,21 +648,22 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
       offsets[kind] ?? Offset.zero;
 
   // The heading.
-  if (o.heading) {
-    var t = _text(s.title.isEmpty ? "Untitled" : s.title, sp * 3.2, ink,
-        weight: FontWeight.w800);
-    t.paint(canvas, Offset((o.width - t.width) / 2, sp * 2));
-    if (s.subtitle.isNotEmpty) {
-      var st = _text(s.subtitle, sp * 1.6, ink.withValues(alpha: 0.75));
-      st.paint(canvas, Offset((o.width - st.width) / 2, sp * 6));
-    }
+  var head = _heading(s, o);
+  if (head.title case var y?) {
+    var t = _text(o.title ?? s.title, sp * 3.2, ink, weight: FontWeight.w800);
+    t.paint(canvas, Offset((o.width - t.width) / 2, y));
+  }
+  if (head.subtitle case var y?) {
+    var st = _text(s.subtitle, sp * 1.6, ink.withValues(alpha: 0.75));
+    st.paint(canvas, Offset((o.width - st.width) / 2, y));
+  }
+  if (head.credits case var y?) {
     if (s.composer.isNotEmpty) {
       var c = _text(s.composer, sp * 1.5, ink);
-      c.paint(canvas, Offset(o.width - sp * 1.5 - c.width, sp * 8.5));
+      c.paint(canvas, Offset(o.width - sp * 1.5 - c.width, y));
     }
     if (s.lyricist.isNotEmpty) {
-      _text(s.lyricist, sp * 1.5, ink)
-          .paint(canvas, Offset(sp * 1.5, sp * 8.5));
+      _text(s.lyricist, sp * 1.5, ink).paint(canvas, Offset(sp * 1.5, y));
     }
   }
 
@@ -613,7 +677,7 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     var systemBottom = tops[es._staves.last]! + sp * 4;
 
     // The tempo, over the first system.
-    if (first && o.heading) {
+    if (first && o.showsTempo) {
       var at = Offset(leftX, systemTop - sp * es._rows[si].tempo) +
           off(s.offsets, MarkKind.tempo);
       var words = s.tempoText.isEmpty ? "" : "${s.tempoText}  ";
@@ -770,7 +834,7 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             off(info.offsets, MarkKind.rehearsal);
         var t = _text(info.mark, sp * 1.5, ink, weight: FontWeight.w800);
         var r = Rect.fromLTWH(at.dx, at.dy, t.width + sp * 1.2, sp * 2.2);
-        canvas.drawRect(r, Paint()..color = o.paper);
+        canvas.drawRect(r, Paint()..color = paper);
         canvas.drawRect(
             r,
             Paint()
@@ -920,7 +984,11 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
       }
       // Stem and flag (a beam is drawn with its group).
       if (e.value < 4) {
-        var from = pl.up ? pl.ys.reduce(math.max) : pl.ys.reduce(math.min);
+        var from = e.slash
+            ? pl.ys.first - sp + sp * 0.15
+            : pl.up
+                ? pl.ys.reduce(math.max)
+                : pl.ys.reduce(math.min);
         canvas.drawLine(
             Offset(pl.stemX, from + (pl.up ? -sp * 0.15 : sp * 0.15)),
             Offset(pl.stemX, pl.tip),
@@ -977,6 +1045,7 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
         var at = Offset(x - sp * 0.3, bottom + sp * 3.6) +
             off(e.offsets, MarkKind.dynamic);
         var w = 0.0;
+        var size = em * 0.75 * e.sizeOf(MarkKind.dynamic);
         for (var ch in d.name.split("")) {
           var code = switch (ch) {
             "p" => 0xE520,
@@ -986,12 +1055,13 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             "z" => 0xE525,
             _ => 0xE520,
           };
-          _glyph(canvas, code, at.dx + w, at.dy, em * 0.75, colour);
-          w += _glyphW(code, em * 0.75) * 0.92;
+          _glyph(canvas, code, at.dx + w, at.dy, size, colour);
+          w += _glyphW(code, size) * 0.92;
         }
+        var tall = size / (em * 0.75);
         markHit(
             MarkKind.dynamic,
-            Rect.fromLTWH(at.dx, at.dy - sp * 1.6, w, sp * 2),
+            Rect.fromLTWH(at.dx, at.dy - sp * 1.6 * tall, w, sp * 2 * tall),
             st.part.id,
             st.index,
             pl.bar,
@@ -1072,10 +1142,11 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
           paint);
     } else if (sn.kind == SpannerKind.crescendo ||
         sn.kind == SpannerKind.diminuendo) {
-      var y = bottomA + sp * 3.0;
-      var x1 = a.x;
+      var y = bottomA + sp * 3.0 + sn.offset.dy;
+      var x1 = a.x + sn.offset.dx;
       var x2 =
-          b.system == a.system ? b.x + sp * 1.2 : es.options.width - sp * 2;
+          (b.system == a.system ? b.x + sp * 1.2 : es.options.width - sp * 2) +
+              sn.offset.dx;
       var open = sp * 0.9;
       var cresc = sn.kind == SpannerKind.crescendo;
       canvas.drawPath(
@@ -1084,6 +1155,37 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             ..lineTo(cresc ? x1 : x2, y)
             ..lineTo(cresc ? x2 : x1, y + open),
           paint);
+      // A place to pick it up, drag it, and stretch it by its ends.
+      markHit(
+          MarkKind.hairpin,
+          Rect.fromLTRB(x1, y - open - sp * 0.4, x2, y + open + sp * 0.4),
+          sn.part,
+          sn.staff,
+          a.bar,
+          event: sn.id);
+    }
+  }
+
+  // A marking picked: outlined, with the handles that size it (a
+  // dynamic's corner) or stretch it (a hairpin's ends).
+  if (state.pickedMark case var pm?) {
+    var hit = es.hits
+        .where((h) =>
+            h.kind == ScoreHitKind.mark &&
+            h.mark == pm.kind &&
+            h.event == pm.id)
+        .firstOrNull;
+    if (hit != null) {
+      var blue = Paint()
+        ..color = _pickedColour
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = sp * 0.12;
+      canvas.drawRect(hit.rect.inflate(sp * 0.3), blue);
+      for (var h in scoreMarkHandles(hit, sp)) {
+        canvas.drawCircle(
+            h, sp * 0.45, Paint()..color = const Color(0xFFFFFFFF));
+        canvas.drawCircle(h, sp * 0.45, blue);
+      }
     }
   }
 
@@ -1108,6 +1210,18 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     }
   }
   canvas.restore();
+}
+
+/// scoreMarkHandles are where a picked marking's handles are: a dynamic's
+/// at its bottom right corner (to size it), a hairpin's at its two ends (to
+/// stretch it).
+List<Offset> scoreMarkHandles(ScoreHit hit, double sp) {
+  var r = hit.rect.inflate(sp * 0.3);
+  return switch (hit.mark) {
+    MarkKind.hairpin => [r.centerLeft, r.centerRight],
+    MarkKind.dynamic => [r.bottomRight],
+    _ => const [],
+  };
 }
 
 void _dots(ui.Canvas canvas, int n, double x, double y, double sp, Color c) {

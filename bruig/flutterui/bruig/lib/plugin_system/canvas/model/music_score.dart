@@ -177,7 +177,8 @@ abstract final class MarkKind {
       strum = "strum",
       rehearsal = "mark",
       tempo = "tempo",
-      jump = "jump";
+      jump = "jump",
+      hairpin = "hairpin";
   static String lyric(int verse) => "lyr$verse";
 }
 
@@ -240,6 +241,10 @@ class ScoreEvent {
   /// dynamic's. The printed dynamic is not changed by it.
   final int? velocity;
 
+  /// sizes are markings drawn bigger or smaller than their own size, by
+  /// kind (see MarkKind): a dynamic resized by its handle.
+  final Map<String, double> sizes;
+
   final Map<String, Offset> offsets;
 
   const ScoreEvent(this.id, this.value,
@@ -256,9 +261,13 @@ class ScoreEvent {
       this.lyrics = const [],
       this.grace = false,
       this.velocity,
+      this.sizes = const {},
       this.offsets = const {}});
 
   bool get isRest => pitches.isEmpty && !slash;
+
+  /// sizeOf is how big marking [kind] is drawn, one its own size.
+  double sizeOf(String kind) => sizes[kind] ?? 1;
 
   /// quarters is how long it lasts: its value, dotted, in its tuplet.
   double get quarters {
@@ -288,6 +297,7 @@ class ScoreEvent {
     bool? grace,
     int? velocity,
     bool noVelocity = false,
+    Map<String, double>? sizes,
     Map<String, Offset>? offsets,
   }) =>
       ScoreEvent(id ?? this.id, value ?? this.value,
@@ -306,6 +316,7 @@ class ScoreEvent {
           velocity: noVelocity
               ? null
               : (velocity ?? this.velocity)?.clamp(1, 127).toInt(),
+          sizes: sizes ?? this.sizes,
           offsets: offsets ?? this.offsets);
 
   /// movedMark is this event with marking [kind] dragged to [to] from
@@ -330,6 +341,7 @@ class ScoreEvent {
         if (lyrics.any((l) => l.isNotEmpty)) "lyr": lyrics,
         if (grace) "grace": true,
         if (velocity case var v?) "vel": v,
+        if (sizes.isNotEmpty) "size": sizes,
         if (offsets.isNotEmpty) "off": _offsetsToJson(offsets),
       };
 
@@ -359,6 +371,12 @@ class ScoreEvent {
         grace: jsonBool(j["grace"], false),
         velocity:
             j["vel"] is num ? (j["vel"] as num).toInt().clamp(1, 127) : null,
+        sizes: {
+          if (j["size"] case Map m)
+            for (var e in m.entries)
+              if (e.key is String && e.value is num)
+                e.key as String: (e.value as num).toDouble().clamp(0.3, 4.0),
+        },
         offsets: _offsetsFromJson(j["off"]));
   }
 }
@@ -671,7 +689,15 @@ class Spanner {
   final String part;
   final int staff;
   final ScoreTime from, to;
-  const Spanner(this.id, this.kind, this.part, this.staff, this.from, this.to);
+
+  /// offset is where it was dragged from where it is drawn.
+  final Offset offset;
+  const Spanner(this.id, this.kind, this.part, this.staff, this.from, this.to,
+      {this.offset = Offset.zero});
+
+  Spanner copyWith({ScoreTime? from, ScoreTime? to, Offset? offset}) =>
+      Spanner(id, kind, part, staff, from ?? this.from, to ?? this.to,
+          offset: offset ?? this.offset);
 
   Map<String, dynamic> toJson() => {
         "id": id,
@@ -680,6 +706,7 @@ class Spanner {
         if (staff != 0) "staff": staff,
         "from": [from.bar, from.at],
         "to": [to.bar, to.at],
+        if (offset != Offset.zero) "off": [offset.dx, offset.dy],
       };
 
   static Spanner? fromJson(Map<String, dynamic> j) {
@@ -690,8 +717,12 @@ class Spanner {
     var kind = SpannerKind.values.where((k) => k.name == j["kind"]).firstOrNull;
     var from = at(j["from"]), to = at(j["to"]);
     if (kind == null || from == null || to == null) return null;
+    var off = j["off"];
     return Spanner(jsonString(j["id"], ""), kind, jsonString(j["part"], ""),
-        jsonInt(j["staff"], 0), from, to);
+        jsonInt(j["staff"], 0), from, to,
+        offset: off is List && off.length == 2 && off.every((v) => v is num)
+            ? Offset((off[0] as num).toDouble(), (off[1] as num).toDouble())
+            : Offset.zero);
   }
 }
 

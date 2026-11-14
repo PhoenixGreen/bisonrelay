@@ -70,6 +70,10 @@ class SheetElement extends CanvasElement {
   /// enough").
   final bool playhead;
 
+  /// showTitle, showSubtitle, showComposer and showTempo are which of a
+  /// score's heading it shows over the music (a score part only).
+  final bool showTitle, showSubtitle, showComposer, showTempo;
+
   const SheetElement(
     super.base, {
     this.follows = "",
@@ -84,6 +88,10 @@ class SheetElement extends CanvasElement {
     this.key,
     this.lines = 2,
     this.playhead = true,
+    this.showTitle = true,
+    this.showSubtitle = true,
+    this.showComposer = true,
+    this.showTempo = true,
   });
 
   @override
@@ -102,7 +110,11 @@ class SheetElement extends CanvasElement {
       tempo: tempo,
       key: key,
       lines: lines,
-      playhead: playhead);
+      playhead: playhead,
+      showTitle: showTitle,
+      showSubtitle: showSubtitle,
+      showComposer: showComposer,
+      showTempo: showTempo);
 
   SheetElement copyWith({
     String? follows,
@@ -118,6 +130,10 @@ class SheetElement extends CanvasElement {
     bool autoKey = false,
     int? lines,
     bool? playhead,
+    bool? showTitle,
+    bool? showSubtitle,
+    bool? showComposer,
+    bool? showTempo,
   }) =>
       SheetElement(base,
           follows: follows ?? this.follows,
@@ -131,7 +147,11 @@ class SheetElement extends CanvasElement {
           tempo: (tempo ?? this.tempo).clamp(0.4, 1.2),
           key: autoKey ? null : (key ?? this.key)?.clamp(-7, 7),
           lines: (lines ?? this.lines).clamp(1, 8),
-          playhead: playhead ?? this.playhead);
+          playhead: playhead ?? this.playhead,
+          showTitle: showTitle ?? this.showTitle,
+          showSubtitle: showSubtitle ?? this.showSubtitle,
+          showComposer: showComposer ?? this.showComposer,
+          showTempo: showTempo ?? this.showTempo);
 
   @override
   Map<String, dynamic> props() => {
@@ -147,6 +167,10 @@ class SheetElement extends CanvasElement {
         if (key case var k?) "key": k,
         if (lines != 2) "lines": lines,
         if (!playhead) "playhead": false,
+        if (!showTitle) "showTitle": false,
+        if (!showSubtitle) "showSubtitle": false,
+        if (!showComposer) "showComposer": false,
+        if (!showTempo) "showTempo": false,
       };
 
   factory SheetElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -163,5 +187,9 @@ class SheetElement extends CanvasElement {
               tempo: jsonDouble(json["tempo"], 1),
               key: json["key"] is num ? (json["key"] as num).toInt() : null,
               lines: json["lines"] is num ? (json["lines"] as num).toInt() : 2,
-              playhead: json["playhead"] != false);
+              playhead: json["playhead"] != false,
+              showTitle: json["showTitle"] != false,
+              showSubtitle: json["showSubtitle"] != false,
+              showComposer: json["showComposer"] != false,
+              showTempo: json["showTempo"] != false);
 }

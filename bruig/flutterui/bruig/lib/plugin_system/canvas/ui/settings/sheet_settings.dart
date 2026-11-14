@@ -129,15 +129,53 @@ List<Widget> sheetSettings(
                 onCommit: commit,
               ),
               CanvasColorButton(
+                key: const ValueKey("sheetPaper"),
                 label: "Paper",
                 color: e.paper,
+                // Down to none: the music on whatever is behind it.
+                allowAlpha: true,
                 onChanged: (c) => now(e.copyWith(paper: c)),
               ),
               CanvasColorButton(
+                key: const ValueKey("sheetInk"),
                 label: "Ink",
                 color: e.ink,
                 onChanged: (c) => now(e.copyWith(ink: c)),
               ),
+              // A score's heading over the music, each line shown or not.
+              if (e.score.isNotEmpty)
+                for (var (key, label, on, set)
+                    in <(String, String, bool, SheetElement Function(bool))>[
+                  (
+                    "sheetShowTitle",
+                    "Title",
+                    e.showTitle,
+                    (v) => e.copyWith(showTitle: v)
+                  ),
+                  (
+                    "sheetShowSubtitle",
+                    "Subtitle",
+                    e.showSubtitle,
+                    (v) => e.copyWith(showSubtitle: v)
+                  ),
+                  (
+                    "sheetShowComposer",
+                    "Composer and words",
+                    e.showComposer,
+                    (v) => e.copyWith(showComposer: v)
+                  ),
+                  (
+                    "sheetShowTempo",
+                    "Tempo",
+                    e.showTempo,
+                    (v) => e.copyWith(showTempo: v)
+                  ),
+                ])
+                  CanvasToggle(
+                      key: ValueKey(key),
+                      label: label,
+                      value: on,
+                      onChanged: (v) => now(set(v))),
               // Its key: worked out, or chosen. 99 is "worked out".
               CanvasDropdown<int>(
                 key: const ValueKey("sheetKey"),
@@ -375,6 +413,7 @@ List<Widget> sheetSettings(
                   key: const ValueKey("quickSheetPaper"),
                   label: "Paper",
                   color: e.paper,
+                  allowAlpha: true,
                   onChanged: (c) => now(e.copyWith(paper: c)),
                 ),
                 width: 96),

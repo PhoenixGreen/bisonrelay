@@ -9,6 +9,25 @@ import 'package:bruig/plugin_system/canvas/model/notation.dart' show keyAlter;
 // them (writing over what was there), notes deleted, lengthened, moved up
 // and down, marked, and the bars and parts themselves added and taken out.
 
+/// nextEvent is the event after [id] in its part's staff and voice, over
+/// the bar lines: the next note only, for [notes] (a lyric's next home), or
+/// the next of anything. Null at the end.
+String? nextEvent(MusicScore s, String id, {bool notes = true}) {
+  var at = s.find(id);
+  var e0 = s.event(id);
+  if (at == null || e0 == null) return null;
+  var st = s.partById(at.part)!.staves[at.staff];
+  var found = false;
+  for (var b = at.bar; b < st.bars.length; b++) {
+    for (var e in st.bars[b]) {
+      if (e.voice != e0.voice) continue;
+      if (found && !(notes && (e.isRest || e.grace))) return e.id;
+      if (e.id == id) found = true;
+    }
+  }
+  return null;
+}
+
 /// ScoreCursor is where note input writes next: a part's staff, a bar, a
 /// time in it, and a voice.
 typedef ScoreCursor = ({String part, int staff, int bar, double at, int voice});
@@ -535,6 +554,18 @@ extension ScoreEdits on MusicScore {
     return copyWith(
         spanners: [...spanners, Spanner("s$n", kind, part, staff, from, to)]);
   }
+
+  MusicScore withSpanner(String id, Spanner Function(Spanner s) change) =>
+      copyWith(spanners: [for (var s in spanners) s.id == id ? change(s) : s]);
+
+  /// resizedEventMark draws event [id]'s marking [kind] at [size] times its
+  /// own size (one puts it back).
+  MusicScore resizedEventMark(String id, String kind, double size) =>
+      withEvent(id, (e) {
+        var sizes = {...e.sizes, kind: size.clamp(0.3, 4.0)}
+          ..removeWhere((_, v) => (v - 1).abs() < 1e-3);
+        return e.copyWith(sizes: sizes);
+      });
 
   MusicScore removeSpanner(String id) => copyWith(spanners: [
         for (var s in spanners)

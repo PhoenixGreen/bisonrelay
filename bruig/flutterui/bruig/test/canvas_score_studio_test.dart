@@ -226,6 +226,168 @@ void main() {
     await settled(tester);
   });
 
+  // Ken, 2026-11-14: "write the lyrics directly on the lyric line, pressing
+  // the spacebar or hyphen to move onto the next note".
+  testWidgets("lyrics typed on the score: a hyphen or a space moves on",
+      (tester) async {
+    var c = await studio(tester);
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    var bar = scoreOf(c).parts[1].staves[0].bars[1]; // violin bar 2: B4 G4
+    var paper = tester.getTopLeft(find.byKey(const ValueKey("scorePaper")));
+    var under =
+        state.staffPlace("vln", 0, 1, 0.0, "E4") as Offset; // its bottom line
+    var at = paper +
+        Offset((state.placeOf(bar[0].id) as Offset).dx,
+            under.dy + 5.2 * 8 * state.scale);
+    await tester.tapAt(at);
+    await tester.tapAt(at);
+    await tester.pump();
+    var field = find.descendant(
+        of: find.byKey(const ValueKey("scoreInline")),
+        matching: find.byType(TextField));
+    expect(field, findsOneWidget);
+    await tester.enterText(field, "Hel-");
+    await tester.pump();
+    await tester.enterText(field, "lo ");
+    await tester.pump();
+    var s = scoreOf(c);
+    expect(s.event(bar[0].id)!.lyrics, ["Hel-"]);
+    expect(s.event(bar[1].id)!.lyrics, ["lo"]);
+    // On to the next note after it, ready to type.
+    expect(field, findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(field, findsNothing);
+    await settled(tester);
+  });
+
+  // "double click on the chord line and type the chord".
+  testWidgets("a chord typed on the score: double-click the chord line, or ⌘K",
+      (tester) async {
+    var c = await studio(tester);
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    var e = scoreOf(c).parts[1].staves[0].bars[2][1]; // violin bar 3 G4
+    var paper = tester.getTopLeft(find.byKey(const ValueKey("scorePaper")));
+    var top = state.staffPlace("vln", 0, 2, 0.0, "F5") as Offset; // top line
+    var at = paper +
+        Offset(
+            (state.placeOf(e.id) as Offset).dx, top.dy - 2.5 * 8 * state.scale);
+    await tester.tapAt(at);
+    await tester.tapAt(at);
+    await tester.pump();
+    var field = find.descendant(
+        of: find.byKey(const ValueKey("scoreInline")),
+        matching: find.byType(TextField));
+    await tester.enterText(field, "Am7");
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(scoreOf(c).event(e.id)!.chord, "Am7");
+    expect(field, findsNothing);
+    // ⌘K on a note picked.
+    var other = scoreOf(c).parts[1].staves[0].bars[3][0];
+    await tapEvent(tester, c, other.id);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+    await tester.pump();
+    await tester.enterText(field, "D7");
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(scoreOf(c).event(other.id)!.chord, "D7");
+    await settled(tester);
+  });
+
+  testWidgets("a strum mark clicked turns the other way", (tester) async {
+    var c = await studio(tester);
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    var e = scoreOf(c).parts[2].staves[0].bars[0][0];
+    expect(e.strum, Strum.down);
+    var paper = tester.getTopLeft(find.byKey(const ValueKey("scorePaper")));
+    await tester
+        .tapAt(paper + (state.markPlace(e.id, MarkKind.strum) as Offset));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(scoreOf(c).event(e.id)!.strum, Strum.up);
+    await settled(tester);
+  });
+
+  // "redraw/resize and place the dynamic markings".
+  testWidgets(
+      "a dynamic picked: sized by its handle, changed by a double-click",
+      (tester) async {
+    var c = await studio(tester);
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    var e = scoreOf(c).parts[0].staves[0].bars[0][0]; // the mf
+    var paper = tester.getTopLeft(find.byKey(const ValueKey("scorePaper")));
+    await tester
+        .tapAt(paper + (state.markPlace(e.id, MarkKind.dynamic) as Offset));
+    await tester.pump(const Duration(milliseconds: 400));
+    var handle = paper + (state.handlePlace(0) as Offset);
+    var g = await tester.startGesture(handle);
+    await g.moveBy(const Offset(12, 8));
+    await g.moveBy(const Offset(12, 8));
+    await g.up();
+    await tester.pump();
+    expect(scoreOf(c).event(e.id)!.sizeOf(MarkKind.dynamic), greaterThan(1.2));
+    c.undo();
+    await tester.pump();
+    expect(scoreOf(c).event(e.id)!.sizes, isEmpty, reason: "one step to undo");
+    // Twice on it: the dynamics to choose another from.
+    var at = paper + (state.markPlace(e.id, MarkKind.dynamic) as Offset);
+    await tester.tapAt(at);
+    await tester.tapAt(at);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("scoreDynamicMenu-pp")));
+    await tester.pumpAndSettle();
+    expect(scoreOf(c).event(e.id)!.dyn, Dynamic.pp);
+    await settled(tester);
+  });
+
+  testWidgets("a hairpin picked: stretched by an end, moved by its body",
+      (tester) async {
+    var c = await studio(tester);
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    var paper = tester.getTopLeft(find.byKey(const ValueKey("scorePaper")));
+    var pin =
+        scoreOf(c).spanners.firstWhere((x) => x.kind == SpannerKind.crescendo);
+    expect(pin.to, (bar: 2, at: 3.0));
+    await tester
+        .tapAt(paper + (state.markPlace(pin.id, MarkKind.hairpin) as Offset));
+    await tester.pump(const Duration(milliseconds: 400));
+    // Its end pulled back to the bar's second note.
+    var second = scoreOf(c).parts[0].staves[0].bars[2][1];
+    var end = paper + (state.handlePlace(1) as Offset);
+    var to = paper + (state.placeOf(second.id) as Offset);
+    var g = await tester.startGesture(end);
+    await g.moveTo(Offset(to.dx, end.dy));
+    await g.up();
+    await tester.pump();
+    pin = scoreOf(c).spanners.firstWhere((x) => x.id == pin.id);
+    expect(pin.to, (bar: 2, at: 1.0));
+    // Its body dragged down.
+    var body = paper + (state.markPlace(pin.id, MarkKind.hairpin) as Offset);
+    g = await tester.startGesture(body);
+    await g.moveBy(const Offset(0, 10));
+    await g.moveBy(const Offset(0, 10));
+    await g.up();
+    await tester.pump();
+    pin = scoreOf(c).spanners.firstWhere((x) => x.id == pin.id);
+    expect(pin.offset.dy, greaterThan(5));
+    await settled(tester);
+  });
+
+  testWidgets("a key typed in a field is typed, not a Studio key",
+      (tester) async {
+    var c = await studio(tester);
+    await tester.enterText(find.byKey(const ValueKey("scoreTitle")), "Song");
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyN);
+    await tester.pump();
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    expect(state.input, isFalse, reason: "N in a field is not Note input");
+    expect(c.scoreById("ode"), isNotNull);
+    await settled(tester);
+  });
+
   testWidgets("the page, for a look", (tester) async {
     var path = Platform.environment["STUDIO_PNG"];
     if (path == null) return;
