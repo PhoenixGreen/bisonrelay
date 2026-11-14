@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
+import 'package:bruig/plugin_system/canvas/model/score_edit.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -126,21 +127,27 @@ void main() {
       expect(channelOf(c, s, "vln").instrument!.notes.single.key, 79);
     });
 
-    test("the piano roll leaves a score's notes alone", () {
+    test("the piano roll writes a score part into its score; a strum's not",
+        () {
       var c = CanvasController(const CanvasDocument(frames: 240),
           audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
-      c.addScore(duet());
-      var piano = channelOf(c, duet(), "pno");
+      var s = duet().addPart("guitarStrum");
+      c.addScore(s);
+      var piano = channelOf(c, s, "pno");
+      var strum = channelOf(c, s, s.parts.last.id);
       var own = newInstrument(c.document);
       c.addElement(own, select: false);
-      for (var (e, changes) in [(piano, false), (own, true)]) {
+      for (var (e, changes) in [(piano, true), (strum, false), (own, true)]) {
         c.openPianoRoll(e.clip.channel.isEmpty ? e.id : e.clip.channel);
         c.setRollContent(notes: const [MidiNote(72, 0, 1)]);
         var now = c.document.elementById(e.id) as AudioElement;
         expect(now.instrument!.notes.any((n) => n.key == 72), changes,
             reason: e.base.name);
       }
+      // The piano's C5 is the score's now, as written.
+      var bar = c.scoreById("ode")!.parts[0].staves[0].bars[0];
+      expect(bar.first.pitches.single.name, "C5");
     });
 
     test("a new sheet shows the score's first part", () {

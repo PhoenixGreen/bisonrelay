@@ -1656,10 +1656,15 @@ extension CanvasTools on CanvasController {
     var e = _instrumentOf(t.channel)!;
     var part = e.instrument!;
     var spb = math.max(0.001, a.secondsPerBeat);
-    var notes = [
-      for (var n in part.notes)
-        n.copyWith(start: n.start / spb, length: n.length / spb),
-    ];
+    // A part made from a score: as written, each bar once, in quarters --
+    // what is drawn here is written back into the score (score_roll.dart).
+    var scored = scorePartOf(_document, part);
+    var notes = scored != null && !scored.$2.strum
+        ? [for (var n in writtenNotes(scored.$1, scored.$2.id)) n.note]
+        : [
+            for (var n in part.notes)
+              n.copyWith(start: n.start / spb, length: n.length / spb),
+          ];
     var end = notes.isEmpty ? 0.0 : notes.map((n) => n.end).reduce(math.max);
     var bars = math.max(4, (end / a.beatsPerBar).ceil() + 1);
     return RollContent(
@@ -1669,7 +1674,9 @@ extension CanvasTools on CanvasController {
             c.key: [for (var (t, v) in c.value) (t / spb, v)],
         },
         bars * a.beatsPerBar.toDouble(),
-        name: "${e.name} part",
+        name: scored != null
+            ? "${e.name} part, as written in the score"
+            : "${e.name} part",
         clip: false);
   }
 
@@ -1700,9 +1707,22 @@ extension CanvasTools on CanvasController {
       return;
     }
     var e = _instrumentOf(t.channel)!;
-    // A part made from a score has the score's notes: they are written in
-    // the Studio, and only its controllers are drawn here.
-    if (e.instrument!.fromScore) notes = null;
+    // A part made from a score: its notes are written into the score (as
+    // notation, see score_roll.dart), and the channel made from it again.
+    // A strum part's are the Studio's only.
+    if (e.instrument!.fromScore) {
+      var scored = scorePartOf(_document, e.instrument!);
+      var drawn = notes;
+      notes = null;
+      if (scored != null && !scored.$2.strum && drawn != null) {
+        if (controls != null) {
+          setRollContent(controls: controls, transient: transient);
+        }
+        setScore(withRollNotes(scored.$1, scored.$2.id, drawn),
+            transient: transient);
+        return;
+      }
+    }
     var spb = math.max(0.001, a.secondsPerBeat);
     var part = e.instrument!.copyWith(
       notes: notes == null

@@ -235,6 +235,11 @@ class ScoreEvent {
   /// grace is a quick note before the beat, of no length of its own.
   final bool grace;
 
+  /// velocity is how hard it is played where that was set by hand (drawn
+  /// in the piano roll), in place of what its dynamic says; null for the
+  /// dynamic's. The printed dynamic is not changed by it.
+  final int? velocity;
+
   final Map<String, Offset> offsets;
 
   const ScoreEvent(this.id, this.value,
@@ -250,6 +255,7 @@ class ScoreEvent {
       this.articulations = const {},
       this.lyrics = const [],
       this.grace = false,
+      this.velocity,
       this.offsets = const {}});
 
   bool get isRest => pitches.isEmpty && !slash;
@@ -280,6 +286,8 @@ class ScoreEvent {
     Set<Articulation>? articulations,
     List<String>? lyrics,
     bool? grace,
+    int? velocity,
+    bool noVelocity = false,
     Map<String, Offset>? offsets,
   }) =>
       ScoreEvent(id ?? this.id, value ?? this.value,
@@ -295,6 +303,9 @@ class ScoreEvent {
           articulations: articulations ?? this.articulations,
           lyrics: lyrics ?? this.lyrics,
           grace: grace ?? this.grace,
+          velocity: noVelocity
+              ? null
+              : (velocity ?? this.velocity)?.clamp(1, 127).toInt(),
           offsets: offsets ?? this.offsets);
 
   /// movedMark is this event with marking [kind] dragged to [to] from
@@ -318,6 +329,7 @@ class ScoreEvent {
           "art": [for (var a in articulations) a.name],
         if (lyrics.any((l) => l.isNotEmpty)) "lyr": lyrics,
         if (grace) "grace": true,
+        if (velocity case var v?) "vel": v,
         if (offsets.isNotEmpty) "off": _offsetsToJson(offsets),
       };
 
@@ -345,6 +357,8 @@ class ScoreEvent {
             l is String ? l : "",
         ],
         grace: jsonBool(j["grace"], false),
+        velocity:
+            j["vel"] is num ? (j["vel"] as num).toInt().clamp(1, 127) : null,
         offsets: _offsetsFromJson(j["off"]));
   }
 }
@@ -964,7 +978,7 @@ class MusicScore {
           var hold = e.articulations.contains(Articulation.fermata) ? 2.0 : 1.0;
           var start = barStart + at * spq;
           var len = e.quarters * spq * hold;
-          var v = vel.round().clamp(1, 127);
+          var v = (e.velocity ?? vel.round()).clamp(1, 127);
           if (e.slash) {
             var keys = chordKeys(chord ?? "C");
             if (e.strum == Strum.up) keys = keys.reversed.toList();
