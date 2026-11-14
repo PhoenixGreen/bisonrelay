@@ -3971,39 +3971,25 @@ void main() {
               "there is no writing on the axes at all");
     });
 
-    testWidgets("a radial bar says where its numbers went", (tester) async {
-      // Rings a few pixels thick have nowhere to write a number and no axis to
-      // read one against, so theirs go in the legend -- which is no use with
-      // the legend switched off.
-      const hint = "A radial bar has no room to write a number on and no axis "
-          "to read one against, so its values go in the legend. Switch the "
-          "legend on, and its values with it, to see them.";
+    testWidgets("a radial bar says how it is drawn", (tester) async {
+      // Its values were once only in the legend; now each bar has its name
+      // at its start and its value past its end (Ken, 2026-11-14), and the
+      // hint says so whatever the legend.
+      const hint =
+          "Each bar bends round three quarters of a turn at most -- to "
+          "the axis's top value where one is set, else the largest -- with its "
+          "name at its start and its value past its end.";
       Iterable<String> hints() => tester
           .widgetList<CanvasHint>(find.byType(CanvasHint))
           .map((h) => h.message);
 
-      await panel(tester,
-          shape: (e) =>
-              e.copyWith(type: ChartType.radialBar, showLegend: false));
-      await labels(tester);
-      expect(hints(), contains(hint));
-
-      // The legend on but its own values off is still nowhere for them to go:
-      // the two switches are separate now.
-      await panel(tester,
-          shape: (e) =>
-              e.copyWith(type: ChartType.radialBar, showLegend: true));
-      await labels(tester);
-      expect(hints(), contains(hint));
-
-      await panel(tester,
-          shape: (e) => e.copyWith(
-              type: ChartType.radialBar,
-              showLegend: true,
-              legend: const ChartLegend(values: true)));
-      await labels(tester);
-      expect(hints(), isNot(contains(hint)),
-          reason: "with both on, the numbers are where it says");
+      for (var legend in [false, true]) {
+        await panel(tester,
+            shape: (e) =>
+                e.copyWith(type: ChartType.radialBar, showLegend: legend));
+        await labels(tester);
+        expect(hints(), contains(hint), reason: "legend $legend");
+      }
     });
 
     testWidgets("one switch decides whether the labels take room",

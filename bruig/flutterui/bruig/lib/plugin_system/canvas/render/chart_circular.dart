@@ -30,7 +30,12 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       var total = values.fold<double>(0, (t, v) => t + v.abs());
       if (total <= 0) return;
       var start = -math.pi / 2;
+      // Names round the outside, where the legend does not have them (Ken,
+      // 2026-11-14: names were only in the legend): room made for them.
+      var named = e.showXLabels && !e.showLegend;
+      if (named) radius *= 0.72;
       var inner = e.type == ChartType.donut ? radius * e.innerRadius : 0.0;
+      var names = <(double, double, String, bool)>[];
 
       for (var i = 0; i < values.length; i++) {
         var sweep = values[i].abs() / total * math.pi * 2;
@@ -76,17 +81,29 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
               Rect.fromCenter(
                   center: at, width: radius, height: e.valueSpec.fontSize * 2));
         }
+        if (named && i < data.categories.length && slice.size > 0.5) {
+          var mid = start + sweep / 2;
+          names.add((mid, sweep, data.categories[i], true));
+        }
         start += sweep;
       }
       if (inner > 0 && e.centreLabel.trim().isNotEmpty) {
         paintCentreLabel(canvas, centre, inner, e, values, total, reveal);
       }
+      if (named) _sliceNames(canvas, centre, radius, e, names);
 
     case ChartType.radialBar:
+      // Bars bent round three quarters of a turn, to the chart's top value
+      // or the largest: the quarter left over holds each bar's name at its
+      // start, and its value follows its end (Ken, 2026-11-14: the largest
+      // was a whole ring, and nothing said what any of them were).
       var values = data.series.first.values;
       var maxV = values.fold<double>(0, (m, v) => math.max(m, v.abs()));
+      if (e.yMax.isFinite && e.yMax > 0) maxV = e.yMax;
       if (maxV <= 0) return;
+      const most = math.pi * 1.5;
       var ring = radius * (1 - e.innerRadius) / math.max(1, values.length);
+      var fs = e.valueSpec.fontSize;
       for (var i = 0; i < values.length; i++) {
         var r = radius - ring * i - ring / 2;
         var color = sliceColour(e, i);
@@ -97,17 +114,52 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           ..style = PaintingStyle.stroke
           ..strokeWidth = ring * 0.7
           ..color = e.gridColor;
-        canvas.drawCircle(centre, r, track);
+        var bounds = Rect.fromCircle(center: centre, radius: r);
+        canvas.drawArc(bounds, -math.pi / 2, most, false, track);
+        var share = (values[i].abs() / maxV).clamp(0.0, 1.0);
+        var sweep = most * share * slice.size;
         canvas.drawArc(
-            Rect.fromCircle(center: centre, radius: r),
+            bounds,
             -math.pi / 2,
-            math.pi * 2 * (values[i].abs() / maxV) * slice.size,
+            sweep,
             false,
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = ring * 0.7
               ..strokeCap = StrokeCap.round
               ..color = color);
+        // Its name, to the left of where it starts -- where the legend
+        // does not have it.
+        if (e.showXLabels && !e.showLegend && i < data.categories.length) {
+          var size = math.min(e.labelSpec.fontSize, ring * 0.75);
+          paintTextInBox(
+              canvas,
+              data.categories[i],
+              e.labelSpec.copyWith(
+                  fontSize: size,
+                  align: TextAlignSpec.right,
+                  verticalAlign: VerticalAlignSpec.middle),
+              Rect.fromLTRB(centre.dx - radius * 1.1, centre.dy - r - ring / 2,
+                  centre.dx - ring * 0.5, centre.dy - r + ring / 2),
+              clip: true);
+        }
+        // Its value, just past where it ends, counting up as it grows.
+        if (e.showValues) {
+          var size = math.min(fs, ring * 0.75);
+          var past = sweep + (ring * 0.35 + size * 1.4) / r;
+          var at = centre +
+              Offset(math.cos(-math.pi / 2 + past),
+                      math.sin(-math.pi / 2 + past)) *
+                  r;
+          paintTextInBox(
+              canvas,
+              formatTick(e, values[i] * slice.size.clamp(0.0, 1.0)),
+              e.valueSpec.copyWith(
+                  fontSize: size,
+                  align: TextAlignSpec.center,
+                  verticalAlign: VerticalAlignSpec.middle),
+              Rect.fromCenter(center: at, width: size * 5, height: size * 1.6));
+        }
       }
 
     case ChartType.waffle:
@@ -258,4 +310,42 @@ void paintCentreLabel(ui.Canvas canvas, Offset centre, double radius,
           align: TextAlignSpec.center,
           verticalAlign: VerticalAlignSpec.middle),
       Rect.fromCenter(center: centre, width: across, height: radius * 1.5));
+}
+
+/// _sliceNames writes each slice's name outside the pie of [radius], on a
+/// short line from the slice's middle, nudged apart where neighbours would
+/// overlap: down the right for those on the right, the left for the left.
+void _sliceNames(ui.Canvas canvas, Offset centre, double radius, ChartElement e,
+    List<(double, double, String, bool)> names) {
+  var spec = e.labelSpec;
+  var fs = spec.fontSize;
+  var line = Paint()
+    ..strokeWidth = 1
+    ..color = e.axisColor.withValues(alpha: 0.8);
+  for (var right in [true, false]) {
+    var side = [
+      for (var n in names)
+        if ((math.cos(n.$1) >= 0) == right) n,
+    ]..sort((a, b) => math.sin(a.$1).compareTo(math.sin(b.$1)));
+    var lastY = -double.infinity;
+    for (var (mid, _, name, _) in side) {
+      var edge = centre + Offset(math.cos(mid), math.sin(mid)) * radius;
+      var elbow = centre + Offset(math.cos(mid), math.sin(mid)) * radius * 1.12;
+      var y = math.max(elbow.dy, lastY + fs * 1.3);
+      lastY = y;
+      var x = right ? centre.dx + radius * 1.2 : centre.dx - radius * 1.2;
+      canvas.drawLine(edge, Offset(elbow.dx, y), line);
+      canvas.drawLine(Offset(elbow.dx, y), Offset(x, y), line);
+      paintTextInBox(
+          canvas,
+          name,
+          spec.copyWith(
+              align: right ? TextAlignSpec.left : TextAlignSpec.right,
+              verticalAlign: VerticalAlignSpec.middle),
+          right
+              ? Rect.fromLTWH(x + fs * 0.3, y - fs, radius * 1.4, fs * 2)
+              : Rect.fromLTWH(
+                  x - fs * 0.3 - radius * 1.4, y - fs, radius * 1.4, fs * 2));
+    }
+  }
 }

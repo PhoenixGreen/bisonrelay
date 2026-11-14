@@ -83,6 +83,44 @@ void _text(ui.Canvas canvas, String s, TextSpec spec, Rect box) {
   paintTextInBox(canvas, s, spec, box);
 }
 
+/// _widthOf is how wide [s] is written in [spec].
+double _widthOf(String s, TextSpec spec) =>
+    s.isEmpty ? 0 : layoutText(s, spec, maxWidth: double.infinity).width;
+
+/// _callout writes [words] at [at] on a short line from [from], aligned
+/// away from it: for an item too small to hold its own name.
+void _callout(ui.Canvas canvas, ChartElement e, Offset from, Offset at,
+    String words, TextSpec spec,
+    {bool right = true}) {
+  canvas.drawLine(
+      from,
+      at,
+      Paint()
+        ..strokeWidth = 1
+        ..color = e.axisColor.withValues(alpha: 0.8));
+  var w = _widthOf(words, spec) + 4;
+  var h = spec.fontSize * 1.6;
+  _text(
+      canvas,
+      words,
+      spec.copyWith(
+          align: right ? TextAlignSpec.left : TextAlignSpec.right,
+          verticalAlign: VerticalAlignSpec.middle),
+      right
+          ? Rect.fromLTWH(at.dx + 3, at.dy - h / 2, w, h)
+          : Rect.fromLTWH(at.dx - 3 - w, at.dy - h / 2, w, h));
+}
+
+/// _plate is a backing behind words laid over a picture, so they read: dark
+/// under light letters, light under dark.
+void _plate(ui.Canvas canvas, Rect r, Color ink) {
+  var dark = ink.computeLuminance() > 0.5;
+  canvas.drawRRect(
+      RRect.fromRectAndRadius(r, Radius.circular(r.height * 0.25)),
+      Paint()
+        ..color = dark ? const Color(0xB0101318) : const Color(0xC0FFFFFF));
+}
+
 /// _grown is [r] grown from its centre to [size] of itself.
 Rect _grown(Rect r, double size) => size >= 1
     ? r
@@ -164,12 +202,60 @@ void _gauge(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 /// a waffle's squares are.
 void _pictogram(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var n = e.pictoCount.clamp(1, 200);
-  var shares = waffleCells(_values(e), cells: n);
-  var cols = n <= 12 ? n : 10;
-  var rows = (n / cols).ceil();
-  var cell = math.min(area.width / cols, area.height / rows);
-  var left = area.left + (area.width - cell * cols) / 2;
-  var top = area.top + (area.height - cell * rows) / 2;
+  var values = _values(e);
+  var shares = waffleCells(values, cells: n);
+  // With Values on, each share's name and value along the foot (Ken,
+  // 2026-11-14: it wrote none).
+  var key = e.showValues ? e.labelSpec.fontSize * 1.9 : 0.0;
+  var icons = Rect.fromLTRB(area.left, area.top, area.right,
+      math.max(area.top + 1, area.bottom - key));
+  // As many to a row as makes the icons biggest: a tall box gets several
+  // rows of big ones, not one small row.
+  var cols = n, rows = 1;
+  var cell = 0.0;
+  for (var c = 1; c <= n; c++) {
+    var r = (n / c).ceil();
+    var size = math.min(icons.width / c, icons.height / r);
+    if (size > cell + 1e-9) {
+      cell = size;
+      cols = c;
+      rows = r;
+    }
+  }
+  var left = icons.left + (icons.width - cell * cols) / 2;
+  var top = icons.top + (icons.height - cell * rows) / 2;
+  if (key > 0) {
+    var total = values.fold<double>(0, (t, v) => t + v);
+    var spec = _label(e, align: TextAlignSpec.left);
+    var parts = [
+      for (var (i, v) in values.indexed)
+        (
+          i,
+          [
+            if (e.showXLabels && i < e.data.categories.length)
+              e.data.categories[i],
+            total > 0 ? "${(v / total * 100).round()}%" : _value(e, v),
+          ].join(" ")
+        ),
+    ];
+    var swatch = spec.fontSize * 0.8;
+    var widths = [for (var (_, t) in parts) swatch + 6 + _widthOf(t, spec)];
+    var gapW = spec.fontSize * 1.2;
+    var all = widths.fold<double>(0, (a, b) => a + b) +
+        gapW * math.max(0, parts.length - 1);
+    var x = area.left + math.max(0, (area.width - all) / 2);
+    var y = area.bottom - key / 2;
+    for (var (k, (i, t)) in parts.indexed) {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTWH(x, y - swatch / 2, swatch, swatch),
+              Radius.circular(swatch * 0.2)),
+          Paint()..color = itemColour(e, i));
+      _text(canvas, t, spec,
+          Rect.fromLTWH(x + swatch + 6, y - key / 2, widths[k], key));
+      x += widths[k] + gapW;
+    }
+  }
   var k = 0;
   for (var (i, count) in shares.indexed) {
     var colour = itemColour(e, i);
@@ -382,12 +468,18 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     for (var (k, n) in inCol.indexed) {
       var r = box[n]!;
       var words = e.showValues ? "$n  ${_value(e, size[n]!)}" : n;
-      _text(
-          canvas,
-          words,
-          _label(e, align: TextAlignSpec.left),
-          Rect.fromLTWH(
-              r.right + 6, math.max(area.top, tops[k]), labelW - 8, lineH));
+      var spec = _label(e, align: TextAlignSpec.left);
+      var at = Rect.fromLTWH(
+          r.right + 6, math.max(area.top, tops[k]), labelW - 8, lineH);
+      // A middle column's names lie over the ribbons leaving it: on a
+      // plate, so they read (Ken, 2026-11-14).
+      if (col > 0 && col < columns - 1) {
+        var w = math.min(at.width, _widthOf(words, spec) + 10);
+        var h = spec.fontSize * 1.5;
+        _plate(canvas, Rect.fromLTWH(at.left - 4, at.center.dy - h / 2, w, h),
+            spec.color);
+      }
+      _text(canvas, words, spec, at);
     }
   }
 }
@@ -448,6 +540,7 @@ List<Rect> treemapRects(List<double> values, Rect area) {
 void _treemap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var rects = treemapRects(values, area);
+  var left = <String>[];
   for (var (i, r) in rects.indexed) {
     if (r.isEmpty) continue;
     var slice = sliceProgress(e, reveal, i, rects.length);
@@ -455,18 +548,48 @@ void _treemap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     var tile = _grown(r.deflate(1.5), slice.size);
     canvas.drawRRect(RRect.fromRectAndRadius(tile, const Radius.circular(4)),
         Paint()..color = slice.tint(itemColour(e, i)));
-    var room = tile.deflate(8);
-    if (room.width < 30 || room.height < e.labelSpec.fontSize * 1.4) continue;
     var lines = [
       if (e.showXLabels) e.data.categories[i],
       if (e.showValues) _value(e, values[i]),
-    ].join("\n");
-    _text(
-        canvas,
-        lines,
-        _label(e, align: TextAlignSpec.left)
-            .copyWith(verticalAlign: VerticalAlignSpec.top),
-        room);
+    ];
+    if (lines.isEmpty || slice.size < 1) continue;
+    // Its words in it, smaller or turned on end where it is small or thin
+    // (Ken, 2026-11-14: slivers lost theirs); where they will not go even
+    // so, into the note in the largest tile.
+    var room = tile.deflate(math.min(8, tile.shortestSide * 0.12));
+    var spec = _label(e, align: TextAlignSpec.left)
+        .copyWith(verticalAlign: VerticalAlignSpec.top);
+    var wide = lines.map((l) => _widthOf(l, spec)).fold<double>(0, math.max);
+    var tall = spec.fontSize * 1.3 * lines.length;
+    var flat = math.min(
+        1.0, math.min(room.width / math.max(1, wide), room.height / tall));
+    var upright = math.min(
+        1.0, math.min(room.height / math.max(1, wide), room.width / tall));
+    if (flat >= 0.6 || (flat >= upright && flat >= 0.45)) {
+      _text(canvas, lines.join("\n"),
+          spec.copyWith(fontSize: spec.fontSize * flat), room);
+    } else if (upright >= 0.45) {
+      canvas.save();
+      canvas.translate(room.left, room.bottom);
+      canvas.rotate(-math.pi / 2);
+      _text(
+          canvas,
+          lines.join("\n"),
+          spec.copyWith(fontSize: spec.fontSize * upright),
+          Rect.fromLTWH(0, 0, room.height, room.width));
+      canvas.restore();
+    } else {
+      left.add(lines.join(" "));
+    }
+  }
+  if (left.isNotEmpty && rects.isNotEmpty) {
+    var biggest = rects
+        .reduce((a, b) => a.width * a.height >= b.width * b.height ? a : b)
+        .deflate(8);
+    var spec =
+        _label(e, align: TextAlignSpec.left, size: e.labelSpec.fontSize * 0.8)
+            .copyWith(verticalAlign: VerticalAlignSpec.bottom);
+    _text(canvas, "Also: ${left.join(" · ")}", spec, biggest);
   }
 }
 
@@ -497,7 +620,9 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   // shortens first, then the words shrink to the half they have.
   var labelH = e.labelSpec.fontSize * 2.4;
   var figureH = e.valueSpec.fontSize * 1.4;
-  var words = (e.showXLabels ? labelH : 0) + (e.showValues ? figureH : 0);
+  // Its dates are what place it: always written (Ken, 2026-11-14: none
+  // without Values on).
+  var words = (e.showXLabels ? labelH : 0) + figureH;
   var half = area.height / 2 - dot;
   var fit = words <= 0 ? 1.0 : ((half - 4) / words).clamp(0.3, 1.0);
   labelH *= fit;
@@ -522,12 +647,10 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           ..strokeWidth = math.max(1.5, dot * 0.35));
     canvas.drawCircle(Offset(x, y), dot, Paint()..color = colour);
     if (slice.size < 1) continue;
-    var top = up ? end - labelH - (e.showValues ? figureH : 0) : end;
-    if (e.showValues) {
-      _text(canvas, _value(e, values[i]), figureSpec,
-          Rect.fromLTWH(x - room / 2, up ? top : end, room, figureH));
-      top = up ? top + figureH : end + figureH;
-    }
+    var top = up ? end - labelH - figureH : end;
+    _text(canvas, _value(e, values[i]), figureSpec,
+        Rect.fromLTWH(x - room / 2, up ? top : end, room, figureH));
+    top = up ? top + figureH : end + figureH;
     if (e.showXLabels) {
       _text(canvas, e.data.categories[i], labelSpec,
           Rect.fromLTWH(x - room / 2, top, room, labelH));
@@ -547,7 +670,10 @@ void _funnel(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var gap = area.height * 0.015;
   var h = (area.height - gap * (n - 1)) / n;
   var cx = area.center.dx;
-  double widthOf(int i) => area.width * (0.18 + 0.82 * values[i] / most);
+  // Each as wide as its value -- in true proportion (Ken, 2026-11-14: a
+  // floor of 18% drew 60 at a quarter of 1000) -- its words beside it where
+  // it is too narrow to hold them.
+  double widthOf(int i) => math.max(2.0, area.width * values[i] / most);
   for (var i = 0; i < n; i++) {
     var slice = sliceProgress(e, reveal, i, n);
     if (slice.gone) continue;
@@ -565,7 +691,18 @@ void _funnel(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       if (e.showXLabels) e.data.categories[i],
       if (e.showValues) _value(e, values[i]),
     ].join("   ");
-    _text(canvas, words, _label(e), Rect.fromLTWH(cx - w0 / 2, top, w0, h));
+    var spec = _label(e);
+    if (_widthOf(words, spec) + 12 <= math.min(w0, w1)) {
+      _text(canvas, words, spec, Rect.fromLTWH(cx - w0 / 2, top, w0, h));
+    } else if (words.isNotEmpty && slice.size >= 1) {
+      var side = math.max(w0, w1) / 2;
+      _text(
+          canvas,
+          words,
+          _label(e, align: TextAlignSpec.left),
+          Rect.fromLTWH(cx + side + 8, top,
+              math.max(0.0, area.right - cx - side - 8), h));
+    }
   }
 }
 
@@ -625,16 +762,42 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     var longest = e.data.categories[i]
         .split(RegExp(r"\s+"))
         .fold<int>(0, (m, w) => math.max(m, w.length));
-    // A name broken mid-word ("Treas / ury") reads worse than none.
-    if (r * 1.6 < longest * e.labelSpec.fontSize * 0.62 ||
-        r < e.labelSpec.fontSize * 1.6 ||
-        slice.size < 1) {
-      continue;
-    }
+    if (slice.size < 1) continue;
     var lines = [
       if (e.showXLabels) e.data.categories[i],
       if (e.showValues) _value(e, values[i]),
     ].join("\n");
+    if (lines.isEmpty) continue;
+    // Too small for its words -- a name broken mid-word ("Treas / ury")
+    // reads worse than none -- they go beside it on a line (Ken,
+    // 2026-11-14: tiny bubbles lost theirs).
+    if (r * 1.6 < longest * e.labelSpec.fontSize * 0.62 ||
+        r < e.labelSpec.fontSize * 1.6) {
+      var away = c - area.center;
+      var dir =
+          away.distance < 1e-6 ? const Offset(1, 0) : away / away.distance;
+      var right = dir.dx >= 0;
+      var from = c + dir * r;
+      var at = c + dir * (r + e.labelSpec.fontSize * 1.2);
+      var spec = _label(e, size: e.labelSpec.fontSize * 0.9);
+      var words = lines.replaceAll("\n", " ");
+      var w = _widthOf(words, spec);
+      // Kept inside the chart: turned the other way where it would leave.
+      if (right && at.dx + w + 6 > area.right) right = false;
+      if (!right && at.dx - w - 6 < area.left) right = true;
+      _callout(
+          canvas,
+          e,
+          from,
+          Offset(
+              at.dx,
+              at.dy.clamp(
+                  area.top + spec.fontSize, area.bottom - spec.fontSize)),
+          words,
+          spec,
+          right: right);
+      continue;
+    }
     _text(canvas, lines, _label(e),
         Rect.fromCenter(center: c, width: r * 1.6, height: r * 1.2));
   }
@@ -647,7 +810,10 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 void _bullet(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var targets = e.data.series.length > 1 ? _values(e, 1) : null;
-  var most = [...values, ...?targets].fold<double>(0, math.max);
+  // A tenth past the largest, so the largest does not run to the end of
+  // its band as though it were cut off (Ken, 2026-11-14) -- unless the top
+  // of the scale is set.
+  var most = [...values, ...?targets].fold<double>(0, math.max) * 1.1;
   if (e.yMax.isFinite && e.yMax > 0) most = e.yMax;
   if (most <= 0) return;
   var n = values.length;
@@ -705,8 +871,11 @@ void _slope(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var lo = all.reduce(math.min), hi = all.reduce(math.max);
   if (hi <= lo) hi = lo + 1;
   var headH = e.labelSpec.fontSize * 2;
-  var plot = Rect.fromLTRB(area.left, area.top + headH, area.right,
-      area.bottom - e.labelSpec.fontSize);
+  // Room above the top value's dot and below the bottom's, so neither
+  // touches the year over its column (Ken, 2026-11-14).
+  var room = math.max(4.0, (area.height - headH) * 0.02) + 4;
+  var plot = Rect.fromLTRB(area.left, area.top + headH + room, area.right,
+      area.bottom - math.max(e.labelSpec.fontSize, room));
   var side = plot.width * 0.3;
   var x0 = plot.left + side, x1 = plot.right - side;
   double yOf(double v) => plot.bottom - (v - lo) / (hi - lo) * plot.height;
@@ -767,7 +936,48 @@ void _shareBar(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var total = values.fold<double>(0, (t, v) => t + v);
   if (total <= 0) return;
-  var under = e.showXLabels || e.showValues ? e.labelSpec.fontSize * 3.2 : 0.0;
+  var fs = e.labelSpec.fontSize;
+  var named = e.showXLabels || e.showValues;
+  var below = named ? fs * 3.2 : 0.0;
+  bool fits(int i) {
+    var w = area.width * values[i] / total;
+    var longest = e.data.categories[i]
+        .split(RegExp(r"\s+"))
+        .fold<int>(4, (m, w) => math.max(m, w.length));
+    return w >= longest * fs * 0.62 + 6;
+  }
+
+  // Slivers too narrow for their words have them on a line, below the
+  // others' and each on a row of its own where it would touch the one
+  // before (Ken, 2026-11-14: shares under a tenth lost theirs).
+  var spec = _label(e, size: fs * 0.9);
+  var callouts = <int, (String, double, bool, int)>{};
+  var rows = <List<(double, double)>>[];
+  var x0 = area.left;
+  for (var i = 0; i < values.length; i++) {
+    var w = area.width * values[i] / total;
+    if (named && w > 0 && !fits(i)) {
+      var words = [
+        if (e.showXLabels) e.data.categories[i],
+        if (e.showValues) "${(values[i] / total * 100).round()}%",
+      ].join(" ");
+      var mid = x0 + w / 2;
+      var tw = _widthOf(words, spec) + 6;
+      var right = mid + tw + 8 <= area.right;
+      var span = right ? (mid, mid + tw) : (mid - tw, mid);
+      var row = 0;
+      while (row < rows.length &&
+          rows[row].any((o) => span.$1 < o.$2 + 8 && span.$2 > o.$1 - 8)) {
+        row++;
+      }
+      if (row == rows.length) rows.add([]);
+      rows[row].add(span);
+      callouts[i] = (words, mid, right, row);
+    }
+    x0 += w;
+  }
+  var lineH = spec.fontSize * 1.4;
+  var under = below + (rows.isEmpty ? 0 : fs * 0.6 + lineH * rows.length);
   var barH = math.min(area.height - under, math.max(18.0, area.height * 0.36));
   var top = area.top + (area.height - barH - under) / 2;
   var x = area.left;
@@ -778,20 +988,21 @@ void _shareBar(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       var piece = Rect.fromLTWH(x, top, w * slice.size, barH);
       canvas.drawRect(
           piece.deflate(0.75), Paint()..color = slice.tint(itemColour(e, i)));
-      // Named under its piece where the piece is wide enough for it: a
-      // sliver's words ran into the next one's.
-      var longest = e.data.categories[i]
-          .split(RegExp(r"\s+"))
-          .fold<int>(4, (m, w) => math.max(m, w.length));
-      if (slice.size >= 1 &&
-          under > 0 &&
-          w >= longest * e.labelSpec.fontSize * 0.62 + 6) {
-        var words = [
-          if (e.showValues) "${(values[i] / total * 100).round()}%",
-          if (e.showXLabels) e.data.categories[i],
-        ].join("\n");
-        _text(canvas, words, _label(e, align: TextAlignSpec.left),
-            Rect.fromLTWH(x + 2, top + barH + 4, w - 4, under - 4));
+      if (slice.size >= 1 && named) {
+        if (callouts[i] case (var words, var mid, var right, var row)) {
+          var y = top + barH + below + fs * 0.6 + lineH * (row + 0.5);
+          _callout(
+              canvas, e, Offset(mid, top + barH), Offset(mid, y), words, spec,
+              right: right);
+        } else {
+          // Named under its piece, which is wide enough for it.
+          var words = [
+            if (e.showValues) "${(values[i] / total * 100).round()}%",
+            if (e.showXLabels) e.data.categories[i],
+          ].join("\n");
+          _text(canvas, words, _label(e, align: TextAlignSpec.left),
+              Rect.fromLTWH(x + 2, top + barH + 4, w - 4, below - 4));
+        }
       }
     }
     x += w;

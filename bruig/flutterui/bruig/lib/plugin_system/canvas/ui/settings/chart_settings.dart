@@ -819,22 +819,24 @@ List<PanelBit> chartBits(
                     onChanged: (v) => now(e.copyWith(showValues: v)),
                   ),
                 // The infographic types name their items with the x-axis
-                // labels' switch, and have no axis settings to reach it by.
-                if (e.type.isInfographic)
+                // labels' switch, and have no axis settings to reach it by;
+                // so do a pie's and a radial bar's (round the outside where
+                // the legend is off, at each bar's start).
+                if (e.type.isInfographic ||
+                    e.type == ChartType.pie ||
+                    e.type == ChartType.donut ||
+                    e.type == ChartType.radialBar)
                   CanvasToggle(
                     key: const ValueKey("chartNames"),
                     label: "Names",
                     value: e.showXLabels,
                     onChanged: (v) => now(e.copyWith(showXLabels: v)),
                   ),
-                // Rings a few pixels thick have nowhere to write a number and no axis,
-                // so theirs go in the key, which is no use with the key off.
-                if (e.type == ChartType.radialBar &&
-                    !(e.showLegend && e.legend.values))
+                if (e.type == ChartType.radialBar)
                   const CanvasHint(
-                      "A radial bar has no room to write a number on and no axis to "
-                      "read one against, so its values go in the legend. Switch the "
-                      "legend on, and its values with it, to see them."),
+                      "Each bar bends round three quarters of a turn at most -- to "
+                      "the axis's top value where one is set, else the largest -- "
+                      "with its name at its start and its value past its end."),
                 // The example beside each name is what a million looks like in it,
                 // since these are told apart by their answers; hence no caption.
                 CanvasDropdown<NumberStyle>(

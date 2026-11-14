@@ -39,6 +39,44 @@ class _ValueRange {
   }
 }
 
+/// acrossRange is a scatter's numbers across, where every category is a
+/// number: a true x-y plot, its points placed by them on an axis of its own
+/// (Ken, 2026-11-14: across was only the place in the list). Null for any
+/// other chart, or where a category is not a number.
+_ValueRange? _acrossRangeOf(ChartElement e) {
+  if (e.type != ChartType.scatter) return null;
+  var xs = acrossValuesOf(e);
+  if (xs == null) return null;
+  var lo = xs.reduce(math.min), hi = xs.reduce(math.max);
+  if (hi <= lo) return null;
+  var step = _stepFor(lo, hi, 6);
+  var start = (lo / step).floor() * step, end = (hi / step).ceil() * step;
+  return _ValueRange(start, end, [
+    for (var t = start; t <= end + step * 1e-6; t += step)
+      double.parse(t.toStringAsFixed(10)),
+  ]);
+}
+
+/// acrossValuesOf is each category read as a number, or null where any is
+/// not or there are under two.
+List<double>? acrossValuesOf(ChartElement e) {
+  var cats = e.data.categories;
+  if (cats.length < 2) return null;
+  var out = <double>[];
+  for (var c in cats) {
+    var v = double.tryParse(c.replaceAll(",", "").trim());
+    if (v == null || !v.isFinite) return null;
+    out.add(v);
+  }
+  return out;
+}
+
+/// _plain writes a number across as briefly as it reads: 5, not 5.0.
+String _plain(double v) {
+  if (v == v.roundToDouble()) return v.round().toString();
+  return v.toStringAsFixed(2).replaceFirst(RegExp(r"\.?0+$"), "");
+}
+
 /// _stepFor is the roundest step that rules [lo]..[hi] into about [want]
 /// lines.
 ///
@@ -350,6 +388,13 @@ void _grid(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), paint);
       }
     }
+    // A scatter by numbers has lines across too.
+    if (_acrossRangeOf(e) case var across? when !horizontal) {
+      for (var t in across.ticks) {
+        var x = plot.left + plot.width * across.fraction(t);
+        canvas.drawLine(Offset(x, plot.top), Offset(x, plot.bottom), paint);
+      }
+    }
   }
   if (e.showAxes) {
     var paint = Paint()
@@ -414,7 +459,25 @@ void _axisLabels(
   }
 
   spec = nameSpec;
-  var slots = showNames ? categories.length : 0;
+  // A scatter by numbers: its across axis's own marks, not a name a slot.
+  var across = horizontal ? null : _acrossRangeOf(e);
+  if (across != null && showNames) {
+    for (var t in across.ticks) {
+      var x = plot.left + plot.width * across.fraction(t);
+      paintTextInBox(
+          canvas,
+          _plain(t),
+          spec.copyWith(
+              align: TextAlignSpec.center,
+              verticalAlign: VerticalAlignSpec.top),
+          Rect.fromLTWH(
+              x - spec.fontSize * 3,
+              plot.bottom + spec.fontSize * 0.35 + e.xLabelGap,
+              spec.fontSize * 6,
+              spec.fontSize * 1.6));
+    }
+  }
+  var slots = showNames && across == null ? categories.length : 0;
   for (var i = 0; i < slots; i++) {
     if (horizontal) {
       var slot = plot.height / slots;
@@ -632,11 +695,18 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     }
   }
 
+  // Values are written after every bar is drawn, so a stack's next part
+  // does not cover the one before's (Ken, 2026-11-14: the Charts canvas).
+  var labels = <(String, Rect, TextAlignSpec, Color?)>[];
+  var fs = e.valueSpec.fontSize;
   for (var i = 0; i < slots; i++) {
     var slotStart = (horizontal ? plot.top : plot.left) + slotSize * i;
     var inset = (slotSize - barSpan) / 2;
 
     var stackPos = 0.0, stackNeg = 0.0;
+    // The stack's ends as drawn, for its totals.
+    Rect? posEnd, negEnd;
+    var posTotal = 0.0, negTotal = 0.0, stackArrived = 1.0;
     for (var at = 0; at < which.length; at++) {
       var s = which[at];
       var series = data.series[s];
@@ -706,11 +776,21 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           case ChartAnimationPreset.grow:
           case ChartAnimationPreset.drawOn:
             arrived = p;
-            // Out of the axis; an overshooting ease passes the true height.
+            // Out of the axis -- its own base, which for a negative bar is
+            // its far edge -- and an overshooting ease passes the true
+            // length.
+            var down = to < from;
             bar = horizontal
-                ? Rect.fromLTWH(bar.left, bar.top, bar.width * p, bar.height)
-                : Rect.fromLTWH(bar.left, bar.bottom - bar.height * p,
-                    bar.width, bar.height * p);
+                ? (down
+                    ? Rect.fromLTWH(bar.right - bar.width * p, bar.top,
+                        bar.width * p, bar.height)
+                    : Rect.fromLTWH(
+                        bar.left, bar.top, bar.width * p, bar.height))
+                : (down
+                    ? Rect.fromLTWH(
+                        bar.left, bar.top, bar.width, bar.height * p)
+                    : Rect.fromLTWH(bar.left, bar.bottom - bar.height * p,
+                        bar.width, bar.height * p));
           case ChartAnimationPreset.none:
           case ChartAnimationPreset.wipe:
           case ChartAnimationPreset.sweep:
@@ -741,25 +821,79 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         // Counts up with the bar, clamped so an overshoot never shows a number
         // larger than the data.
         var label = formatTick(e, v * arrived.clamp(0.0, 1.0));
-        var box = horizontal
-            ? Rect.fromLTWH(
-                bar.right + e.valueSpec.fontSize * 0.3,
-                bar.center.dy - e.valueSpec.fontSize,
-                e.valueSpec.fontSize * 5,
-                e.valueSpec.fontSize * 2)
-            : Rect.fromLTWH(bar.left, bar.top - e.valueSpec.fontSize * 1.5,
-                bar.width, e.valueSpec.fontSize * 1.4);
-        paintTextInBox(
-            canvas,
+        if (stacked) {
+          // Inside its own part, where it fits, in a colour that reads on
+          // it; the stack's total goes past its end (below).
+          var room = horizontal ? bar.width : bar.height;
+          var need = horizontal ? fs * (label.length * 0.62 + 0.6) : fs * 1.25;
+          if (room >= need) {
+            labels.add((label, bar, TextAlignSpec.center, _inkOn(colour)));
+          }
+          if (v >= 0) {
+            posEnd = bar;
+            posTotal += v;
+          } else {
+            negEnd = bar;
+            negTotal += v;
+          }
+          stackArrived = arrived.clamp(0.0, 1.0);
+        } else {
+          labels.add((
             label,
-            e.valueSpec.copyWith(
-                align: horizontal ? TextAlignSpec.left : TextAlignSpec.center,
-                verticalAlign: VerticalAlignSpec.middle),
-            box);
+            _pastEnd(bar, horizontal, v < 0, fs),
+            _alongEnd(horizontal, v < 0),
+            null
+          ));
+        }
+      }
+    }
+    // A stack's totals, past each end it has.
+    if (stacked && e.showValues) {
+      for (var (end, total) in [(posEnd, posTotal), (negEnd, negTotal)]) {
+        if (end == null || total == 0) continue;
+        // One part alone already says it.
+        labels.add((
+          formatTick(e, total * stackArrived),
+          _pastEnd(end, horizontal, total < 0, fs),
+          _alongEnd(horizontal, total < 0),
+          null
+        ));
       }
     }
   }
+  for (var (text, box, align, ink) in labels) {
+    paintTextInBox(
+        canvas,
+        text,
+        e.valueSpec.copyWith(
+            align: align,
+            verticalAlign: VerticalAlignSpec.middle,
+            color: ink ?? e.valueSpec.color),
+        box);
+  }
 }
+
+/// _pastEnd is where a bar's value goes: past the end it grows to -- above
+/// a bar going up, below one going down, right or left of a sideways one.
+Rect _pastEnd(Rect bar, bool horizontal, bool negative, double fs) => horizontal
+    ? (negative
+        ? Rect.fromLTWH(
+            bar.left - fs * 0.3 - fs * 5, bar.center.dy - fs, fs * 5, fs * 2)
+        : Rect.fromLTWH(
+            bar.right + fs * 0.3, bar.center.dy - fs, fs * 5, fs * 2))
+    : (negative
+        ? Rect.fromLTWH(bar.left, bar.bottom + fs * 0.1, bar.width, fs * 1.4)
+        : Rect.fromLTWH(bar.left, bar.top - fs * 1.5, bar.width, fs * 1.4));
+
+/// _alongEnd is how a value past a bar's end is set: away from the bar.
+TextAlignSpec _alongEnd(bool horizontal, bool negative) => horizontal
+    ? (negative ? TextAlignSpec.right : TextAlignSpec.left)
+    : TextAlignSpec.center;
+
+/// _inkOn is black or white, whichever reads on [fill].
+Color _inkOn(Color fill) => fill.computeLuminance() > 0.45
+    ? const Color(0xFF111111)
+    : const Color(0xFFFFFFFF);
 
 /// _lines draws the line, area and scatter types, for the series in [which].
 ///
@@ -773,7 +907,12 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   if (n == 0) return;
 
   // Points sit mid-slot so lines line up with bars.
-  double xAt(int i) => plot.left + plot.width * (n == 1 ? 0.5 : (i + 0.5) / n);
+  // By its number across, for a scatter by numbers; else mid-slot.
+  var across = _acrossRangeOf(e);
+  var acrossAt = across == null ? null : acrossValuesOf(e);
+  double xAt(int i) => acrossAt != null
+      ? plot.left + plot.width * across!.fraction(acrossAt[i])
+      : plot.left + plot.width * (n == 1 ? 0.5 : (i + 0.5) / n);
   double yAt(double v) =>
       plot.bottom - plot.height * range.fraction(v).clamp(-0.2, 1.2);
 
@@ -1001,7 +1140,13 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             (animation.preset == ChartAnimationPreset.popIn ||
                 animation.preset == ChartAnimationPreset.random);
         var size = series.pointSizeOn(e.pointSize);
-        var radius = size > 0 ? size : weight * 1.4;
+        // A scatter's dots are what it is: bigger by default than a line's
+        // points.
+        var radius = size > 0
+            ? size
+            : kind == ChartType.scatter
+                ? math.max(4.5, weight * 2.4)
+                : weight * 1.4;
         // The point colour, or the series'. Either takes the line's arrival
         // fade, so dot and line come on together.
         var dotPaint = series.pointColorOn(e.pointColor);

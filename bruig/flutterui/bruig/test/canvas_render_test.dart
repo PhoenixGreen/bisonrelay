@@ -2150,8 +2150,12 @@ void _chartTests() {
         labelSpec: const TextSpec(fontSize: 11),
       );
 
+      // The key on in its own place, as the shapes it is checked against
+      // have it: with no key, a donut names its slices round itself and is
+      // drawn smaller to make room (Ken, 2026-11-14) -- a change made by
+      // the names, not by where the key goes.
       var bare = await _chartPixels(plain.copyWith(
-          title: "", description: "", showLegend: false, floatingLabels: true));
+          title: "", description: "", showLegend: true, floatingLabels: true));
 
       // Everything the labels and the key can be set to, over the top of it.
       plain = plain.copyWith(floatingLabels: true);
