@@ -573,6 +573,10 @@ class BarInfo {
   final BarBreak breakAfter;
   final Map<String, Offset> offsets;
 
+  /// width is how much wider (or narrower) than its notes ask the bar is
+  /// drawn: its bar line dragged in the Studio. The line is still filled.
+  final double width;
+
   const BarInfo(
       {this.mark = "",
       this.repeatStart = false,
@@ -588,7 +592,8 @@ class BarInfo {
       this.tempo,
       this.tempoText = "",
       this.breakAfter = BarBreak.none,
-      this.offsets = const {}});
+      this.offsets = const {},
+      this.width = 1});
 
   BarInfo copyWith({
     String? mark,
@@ -609,6 +614,7 @@ class BarInfo {
     String? tempoText,
     BarBreak? breakAfter,
     Map<String, Offset>? offsets,
+    double? width,
   }) =>
       BarInfo(
           mark: mark ?? this.mark,
@@ -625,7 +631,8 @@ class BarInfo {
           tempo: noTempo ? null : (tempo ?? this.tempo)?.clamp(20.0, 400.0),
           tempoText: tempoText ?? this.tempoText,
           breakAfter: breakAfter ?? this.breakAfter,
-          offsets: offsets ?? this.offsets);
+          offsets: offsets ?? this.offsets,
+          width: (width ?? this.width).clamp(0.4, 4.0));
 
   Map<String, dynamic> toJson() => {
         if (mark.isNotEmpty) "mark": mark,
@@ -642,6 +649,7 @@ class BarInfo {
         if (tempo case var t?) "tempo": t,
         if (tempoText.isNotEmpty) "tempoText": tempoText,
         if (breakAfter != BarBreak.none) "break": breakAfter.name,
+        if (width != 1) "w": width,
         if (offsets.isNotEmpty) "off": _offsetsToJson(offsets),
       };
 
@@ -671,7 +679,8 @@ class BarInfo {
         breakAfter:
             BarBreak.values.where((b) => b.name == j["break"]).firstOrNull ??
                 BarBreak.none,
-        offsets: _offsetsFromJson(j["off"]));
+        offsets: _offsetsFromJson(j["off"]),
+        width: jsonDouble(j["w"], 1).clamp(0.4, 4.0));
   }
 }
 

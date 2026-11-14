@@ -35,6 +35,10 @@ class EngraveOptions {
   final bool titled, subtitled, credited, tempoed;
   final String? title;
 
+  /// names is whether each part's name is drawn at its staves' left; with
+  /// none, the music starts further left.
+  final bool names;
+
   /// verse is the one verse of lyrics shown, or null for every verse.
   final int? verse;
 
@@ -51,11 +55,15 @@ class EngraveOptions {
       this.credited = true,
       this.tempoed = true,
       this.title,
+      this.names = true,
       this.verse,
       this.paper = const Color(0xFFFBFAF6),
       this.ink = const Color(0xFF1D1C1A)});
 
   bool get showsTempo => heading && tempoed;
+
+  /// left is where the systems start: room for the names, or a brace's.
+  double get left => space * (names ? 9.5 : 3);
 
   bool showsPart(String id) => parts == null || parts!.contains(id);
   bool showsStaff(String part, int staff) =>
@@ -63,7 +71,7 @@ class EngraveOptions {
 }
 
 /// ScoreHitKind is what a place on an engraved score is.
-enum ScoreHitKind { event, staff, mark }
+enum ScoreHitKind { event, staff, mark, barline }
 
 /// ScoreHit is a place on an engraved score: an event, the open staff of a
 /// bar (where a note would go), or a marking that can be dragged.
@@ -137,9 +145,14 @@ class _BarPlace {
   final List<double> times;
   final List<double> gaps;
   List<double> xs = const [];
+
+  /// tail is room after the last note for what the bar ends with (a
+  /// repeat's dots and lines); widen its BarInfo.width.
+  double tail = 0, widen = 1;
   _BarPlace(this.bar, this.times, this.gaps);
 
-  double get natural => lead + gaps.fold(0.0, (a, b) => a + b);
+  double get spread => gaps.fold(0.0, (a, b) => a + b) * widen;
+  double get natural => lead + spread + tail;
 
   double xAt(double t) {
     if (xs.isEmpty) return x + lead;
@@ -249,6 +262,11 @@ class EngravedScore {
           (h) => h.kind == ScoreHitKind.mark && h.rect.inflate(2).contains(p))
       .lastOrNull;
 
+  /// barlineAt is the bar whose closing line is under [p], or null.
+  ScoreHit? barlineAt(Offset p) => hits
+      .where((h) => h.kind == ScoreHitKind.barline && h.rect.contains(p))
+      .firstOrNull;
+
   /// staffAt is the bar of a staff under [p], or null.
   ScoreHit? staffAt(Offset p) => hits
       .where((h) => h.kind == ScoreHitKind.staff && h.rect.contains(p))
@@ -280,7 +298,7 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
       if (o.showsStaff(p.id, si)) staves.add(_Staff(p, pi, si, s));
     }
   }
-  var left = sp * 9.5;
+  var left = o.left;
   var right = o.width - sp * 1.5;
 
   // Each bar's onsets across the staves shown, and its natural width.
@@ -309,6 +327,9 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
             (info.repeatStart ? 1.4 : 0) +
             (info.time != null ? 2.4 : 0) +
             (info.key != null ? 1.2 * (info.key!.abs() + 1) : 0));
+    place.widen = info.width;
+    // A closing repeat's lines and dots after the last note, not on it.
+    place.tail = info.repeatEnd > 0 ? sp * 2.2 : sp * 0.3;
     // An accidental in the bar wants room before its note.
     for (var s in staves) {
       if (s.staff.barAt(b).any((e) => e.pitches.any((p) => p.alter != 0))) {
@@ -359,9 +380,10 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
       p.width = p.natural * stretch;
       var gx = x + p.lead;
       var xs = <double>[];
+      var room = p.width - p.lead - p.tail;
       for (var g in p.gaps) {
         xs.add(gx + sp * 0.6);
-        gx += g * (p.width - p.lead) / math.max(1, p.natural - p.lead);
+        gx += g * p.widen * room / math.max(1, p.spread);
       }
       p.xs = xs;
       x += p.width;
@@ -426,6 +448,20 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
       these[s] = s.top;
     }
     systems.add(EngravedSystem([for (var p in sys) p.bar], top, y));
+    // Each bar line, a place to take hold of to widen its bar.
+    if (staves.isNotEmpty) {
+      var lineTop = these[staves.first]!,
+          lineBottom = these[staves.last]! + sp * 4;
+      for (var p in sys) {
+        var end = p.x + p.width;
+        hits.add(ScoreHit(
+            ScoreHitKind.barline,
+            Rect.fromLTRB(end - sp * 0.7, lineTop, end + sp * 0.7, lineBottom),
+            "",
+            0,
+            p.bar));
+      }
+    }
     staffTops.add(these);
     rows.add(r);
     y += sp * 3;
@@ -525,8 +561,16 @@ void _layoutEvents(EngravedScore es) {
           placed.add(pl);
           es.hits.add(ScoreHit(
               ScoreHitKind.event,
-              Rect.fromLTRB(x - sp * 0.3, (ys.reduce(math.min) - sp * 0.7),
-                  x + headW + sp * 0.3, ys.reduce(math.max) + sp * 0.7),
+              Rect.fromLTRB(
+                  x - sp * 0.3,
+                  (ys.reduce(math.min) - sp * 0.7),
+                  // A slash is wider than a note's head.
+                  x +
+                      (e.slash
+                          ? _glyphW(e.value >= 2 ? 0xE103 : 0xE101, sp * 4)
+                          : headW) +
+                      sp * 0.3,
+                  ys.reduce(math.max) + sp * 0.7),
               s.part.id,
               s.index,
               p.bar,
@@ -672,7 +716,7 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     var tops = es._staffTops[si];
     if (sys.isEmpty || es._staves.isEmpty) continue;
     var first = si == 0;
-    var leftX = sp * 9.5;
+    var leftX = o.left;
     var systemTop = tops[es._staves.first]!;
     var systemBottom = tops[es._staves.last]! + sp * 4;
 
@@ -708,7 +752,7 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
       if (st.index == 0) {
         var count = st.part.staves.length;
         var name = first ? st.part.name : st.part.short;
-        if (name.isNotEmpty) {
+        if (name.isNotEmpty && o.names) {
           var span = count > 1 ? sp * 4 * count + sp * 6 : sp * 4;
           var t = _text(name, sp * (first ? 1.4 : 1.2), ink,
               weight: FontWeight.w600);

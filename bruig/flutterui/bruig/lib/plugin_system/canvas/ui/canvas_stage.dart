@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_gizmo.dart';
@@ -2215,6 +2216,20 @@ class CanvasStageState extends State<CanvasStage>
 
     // A selected sheet showing a score part: a press that stays put moves
     // the playhead to the note there; one that travels moves the sheet.
+    // Its playbar takes a press whether it is picked or not, as a play
+    // button would.
+    var onBar = element is SheetElement &&
+        (sheetBarRect(
+                    element,
+                    element.movedBoundsAt(controller.frame, controller.document,
+                        live: controller.liveMotion))
+                ?.contains(doc) ??
+            false);
+    if (onBar &&
+        (controller.selection.length != 1 ||
+            controller.selection.first != element.id)) {
+      controller.selectOnly(element.id);
+    }
     if (element is SheetElement &&
         element.score.isNotEmpty &&
         controller.selection.length == 1 &&

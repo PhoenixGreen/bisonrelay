@@ -348,6 +348,8 @@ class CanvasController extends ChangeNotifier {
     motionSoundPeaks = (id) => waveformOf(id);
     // An instrument of slices plays a stored sound.
     sliceAudioReader = (id) => CanvasController.clipAudio(id);
+    // A sheet's playbar shows pause while this canvas plays.
+    sheetPlaying = () => playing;
   }
 
   CanvasDocument _document;

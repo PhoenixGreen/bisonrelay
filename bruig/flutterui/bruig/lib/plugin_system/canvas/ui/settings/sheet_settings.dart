@@ -170,6 +170,12 @@ List<Widget> sheetSettings(
                     e.showTempo,
                     (v) => e.copyWith(showTempo: v)
                   ),
+                  (
+                    "sheetShowNames",
+                    "Instrument names",
+                    e.showNames,
+                    (v) => e.copyWith(showNames: v)
+                  ),
                 ])
                   CanvasToggle(
                       key: ValueKey(key),
@@ -331,6 +337,11 @@ List<Widget> sheetSettings(
                   icon: Icons.chevron_right,
                   onPressed: () => controller.stepSheet(e, 1),
                 ),
+                CanvasToggle(
+                    key: const ValueKey("sheetPlaybar"),
+                    label: "Playbar over the music",
+                    value: e.playbar,
+                    onChanged: (v) => now(e.copyWith(playbar: v))),
                 CanvasDropdown<bool>(
                   key: const ValueKey("sheetPlayhead"),
                   label: "Playhead",
@@ -352,7 +363,8 @@ List<Widget> sheetSettings(
                 const CanvasHint(
                     "With the sheet picked, press a note on it and the "
                     "playhead goes there. The notes under the playhead are "
-                    "lit, on the sheet and on its keyboard."),
+                    "lit, on the sheet and on its keyboard. Turn the "
+                    "playbar off for a video, where nothing can press it."),
               ],
               CanvasTextButton(
                 key: const ValueKey("practiceGo"),

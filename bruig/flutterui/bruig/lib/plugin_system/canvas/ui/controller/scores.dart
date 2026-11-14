@@ -131,6 +131,39 @@ extension CanvasScores on CanvasController {
   /// [bounds]: the playhead goes to the nearest note start there, in the
   /// time round nearest where it is now. Answers whether it went.
   bool sheetPressed(SheetElement sheet, Rect bounds, Offset point) {
+    // Its playbar: the buttons, and the track to put the playhead along.
+    if (sheetBarRect(sheet, bounds) case var bar? when bar.contains(point)) {
+      for (var MapEntry(key: part, value: r) in sheetBarParts(bar).entries) {
+        if (!r.contains(point)) continue;
+        switch (part) {
+          case SheetBarPart.start:
+            sheetToStart(sheet);
+          case SheetBarPart.back:
+            stepSheet(sheet, -1);
+          case SheetBarPart.on:
+            stepSheet(sheet, 1);
+          case SheetBarPart.play:
+            if (playing) {
+              pause();
+            } else {
+              play();
+            }
+          case SheetBarPart.track:
+            var s = scoreById(sheet.score);
+            var e = sheetKeyboard(sheet);
+            if (s == null || e == null) return true;
+            var total = s.secondsAt(s.playOrder(), s.lengthQuarters());
+            var f = ((point.dx - r.left) / r.width).clamp(0.0, 1.0);
+            _sheetGo(
+                sheet,
+                e.clip.at +
+                    (total * f * math.max(1, _document.frameRate)).round(),
+                sound: false);
+        }
+        return true;
+      }
+      return true;
+    }
     var view = sheetViewOf(sheet, bounds, _document, _frame);
     if (view == null) return false;
     var p = view.toScore(point);

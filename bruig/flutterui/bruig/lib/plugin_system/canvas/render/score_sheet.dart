@@ -43,6 +43,124 @@ class SheetView {
   Offset toScore(Offset p) => (p - origin) / scale;
 }
 
+/// SheetBarPart is a piece of a sheet's playbar (Ken, 2026-11-14: "a
+/// playbar over the top of the sheet music").
+enum SheetBarPart { start, back, play, on, track }
+
+/// sheetBarRect is where [e]'s playbar is in [bounds], or null where it
+/// has none: a strip across the top, a finger's height however small the
+/// sheet.
+Rect? sheetBarRect(SheetElement e, Rect bounds) {
+  if (!e.playbar || e.score.isEmpty) return null;
+  var h = (bounds.height * 0.085).clamp(18.0, 44.0);
+  return Rect.fromLTWH(bounds.left, bounds.top, bounds.width, h);
+}
+
+/// sheetBarParts are where each piece of a playbar in [bar] is: four
+/// buttons, a square each, then the track to the end.
+Map<SheetBarPart, Rect> sheetBarParts(Rect bar) {
+  var side = bar.height;
+  var pad = side * 0.15;
+  var out = <SheetBarPart, Rect>{};
+  var x = bar.left + pad;
+  for (var p in [
+    SheetBarPart.start,
+    SheetBarPart.back,
+    SheetBarPart.play,
+    SheetBarPart.on,
+  ]) {
+    out[p] = Rect.fromLTWH(x, bar.top, side, side);
+    x += side;
+  }
+  out[SheetBarPart.track] =
+      Rect.fromLTRB(x + pad * 2, bar.top, bar.right - pad * 3, bar.bottom);
+  return out;
+}
+
+/// sheetPlaying says whether the canvas is playing, for the playbar's play
+/// button to show pause; set by the editor (and nothing, in a video).
+bool Function()? sheetPlaying;
+
+/// paintSheetBar draws [e]'s playbar in [bar]: its buttons in the sheet's
+/// ink on a tint of it, and the track filled as far as [progress].
+void paintSheetBar(
+    ui.Canvas canvas, Rect bar, SheetElement e, double progress, bool playing) {
+  var ink = e.ink;
+  var r = bar.height * 0.22;
+  canvas.drawRRect(
+      RRect.fromRectAndCorners(bar,
+          topLeft: Radius.circular(r), topRight: Radius.circular(r)),
+      Paint()..color = ink.withValues(alpha: 0.07));
+  canvas.drawLine(
+      bar.bottomLeft,
+      bar.bottomRight,
+      Paint()
+        ..color = ink.withValues(alpha: 0.18)
+        ..strokeWidth = 1);
+  var parts = sheetBarParts(bar);
+  var fill = Paint()..color = ink.withValues(alpha: 0.82);
+  for (var MapEntry(key: p, value: box) in parts.entries) {
+    var c = box.center, u = box.height * 0.16;
+    switch (p) {
+      case SheetBarPart.start:
+        canvas.drawRect(
+            Rect.fromLTWH(c.dx - u * 1.3, c.dy - u, u * 0.45, u * 2), fill);
+        canvas.drawPath(
+            Path()
+              ..moveTo(c.dx + u * 1.1, c.dy - u)
+              ..lineTo(c.dx - u * 0.75, c.dy)
+              ..lineTo(c.dx + u * 1.1, c.dy + u)
+              ..close(),
+            fill);
+      case SheetBarPart.back:
+        canvas.drawPath(
+            Path()
+              ..moveTo(c.dx + u * 0.7, c.dy - u)
+              ..lineTo(c.dx - u * 0.9, c.dy)
+              ..lineTo(c.dx + u * 0.7, c.dy + u)
+              ..close(),
+            fill);
+      case SheetBarPart.on:
+        canvas.drawPath(
+            Path()
+              ..moveTo(c.dx - u * 0.7, c.dy - u)
+              ..lineTo(c.dx + u * 0.9, c.dy)
+              ..lineTo(c.dx - u * 0.7, c.dy + u)
+              ..close(),
+            fill);
+      case SheetBarPart.play:
+        if (playing) {
+          for (var dx in [-u * 0.75, u * 0.25]) {
+            canvas.drawRect(
+                Rect.fromLTWH(c.dx + dx, c.dy - u * 1.1, u * 0.5, u * 2.2),
+                fill);
+          }
+        } else {
+          canvas.drawPath(
+              Path()
+                ..moveTo(c.dx - u * 0.8, c.dy - u * 1.25)
+                ..lineTo(c.dx + u * 1.3, c.dy)
+                ..lineTo(c.dx - u * 0.8, c.dy + u * 1.25)
+                ..close(),
+              fill);
+        }
+      case SheetBarPart.track:
+        var h = box.height * 0.14;
+        var t = Rect.fromLTWH(box.left, c.dy - h / 2, box.width, h);
+        canvas.drawRRect(RRect.fromRectAndRadius(t, Radius.circular(h / 2)),
+            Paint()..color = ink.withValues(alpha: 0.18));
+        var done = progress.clamp(0.0, 1.0);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(t.left, t.top, t.width * done, h),
+                Radius.circular(h / 2)),
+            Paint()..color = const Color(0xFFE2622B));
+        canvas.drawCircle(Offset(t.left + t.width * done, c.dy), h * 1.6,
+            Paint()..color = const Color(0xFFE2622B));
+    }
+  }
+}
+
 /// sheetStaves are the staves of [part] a sheet showing [hands] shows.
 Set<int> sheetStaves(ScorePart part, PracticeHands hands) =>
     part.staves.length < 2 || hands == PracticeHands.both
@@ -80,7 +198,8 @@ EngravedScore _engraved(
   var cache = _layouts[s] ??= {};
   var title = e.title.isNotEmpty ? e.title : s.title;
   var key = "$part|${(staves.toList()..sort()).join(",")}|$title|"
-      "${e.showTitle}${e.showSubtitle}${e.showComposer}${e.showTempo}";
+      "${e.showTitle}${e.showSubtitle}${e.showComposer}${e.showTempo}"
+      "${e.showNames}";
   return cache[key] ??= layoutScore(
       s,
       EngraveOptions(
@@ -92,6 +211,7 @@ EngravedScore _engraved(
           subtitled: e.showSubtitle,
           credited: e.showComposer,
           tempoed: e.showTempo,
+          names: e.showNames,
           title: title,
           width: 860));
 }
@@ -106,6 +226,11 @@ SheetView? sheetViewOf(
   var channel = part == null ? null : doc.elementById(part.channel);
   if (s == null || part == null || channel is! AudioElement) return null;
   var es = _engraved(s, part.id, sheetStaves(part, e.hands), e);
+  // Under the playbar, if it has one.
+  if (sheetBarRect(e, bounds) case var bar?) {
+    bounds =
+        Rect.fromLTRB(bounds.left, bar.bottom, bounds.right, bounds.bottom);
+  }
   var seconds = (frame - channel.clip.at) / math.max(1, doc.frameRate);
   var order = s.playOrder();
   var place = s.placeAt(order, seconds);
@@ -163,6 +288,12 @@ void paintScoreSheet(
               ? (bar: view.place!.bar, at: view.place!.at)
               : null));
   canvas.restore();
+  if (sheetBarRect(e, bounds) case var bar?) {
+    var total = view.score
+        .secondsAt(view.score.playOrder(), view.score.lengthQuarters());
+    paintSheetBar(canvas, bar, e, total <= 0 ? 0 : view.seconds / total,
+        sheetPlaying?.call() ?? false);
+  }
 }
 
 /// sheetOnsets are the frames where a note of [e]'s part (the staves it

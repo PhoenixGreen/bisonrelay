@@ -134,6 +134,16 @@ class _ScoreStudioState extends State<ScoreStudio> {
     return scoreMarkHandles(hit, _engraved!.options.space)[i] * _scale;
   }
 
+  /// barlinePlace is where on the paper bar [bar]'s closing line is: for
+  /// tests.
+  @visibleForTesting
+  Offset barlinePlace(int bar) =>
+      _engraved!.hits
+          .firstWhere((h) => h.kind == ScoreHitKind.barline && h.bar == bar)
+          .rect
+          .center *
+      _scale;
+
   /// markPlace is where on the paper event [id]'s marking [kind] is drawn:
   /// for tests.
   @visibleForTesting
@@ -1052,6 +1062,14 @@ class _ScoreStudioState extends State<ScoreStudio> {
       }
     }
     if (_markPick != null) setState(() => _markPick = null);
+    var line = twice ? es.barlineAt(p) : null;
+    if (line != null) {
+      // Twice on a bar line: the bar as wide as its notes ask again.
+      if (s.bars[line.bar].width != 1) {
+        edit(s.withBarInfo(line.bar, (b) => b.copyWith(width: 1)));
+      }
+      return;
+    }
     if (twice) {
       // Twice on the chord line over a note, or the lyric line under one:
       // type there.
@@ -1175,6 +1193,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
   /// marking's handle: a drag to claim at once.
   bool _grabs(EngravedScore es, Offset p) {
     if (es.markAt(p) != null) return true;
+    if (es.barlineAt(p) != null) return true;
     if (_markPick case var pm?) {
       var hit = es.hits
           .where((h) =>
@@ -1192,6 +1211,10 @@ class _ScoreStudioState extends State<ScoreStudio> {
   }
 
   Offset _pressGlobal = Offset.zero, _pressAt = Offset.zero;
+
+  /// _barDrag is a bar line being dragged: its bar, the bar's width factor
+  /// when it began, and how wide the bar was drawn.
+  ({int bar, double was, double px})? _barDrag;
   double _travelled = 0;
 
   void _dragStart(MusicScore s, EngravedScore es, Offset p) {
@@ -1223,7 +1246,22 @@ class _ScoreStudioState extends State<ScoreStudio> {
       }
     }
     var m = es.markAt(p);
-    if (m == null) return;
+    if (m == null) {
+      // A bar line: its bar made wider or narrower.
+      if (es.barlineAt(p) case var line?) {
+        var room = es.hits
+            .where((h) => h.kind == ScoreHitKind.staff && h.bar == line.bar)
+            .firstOrNull;
+        _barDrag = (
+          bar: line.bar,
+          was: s.bars[line.bar].width,
+          px: room?.rect.width ?? es.options.space * 20
+        );
+        _dragFrom = p;
+        c.beginInteraction();
+      }
+      return;
+    }
     _handle = null;
     _drag = m;
     _dragFrom = p;
@@ -1241,6 +1279,13 @@ class _ScoreStudioState extends State<ScoreStudio> {
 
   void _dragMove(EngravedScore es, Offset p) {
     _travelled = math.max(_travelled, (p - _pressAt).distance);
+    if (_barDrag case var b?) {
+      var now = score;
+      if (now == null) return;
+      var f = b.was * (b.px + (p.dx - _dragFrom.dx)) / math.max(1, b.px);
+      edit(now.withBarInfo(b.bar, (x) => x.copyWith(width: f)));
+      return;
+    }
     var m = _drag;
     var s = score;
     if (m == null || s == null) return;
@@ -1298,6 +1343,15 @@ class _ScoreStudioState extends State<ScoreStudio> {
   }
 
   void _dragEnd(EngravedScore es) {
+    if (_barDrag != null) {
+      _barDrag = null;
+      c.endInteraction();
+      if (_travelled < es.options.space * 0.4) {
+        var s = score;
+        if (s != null) _tap(s, es, _pressAt, _pressGlobal);
+      }
+      return;
+    }
     var was = _drag;
     _drag = null;
     _handle = null;

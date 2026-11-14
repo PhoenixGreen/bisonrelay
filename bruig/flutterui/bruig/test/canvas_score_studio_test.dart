@@ -82,6 +82,17 @@ Future<void> tapEvent(
   var state = tester.state(find.byType(ScoreStudio)) as dynamic;
   var at = state.placeOf(id) as Offset;
   var paper = find.byKey(const ValueKey("scorePaper"));
+  // In view first: typing on the score scrolls the page to the field.
+  var scroll = tester.state<ScrollableState>(
+      find.ancestor(of: paper, matching: find.byType(Scrollable)).first);
+  var view = tester.getRect(
+      find.ancestor(of: paper, matching: find.byType(Scrollable)).first);
+  var y = tester.getTopLeft(paper).dy + at.dy;
+  if (y < view.top + 40 || y > view.bottom - 40) {
+    scroll.position.jumpTo((scroll.position.pixels + y - view.center.dy)
+        .clamp(0.0, scroll.position.maxScrollExtent));
+    await tester.pump();
+  }
   await tester.tapAt(tester.getTopLeft(paper) + at);
   await tester.pump();
 }
@@ -373,6 +384,26 @@ void main() {
     await tester.pump();
     pin = scoreOf(c).spanners.firstWhere((x) => x.id == pin.id);
     expect(pin.offset.dy, greaterThan(5));
+    await settled(tester);
+  });
+
+  testWidgets("a bar line dragged widens its bar; twice on it, back again",
+      (tester) async {
+    var c = await studio(tester);
+    var state = tester.state(find.byType(ScoreStudio)) as dynamic;
+    var paper = tester.getTopLeft(find.byKey(const ValueKey("scorePaper")));
+    var line = paper + (state.barlinePlace(0) as Offset);
+    var g = await tester.startGesture(line);
+    await g.moveBy(const Offset(20, 0));
+    await g.moveBy(const Offset(40, 0));
+    await g.up();
+    await tester.pump();
+    expect(scoreOf(c).bars[0].width, greaterThan(1.2));
+    line = paper + (state.barlinePlace(0) as Offset);
+    await tester.tapAt(line);
+    await tester.tapAt(line);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(scoreOf(c).bars[0].width, 1);
     await settled(tester);
   });
 

@@ -84,7 +84,10 @@ void main() {
         }, staves: {
           "pno": {0}
         }, heading: false));
-    var parts = {for (var h in es.hits) (h.part, h.staff)};
+    var parts = {
+      for (var h in es.hits)
+        if (h.kind != ScoreHitKind.barline) (h.part, h.staff)
+    };
     expect(parts, {("pno", 0)});
   });
 
@@ -182,5 +185,57 @@ void main() {
         (h) => h.kind == ScoreHitKind.staff && h.part == "gtr" && h.bar == 0);
     expect(head.rect.center.dy, closeTo(staff.bottom - sp, 0.5),
         reason: "centred on the second line");
+  });
+
+  // Ken, 2026-11-14: "the last note of bar 4 is being hidden by the repeat
+  // mark".
+  test("a closing repeat's lines and dots after the last note, not on it", () {
+    var s = odeToJoy();
+    var es = layoutScore(s, const EngraveOptions());
+    var sp = es.options.space;
+    var line =
+        es.hits.firstWhere((h) => h.kind == ScoreHitKind.barline && h.bar == 3);
+    var end = line.rect.center.dx;
+    for (var p in s.parts) {
+      for (var st in p.staves) {
+        var last = st.bars[3].last;
+        var head = es.hits.firstWhere(
+            (h) => h.kind == ScoreHitKind.event && h.event == last.id);
+        // The dots sit 1.5 spaces in from the line, a quarter space round.
+        expect(head.rect.right - sp * 0.3, lessThan(end - sp * 1.75),
+            reason: "${p.name}'s last note in bar 4");
+      }
+    }
+  });
+
+  // "click on a bar line to change the bar's width".
+  test("a bar made wider takes more of its line", () {
+    var s = odeToJoy();
+    double widthOf(MusicScore x, int bar) =>
+        layoutScore(x, const EngraveOptions())
+            .hits
+            .firstWhere((h) => h.kind == ScoreHitKind.staff && h.bar == bar)
+            .rect
+            .width;
+    var wider = s.copyWith(bars: [
+      for (var (i, b) in s.bars.indexed) i == 1 ? b.copyWith(width: 2) : b
+    ]);
+    expect(widthOf(wider, 1), greaterThan(widthOf(s, 1) * 1.3));
+    expect(widthOf(wider, 0), lessThan(widthOf(s, 0)),
+        reason: "the line is still the page's width");
+    var back = BarInfo.fromJson(const BarInfo(width: 2).toJson());
+    expect(back.width, 2);
+  });
+
+  // "show/hide instrument names".
+  test("without the names, the music starts further left", () {
+    var s = odeToJoy();
+    double leftOf(EngraveOptions o) => layoutScore(s, o)
+        .hits
+        .firstWhere((h) => h.kind == ScoreHitKind.staff && h.bar == 0)
+        .rect
+        .left;
+    expect(leftOf(const EngraveOptions(names: false)),
+        lessThan(leftOf(const EngraveOptions()) - 40));
   });
 }

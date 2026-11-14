@@ -455,4 +455,140 @@ void main() {
         as SheetElement;
     expect([back.showTitle, back.showComposer], [true, false]);
   });
+
+  // Ken, 2026-11-14: "the ability for the sheet music canvas to have a
+  // playbar over the top of the sheet music ... to hide or show this play
+  // bar as for things like video export it won't be needed."
+  group("its playbar", () {
+    test("over the music: the music laid out under it, or not there at all",
+        () {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var e = sheetOf(c);
+      var bar = sheetBarRect(e, sheetBox)!;
+      expect(bar.top, sheetBox.top);
+      var under = sheetViewOf(e, sheetBox, c.document, 0)!;
+      var top = under.origin.dy + under.window.top * under.scale;
+      expect(top, greaterThanOrEqualTo(bar.bottom - 0.01));
+      var off = e.copyWith(playbar: false);
+      expect(sheetBarRect(off, sheetBox), isNull);
+      var round = elementFromJson(off.toJson()) as SheetElement;
+      expect(round.playbar, isFalse);
+    });
+
+    test("its buttons: to the start, a note back and on, play and pause", () {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var e = sheetOf(c);
+      var parts = sheetBarParts(sheetBarRect(e, sheetBox)!);
+      Offset at(SheetBarPart p) => parts[p]!.center;
+      c.sheetPressed(e, sheetBox, at(SheetBarPart.start));
+      var start = c.frame;
+      c.sheetPressed(e, sheetBox, at(SheetBarPart.on));
+      expect(c.frame, frameOf(c, 60 / 112));
+      c.sheetPressed(e, sheetBox, at(SheetBarPart.back));
+      expect(c.frame, start);
+      c.sheetPressed(e, sheetBox, at(SheetBarPart.play));
+      expect(c.playing, isTrue);
+      expect(sheetPlaying!(), isTrue, reason: "the button shows pause");
+      c.sheetPressed(e, sheetBox, at(SheetBarPart.play));
+      expect(c.playing, isFalse);
+    });
+
+    test("its track: pressed along it, the playhead goes that far", () {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var e = sheetOf(c);
+      var track =
+          sheetBarParts(sheetBarRect(e, sheetBox)!)[SheetBarPart.track]!;
+      c.sheetPressed(
+          e, sheetBox, Offset(track.left + track.width / 2, track.center.dy));
+      var s = c.scoreById(e.score)!;
+      var total = s.secondsAt(s.playOrder(), s.lengthQuarters());
+      expect(c.frame, closeTo(frameOf(c, total / 2), 1));
+    });
+
+    testWidgets("on the stage, pressed without picking the sheet first",
+        (tester) async {
+      var c = lesson();
+      addTearDown(c.dispose);
+      c.clearSelection();
+      var key = GlobalKey<CanvasStageState>();
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 1600,
+                    height: 1000,
+                    child: CanvasStage(key: key, controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      var page = key.currentState!.pageRect;
+      var scale = page.width / 1280;
+      var on =
+          sheetBarParts(sheetBarRect(sheetOf(c), sheetBox)!)[SheetBarPart.on]!;
+      c.sheetToStart(sheetOf(c));
+      var start = c.frame;
+      await tester.tapAt(page.topLeft + on.center * scale);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(c.frame, greaterThan(start));
+      expect(c.selection, {"sheet"});
+    });
+
+    test("drawn over the music, and gone when switched off", () async {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var e = sheetOf(c);
+      var bar = sheetBarRect(e, sheetBox)!;
+      Future<int> marked(SheetElement x) async {
+        var rec = ui.PictureRecorder();
+        paintSheetElement(ui.Canvas(rec), sheetBox, x, c.document, 0);
+        var img = await rec.endRecording().toImage(1280, 720);
+        var raw = (await img.toByteData())!;
+        var n = 0;
+        for (var y = bar.top.toInt(); y < bar.bottom; y++) {
+          for (var x = bar.left.toInt(); x < bar.right; x++) {
+            var i = (y * img.width + x) * 4;
+            if (raw.getUint8(i) < 120 && raw.getUint8(i + 3) > 200) n++;
+          }
+        }
+        return n;
+      }
+
+      expect(await marked(e), greaterThan(150), reason: "its buttons");
+      var none = await marked(e.copyWith(
+          playbar: false,
+          showTitle: false,
+          showSubtitle: false,
+          showComposer: false,
+          showTempo: false));
+      expect(none, lessThan(await marked(e)));
+    });
+  });
+
+  test("its instrument names, shown or not", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    var e = sheetOf(c);
+    double left(SheetElement x) => sheetViewOf(x, sheetBox, c.document, 0)!
+        .engraved
+        .hits
+        .firstWhere((h) => h.kind == ScoreHitKind.staff)
+        .rect
+        .left;
+    expect(left(e.copyWith(showNames: false)), lessThan(left(e)));
+    var back =
+        elementFromJson(e.copyWith(showNames: false).toJson()) as SheetElement;
+    expect(back.showNames, isFalse);
+  });
 }
