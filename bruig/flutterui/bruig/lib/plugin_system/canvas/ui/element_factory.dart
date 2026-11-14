@@ -331,6 +331,19 @@ CanvasElement newElement(
     // A score of the first instrument there is, if there is one; with none,
     // it says so in its settings.
     case ElementKind.sheet:
+      // A score's first part if there is a score, else the first
+      // instrument.
+      for (var s in document.scores) {
+        for (var p in s.parts) {
+          if (document.elementById(p.channel) is! AudioElement) continue;
+          return SheetElement(base.copyWith(name: "Sheet music"),
+              follows: p.channel,
+              score: s.id,
+              part: p.id,
+              title: s.title,
+              key: s.fifths);
+        }
+      }
       var first = document.elements
           .whereType<AudioElement>()
           .where((e) => e.instrument != null)

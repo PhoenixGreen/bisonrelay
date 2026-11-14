@@ -42,6 +42,11 @@ enum PracticeHands {
 class SheetElement extends CanvasElement {
   /// follows is the instrument whose part is shown, by element id.
   final String follows;
+
+  /// score and part are the score part it shows (see music_score.dart),
+  /// or "" for an instrument's own notes. Showing a score part, [follows]
+  /// is that part's channel.
+  final String score, part;
   final String title;
   final Color paper, ink;
 
@@ -63,6 +68,8 @@ class SheetElement extends CanvasElement {
   const SheetElement(
     super.base, {
     this.follows = "",
+    this.score = "",
+    this.part = "",
     this.title = "",
     this.paper = const Color(0xFFFBFAF6),
     this.ink = const Color(0xFF1B1B1B),
@@ -79,6 +86,8 @@ class SheetElement extends CanvasElement {
   @override
   CanvasElement rebase(ElementBase base) => SheetElement(base,
       follows: follows,
+      score: score,
+      part: part,
       title: title,
       paper: paper,
       ink: ink,
@@ -90,6 +99,8 @@ class SheetElement extends CanvasElement {
 
   SheetElement copyWith({
     String? follows,
+    String? score,
+    String? part,
     String? title,
     Color? paper,
     Color? ink,
@@ -102,6 +113,8 @@ class SheetElement extends CanvasElement {
   }) =>
       SheetElement(base,
           follows: follows ?? this.follows,
+          score: score ?? this.score,
+          part: part ?? this.part,
           title: title ?? this.title,
           paper: paper ?? this.paper,
           ink: ink ?? this.ink,
@@ -114,6 +127,8 @@ class SheetElement extends CanvasElement {
   @override
   Map<String, dynamic> props() => {
         if (follows.isNotEmpty) "follows": follows,
+        if (score.isNotEmpty) "score": score,
+        if (part.isNotEmpty) "part": part,
         if (title.isNotEmpty) "title": title,
         "paper": colorToJson(paper),
         "ink": colorToJson(ink),
@@ -127,6 +142,8 @@ class SheetElement extends CanvasElement {
   factory SheetElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       SheetElement(b,
               follows: jsonString(json["follows"], ""),
+              score: jsonString(json["score"], ""),
+              part: jsonString(json["part"], ""),
               title: jsonString(json["title"], ""),
               paper: colorFromJson(json["paper"], const Color(0xFFFBFAF6)),
               ink: colorFromJson(json["ink"], const Color(0xFF1B1B1B)),

@@ -46,6 +46,14 @@ List<Widget> sheetSettings(
       if (x is AudioElement && x.instrument != null) x,
   ];
   var followed = instruments.where((x) => x.id == e.follows).firstOrNull;
+  // A score's parts are shown as the score's, not as their channels.
+  var scoreParts = [
+    for (var s in controller.document.scores)
+      for (var p in s.parts)
+        if (instruments.any((x) => x.id == p.channel)) (s, p),
+  ];
+  String partValue(String score, String part) => "score:$score/$part";
+  var chosen = e.score.isNotEmpty ? partValue(e.score, e.part) : e.follows;
   var colors = ThemeNotifier.of(context).colors;
   var going = controller.practising == e.id;
   var (right, wrong) = controller.practiceScore;
@@ -57,7 +65,9 @@ List<Widget> sheetSettings(
         title: "Sheet music",
         summary: followed == null
             ? "No instrument chosen"
-            : "${followed.name}'s part",
+            : e.score.isNotEmpty
+                ? "${followed.name}, from the score"
+                : "${followed.name}'s part",
         initiallyOpen: true,
         children: [
           CanvasControlGroup(
@@ -68,7 +78,7 @@ List<Widget> sheetSettings(
               CanvasDropdown<String>(
                 key: const ValueKey("sheetFollows"),
                 label: "Shows the part of",
-                value: e.follows,
+                value: chosen,
                 width: 190,
                 options: [
                   if (followed == null)
@@ -78,13 +88,32 @@ List<Widget> sheetSettings(
                           ? "Add an instrument first"
                           : "Choose one"
                     ),
-                  for (var x in instruments) (x.id, x.name),
+                  for (var (s, p) in scoreParts)
+                    (
+                      partValue(s.id, p.id),
+                      "${s.title.isEmpty ? "Score" : s.title} · ${p.name}"
+                    ),
+                  for (var x in instruments)
+                    if (!(x.instrument?.fromScore ?? false)) (x.id, x.name),
                 ],
                 onChanged: (id) {
                   if (id.isEmpty) return;
+                  for (var (s, p) in scoreParts) {
+                    if (partValue(s.id, p.id) != id) continue;
+                    now(e.copyWith(
+                        follows: p.channel,
+                        score: s.id,
+                        part: p.id,
+                        title: e.title.isEmpty ? s.title : null,
+                        key: s.fifths));
+                    return;
+                  }
                   var x = instruments.firstWhere((x) => x.id == id);
                   now(e.copyWith(
-                      follows: id, title: e.title.isEmpty ? x.name : null));
+                      follows: id,
+                      score: "",
+                      part: "",
+                      title: e.title.isEmpty ? x.name : null));
                 },
               ),
               CanvasTextField(

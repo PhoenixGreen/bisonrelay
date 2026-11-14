@@ -296,6 +296,13 @@ class InstrumentPart {
   /// of a step). The notes themselves are left as drawn.
   final double quantise, swing;
 
+  /// score is the score part its notes are made from, as
+  /// "scoreId/partId" (see music_score.dart), or "" for notes of its own.
+  /// Made from a score, its notes are the score's: edited there, not here.
+  final String score;
+
+  bool get fromScore => score.isNotEmpty;
+
   /// grooved is whether [quantise] or [swing] changes what it plays.
   bool get grooved => quantise > 0 || swing > 0;
 
@@ -316,6 +323,7 @@ class InstrumentPart {
     this.slices,
     this.quantise = 0,
     this.swing = 0,
+    this.score = "",
   });
 
   /// slices are what it plays where its sound is [InstrumentSound.slices].
@@ -421,6 +429,7 @@ class InstrumentPart {
     SliceKit? slices,
     double? quantise,
     double? swing,
+    String? score,
   }) {
     var k = (keys ?? this.keys).clamp(12, 88);
     return InstrumentPart(
@@ -440,6 +449,7 @@ class InstrumentPart {
       slices: slices ?? this.slices,
       quantise: (quantise ?? this.quantise).clamp(0.0, 1.0),
       swing: (swing ?? this.swing).clamp(0.0, 1.0),
+      score: score ?? this.score,
     );
   }
 
@@ -460,6 +470,7 @@ class InstrumentPart {
         if (slices case var k?) "slices": k.toJson(),
         if (quantise > 0) "quantise": quantise,
         if (swing > 0) "swing": swing,
+        if (score.isNotEmpty) "score": score,
       };
 
   factory InstrumentPart.fromJson(Map<String, dynamic> json) =>
@@ -491,6 +502,7 @@ class InstrumentPart {
         slices: SliceKit.fromJson(json["slices"]),
         quantise: jsonDouble(json["quantise"], 0),
         swing: jsonDouble(json["swing"], 0),
+        score: json["score"] is String ? json["score"] as String : "",
       );
 }
 

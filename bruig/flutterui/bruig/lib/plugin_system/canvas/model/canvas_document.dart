@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
+import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
@@ -390,6 +391,11 @@ class CanvasDocument {
   /// does, in every scene.
   final List<NamedTextStyle> textStyles;
 
+  /// scores are the document's scores (see music_score.dart): the source of
+  /// each part's notes, which the instrument channel it plays on is made
+  /// from, and of what a Sheet music element shows.
+  final List<MusicScore> scores;
+
   /// onMaster is whether the master canvas is the one being edited. Kept on
   /// the document so that, while it is set, [elements] and the rest answer
   /// for the master and every panel edits it unawares.
@@ -447,6 +453,7 @@ class CanvasDocument {
     this.cues = const [],
     this.words = const [],
     this.textStyles = const [],
+    this.scores = const [],
   })  : _elements = elements,
         _frames = frames,
         _actions = actions;
@@ -948,6 +955,7 @@ class CanvasDocument {
     List<TimelineCue>? cues,
     List<SpokenWord>? words,
     List<NamedTextStyle>? textStyles,
+    List<MusicScore>? scores,
   }) {
     var list = scenes ?? this.scenes;
     var index = (sceneAt ?? this.sceneAt)
@@ -1021,6 +1029,7 @@ class CanvasDocument {
       cues: cues ?? this.cues,
       words: words ?? this.words,
       textStyles: textStyles ?? this.textStyles,
+      scores: scores ?? this.scores,
     );
   }
 
@@ -1059,6 +1068,7 @@ class CanvasDocument {
       cues: cues,
       words: words,
       textStyles: textStyles,
+      scores: scores,
     );
   }
 
@@ -1241,6 +1251,7 @@ class CanvasDocument {
       if (words.isNotEmpty) "words": [for (var w in words) w.toJson()],
       if (textStyles.isNotEmpty)
         "textStyles": [for (var t in textStyles) t.toJson()],
+      if (scores.isNotEmpty) "scores": [for (var s in scores) s.toJson()],
 
       if (kind != CanvasKind.scenes) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
@@ -1438,6 +1449,11 @@ class CanvasDocument {
         if (json["textStyles"] is List)
           for (var t in json["textStyles"] as List)
             if (NamedTextStyle.fromJson(t) case var style?) style,
+      ],
+      scores: [
+        if (json["scores"] is List)
+          for (var s in json["scores"] as List)
+            if (s is Map<String, dynamic>) MusicScore.fromJson(s),
       ],
     );
   }

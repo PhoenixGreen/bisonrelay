@@ -103,6 +103,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
+import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart'
     show macroValue;
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
@@ -197,6 +199,7 @@ part 'controller/keyframes.dart';
 part 'controller/timeline_clips.dart';
 part 'controller/copies.dart';
 part 'controller/cast.dart';
+part 'controller/scores.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo

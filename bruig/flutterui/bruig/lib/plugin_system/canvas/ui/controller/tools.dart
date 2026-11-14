@@ -1700,6 +1700,9 @@ extension CanvasTools on CanvasController {
       return;
     }
     var e = _instrumentOf(t.channel)!;
+    // A part made from a score has the score's notes: they are written in
+    // the Studio, and only its controllers are drawn here.
+    if (e.instrument!.fromScore) notes = null;
     var spb = math.max(0.001, a.secondsPerBeat);
     var part = e.instrument!.copyWith(
       notes: notes == null
