@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 // Exported so that importing table_element.dart brings the sort too.
 export 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
 
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
 
@@ -597,6 +598,11 @@ class TableElement extends CanvasElement {
   /// column at a time. Leaving is always whole. See TableTurn.
   final TableTurn turn;
 
+  /// sheet is the range of the canvas sheet this table shows (see
+  /// data_sheet.dart): its rows are that range's, kept in step both ways
+  /// (data_sync.dart). Null only until it is given a sheet of its own.
+  final SheetLink? sheet;
+
   /// topPad and the three beside it are what each side actually gets.
   double get topPad => padTop ?? cellPadding;
   double get rightPad => padRight ?? cellPadding;
@@ -649,6 +655,7 @@ class TableElement extends CanvasElement {
     this.hiddenHeaders = const [],
     this.animation = const ElementAnimation(),
     this.turn = TableTurn.together,
+    this.sheet,
   });
 
   @override
@@ -861,6 +868,8 @@ class TableElement extends CanvasElement {
     List<int>? hiddenHeaders,
     ElementAnimation? animation,
     TableTurn? turn,
+    SheetLink? sheet,
+    bool clearSheet = false,
   }) =>
       _copy(base,
           rows: rows,
@@ -895,7 +904,9 @@ class TableElement extends CanvasElement {
           source: source,
           hiddenHeaders: hiddenHeaders,
           animation: animation,
-          turn: turn);
+          turn: turn,
+          sheet: sheet,
+          clearSheet: clearSheet);
 
   TableElement _copy(
     ElementBase newBase, {
@@ -932,6 +943,8 @@ class TableElement extends CanvasElement {
     List<int>? hiddenHeaders,
     ElementAnimation? animation,
     TableTurn? turn,
+    SheetLink? sheet,
+    bool clearSheet = false,
   }) =>
       TableElement(newBase,
           rows: rows ?? this.rows,
@@ -963,7 +976,8 @@ class TableElement extends CanvasElement {
           source: source ?? this.source,
           hiddenHeaders: hiddenHeaders ?? this.hiddenHeaders,
           animation: animation ?? this.animation,
-          turn: turn ?? this.turn);
+          turn: turn ?? this.turn,
+          sheet: clearSheet ? null : sheet ?? this.sheet);
 
   @override
   Map<String, dynamic> props() => {
@@ -997,6 +1011,7 @@ class TableElement extends CanvasElement {
         if (hiddenHeaders.isNotEmpty) "hiddenHeaders": hiddenHeaders,
         if (animation.any) "anim": animation.toJson(),
         if (turn != TableTurn.together) "turn": turn.name,
+        if (sheet != null) "sheet": sheet!.toJson(),
       };
 
   factory TableElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -1069,7 +1084,8 @@ class TableElement extends CanvasElement {
         ],
         animation: jsonSpec(
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
-        turn: TableTurn.fromName(jsonStr(json["turn"])));
+        turn: TableTurn.fromName(jsonStr(json["turn"])),
+        sheet: SheetLink.fromJson(json["sheet"]));
   }
 
   /// sorted is this table with its rows in the order [sort] asks for, or

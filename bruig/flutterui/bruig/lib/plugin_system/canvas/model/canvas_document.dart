@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
@@ -402,6 +404,11 @@ class CanvasDocument {
   /// from, and of what a Sheet music element shows.
   final List<MusicScore> scores;
 
+  /// sheets are the canvas's data (see data_sheet.dart): each Data element
+  /// -- a table or a chart -- shows a range of one, kept in step with it
+  /// (data_sync.dart).
+  final List<DataSheet> sheets;
+
   /// onMaster is whether the master canvas is the one being edited. Kept on
   /// the document so that, while it is set, [elements] and the rest answer
   /// for the master and every panel edits it unawares.
@@ -460,6 +467,7 @@ class CanvasDocument {
     this.words = const [],
     this.textStyles = const [],
     this.scores = const [],
+    this.sheets = const [],
   })  : _elements = elements,
         _frames = frames,
         _actions = actions;
@@ -962,6 +970,7 @@ class CanvasDocument {
     List<SpokenWord>? words,
     List<NamedTextStyle>? textStyles,
     List<MusicScore>? scores,
+    List<DataSheet>? sheets,
   }) {
     var list = scenes ?? this.scenes;
     var index = (sceneAt ?? this.sceneAt)
@@ -1036,6 +1045,7 @@ class CanvasDocument {
       words: words ?? this.words,
       textStyles: textStyles ?? this.textStyles,
       scores: scores ?? this.scores,
+      sheets: sheets ?? this.sheets,
     );
   }
 
@@ -1075,6 +1085,7 @@ class CanvasDocument {
       words: words,
       textStyles: textStyles,
       scores: scores,
+      sheets: sheets,
     );
   }
 
@@ -1258,6 +1269,7 @@ class CanvasDocument {
       if (textStyles.isNotEmpty)
         "textStyles": [for (var t in textStyles) t.toJson()],
       if (scores.isNotEmpty) "scores": [for (var s in scores) s.toJson()],
+      if (sheets.isNotEmpty) "sheets": [for (var s in sheets) s.toJson()],
 
       if (kind != CanvasKind.scenes) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
@@ -1368,7 +1380,8 @@ class CanvasDocument {
       ];
     }
 
-    return CanvasDocument(
+    // Tables and charts from before sheets get sheets of their own.
+    return dataAdopted(CanvasDocument(
       title: jsonString(json["title"], "Untitled canvas"),
       size: jsonSpec(json["size"], CanvasSize.fromJson, const CanvasSize()),
       background: jsonSpec(json["background"], CanvasBackground.fromJson,
@@ -1461,7 +1474,12 @@ class CanvasDocument {
           for (var s in json["scores"] as List)
             if (s is Map<String, dynamic>) MusicScore.fromJson(s),
       ],
-    );
+      sheets: [
+        if (json["sheets"] is List)
+          for (var s in json["sheets"] as List)
+            if (DataSheet.fromJson(s) case var sheet?) sheet,
+      ],
+    ));
   }
 
   /// decode reads a saved file, returning null rather than throwing, so a

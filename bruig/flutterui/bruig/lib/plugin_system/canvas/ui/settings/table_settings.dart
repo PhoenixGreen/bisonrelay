@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_view_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
@@ -35,6 +36,9 @@ Widget tablePanel(
 
   return elementPanel(context, controller, e, write, begin, commit,
       quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        // Table or chart, and of which sheet: one Data element either way.
+        dataViewStrip(controller, e),
+        const SizedBox(height: 8),
         panelRow([
           cell(
               CanvasColorButton(

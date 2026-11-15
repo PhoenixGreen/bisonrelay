@@ -17,6 +17,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -343,19 +345,13 @@ class _TableTarget extends _Target {
     var table = element.copyWith(rows: rows, source: next).sorted();
     write(table);
 
-    // The charts reading this table come with it, so the two never show
-    // different weeks side by side.
-    var followers = 0;
-    for (var other in controller.document.elements) {
-      if (other is ChartElement && other.fromTable.tableId == table.id) {
-        controller.replaceElement(
-            other.copyWith(
-                data: chartDataFromTable(table, other.fromTable,
-                    keeping: other.data.series)),
-            transient: true);
-        followers++;
-      }
-    }
+    // The charts of the same sheet come with it in the same step (see
+    // data_sync.dart), so the two never show different weeks side by side.
+    var followers = element.sheet == null
+        ? 0
+        : viewsOf(controller.document, element.sheet!.sheet)
+            .where((v) => v is ChartElement)
+            .length;
     commit();
     return followers == 0
         ? "${rows.length - 1} rows."
@@ -480,20 +476,10 @@ class _ChartTarget extends _Target {
   List<Widget> extras(List<List<String>> lastRows,
       [List<List<String>> lastRaw = const [], List<String> fields = const []]) {
     var columns = element.source.columns;
-    var link = element.fromTable;
-    var tables = [
-      for (var other in controller.document.elements)
-        if (other is TableElement) other,
-    ];
-    TableElement? linked;
-    for (var table in tables) {
-      if (table.id == link.tableId) linked = table;
-    }
-    var linkedColumns = linked?.columnCount ?? 0;
-
-    void setLink(TableLink next) {
+    var sheetLink = element.sheet;
+    void setSheetLink(SheetLink next) {
       begin();
-      write(element.copyWith(fromTable: next));
+      write(element.copyWith(sheet: next));
       commit();
     }
 
@@ -508,71 +494,45 @@ class _ChartTarget extends _Target {
         columns[map.categoryColumn].date.isNotEmpty;
 
     return [
-      // Taking the numbers from a table on this canvas, the other way a chart
-      // gets data, offered only when there is a table: one request, one set of
-      // figures, so a table and a chart of one league cannot disagree.
-      if (tables.isNotEmpty) ...[
-        CanvasControlGroup(label: "Table", children: [
-          CanvasDropdown<String>(
-            label: "Read from",
-            value: link.tableId,
-            width: 168,
-            options: [
-              ("", "Not linked"),
-              for (var table in tables)
-                (table.id, table.name.isEmpty ? "Table" : table.name),
-            ],
-            onChanged: (id) => setLink(link.copyWith(tableId: id)),
-          ),
-        ]),
-        if (linked case var table?) ...[
+      // The columns of its sheet it draws (data_sheet.dart): labels from
+      // one, a series from each chosen -- live, as the sheet is one set of
+      // numbers with the table showing it (Ken, 2026-11-15).
+      if (sheetLink case var link?)
+        if (controller.sheetById(link.sheet) case var sheet?) ...[
           CanvasControlGroup(label: "Labels", children: [
             CanvasDropdown<int>(
+              key: const ValueKey("chartSheetLabels"),
               label: "From column",
-              value: link.categoryColumn,
+              value: link.labels.clamp(0, link.range.cols - 1),
               width: 148,
               options: [
-                for (var c = 0; c < linkedColumns; c++)
-                  (c, table.columnName(c)),
+                for (var c = 0; c < link.range.cols; c++)
+                  (c, sheetColumnName(sheet, link, c)),
               ],
-              onChanged: (c) => setLink(link.copyWith(categoryColumn: c)),
+              onChanged: (c) => setSheetLink(link.copyWith(labels: c, series: [
+                for (var x in link.series)
+                  if (x != c) x
+              ])),
             ),
           ]),
           CanvasControlGroup(label: "Values", children: [
-            for (var c = 0; c < linkedColumns; c++)
-              CanvasToggle(
-                label: table.columnName(c),
-                value: link.valueColumns.contains(c),
-                onChanged: (v) => setLink(link.copyWith(valueColumns: [
-                  for (var i = 0; i < linkedColumns; i++)
-                    if (i == c ? v : link.valueColumns.contains(i)) i,
-                ])),
-              ),
-            CanvasHint("Each column you choose becomes a series. The table's "
-                "header names it, so a chart of the Points column is "
-                "labelled Points without typing it."),
-          ]),
-          CanvasControlGroup(label: "Apply", children: [
-            CanvasIconButton(
-              icon: Icons.download_outlined,
-              tooltip: link.on
-                  ? "Take the numbers from the table now"
-                  : "Choose at least one column of values",
-              onPressed: link.on
-                  ? () {
-                      begin();
-                      write(element.copyWith(
-                          data: chartDataFromTable(table, link,
-                              keeping: element.data.series)));
-                      commit();
-                    }
-                  : null,
-            ),
-            CanvasHint("Refreshing the table brings the chart with it, so the "
-                "two cannot drift apart."),
+            for (var c = 0; c < link.range.cols; c++)
+              if (c != link.labels)
+                CanvasToggle(
+                  key: ValueKey("chartSheetSeries-$c"),
+                  label: sheetColumnName(sheet, link, c),
+                  value: link.series.contains(c),
+                  onChanged: (v) => setSheetLink(link.copyWith(series: [
+                    for (var i = 0; i < link.range.cols; i++)
+                      if (i == c ? v : link.series.contains(i)) i,
+                  ])),
+                ),
+            CanvasHint("Each column you choose becomes a series, named by its "
+                "heading. The chart reads the sheet "
+                "\"${sheet.name}\" (${link.range.a1}), so a table of it "
+                "and this chart always agree."),
           ]),
         ],
-      ],
       // A row per series, each saying where it comes from: every field the
       // source turned out to hold is offered against each, and picking one
       // with no column yet adds it.
@@ -1822,4 +1782,12 @@ class _LookUpNamesState extends State<_LookUpNames> {
       if (mounted) setState(() => _busy = false);
     }
   }
+}
+
+/// sheetColumnName is column [c] of [link]'s range of [sheet] by its
+/// heading, or its letter where it has none.
+String sheetColumnName(DataSheet sheet, SheetLink link, int c) {
+  var heading = sheetShown(sheet, link.range.r0, link.range.c0 + c).trim();
+  var letter = columnName(link.range.c0 + c);
+  return heading.isEmpty ? "Column $letter" : "$heading ($letter)";
 }

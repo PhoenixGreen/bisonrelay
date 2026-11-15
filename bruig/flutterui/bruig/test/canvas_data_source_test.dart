@@ -490,17 +490,16 @@ void main() {
           isEmpty);
     });
 
-    test("the link survives a round trip", () {
+    test("the link survives the element's own round trip", () {
+      // Read from an old file as it was; a canvas opening it makes it a
+      // view of the table's sheet (canvas_data_sheet_test.dart).
       var chart = ChartElement(
         const ElementBase(id: "c"),
         fromTable: const TableLink(
             tableId: "t", categoryColumn: 1, valueColumns: [2, 3]),
       );
-      var back =
-          CanvasDocument.decode(CanvasDocument(elements: [chart]).encode())!
-              .elements
-              .first;
-      var link = (back as ChartElement).fromTable;
+      var back = ChartElement.fromJson(chart.props(), chart.base);
+      var link = back.fromTable;
       expect(link.tableId, "t");
       expect(link.categoryColumn, 1);
       expect(link.valueColumns, [2, 3]);

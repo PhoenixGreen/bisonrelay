@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
@@ -330,6 +331,12 @@ class ChartElement extends CanvasElement {
   /// with straight segments.
   final bool smooth;
 
+  /// sheet is the range of the canvas sheet this chart draws (see
+  /// data_sheet.dart), and which of its columns are the labels and the
+  /// series: its data is made from it, kept in step both ways
+  /// (data_sync.dart). Null only until it is given a sheet of its own.
+  final SheetLink? sheet;
+
   const ChartElement(
     super.base, {
     this.type = ChartType.bar,
@@ -390,6 +397,7 @@ class ChartElement extends CanvasElement {
     this.pointColor = const Color(0x00000000),
     this.strokeWidth = 3,
     this.smooth = false,
+    this.sheet,
   });
 
   @override
@@ -526,6 +534,8 @@ class ChartElement extends CanvasElement {
     Color? pointColor,
     double? strokeWidth,
     bool? smooth,
+    SheetLink? sheet,
+    bool clearSheet = false,
   }) =>
       _copy(base,
           type: type,
@@ -586,7 +596,9 @@ class ChartElement extends CanvasElement {
           pointSize: pointSize,
           pointColor: pointColor,
           strokeWidth: strokeWidth,
-          smooth: smooth);
+          smooth: smooth,
+          sheet: sheet,
+          clearSheet: clearSheet);
 
   /// _copy is copyWith and rebase sharing one body, so no field can be
   /// dropped from one of them.
@@ -651,6 +663,8 @@ class ChartElement extends CanvasElement {
     Color? pointColor,
     double? strokeWidth,
     bool? smooth,
+    SheetLink? sheet,
+    bool clearSheet = false,
   }) =>
       ChartElement(newBase,
           type: type ?? this.type,
@@ -712,7 +726,8 @@ class ChartElement extends CanvasElement {
           pointSize: pointSize ?? this.pointSize,
           pointColor: pointColor ?? this.pointColor,
           strokeWidth: strokeWidth ?? this.strokeWidth,
-          smooth: smooth ?? this.smooth);
+          smooth: smooth ?? this.smooth,
+          sheet: clearSheet ? null : sheet ?? this.sheet);
 
   @override
   Map<String, dynamic> props() => {
@@ -780,6 +795,7 @@ class ChartElement extends CanvasElement {
         if (pointSize > 0) "pointSize": pointSize,
         if (pointColor.a > 0) "pointColor": colorToJson(pointColor),
         if (smooth) "smooth": true,
+        if (sheet != null) "sheet": sheet!.toJson(),
       };
 
   factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) => ChartElement(
@@ -877,7 +893,8 @@ class ChartElement extends CanvasElement {
       showPoints: jsonBool(json["points"], false),
       pointSize: jsonDouble(json["pointSize"], 0).clamp(0, 200),
       pointColor: colorFromJson(json["pointColor"], const Color(0x00000000)),
-      smooth: jsonBool(json["smooth"], false));
+      smooth: jsonBool(json["smooth"], false),
+      sheet: SheetLink.fromJson(json["sheet"]));
 }
 
 /// ChartSourceMap is which of a fetched source's columns the chart draws: the

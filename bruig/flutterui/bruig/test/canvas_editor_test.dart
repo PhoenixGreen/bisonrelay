@@ -750,14 +750,20 @@ void main() {
           expect(find.text("Code"), findsWidgets);
           continue;
         }
+        // Tables and charts are one Data element (Ken, 2026-11-15): its
+        // chip puts down a table, made a chart in its quick settings.
+        if (kind == ElementKind.table || kind == ElementKind.chart) {
+          expect(find.text("Data"), findsOneWidget);
+          continue;
+        }
         expect(find.text(kind.label), findsWidgets, reason: kind.name);
       }
 
-      await tester.tap(find.text("Chart").first);
+      await tester.tap(find.text("Data").first);
       await tester.pumpAndSettle();
 
       expect(controller.document.elements.length, 1);
-      expect(controller.document.elements.single.kind, ElementKind.chart);
+      expect(controller.document.elements.single.kind, ElementKind.table);
       expect(controller.selection, {controller.document.elements.single.id});
     });
 

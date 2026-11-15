@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_view_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
@@ -33,6 +34,9 @@ Widget chartPanel(
 
   return elementPanel(context, controller, e, write, begin, commit,
       quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        // Table or chart, and of which sheet: one Data element either way.
+        dataViewStrip(controller, e),
+        const SizedBox(height: 8),
         panelRow([
           cell(
               CanvasDropdown<ChartType>(

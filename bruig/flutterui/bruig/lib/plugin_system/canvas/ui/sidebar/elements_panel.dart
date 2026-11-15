@@ -16,7 +16,8 @@ const List<ElementKind> _addable = [
   ElementKind.image,
   ElementKind.vector,
   ElementKind.line,
-  ElementKind.chart,
+  // The Data element: a sheet shown as a table, switched to a chart in its
+  // quick settings (Ken, 2026-11-15: Table and Chart made one).
   ElementKind.table,
   ElementKind.button,
   ElementKind.counter,
@@ -121,10 +122,11 @@ class _AddChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-        Icon(iconForKind(kind), size: 20, color: theme.colors.onSurfaceVariant),
+        Icon(kind == ElementKind.table ? Icons.dataset_outlined : iconForKind(kind),
+            size: 20, color: theme.colors.onSurfaceVariant),
         const SizedBox(height: 4),
         Text(
-          kind.label,
+          kind == ElementKind.table ? "Data" : kind.label,
           style: TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),

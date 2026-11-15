@@ -126,6 +126,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/score_roll.dart';
 import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
@@ -234,6 +236,7 @@ part 'controller/metronomes.dart';
 part 'controller/codes.dart';
 part 'controller/code_runs.dart';
 part 'controller/code_tasks.dart';
+part 'controller/data_views.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -1728,6 +1731,9 @@ class CanvasController extends ChangeNotifier {
     var designing = next;
     next = synthSynced(next,
         designedAt: (e, f) => designedNow(e, f, designing));
+    // Each Data element shows its sheet, and what one changes of its own
+    // data goes into the sheet for the rest (see data_sync.dart).
+    next = dataSynced(_document, next);
 
     // A picture's frame takes in what was put past it once a change is made,
     // not at every step of a drag, whose sums start from where things were
