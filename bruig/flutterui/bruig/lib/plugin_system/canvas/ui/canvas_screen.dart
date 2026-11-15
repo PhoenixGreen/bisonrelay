@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/ui/code_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -564,10 +565,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<String?>(
-      valueListenable: _controller.codeStudio,
-      builder: (context, code, _) => code != null
-          ? _codeStudioPage(context, code)
-          : _withoutCodeStudio(context));
+      valueListenable: _controller.dataStudio,
+      builder: (context, sheet, _) => sheet != null
+          ? _dataStudioPage(context, sheet)
+          : ValueListenableBuilder<String?>(
+              valueListenable: _controller.codeStudio,
+              builder: (context, code, _) => code != null
+                  ? _codeStudioPage(context, code)
+                  : _withoutCodeStudio(context)));
+
+  /// _dataStudioPage is the Data Studio, given the whole page in place of
+  /// the canvas: see data_studio.dart.
+  Widget _dataStudioPage(BuildContext context, String sheet) {
+    var client = Provider.of<ClientModel>(context);
+    var theme = ThemeNotifier.of(context);
+    return ScreenWithChatSideMenu(
+        client,
+        contentAreaFrame(
+            theme,
+            DataStudio(
+                controller: _controller,
+                sheetId: sheet,
+                onDone: _controller.closeDataStudio)));
+  }
 
   Widget _withoutCodeStudio(BuildContext context) =>
       ValueListenableBuilder<String?>(

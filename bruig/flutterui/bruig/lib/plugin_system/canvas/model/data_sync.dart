@@ -470,3 +470,175 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
   if (series.isEmpty && cols > 1) series = [labels == cols - 1 ? 0 : cols - 1];
   return (labels, series);
 }
+
+// ---------- Rows and columns put in and taken out ----------
+//
+// As in Calc: a view's range moves with the cells it shows, grows when rows
+// or columns go in inside it and shrinks when they come out, and a chart's
+// label and series columns follow their columns (Ken, 2026-11-15: moving or
+// deleting a table's column broke the chart reading it).
+
+/// _withSheet is [doc] with [sheet] in place of the one of its id, and every
+/// view of it relinked by [relink].
+CanvasDocument _withSheet(CanvasDocument doc, DataSheet sheet,
+    SheetLink Function(SheetLink link) relink) {
+  var out = doc.copyWith(sheets: [
+    for (var s in doc.sheets) s.id == sheet.id ? sheet : s,
+  ]);
+  return _mapViews(out, (e) {
+    var link = linkOf(e);
+    if (link == null || link.sheet != sheet.id) return e;
+    var next = relink(link);
+    return next == link ? e : withLink(e, next);
+  });
+}
+
+DataSheet? _sheetIn(CanvasDocument doc, String id) =>
+    doc.sheets.where((s) => s.id == id).firstOrNull;
+
+/// _spanAfter is span [a]..[b] with [n] put in before [at] (n > 0) or the
+/// [-n] at [at] taken out (n < 0); null where all of it was taken out.
+(int, int)? _spanAfter(int a, int b, int at, int n) {
+  if (n > 0) {
+    if (at <= a) return (a + n, b + n);
+    if (at <= b) return (a, b + n);
+    return (a, b);
+  }
+  var end = at - n - 1;
+  var na = a < at ? a : (a > end ? a + n : at);
+  var nb = b < at ? b : (b > end ? b + n : at - 1);
+  if (nb < na) return a >= at && b <= end ? null : (na, na);
+  return (na, nb);
+}
+
+/// rowsInserted is [doc] with [n] empty rows put in sheet [id] before row
+/// [at].
+CanvasDocument rowsInserted(CanvasDocument doc, String id, int at, int n) {
+  var s = _sheetIn(doc, id);
+  if (s == null || n <= 0) return doc;
+  var cells = [...s.cells];
+  if (at < cells.length) {
+    cells.insertAll(at, [for (var i = 0; i < n; i++) <String>[]]);
+  }
+  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+    var (r0, r1) = _spanAfter(l.range.r0, l.range.r1, at, n)!;
+    return l.copyWith(range: CellRange(r0, l.range.c0, r1, l.range.c1));
+  });
+}
+
+/// rowsDeleted is [doc] with rows [at] to [at] + [n] - 1 of sheet [id] taken
+/// out.
+CanvasDocument rowsDeleted(CanvasDocument doc, String id, int at, int n) {
+  var s = _sheetIn(doc, id);
+  if (s == null || n <= 0) return doc;
+  var cells = [
+    for (var (r, row) in s.cells.indexed)
+      if (r < at || r >= at + n) row,
+  ];
+  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+    var span = _spanAfter(l.range.r0, l.range.r1, at, -n) ?? (at, at);
+    return l.copyWith(
+        range: CellRange(span.$1, l.range.c0, span.$2, l.range.c1));
+  });
+}
+
+/// columnsInserted is [doc] with [n] empty columns put in sheet [id] before
+/// column [at].
+CanvasDocument columnsInserted(CanvasDocument doc, String id, int at, int n) {
+  var s = _sheetIn(doc, id);
+  if (s == null || n <= 0) return doc;
+  var cells = [
+    for (var row in s.cells)
+      at < row.length
+          ? [
+              ...row.sublist(0, at),
+              for (var i = 0; i < n; i++) "",
+              ...row.sublist(at)
+            ]
+          : row,
+  ];
+  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+    var g = l.range;
+    var (c0, c1) = _spanAfter(g.c0, g.c1, at, n)!;
+    // Inside the range: the columns past it, counted from its start, move.
+    int rel(int p) => g.c0 + p >= at && at > g.c0 ? p + n : p;
+    return l.copyWith(
+        range: CellRange(g.r0, c0, g.r1, c1),
+        labels: rel(l.labels),
+        series: [for (var p in l.series) rel(p)]);
+  });
+}
+
+/// columnsDeleted is [doc] with columns [at] to [at] + [n] - 1 of sheet
+/// [id] taken out; a chart's series of them let go, its labels on the
+/// first column left if those went.
+CanvasDocument columnsDeleted(CanvasDocument doc, String id, int at, int n) {
+  var s = _sheetIn(doc, id);
+  if (s == null || n <= 0) return doc;
+  var cells = [
+    for (var row in s.cells)
+      [
+        for (var (c, v) in row.indexed)
+          if (c < at || c >= at + n) v
+      ],
+  ];
+  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+    var g = l.range;
+    var span = _spanAfter(g.c0, g.c1, at, -n) ?? (at, at);
+    // Each column the link names, where it is now, or null if it went.
+    int? rel(int p) {
+      var a = g.c0 + p;
+      if (a >= at && a < at + n) return null;
+      return (a < at ? a : a - n) - span.$1;
+    }
+
+    return l.copyWith(
+        range: CellRange(g.r0, span.$1, g.r1, span.$2),
+        labels: rel(l.labels) ?? 0,
+        series: [
+          for (var p in l.series)
+            if (rel(p) case var q?) q
+        ]);
+  });
+}
+
+/// rowsSorted is [doc] with rows [rows] of sheet [id] put in order of
+/// column [by] -- numbers by value, before words -- smallest first or, with
+/// [descending], largest; only columns [rows].c0 to c1 move.
+CanvasDocument rowsSorted(CanvasDocument doc, String id, CellRange rows, int by,
+    {bool descending = false}) {
+  var s = _sheetIn(doc, id);
+  if (s == null || rows.rows < 2) return doc;
+  var order = [for (var r = rows.r0; r <= rows.r1; r++) r];
+  int compare(int a, int b) {
+    var x = sheetShown(s, a, by), y = sheetShown(s, b, by);
+    var nx = cellNumber(x), ny = cellNumber(y);
+    int d;
+    if (nx != null && ny != null) {
+      d = nx.compareTo(ny);
+    } else if (nx != null || ny != null) {
+      d = nx != null ? -1 : 1;
+    } else if (x.isEmpty || y.isEmpty) {
+      // Blanks last, whichever way.
+      return x.isEmpty == y.isEmpty ? 0 : (x.isEmpty ? 1 : -1);
+    } else {
+      d = x.toLowerCase().compareTo(y.toLowerCase());
+    }
+    return descending ? -d : d;
+  }
+
+  // A stable sort: ties keep their order.
+  var keyed = [for (var (i, r) in order.indexed) (i, r)];
+  keyed.sort((a, b) {
+    var d = compare(a.$2, b.$2);
+    return d != 0 ? d : a.$1.compareTo(b.$1);
+  });
+  var block = [
+    for (var (_, r) in keyed)
+      [for (var c = rows.c0; c <= rows.c1; c++) s.raw(r, c)],
+  ];
+  return doc.copyWith(sheets: [
+    for (var x in doc.sheets)
+      x.id == id ? s.withBlock(rows.r0, rows.c0, block) : x,
+  ]);
+}

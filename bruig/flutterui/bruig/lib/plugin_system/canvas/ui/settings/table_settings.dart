@@ -38,6 +38,8 @@ Widget tablePanel(
       quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
         // Table or chart, and of which sheet: one Data element either way.
         dataViewStrip(controller, e),
+        const SizedBox(height: 6),
+        dataStudioButton(controller, e),
         const SizedBox(height: 8),
         panelRow([
           cell(

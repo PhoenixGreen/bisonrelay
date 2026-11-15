@@ -47,3 +47,16 @@ Widget dataViewStrip(CanvasController controller, CanvasElement e) {
           min: 120),
   ]);
 }
+
+/// dataStudioButton opens the Data Studio on [e]'s sheet, [e] picked.
+Widget dataStudioButton(CanvasController controller, CanvasElement e) {
+  var link = linkOf(e);
+  return CanvasTextButton(
+    key: const ValueKey("dataOpenStudio"),
+    label: "Data Studio",
+    icon: Icons.table_view_outlined,
+    onPressed: link == null
+        ? null
+        : () => controller.openDataStudio(link.sheet, view: e.id),
+  );
+}

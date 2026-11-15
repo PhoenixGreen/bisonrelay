@@ -237,6 +237,7 @@ part 'controller/codes.dart';
 part 'controller/code_runs.dart';
 part 'controller/code_tasks.dart';
 part 'controller/data_views.dart';
+part 'controller/data_sheets.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -3203,6 +3204,11 @@ class CanvasController extends ChangeNotifier {
   /// codeStudio is the Code panel the Code Studio has the page for, by id,
   /// or null for the canvas. See code_studio.dart.
   final ValueNotifier<String?> codeStudio = ValueNotifier(null);
+
+  /// dataStudio is the sheet the Data Studio is open on, or null while it
+  /// is shut; dataStudioView the Data element it opened with picked.
+  final ValueNotifier<String?> dataStudio = ValueNotifier(null);
+  String? dataStudioView;
 
   /// _rangeEnd is the frame a sheet's range of bars stops playing at (see
   /// playSheet), or null.
