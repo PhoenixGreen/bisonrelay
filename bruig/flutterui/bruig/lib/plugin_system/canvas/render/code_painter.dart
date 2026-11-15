@@ -228,28 +228,41 @@ TextSpan codeSpan(
 }
 
 /// CodePlayPart is a part of a Code panel's playbar.
-enum CodePlayPart { full, restart, play, track }
+/// reset puts its code back as it began (CodeElement.reset): shown only
+/// once it has changed, with or without a lesson to play.
+enum CodePlayPart { reset, full, restart, play, track }
 
-/// codePlaybar is where [e]'s playbar's parts are in its window bar [bar];
-/// empty where it shows none, or there is no lesson to play.
+/// codePlaybar is where [e]'s playbar's parts are in its window bar [bar]:
+/// its lesson's, where it has one and shows them, and Reset, where its code
+/// has changed; empty where there is no room.
 Map<CodePlayPart, Rect> codePlaybar(CodeElement e, Rect? bar) {
-  if (bar == null || !e.playbar || lessonSpan(e) == null) return const {};
+  if (bar == null) return const {};
   var fs = e.fontSize;
   var b = fs * 1.7, gap = fs * 0.45;
-  var timeW = fs * 6.2;
-  var trackW = math.min(fs * 11, bar.width * 0.28);
-  var right = bar.right - fs * 0.8 - timeW - gap;
-  var track = Rect.fromLTWH(right - trackW, bar.center.dy - b / 2, trackW, b);
-  var play = Rect.fromLTWH(track.left - gap - b, bar.center.dy - b / 2, b, b);
-  var restart = Rect.fromLTWH(play.left - gap * 0.6 - b, play.top, b, b);
-  var full = Rect.fromLTWH(restart.left - gap * 1.4 - b, play.top, b, b);
-  if (full.left < bar.left + fs * 8) return const {};
-  return {
-    CodePlayPart.full: full,
-    CodePlayPart.restart: restart,
-    CodePlayPart.play: play,
-    CodePlayPart.track: track,
-  };
+  var out = <CodePlayPart, Rect>{};
+  // From the right: the next part ends here.
+  var left = bar.right - fs * 0.8;
+  if (e.playbar && lessonSpan(e) != null) {
+    var timeW = fs * 6.2;
+    var trackW = math.min(fs * 11, bar.width * 0.28);
+    var right = bar.right - fs * 0.8 - timeW - gap;
+    var track = Rect.fromLTWH(right - trackW, bar.center.dy - b / 2, trackW, b);
+    var play = Rect.fromLTWH(track.left - gap - b, bar.center.dy - b / 2, b, b);
+    var restart = Rect.fromLTWH(play.left - gap * 0.6 - b, play.top, b, b);
+    var full = Rect.fromLTWH(restart.left - gap * 1.4 - b, play.top, b, b);
+    if (full.left >= bar.left + fs * 8) {
+      out[CodePlayPart.full] = full;
+      out[CodePlayPart.restart] = restart;
+      out[CodePlayPart.play] = play;
+      out[CodePlayPart.track] = track;
+      left = full.left - gap * 1.4;
+    }
+  }
+  if (e.changedFromStart) {
+    var reset = Rect.fromLTWH(left - b, bar.center.dy - b / 2, b, b);
+    if (reset.left >= bar.left + fs * 8) out[CodePlayPart.reset] = reset;
+  }
+  return out;
 }
 
 /// _paintPlaybar draws [e]'s playbar: back to the start, play or pause, its
@@ -258,11 +271,37 @@ Map<CodePlayPart, Rect> codePlaybar(CodeElement e, Rect? bar) {
 void _paintPlaybar(Canvas canvas, CodeElement e, CodeColours c,
     Map<CodePlayPart, Rect> parts, double seconds, bool playing,
     {bool full = false}) {
-  var span = lessonSpan(e);
-  if (span == null || parts.isEmpty) return;
   var fs = e.fontSize;
   var key = Paint()..color = c.line;
   var ink = Paint()..color = c.fg;
+  // Reset: an arrow curled back round to where it began.
+  if (parts[CodePlayPart.reset] case var r?) {
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(r, Radius.circular(fs * 0.35)), key);
+    var m = r.center, u = r.width * 0.24;
+    canvas.drawArc(
+        Rect.fromCircle(center: m, radius: u),
+        -math.pi * 0.35,
+        math.pi * 1.6,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1, r.width * 0.09)
+          ..strokeCap = StrokeCap.round
+          ..color = c.fg);
+    var tip =
+        m + Offset(math.cos(-math.pi * 0.35), math.sin(-math.pi * 0.35)) * u;
+    var a = u * 0.6;
+    canvas.drawPath(
+        Path()
+          ..moveTo(tip.dx + a * 0.9, tip.dy - a * 0.1)
+          ..lineTo(tip.dx - a * 0.2, tip.dy - a * 0.9)
+          ..lineTo(tip.dx - a * 0.1, tip.dy + a * 0.5)
+          ..close(),
+        ink);
+  }
+  var span = lessonSpan(e);
+  if (span == null || !parts.containsKey(CodePlayPart.full)) return;
   // Full code: the whole of it, by nobody's clock -- lit while it shows.
   var f = parts[CodePlayPart.full]!;
   canvas.drawRRect(RRect.fromRectAndRadius(f, Radius.circular(fs * 0.35)),
@@ -582,7 +621,7 @@ void paintCode(Canvas canvas, Rect box, CodeElement e,
         show.onStage ? codePlaybar(e, bar) : const <CodePlayPart, Rect>{};
     var titleRoom = play.isEmpty
         ? bar.width - fs * 5.5
-        : play[CodePlayPart.full]!.left - bar.left - fs * 5.2;
+        : play.values.map((r) => r.left).reduce(math.min) - bar.left - fs * 5.2;
     _text(canvas, e.title, Offset(bar.left + fs * 4.6, bar.center.dy),
         _uiSize(e), c.dim,
         maxWidth: math.max(0, titleRoom));

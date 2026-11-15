@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/code_live_preview.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -53,10 +54,12 @@ Widget _app(Widget child) => MultiProvider(
 /// picture, as a browser would.
 class _FakeHost implements CodeRunHost {
   final List<(CodeRunner, String)> ran = [];
+  final List<Size> sizes = [];
   @override
   Future<CodeRunOutcome> run(CodeRunner runner, CodeElement code,
       CodeFile entry, Size size, void Function(CodeLog) onLog) async {
     ran.add((runner, entry.name));
+    sizes.add(size);
     onLog(const CodeLog("Page ready"));
     return const CodeRunOutcome(
         logs: [CodeLog("Page ready")], picture: [1, 2, 3]);
@@ -175,12 +178,20 @@ void main() {
     expect(code().rows, [1, 1]);
   });
 
-  testWidgets("a second press on a picked panel's code opens it for typing",
+  testWidgets("one click on a panel's code opens it for typing",
       (tester) async {
     await stage(tester, "web");
     var pane = codeBoxes(code(), code().bounds).panes[0].code;
-    await tester.tapAt(at(pane.center));
-    await tester.pump(const Duration(milliseconds: 100));
+    // Dragged from its code, the panel moves and nothing opens.
+    var x = code().x;
+    await tester.timedDragFrom(at(pane.center), const Offset(60, 0),
+        const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(code().x, greaterThan(x + 10));
+    expect(find.byType(CodePaneEditor), findsNothing);
+    // Clicked, it opens (Ken: two clicks "doesn't feel like a very good
+    // user experience").
+    pane = codeBoxes(code(), code().bounds).panes[0].code;
     await tester.tapAt(at(pane.center));
     await tester.pumpAndSettle();
     expect(find.byType(CodePaneEditor), findsOneWidget);
@@ -195,6 +206,98 @@ void main() {
     expect(find.byType(CodePaneEditor), findsNothing);
     c.undo();
     expect(code().file("f1")!.text, startsWith("<!doctype html>"));
+  });
+
+  testWidgets(
+      "a Flutter app is laid out the same in its run's picture and live, at "
+      "any zoom and text size", (tester) async {
+    var host = _FakeHost();
+    CanvasController.codeRunHost = host;
+    var save = CanvasController.saveCodePicture;
+    CanvasController.saveCodePicture = (png) async => "0123456789abcdef.png";
+    addTearDown(() {
+      CanvasController.codeRunHost = null;
+      CanvasController.saveCodePicture = save;
+    });
+    // Ken runs a larger text size: the live app grew when pressed.
+    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await stage(tester, "flutter");
+    c.replaceElement(run().copyWith(appWidth: 360));
+    var boxes = codeRunBoxes(run(), run().bounds, runner: CodeRunner.flutter);
+    await tester.tapAt(at(boxes.runButton.center));
+    await tester.pumpAndSettle();
+    var preview = boxes.preview!;
+    var want = Size(360, preview.height * 360 / preview.width);
+    expect(host.sizes.single.width, closeTo(want.width, 1e-6));
+    expect(host.sizes.single.height, closeTo(want.height, 1e-6));
+    for (var zoom in [0.5, 1.5]) {
+      c.zoom = zoom;
+      await tester.pumpAndSettle();
+      c.selectOnly(run().id);
+      c.liveCode(run());
+      await tester.pumpAndSettle();
+      var live = tester.widget<CodeLivePreview>(find.byType(CodeLivePreview));
+      expect(live.appSize.width, closeTo(want.width, 1e-6), reason: "$zoom");
+      expect(live.appSize.height, closeTo(want.height, 1e-6));
+      var media = tester.widget<MediaQuery>(find
+          .descendant(
+              of: find.byType(CodeLivePreview),
+              matching: find.byType(MediaQuery))
+          .first);
+      expect(media.data.textScaler, TextScaler.noScaling);
+      // Shut without its picture: taking one needs the real clock.
+      c.codeLiveSnap = null;
+      await c.endLiveCode();
+      await tester.pumpAndSettle();
+    }
+    // Fitting the panel: its width on the page, at least a phone's.
+    c.replaceElement(run().copyWith(appWidth: 0));
+    expect(run().appSize(preview.size).width,
+        closeTo(preview.width < 360 ? 360 : preview.width, 1e-6));
+    expect(
+        CodeRunElement.fromJson({"appWidth": 768.0}, const ElementBase(id: "r"))
+            .appWidth,
+        768);
+  });
+
+  testWidgets(
+      "Reset, on the bar once the code is typed into, puts it back as it "
+      "began", (tester) async {
+    await stage(tester, "web");
+    var began = code().file("f1")!.text;
+    expect(code().start, isNull);
+    expect(codePlaybar(code(), codeBoxes(code(), code().bounds).bar),
+        isNot(contains(CodePlayPart.reset)),
+        reason: "nothing to reset yet");
+    var pane = codeBoxes(code(), code().bounds).panes[0].code;
+    await tester.tapAt(at(pane.center));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(ValueKey("codeEditor-${code().id}-f1")), "<p>Oops</p>");
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(code().start!.firstWhere((f) => f.id == "f1").text, began);
+    expect(code().changedFromStart, isTrue);
+    // Kept in the canvas, so a student's copy can go back too.
+    var saved = CodeElement.fromJson(code().props(), code().base);
+    expect(saved.start!.firstWhere((f) => f.id == "f1").text, began);
+    var reset = codePlaybar(
+        code(), codeBoxes(code(), code().bounds).bar)[CodePlayPart.reset]!;
+    await tester.tapAt(at(reset.center));
+    await tester.pumpAndSettle();
+    expect(code().file("f1")!.text, began);
+    expect(code().changedFromStart, isFalse);
+    expect(codePlaybar(code(), codeBoxes(code(), code().bounds).bar),
+        isNot(contains(CodePlayPart.reset)));
+    // One change: Undo brings the student's code back.
+    c.undo();
+    expect(code().file("f1")!.text, "<p>Oops</p>");
+    // Kept as the start, Reset has nothing to do.
+    c.keepCodeAsStart(code());
+    expect(code().changedFromStart, isFalse);
+    expect(code().reset.file("f1")!.text, "<p>Oops</p>");
   });
 
   testWidgets("Run pressed: run by the host, its output and picture kept",
@@ -473,7 +576,9 @@ void main() {
       await stage(tester, "web");
       var e = code();
       var bar = codePlaybar(e, codeBoxes(e, e.bounds).bar);
-      expect(bar.keys, CodePlayPart.values);
+      // Every part but Reset, which waits for the code to change.
+      expect(
+          bar.keys, CodePlayPart.values.where((p) => p != CodePlayPart.reset));
       c.frame = 100;
       await tester.tapAt(at(bar[CodePlayPart.restart]!.center));
       await tester.pump();
@@ -590,14 +695,78 @@ void main() {
       await mouse.removePointer();
     });
 
+    testWidgets("open for typing, the wheel and two fingers scroll the editor",
+        (tester) async {
+      // At Ken's larger text size the field outgrew the scroll view and
+      // scrolled inside it: the top couldn't be reached.
+      tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await stage(tester, "flutter");
+      var e = code();
+      var pane = codeBoxes(e, e.bounds).panes[0].code;
+      var p = at(pane.center);
+      await tester.tapAt(p);
+      await tester.pumpAndSettle();
+      expect(find.byType(CodePaneEditor), findsOneWidget);
+      ScrollPosition down() => tester
+          .stateList<ScrollableState>(find.descendant(
+              of: find.byType(CodePaneEditor),
+              matching: find.byType(Scrollable)))
+          .firstWhere((s) => s.widget.axisDirection == AxisDirection.down)
+          .position;
+      var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: p);
+      await mouse.moveTo(p);
+      await tester.pump();
+      for (var i = 0; i < 30; i++) {
+        tester.binding.handlePointerEvent(
+            PointerScrollEvent(position: p, scrollDelta: const Offset(0, 200)));
+        await tester.pump();
+      }
+      expect(down().pixels, closeTo(down().maxScrollExtent, 1));
+      for (var i = 0; i < 30; i++) {
+        tester.binding.handlePointerEvent(PointerScrollEvent(
+            position: p, scrollDelta: const Offset(0, -200)));
+        await tester.pump();
+      }
+      expect(down().pixels, 0, reason: "the wheel goes back to the top");
+      var pad = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      await pad.panZoomStart(p);
+      for (var i = 0; i < 10; i++) {
+        await pad.panZoomUpdate(p, pan: Offset(0, -60.0 * (i + 1)));
+        await tester.pump();
+      }
+      await pad.panZoomEnd();
+      await tester.pumpAndSettle();
+      var low = down().pixels;
+      expect(low, greaterThan(0));
+      await pad.panZoomStart(p);
+      for (var i = 0; i < 20; i++) {
+        await pad.panZoomUpdate(p, pan: Offset(0, 60.0 * (i + 1)));
+        await tester.pump();
+      }
+      await pad.panZoomEnd();
+      await tester.pumpAndSettle();
+      expect(down().pixels, 0, reason: "two fingers go back to the top");
+      await mouse.removePointer();
+    });
+
     testWidgets("Full code: the whole of it, and every lit step, by no clock",
         (tester) async {
       await stage(tester, "web");
       var e = code();
       c.frame = 0;
       var full = codePlaybar(e, codeBoxes(e, e.bounds).bar)[CodePlayPart.full]!;
+      // Drawn again at once, by the stage alone (Ken: the full code came
+      // late, when the playhead next moved).
+      var told = 0, ticks = c.keysHeld.value;
+      void count() => told++;
+      c.addListener(count);
       await tester.tapAt(at(full.center));
       await tester.pump();
+      c.removeListener(count);
+      expect(told, 0, reason: "nothing round the stage rebuilt");
+      expect(c.keysHeld.value, greaterThan(ticks), reason: "the stage redrawn");
       expect(c.codeFull(e.id), isTrue);
       expect(c.codeShowFor(e).full, isTrue);
       // Drawn so: everything typed though the scene has typed nothing, and

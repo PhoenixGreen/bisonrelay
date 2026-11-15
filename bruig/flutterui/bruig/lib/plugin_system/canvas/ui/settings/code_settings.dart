@@ -378,12 +378,44 @@ List<Widget> codeSettings(
                       ),
                     ]),
                 CanvasControlGroup(
+                    key: const ValueKey("codeStart"),
+                    label: "Starting code",
+                    help: "The code as it began is kept the first time it "
+                        "is typed into, on the canvas or in the Code "
+                        "Studio. Reset, on the panel's bar, puts it back: "
+                        "a student's mistakes undone in one press.",
+                    children: [
+                      CanvasStateNote(e.start == null
+                          ? "Not typed into yet: this is the starting code."
+                          : e.changedFromStart
+                              ? "Changed since it began."
+                              : "As it began."),
+                      if (e.start != null)
+                        panelRow([
+                          cell(CanvasTextButton(
+                            key: const ValueKey("codeReset"),
+                            label: "Reset",
+                            icon: Icons.restart_alt,
+                            onPressed: e.changedFromStart
+                                ? () => controller.resetCode(e)
+                                : null,
+                          )),
+                          cell(CanvasTextButton(
+                            key: const ValueKey("codeKeepStart"),
+                            label: "Keep as the start",
+                            onPressed: e.changedFromStart
+                                ? () => controller.keepCodeAsStart(e)
+                                : null,
+                          )),
+                        ]),
+                    ]),
+                CanvasControlGroup(
                     key: const ValueKey("codePanes"),
                     label: "Panes",
                     help: "Each pane's tabs. On the canvas, drag a tab along "
                         "its row to reorder it, or onto another pane to move "
                         "it there; drag the line between two panes to resize "
-                        "them. Double-click a pane's code to edit it.",
+                        "them. Click a pane's code to edit it.",
                     children: [
                       for (var (i, p) in panes.indexed) paneRow(i, p),
                       if (e.layout.panes > 1)
@@ -740,6 +772,19 @@ List<Widget> codeRunSettings(
                     keyOf: (s) => "codeRunShows-${s.name}",
                     onChanged: (s) => now(e.copyWith(shows: s)),
                   ),
+                  // How wide its page or app is laid out before it is
+                  // fitted to the preview: its picture and the live app
+                  // alike.
+                  if (e.shows != CodeRunShows.output)
+                    CanvasDropdown<double>(
+                      key: const ValueKey("codeRunAppWidth"),
+                      label: "App width",
+                      value: codeAppWidths.any((w) => w.$1 == e.appWidth)
+                          ? e.appWidth
+                          : 0,
+                      options: codeAppWidths,
+                      onChanged: (w) => now(e.copyWith(appWidth: w)),
+                    ),
                   panelRow([
                     if (e.shows == CodeRunShows.both)
                       cell(CanvasStepper(

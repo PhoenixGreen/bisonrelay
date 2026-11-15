@@ -100,7 +100,7 @@ class _CodeStudioState extends State<CodeStudio> {
     }
     var now = code;
     if (now != null) {
-      c.replaceElement(now.withFileText(file, text), transient: true);
+      c.replaceElement(now.typedInto(file, text), transient: true);
     }
   }
 

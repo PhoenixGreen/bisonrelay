@@ -22,6 +22,11 @@ class CodeLivePreview extends StatefulWidget {
 
   /// rect is the preview on the stage, in the stage's pixels.
   final Rect rect;
+
+  /// appSize is what a Flutter app is laid out at before it is fitted to
+  /// [rect]: the Run panel's (CodeRunElement.appSize), as its run's picture
+  /// was -- not the stage's pixels, which change with the zoom.
+  final Size appSize;
   final void Function(CodeLog) onLog;
 
   /// onSnap is given, while it is open, the way to take its picture.
@@ -32,6 +37,7 @@ class CodeLivePreview extends StatefulWidget {
     required this.code,
     required this.entry,
     required this.rect,
+    required this.appSize,
     required this.onLog,
     required this.onSnap,
     super.key,
@@ -110,9 +116,8 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
         },
       );
     } else if (_built != null) {
-      // Laid out at least a phone's width, and fitted to the preview.
-      var w = widget.rect.width < 360 ? 360.0 : widget.rect.width;
-      var h = widget.rect.height * w / widget.rect.width;
+      // Laid out as the run's picture was, and fitted to the preview.
+      var w = widget.appSize.width, h = widget.appSize.height;
       body = FittedBox(
         fit: BoxFit.contain,
         alignment: Alignment.topCenter,
@@ -122,7 +127,10 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
           child: RepaintBoundary(
             key: _app,
             child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(size: Size(w, h)),
+              // Not the app's text size (Ken runs a larger one): the
+              // run's picture is drawn without it.
+              data: MediaQuery.of(context)
+                  .copyWith(size: Size(w, h), textScaler: TextScaler.noScaling),
               child: _built!,
             ),
           ),

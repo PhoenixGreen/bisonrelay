@@ -355,6 +355,12 @@ class CodeElement extends CanvasElement {
   /// dim darkens the other lines of a pane while lines are lit in it.
   final bool dim;
 
+  /// start is its code as it began -- kept the first time it is typed into
+  /// on the canvas or in the Code Studio (typedInto) -- for Reset to go
+  /// back to (Ken: "if the student makes a mistake editing the code it
+  /// can go back to the initial version"); null until then.
+  final List<CodeFile>? start;
+
   const CodeElement(
     super.base, {
     this.title = "project",
@@ -374,6 +380,7 @@ class CodeElement extends CanvasElement {
     this.typing = const CodeTyping(on: false),
     this.steps = const [],
     this.dim = true,
+    this.start,
   });
 
   @override
@@ -397,7 +404,8 @@ class CodeElement extends CanvasElement {
       playbar: playbar,
       typing: typing,
       steps: steps,
-      dim: dim);
+      dim: dim,
+      start: start);
 
   CodeElement copyWith({
     String? title,
@@ -417,6 +425,8 @@ class CodeElement extends CanvasElement {
     CodeTyping? typing,
     List<CodeStep>? steps,
     bool? dim,
+    List<CodeFile>? start,
+    bool clearStart = false,
   }) =>
       CodeElement(base,
           title: title ?? this.title,
@@ -435,7 +445,8 @@ class CodeElement extends CanvasElement {
           playbar: playbar ?? this.playbar,
           typing: typing ?? this.typing,
           steps: steps ?? this.steps,
-          dim: dim ?? this.dim);
+          dim: dim ?? this.dim,
+          start: clearStart ? null : start ?? this.start);
 
   /// startedAs is it begun again as an empty project of [k]: its kind's
   /// files, empty, each in a pane of its own as far as there are panes;
@@ -503,6 +514,42 @@ class CodeElement extends CanvasElement {
   CodeElement withFileText(String id, String text) => copyWith(files: [
         for (var f in files) f.id == id ? f.copyWith(text: text) : f,
       ]);
+
+  /// typedInto is it with file [id]'s text [text], typed by hand: its code
+  /// as it was kept first, as the [start] Reset goes back to.
+  CodeElement typedInto(String id, String text) =>
+      (start == null ? copyWith(start: files) : this).withFileText(id, text);
+
+  /// changedFromStart is whether its code is no longer as it began: Reset
+  /// shows only then.
+  bool get changedFromStart {
+    var s = start;
+    if (s == null) return false;
+    if (s.length != files.length) return true;
+    for (var i = 0; i < s.length; i++) {
+      if (s[i].id != files[i].id ||
+          s[i].name != files[i].name ||
+          s[i].text != files[i].text) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// reset is it with its code as it began again; its tabs on files it
+  /// no longer has closed. Its start is kept, to go back to again.
+  CodeElement get reset {
+    var s = start;
+    if (s == null) return this;
+    var ids = {for (var f in s) f.id};
+    return copyWith(files: s, panes: [
+      for (var p in panes)
+        p.copyWith(tabs: [
+          for (var t in p.tabs)
+            if (ids.contains(t)) t
+        ])
+    ]);
+  }
 
   /// withoutFile is it without file [id]: out of every pane, its steps
   /// gone.
@@ -651,6 +698,7 @@ class CodeElement extends CanvasElement {
         "typing": typing.toJson(),
         "steps": [for (var s in steps) s.toJson()],
         "dim": dim,
+        if (start case var s?) "start": [for (var f in s) f.toJson()],
       };
 
   factory CodeElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -692,6 +740,12 @@ class CodeElement extends CanvasElement {
           for (var s in (json["steps"] is List ? json["steps"] as List : []))
             if (CodeStep.fromJson(s) case var step?) step
         ],
-        dim: jsonBool(json["dim"], true));
+        dim: jsonBool(json["dim"], true),
+        start: json["start"] is List
+            ? [
+                for (var f in json["start"] as List)
+                  if (CodeFile.fromJson(f) case var file?) file
+              ]
+            : null);
   }
 }

@@ -87,7 +87,10 @@ extension CanvasCodes on CanvasController {
     if (playing) pause();
     if (!_codeFull.remove(e.id)) _codeFull.add(e.id);
     _codeScroll.remove(e.id);
-    notifyListeners();
+    // Only the stage drawn again: nothing round it shows this, and its
+    // painter doesn't see a view's change by itself (Ken: the full code
+    // came late, when the playhead next moved).
+    keysHeld.value++;
   }
 
   /// scrollCode scrolls pane [pane] of [e] by [by] on the page (down,
@@ -109,6 +112,17 @@ extension CanvasCodes on CanvasController {
     // sends many of these a second (Ken: seconds behind the fingers).
     keysHeld.value++;
   }
+
+  /// resetCode puts [e]'s code back as it began: one change, to undo.
+  void resetCode(CodeElement e) {
+    if (!e.changedFromStart) return;
+    _codeScroll.remove(e.id);
+    replaceElement(e.reset);
+  }
+
+  /// keepCodeAsStart makes [e]'s code as it is now what Reset goes back to.
+  void keepCodeAsStart(CodeElement e) =>
+      replaceElement(e.copyWith(start: e.files));
 
   /// playCode is Code panel [e]'s play button: playing, a pause; else the
   /// canvas played to its lesson's end -- from the start, where the
@@ -158,7 +172,7 @@ extension CanvasCodes on CanvasController {
     if (next.shownPanes[pane].active != e.shownPanes[pane].active) {
       replaceElement(next);
     } else {
-      notifyListeners();
+      _codeViewChanged();
     }
   }
 
@@ -201,7 +215,7 @@ extension CanvasCodes on CanvasController {
       _codePane[e.id] = pane;
     }
     _codeEditing = pane < 0 ? null : (e.id, pane);
-    notifyListeners();
+    _codeViewChanged();
   }
 
   /// codeEditing is the pane being edited: its element's id and its index.
@@ -212,6 +226,14 @@ extension CanvasCodes on CanvasController {
   String? codeShownFile(CodeElement e, int pane) =>
       shownFile(e, pane, frame / _document.frameRate, codePlan(e),
           picked: _codePicked[e.id]?[pane]);
+
+  /// _codeViewChanged is how a Code, Run or task panel's view changes --
+  /// not the document: the stage drawn again (its painter compares what it
+  /// is given, and a view's state isn't in that), and what is round it.
+  void _codeViewChanged() {
+    keysHeld.value++;
+    notifyListeners();
+  }
 
   /// _forgetCodePicks lets each pane show what its scene shows again:
   /// when it plays, or the playhead is moved by hand.

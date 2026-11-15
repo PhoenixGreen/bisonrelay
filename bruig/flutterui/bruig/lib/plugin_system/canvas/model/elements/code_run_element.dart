@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' show Size;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // code_run_element.dart is a Run panel (Ken, 2026-11-15: "a seperate run
@@ -89,6 +92,15 @@ class CodeRunResult {
   }
 }
 
+/// codeAppWidths are the widths a Run panel can lay its app out at, and
+/// what each is called: 0 fits the panel.
+const codeAppWidths = <(double, String)>[
+  (0, "Fit the panel"),
+  (360, "Phone (360)"),
+  (768, "Tablet (768)"),
+  (1280, "Desktop (1280)"),
+];
+
 /// CodeRunElement is the element itself.
 class CodeRunElement extends CanvasElement {
   /// code is the Code panel it runs, by id.
@@ -110,6 +122,13 @@ class CodeRunElement extends CanvasElement {
   /// servers, over the internet -- rather than drawing it in the app
   /// (flutter_eval). Off unless turned on, panel by panel.
   final bool dartpad;
+
+  /// appWidth is how wide, in logical pixels, an app it runs is laid out
+  /// -- a page or a Flutter app -- before it is fitted to the preview: one
+  /// of [codeAppWidths]; 0 fits the panel (at least a phone's width).
+  /// The same for a run's picture and the live preview, at any zoom (Ken:
+  /// the coin app grew when Run was pressed).
+  final double appWidth;
   final CodeRunResult? result;
 
   const CodeRunElement(
@@ -121,6 +140,7 @@ class CodeRunElement extends CanvasElement {
     this.split = 0.55,
     this.outputSize = 15,
     this.dartpad = false,
+    this.appWidth = 0,
     this.result,
   });
 
@@ -136,6 +156,7 @@ class CodeRunElement extends CanvasElement {
       split: split,
       outputSize: outputSize,
       dartpad: dartpad,
+      appWidth: appWidth,
       result: result);
 
   CodeRunElement copyWith({
@@ -146,6 +167,7 @@ class CodeRunElement extends CanvasElement {
     double? split,
     double? outputSize,
     bool? dartpad,
+    double? appWidth,
     CodeRunResult? result,
     bool clearResult = false,
   }) =>
@@ -157,7 +179,16 @@ class CodeRunElement extends CanvasElement {
           split: (split ?? this.split).clamp(0.15, 0.85),
           outputSize: (outputSize ?? this.outputSize).clamp(4.0, 1000.0),
           dartpad: dartpad ?? this.dartpad,
+          appWidth: (appWidth ?? this.appWidth).clamp(0.0, 4000.0),
           result: clearResult ? null : result ?? this.result);
+
+  /// appSize is the size an app is laid out at for a preview [preview]
+  /// big on the page: [appWidth] across (or the preview's, at least a
+  /// phone's), in the preview's shape.
+  Size appSize(Size preview) {
+    var w = appWidth > 0 ? appWidth : math.max(360.0, preview.width);
+    return Size(w, preview.height * w / math.max(1.0, preview.width));
+  }
 
   @override
   Set<String> get assetIds => {
@@ -173,6 +204,7 @@ class CodeRunElement extends CanvasElement {
         "split": split,
         "outputSize": outputSize,
         if (dartpad) "dartpad": true,
+        if (appWidth > 0) "appWidth": appWidth,
         if (result != null) "result": result!.toJson(),
       };
 
@@ -187,5 +219,6 @@ class CodeRunElement extends CanvasElement {
           split: jsonDouble(json["split"], 0.55).clamp(0.15, 0.85),
           outputSize: jsonDouble(json["outputSize"], 15).clamp(4.0, 1000.0),
           dartpad: jsonBool(json["dartpad"], false),
+          appWidth: jsonDouble(json["appWidth"], 0).clamp(0.0, 4000.0),
           result: CodeRunResult.fromJson(json["result"]));
 }

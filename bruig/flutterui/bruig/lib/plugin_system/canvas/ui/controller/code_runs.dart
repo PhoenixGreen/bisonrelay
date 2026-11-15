@@ -53,13 +53,13 @@ extension CanvasCodeRuns on CanvasController {
     var runner = runnerOf(e, code is CodeElement ? code : null);
     if (runner != CodeRunner.web && runner != CodeRunner.flutter) return;
     _codeLive = (e.id, <CodeLog>[]);
-    notifyListeners();
+    _codeViewChanged();
   }
 
   /// liveCodeLog is a line printed by the live preview.
   void liveCodeLog(CodeLog l) {
     _codeLive?.$2.add(l);
-    notifyListeners();
+    _codeViewChanged();
   }
 
   /// endLiveCode shuts the live preview, keeping what it printed and a
@@ -81,7 +81,7 @@ extension CanvasCodeRuns on CanvasController {
               logs: [...e.result!.logs, ...live.$2],
               preview: picture ?? e.result!.preview)));
     } else {
-      notifyListeners();
+      _codeViewChanged();
     }
   }
 
@@ -96,19 +96,19 @@ extension CanvasCodeRuns on CanvasController {
     var logs = _codeRuns[e.id] = <CodeLog>[];
     // Run by hand: shown now, not when the scene's clock comes to it.
     _codeRanNow.add(e.id);
-    notifyListeners();
+    _codeViewChanged();
     var host = CanvasController.codeRunHost;
     CodeRunOutcome outcome;
     try {
       var boxes = codeRunBoxes(e, e.bounds, runner: runner);
-      var size = boxes.preview?.size ?? Size(e.width, e.width * 0.6);
+      var size = e.appSize(boxes.preview?.size ?? Size(e.width, e.width * 0.6));
       outcome = host == null
           ? const CodeRunOutcome(logs: [
               CodeLog("Code can't be run here.", kind: CodeLogKind.note)
             ])
           : await host.run(runner, code, entry, size, (l) {
               logs.add(l);
-              notifyListeners();
+              _codeViewChanged();
             });
     } catch (err) {
       outcome = CodeRunOutcome(logs: [
@@ -125,7 +125,7 @@ extension CanvasCodeRuns on CanvasController {
     // The element as it is now: it may have been moved while it ran.
     var now = _document.elementById(e.id);
     if (now is! CodeRunElement) {
-      notifyListeners();
+      _codeViewChanged();
       return;
     }
     replaceElement(now.copyWith(

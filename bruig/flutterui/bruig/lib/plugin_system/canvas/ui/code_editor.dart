@@ -185,7 +185,12 @@ class _CodeEditorBodyState extends State<CodeEditorBody> {
         : fs * 0.5;
     var widest = lines.fold(
         0, (int w, l) => math.max(w, l.replaceAll("\t", "    ").length));
-    return LayoutBuilder(builder: (context, room) {
+    // Not scaled by the app's text size (Ken runs a larger one): its lines
+    // are measured at [fs] -- the scroll view's height, the gutter, the
+    // painted code it lies over -- and a scaled field outgrew that and
+    // scrolled inside itself, so the top could not be reached.
+    return MediaQuery.withNoTextScaling(
+        child: LayoutBuilder(builder: (context, room) {
       var textW = math.max(
           room.maxWidth - gutter, (widest + 4) * codeCharWidth(fs) + fs * 2);
       var textH =
@@ -252,7 +257,7 @@ class _CodeEditorBodyState extends State<CodeEditorBody> {
           ),
         ),
       );
-    });
+    }));
   }
 }
 

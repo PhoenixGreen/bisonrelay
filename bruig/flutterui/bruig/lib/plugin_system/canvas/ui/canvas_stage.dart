@@ -347,6 +347,10 @@ class CanvasStageState extends State<CanvasStage>
   CounterElement? _pendingCounter;
   int _pendingCounterAt = -1;
 
+  /// _pendingCodeEdit is a Code panel's pane whose code has been pressed
+  /// and not yet let go: let go where it was pressed, it opens for typing.
+  (String, int)? _pendingCodeEdit;
+
   /// _pendingAudio is a selected speaker pressed on one of its controls and
   /// not yet released, which control, and where (the volume bar needs to know
   /// how far along).
@@ -1698,6 +1702,10 @@ class CanvasStageState extends State<CanvasStage>
         controller.restartCode(e);
         _mode = _DragMode.none;
         return true;
+      case CodePlayHit(part: CodePlayPart.reset):
+        controller.resetCode(e);
+        _mode = _DragMode.none;
+        return true;
       case CodePlayHit(:var at):
         controller.seekCode(at);
         _codeScrub = e.id;
@@ -1727,16 +1735,10 @@ class CanvasStageState extends State<CanvasStage>
         return true;
       case CodePaneHit(:var pane, :var inTabs):
         controller.pressCodePane(e, pane);
-        if (!inTabs &&
-            picked &&
-            !_shiftHeld &&
-            clock.now().difference(_lastClickAt) < _doubleClickWindow) {
-          _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
-          _codeEditBegun = false;
-          controller.editCodePane(e, pane);
-          _mode = _DragMode.none;
-          return true;
-        }
+        // One click on the code opens it for typing (Ken: two "doesn't
+        // feel like a very good user experience"); a press that becomes a
+        // drag moves the panel instead. See _onPointerUp.
+        if (!inTabs && !_shiftHeld) _pendingCodeEdit = (e.id, pane);
         return false;
     }
   }
@@ -1878,7 +1880,7 @@ class CanvasStageState extends State<CanvasStage>
           _codeEditBegun = true;
           controller.beginInteraction();
         }
-        controller.replaceElement(now.withFileText(file, text), transient: true);
+        controller.replaceElement(now.typedInto(file, text), transient: true);
       },
       onDone: () {
         if (_codeEditBegun) {
@@ -1928,6 +1930,7 @@ class CanvasStageState extends State<CanvasStage>
       entry: entry,
       rect: Rect.fromLTWH(
           tl.dx, tl.dy, preview.width * _scale, preview.height * _scale),
+      appSize: e.appSize(preview.size),
       onLog: controller.liveCodeLog,
       onSnap: (snap) => controller.codeLiveSnap = snap,
     );
@@ -6509,6 +6512,19 @@ class CanvasStageState extends State<CanvasStage>
     }
     if (_releaseSynth(_toDocument(event.localPosition))) return;
     if (_releaseCode(_toDocument(event.localPosition))) return;
+    var codeEdit = _pendingCodeEdit;
+    _pendingCodeEdit = null;
+    if (document.elementById(codeEdit?.$1 ?? "") case CodeElement e
+        when codeEdit != null &&
+            (event.localPosition - _pressedAt).distance <= _buttonClickSlop) {
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      if (controller.playing) controller.pause();
+      _codeEditBegun = false;
+      controller.editCodePane(e, codeEdit.$2);
+      return;
+    }
     // Let go before it was held long enough, so it was a press after all.
     _legendHold?.cancel();
     _legendHold = null;

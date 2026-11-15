@@ -32,7 +32,7 @@ extension CanvasCodeTasks on CanvasController {
     bool? built;
     if (e.checks.any((c) => c.kind == CodeCheckKind.builds)) {
       _codeTaskBusy.add(e.id);
-      notifyListeners();
+      _codeViewChanged();
       try {
         built = await _builds(code, run);
       } finally {
@@ -41,7 +41,7 @@ extension CanvasCodeTasks on CanvasController {
     }
     if (_disposed) return;
     _codeTaskChecks[e.id] = (_codeNow(code), built);
-    notifyListeners();
+    _codeViewChanged();
   }
 
   /// _builds is whether [code] builds and runs without an error: a Flutter
