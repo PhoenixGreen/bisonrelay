@@ -123,6 +123,9 @@ dependencies:
   # For hook/build.dart, which compiles the Flutter GPU shaders.
   hooks: ^2.2.0
   re_highlight: ^0.0.3
+  # The Data element's formulas (sheet_formula.dart); already in the
+  # app through other packages.
+  petitparser: ^7.0.2
   flutter_inappwebview: ^6.1.5
   dart_eval: ^0.8.5
   # A patched copy: see third_party/flutter_eval/PATCHES.md.

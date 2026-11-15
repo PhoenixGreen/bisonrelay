@@ -6,7 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
-import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
+import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
 
 // data_sync.dart keeps every Data element -- a table or a chart -- in step
 // with the sheet it views (data_sheet.dart), whichever side changed:
@@ -57,27 +57,31 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
     return sameGrid(e.rows, block) ? e : e.copyWith(rows: block);
   }
   if (e is ChartElement) {
-    var data = chartDataOf(block, link, e.data);
+    var data = chartDataOf(sheet, link, e.data);
     return sameData(e.data, data) ? e : e.copyWith(data: data);
   }
   return e;
 }
 
-/// chartDataOf is the chart [block] makes (its first row the headings),
-/// labelled by column [SheetLink.labels], a series from each of
-/// [SheetLink.series]. Each series keeps how [was]'s one in its place
-/// looked; a blank cell is a gap.
-ChartData chartDataOf(List<List<String>> block, SheetLink link, ChartData was) {
-  if (block.isEmpty)
-    return was.copyWith(categories: const [], series: const []);
-  String at(List<String> row, int c) => c >= 0 && c < row.length ? row[c] : "";
-  var body = block.skip(1).toList();
+/// chartDataOf is the chart [link]'s range of [sheet] makes (its first
+/// row the headings): labelled by column [SheetLink.labels] as the sheet
+/// shows it, a series from each of [SheetLink.series] read from the cells'
+/// values (so "\$14.20" and a formula are numbers). Each series keeps how
+/// [was]'s one in its place looked; a blank or a word is a gap.
+ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was) {
+  var g = link.range;
+  var rows = [for (var r = g.r0 + 1; r <= g.r1; r++) r];
   var series = <ChartSeries>[
-    for (var (i, c) in link.series.indexed)
+    for (var (i, p) in link.series.indexed)
       () {
-        var name = at(block.first, c);
+        var c = g.c0 + p;
+        var name = sheetShown(sheet, g.r0, c);
         var values = [
-          for (var row in body) cellNumber(at(row, c)) ?? double.nan
+          for (var r in rows)
+            switch (sheetValue(sheet, r, c)) {
+              double v => v,
+              _ => double.nan,
+            }
         ];
         return i < was.series.length
             ? was.series[i].copyWith(name: name, values: values)
@@ -89,11 +93,11 @@ ChartData chartDataOf(List<List<String>> block, SheetLink link, ChartData was) {
   ];
   var est = was.estimated;
   return ChartData(
-    categories: [for (var row in body) at(row, link.labels)],
+    categories: [for (var r in rows) sheetShown(sheet, r, g.c0 + link.labels)],
     series: series,
     estimated: est.isEmpty
         ? const []
-        : [for (var i = 0; i < body.length; i++) i < est.length && est[i]],
+        : [for (var i = 0; i < rows.length; i++) i < est.length && est[i]],
   );
 }
 
@@ -181,10 +185,13 @@ bool sameData(ChartData a, ChartData b) {
     ];
     void want(int r, int c, String text, {double? number}) {
       var sr = range.r0 + r, sc = range.c0 + c;
-      var shown = sheetShown(sheet, sr, sc);
       var same = number != null
-          ? (number.isNaN ? shown.trim().isEmpty : cellNumber(shown) == number)
-          : shown == text;
+          ? switch (sheetValue(sheet, sr, sc)) {
+              double v => v == number,
+              null => number.isNaN,
+              _ => false,
+            }
+          : sheetShown(sheet, sr, sc) == text;
       if (!same) block[r][c] = text;
     }
 
@@ -439,19 +446,18 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
   });
 }
 
-/// chartColumnsFor is which columns of [block] (its first row the
-/// headings) a chart of it is labelled by -- the first that isn't numbers
-/// -- and draws: every column of numbers but that one.
-(int, List<int>) chartColumnsFor(List<List<String>> block) {
-  var cols = block.fold(0, (n, r) => math.max(n, r.length));
-  var body = block.skip(1).toList();
+/// chartColumnsOf is which columns of [range] of [sheet] (its first row
+/// the headings) a chart of it is labelled by -- the first that isn't
+/// numbers -- and draws: every column of numbers but that one.
+(int, List<int>) chartColumnsOf(DataSheet sheet, CellRange range) {
+  var cols = range.cols;
   bool numbers(int c) {
     var seen = 0, ok = 0;
-    for (var row in body) {
-      var v = c < row.length ? row[c].trim() : "";
-      if (v.isEmpty) continue;
+    for (var r = range.r0 + 1; r <= range.r1; r++) {
+      var v = sheetValue(sheet, r, range.c0 + c);
+      if (v == null || v == "") continue;
       seen++;
-      if (cellNumber(v) != null) ok++;
+      if (v is double) ok++;
     }
     return seen > 0 && ok * 5 >= seen * 4;
   }
@@ -496,6 +502,40 @@ CanvasDocument _withSheet(CanvasDocument doc, DataSheet sheet,
 DataSheet? _sheetIn(CanvasDocument doc, String id) =>
     doc.sheets.where((s) => s.id == id).firstOrNull;
 
+/// _moved is [s] -- its cells already moved into [cells] -- with every
+/// formula's references and every cell's format following the [n] rows
+/// (or [columns]) put in before [at] or taken out from it.
+DataSheet _moved(DataSheet s, List<List<String>> cells, int at, int n,
+    {bool columns = false}) {
+  var fixed = [
+    for (var row in cells)
+      [
+        for (var v in row)
+          v.startsWith("=") ? movedFormula(v, at, n, columns: columns) : v
+      ],
+  ];
+  int? to(int x) {
+    if (n > 0) return x >= at ? x + n : x;
+    if (x >= at && x < at - n) return null;
+    return x >= at - n ? x + n : x;
+  }
+
+  var formats = <String, CellFormat>{
+    for (var MapEntry(:key, :value) in s.formats.entries)
+      if (cellAt(key) case (var r, var c))
+        if (columns ? to(c) : to(r) case var m?)
+          (columns ? cellName(r, m) : cellName(m, c)): value,
+  };
+  var columnFormats = columns
+      ? <int, CellFormat>{
+          for (var MapEntry(:key, :value) in s.columnFormats.entries)
+            if (to(key) case var m?) m: value,
+        }
+      : s.columnFormats;
+  return s.copyWith(
+      cells: fixed, formats: formats, columnFormats: columnFormats);
+}
+
 /// _spanAfter is span [a]..[b] with [n] put in before [at] (n > 0) or the
 /// [-n] at [at] taken out (n < 0); null where all of it was taken out.
 (int, int)? _spanAfter(int a, int b, int at, int n) {
@@ -520,7 +560,7 @@ CanvasDocument rowsInserted(CanvasDocument doc, String id, int at, int n) {
   if (at < cells.length) {
     cells.insertAll(at, [for (var i = 0; i < n; i++) <String>[]]);
   }
-  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+  return _withSheet(doc, _moved(s, cells, at, n), (l) {
     var (r0, r1) = _spanAfter(l.range.r0, l.range.r1, at, n)!;
     return l.copyWith(range: CellRange(r0, l.range.c0, r1, l.range.c1));
   });
@@ -535,7 +575,7 @@ CanvasDocument rowsDeleted(CanvasDocument doc, String id, int at, int n) {
     for (var (r, row) in s.cells.indexed)
       if (r < at || r >= at + n) row,
   ];
-  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+  return _withSheet(doc, _moved(s, cells, at, -n), (l) {
     var span = _spanAfter(l.range.r0, l.range.r1, at, -n) ?? (at, at);
     return l.copyWith(
         range: CellRange(span.$1, l.range.c0, span.$2, l.range.c1));
@@ -557,7 +597,7 @@ CanvasDocument columnsInserted(CanvasDocument doc, String id, int at, int n) {
             ]
           : row,
   ];
-  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+  return _withSheet(doc, _moved(s, cells, at, n, columns: true), (l) {
     var g = l.range;
     var (c0, c1) = _spanAfter(g.c0, g.c1, at, n)!;
     // Inside the range: the columns past it, counted from its start, move.
@@ -582,7 +622,7 @@ CanvasDocument columnsDeleted(CanvasDocument doc, String id, int at, int n) {
           if (c < at || c >= at + n) v
       ],
   ];
-  return _withSheet(doc, s.copyWith(cells: cells), (l) {
+  return _withSheet(doc, _moved(s, cells, at, -n, columns: true), (l) {
     var g = l.range;
     var span = _spanAfter(g.c0, g.c1, at, -n) ?? (at, at);
     // Each column the link names, where it is now, or null if it went.
@@ -603,42 +643,190 @@ CanvasDocument columnsDeleted(CanvasDocument doc, String id, int at, int n) {
 }
 
 /// rowsSorted is [doc] with rows [rows] of sheet [id] put in order of
-/// column [by] -- numbers by value, before words -- smallest first or, with
-/// [descending], largest; only columns [rows].c0 to c1 move.
+/// column [by] -- numbers by value, before words, blanks last -- smallest
+/// first or, with [descending], largest; only columns [rows].c0 to c1
+/// move, their formats with them, a formula's references moving as a
+/// copied one's do (as Calc sorts).
 CanvasDocument rowsSorted(CanvasDocument doc, String id, CellRange rows, int by,
     {bool descending = false}) {
   var s = _sheetIn(doc, id);
   if (s == null || rows.rows < 2) return doc;
-  var order = [for (var r = rows.r0; r <= rows.r1; r++) r];
   int compare(int a, int b) {
-    var x = sheetShown(s, a, by), y = sheetShown(s, b, by);
-    var nx = cellNumber(x), ny = cellNumber(y);
-    int d;
-    if (nx != null && ny != null) {
-      d = nx.compareTo(ny);
-    } else if (nx != null || ny != null) {
-      d = nx != null ? -1 : 1;
-    } else if (x.isEmpty || y.isEmpty) {
-      // Blanks last, whichever way.
-      return x.isEmpty == y.isEmpty ? 0 : (x.isEmpty ? 1 : -1);
-    } else {
-      d = x.toLowerCase().compareTo(y.toLowerCase());
+    var x = sheetValue(s, a, by), y = sheetValue(s, b, by);
+    bool blank(Object? v) => v == null || v == "";
+    if (blank(x) || blank(y)) {
+      return blank(x) == blank(y) ? 0 : (blank(x) ? 1 : -1);
     }
+    var d = compareValues(x, y);
     return descending ? -d : d;
   }
 
   // A stable sort: ties keep their order.
+  var order = [for (var r = rows.r0; r <= rows.r1; r++) r];
   var keyed = [for (var (i, r) in order.indexed) (i, r)];
   keyed.sort((a, b) {
     var d = compare(a.$2, b.$2);
     return d != 0 ? d : a.$1.compareTo(b.$1);
   });
   var block = [
-    for (var (_, r) in keyed)
-      [for (var c = rows.c0; c <= rows.c1; c++) s.raw(r, c)],
+    for (var (i, (_, r)) in keyed.indexed)
+      [
+        for (var c = rows.c0; c <= rows.c1; c++)
+          shiftedFormula(s.raw(r, c), rows.r0 + i - r, 0)
+      ],
   ];
+  var formats = {...s.formats};
+  for (var (i, (_, r)) in keyed.indexed) {
+    for (var c = rows.c0; c <= rows.c1; c++) {
+      var f = s.formats[cellName(r, c)];
+      var to = cellName(rows.r0 + i, c);
+      if (f == null) {
+        formats.remove(to);
+      } else {
+        formats[to] = f;
+      }
+    }
+  }
+  var sorted = s.withBlock(rows.r0, rows.c0, block).copyWith(formats: formats);
   return doc.copyWith(sheets: [
-    for (var x in doc.sheets)
-      x.id == id ? s.withBlock(rows.r0, rows.c0, block) : x,
+    for (var x in doc.sheets) x.id == id ? sorted : x,
   ]);
+}
+
+// ---------- The fill handle ----------
+
+const _fillLists = [
+  [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December"
+  ],
+  [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec"
+  ],
+  [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday"
+  ],
+  ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+];
+
+/// _filled is the [count] cells that carry on after [src] -- one line of
+/// a selection, in order -- [step] cells apart (a row or a column) from
+/// where each of [src] was: numbers by their step (one alone counting up
+/// by 1), names of months and days in order, words ending in a number
+/// counting on, and anything else over again, a formula's references
+/// moved as a copy's are.
+List<String> _filled(List<String> src, int count,
+    String Function(String raw, int moved) copied) {
+  var n = src.length;
+  double? step(List<double> v) =>
+      v.length == 1 ? 1 : (v.last - v.first) / (v.length - 1);
+
+  var formulas = src.any((v) => v.startsWith("="));
+  var numbers = [for (var v in src) typedValue(v)];
+  if (!formulas && numbers.every((v) => v is double)) {
+    var v = numbers.cast<double>();
+    var d = step(v)!;
+    return [
+      for (var t = 1; t <= count; t++)
+        generalNumber(double.parse((v.last + d * t).toStringAsFixed(10)))
+    ];
+  }
+  if (!formulas) {
+    for (var list in _fillLists) {
+      var at = [
+        for (var v in src)
+          list.indexWhere((x) => x.toLowerCase() == v.trim().toLowerCase())
+      ];
+      if (at.any((i) => i < 0)) continue;
+      var d = n == 1 ? 1 : ((at.last - at.first) / (n - 1)).round();
+      String styled(String word) {
+        var sample = src.last.trim();
+        if (sample == sample.toUpperCase()) return word.toUpperCase();
+        if (sample == sample.toLowerCase()) return word.toLowerCase();
+        return word;
+      }
+
+      return [
+        for (var t = 1; t <= count; t++)
+          styled(list[(at.last + d * t) % list.length])
+      ];
+    }
+    var parts = [for (var v in src) RegExp(r"^(.*?)(\d+)(\D*)$").firstMatch(v)];
+    if (parts.every((m) => m != null) &&
+        parts.map((m) => "${m!.group(1)}|${m.group(3)}").toSet().length == 1) {
+      var head = parts.first!.group(1)!, tail = parts.first!.group(3)!;
+      var width = parts.last!.group(2)!.length;
+      var v = [for (var m in parts) double.parse(m!.group(2)!)];
+      var d = step(v)!;
+      return [
+        for (var t = 1; t <= count; t++)
+          "$head${(v.last + d * t).round().abs().toString().padLeft(width, "0")}$tail"
+      ];
+    }
+  }
+  return [
+    for (var t = 0; t < count; t++) copied(src[t % n], n + t - t % n),
+  ];
+}
+
+/// sheetFilled is [sheet] with [from] carried on over [to], which lies
+/// below it (the same columns) or to its right (the same rows). Formats
+/// come too.
+DataSheet sheetFilled(DataSheet sheet, CellRange from, CellRange to) {
+  var down = to.r0 > from.r1;
+  var formats = {...sheet.formats};
+  var block = List.generate(to.rows, (_) => List.filled(to.cols, ""));
+  if (down) {
+    for (var c = from.c0; c <= from.c1; c++) {
+      var src = [for (var r = from.r0; r <= from.r1; r++) sheet.raw(r, c)];
+      var out =
+          _filled(src, to.rows, (raw, moved) => shiftedFormula(raw, moved, 0));
+      for (var t = 0; t < to.rows; t++) {
+        block[t][c - to.c0] = out[t];
+        var f = sheet.formats[cellName(from.r0 + t % from.rows, c)];
+        var at = cellName(to.r0 + t, c);
+        f == null ? formats.remove(at) : formats[at] = f;
+      }
+    }
+  } else {
+    for (var r = from.r0; r <= from.r1; r++) {
+      var src = [for (var c = from.c0; c <= from.c1; c++) sheet.raw(r, c)];
+      var out =
+          _filled(src, to.cols, (raw, moved) => shiftedFormula(raw, 0, moved));
+      for (var t = 0; t < to.cols; t++) {
+        block[r - to.r0][t] = out[t];
+        var f = sheet.formats[cellName(r, from.c0 + t % from.cols)];
+        var at = cellName(r, to.c0 + t);
+        f == null ? formats.remove(at) : formats[at] = f;
+      }
+    }
+  }
+  return sheet.withBlock(to.r0, to.c0, block).copyWith(formats: formats);
 }

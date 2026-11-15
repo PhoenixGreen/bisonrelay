@@ -35,7 +35,7 @@ extension CanvasDataViews on CanvasController {
   SheetLink _linkFor(CanvasElement e, SheetLink link) {
     var sheet = sheetById(link.sheet);
     if (e is! ChartElement || sheet == null) return link;
-    var (labels, series) = chartColumnsFor(sheetBlock(sheet, link.range));
+    var (labels, series) = chartColumnsOf(sheet, link.range);
     return link.copyWith(labels: labels, series: series);
   }
 }

@@ -1,6 +1,11 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
+import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:flutter/foundation.dart';
+
+export 'package:bruig/plugin_system/canvas/model/sheet_formula.dart'
+    show SheetError;
 
 // data_sheet.dart is the Data element's data (Ken, 2026-11-15: Table and
 // Chart made one "Data" element, its data kept in sheets edited in a
@@ -147,8 +152,22 @@ class DataSheet {
   final String name;
   final List<List<String>> cells;
 
+  /// formats are cells' own number formats, by name ("B2"); columnFormats
+  /// a whole column's, by index -- a cell's own over its column's.
+  final Map<String, CellFormat> formats;
+  final Map<int, CellFormat> columnFormats;
+
   const DataSheet(
-      {required this.id, this.name = "Sheet", this.cells = const []});
+      {required this.id,
+      this.name = "Sheet",
+      this.cells = const [],
+      this.formats = const {},
+      this.columnFormats = const {}});
+
+  /// formatAt is cell [r], [c]'s number format: its own, its column's, or
+  /// null for General.
+  CellFormat? formatAt(int r, int c) =>
+      formats[cellName(r, c)] ?? columnFormats[c];
 
   int get rowCount => cells.length;
   int get columnCount => cells.fold(0, (n, r) => math.max(n, r.length));
@@ -162,8 +181,17 @@ class DataSheet {
   /// used is the block from A1 holding everything typed.
   CellRange get used => CellRange.of(rowCount, columnCount);
 
-  DataSheet copyWith({String? name, List<List<String>>? cells}) =>
-      DataSheet(id: id, name: name ?? this.name, cells: cells ?? this.cells);
+  DataSheet copyWith(
+          {String? name,
+          List<List<String>>? cells,
+          Map<String, CellFormat>? formats,
+          Map<int, CellFormat>? columnFormats}) =>
+      DataSheet(
+          id: id,
+          name: name ?? this.name,
+          cells: cells ?? this.cells,
+          formats: formats ?? this.formats,
+          columnFormats: columnFormats ?? this.columnFormats);
 
   /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
   /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
@@ -213,6 +241,16 @@ class DataSheet {
         "id": id,
         "name": name,
         "cells": cells,
+        if (formats.isNotEmpty)
+          "formats": {
+            for (var MapEntry(:key, :value) in formats.entries)
+              key: value.toJson()
+          },
+        if (columnFormats.isNotEmpty)
+          "columnFormats": {
+            for (var MapEntry(:key, :value) in columnFormats.entries)
+              "$key": value.toJson()
+          },
       };
 
   static DataSheet? fromJson(Object? j) {
@@ -226,9 +264,136 @@ class DataSheet {
           if (j["cells"] case List rows)
             for (var r in rows)
               if (r is List) [for (var c in r) "${c ?? ""}"],
-        ]);
+        ],
+        formats: {
+          if (j["formats"] case Map f)
+            for (var MapEntry(:key, :value) in f.entries)
+              if (key is String)
+                if (CellFormat.fromJson(value) case var cf?) key: cf,
+        },
+        columnFormats: {
+          if (j["columnFormats"] case Map f)
+            for (var MapEntry(:key, :value) in f.entries)
+              if (int.tryParse("$key") case var c?)
+                if (CellFormat.fromJson(value) case var cf?) c: cf,
+        });
   }
 }
+
+/// CellFormatKind is how a cell writes its number.
+enum CellFormatKind {
+  general("General"),
+  number("Number 1,234.5"),
+  money("Money 1,234.50"),
+  percent("Percent 12.5%"),
+  short("Short 1.2k"),
+  date("Date 15/11/2026"),
+  text("Text, as typed");
+
+  final String label;
+  const CellFormatKind(this.label);
+}
+
+/// CellFormat is a cell's (or a column's) number format: how its number is
+/// written, to how many decimals, money with which sign, a date how.
+@immutable
+class CellFormat {
+  final CellFormatKind kind;
+  final int? decimals;
+  final String symbol;
+  final String date;
+  const CellFormat(this.kind,
+      {this.decimals, this.symbol = r"$", this.date = "dd/mm/yyyy"});
+
+  /// places is how many decimals it writes.
+  int get places =>
+      decimals ??
+      switch (kind) {
+        CellFormatKind.money => 2,
+        CellFormatKind.percent || CellFormatKind.short => 1,
+        _ => 0,
+      };
+
+  CellFormat copyWith(
+          {CellFormatKind? kind,
+          int? decimals,
+          bool clearDecimals = false,
+          String? symbol,
+          String? date}) =>
+      CellFormat(kind ?? this.kind,
+          decimals: clearDecimals ? null : decimals ?? this.decimals,
+          symbol: symbol ?? this.symbol,
+          date: date ?? this.date);
+
+  /// write is [v] as this format writes it.
+  String write(Object? v) {
+    if (v is! double) return sheetText(v);
+    var zeros = places > 0 ? ".${"0" * places}" : "";
+    return switch (kind) {
+      CellFormatKind.general =>
+        decimals == null ? generalNumber(v) : textFormat(v, "0$zeros"),
+      CellFormatKind.number => textFormat(v, "#,##0$zeros"),
+      CellFormatKind.money => v < 0
+          ? "-$symbol${textFormat(-v, "#,##0$zeros")}"
+          : "$symbol${textFormat(v, "#,##0$zeros")}",
+      CellFormatKind.percent => textFormat(v, "0$zeros%"),
+      CellFormatKind.short => _short(v, places),
+      CellFormatKind.date => textFormat(v, date),
+      CellFormatKind.text => generalNumber(v),
+    };
+  }
+
+  static String _short(double v, int places) {
+    var a = v.abs();
+    var (d, s) = a >= 1e12
+        ? (1e12, "T")
+        : a >= 1e9
+            ? (1e9, "B")
+            : a >= 1e6
+                ? (1e6, "M")
+                : a >= 1e3
+                    ? (1e3, "k")
+                    : (1.0, "");
+    var zeros = s.isEmpty ? "" : (places > 0 ? ".${"0" * places}" : "");
+    return "${textFormat(v / d, "0$zeros")}$s";
+  }
+
+  Map<String, dynamic> toJson() => {
+        "kind": kind.name,
+        if (decimals != null) "decimals": decimals,
+        if (kind == CellFormatKind.money) "symbol": symbol,
+        if (kind == CellFormatKind.date) "date": date,
+      };
+
+  static CellFormat? fromJson(Object? j) {
+    if (j is! Map) return null;
+    var kind = CellFormatKind.values.asNameMap()[j["kind"]];
+    if (kind == null) return null;
+    return CellFormat(kind,
+        decimals: j["decimals"] is num ? (j["decimals"] as num).toInt() : null,
+        symbol: j["symbol"] is String ? j["symbol"] as String : r"$",
+        date: j["date"] is String ? j["date"] as String : "dd/mm/yyyy");
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CellFormat &&
+      other.kind == kind &&
+      other.decimals == decimals &&
+      other.symbol == symbol &&
+      other.date == date;
+  @override
+  int get hashCode => Object.hash(kind, decimals, symbol, date);
+}
+
+/// sheetText is a value as General writes it.
+String sheetText(Object? v) => switch (v) {
+      null => "",
+      double d => generalNumber(d),
+      bool b => b ? "TRUE" : "FALSE",
+      SheetError e => e.code,
+      _ => "$v",
+    };
 
 /// _trimmed is [rows] without the empty cells ending each row and the empty
 /// rows ending the sheet.
@@ -249,9 +414,63 @@ List<List<String>> _trimmed(List<List<String>> rows) {
   return out;
 }
 
-/// sheetShown is what cell [r], [c] of [sheet] shows: for now what was
-/// typed; formulas and number formats come in with the Data Studio.
-String sheetShown(DataSheet sheet, int r, int c) => sheet.raw(r, c);
+/// _calcs are each sheet's worked-out values, kept with it: a sheet never
+/// changes, so what its formulas come to doesn't either.
+final Expando<_SheetCalc> _calcs = Expando();
+
+class _SheetCalc {
+  final DataSheet sheet;
+  final Map<int, Object?> _done = {};
+  final Set<int> _working = {};
+  _SheetCalc(this.sheet);
+
+  Object? value(int r, int c) {
+    var key = r * 100000 + c;
+    if (_done.containsKey(key)) return _done[key];
+    var raw = sheet.raw(r, c);
+    Object? v;
+    if (raw.startsWith("=") && raw.length > 1) {
+      if (!_working.add(key)) return SheetError.cycle;
+      try {
+        var node = parseFormula(raw.substring(1));
+        v = node == null ? SheetError.syntax : evaluateFormula(node, value);
+      } finally {
+        _working.remove(key);
+      }
+    } else {
+      v = typedValue(raw);
+    }
+    _done[key] = v;
+    return v;
+  }
+}
+
+/// typedValue is what typed text [raw] is: a number where it reads as one
+/// ("1,240", "+4%" -- read as tables and charts always read them), nothing
+/// where it is empty, and otherwise the text ("'" in front keeps it text).
+Object? typedValue(String raw) {
+  if (raw.isEmpty) return null;
+  if (raw.startsWith("'")) return raw.substring(1);
+  return cellNumber(raw) ?? raw;
+}
+
+/// sheetValue is the value of cell [r], [c] of [sheet]: a number, text,
+/// TRUE/FALSE, an error or null; a formula's worked out.
+Object? sheetValue(DataSheet sheet, int r, int c) =>
+    (_calcs[sheet] ??= _SheetCalc(sheet)).value(r, c);
+
+/// sheetShown is what cell [r], [c] of [sheet] shows: what was typed, as
+/// it was typed, unless a formula works it out or a format writes it.
+String sheetShown(DataSheet sheet, int r, int c) {
+  var raw = sheet.raw(r, c);
+  var format = sheet.formatAt(r, c);
+  if (!raw.startsWith("=") &&
+      (format == null || format.kind == CellFormatKind.text)) {
+    return raw.startsWith("'") ? raw.substring(1) : raw;
+  }
+  var v = sheetValue(sheet, r, c);
+  return format == null ? sheetText(v) : format.write(v);
+}
 
 /// sheetBlock is what [range] of [sheet] shows, a row of strings per row.
 List<List<String>> sheetBlock(DataSheet sheet, CellRange range) => [

@@ -97,6 +97,11 @@ class DataGrid extends StatefulWidget {
   final void Function(int r, int c, String text) onEdit;
   final void Function(int r, int c, List<List<String>> rows) onPaste;
   final ValueChanged<CellRange> onClear;
+
+  /// onFill is the fill handle -- the square at the selection's corner --
+  /// dragged down or across: the selection carried on over [to] (a series
+  /// continued, a formula copied), as in Calc.
+  final void Function(CellRange from, CellRange to)? onFill;
   final List<DataOutline> outlines;
   final DataGridLook look;
   final VoidCallback? onUndo, onRedo;
@@ -112,6 +117,7 @@ class DataGrid extends StatefulWidget {
     required this.onEdit,
     required this.onPaste,
     required this.onClear,
+    this.onFill,
     this.outlines = const [],
     this.look = DataGridLook.calc,
     this.onUndo,
@@ -137,6 +143,11 @@ class DataGridState extends State<DataGrid> {
   DateTime _lastDown = DateTime.fromMillisecondsSinceEpoch(0);
   (int, int)? _lastDownAt;
   bool _dragging = false;
+
+  /// _fillTo is where the fill handle has been dragged to: the cells it
+  /// would fill, or null when it isn't being dragged.
+  CellRange? _fillTo;
+  bool _filling = false;
 
   /// _now is the selection as of the last key or pointer: several keys can
   /// come between two frames, each going on from where the last left it.
@@ -208,12 +219,15 @@ class DataGridState extends State<DataGrid> {
     _focus.requestFocus();
   }
 
-  void _select(DataSel s) {
+  /// _select picks [s] -- and, unless [stay], scrolls to the cell it was
+  /// moved to. A whole row or column picked by its header stays where the
+  /// view is, as in Calc (it went to row 200).
+  void _select(DataSel s, {bool stay = false}) {
     var clamp = DataSel(s.ar.clamp(0, _rows - 1), s.ac.clamp(0, _cols - 1),
         s.fr.clamp(0, _rows - 1), s.fc.clamp(0, _cols - 1));
     _now = clamp;
     widget.onSelect(clamp);
-    _reveal(clamp.fr, clamp.fc);
+    if (!stay) _reveal(clamp.fr, clamp.fc);
   }
 
   /// _reveal scrolls cell [r], [c] into view.
@@ -243,10 +257,23 @@ class DataGridState extends State<DataGrid> {
             .clamp(0, _cols - 1),
       );
 
+  /// _handle is the fill handle's square, where the view is scrolled to.
+  Rect _handle() {
+    var g = _now.range;
+    var x = (g.c1 + 1) * dataColumnWidth - (_h.hasClients ? _h.offset : 0);
+    var y = (g.r1 + 1) * dataRowHeight - (_v.hasClients ? _v.offset : 0);
+    return Rect.fromCenter(center: Offset(x, y), width: 12, height: 12);
+  }
+
   void _down(PointerDownEvent e) {
     if (e.kind == PointerDeviceKind.trackpad) return;
     if (_editing != null) _commit();
     _focus.requestFocus();
+    if (widget.onFill != null && _handle().contains(e.localPosition)) {
+      _filling = true;
+      _fillTo = null;
+      return;
+    }
     var (r, c) = _cellAt(e.localPosition);
     var now = DateTime.now();
     var again = _lastDownAt == (r, c) &&
@@ -263,11 +290,38 @@ class DataGridState extends State<DataGrid> {
   }
 
   void _move(PointerMoveEvent e) {
+    if (_filling) {
+      var (r, c) = _cellAt(e.localPosition);
+      var g = _now.range;
+      CellRange? to;
+      // Down or across, whichever it was dragged further.
+      if (r > g.r1 &&
+          (r - g.r1) * dataRowHeight >= (c - g.c1) * dataColumnWidth) {
+        to = CellRange(g.r1 + 1, g.c0, r, g.c1);
+      } else if (c > g.c1) {
+        to = CellRange(g.r0, g.c1 + 1, g.r1, c);
+      }
+      if (to != _fillTo) setState(() => _fillTo = to);
+      return;
+    }
     if (!_dragging || _editing != null) return;
     var (r, c) = _cellAt(e.localPosition);
     if (r != _now.fr || c != _now.fc) {
       _select(_now.extendedTo(r, c));
     }
+  }
+
+  void _up() {
+    _dragging = false;
+    if (!_filling) return;
+    _filling = false;
+    var to = _fillTo;
+    setState(() => _fillTo = null);
+    if (to == null) return;
+    var from = _now.range;
+    widget.onFill?.call(from, to);
+    _select(DataSel(
+        from.r0, from.c0, math.max(from.r1, to.r1), math.max(from.c1, to.c1)));
   }
 
   void _headerDown(Offset local, {required bool column}) {
@@ -276,15 +330,19 @@ class DataGridState extends State<DataGrid> {
     if (column) {
       var c = ((local.dx + _h.offset) / dataColumnWidth).floor();
       var shift = HardwareKeyboard.instance.isShiftPressed;
-      _select(shift
-          ? DataSel(0, _now.ac, _rows - 1, c)
-          : DataSel(0, c, _rows - 1, c));
+      _select(
+          shift
+              ? DataSel(0, _now.ac, _rows - 1, c)
+              : DataSel(0, c, _rows - 1, c),
+          stay: true);
     } else {
       var r = ((local.dy + _v.offset) / dataRowHeight).floor();
       var shift = HardwareKeyboard.instance.isShiftPressed;
-      _select(shift
-          ? DataSel(_now.ar, 0, r, _cols - 1)
-          : DataSel(r, 0, r, _cols - 1));
+      _select(
+          shift
+              ? DataSel(_now.ar, 0, r, _cols - 1)
+              : DataSel(r, 0, r, _cols - 1),
+          stay: true);
     }
   }
 
@@ -513,6 +571,8 @@ class DataGridState extends State<DataGrid> {
                             h: _h,
                             repaint: scrolled,
                             editing: _editing,
+                            fillTo: _fillTo,
+                            handle: widget.onFill != null,
                           ),
                         ),
                       ),
@@ -523,8 +583,12 @@ class DataGridState extends State<DataGrid> {
                         behavior: HitTestBehavior.translucent,
                         onPointerDown: _down,
                         onPointerMove: _move,
-                        onPointerUp: (_) => _dragging = false,
-                        onPointerCancel: (_) => _dragging = false,
+                        onPointerUp: (_) => _up(),
+                        onPointerCancel: (_) {
+                          _dragging = false;
+                          _filling = false;
+                          setState(() => _fillTo = null);
+                        },
                       ),
                     ),
                     if (_editing case (var r, var c))
@@ -645,6 +709,8 @@ class _Cells extends CustomPainter {
   final DataGridLook look;
   final ScrollController v, h;
   final (int, int)? editing;
+  final CellRange? fillTo;
+  final bool handle;
   _Cells(
       {required this.sheet,
       required this.shown,
@@ -654,7 +720,9 @@ class _Cells extends CustomPainter {
       required this.v,
       required this.h,
       required Listenable repaint,
-      required this.editing})
+      required this.editing,
+      this.fillTo,
+      this.handle = false})
       : super(repaint: repaint);
 
   @override
@@ -697,8 +765,11 @@ class _Cells extends CustomPainter {
         if (editing == (r, c)) continue;
         var text = shown(r, c);
         if (text.isEmpty) continue;
-        var number = cellNumber(text) != null;
-        var bad = text.startsWith("#") && text.endsWith("!");
+        // Numbers to the right and errors in red, by what the cell is
+        // worth, not how it is written ("\$14.20" is a number).
+        var value = sheetValue(sheet, r, c);
+        var number = value is double;
+        var bad = value is SheetError;
         var tp = TextPainter(
             text: TextSpan(
                 text: text,
@@ -749,6 +820,22 @@ class _Cells extends CustomPainter {
             ..strokeWidth = 1
             ..color = look.edge);
     }
+    // Where the fill handle would fill, and the handle itself.
+    if (fillTo case var f?) {
+      canvas.drawRect(
+          block(f).deflate(1),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = look.edge.withValues(alpha: 0.7));
+    }
+    if (handle && editing == null) {
+      var corner = block(g).bottomRight;
+      canvas.drawRect(Rect.fromCenter(center: corner, width: 7, height: 7),
+          Paint()..color = look.paper);
+      canvas.drawRect(Rect.fromCenter(center: corner, width: 5, height: 5),
+          Paint()..color = look.edge);
+    }
   }
 
   @override
@@ -757,6 +844,7 @@ class _Cells extends CustomPainter {
       old.sel != sel ||
       old.look != look ||
       old.editing != editing ||
+      old.fillTo != fillTo ||
       old.outlines.length != outlines.length ||
       !_sameOutlines(old.outlines, outlines);
 

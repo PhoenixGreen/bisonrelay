@@ -72,6 +72,42 @@ extension CanvasDataSheets on CanvasController {
           {bool descending = false}) =>
       apply(rowsSorted(_document, id, rows, by, descending: descending));
 
+  /// fillSheet carries [from] of sheet [id] on over [to] (the fill
+  /// handle).
+  void fillSheet(String id, CellRange from, CellRange to) {
+    var s = sheetById(id);
+    if (s != null) setSheet(sheetFilled(s, from, to));
+  }
+
+  /// formatSheetCells gives [range] of sheet [id] number format [format]
+  /// (null for General): whole columns, where [range] is every row of
+  /// them, as their column's.
+  void formatSheetCells(String id, CellRange range, CellFormat? format,
+      {bool columns = false}) {
+    var s = sheetById(id);
+    if (s == null) return;
+    if (columns) {
+      var cols = {...s.columnFormats};
+      var cells = {...s.formats};
+      for (var c = range.c0; c <= range.c1; c++) {
+        format == null ? cols.remove(c) : cols[c] = format;
+        // A column's format is over its cells' own: they go.
+        cells.removeWhere((k, _) => cellAt(k)?.$2 == c);
+      }
+      setSheet(s.copyWith(columnFormats: cols, formats: cells));
+      return;
+    }
+    var cells = {...s.formats};
+    for (var r = range.r0; r <= range.r1; r++) {
+      for (var c = range.c0; c <= range.c1; c++) {
+        format == null
+            ? cells.remove(cellName(r, c))
+            : cells[cellName(r, c)] = format;
+      }
+    }
+    setSheet(s.copyWith(formats: cells));
+  }
+
   /// addDataView puts down a Data element showing [range] of sheet [id] as
   /// [kind] -- a table or a chart, labelled and drawn from its columns --
   /// selects it and answers it.

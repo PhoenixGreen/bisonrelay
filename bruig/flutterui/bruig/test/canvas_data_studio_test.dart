@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -175,6 +176,64 @@ void main() {
       c.undo();
       await tester.pumpAndSettle();
       expect(sheet().raw(3, 4), "40");
+    });
+
+    testWidgets(
+        "a formula typed shows its answer; a column given Money; the fill "
+        "handle carries a series on", (tester) async {
+      await studio(tester);
+      // A total under Pts.
+      await tester.tapAt(cellAt(tester, 4, 4));
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.equal);
+      await tester.pump();
+      await tester.enterText(
+          find.byKey(const ValueKey("dataGridEditor")), "=SUM(E2:E4)");
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(sheet().raw(4, 4), "=SUM(E2:E4)");
+      expect(sheetShown(sheet(), 4, 4), "130");
+      // Column B (W) as money, picked by its letter.
+      await tester.tapAt(tester.getTopLeft(find.byType(DataGrid)) +
+          const Offset(
+              dataHeaderWidth + dataColumnWidth * 1.5, dataRowHeight / 2));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("dataStudioFormat")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(r"Money $").last);
+      await tester.pumpAndSettle();
+      expect(sheet().columnFormats[1]?.kind, CellFormatKind.money);
+      expect(table().rows[1][1], r"$14.00");
+      expect(sheetValue(sheet(), 1, 1), 14,
+          reason: "still a number underneath");
+      // Fewer decimals.
+      await tester.tap(find.byKey(const ValueKey("dataStudioFewer")));
+      await tester.pumpAndSettle();
+      expect(table().rows[1][1], r"$14.0");
+      // A series down column G: 1, 2, then the handle dragged two rows on.
+      c.setSheetCells(c.document.sheets.single.id, 0, 6, [
+        ["1"],
+        ["2"]
+      ]);
+      await tester.pumpAndSettle();
+      await tester.tapAt(cellAt(tester, 0, 6));
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shift);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
+      await tester.pump();
+      var corner = tester.getTopLeft(find.byType(DataGrid)) +
+          const Offset(dataHeaderWidth + 7 * dataColumnWidth,
+              dataRowHeight + 2 * dataRowHeight);
+      var g = await tester.startGesture(corner, kind: PointerDeviceKind.mouse);
+      await g.moveTo(corner + const Offset(0, dataRowHeight * 1.5));
+      await tester.pump();
+      await g.moveTo(corner + const Offset(-8, dataRowHeight * 1.6));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect([for (var r = 0; r < 4; r++) sheet().raw(r, 6)],
+          ["1", "2", "3", "4"]);
     });
 
     testWidgets("pasted from a spreadsheet: tab-separated rows, put in place",

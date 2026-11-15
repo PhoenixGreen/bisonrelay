@@ -5,7 +5,6 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
-import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -139,8 +138,8 @@ class _DataStudioState extends State<DataStudio> {
     var by = _sel.ac.clamp(g.c0, g.c1);
     // A heading row stays where it is.
     var r0 = g.r0;
-    if (cellNumber(sheetShown(s, r0, by)) == null &&
-        cellNumber(sheetShown(s, r0 + 1, by)) != null) {
+    if (sheetValue(s, r0, by) is! double &&
+        sheetValue(s, r0 + 1, by) is double) {
       r0++;
     }
     c.sortSheetRows(_sheet, CellRange(r0, g.c0, g.r1, g.c1), by,
@@ -220,6 +219,10 @@ class _DataStudioState extends State<DataStudio> {
                           "${rows.length == 1 ? "" : "s"}.");
                     },
                     onClear: (g) => c.clearSheetCells(_sheet, _used(g)),
+                    onFill: (from, to) {
+                      c.fillSheet(_sheet, from, to);
+                      _say("Filled ${to.a1}.");
+                    },
                     onUndo: c.undo,
                     onRedo: c.redo,
                   ),
@@ -369,9 +372,46 @@ class _DataStudioState extends State<DataStudio> {
               borderRadius: BorderRadius.circular(6),
               borderSide: BorderSide(color: colors.outlineVariant)),
         );
+    var format = s.formatAt(_sel.ar, _sel.ac);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(children: [
+        // How the selection's numbers are written (Calc's Number Format).
+        DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            key: const ValueKey("dataStudioFormat"),
+            value: _formatKey(format),
+            isDense: true,
+            style: TextStyle(fontSize: 13, color: colors.onSurface),
+            dropdownColor: colors.surfaceContainerHigh,
+            items: [
+              for (var (k, label) in _formatChoices)
+                DropdownMenuItem(value: k, child: Text(label)),
+            ],
+            onChanged: (k) {
+              if (k != null) _setFormat(s, _formatFor(k, format));
+            },
+          ),
+        ),
+        const SizedBox(width: 6),
+        StudioPill(
+            key: const ValueKey("dataStudioFewer"),
+            label: ".0−",
+            tooltip: "Fewer decimals",
+            onTap: () => _setFormat(
+                s,
+                (format ?? const CellFormat(CellFormatKind.general)).copyWith(
+                    decimals: math.max(0, (format?.places ?? 0) - 1)))),
+        const SizedBox(width: 4),
+        StudioPill(
+            key: const ValueKey("dataStudioMore"),
+            label: ".00+",
+            tooltip: "More decimals",
+            onTap: () => _setFormat(
+                s,
+                (format ?? const CellFormat(CellFormatKind.general)).copyWith(
+                    decimals: math.min(10, (format?.places ?? 0) + 1)))),
+        const SizedBox(width: 12),
         SizedBox(
           width: 104,
           child: TextField(
@@ -408,7 +448,8 @@ class _DataStudioState extends State<DataStudio> {
             focusNode: _formulaFocus,
             style: TextStyle(
                 fontSize: 13, fontFamily: "monospace", color: colors.onSurface),
-            decoration: box().copyWith(hintText: "Type a value"),
+            decoration: box()
+                .copyWith(hintText: "Type a value, or a formula: =SUM(B2:B9)"),
             onSubmitted: (text) {
               if (text != s.raw(_sel.ar, _sel.ac)) {
                 c.setSheetCells(_sheet, _sel.ar, _sel.ac, [
@@ -421,6 +462,40 @@ class _DataStudioState extends State<DataStudio> {
         ),
       ]),
     );
+  }
+
+  static const _formatChoices = [
+    ("general", "General"),
+    ("number", "Number 1,234"),
+    (r"money:$", r"Money $"),
+    ("money:£", "Money £"),
+    ("money:€", "Money €"),
+    ("percent", "Percent %"),
+    ("short", "Short 1.2k"),
+    ("date", "Date 15/11/2026"),
+    ("text", "Text, as typed"),
+  ];
+
+  String _formatKey(CellFormat? f) => switch (f?.kind) {
+        null || CellFormatKind.general => "general",
+        CellFormatKind.money => "money:${f!.symbol}",
+        var k => k.name,
+      };
+
+  CellFormat? _formatFor(String key, CellFormat? was) {
+    if (key == "general") return null;
+    var parts = key.split(":");
+    var kind = CellFormatKind.values.byName(parts.first);
+    return CellFormat(kind, symbol: parts.length > 1 ? parts[1] : r"$");
+  }
+
+  /// _setFormat gives the selection [f]: whole columns, picked by their
+  /// letters, as their columns'.
+  void _setFormat(DataSheet s, CellFormat? f) {
+    var g = _sel.range;
+    var columns = g.r0 == 0 && g.r1 >= math.max(199, s.rowCount);
+    c.formatSheetCells(_sheet, columns ? g : _used(g), f, columns: columns);
+    _gridFocus.requestFocus();
   }
 
   Widget _sheetTabs(BuildContext context) {
@@ -602,10 +677,10 @@ class _DataStudioState extends State<DataStudio> {
     var count = 0;
     for (var r = g.r0; r <= g.r1; r++) {
       for (var col = g.c0; col <= g.c1; col++) {
-        var v = sheetShown(s, r, col);
-        if (v.isEmpty) continue;
+        var v = sheetValue(s, r, col);
+        if (v == null || v == "") continue;
         count++;
-        if (cellNumber(v) case var n?) numbers.add(n);
+        if (v is double) numbers.add(v);
       }
     }
     var sum = numbers.fold(0.0, (a, b) => a + b);
