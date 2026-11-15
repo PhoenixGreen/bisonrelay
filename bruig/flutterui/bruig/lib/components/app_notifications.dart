@@ -104,7 +104,12 @@ class _NotificationW extends StatelessWidget {
 
 class NotificationsDrawerHeader extends StatefulWidget {
   final AppNotifications ntfns;
-  const NotificationsDrawerHeader(this.ntfns, {super.key});
+
+  /// compact is a narrow side menu's: the warning alone, no room for the
+  /// list (its rows' leading arrow asserted in a 6px tile).
+  final bool compact;
+  const NotificationsDrawerHeader(this.ntfns,
+      {this.compact = false, super.key});
 
   @override
   State<NotificationsDrawerHeader> createState() =>
@@ -145,6 +150,15 @@ class _NotificationsDrawerHeaderState extends State<NotificationsDrawerHeader> {
   Widget build(BuildContext context) {
     if (ntfns.count == 0) {
       return const Empty();
+    }
+    if (widget.compact) {
+      return Tooltip(
+          message: "${list.length} notification${list.length == 1 ? "" : "s"}"
+              " -- open the menu to see them",
+          child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: ColoredIcon(Icons.warning_amber_outlined,
+                  color: TextColor.onSurfaceVariant)));
     }
     return DrawerHeader(
         child: Column(children: [

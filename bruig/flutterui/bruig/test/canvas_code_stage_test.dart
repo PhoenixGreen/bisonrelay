@@ -546,9 +546,17 @@ void main() {
       await mouse.addPointer(location: p);
       await mouse.moveTo(p);
       await tester.pump();
+      // Only the stage drawn again for it, not the editor round it: a
+      // trackpad sends many a second (Ken: seconds behind the fingers).
+      var told = 0, ticks = c.keysHeld.value;
+      void count() => told++;
+      c.addListener(count);
       tester.binding.handlePointerEvent(
           PointerScrollEvent(position: p, scrollDelta: const Offset(0, 120)));
       await tester.pump();
+      c.removeListener(count);
+      expect(told, 0, reason: "nothing round the stage rebuilt");
+      expect(c.keysHeld.value, greaterThan(ticks), reason: "the stage redrawn");
       var scrolled = c.codeShowFor(code()).scroll[0];
       expect(scrolled, greaterThan(0), reason: "the pane scrolled down");
       expect(c.pan, pan, reason: "the page did not move");

@@ -386,7 +386,8 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                     // above them would hide it (and Flutter says so).
                     Material(
                         type: MaterialType.transparency,
-                        child: NotificationsDrawerHeader(widget.ntfns)),
+                        child: NotificationsDrawerHeader(widget.ntfns,
+                            compact: extended != true)),
                   ])),
             ]),
             controller: ctrl,

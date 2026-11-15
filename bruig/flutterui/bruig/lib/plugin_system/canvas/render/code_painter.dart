@@ -167,6 +167,26 @@ double codeCharWidth(double fontSize) => _measure(fontSize).$1;
       return (w, slope > 0.01 ? w * 3 / slope : probe);
     }();
 
+/// _linked keeps the last files' runs with other files' names marked: a
+/// pane is drawn every frame it scrolls, and its file seldom changes.
+final Map<String, List<CodeRun>> _linked = {};
+
+List<CodeRun> _runsOf(CodeElement e, CodeFile file, String text) {
+  var runs = highlightRuns(file.language, text);
+  if (!e.links) return runs;
+  var names = linkNames(e, file.id);
+  var key =
+      "${file.language.name}\u0000${names.entries.map((n) => "${n.key}=${n.value}").join(",")}\u0000$text";
+  var hit = _linked.remove(key);
+  if (hit != null) return _linked[key] = hit;
+  var out = withLinks(runs, text, names);
+  _linked[key] = out;
+  while (_linked.length > 48) {
+    _linked.remove(_linked.keys.first);
+  }
+  return out;
+}
+
 /// codeSpan is [text]'s first [count] letters as [file] in [e] colours
 /// them: by role, other files' names underlined in their colour, and tabs
 /// four letters wide. The painter and the stage's editor both use it.
@@ -174,8 +194,7 @@ TextSpan codeSpan(
     CodeElement e, CodeFile file, String text, int count, CodeColours c,
     {double? fontSize}) {
   var fs = fontSize ?? e.fontSize;
-  var runs = highlightRuns(file.language, text);
-  if (e.links) runs = withLinks(runs, text, linkNames(e, file.id));
+  var runs = _runsOf(e, file, text);
   var tab = _measure(fs).$2;
   var spans = <InlineSpan>[];
   for (var r in runs) {
@@ -764,16 +783,22 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
   }
 
   // The line numbers, as far as it is typed.
+  // One block for the lines in view, right-aligned: laid out once, not a
+  // line at a time.
   if (e.lineNumbers) {
-    for (var i = 0; i < lines; i++) {
-      var y = top + i * lh;
-      if (y + lh < pane.code.top || y > pane.code.bottom) continue;
+    var first = math.max(0, ((pane.code.top - top) / lh).floor());
+    var last = math.min(lines, ((pane.code.bottom - top) / lh).ceil() + 1);
+    if (last > first) {
+      var width = textLeft - fs * 0.8 - pane.code.left;
       var n = TextPainter(
-          text: TextSpan(text: "${i + 1}", style: codeStyle(fs, c.gutter)),
+          text: TextSpan(
+              text: [for (var i = first; i < last; i++) "${i + 1}"].join("\n"),
+              style: codeStyle(fs, c.gutter)),
           strutStyle: codeStrut(fs),
+          textAlign: TextAlign.right,
           textDirection: TextDirection.ltr)
-        ..layout();
-      n.paint(canvas, Offset(textLeft - fs * 0.8 - n.width, y));
+        ..layout(minWidth: width, maxWidth: width);
+      n.paint(canvas, Offset(pane.code.left, top + first * lh));
       n.dispose();
     }
   }

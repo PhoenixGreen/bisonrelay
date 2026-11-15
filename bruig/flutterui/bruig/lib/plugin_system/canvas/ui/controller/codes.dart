@@ -105,7 +105,9 @@ extension CanvasCodes on CanvasController {
         .toDouble();
     if ((next - now).abs() < 1e-6) return;
     (_codeScroll[e.id] ??= {})[pane] = next;
-    notifyListeners();
+    // Only the stage drawn again, not the editor round it: a trackpad
+    // sends many of these a second (Ken: seconds behind the fingers).
+    keysHeld.value++;
   }
 
   /// playCode is Code panel [e]'s play button: playing, a pause; else the
