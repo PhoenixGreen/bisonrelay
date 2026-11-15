@@ -53,6 +53,10 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
   Widget? _built;
   String? _error;
 
+  /// _touched is whether it has been pressed: shut untouched, it is as its
+  /// run left it, and no new picture is kept (no change to undo).
+  bool _touched = false;
+
   @override
   void initState() {
     super.initState();
@@ -74,6 +78,7 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
   }
 
   Future<List<int>?> _snap() async {
+    if (!_touched) return null;
     if (_web case var web?) {
       return web.takeScreenshot(
           screenshotConfiguration:
@@ -91,7 +96,16 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
   @override
   Widget build(BuildContext context) {
     Widget body;
-    if (widget.runner == CodeRunner.web) {
+    if (widget.runner == CodeRunner.web &&
+        InAppWebViewPlatform.instance == null) {
+      // No browser here (a test, or a system without one): said, not a
+      // failure.
+      body = const ColoredBox(
+          color: Color(0xFF15191E),
+          child: Center(
+              child: Text("The page can't be shown live here.",
+                  style: TextStyle(color: Color(0xFF8A93A0)))));
+    } else if (widget.runner == CodeRunner.web) {
       body = InAppWebView(
         initialData: InAppWebViewInitialData(
             data: webPage(widget.code, widget.entry),
@@ -149,7 +163,9 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
         position: DecorationPosition.foreground,
         decoration: BoxDecoration(
             border: Border.all(color: const Color(0xFF2ED6A1), width: 2)),
-        child: ClipRect(child: body),
+        child: Listener(
+            onPointerDown: (_) => _touched = true,
+            child: ClipRect(child: body)),
       ),
     );
   }

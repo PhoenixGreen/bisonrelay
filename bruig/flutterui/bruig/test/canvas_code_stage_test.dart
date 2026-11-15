@@ -68,6 +68,36 @@ class _FakeHost implements CodeRunHost {
   }
 }
 
+/// _counter is a Flutter app counting presses of its + button, by [adds].
+String _counter(String adds) => """
+import 'package:flutter/material.dart';
+
+void main() => runApp(const CounterApp());
+
+class CounterApp extends StatefulWidget {
+  const CounterApp({super.key});
+
+  @override
+  State<CounterApp> createState() => _CounterAppState();
+}
+
+class _CounterAppState extends State<CounterApp> {
+  int coins = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(child: Text('\$coins')),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => setState(() => $adds),
+          child: const Icon(Icons.add),
+        ),
+      ),
+    );
+  }
+}""";
+
 void main() {
   late CanvasController c;
   late GlobalKey<CanvasStageState> key;
@@ -302,6 +332,50 @@ void main() {
     expect(code().reset.file("f1")!.text, "<p>Oops</p>");
   });
 
+  testWidgets(
+      "Run pressed: the app live at once, so the next press is its own; "
+      "a press that opens it presses it too", (tester) async {
+    var host = _FakeHost();
+    CanvasController.codeRunHost = host;
+    var save = CanvasController.saveCodePicture;
+    CanvasController.saveCodePicture = (png) async => "0123456789abcdef.png";
+    addTearDown(() {
+      CanvasController.codeRunHost = null;
+      CanvasController.saveCodePicture = save;
+    });
+    await stage(tester, "flutter");
+    c.replaceElement(
+        code().withFileText(code().files.first.id, _counter("coins++")));
+    var boxes = codeRunBoxes(run(), run().bounds, runner: CodeRunner.flutter);
+    await tester.tapAt(at(boxes.runButton.center));
+    await tester.pumpAndSettle();
+    expect(find.byType(CodeLivePreview), findsOneWidget,
+        reason: "live once it has run");
+    // Shut untouched: as its run left it, nothing to undo.
+    var before = c.document;
+    await c.endLiveCode();
+    await tester.pumpAndSettle();
+    expect(identical(c.document, before), isTrue);
+    // Pressed on its + (the panel picked): opened live, and pressed.
+    c.liveCode(run());
+    await tester.pumpAndSettle();
+    var plus = tester.getCenter(find.byType(FloatingActionButton));
+    await c.endLiveCode();
+    await tester.pumpAndSettle();
+    expect(find.byType(FloatingActionButton), findsNothing);
+    await tester.tapAt(plus);
+    await tester.pumpAndSettle();
+    expect(find.byType(CodeLivePreview), findsOneWidget);
+    expect(find.text("1"), findsOneWidget,
+        reason: "the press that opened it counted (Ken: it took two)");
+    // Pressed again: its own.
+    await tester.tapAt(plus);
+    await tester.pumpAndSettle();
+    expect(find.text("2"), findsOneWidget);
+    c.codeLiveSnap = null;
+    await c.endLiveCode();
+  });
+
   testWidgets("Run pressed: run by the host, its output and picture kept",
       (tester) async {
     var host = _FakeHost();
@@ -408,6 +482,35 @@ void main() {
           controller: c, codeId: code().id, onDone: c.closeCodeStudio)));
       await tester.pumpAndSettle();
     }
+
+    testWidgets(
+        "Run, then Restart with the code as it is now, and Stop "
+        "(Ken: no way to test new code while the old ran)", (tester) async {
+      await studio(tester, "flutter");
+      var f = code().files.first.id;
+      c.replaceElement(code().withFileText(f, _counter("coins++")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("codeStudioStop")), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("codeStudioRun")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+      expect(find.text("1"), findsOneWidget);
+      // Changed and run again: the new code, its count from nothing.
+      c.replaceElement(code().withFileText(f, _counter("coins += 5")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("codeStudioRun")));
+      await tester.pumpAndSettle();
+      expect(find.text("0"), findsOneWidget);
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+      expect(find.text("5"), findsOneWidget);
+      // Stopped: the app gone, Run to start it again.
+      await tester.tap(find.byKey(const ValueKey("codeStudioStop")));
+      await tester.pumpAndSettle();
+      expect(find.byType(FloatingActionButton), findsNothing);
+      expect(find.byKey(const ValueKey("codeStudioStop")), findsNothing);
+    });
 
     testWidgets("typed in: the panel's file, one change to undo",
         (tester) async {

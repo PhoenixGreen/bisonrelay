@@ -29,16 +29,16 @@ extension CanvasCodeRuns on CanvasController {
   /// it has printed so far; or open live, its run's output and what has
   /// been printed since.
   CodeRunShow codeRunShowFor(CodeRunElement e) {
+    var now = _codeRanNow.contains(e.id) || _codeFull.contains(e.code);
     if (_codeLive?.$1 == e.id) {
       return CodeRunShow(
-          live: true, logs: [...?e.result?.logs, ..._codeLive!.$2]);
+          live: true, now: now, logs: [...?e.result?.logs, ..._codeLive!.$2]);
     }
     var logs = _codeRuns[e.id];
     if (logs != null) {
       return CodeRunShow(running: true, logs: List.unmodifiable(logs));
     }
-    return CodeRunShow(
-        now: _codeRanNow.contains(e.id) || _codeFull.contains(e.code));
+    return CodeRunShow(now: now);
   }
 
   /// codeLive is the Run panel whose preview is open to be used, by id.

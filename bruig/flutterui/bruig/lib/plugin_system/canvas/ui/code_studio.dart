@@ -56,9 +56,14 @@ class _CodeStudioState extends State<CodeStudio> {
   /// begun a change to undo.
   bool _begun = false;
 
-  /// _runs counts the runs, so the live preview starts again with each.
+  /// _runs counts the runs (and stops), so the live preview starts again
+  /// with each, and a run that ends after another has begun is let go.
   int _runs = 0;
   bool _running = false;
+
+  /// _shown is whether a run's preview is showing: Stop takes it away
+  /// (Ken: "no way to stop the running code and then restart").
+  bool _shown = false;
 
   /// _logs is a run's output where there is no Run panel to keep it;
   /// _live what the live preview has printed since.
@@ -115,16 +120,19 @@ class _CodeStudioState extends State<CodeStudio> {
 
   Future<void> _run() async {
     var e = code;
-    if (e == null || _running) return;
+    if (e == null) return;
     _endTyping();
     var run = _runOf(e);
     var runner = runnerOf(run, e);
     var entry = entryFile(run, e);
     if (entry == null || runner == CodeRunner.none) return;
+    // Run again while it runs or shows: started again with the code as it
+    // is now.
+    var token = ++_runs;
     setState(() {
       _running = true;
+      _shown = true;
       _live.clear();
-      _runs++;
       if (runner == CodeRunner.flutter) {
         var built = buildFlutterApp(e, entry);
         _app = built.widget;
@@ -138,15 +146,29 @@ class _CodeStudioState extends State<CodeStudio> {
       } else if (CanvasController.codeRunHost case var host?) {
         var out = await host.run(
             runner, e, entry, const Size(480, 360), (l) => setState(() {}));
-        _logs = out.logs;
+        if (token == _runs) _logs = out.logs;
       } else {
         _logs = const [
           CodeLog("Code can't be run here.", kind: CodeLogKind.note)
         ];
       }
     } finally {
-      if (mounted) setState(() => _running = false);
+      if (mounted && token == _runs) setState(() => _running = false);
     }
+  }
+
+  /// _stop stops what runs and shows: the app or page taken away, and a
+  /// run still under way let go.
+  void _stop() {
+    _endTyping();
+    setState(() {
+      _runs++;
+      _running = false;
+      _shown = false;
+      _app = null;
+      _appError = null;
+      _live.clear();
+    });
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
@@ -237,11 +259,22 @@ class _CodeStudioState extends State<CodeStudio> {
             label: "A+",
             onTap: () => setState(() => _size = math.min(32, _size + 1))),
         const SizedBox(width: 12),
+        if (_shown || _running) ...[
+          StudioPill(
+              key: const ValueKey("codeStudioStop"),
+              label: "■ Stop",
+              onTap: _stop),
+          const SizedBox(width: 4),
+        ],
         StudioPill(
             key: const ValueKey("codeStudioRun"),
-            label: _running ? "Running…" : "▶ Run  ⌘↵",
+            label: _running
+                ? "Running…"
+                : _shown
+                    ? "↻ Restart  ⌘↵"
+                    : "▶ Run  ⌘↵",
             selected: _running,
-            onTap: runner == CodeRunner.none || _running ? null : _run),
+            onTap: runner == CodeRunner.none ? null : _run),
         const SizedBox(width: 8),
         StudioPill(
             key: const ValueKey("codeStudioDone"),
@@ -566,8 +599,12 @@ class _CodeStudioState extends State<CodeStudio> {
       ..._live,
     ];
     Widget? preview;
-    if (runner.previews && _runs > 0 && entry != null) {
-      if (runner == CodeRunner.web) {
+    if (runner.previews && _shown && entry != null) {
+      if (runner == CodeRunner.web && InAppWebViewPlatform.instance == null) {
+        preview = const Center(
+            child: Text("The page can't be shown live here.",
+                style: TextStyle(color: Color(0xFF8A93A0))));
+      } else if (runner == CodeRunner.web) {
         preview = InAppWebView(
           key: ValueKey("codeStudioPage-$_runs"),
           initialData: InAppWebViewInitialData(
@@ -607,7 +644,11 @@ class _CodeStudioState extends State<CodeStudio> {
                         data: MediaQuery.of(context).copyWith(
                             size: Size(
                                 math.max(360, room.maxWidth), room.maxHeight)),
-                        child: _app!),
+                        // A new app with each run: the last one's state
+                        // (its count) isn't kept for code that changed.
+                        child: KeyedSubtree(
+                            key: ValueKey("codeStudioApp-$_runs"),
+                            child: _app!)),
                   ),
                 ));
       } else if (runner == CodeRunner.flutter && _appError != null) {

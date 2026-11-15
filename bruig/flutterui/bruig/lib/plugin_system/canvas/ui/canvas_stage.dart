@@ -1757,6 +1757,9 @@ class CanvasStageState extends State<CanvasStage>
         e.result != null &&
         (runner == CodeRunner.web || runner == CodeRunner.flutter)) {
       controller.liveCode(e);
+      // The press that opened it is the app's too, once it is there (Ken:
+      // the first press did nothing).
+      if (runner == CodeRunner.flutter) _liveTapPending = true;
       _mode = _DragMode.none;
       return true;
     }
@@ -1767,9 +1770,40 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.first != e.id) {
       controller.selectOnly(e.id);
     }
-    controller.runCode(e);
+    // Run, then live: the next press is the app's own, not the one that
+    // opens it (Ken: "click run and then the next click in the app work").
+    controller.runCode(e).then((_) {
+      if (!mounted || controller.codeLive != null) return;
+      var now = document.elementById(e.id);
+      if (now is CodeRunElement &&
+          now.result?.preview.isNotEmpty == true &&
+          controller.selection.length == 1 &&
+          controller.selection.first == e.id &&
+          (runner == CodeRunner.web || runner == CodeRunner.flutter)) {
+        controller.liveCode(now);
+      }
+    });
     _mode = _DragMode.none;
     return true;
+  }
+
+  /// _liveTapPending is a press on a Run panel's preview that opened it
+  /// live: let go, it is pressed again in the live app (_replayTap).
+  bool _liveTapPending = false;
+  int _replayPointer = 0x7FFF0000;
+
+  /// _replayTap presses the live app at [global] once it has been built:
+  /// a touch, as a mouse's needs its pointer added first.
+  void _replayTap(Offset global) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || controller.codeLive == null) return;
+      var id = ++_replayPointer;
+      GestureBinding.instance.handlePointerEvent(PointerDownEvent(
+          pointer: id, position: global, kind: PointerDeviceKind.touch));
+      GestureBinding.instance.handlePointerEvent(PointerUpEvent(
+          pointer: id, position: global, kind: PointerDeviceKind.touch));
+    });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   /// _releaseCode ends a press on a Code panel: a line between panes let
@@ -6501,6 +6535,11 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   void _onPointerUp(PointerEvent event) {
+    if (_liveTapPending) {
+      _liveTapPending = false;
+      _replayTap(event.position);
+      return;
+    }
     if (_inLive) {
       _inLive = false;
       return;
