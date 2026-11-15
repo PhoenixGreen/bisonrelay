@@ -475,13 +475,14 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
   }
   if (current.isNotEmpty) systemsBars.add(current);
 
-  // Justified: each bar's gaps stretched to fill the line (the last line
-  // only when it is mostly full already).
+  // Justified: each bar's gaps stretched to fill the line -- the last line
+  // only when it is mostly full already, or when it is the only line: a
+  // piece that fits on one line fills it.
   for (var (si, sys) in systemsBars.indexed) {
     var start = left + startW(si == 0);
     var natural = sys.fold(0.0, (a, p) => a + p.natural);
     var room = right - start;
-    var last = si == systemsBars.length - 1;
+    var last = si == systemsBars.length - 1 && systemsBars.length > 1;
     var stretch = last && natural < room * 0.7
         ? 1.0
         : math.max(1.0, room / math.max(1, natural));

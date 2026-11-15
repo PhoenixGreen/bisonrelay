@@ -268,4 +268,30 @@ void main() {
     expect(off.hits.where((h) => h.mark == MarkKind.diagram), isEmpty);
     expect(off.height, lessThan(on.height), reason: "no room kept for them");
   });
+
+  test("a piece on one line fills it", () async {
+    var short = MusicScore("short", tempo: 90, bars: const [
+      BarInfo(),
+      BarInfo()
+    ], parts: [
+      ScorePart("p", "Piano", "piano", [
+        ScoreStaff(Clef.treble, [
+          [
+            ScoreEvent("a", 4, pitches: [Pitch.parse("C4")!])
+          ],
+          [
+            ScoreEvent("b", 4, pitches: [Pitch.parse("E4")!])
+          ],
+        ]),
+      ]),
+    ]);
+    var one = layoutScore(short, const EngraveOptions(width: 1200));
+    expect(one.systems, hasLength(1));
+    var lines = [
+      for (var h in one.hits)
+        if (h.kind == ScoreHitKind.barline) h.rect.center.dx
+    ];
+    expect(lines.reduce((a, b) => a > b ? a : b), greaterThan(1200 * 0.9),
+        reason: "its last bar line near the right edge");
+  });
 }
