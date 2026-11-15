@@ -108,6 +108,29 @@ extension CanvasDataSheets on CanvasController {
     setSheet(s.copyWith(formats: cells));
   }
 
+  /// addSheetRule gives sheet [id] colour rule [rule], over any it had
+  /// on the same range.
+  void addSheetRule(String id, SheetRule rule) {
+    var s = sheetById(id);
+    if (s == null) return;
+    setSheet(s.copyWith(rules: [
+      for (var r in s.rules)
+        if (r.range != rule.range) r,
+      rule,
+    ]));
+  }
+
+  /// clearSheetRules takes out sheet [id]'s colour rules that reach into
+  /// [range].
+  void clearSheetRules(String id, CellRange range) {
+    var s = sheetById(id);
+    if (s == null) return;
+    setSheet(s.copyWith(rules: [
+      for (var r in s.rules)
+        if (!r.range.overlaps(range)) r,
+    ]));
+  }
+
   /// addDataView puts down a Data element showing [range] of sheet [id] as
   /// [kind] -- a table or a chart, labelled and drawn from its columns --
   /// selects it and answers it.

@@ -698,6 +698,16 @@ class _Eval {
   }
 }
 
+/// criterionMatches is whether [value] meets [criterion] as COUNTIF reads
+/// one: ">5", "<>0", "=Arsenal", "Ars*", or a value to equal.
+bool criterionMatches(Object? value, String criterion) {
+  try {
+    return _Eval((_, __) => null)._criterion(criterion)(value);
+  } on _Thrown {
+    return false;
+  }
+}
+
 /// _numberIn reads text a person typed as a number: "1,240", "+3", "4.5".
 double? _numberIn(String s) {
   var t = s.trim().replaceAll(",", "");

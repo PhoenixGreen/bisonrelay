@@ -192,6 +192,8 @@ List<PanelBit> chartBits(
       ];
 
   return [
+    // Which rows of its sheet it draws, and how ordered (Data element).
+    PanelBit(PanelSection.content, children: [dataRowsGroup(controller, e)]),
     // Where the numbers come from, a fold with its Refresh on its heading.
     PanelBit(PanelSection.content, summary: e.source.kind.label, children: [
       CanvasExpander(

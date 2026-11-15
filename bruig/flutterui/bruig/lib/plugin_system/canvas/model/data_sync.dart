@@ -52,9 +52,26 @@ String numText(double v) {
 CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
   var link = linkOf(e);
   if (link == null) return e;
-  var block = sheetBlock(sheet, link.range);
   if (e is TableElement) {
-    return sameGrid(e.rows, block) ? e : e.copyWith(rows: block);
+    var g = link.range;
+    var order = [g.r0, ...viewRows(sheet, link)];
+    var block = [
+      for (var r in order)
+        [for (var c = g.c0; c <= g.c1; c++) sheetShown(sheet, r, c)],
+    ];
+    var looks = <List<SheetCellLook?>>[];
+    if (sheet.rules.isNotEmpty) {
+      looks = [
+        for (var r in order)
+          [
+            for (var c = g.c0; c <= g.c1; c++)
+              r == g.r0 ? null : sheetLook(sheet, r, c)
+          ],
+      ];
+      if (looks.every((row) => row.every((l) => l == null))) looks = const [];
+    }
+    if (sameGrid(e.rows, block) && _sameLooks(e.sheetLooks, looks)) return e;
+    return e.copyWith(rows: block, sheetLooks: looks);
   }
   if (e is ChartElement) {
     var data = chartDataOf(sheet, link, e.data);
@@ -70,7 +87,7 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
 /// [was]'s one in its place looked; a blank or a word is a gap.
 ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was) {
   var g = link.range;
-  var rows = [for (var r = g.r0 + 1; r <= g.r1; r++) r];
+  var rows = viewRows(sheet, link);
   var series = <ChartSeries>[
     for (var (i, p) in link.series.indexed)
       () {
@@ -99,6 +116,17 @@ ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was) {
         ? const []
         : [for (var i = 0; i < rows.length; i++) i < est.length && est[i]],
   );
+}
+
+bool _sameLooks(List<List<SheetCellLook?>> a, List<List<SheetCellLook?>> b) {
+  if (a.length != b.length) return false;
+  for (var r = 0; r < a.length; r++) {
+    if (a[r].length != b[r].length) return false;
+    for (var c = 0; c < a[r].length; c++) {
+      if (a[r][c] != b[r][c]) return false;
+    }
+  }
+  return true;
 }
 
 /// sameGrid is whether [a] and [b] read the same, a missing cell empty.
@@ -143,6 +171,7 @@ bool sameData(ChartData a, ChartData b) {
 (DataSheet, SheetLink) sheetWithView(DataSheet sheet, CanvasElement e) {
   var link = linkOf(e)!;
   var range = link.range;
+  if (!link.plain) return (_mappedBack(sheet, e, link), link);
   if (e is TableElement) {
     var rows = e.rows;
     var cols = math.max(1, e.columnCount);
@@ -212,6 +241,51 @@ bool sameData(ChartData a, ChartData b) {
     );
   }
   return (sheet, link);
+}
+
+/// _mappedBack is [sheet] with what view [e] -- which shows its rows its
+/// own way (sorted, filtered, cut to its top) -- changed written into the
+/// rows each of its rows shows. Its range stays: rows it gained or lost
+/// can't be placed in the sheet from here.
+DataSheet _mappedBack(DataSheet sheet, CanvasElement e, SheetLink link) {
+  var g = link.range;
+  var order = [g.r0, ...viewRows(sheet, link)];
+  var out = sheet;
+  void put(int r, int c, String text, {double? number}) {
+    var same = number != null
+        ? switch (sheetValue(sheet, r, c)) {
+            double v => v == number,
+            null => number.isNaN,
+            _ => false,
+          }
+        : sheetShown(sheet, r, c) == text;
+    if (!same) out = out.withCell(r, c, text);
+  }
+
+  if (e is TableElement) {
+    for (var (i, r) in order.indexed) {
+      if (i >= e.rows.length) break;
+      for (var c = 0; c < g.cols && c < e.rows[i].length; c++) {
+        put(r, g.c0 + c, e.rows[i][c]);
+      }
+    }
+  } else if (e is ChartElement) {
+    var data = e.data;
+    for (var (i, col) in link.series.indexed) {
+      if (i >= data.series.length) break;
+      put(g.r0, g.c0 + col, data.series[i].name);
+      for (var (k, r) in order.skip(1).indexed) {
+        if (k >= data.series[i].values.length) break;
+        var v = data.series[i].values[k];
+        put(r, g.c0 + col, numText(v), number: v);
+      }
+    }
+    for (var (k, r) in order.skip(1).indexed) {
+      if (k < data.categories.length)
+        put(r, g.c0 + link.labels, data.categories[k]);
+    }
+  }
+  return out;
 }
 
 /// _mapViews is [doc] with [f] applied to every element everywhere -- this
@@ -379,6 +453,18 @@ CanvasDocument dataAdopted(CanvasDocument doc) {
   });
 }
 
+/// dataRefreshed is [doc] with every view made from its sheet as it opens:
+/// what isn't kept in the file (a table's colour-rule looks) made again,
+/// and nothing touched that already agrees.
+CanvasDocument dataRefreshed(CanvasDocument doc) {
+  if (doc.sheets.isEmpty) return doc;
+  var sheets = {for (var s in doc.sheets) s.id: s};
+  return _mapViews(doc, (e) {
+    var sheet = sheets[linkOf(e)?.sheet];
+    return sheet == null ? e : viewFromSheet(e, sheet);
+  });
+}
+
 /// dataSynced is [next] -- a change from [was] -- with its sheets and every
 /// view of them in step (see the top of this file). [next] itself when it
 /// changed no data.
@@ -532,8 +618,23 @@ DataSheet _moved(DataSheet s, List<List<String>> cells, int at, int n,
             if (to(key) case var m?) m: value,
         }
       : s.columnFormats;
+  // Colour rules' ranges move and grow as views' do.
+  var rules = [
+    for (var rule in s.rules)
+      if (columns
+              ? _spanAfter(rule.range.c0, rule.range.c1, at, n)
+              : _spanAfter(rule.range.r0, rule.range.r1, at, n)
+          case (var a, var b))
+        rule.copyWith(
+            range: columns
+                ? CellRange(rule.range.r0, a, rule.range.r1, b)
+                : CellRange(a, rule.range.c0, b, rule.range.c1)),
+  ];
   return s.copyWith(
-      cells: fixed, formats: formats, columnFormats: columnFormats);
+      cells: fixed,
+      formats: formats,
+      columnFormats: columnFormats,
+      rules: rules);
 }
 
 /// _spanAfter is span [a]..[b] with [n] put in before [at] (n > 0) or the

@@ -412,6 +412,27 @@ class _DataStudioState extends State<DataStudio> {
                 (format ?? const CellFormat(CellFormatKind.general)).copyWith(
                     decimals: math.min(10, (format?.places ?? 0) + 1)))),
         const SizedBox(width: 12),
+        // Calc's conditional formatting: bars, scales and highlights over
+        // the selection, drawn by the tables showing it.
+        DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            key: const ValueKey("dataStudioRules"),
+            value: null,
+            isDense: true,
+            hint: Text("Colour rules",
+                style: TextStyle(fontSize: 13, color: colors.onSurface)),
+            style: TextStyle(fontSize: 13, color: colors.onSurface),
+            dropdownColor: colors.surfaceContainerHigh,
+            items: [
+              for (var (k, label) in _ruleChoices)
+                DropdownMenuItem(value: k, child: Text(label)),
+            ],
+            onChanged: (k) {
+              if (k != null) _setRule(s, k);
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
         SizedBox(
           width: 104,
           child: TextField(
@@ -462,6 +483,44 @@ class _DataStudioState extends State<DataStudio> {
         ),
       ]),
     );
+  }
+
+  static const _ruleChoices = [
+    ("bars", "Data bars"),
+    ("barsBlue", "Data bars, blue"),
+    ("scale", "Colour scale, red to green"),
+    ("scaleBlue", "Colour scale, white to blue"),
+    ("above", "Above average"),
+    ("below", "Below average"),
+    ("top", "Top 3"),
+    ("clear", "Clear colour rules here"),
+  ];
+
+  void _setRule(DataSheet s, String key) {
+    var g = _used(_sel.range);
+    if (key == "clear") {
+      c.clearSheetRules(_sheet, g);
+      _say("Colour rules taken off ${g.a1}.");
+    } else {
+      c.addSheetRule(
+          _sheet,
+          switch (key) {
+            "barsBlue" =>
+              SheetRule(g, SheetRuleKind.bars, colour: const Color(0xFF4C8DF6)),
+            "scale" => SheetRule(g, SheetRuleKind.scale),
+            "scaleBlue" => SheetRule(g, SheetRuleKind.scale,
+                low: const Color(0xFFFFFFFF), high: const Color(0xFF7FA8F5)),
+            "above" => SheetRule(g, SheetRuleKind.above,
+                colour: const Color(0xFFBFEBD6)),
+            "below" => SheetRule(g, SheetRuleKind.below,
+                colour: const Color(0xFFF6C9C4)),
+            "top" => SheetRule(g, SheetRuleKind.top,
+                colour: const Color(0xFFF7DE8E), value: "3"),
+            _ => SheetRule(g, SheetRuleKind.bars),
+          });
+      _say("${_ruleChoices.firstWhere((r) => r.$1 == key).$2} on ${g.a1}.");
+    }
+    _gridFocus.requestFocus();
   }
 
   static const _formatChoices = [

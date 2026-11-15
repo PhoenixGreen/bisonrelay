@@ -763,6 +763,19 @@ class _Cells extends CustomPainter {
       var width = sheet.cells[r].length;
       for (var c = c0; c <= math.min(c1, width - 1); c++) {
         if (editing == (r, c)) continue;
+        // Its colour rules, as the tables showing it draw them.
+        if (sheetLook(sheet, r, c) case var sl?) {
+          var box = cell(r, c).deflate(1);
+          if (sl.fill case var fill?) {
+            canvas.drawRect(box, Paint()..color = fill);
+          }
+          if (sl.bar case var bar? when bar > 0) {
+            canvas.drawRect(
+                Rect.fromLTWH(box.left + 2, box.top + 4, (box.width - 4) * bar,
+                    box.height - 8),
+                Paint()..color = sl.barColour.withValues(alpha: 0.45));
+          }
+        }
         var text = shown(r, c);
         if (text.isEmpty) continue;
         // Numbers to the right and errors in red, by what the cell is

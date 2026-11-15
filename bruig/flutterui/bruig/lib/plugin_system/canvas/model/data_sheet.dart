@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
@@ -104,32 +105,79 @@ class SheetLink {
   final int labels;
   final List<int> series;
 
+  /// The rows this view shows of its range, without changing the sheet
+  /// (Ken's plan: "the table shows all 20 clubs, the chart the top 5"):
+  /// in order of column [sortBy] (-1, the sheet's own order), largest first
+  /// where [descending]; only those whose column [whereColumn] meets
+  /// [where] (a COUNTIF criterion: ">5", "Arsenal", "<>0"); the first
+  /// [top] of them (0, all).
+  final int sortBy;
+  final bool descending;
+  final int top;
+  final int whereColumn;
+  final String where;
+
   const SheetLink(this.sheet, this.range,
-      {this.labels = 0, this.series = const []});
+      {this.labels = 0,
+      this.series = const [],
+      this.sortBy = -1,
+      this.descending = true,
+      this.top = 0,
+      this.whereColumn = -1,
+      this.where = ""});
+
+  /// plain is whether it shows its range's rows as they are.
+  bool get plain =>
+      sortBy < 0 && top <= 0 && (whereColumn < 0 || where.trim().isEmpty);
 
   SheetLink copyWith(
-          {String? sheet, CellRange? range, int? labels, List<int>? series}) =>
+          {String? sheet,
+          CellRange? range,
+          int? labels,
+          List<int>? series,
+          int? sortBy,
+          bool? descending,
+          int? top,
+          int? whereColumn,
+          String? where}) =>
       SheetLink(sheet ?? this.sheet, range ?? this.range,
-          labels: labels ?? this.labels, series: series ?? this.series);
+          labels: labels ?? this.labels,
+          series: series ?? this.series,
+          sortBy: sortBy ?? this.sortBy,
+          descending: descending ?? this.descending,
+          top: top ?? this.top,
+          whereColumn: whereColumn ?? this.whereColumn,
+          where: where ?? this.where);
 
   Map<String, dynamic> toJson() => {
         "id": sheet,
         "range": range.a1,
         if (labels != 0) "labels": labels,
         if (series.isNotEmpty) "series": series,
+        if (sortBy >= 0) "sortBy": sortBy,
+        if (sortBy >= 0 && !descending) "ascending": true,
+        if (top > 0) "top": top,
+        if (whereColumn >= 0 && where.isNotEmpty) "whereColumn": whereColumn,
+        if (whereColumn >= 0 && where.isNotEmpty) "where": where,
       };
 
   static SheetLink? fromJson(Object? j) {
     if (j is! Map) return null;
     var id = j["id"], range = CellRange.parse("${j["range"] ?? ""}");
     if (id is! String || id.isEmpty || range == null) return null;
+    int n(String k, int or) => j[k] is num ? (j[k] as num).toInt() : or;
     return SheetLink(id, range,
-        labels: j["labels"] is num ? (j["labels"] as num).toInt() : 0,
+        labels: n("labels", 0),
         series: [
           if (j["series"] case List s)
             for (var c in s)
               if (c is num) c.toInt(),
-        ]);
+        ],
+        sortBy: n("sortBy", -1),
+        descending: j["ascending"] != true,
+        top: n("top", 0),
+        whereColumn: n("whereColumn", -1),
+        where: j["where"] is String ? j["where"] as String : "");
   }
 
   @override
@@ -138,10 +186,16 @@ class SheetLink {
       other.sheet == sheet &&
       other.range == range &&
       other.labels == labels &&
-      listEquals(other.series, series);
+      listEquals(other.series, series) &&
+      other.sortBy == sortBy &&
+      other.descending == descending &&
+      other.top == top &&
+      other.whereColumn == whereColumn &&
+      other.where == where;
 
   @override
-  int get hashCode => Object.hash(sheet, range, labels, Object.hashAll(series));
+  int get hashCode => Object.hash(sheet, range, labels, Object.hashAll(series),
+      sortBy, descending, top, whereColumn, where);
 }
 
 /// DataSheet is one sheet: its name and what was typed in each cell, row by
@@ -157,12 +211,17 @@ class DataSheet {
   final Map<String, CellFormat> formats;
   final Map<int, CellFormat> columnFormats;
 
+  /// rules are its colour rules (Calc's conditional formatting): data
+  /// bars, colour scales and highlights, drawn by the tables showing them.
+  final List<SheetRule> rules;
+
   const DataSheet(
       {required this.id,
       this.name = "Sheet",
       this.cells = const [],
       this.formats = const {},
-      this.columnFormats = const {}});
+      this.columnFormats = const {},
+      this.rules = const []});
 
   /// formatAt is cell [r], [c]'s number format: its own, its column's, or
   /// null for General.
@@ -185,13 +244,15 @@ class DataSheet {
           {String? name,
           List<List<String>>? cells,
           Map<String, CellFormat>? formats,
-          Map<int, CellFormat>? columnFormats}) =>
+          Map<int, CellFormat>? columnFormats,
+          List<SheetRule>? rules}) =>
       DataSheet(
           id: id,
           name: name ?? this.name,
           cells: cells ?? this.cells,
           formats: formats ?? this.formats,
-          columnFormats: columnFormats ?? this.columnFormats);
+          columnFormats: columnFormats ?? this.columnFormats,
+          rules: rules ?? this.rules);
 
   /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
   /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
@@ -251,6 +312,7 @@ class DataSheet {
             for (var MapEntry(:key, :value) in columnFormats.entries)
               "$key": value.toJson()
           },
+        if (rules.isNotEmpty) "rules": [for (var r in rules) r.toJson()],
       };
 
   static DataSheet? fromJson(Object? j) {
@@ -276,7 +338,12 @@ class DataSheet {
             for (var MapEntry(:key, :value) in f.entries)
               if (int.tryParse("$key") case var c?)
                 if (CellFormat.fromJson(value) case var cf?) c: cf,
-        });
+        },
+        rules: [
+          if (j["rules"] case List rs)
+            for (var r in rs)
+              if (SheetRule.fromJson(r) case var rule?) rule,
+        ]);
   }
 }
 
@@ -477,3 +544,189 @@ List<List<String>> sheetBlock(DataSheet sheet, CellRange range) => [
       for (var r = range.r0; r <= range.r1; r++)
         [for (var c = range.c0; c <= range.c1; c++) sheetShown(sheet, r, c)],
     ];
+
+// ---------- Colour rules ----------
+
+/// SheetRuleKind is what a colour rule does.
+enum SheetRuleKind {
+  bars("Data bars"),
+  scale("Colour scale"),
+  above("Above"),
+  below("Below"),
+  top("Top"),
+  equal("Equal to");
+
+  final String label;
+  const SheetRuleKind(this.label);
+}
+
+/// SheetRule is a colour rule over [range]: data bars in [colour]; a scale
+/// from [low] to [high]; or [colour] behind the cells above or below
+/// [value] (the average, empty), among the top [value], or equal to it.
+@immutable
+class SheetRule {
+  final CellRange range;
+  final SheetRuleKind kind;
+  final Color colour;
+  final Color low, high;
+  final String value;
+  const SheetRule(this.range, this.kind,
+      {this.colour = const Color(0xFF2ED6A1),
+      this.low = const Color(0xFFF4A6A0),
+      this.high = const Color(0xFFA6E6C8),
+      this.value = ""});
+
+  SheetRule copyWith({CellRange? range}) => SheetRule(range ?? this.range, kind,
+      colour: colour, low: low, high: high, value: value);
+
+  Map<String, dynamic> toJson() => {
+        "range": range.a1,
+        "kind": kind.name,
+        "colour": colour.toARGB32(),
+        if (kind == SheetRuleKind.scale) "low": low.toARGB32(),
+        if (kind == SheetRuleKind.scale) "high": high.toARGB32(),
+        if (value.isNotEmpty) "value": value,
+      };
+
+  static SheetRule? fromJson(Object? j) {
+    if (j is! Map) return null;
+    var range = CellRange.parse("${j["range"] ?? ""}");
+    var kind = SheetRuleKind.values.asNameMap()[j["kind"]];
+    if (range == null || kind == null) return null;
+    Color c(String k, Color or) => j[k] is int ? Color(j[k] as int) : or;
+    const plain = SheetRule(CellRange(0, 0, 0, 0), SheetRuleKind.bars);
+    return SheetRule(range, kind,
+        colour: c("colour", plain.colour),
+        low: c("low", plain.low),
+        high: c("high", plain.high),
+        value: j["value"] is String ? j["value"] as String : "");
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SheetRule &&
+      other.range == range &&
+      other.kind == kind &&
+      other.colour == colour &&
+      other.low == low &&
+      other.high == high &&
+      other.value == value;
+  @override
+  int get hashCode => Object.hash(range, kind, colour, low, high, value);
+}
+
+/// SheetCellLook is what a sheet's colour rules make of one cell: a colour
+/// behind it, a bar along it (how far, 0 to 1, and its colour).
+@immutable
+class SheetCellLook {
+  final Color? fill;
+  final double? bar;
+  final Color barColour;
+  const SheetCellLook(
+      {this.fill, this.bar, this.barColour = const Color(0xFF2ED6A1)});
+
+  @override
+  bool operator ==(Object other) =>
+      other is SheetCellLook &&
+      other.fill == fill &&
+      other.bar == bar &&
+      other.barColour == barColour;
+  @override
+  int get hashCode => Object.hash(fill, bar, barColour);
+}
+
+/// sheetLook is what [sheet]'s colour rules make of cell [r], [c]: null
+/// where none of them says anything. A later rule over an earlier.
+SheetCellLook? sheetLook(DataSheet sheet, int r, int c) {
+  if (sheet.rules.isEmpty) return null;
+  var v = sheetValue(sheet, r, c);
+  if (v is! double && v is! String) return null;
+  Color? fill;
+  double? bar;
+  var barColour = const Color(0xFF2ED6A1);
+  for (var rule in sheet.rules) {
+    if (!rule.range.contains(r, c)) continue;
+    if (rule.kind == SheetRuleKind.equal) {
+      if (criterionMatches(v, rule.value.isEmpty ? "" : "=${rule.value}")) {
+        fill = rule.colour;
+      }
+      continue;
+    }
+    if (v is! double) continue;
+    var all = _ruleNumbers(sheet, rule.range);
+    if (all.isEmpty) continue;
+    var lo = all.first, hi = all.last;
+    switch (rule.kind) {
+      case SheetRuleKind.bars:
+        var base = math.min(0.0, lo);
+        bar = hi == base ? 1 : ((v - base) / (hi - base)).clamp(0.0, 1.0);
+        barColour = rule.colour;
+      case SheetRuleKind.scale:
+        var t = hi == lo ? 0.5 : (v - lo) / (hi - lo);
+        fill = Color.lerp(rule.low, rule.high, t);
+      case SheetRuleKind.above || SheetRuleKind.below:
+        var at = cellNumber(rule.value) ??
+            all.fold<double>(0, (a, b) => a + b) / all.length;
+        if (rule.kind == SheetRuleKind.above ? v > at : v < at) {
+          fill = rule.colour;
+        }
+      case SheetRuleKind.top:
+        var n = (cellNumber(rule.value) ?? 3).round().clamp(1, all.length);
+        if (v >= all[all.length - n]) fill = rule.colour;
+      case SheetRuleKind.equal:
+        break;
+    }
+  }
+  return fill == null && bar == null
+      ? null
+      : SheetCellLook(fill: fill, bar: bar, barColour: barColour);
+}
+
+final Expando<Map<CellRange, List<double>>> _ruleNumbersOf = Expando();
+
+/// _ruleNumbers is the numbers in [range] of [sheet], smallest first.
+List<double> _ruleNumbers(DataSheet sheet, CellRange range) =>
+    (_ruleNumbersOf[sheet] ??= {}).putIfAbsent(range, () {
+      var out = <double>[];
+      for (var r = range.r0; r <= math.min(range.r1, sheet.rowCount - 1); r++) {
+        for (var c = range.c0; c <= range.c1; c++) {
+          if (sheetValue(sheet, r, c) case double v) out.add(v);
+        }
+      }
+      return out..sort();
+    });
+
+/// viewRows is the sheet rows view [link] shows of [sheet] under its
+/// headings, in order: filtered by its [SheetLink.where], sorted by its
+/// column, cut to its top.
+List<int> viewRows(DataSheet sheet, SheetLink link) {
+  var g = link.range;
+  var rows = [for (var r = g.r0 + 1; r <= g.r1; r++) r];
+  if (link.plain) return rows;
+  if (link.whereColumn >= 0 && link.where.trim().isNotEmpty) {
+    rows = [
+      for (var r in rows)
+        if (criterionMatches(
+            sheetValue(sheet, r, g.c0 + link.whereColumn), link.where.trim()))
+          r
+    ];
+  }
+  if (link.sortBy >= 0) {
+    var c = g.c0 + link.sortBy;
+    var keyed = [for (var (i, r) in rows.indexed) (i, r)];
+    bool blank(Object? v) => v == null || v == "";
+    keyed.sort((a, b) {
+      var x = sheetValue(sheet, a.$2, c), y = sheetValue(sheet, b.$2, c);
+      if (blank(x) || blank(y)) {
+        var d = blank(x) == blank(y) ? 0 : (blank(x) ? 1 : -1);
+        return d != 0 ? d : a.$1.compareTo(b.$1);
+      }
+      var d = compareValues(x, y);
+      if (link.descending) d = -d;
+      return d != 0 ? d : a.$1.compareTo(b.$1);
+    });
+    rows = [for (var (_, r) in keyed) r];
+  }
+  if (link.top > 0 && rows.length > link.top) rows = rows.sublist(0, link.top);
+  return rows;
+}

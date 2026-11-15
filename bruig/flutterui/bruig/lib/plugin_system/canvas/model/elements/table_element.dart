@@ -603,6 +603,18 @@ class TableElement extends CanvasElement {
   /// (data_sync.dart). Null only until it is given a sheet of its own.
   final SheetLink? sheet;
 
+  /// sheetLooks is what its sheet's colour rules make of each of its cells
+  /// (data bars, colour scales, highlights), row by row: made from the
+  /// sheet with its rows (data_sync.dart) and not kept in the file, as the
+  /// sheet keeps the rules.
+  final List<List<SheetCellLook?>> sheetLooks;
+
+  /// sheetLookAt is cell [r], [c]'s look from its sheet's rules, if any.
+  SheetCellLook? sheetLookAt(int r, int c) =>
+      r < sheetLooks.length && c < sheetLooks[r].length
+          ? sheetLooks[r][c]
+          : null;
+
   /// topPad and the three beside it are what each side actually gets.
   double get topPad => padTop ?? cellPadding;
   double get rightPad => padRight ?? cellPadding;
@@ -656,6 +668,7 @@ class TableElement extends CanvasElement {
     this.animation = const ElementAnimation(),
     this.turn = TableTurn.together,
     this.sheet,
+    this.sheetLooks = const [],
   });
 
   @override
@@ -870,6 +883,7 @@ class TableElement extends CanvasElement {
     TableTurn? turn,
     SheetLink? sheet,
     bool clearSheet = false,
+    List<List<SheetCellLook?>>? sheetLooks,
   }) =>
       _copy(base,
           rows: rows,
@@ -906,7 +920,8 @@ class TableElement extends CanvasElement {
           animation: animation,
           turn: turn,
           sheet: sheet,
-          clearSheet: clearSheet);
+          clearSheet: clearSheet,
+          sheetLooks: sheetLooks);
 
   TableElement _copy(
     ElementBase newBase, {
@@ -945,6 +960,7 @@ class TableElement extends CanvasElement {
     TableTurn? turn,
     SheetLink? sheet,
     bool clearSheet = false,
+    List<List<SheetCellLook?>>? sheetLooks,
   }) =>
       TableElement(newBase,
           rows: rows ?? this.rows,
@@ -977,7 +993,8 @@ class TableElement extends CanvasElement {
           hiddenHeaders: hiddenHeaders ?? this.hiddenHeaders,
           animation: animation ?? this.animation,
           turn: turn ?? this.turn,
-          sheet: clearSheet ? null : sheet ?? this.sheet);
+          sheet: clearSheet ? null : sheet ?? this.sheet,
+          sheetLooks: sheetLooks ?? this.sheetLooks);
 
   @override
   Map<String, dynamic> props() => {

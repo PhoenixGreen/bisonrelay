@@ -141,6 +141,28 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           );
         }
       }
+      // Its sheet's colour rules (Data element): a colour behind it, a bar
+      // along it under the words.
+      if (e.sheetLookAt(r, c) case var sl?) {
+        var box = Rect.fromLTWH(x, y, w, h);
+        if (sl.fill case var fill?) {
+          canvas.drawRect(box, Paint()..color = fill.withValues(alpha: 0.85));
+          // Light words on a light colour can't be read: dark ones there.
+          if (fill.computeLuminance() > 0.45 &&
+              spec.color.computeLuminance() > 0.45) {
+            spec = spec.copyWith(color: const Color(0xFF1D2127));
+          }
+        }
+        if (sl.bar case var bar? when bar > 0) {
+          var inner = box.deflate(math.min(w, h) * 0.14);
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                  Rect.fromLTWH(
+                      inner.left, inner.top, inner.width * bar, inner.height),
+                  Radius.circular(inner.height * 0.2)),
+              Paint()..color = sl.barColour.withValues(alpha: 0.55));
+        }
+      }
       // The table's padding on all four sides, plus whatever a rule adds
       // (without which a rule's left or right alignment sits on the edge).
       var extra = style?.textPad ?? 0;

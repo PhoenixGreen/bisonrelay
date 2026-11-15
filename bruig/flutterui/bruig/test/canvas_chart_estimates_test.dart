@@ -160,6 +160,10 @@ void main() {
       expect(dataIn().isEstimated(1), isTrue);
       expect(dataIn().isEstimated(0), isFalse, reason: "that row alone");
 
+      // In view again: the panel above it grew (the Data element's Rows
+      // shown), and the first tap's note pushed it lower.
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(dataIn().isEstimated(1), isFalse, reason: "and back again");
