@@ -1,6 +1,8 @@
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
@@ -219,6 +221,45 @@ void main() {
       await tester.tap(find.text("Clear colour rules here").last);
       await tester.pumpAndSettle();
       expect(c.document.sheets.single.rules, isEmpty);
+    });
+  });
+
+  group("files and books", () {
+    test("sheets read from a file: named apart, one change to undo", () {
+      var c = CanvasController(docOf(), audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      var ids = c.addReadSheets(const [
+        ReadSheet("League", [
+          ["a"]
+        ]),
+        ReadSheet("Fixtures", [
+          ["b"]
+        ]),
+      ]);
+      expect(ids, hasLength(2));
+      expect(c.document.sheets.map((s) => s.name),
+          ["League", "League 2", "Fixtures"]);
+      c.undo();
+      expect(c.document.sheets, hasLength(1));
+    });
+
+    test("in a book: a sorted, cut, colour-ruled table is drawn as it shows",
+        () async {
+      var doc = CanvasDocument.fromJson(docOf(
+          table: const SheetLink("s", CellRange(0, 0, 4, 3), sortBy: 3, top: 3),
+          rules: const [
+            SheetRule(CellRange(1, 3, 4, 3), SheetRuleKind.bars),
+          ]).toJson());
+      var t = doc.elementById("t") as TableElement;
+      expect(t.rows.length, 4);
+      expect(t.sheetLookAt(1, 3)?.bar, 1, reason: "Arsenal first, a full bar");
+      // A page that doesn't move is one picture of it, drawn from this
+      // element as it is here; built, it doesn't fail on it.
+      var built =
+          await buildEpubStage(doc, 0, pixels: 1, width: 1280, height: 720);
+      if (built != null) {
+        expect(built.stage.layers.any((l) => l.id == "t"), isTrue);
+      }
     });
   });
 }

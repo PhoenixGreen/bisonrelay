@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
@@ -13,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 // data_studio.dart is the Data Studio (Ken, 2026-11-15: Table and Chart made
@@ -163,6 +166,48 @@ class _DataStudioState extends State<DataStudio> {
           : c.deleteSheetColumns(_sheet, g.c0, n);
     }
     _gridFocus.requestFocus();
+  }
+
+  Future<void> _import() async {
+    var picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ["csv", "tsv", "txt", "xlsx", "ods"],
+      withData: true,
+    );
+    var file = picked?.files.singleOrNull;
+    if (file == null || !mounted) return;
+    try {
+      var bytes = file.bytes ?? await File(file.path!).readAsBytes();
+      var read = readSheets(file.name, bytes);
+      var ids = c.addReadSheets(read);
+      setState(() {
+        _sheet = ids.first;
+        _sel = const DataSel.at(0, 0);
+        _view = null;
+      });
+      _say("Read ${read.length == 1 ? "a sheet" : "${read.length} sheets"} "
+          "from ${file.name}.");
+    } on FormatException catch (e) {
+      _say(e.message);
+    } catch (e) {
+      _say("That file couldn't be read: $e");
+    }
+  }
+
+  Future<void> _export(DataSheet s) async {
+    var path = await FilePicker.platform.saveFile(
+      dialogTitle: "Export ${s.name} as CSV",
+      fileName: "${s.name}.csv",
+      type: FileType.custom,
+      allowedExtensions: const ["csv"],
+    );
+    if (path == null || !mounted) return;
+    try {
+      await File(path).writeAsString(csvOf(s));
+      _say("Saved ${path.split(Platform.pathSeparator).last}.");
+    } catch (e) {
+      _say("It couldn't be saved: $e");
+    }
   }
 
   @override
@@ -339,6 +384,19 @@ class _DataStudioState extends State<DataStudio> {
                   tooltip: "A chart of the selection on the canvas",
                   filled: true,
                   onTap: () => _addView(ElementKind.chart)),
+              gap(12),
+              StudioPill(
+                  key: const ValueKey("dataStudioImport"),
+                  label: "Import",
+                  tooltip: "Sheets from a CSV, XLSX or ODS file: values and "
+                      "formulas",
+                  onTap: _import),
+              gap(),
+              StudioPill(
+                  key: const ValueKey("dataStudioExport"),
+                  label: "Export CSV",
+                  tooltip: "This sheet as a CSV file, as it shows",
+                  onTap: () => _export(s)),
               gap(12),
               StudioPill(
                   key: const ValueKey("dataStudioPaper"),

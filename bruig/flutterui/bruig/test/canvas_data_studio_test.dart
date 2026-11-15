@@ -287,6 +287,8 @@ void main() {
       await studio(tester);
       expect(find.byKey(const ValueKey("dataView")), findsOneWidget,
           reason: "the chart's settings, as on the canvas");
+      expect(find.byKey(const ValueKey("dataStudioImport")), findsOneWidget);
+      expect(find.byKey(const ValueKey("dataStudioExport")), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("dataStudioAddSheet")));
       await tester.pumpAndSettle();
       expect(c.document.sheets, hasLength(2));

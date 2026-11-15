@@ -36,11 +36,26 @@ extension CanvasDataSheets on CanvasController {
       n++;
     }
     var id = "sheet$n";
+    var wanted = (name ?? "").trim().isEmpty ? "Sheet $n" : name!.trim();
+    var free = wanted;
+    for (var k = 2; names.contains(free); k++) {
+      free = "$wanted $k";
+    }
     apply(_document.copyWith(sheets: [
       ..._document.sheets,
-      DataSheet(id: id, name: name ?? "Sheet $n", cells: cells),
+      DataSheet(id: id, name: free, cells: cells),
     ]));
     return id;
+  }
+
+  /// addReadSheets puts [read] -- sheets read from a file (sheet_files.dart)
+  /// -- in the canvas, as one change to undo, and answers their ids.
+  List<String> addReadSheets(List<ReadSheet> read) {
+    var mine = _interaction == null;
+    if (mine) beginInteraction();
+    var ids = [for (var s in read) addSheet(name: s.name, cells: s.cells)];
+    if (mine) endInteraction();
+    return ids;
   }
 
   void renameSheet(String id, String name) {
