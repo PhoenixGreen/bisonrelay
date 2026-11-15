@@ -10,6 +10,7 @@
 #include <emoji_picker_flutter/emoji_picker_flutter_plugin_c_api.h>
 #include <file_selector_windows/file_selector_windows.h>
 #include <flutter_avif_windows/flutter_avif_windows_plugin.h>
+#include <flutter_inappwebview_windows/flutter_inappwebview_windows_plugin_c_api.h>
 #include <flutter_midi_command_windows/flutter_midi_command_windows_plugin.h>
 #include <gamepads_windows/gamepads_windows_plugin_c_api.h>
 #include <golib_plugin/golib_plugin_c_api.h>
@@ -33,6 +34,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("FileSelectorWindows"));
   FlutterAvifWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterAvifWindowsPlugin"));
+  FlutterInappwebviewWindowsPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("FlutterInappwebviewWindowsPluginCApi"));
   FlutterMidiCommandWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterMidiCommandWindowsPlugin"));
   GamepadsWindowsPluginCApiRegisterWithRegistrar(
