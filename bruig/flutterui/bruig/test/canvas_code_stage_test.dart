@@ -217,6 +217,15 @@ void main() {
     expect(run().result!.preview, "0123456789abcdef.png");
     expect(run().result!.runner, "Browser");
     expect(c.codeRunning(run().id), isFalse);
+    // Run by hand before the typing ends: shown now, not "Runs when the
+    // typing ends" (Ken, 2026-11-15) -- until the playhead moves.
+    expect(c.frame, 0);
+    expect(c.codeRunShowFor(run()).now, isTrue);
+    c.frame = 5;
+    expect(c.codeRunShowFor(run()).now, isFalse);
+    // Its Code panel showing the whole of its code: shown now too.
+    c.toggleCodeFull(code());
+    expect(c.codeRunShowFor(run()).now, isTrue);
   });
 
   test("in a book: the code its own layer, the page run live over its picture",

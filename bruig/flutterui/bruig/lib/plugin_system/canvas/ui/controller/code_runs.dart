@@ -34,9 +34,11 @@ extension CanvasCodeRuns on CanvasController {
           live: true, logs: [...?e.result?.logs, ..._codeLive!.$2]);
     }
     var logs = _codeRuns[e.id];
-    return logs == null
-        ? const CodeRunShow()
-        : CodeRunShow(running: true, logs: List.unmodifiable(logs));
+    if (logs != null) {
+      return CodeRunShow(running: true, logs: List.unmodifiable(logs));
+    }
+    return CodeRunShow(
+        now: _codeRanNow.contains(e.id) || _codeFull.contains(e.code));
   }
 
   /// codeLive is the Run panel whose preview is open to be used, by id.
@@ -92,6 +94,8 @@ extension CanvasCodeRuns on CanvasController {
     var runner = runnerOf(e, code);
     if (entry == null || runner == CodeRunner.none) return;
     var logs = _codeRuns[e.id] = <CodeLog>[];
+    // Run by hand: shown now, not when the scene's clock comes to it.
+    _codeRanNow.add(e.id);
     notifyListeners();
     var host = CanvasController.codeRunHost;
     CodeRunOutcome outcome;

@@ -65,8 +65,15 @@ class CodeRunShow {
 
   /// logs is what it has printed so far, while running.
   final List<CodeLog> logs;
+
+  /// now shows its run whatever the scene's clock says: run by hand, or its
+  /// Code panel showing the whole of its code (Ken, 2026-11-15).
+  final bool now;
   const CodeRunShow(
-      {this.running = false, this.live = false, this.logs = const []});
+      {this.running = false,
+      this.live = false,
+      this.logs = const [],
+      this.now = false});
 }
 
 /// codeRunShowOf is how the stage shows each Run panel, set by the
@@ -167,8 +174,9 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
       const Color(0xFF062018),
       weight: FontWeight.w600);
 
-  var waiting =
-      show.running || show.live ? null : waitingSaid(e, code, seconds);
+  var waiting = show.running || show.live || (show.now && e.result != null)
+      ? null
+      : waitingSaid(e, code, seconds);
 
   // The preview: the picture of the last run.
   if (b.preview case var p?) {

@@ -3411,6 +3411,10 @@ class CanvasController extends ChangeNotifier {
   /// _codeFull are the Code panels showing the whole of their code, and
   /// _codeScroll each pane scrolled by hand, in lines.
   final Set<String> _codeFull = {};
+
+  /// _codeRanNow are the Run panels run by hand since the playhead last
+  /// moved: their runs shown now, whatever the scene's clock says.
+  final Set<String> _codeRanNow = {};
   final Map<String, Map<int, double>> _codeScroll = {};
 
   /// _codeRuns are the Run panels running now, by id, and what each has

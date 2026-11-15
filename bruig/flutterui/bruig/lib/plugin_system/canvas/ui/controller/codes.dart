@@ -218,5 +218,6 @@ extension CanvasCodes on CanvasController {
   void _forgetCodePicks() {
     _codePicked.clear();
     _codeScroll.clear();
+    _codeRanNow.clear();
   }
 }
