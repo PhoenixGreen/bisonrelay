@@ -1,3 +1,7 @@
+import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_painter.dart'
+    show codeMark;
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -77,6 +81,9 @@ List<CanvasElement> motionRowsOf(CanvasController c) {
     for (var e in c.document.elements)
       if (!(e is AudioElement && e.clip.timed) &&
           (e.base.motion.channelled ||
+              // A Code panel's lesson: its typing and lit lines, a clip of
+              // its own on its row (Ken, 2026-11-15).
+              (e is CodeElement && lessonSpan(e) != null) ||
               e.base.motion.instances != null ||
               owners.contains(e.id) ||
               c.selection.contains(e.id)))
@@ -444,7 +451,54 @@ class _MotionLanesState extends State<MotionLanes> {
     }
   }
 
+  /// _codePress is a Code panel's lesson bar pressed: the panel as it was,
+  /// which end (or all of it), and whether it has moved.
+  ({CodeElement code, _Grip grip})? _codePress;
+
+  /// _codeAt is the Code panel whose lesson bar is at [local], and which
+  /// part of it: its typing's end, or the bar.
+  ({CodeElement code, _Grip grip})? _codeAt(Offset local, double width) {
+    var y = 0.0;
+    for (var e in _rows) {
+      var h = _rowHeight(e);
+      if (e is CodeElement && local.dy >= y && local.dy < y + h) {
+        var span = lessonSpan(e);
+        if (span == null) return null;
+        var folded = _isFolded(e);
+        var r = codeLessonRect(e,
+            y: y,
+            rowHeight: h,
+            lane: _laneOf(e),
+            tracks: folded ? 0 : _tracks(e).length,
+            folded: folded,
+            left: _x(span.$1, width),
+            right: _x(span.$2, width));
+        if (local.dy < r.top || local.dy > r.bottom) return null;
+        const reach = 6.0;
+        if (local.dx < r.left - reach || local.dx > r.right + reach) {
+          return null;
+        }
+        // The typing's end: dragged, faster or slower.
+        if (e.typing.on &&
+            (local.dx - _x(codePlan(e).end, width)).abs() <= reach) {
+          return (code: e, grip: _Grip.end);
+        }
+        return (code: e, grip: _Grip.bar);
+      }
+      y += h;
+    }
+    return null;
+  }
+
   void _down(Offset local, Offset global, double width) {
+    _codePress = _codeAt(local, width);
+    if (_codePress != null) {
+      _press = null;
+      _boxing = false;
+      _dragged = false;
+      _pressSeconds = _seconds(local.dx, width);
+      return;
+    }
     var hit = _hit(local, width);
     // An empty spot, dragged: the box, as on the sound lanes.
     _boxing = hit != null &&
@@ -471,6 +525,10 @@ class _MotionLanesState extends State<MotionLanes> {
   }
 
   void _tap(Offset local, double width) {
+    if (_codeAt(local, width) case var code?) {
+      controller.selectOnly(code.code.id);
+      return;
+    }
     var hit = _hit(local, width);
     if (hit == null) return;
     if (hit.placement case var p?) {
@@ -491,6 +549,24 @@ class _MotionLanesState extends State<MotionLanes> {
   }
 
   void _drag(Offset local, Offset global, double width) {
+    if (_codePress case var code?) {
+      if (!_dragged) {
+        _dragged = true;
+        controller.pause();
+        controller.beginInteraction();
+      }
+      var by = _seconds(local.dx, width) - _pressSeconds;
+      var was = code.code;
+      CodeElement next;
+      if (code.grip == _Grip.end) {
+        next = lessonTypedBy(was, _snap(codePlan(was).end + by));
+      } else {
+        var start = lessonSpan(was)!.$1;
+        next = lessonMoved(was, _snap(start + by) - start);
+      }
+      controller.replaceElement(next, transient: true);
+      return;
+    }
     if (_boxing) {
       widget.onBox?.call(global);
       return;
@@ -575,6 +651,23 @@ class _MotionLanesState extends State<MotionLanes> {
   }
 
   void _up() {
+    if (_codePress case var code?) {
+      _codePress = null;
+      if (_dragged) {
+        // The scene long enough for where the lesson now ends.
+        var now = controller.document.elementById(code.code.id);
+        if (now is CodeElement) {
+          var rate = controller.document.frameRate;
+          var need = ((lessonLength(now) + 1) * rate).ceil();
+          if (need > controller.document.frames) {
+            controller.setSceneLength(need, transient: true);
+          }
+        }
+        controller.endInteraction();
+      }
+      _dragged = false;
+      return;
+    }
     if (_boxing) {
       _boxing = false;
       widget.onBoxEnd?.call();
@@ -598,6 +691,8 @@ class _MotionLanesState extends State<MotionLanes> {
   /// Chain; on an empty spot, a short clip made there at once and picked --
   /// double-clicked in turn, set up in the Chain (Ken: no list of options).
   void _make(Offset local, double width) {
+    // A Code panel's lesson bar is its settings', not a place for a clip.
+    if (_codeAt(local, width) != null) return;
     var hit = _hit(local, width);
     if (hit == null) return;
     if (hit.placement case var p?) {
@@ -1256,6 +1351,8 @@ class _LanesPainter extends CustomPainter {
               size.width);
         }
       }
+      if (e is CodeElement)
+        _code(canvas, e, y, h, lane, tracks.length, isFolded, size.width);
       // An element reused: where each copy's clips start, as short amber
       // ticks along the top of its row (the approved design), from its first
       // clip -- only with a clip on the timeline for them to start (Ken:
@@ -1279,6 +1376,64 @@ class _LanesPainter extends CustomPainter {
       }
       y += h;
     }
+  }
+
+  /// _code draws Code panel [e]'s lesson: a bar from its typing's start to
+  /// its last lit lines' end, the typing's part filled, a line where it
+  /// ends and a mark where each lit step starts.
+  void _code(Canvas canvas, CodeElement e, double y, double h, double lane,
+      int tracks, bool isFolded, double width) {
+    var span = lessonSpan(e);
+    if (span == null) return;
+    var rect = codeLessonRect(e,
+        y: y,
+        rowHeight: h,
+        lane: lane,
+        tracks: tracks,
+        folded: isFolded,
+        left: x(span.$1),
+        right: math.max(x(span.$2), x(span.$1) + 4));
+    if (rect.right < 0 || rect.left > width) return;
+    var shape = cutCornersPath(rect, 4);
+    canvas.drawPath(
+        shape,
+        Paint()
+          ..color =
+              Color.lerp(codeLessonColour, const Color(0xFF0E2A24), 0.35)!);
+    canvas.save();
+    canvas.clipPath(shape);
+    var typedTo = e.typing.on ? codePlan(e).end : span.$1;
+    if (typedTo > span.$1) {
+      canvas.drawRect(
+          Rect.fromLTRB(rect.left, rect.top, x(typedTo), rect.bottom),
+          Paint()..color = codeLessonColour);
+      canvas.drawRect(Rect.fromLTWH(x(typedTo) - 1, rect.top, 2, rect.height),
+          Paint()..color = const Color(0xCCFFFFFF));
+    }
+    canvas.drawRect(Rect.fromLTWH(rect.left, rect.top, 3, rect.height),
+        Paint()..color = const Color(0xFF7FD3FF));
+    for (var step in e.steps) {
+      var sx = x(step.at);
+      canvas.drawRect(
+          Rect.fromLTRB(sx, rect.bottom - 4,
+              math.max(sx + 2, x(step.at + step.length)), rect.bottom - 1),
+          Paint()..color = codeMark);
+    }
+    var lit = e.steps.length;
+    var tp = TextPainter(
+      text: TextSpan(
+          text: [
+            if (e.typing.on) "Typing",
+            if (lit > 0) "$lit lit",
+          ].join(" · "),
+          style: const TextStyle(
+              fontSize: 10.5, color: slotInk, fontWeight: FontWeight.w600)),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    tp.paint(canvas, Offset(rect.left + 6, rect.center.dy - tp.height / 2 - 1));
+    canvas.restore();
   }
 
   /// _unsettled shades the part of an arrival still going at [by] -- the
@@ -1375,6 +1530,27 @@ class _LanesPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LanesPainter old) => true;
 }
+
+/// codeLessonRect is where Code panel [e]'s lesson is drawn on its row,
+/// [y] down and [rowHeight] tall, from [left] to [right]: the whole row,
+/// or its last (empty) lane where it has motion clips too.
+Rect codeLessonRect(CodeElement e,
+    {required double y,
+    required double rowHeight,
+    required double lane,
+    required int tracks,
+    required bool folded,
+    required double left,
+    required double right}) {
+  if (folded || e.base.motion.placed.isEmpty || tracks < 2) {
+    return Rect.fromLTRB(left, y + 3, right, y + rowHeight - 3);
+  }
+  var top = y + 2 + (tracks - 1) * lane;
+  return Rect.fromLTRB(left, top + 1, right, top + lane - 1);
+}
+
+/// codeLessonColour is a Code panel lesson's bar.
+const codeLessonColour = Color(0xFF2F8FBF);
 
 /// sharedStep is how much lower each stack's clips are drawn than the one
 /// before's, laid over each other in a folded row [rowHeight] tall.

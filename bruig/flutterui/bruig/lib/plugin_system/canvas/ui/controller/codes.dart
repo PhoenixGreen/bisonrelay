@@ -69,10 +69,44 @@ extension CanvasCodes on CanvasController {
       .firstOrNull;
 
   /// codeShowFor is how the stage shows Code panel [e]: the tabs picked by
-  /// hand while paused, and the pane being edited.
+  /// hand while paused, the pane being edited, and whether it plays.
   CodeShow codeShowFor(CodeElement e) => CodeShow(
       picked: _codePicked[e.id] ?? const {},
-      editing: _codeEditing?.$1 == e.id ? _codeEditing!.$2 : -1);
+      editing: _codeEditing?.$1 == e.id ? _codeEditing!.$2 : -1,
+      playing: playing);
+
+  /// playCode is Code panel [e]'s play button: playing, a pause; else the
+  /// canvas played to its lesson's end -- from the start, where the
+  /// playhead is past it.
+  void playCode(CodeElement e) {
+    if (playing) {
+      pause();
+      return;
+    }
+    var span = lessonSpan(e);
+    if (span == null) return;
+    var rate = _document.frameRate;
+    var end = (span.$2 * rate).ceil();
+    if (end > _document.frames) setSceneLength(end + rate);
+    if (frame >= end - 1) frame = 0;
+    play();
+    _rangeEnd = end;
+  }
+
+  /// restartCode puts the playhead back at the scene's start, where Code
+  /// panel [e]'s lesson begins; playing, it plays on from there.
+  void restartCode(CodeElement e) {
+    var going = playing;
+    if (going) pause();
+    frame = 0;
+    if (going) playCode(e);
+  }
+
+  /// seekCode puts the playhead at [seconds] into the scene.
+  void seekCode(double seconds) {
+    if (playing) pause();
+    frame = (seconds * _document.frameRate).round();
+  }
 
   /// codePane is the pane of [e] last pressed: where a file picked from its
   /// list opens.

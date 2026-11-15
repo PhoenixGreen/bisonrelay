@@ -6,6 +6,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_element_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
+    show motionRowsOf;
+import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
+import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
@@ -422,6 +426,102 @@ void main() {
       await c.checkCodeTask(card);
       expect(codeTaskResult(card, c.document, c.codeTaskShowFor(card)),
           ("Passed! On to Lesson 9.", true));
+    });
+  });
+
+  group("playing a lesson", () {
+    test("its span, moved together, and typed faster or slower", () {
+      var e = starter0("web");
+      var span = lessonSpan(e)!;
+      expect(span.$1, e.typing.start);
+      expect(span.$2, closeTo(e.steps.last.at + e.steps.last.length, 1e-9));
+      var later = lessonMoved(e, 2);
+      expect(later.typing.start, e.typing.start + 2);
+      expect(later.steps.first.at, closeTo(e.steps.first.at + 2, 1e-9));
+      expect(lessonMoved(e, -99).typing.start, 0,
+          reason: "never before the scene starts");
+      // Typed in by half the time: twice as fast, the lit lines after it.
+      var end = codePlan(e).end;
+      var half = e.typing.start + (end - e.typing.start) / 2;
+      var quick = lessonTypedBy(e, half);
+      expect(codePlan(quick).end, closeTo(half, 0.05));
+      expect(quick.steps.first.at - codePlan(quick).end,
+          closeTo(e.steps.first.at - end, 0.05),
+          reason: "lit as long after the typing as before");
+    });
+
+    testWidgets(
+        "the playbar: play to the lesson's end, back, and along its track",
+        (tester) async {
+      await stage(tester, "web");
+      var e = code();
+      var bar = codePlaybar(e, codeBoxes(e, e.bounds).bar);
+      expect(bar.keys, CodePlayPart.values);
+      c.frame = 100;
+      await tester.tapAt(at(bar[CodePlayPart.restart]!.center));
+      await tester.pump();
+      expect(c.frame, 0);
+      // Along its track: the playhead where it was pressed.
+      var track = bar[CodePlayPart.track]!;
+      await tester
+          .tapAt(at(Offset(track.left + track.width / 2, track.center.dy)));
+      await tester.pump();
+      expect(c.frame / 24, closeTo(lessonSpan(e)!.$2 / 2, 0.1));
+      // Off in Look: none.
+      expect(
+          codePlaybar(e.copyWith(playbar: false), codeBoxes(e, e.bounds).bar),
+          isEmpty);
+      // Played: to its end, from the start if it was there already.
+      c.frame = c.document.frames - 1;
+      c.playCode(e);
+      expect(c.playing, isTrue);
+      expect(c.frame, 0);
+      c.pause();
+    });
+
+    testWidgets(
+        "on the timeline: its lesson a bar in its row, moved and stretched",
+        (tester) async {
+      // A scene the lesson's length: shown whole.
+      var ctl = CanvasController(
+          const CanvasDocument(frames: 24, frameRate: 24),
+          audioEngine: FakeEngine({}));
+      addTearDown(ctl.dispose);
+      ctl.addCodeLesson(starter: codeStarters.first);
+      ctl.clearSelection();
+      var e = ctl.document.elements.whereType<CodeElement>().single;
+      expect(motionRowsOf(ctl).map((r) => r.id), contains(e.id),
+          reason: "a row of its own, picked or not");
+      tester.view.physicalSize = const Size(1400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_app(Align(
+          alignment: Alignment.bottomCenter,
+          child: CanvasTimeline(controller: ctl, height: 400))));
+      await tester.pumpAndSettle();
+      var box =
+          tester.getRect(find.byKey(ValueKey("motionLanesPaint-${e.id}")));
+      double xOf(double s) =>
+          box.left + box.width * s * 24 / ctl.document.frames;
+      var span = lessonSpan(e)!;
+      var y = box.center.dy;
+      // The bar, dragged two seconds on: typing and lit lines together.
+      var from = Offset(xOf((span.$1 + codePlan(e).end) / 2), y);
+      await tester.timedDragFrom(
+          from, Offset(xOf(2) - xOf(0), 0), const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var moved = ctl.document.elementById(e.id) as CodeElement;
+      expect(moved.typing.start, closeTo(e.typing.start + 2, 0.3));
+      expect(moved.steps.first.at - moved.typing.start,
+          closeTo(e.steps.first.at - e.typing.start, 0.01));
+      // Its typing's end, dragged in: typed faster.
+      var end = codePlan(moved).end;
+      await tester.timedDragFrom(Offset(xOf(end), y),
+          Offset(xOf(0) - xOf(4), 0), const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var quick = ctl.document.elementById(e.id) as CodeElement;
+      expect(quick.typing.speed, greaterThan(moved.typing.speed));
+      expect(codePlan(quick).end, lessThan(end - 3));
     });
   });
 }

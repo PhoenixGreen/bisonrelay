@@ -208,6 +208,99 @@ TextSpan codeSpan(
   return TextSpan(style: codeStyle(fs, c.fg), children: spans);
 }
 
+/// CodePlayPart is a part of a Code panel's playbar.
+enum CodePlayPart { restart, play, track }
+
+/// codePlaybar is where [e]'s playbar's parts are in its window bar [bar];
+/// empty where it shows none, or there is no lesson to play.
+Map<CodePlayPart, Rect> codePlaybar(CodeElement e, Rect? bar) {
+  if (bar == null || !e.playbar || lessonSpan(e) == null) return const {};
+  var fs = e.fontSize;
+  var b = fs * 1.7, gap = fs * 0.45;
+  var timeW = fs * 6.2;
+  var trackW = math.min(fs * 11, bar.width * 0.28);
+  var right = bar.right - fs * 0.8 - timeW - gap;
+  var track = Rect.fromLTWH(right - trackW, bar.center.dy - b / 2, trackW, b);
+  var play = Rect.fromLTWH(track.left - gap - b, bar.center.dy - b / 2, b, b);
+  var restart = Rect.fromLTWH(play.left - gap * 0.6 - b, play.top, b, b);
+  if (restart.left < bar.left + fs * 8) return const {};
+  return {
+    CodePlayPart.restart: restart,
+    CodePlayPart.play: play,
+    CodePlayPart.track: track,
+  };
+}
+
+/// _paintPlaybar draws [e]'s playbar: back to the start, play or pause, its
+/// lesson's track with the typing's end and each lit step marked, and the
+/// time.
+void _paintPlaybar(Canvas canvas, CodeElement e, CodeColours c,
+    Map<CodePlayPart, Rect> parts, double seconds, bool playing) {
+  var span = lessonSpan(e);
+  if (span == null || parts.isEmpty) return;
+  var fs = e.fontSize;
+  var key = Paint()..color = c.line;
+  var ink = Paint()..color = c.fg;
+  for (var part in [CodePlayPart.restart, CodePlayPart.play]) {
+    var r = parts[part]!;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(r, Radius.circular(fs * 0.35)), key);
+    var m = r.center, u = r.width * 0.2;
+    if (part == CodePlayPart.restart) {
+      canvas.drawRect(
+          Rect.fromLTWH(m.dx - u * 1.1, m.dy - u, u * 0.35, u * 2), ink);
+      canvas.drawPath(
+          Path()
+            ..moveTo(m.dx + u, m.dy - u)
+            ..lineTo(m.dx - u * 0.6, m.dy)
+            ..lineTo(m.dx + u, m.dy + u)
+            ..close(),
+          ink);
+    } else if (playing) {
+      canvas.drawRect(
+          Rect.fromLTWH(m.dx - u * 0.9, m.dy - u, u * 0.6, u * 2), ink);
+      canvas.drawRect(
+          Rect.fromLTWH(m.dx + u * 0.3, m.dy - u, u * 0.6, u * 2), ink);
+    } else {
+      canvas.drawPath(
+          Path()
+            ..moveTo(m.dx - u * 0.7, m.dy - u)
+            ..lineTo(m.dx + u, m.dy)
+            ..lineTo(m.dx - u * 0.7, m.dy + u)
+            ..close(),
+          ink);
+    }
+  }
+  var t = parts[CodePlayPart.track]!;
+  double xOf(double sec) =>
+      t.left + t.width * ((sec - 0) / span.$2).clamp(0.0, 1.0);
+  var line = Rect.fromLTRB(
+      t.left, t.center.dy - fs * 0.12, t.right, t.center.dy + fs * 0.12);
+  canvas.drawRRect(
+      RRect.fromRectAndRadius(line, Radius.circular(fs * 0.12)), key);
+  canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          Rect.fromLTRB(line.left, line.top, xOf(seconds), line.bottom),
+          Radius.circular(fs * 0.12)),
+      Paint()..color = c.dim);
+  // Where the typing ends, and each lit step starts.
+  if (e.typing.on) {
+    var tx = xOf(codePlan(e).end);
+    canvas.drawRect(
+        Rect.fromLTWH(tx - 0.75, t.center.dy - fs * 0.4, 1.5, fs * 0.8),
+        Paint()..color = c.dim);
+  }
+  for (var step in e.steps) {
+    canvas.drawCircle(Offset(xOf(step.at), t.center.dy), fs * 0.18,
+        Paint()..color = codeMark);
+  }
+  canvas.drawCircle(
+      Offset(xOf(seconds), t.center.dy), fs * 0.32, Paint()..color = c.fg);
+  String secs(double v) => v.toStringAsFixed(1);
+  _text(canvas, "${secs(math.min(seconds, span.$2))} / ${secs(span.$2)} s",
+      Offset(t.right + fs * 0.6, t.center.dy), fs * 0.72, c.dim);
+}
+
 /// CodeTabBox is a tab: [file]'s, its box and its close box.
 class CodeTabBox {
   final String file;
@@ -383,7 +476,11 @@ CodeBoxes codeBoxes(CodeElement e, Rect box) {
 class CodeShow {
   final Map<int, String> picked;
   final int editing;
-  const CodeShow({this.picked = const {}, this.editing = -1});
+
+  /// playing is whether the canvas is playing: its playbar shows pause.
+  final bool playing;
+  const CodeShow(
+      {this.picked = const {}, this.editing = -1, this.playing = false});
 }
 
 /// codeShowOf is how the stage shows each Code panel, set by the
@@ -430,9 +527,14 @@ void paintCode(Canvas canvas, Rect box, CodeElement e,
       canvas.drawCircle(Offset(bar.left + fs * (1.2 + i * 1.05), bar.center.dy),
           fs * 0.34, Paint()..color = c.line);
     }
+    var play = codePlaybar(e, bar);
+    var titleRoom = play.isEmpty
+        ? bar.width - fs * 5.5
+        : play[CodePlayPart.restart]!.left - bar.left - fs * 5.2;
     _text(canvas, e.title, Offset(bar.left + fs * 4.6, bar.center.dy),
         _uiSize(e), c.dim,
-        maxWidth: math.max(0, bar.width - fs * 5.5));
+        maxWidth: math.max(0, titleRoom));
+    _paintPlaybar(canvas, e, c, play, seconds, show.playing);
   }
 
   var plan = codePlan(e);
@@ -741,6 +843,14 @@ class CodeTabHit extends CodeHit {
   const CodeTabHit(this.pane, this.file, {this.close = false});
 }
 
+class CodePlayHit extends CodeHit {
+  final CodePlayPart part;
+
+  /// at is where on its track it was pressed, in the scene's seconds.
+  final double at;
+  const CodePlayHit(this.part, {this.at = 0});
+}
+
 class CodeDividerHit extends CodeHit {
   final CodeDividerBox divider;
   const CodeDividerHit(this.divider);
@@ -762,6 +872,13 @@ class CodePaneHit extends CodeHit {
 /// codeHitAt is what of [e] is at [point] on the page, or null.
 CodeHit? codeHitAt(CodeElement e, Offset point) {
   var b = codeBoxes(e, e.bounds);
+  for (var MapEntry(:key, :value) in codePlaybar(e, b.bar).entries) {
+    var reach = value.inflate(e.fontSize * 0.2);
+    if (!reach.contains(point)) continue;
+    var end = lessonSpan(e)?.$2 ?? 0;
+    return CodePlayHit(key,
+        at: end * ((point.dx - value.left) / value.width).clamp(0.0, 1.0));
+  }
   for (var d in b.dividers) {
     if (d.hit.contains(point)) return CodeDividerHit(d);
   }
@@ -843,4 +960,13 @@ Future<ui.Image> paintCodeImage(CodeElement e, {double seconds = 1e9}) async {
   canvas.translate(-e.x, -e.y);
   paintCode(canvas, e.bounds, e, seconds: seconds);
   return rec.endRecording().toImage(e.width.ceil(), e.height.ceil());
+}
+
+/// codeTrackSeconds is where on [e]'s playbar track [point] is, in the
+/// scene's seconds, held to the track: for a drag along it.
+double codeTrackSeconds(CodeElement e, Offset point) {
+  var t = codePlaybar(e, codeBoxes(e, e.bounds).bar)[CodePlayPart.track];
+  var end = lessonSpan(e)?.$2 ?? 0;
+  if (t == null) return 0;
+  return end * ((point.dx - t.left) / t.width).clamp(0.0, 1.0);
 }

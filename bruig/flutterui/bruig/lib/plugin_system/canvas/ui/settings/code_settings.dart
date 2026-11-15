@@ -422,6 +422,13 @@ List<Widget> codeSettings(
                         value: e.windowBar,
                         onChanged: (v) => now(e.copyWith(windowBar: v)),
                       ),
+                      if (e.windowBar)
+                        CanvasToggle(
+                          key: const ValueKey("codePlaybar"),
+                          label: "Play controls",
+                          value: e.playbar,
+                          onChanged: (v) => now(e.copyWith(playbar: v)),
+                        ),
                     ]),
               ]),
           PanelBit(PanelSection.motion,

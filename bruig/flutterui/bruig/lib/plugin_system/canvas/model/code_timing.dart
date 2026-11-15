@@ -148,3 +148,71 @@ double lessonLength(CodeElement e) {
   }
   return end;
 }
+
+/// lessonSpan is when [e]'s lesson is on the timeline: from its typing's
+/// start (or its first lit lines, with no typing) to its last lit lines'
+/// end; null for one with neither.
+(double, double)? lessonSpan(CodeElement e) {
+  var end = lessonLength(e);
+  if (end <= 0) return null;
+  var start = e.typing.on
+      ? e.typing.start
+      : e.steps.map((s) => s.at).fold(double.infinity, math.min);
+  if (!start.isFinite) return null;
+  return (math.min(start, end), end);
+}
+
+/// lessonMoved is [e]'s lesson [by] seconds later (earlier, negative): its
+/// typing and every lit line together, none before the scene's start.
+CodeElement lessonMoved(CodeElement e, double by) {
+  var span = lessonSpan(e);
+  if (span == null) return e;
+  var d = math.max(by, -span.$1);
+  return e.copyWith(
+      typing: e.typing.copyWith(start: e.typing.start + d),
+      steps: [for (var s in e.steps) s.copyWith(at: s.at + d)]);
+}
+
+/// lessonTypedBy is [e] typed in by [end] seconds: its typing faster or
+/// slower to end there, its lit lines after it moved by as much as the
+/// typing's end did.
+CodeElement lessonTypedBy(CodeElement e, double end) {
+  if (!e.typing.on) return e;
+  var plan = codePlan(e);
+  var was = plan.end;
+  var took = was - e.typing.start;
+  if (took <= 0) return e;
+  // What does not change with the speed -- each line's pause, and the
+  // half second between files -- and what does.
+  var fixed = 0.0;
+  if (!e.typing.together) fixed += 0.5 * math.max(0, plan.files.length - 1);
+  for (var id in plan.files.keys) {
+    var f = e.file(id);
+    if (f != null) fixed += e.typing.pause * "\n".allMatches(f.text).length;
+  }
+  if (e.typing.together) fixed = e.typing.pause * _mostLines(e, plan);
+  var letters = (took - fixed) * e.typing.speed;
+  var want = math.max(fixed + 0.3, end - e.typing.start);
+  var typed =
+      e.copyWith(typing: e.typing.copyWith(speed: letters / (want - fixed)));
+  var by = codePlan(typed).end - was;
+  return typed.copyWith(steps: [
+    for (var s in e.steps) s.at >= was - 1e-6 ? s.copyWith(at: s.at + by) : s
+  ]);
+}
+
+/// _mostLines is the most lines any one pane types: what its pauses add up
+/// to, the panes typing all at once.
+int _mostLines(CodeElement e, CodePlan plan) {
+  var most = 0;
+  for (var pane in e.shownPanes) {
+    var n = 0;
+    for (var id in pane.tabs) {
+      if (plan.files.containsKey(id)) {
+        n += "\n".allMatches(e.file(id)?.text ?? "").length;
+      }
+    }
+    most = math.max(most, n);
+  }
+  return most;
+}

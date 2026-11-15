@@ -144,6 +144,9 @@ enum _DragMode {
   codeDivider,
   codeTab,
 
+  /// codeScrub is a Code panel's playbar track dragged along.
+  codeScrub,
+
   /// copies is copies of an element reused dragged on their own -- those
   /// picked, or made by an Alt-drag. See _moveCopies.
   copies,
@@ -371,6 +374,9 @@ class CanvasStageState extends State<CanvasStage>
   (String, CodeDividerBox)? _codeDivider;
   ({String id, int pane, String file})? _codeTab;
   Offset? _codeTabAt;
+
+  /// _codeScrub is the Code panel whose playbar track is being dragged.
+  String? _codeScrub;
 
   /// _inLive is a press that began on a live preview: the page's, which the
   /// stage leaves alone until it is let go.
@@ -1672,6 +1678,21 @@ class CanvasStageState extends State<CanvasStage>
     }
 
     switch (hit) {
+      // Its playbar: pressed whether it is picked or not, as a sheet's is;
+      // its track dragged along to scrub.
+      case CodePlayHit(part: CodePlayPart.play):
+        controller.playCode(e);
+        _mode = _DragMode.none;
+        return true;
+      case CodePlayHit(part: CodePlayPart.restart):
+        controller.restartCode(e);
+        _mode = _DragMode.none;
+        return true;
+      case CodePlayHit(:var at):
+        controller.seekCode(at);
+        _codeScrub = e.id;
+        setState(() => _mode = _DragMode.codeScrub);
+        return true;
       case CodeDividerHit(:var divider):
         pick();
         controller.beginInteraction();
@@ -1743,6 +1764,11 @@ class CanvasStageState extends State<CanvasStage>
   /// go; a tab let go where it was pressed shown, or carried somewhere
   /// moved there.
   bool _releaseCode(Offset doc) {
+    if (_codeScrub != null) {
+      _codeScrub = null;
+      setState(() => _mode = _DragMode.none);
+      return true;
+    }
     if (_codeDivider != null) {
       _codeDivider = null;
       controller.endInteraction();
@@ -5987,6 +6013,10 @@ class CanvasStageState extends State<CanvasStage>
         _applyCounterPart(doc);
       case _DragMode.synthKnob:
         _turnSynthKnob(doc);
+      case _DragMode.codeScrub:
+        if (document.elementById(_codeScrub ?? "") case CodeElement e) {
+          controller.seekCode(codeTrackSeconds(e, doc));
+        }
       case _DragMode.codeDivider:
         if (_codeDivider case (var id, var d)?) {
           if (document.elementById(id) case CodeElement e) {

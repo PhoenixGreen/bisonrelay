@@ -345,6 +345,10 @@ class CodeElement extends CanvasElement {
   final bool links;
   final bool lineNumbers;
   final bool windowBar;
+
+  /// playbar puts play controls in its window bar: back to the start, play
+  /// and pause, and where its lesson has got to (Ken, 2026-11-15).
+  final bool playbar;
   final CodeTyping typing;
   final List<CodeStep> steps;
 
@@ -366,6 +370,7 @@ class CodeElement extends CanvasElement {
     this.links = true,
     this.lineNumbers = true,
     this.windowBar = true,
+    this.playbar = true,
     this.typing = const CodeTyping(on: false),
     this.steps = const [],
     this.dim = true,
@@ -389,6 +394,7 @@ class CodeElement extends CanvasElement {
       links: links,
       lineNumbers: lineNumbers,
       windowBar: windowBar,
+      playbar: playbar,
       typing: typing,
       steps: steps,
       dim: dim);
@@ -407,6 +413,7 @@ class CodeElement extends CanvasElement {
     bool? links,
     bool? lineNumbers,
     bool? windowBar,
+    bool? playbar,
     CodeTyping? typing,
     List<CodeStep>? steps,
     bool? dim,
@@ -425,6 +432,7 @@ class CodeElement extends CanvasElement {
           links: links ?? this.links,
           lineNumbers: lineNumbers ?? this.lineNumbers,
           windowBar: windowBar ?? this.windowBar,
+          playbar: playbar ?? this.playbar,
           typing: typing ?? this.typing,
           steps: steps ?? this.steps,
           dim: dim ?? this.dim);
@@ -639,6 +647,7 @@ class CodeElement extends CanvasElement {
         "links": links,
         "lineNumbers": lineNumbers,
         "windowBar": windowBar,
+        if (!playbar) "playbar": false,
         "typing": typing.toJson(),
         "steps": [for (var s in steps) s.toJson()],
         "dim": dim,
@@ -677,6 +686,7 @@ class CodeElement extends CanvasElement {
         links: jsonBool(json["links"], true),
         lineNumbers: jsonBool(json["lineNumbers"], true),
         windowBar: jsonBool(json["windowBar"], true),
+        playbar: jsonBool(json["playbar"], true),
         typing: CodeTyping.fromJson(json["typing"]),
         steps: [
           for (var s in (json["steps"] is List ? json["steps"] as List : []))
