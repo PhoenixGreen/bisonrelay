@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_table_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -52,6 +53,10 @@ class DataStudio extends StatefulWidget {
 /// theme, kept while the app runs.
 bool _paper = true;
 
+/// DataStudioTab is what the studio shows: the sheet, or the design of one
+/// of its tables.
+enum DataStudioTab { sheet, table }
+
 class _DataStudioState extends State<DataStudio> {
   CanvasController get c => widget.controller;
   late String _sheet = widget.sheetId;
@@ -66,6 +71,7 @@ class _DataStudioState extends State<DataStudio> {
   String? _renaming;
   final TextEditingController _rename = TextEditingController();
   String _said = "";
+  DataStudioTab _tab = DataStudioTab.sheet;
 
   @override
   void initState() {
@@ -235,6 +241,16 @@ class _DataStudioState extends State<DataStudio> {
     if (!_nameFocus.hasFocus) _name.text = _sel.range.a1;
     var picked = _picked;
     var look = _paper ? DataGridLook.calc : DataGridLook.theme(colors);
+    if (_tab == DataStudioTab.table) {
+      return Material(
+        color: colors.surface,
+        child: Column(children: [
+          _topBar(context, s),
+          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          Expanded(child: _tableTab(context, s)),
+        ]),
+      );
+    }
     return Material(
       color: colors.surface,
       child: Column(children: [
@@ -252,6 +268,7 @@ class _DataStudioState extends State<DataStudio> {
                     sheet: s,
                     sel: _sel,
                     look: look,
+                    images: c.images,
                     focusNode: _gridFocus,
                     outlines: [if (picked != null) _outlineOf(picked)],
                     onSelect: (next) => setState(() => _sel = next),
@@ -286,6 +303,52 @@ class _DataStudioState extends State<DataStudio> {
     );
   }
 
+  /// _tableTab is the Table tab: the design of the table picked among this
+  /// sheet's views (or its first), with a chip for each when there are
+  /// several.
+  Widget _tableTab(BuildContext context, DataSheet s) {
+    final colors = ThemeNotifier.of(context).colors;
+    var tables = _views.whereType<TableElement>().toList();
+    if (tables.isEmpty) {
+      return Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text("No table on the canvas shows this sheet.",
+            style: TextStyle(color: colors.onSurface)),
+        const SizedBox(height: 12),
+        StudioPill(
+            key: const ValueKey("dataStudioTableMake"),
+            label: "+ Table of this sheet",
+            filled: true,
+            onTap: () {
+              var made = c.addDataView(ElementKind.table, _sheet, s.used);
+              setState(() => _view = made.id);
+            }),
+      ]));
+    }
+    var table = tables.where((v) => v.id == _view).firstOrNull ?? tables.first;
+    return Column(children: [
+      if (tables.length > 1)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Wrap(spacing: 4, runSpacing: 4, children: [
+            for (var v in tables)
+              StudioPill(
+                key: ValueKey("dataStudioTablePick-${v.id}"),
+                label: "${v.name.isEmpty ? "Table" : v.name} · "
+                    "${linkOf(v)!.range.a1}",
+                selected: v.id == table.id,
+                onTap: () => setState(() => _view = v.id),
+              ),
+          ]),
+        ),
+      Expanded(
+          child: TableDesign(
+              key: const ValueKey("dataStudioTableDesign"),
+              controller: c,
+              table: table)),
+    ]);
+  }
+
   DataOutline _outlineOf(CanvasElement v) {
     var link = linkOf(v)!;
     if (v is ChartElement) {
@@ -312,6 +375,18 @@ class _DataStudioState extends State<DataStudio> {
                 fontWeight: FontWeight.w800,
                 color: colors.onSurface)),
         gap(12),
+        for (var (tab, name) in const [
+          (DataStudioTab.sheet, "Sheet"),
+          (DataStudioTab.table, "Table"),
+        ]) ...[
+          StudioPill(
+              key: ValueKey("dataStudioTab-${tab.name}"),
+              label: name,
+              selected: _tab == tab,
+              onTap: () => setState(() => _tab = tab)),
+          gap(),
+        ],
+        gap(8),
         Expanded(
           child: Text(s.name,
               overflow: TextOverflow.ellipsis,
@@ -334,76 +409,78 @@ class _DataStudioState extends State<DataStudio> {
                   label: "Redo",
                   tooltip: "Redo (⇧⌘Z)",
                   onTap: c.canRedo ? c.redo : null),
-              gap(12),
-              StudioPill(
-                  key: const ValueKey("dataStudioSortUp"),
-                  label: "Sort ↑",
-                  tooltip: "The selection's rows by this column, smallest "
-                      "first",
-                  onTap: () => _sort(descending: false)),
-              gap(),
-              StudioPill(
-                  key: const ValueKey("dataStudioSortDown"),
-                  label: "Sort ↓",
-                  tooltip: "Largest first",
-                  onTap: () => _sort(descending: true)),
-              gap(12),
-              StudioPill(
-                  key: const ValueKey("dataStudioRowIn"),
-                  label: "+ Row",
-                  tooltip: "Rows above the selection",
-                  onTap: () => _rowsOrColumns(rows: true, insert: true)),
-              gap(),
-              StudioPill(
-                  key: const ValueKey("dataStudioRowOut"),
-                  label: "− Row",
-                  tooltip: "Take the selection's rows out",
-                  onTap: () => _rowsOrColumns(rows: true, insert: false)),
-              gap(),
-              StudioPill(
-                  key: const ValueKey("dataStudioColumnIn"),
-                  label: "+ Column",
-                  tooltip: "Columns left of the selection",
-                  onTap: () => _rowsOrColumns(rows: false, insert: true)),
-              gap(),
-              StudioPill(
-                  key: const ValueKey("dataStudioColumnOut"),
-                  label: "− Column",
-                  tooltip: "Take the selection's columns out",
-                  onTap: () => _rowsOrColumns(rows: false, insert: false)),
-              gap(12),
-              StudioPill(
-                  key: const ValueKey("dataStudioAddTable"),
-                  label: "+ Table",
-                  tooltip: "A table of the selection on the canvas",
-                  onTap: () => _addView(ElementKind.table)),
-              gap(),
-              StudioPill(
-                  key: const ValueKey("dataStudioAddChart"),
-                  label: "+ Chart",
-                  tooltip: "A chart of the selection on the canvas",
-                  filled: true,
-                  onTap: () => _addView(ElementKind.chart)),
-              gap(12),
-              StudioPill(
-                  key: const ValueKey("dataStudioImport"),
-                  label: "Import",
-                  tooltip: "Sheets from a CSV, XLSX or ODS file: values and "
-                      "formulas",
-                  onTap: _import),
-              gap(),
-              StudioPill(
-                  key: const ValueKey("dataStudioExport"),
-                  label: "Export CSV",
-                  tooltip: "This sheet as a CSV file, as it shows",
-                  onTap: () => _export(s)),
-              gap(12),
-              StudioPill(
-                  key: const ValueKey("dataStudioPaper"),
-                  label: _paper ? "Sheet: Paper" : "Sheet: Theme",
-                  tooltip: "The sheet on paper, as in Calc, or in the app's "
-                      "colours",
-                  onTap: () => setState(() => _paper = !_paper)),
+              if (_tab == DataStudioTab.sheet) ...[
+                gap(12),
+                StudioPill(
+                    key: const ValueKey("dataStudioSortUp"),
+                    label: "Sort ↑",
+                    tooltip: "The selection's rows by this column, smallest "
+                        "first",
+                    onTap: () => _sort(descending: false)),
+                gap(),
+                StudioPill(
+                    key: const ValueKey("dataStudioSortDown"),
+                    label: "Sort ↓",
+                    tooltip: "Largest first",
+                    onTap: () => _sort(descending: true)),
+                gap(12),
+                StudioPill(
+                    key: const ValueKey("dataStudioRowIn"),
+                    label: "+ Row",
+                    tooltip: "Rows above the selection",
+                    onTap: () => _rowsOrColumns(rows: true, insert: true)),
+                gap(),
+                StudioPill(
+                    key: const ValueKey("dataStudioRowOut"),
+                    label: "− Row",
+                    tooltip: "Take the selection's rows out",
+                    onTap: () => _rowsOrColumns(rows: true, insert: false)),
+                gap(),
+                StudioPill(
+                    key: const ValueKey("dataStudioColumnIn"),
+                    label: "+ Column",
+                    tooltip: "Columns left of the selection",
+                    onTap: () => _rowsOrColumns(rows: false, insert: true)),
+                gap(),
+                StudioPill(
+                    key: const ValueKey("dataStudioColumnOut"),
+                    label: "− Column",
+                    tooltip: "Take the selection's columns out",
+                    onTap: () => _rowsOrColumns(rows: false, insert: false)),
+                gap(12),
+                StudioPill(
+                    key: const ValueKey("dataStudioAddTable"),
+                    label: "+ Table",
+                    tooltip: "A table of the selection on the canvas",
+                    onTap: () => _addView(ElementKind.table)),
+                gap(),
+                StudioPill(
+                    key: const ValueKey("dataStudioAddChart"),
+                    label: "+ Chart",
+                    tooltip: "A chart of the selection on the canvas",
+                    filled: true,
+                    onTap: () => _addView(ElementKind.chart)),
+                gap(12),
+                StudioPill(
+                    key: const ValueKey("dataStudioImport"),
+                    label: "Import",
+                    tooltip: "Sheets from a CSV, XLSX or ODS file: values and "
+                        "formulas",
+                    onTap: _import),
+                gap(),
+                StudioPill(
+                    key: const ValueKey("dataStudioExport"),
+                    label: "Export CSV",
+                    tooltip: "This sheet as a CSV file, as it shows",
+                    onTap: () => _export(s)),
+                gap(12),
+                StudioPill(
+                    key: const ValueKey("dataStudioPaper"),
+                    label: _paper ? "Sheet: Paper" : "Sheet: Theme",
+                    tooltip: "The sheet on paper, as in Calc, or in the app's "
+                        "colours",
+                    onTap: () => setState(() => _paper = !_paper)),
+              ],
               gap(12),
               StudioPill(
                   key: const ValueKey("dataStudioDone"),

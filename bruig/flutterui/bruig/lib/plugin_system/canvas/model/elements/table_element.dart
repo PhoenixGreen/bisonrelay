@@ -341,6 +341,50 @@ enum TableMatch {
       values.firstWhere((m) => m.name == name, orElse: () => TableMatch.cell);
 }
 
+/// TableWhen is a number a row must have for a rule to reach it: "Points 9
+/// or more". [column] is a heading or a number counting from one.
+class TableWhen {
+  final String column;
+
+  /// op is one of ">=", "<=", ">", "<" and "=".
+  final String op;
+  final double value;
+  const TableWhen(this.column, this.op, this.value);
+
+  static const ops = [">=", "<=", ">", "<", "="];
+
+  bool holds(double n) => switch (op) {
+        ">=" => n >= value,
+        "<=" => n <= value,
+        ">" => n > value,
+        "<" => n < value,
+        _ => n == value,
+      };
+
+  TableWhen copyWith({String? column, String? op, double? value}) =>
+      TableWhen(column ?? this.column, op ?? this.op, value ?? this.value);
+
+  Map<String, dynamic> toJson() => {"col": column, "op": op, "v": value};
+
+  static TableWhen? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    var op = json["op"];
+    var v = json["v"];
+    return TableWhen(jsonString(json["col"], ""),
+        ops.contains(op) ? op as String : ">=", v is num ? v.toDouble() : 0);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is TableWhen &&
+      other.column == column &&
+      other.op == op &&
+      other.value == value;
+
+  @override
+  int get hashCode => Object.hash(column, op, value);
+}
+
 /// TableRule is "these cells look like that": a column, rows and text to
 /// match, each meaning "any" when left blank.
 class TableRule {
@@ -360,12 +404,34 @@ class TableRule {
 
   final TableCellStyle style;
 
+  /// name is what the Data Studio's Table tab calls this rule, a style: empty
+  /// is named from what it reaches and looks like (see table_design.dart).
+  final String name;
+
+  /// off keeps the rule without drawing it, as the Table tab's eye does.
+  final bool off;
+
+  /// keys are rows this rule follows by what they say in [keyColumn] (a
+  /// team's name), so a style stays with its team as the team moves up or
+  /// down (Ken, 2026-11-15: "a styled row follows its data"). Empty is rows
+  /// by place only. Both, if both are set.
+  final List<String> keys;
+  final String keyColumn;
+
+  /// when is a number a row must have, as "Points 9 or more".
+  final TableWhen? when;
+
   const TableRule({
     this.column = "",
     this.rows = "",
     this.match = "",
     this.how = TableMatch.cell,
     this.style = const TableCellStyle(),
+    this.name = "",
+    this.off = false,
+    this.keys = const [],
+    this.keyColumn = "",
+    this.when,
   });
 
   /// banded is a rule with no text to look for, drawn as one box around
@@ -373,8 +439,46 @@ class TableRule {
   /// chip round each match.
   bool get banded => match.isEmpty;
 
-  /// matchesRow reads the range language. [index] counts from zero.
+  /// matchesRow reads the range language. [index] counts from zero. A rule
+  /// that follows keys or wants a number asks [reachesRow] as well.
   bool matchesRow(int index) => spanMatches(rows, index);
+
+  /// readsRows is whether reaching a row needs what the row says: it
+  /// follows keys or wants a number.
+  bool get readsRows => keys.isNotEmpty || when != null;
+
+  /// reachesRow is [matchesRow] with the row's own words asked too: [cellAt]
+  /// is what column [col] of the row says.
+  bool reachesRow(
+      int index, List<String> header, String Function(int col) cellAt) {
+    if (!matchesRow(index)) return false;
+    if (keys.isNotEmpty) {
+      var k = columnIndexOf(keyColumn, header);
+      if (k < 0) return false;
+      var said = cellAt(k).trim().toLowerCase();
+      if (!keys.any((x) => x.trim().toLowerCase() == said)) return false;
+    }
+    var w = when;
+    if (w != null) {
+      var k = columnIndexOf(w.column, header);
+      if (k < 0) return false;
+      var n = cellNumber(cellAt(k));
+      if (n == null || !w.holds(n)) return false;
+    }
+    return true;
+  }
+
+  /// columnIndexOf finds a column named by its heading, or by its number
+  /// counting from one; -1 when there is none.
+  static int columnIndexOf(String spec, List<String> header) {
+    var s = spec.trim();
+    if (s.isEmpty) return -1;
+    var byName =
+        header.indexWhere((h) => h.trim().toLowerCase() == s.toLowerCase());
+    if (byName >= 0) return byName;
+    var n = int.tryParse(s);
+    return n == null ? -1 : n - 1;
+  }
 
   /// _spans remembers what a range string means: they are read once per cell
   /// per rule per frame, and only a handful are distinct.
@@ -459,6 +563,12 @@ class TableRule {
     String? match,
     TableMatch? how,
     TableCellStyle? style,
+    String? name,
+    bool? off,
+    List<String>? keys,
+    String? keyColumn,
+    TableWhen? when,
+    bool noWhen = false,
   }) =>
       TableRule(
         column: column ?? this.column,
@@ -466,6 +576,11 @@ class TableRule {
         match: match ?? this.match,
         how: how ?? this.how,
         style: style ?? this.style,
+        name: name ?? this.name,
+        off: off ?? this.off,
+        keys: keys ?? this.keys,
+        keyColumn: keyColumn ?? this.keyColumn,
+        when: noWhen ? null : when ?? this.when,
       );
 
   Map<String, dynamic> toJson() => {
@@ -474,6 +589,11 @@ class TableRule {
         if (match.isNotEmpty) "match": match,
         if (how != TableMatch.cell) "how": how.name,
         "style": style.toJson(),
+        if (name.isNotEmpty) "name": name,
+        if (off) "off": true,
+        if (keys.isNotEmpty) "keys": keys,
+        if (keys.isNotEmpty) "keyCol": keyColumn,
+        if (when != null) "when": when!.toJson(),
       };
 
   factory TableRule.fromJson(Map<String, dynamic> json) => TableRule(
@@ -483,6 +603,15 @@ class TableRule {
         how: TableMatch.fromName(jsonStr(json["how"])),
         style: jsonSpec(
             json["style"], TableCellStyle.fromJson, const TableCellStyle()),
+        name: jsonString(json["name"], ""),
+        off: json["off"] == true,
+        keys: [
+          if (json["keys"] is List)
+            for (var k in json["keys"] as List)
+              if (k is String) k
+        ],
+        keyColumn: jsonString(json["keyCol"], ""),
+        when: TableWhen.fromJson(json["when"]),
       );
 }
 
@@ -721,7 +850,11 @@ class TableElement extends CanvasElement {
     var words = <(TableRule, List<(int, int)>)>[];
 
     for (var rule in rules) {
+      if (rule.off) continue;
       if (!rule.matchesRow(row)) continue;
+      if (rule.readsRows && !rule.reachesRow(row, head, (c) => cell(row, c))) {
+        continue;
+      }
       if (!rule.matchesColumn(col, head)) continue;
 
       if (rule.match.isNotEmpty) {

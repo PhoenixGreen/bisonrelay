@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -110,6 +113,10 @@ class DataGrid extends StatefulWidget {
   /// shown is what a cell shows, where it differs from what was typed.
   final String Function(int r, int c)? shown;
 
+  /// images is where a cell naming a picture gets it, to show the picture
+  /// rather than its name (as the tables showing the sheet do).
+  final CanvasImageStore? images;
+
   const DataGrid({
     required this.sheet,
     required this.sel,
@@ -124,6 +131,7 @@ class DataGrid extends StatefulWidget {
     this.onRedo,
     this.focusNode,
     this.shown,
+    this.images,
     super.key,
   });
 
@@ -569,7 +577,10 @@ class DataGridState extends State<DataGrid> {
                             look: look,
                             v: _v,
                             h: _h,
-                            repaint: scrolled,
+                            repaint: widget.images == null
+                                ? scrolled
+                                : Listenable.merge([scrolled, widget.images]),
+                            images: widget.images,
                             editing: _editing,
                             fillTo: _fillTo,
                             handle: widget.onFill != null,
@@ -711,6 +722,7 @@ class _Cells extends CustomPainter {
   final (int, int)? editing;
   final CellRange? fillTo;
   final bool handle;
+  final CanvasImageStore? images;
   _Cells(
       {required this.sheet,
       required this.shown,
@@ -722,6 +734,7 @@ class _Cells extends CustomPainter {
       required Listenable repaint,
       required this.editing,
       this.fillTo,
+      this.images,
       this.handle = false})
       : super(repaint: repaint);
 
@@ -778,6 +791,17 @@ class _Cells extends CustomPainter {
         }
         var text = shown(r, c);
         if (text.isEmpty) continue;
+        // A picture: drawn at the cell's left, square, rather than its name.
+        var asset = TableElement.pictureIn(text);
+        var store = images;
+        if (asset != null && store != null) {
+          var box = cell(r, c);
+          var side = box.height - 6;
+          if (paintCellPicture(canvas, store, asset,
+              Rect.fromLTWH(box.left + 6, box.top + 3, side, side))) {
+            continue;
+          }
+        }
         // Numbers to the right and errors in red, by what the cell is
         // worth, not how it is written ("\$14.20" is a number).
         var value = sheetValue(sheet, r, c);

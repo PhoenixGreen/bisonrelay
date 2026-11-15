@@ -125,10 +125,14 @@ class StudioSlider extends StatelessWidget {
   /// side of nought, and a percentage for one from nought.
   final String Function(double)? format;
   final ValueChanged<double> onChanged;
+
+  /// onChangeEnd is when a drag lets go, to close one undo step for it.
+  final ValueChanged<double>? onChangeEnd;
   const StudioSlider(
       {required this.label,
       required this.value,
       required this.onChanged,
+      this.onChangeEnd,
       this.min = -1,
       this.max = 1,
       this.rest = 0,
@@ -174,6 +178,7 @@ class StudioSlider extends StatelessWidget {
               min: min,
               max: max,
               onChanged: onChanged,
+              onChangeEnd: onChangeEnd,
             ),
           ),
         ),

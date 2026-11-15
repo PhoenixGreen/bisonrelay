@@ -80,9 +80,10 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   // picks out, not a box per cell: a row is a band across, a column a band
   // down, both the cell where they cross.
   for (var rule in e.rules) {
-    if (!rule.banded || !rule.style.paintsBox) continue;
-    var box = _bandFor(e, rule, rect, widths, heights, cols);
-    if (box != null) _paintStyleBox(canvas, box, rule.style);
+    if (rule.off || !rule.banded || !rule.style.paintsBox) continue;
+    for (var box in _bandsFor(e, rule, rect, widths, heights, cols)) {
+      _paintStyleBox(canvas, box, rule.style);
+    }
   }
 
   // Cells.
@@ -260,6 +261,23 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
 /// paintRedacted draws [text] laid out in [box] as [spec] would, but as a
 /// solid bar over each line, in the text's colour: the words' own extent,
 /// so a short answer gets a short bar and the alignment still shows.
+/// paintCellPicture draws the picture [asset] fitted in [box] -- a vector
+/// first, else the picture -- and says whether it had one to draw. For the
+/// Data Studio's sheet, which shows a picture cell's badge rather than its
+/// name.
+bool paintCellPicture(
+    ui.Canvas canvas, CanvasImageSource images, String asset, Rect box) {
+  var vector = images.resolveVector(asset);
+  if (vector != null) {
+    _paintCellVector(canvas, vector, box);
+    return true;
+  }
+  var image = images.resolve(asset, const BackgroundRemoval());
+  if (image == null) return false;
+  _paintCellImage(canvas, image, box);
+  return true;
+}
+
 void paintRedacted(ui.Canvas canvas, String text, TextSpec spec, Rect box) {
   if (text.trim().isEmpty || box.width <= 0) return;
   // Shared with the paragraph cache: not this function's to dispose.
@@ -331,20 +349,9 @@ void _paintCellVector(ui.Canvas canvas, CanvasVector vector, Rect box) {
 
 /// _bandFor is the rectangle a banded rule covers: every cell it picks out,
 /// taken together.
-Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
-    List<double> heights, int cols) {
+List<Rect> _bandsFor(TableElement e, TableRule rule, Rect rect,
+    List<double> widths, List<double> heights, int cols) {
   var head = e.header;
-
-  var top = rect.top;
-  double? fromY, toY;
-  for (var r = 0; r < heights.length; r++) {
-    if (rule.matchesRow(r)) {
-      fromY ??= top;
-      toY = top + heights[r];
-    }
-    top += heights[r];
-  }
-  if (fromY == null || toY == null) return null;
 
   // Every column the rule names, taken together into one band.
   var left = rect.left;
@@ -356,9 +363,26 @@ Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
     }
     left += widths[c];
   }
-  if (fromX == null || toX == null) return null;
+  if (fromX == null || toX == null) return const [];
 
-  return Rect.fromLTRB(fromX, fromY, toX, toY);
+  // A band for each run of rows it reaches: one for a block of rows, one
+  // each for teams it follows that are apart.
+  var out = <Rect>[];
+  var top = rect.top;
+  double? fromY;
+  for (var r = 0; r <= heights.length; r++) {
+    var reached = r < heights.length &&
+        rule.matchesRow(r) &&
+        (!rule.readsRows || rule.reachesRow(r, head, (c) => e.cell(r, c)));
+    if (reached) {
+      fromY ??= top;
+    } else if (fromY != null) {
+      out.add(Rect.fromLTRB(fromX, fromY, toX, top));
+      fromY = null;
+    }
+    if (r < heights.length) top += heights[r];
+  }
+  return out;
 }
 
 /// _paintChips draws the boxes for every rule that names a word in this cell,

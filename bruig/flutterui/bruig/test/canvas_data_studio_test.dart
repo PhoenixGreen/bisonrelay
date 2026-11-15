@@ -276,6 +276,9 @@ void main() {
       // GD (column D) taken out: the Points chart lets that series go.
       await tester.tapAt(cellAt(tester, 1, 3));
       await tester.pump();
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("dataStudioColumnOut")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("dataStudioColumnOut")));
       await tester.pumpAndSettle();
       expect([for (var s in chart().data.series) s.name], ["Pts"]);
