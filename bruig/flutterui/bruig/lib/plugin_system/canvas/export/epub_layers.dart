@@ -1,3 +1,9 @@
+import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
+import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart'
+    show codeRunBoxes;
+import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_channels.dart'
     show synthSpeakersHearing;
@@ -223,6 +229,10 @@ class EpubLayer {
   /// keyboard is it as an instrument the reader plays, where it is one.
   final EpubKeyboard? keyboard;
 
+  /// frame is a page run live over it: a Run panel's web page, in a frame
+  /// of its own in the book. Null for anything else.
+  final EpubFrame? frame;
+
   const EpubLayer({
     required this.id,
     this.visible = true,
@@ -238,6 +248,7 @@ class EpubLayer {
     this.reactions = const [],
     this.controls = const [],
     this.keyboard,
+    this.frame,
   });
 
   /// moves is whether anything on it changes with the playhead.
@@ -481,9 +492,12 @@ Future<StageResult?> buildEpubStage(
   // What the Camera's lens does to each element by its depth: those it
   // blurs or moves are layers of their own, to be done to alone.
   var lens = lensKeys(page, drawn, frames, pixels);
+  codeRunSpans(page);
   var moving = <String>{};
   var changing = <String>{};
   for (var e in drawn) {
+    // A Run panel whose page runs live in the book: a layer of its own.
+    if (_liveFrame(e, page, pixels) != null) moving.add(e.id);
     if (e is BackgroundElement) continue;
     var changes = _changes(e, frames, page) || keyedVideo(e);
     if (changes) changing.add(e.id);
@@ -669,6 +683,7 @@ Future<StageResult?> buildEpubStage(
                     l.keyboard!.sound,
                     l.keyboard!.low,
                     l.keyboard!.step),
+            frame: l.frame,
           ),
         _ => item,
       },
@@ -908,6 +923,30 @@ class _LayerMaker {
   }
 
   Future<EpubLayer> make({required bool hovers}) async {
+    var layer = await _make(hovers: hovers);
+    // A Run panel's web page, run live over the picture of its last run.
+    if (_liveFrame(e, page, pixels) case var frame?) {
+      return EpubLayer(
+          id: layer.id,
+          visible: layer.visible,
+          originX: layer.originX,
+          originY: layer.originY,
+          pose: layer.pose,
+          parts: layer.parts,
+          clip: layer.clip,
+          hover: layer.hover,
+          hoverBox: layer.hoverBox,
+          legend: layer.legend,
+          switched: layer.switched,
+          reactions: layer.reactions,
+          controls: layer.controls,
+          keyboard: layer.keyboard,
+          frame: frame);
+    }
+    return layer;
+  }
+
+  Future<EpubLayer> _make({required bool hovers}) async {
     // A video the reader plays is its own <video> in this layer, poster and
     // all: a picture of it under that played over a frozen copy of itself.
     if (player) {
@@ -2327,7 +2366,7 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
       named = "$named;series=${series.join(",")}";
     }
   }
-  var span = _frameSpan(e, frames, poseAt);
+  var span = _frameSpan(e, frames, poseAt, rate: rate);
   if (span == null) return named;
   var (from, to) = span;
   var when = f < from
@@ -2338,12 +2377,72 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
   return "$named@$when";
 }
 
+/// EpubFrame is a web page run live in the book: [html] in [rect] (page
+/// pixels), over the picture of its last run.
+class EpubFrame {
+  final Rect rect;
+  final String html;
+  const EpubFrame(this.rect, this.html);
+}
+
+/// _liveFrame is [e]'s page run live in a book, where [e] is a Run panel
+/// that has run a web page: its page, without the app's console catcher.
+EpubFrame? _liveFrame(CanvasElement e, CanvasDocument page, double pixels) {
+  if (e is! CodeRunElement || e.result == null) return null;
+  var code = page.elementById(e.code);
+  if (code is! CodeElement) return null;
+  var entry = entryFile(e, code);
+  if (entry == null || runnerOf(e, code) != CodeRunner.web) return null;
+  var preview = codeRunBoxes(e, e.bounds, runner: CodeRunner.web).preview;
+  if (preview == null) return null;
+  return EpubFrame(
+      Rect.fromLTRB(preview.left * pixels, preview.top * pixels,
+          preview.right * pixels, preview.bottom * pixels),
+      webPage(code, entry, head: ""));
+}
+
+/// _codeRunSpan is, while a page's layers are made, each Run panel's frame
+/// either side of its run: set by codeRunSpans.
+Map<String, (int, int)> _codeRunSpan = const {};
+
+/// codeRunSpans notes when each of [doc]'s Run panels runs, for the look of
+/// its layer to change there.
+void codeRunSpans(CanvasDocument doc) {
+  var rate = math.max(1, doc.frameRate);
+  _codeRunSpan = {
+    for (var r in doc.elements.whereType<CodeRunElement>())
+      if (runAt(
+              r,
+              doc.elementById(r.code) is CodeElement
+                  ? doc.elementById(r.code) as CodeElement
+                  : null)
+          case var t? when t > 0)
+        r.id: (
+          math.max(0, (t * rate).floor() - 1),
+          (t * rate).ceil().clamp(0, math.max(0, doc.frames - 1)).toInt()
+        ),
+  };
+}
+
 /// _frameSpan is the stretch of frames over which [e]'s look depends on the
 /// frame itself, or null where it never does.
 (int, int)? _frameSpan(
-    CanvasElement e, int frames, Keyframe Function(int frame)? poseAt) {
+    CanvasElement e, int frames, Keyframe Function(int frame)? poseAt,
+    {int rate = 24}) {
   var all = (0, frames - 1);
+  int at(double seconds) =>
+      (seconds * rate).round().clamp(0, frames - 1).toInt();
   switch (e) {
+    // A Code panel changes as it types and lights its lines; a Run panel
+    // when it runs, from waiting to its run.
+    case CodeElement c:
+      var end = lessonLength(c);
+      if (end <= 0) return null;
+      return (at(c.typing.on ? c.typing.start : 0), at(end));
+    case CodeRunElement r:
+      // Its Code panel is not to hand here: when it runs is after its
+      // typing, worked out where the page is (see _codeRunSpan).
+      return _codeRunSpan[r.id];
     case BackgroundElement b:
       return b.spec.animated ? all : null;
     case TeamElement t:

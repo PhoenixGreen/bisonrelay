@@ -167,7 +167,8 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
       const Color(0xFF062018),
       weight: FontWeight.w600);
 
-  var waiting = show.running ? null : waitingSaid(e, code, seconds);
+  var waiting =
+      show.running || show.live ? null : waitingSaid(e, code, seconds);
 
   // The preview: the picture of the last run.
   if (b.preview case var p?) {
@@ -207,7 +208,7 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
     _text(canvas, "OUTPUT", Offset(o.left + fs * 1.1, o.top + fs * 1.2),
         fs * 0.72, _dim,
         weight: FontWeight.w600);
-    var logs = show.running
+    var logs = show.running || show.live
         ? show.logs
         : waiting == null
             ? (e.result?.logs ?? const <CodeLog>[])

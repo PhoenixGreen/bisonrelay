@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
@@ -242,6 +243,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   @override
   void initState() {
     super.initState();
+    // Run panels run code in this app: a hidden browser, Pyodide, Yaegi.
+    useAppCodeRunHost();
     // A MIDI keyboard plays this canvas's instruments while it is open.
     MidiInput.shared.onNote = _controller.midiNote;
     MidiInput.shared.onControl = _controller.midiControl;

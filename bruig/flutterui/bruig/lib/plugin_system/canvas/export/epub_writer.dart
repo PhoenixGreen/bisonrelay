@@ -701,6 +701,19 @@ String _stageTag(
         if (layer.hover case var hover?) {
           out.add("  ${_spriteTag(hover, "h", false, box)}");
         }
+        // A Run panel's web page, run live over the picture of its last
+        // run: its own document (srcdoc is read as HTML, so a page that
+        // is not strict XHTML still runs), its scripts kept to itself.
+        if (layer.frame case var f?) {
+          var r = f.rect;
+          out.add('  <iframe class="run" title="Run" '
+              // Newlines kept as newlines: in XHTML an attribute's own
+              // become spaces, and a script's // comment would swallow
+              // the rest of it.
+              'sandbox="allow-scripts" srcdoc="${_attr(f.html).replaceAll("\r", "").replaceAll("\n", "&#10;").replaceAll("\t", "&#9;")}" '
+              'style="${box(r.left, r.top, r.width, r.height)};'
+              'border:0;background:#fff"></iframe>');
+        }
         // A chart's key: a picture of the chart for each set of its series
         // switched off, and an entry to press for each series.
         for (var MapEntry(key: mask, value: s) in layer.switched.entries) {

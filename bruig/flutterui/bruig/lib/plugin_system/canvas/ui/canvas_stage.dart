@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart'
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/code_live_preview.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
@@ -1703,11 +1704,24 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  /// _pressCodeRun answers a Run panel's Run button.
+  /// _pressCodeRun answers a Run panel's Run button; and a press on a
+  /// picked panel's preview opens it live, to be used.
   bool _pressCodeRun(CodeRunElement e, Offset doc) {
     var code = document.elementById(e.code);
     var runner = runnerOf(e, code is CodeElement ? code : null);
-    if (!codeRunBoxes(e, e.bounds, runner: runner).runButton.contains(doc)) {
+    var boxes = codeRunBoxes(e, e.bounds, runner: runner);
+    var picked =
+        controller.selection.length == 1 && controller.selection.first == e.id;
+    if (picked &&
+        !_shiftHeld &&
+        (boxes.preview?.contains(doc) ?? false) &&
+        e.result != null &&
+        (runner == CodeRunner.web || runner == CodeRunner.flutter)) {
+      controller.liveCode(e);
+      _mode = _DragMode.none;
+      return true;
+    }
+    if (!boxes.runButton.contains(doc)) {
       return false;
     }
     if (controller.selection.length != 1 ||
@@ -1835,6 +1849,31 @@ class CanvasStageState extends State<CanvasStage>
         }
         _focus.requestFocus();
       },
+    );
+  }
+
+  /// _codeLiveFor is the live preview over the Run panel open live.
+  Widget? _codeLiveFor() {
+    var id = controller.codeLive;
+    if (id == null) return null;
+    var e = document.elementById(id);
+    if (e is! CodeRunElement) return null;
+    var code = document.elementById(e.code);
+    if (code is! CodeElement) return null;
+    var entry = entryFile(e, code);
+    var runner = runnerOf(e, code);
+    var preview = codeRunBoxes(e, e.bounds, runner: runner).preview;
+    if (entry == null || preview == null) return null;
+    var tl = _toStage(preview.topLeft);
+    return CodeLivePreview(
+      key: ValueKey("codeLive-$id"),
+      runner: runner,
+      code: code,
+      entry: entry,
+      rect: Rect.fromLTWH(
+          tl.dx, tl.dy, preview.width * _scale, preview.height * _scale),
+      onLog: controller.liveCodeLog,
+      onSnap: (snap) => controller.codeLiveSnap = snap,
     );
   }
 
@@ -2240,6 +2279,9 @@ class CanvasStageState extends State<CanvasStage>
         controller.codeEditing != null) {
       return;
     }
+    // A press anywhere on the stage shuts a live preview (a press inside it
+    // goes to the preview itself).
+    if (controller.codeLive != null) controller.endLiveCode();
     _focus.requestFocus();
     // Looking through the camera, the page is drawn moved and a press would
     // land somewhere other than it looks: the press puts the page back, and
@@ -7429,6 +7471,7 @@ class CanvasStageState extends State<CanvasStage>
                 ),
               if (_editorFor() case var editor?) editor,
               if (_codeEditorFor() case var code?) code,
+              if (_codeLiveFor() case var live?) live,
               ..._codeTabCarried(),
               if (_typingField() case var typing?) typing,
               if (_brushRing() case var ring?) ring,

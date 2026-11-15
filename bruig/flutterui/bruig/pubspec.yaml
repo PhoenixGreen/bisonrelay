@@ -123,6 +123,11 @@ dependencies:
   # For hook/build.dart, which compiles the Flutter GPU shaders.
   hooks: ^2.2.0
   re_highlight: ^0.0.3
+  flutter_inappwebview: ^6.1.5
+  dart_eval: ^0.8.5
+  # A patched copy: see third_party/flutter_eval/PATCHES.md.
+  flutter_eval:
+    path: third_party/flutter_eval
 
 msix_config:
   display_name: Bison Relay GUI
@@ -199,6 +204,9 @@ flutter:
     - assets/canvas/cues/
     # The ready-made 3D cast's pictures, for the Characters list.
     - assets/canvas/character_cast/
+    # What a Run panel runs Go with (Yaegi as WebAssembly, and Go's
+    # wasm_exec.js): see assets/code/NOTICE.md.
+    - assets/code/
     # The Flutter GPU shaders hook/build.dart compiles, one folder for each
     # kind of GPU.
     - flutter_scene_generated/

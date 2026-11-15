@@ -3403,6 +3403,11 @@ class CanvasController extends ChangeNotifier {
   /// printed so far.
   final Map<String, List<CodeLog>> _codeRuns = {};
 
+  /// _codeLive is the Run panel open live, by id, and what it has printed;
+  /// codeLiveSnap takes its picture, set by the stage's live preview.
+  (String, List<CodeLog>)? _codeLive;
+  Future<List<int>?> Function()? codeLiveSnap;
+
   /// codeRunHost runs code for Run panels: set by the app (the browser and
   /// interpreters, see media/code_run_host.dart), a fake in the tests; null
   /// where code cannot be run.

@@ -1,5 +1,6 @@
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
@@ -102,6 +103,9 @@ void main() {
     expect(codeEl.file(runEl.entry)!.name, "main.py");
     expect(runEl.x, greaterThan(codeEl.bounds.right), reason: "beside it");
     expect(ctl.selection, {codeEl.id});
+    // The scene made long enough for the lesson.
+    expect(ctl.document.frames / ctl.document.frameRate,
+        greaterThan(codeEl.steps.last.at + codeEl.steps.last.length));
   });
 
   testWidgets("a tab carried onto another pane moves there; pressed, shown",
@@ -199,5 +203,26 @@ void main() {
     expect(run().result!.preview, "0123456789abcdef.png");
     expect(run().result!.runner, "Browser");
     expect(c.codeRunning(run().id), isFalse);
+  });
+
+  test("in a book: the code its own layer, the page run live over its picture",
+      () async {
+    var c = CanvasController(const CanvasDocument(frames: 2400, frameRate: 24));
+    addTearDown(c.dispose);
+    c.addCodeLesson(codeStarters.first);
+    var code = c.document.elements.whereType<CodeElement>().single;
+    var run = c.document.elements.whereType<CodeRunElement>().single;
+    c.replaceElement(run.copyWith(
+        result: CodeRunResult(runner: "Browser", at: DateTime.utc(2026))));
+    var built = (await buildEpubStage(c.document, 0,
+        pixels: 1, width: 1280, height: 720))!;
+    var runLayer = built.stage.layers.firstWhere((l) => l.id == run.id);
+    expect(runLayer.frame, isNotNull);
+    expect(runLayer.frame!.html, contains("#count {"),
+        reason: "its stylesheet in it");
+    expect(runLayer.frame!.html, isNot(contains("flutter_inappwebview")),
+        reason: "no app-only console catcher in a book");
+    expect(built.stage.layers.map((l) => l.id), contains(code.id),
+        reason: "its typing changes it");
   });
 }

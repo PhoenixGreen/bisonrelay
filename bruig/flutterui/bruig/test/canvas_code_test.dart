@@ -13,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show settledFrameOf;
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
@@ -261,6 +263,17 @@ void main() {
       // (app.js's own colour is that yellow too: its tab and its square.)
       expect(marks(lit), greaterThan(marks(typing) + 500));
     });
+  });
+
+  test("a page opens, and a book draws it, with the code typed in and run", () {
+    var e = starter("web");
+    var run = CodeRunElement(const ElementBase(id: "r"), code: e.id);
+    var doc = const CanvasDocument(frames: 2400, frameRate: 24)
+        .addElement(e)
+        .addElement(run);
+    var settled = settledFrameOf(doc);
+    expect(settled / 24, greaterThanOrEqualTo(runAt(run, e)!));
+    expect(settled / 24, lessThan(runAt(run, e)! + 0.1));
   });
 
   group("a Run panel", () {

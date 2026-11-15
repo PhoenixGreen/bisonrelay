@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
@@ -136,6 +139,18 @@ int settledFrameOf(CanvasDocument doc) {
   var times = motionTimesOf(doc);
   var rate = math.max(1, doc.frameRate);
   for (var e in doc.elements) {
+    // A Code panel has arrived once it is typed in, and its Run panel once
+    // it has run (when the typing ends, or as the scene starts): a page or
+    // a book shows the code whole, and what it made.
+    if (e is CodeElement && e.typing.on) {
+      last = math.max(last, (codePlan(e).end * rate).ceil());
+    }
+    if (e is CodeRunElement) {
+      var code = doc.elementById(e.code);
+      if (runAt(e, code is CodeElement ? code : null) case var at?) {
+        last = math.max(last, (at * rate).ceil());
+      }
+    }
     var m = e.base.motion;
     for (var p in m.placed) {
       var c = m.clip(p.clip);

@@ -40,7 +40,15 @@ extension CanvasCodes on CanvasController {
         code: code.id,
         entry: code.files[starter.entry].id,
         outputSize: fs * 0.9);
-    apply(_document.addElement(code).addElement(run));
+    // A scene too short for the lesson is made long enough for it: its
+    // typing, its lit lines and a moment after them.
+    var doc = _document.addElement(code).addElement(run);
+    var need = ((lessonLength(code) + 2) * doc.frameRate)
+        .ceil()
+        .clamp(1, maxFrameCount)
+        .toInt();
+    if (need > doc.frames) doc = doc.copyWith(frames: need);
+    apply(doc);
     selectOnly(code.id);
   }
 
