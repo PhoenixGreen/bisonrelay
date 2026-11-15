@@ -71,9 +71,42 @@ extension CanvasCodes on CanvasController {
   /// codeShowFor is how the stage shows Code panel [e]: the tabs picked by
   /// hand while paused, the pane being edited, and whether it plays.
   CodeShow codeShowFor(CodeElement e) => CodeShow(
+      onStage: true,
       picked: _codePicked[e.id] ?? const {},
       editing: _codeEditing?.$1 == e.id ? _codeEditing!.$2 : -1,
-      playing: playing);
+      playing: playing,
+      full: _codeFull.contains(e.id),
+      scroll: _codeScroll[e.id] ?? const {});
+
+  /// codeFull is whether Code panel [id] shows the whole of its code.
+  bool codeFull(String id) => _codeFull.contains(id);
+
+  /// toggleCodeFull shows the whole of [e]'s code and every lit step at
+  /// once -- or the scene's moment again. Paused, to be read.
+  void toggleCodeFull(CodeElement e) {
+    if (playing) pause();
+    if (!_codeFull.remove(e.id)) _codeFull.add(e.id);
+    _codeScroll.remove(e.id);
+    notifyListeners();
+  }
+
+  /// scrollCode scrolls pane [pane] of [e] by [by] on the page (down,
+  /// positive): by hand, from where it is, as far as its last line.
+  void scrollCode(CodeElement e, int pane, double by) {
+    var seconds = frame / _document.frameRate;
+    var show = codeShowFor(e);
+    var file = show.full
+        ? (show.picked[pane] ?? e.shownPanes[pane].shows)
+        : shownFile(e, pane, seconds, codePlan(e), picked: show.picked[pane]);
+    if (file == null) return;
+    var now = codeShownScroll(e, pane, seconds, show);
+    var next = (now + by / codeLineHeight(e.fontSize))
+        .clamp(0.0, codeScrollRoom(e, pane, file))
+        .toDouble();
+    if ((next - now).abs() < 1e-6) return;
+    (_codeScroll[e.id] ??= {})[pane] = next;
+    notifyListeners();
+  }
 
   /// playCode is Code panel [e]'s play button: playing, a pause; else the
   /// canvas played to its lesson's end -- from the start, where the
@@ -83,6 +116,7 @@ extension CanvasCodes on CanvasController {
       pause();
       return;
     }
+    _codeFull.remove(e.id);
     var span = lessonSpan(e);
     if (span == null) return;
     var rate = _document.frameRate;
@@ -179,5 +213,8 @@ extension CanvasCodes on CanvasController {
 
   /// _forgetCodePicks lets each pane show what its scene shows again:
   /// when it plays, or the playhead is moved by hand.
-  void _forgetCodePicks() => _codePicked.clear();
+  void _forgetCodePicks() {
+    _codePicked.clear();
+    _codeScroll.clear();
+  }
 }

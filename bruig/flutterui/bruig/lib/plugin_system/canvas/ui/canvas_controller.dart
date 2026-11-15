@@ -3,7 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart'
-    show CodeShow, codeShowOf;
+    show CodeShow, codeShowOf, codeLineHeight, codeScrollRoom, codeShownScroll;
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
@@ -3407,6 +3407,11 @@ class CanvasController extends ChangeNotifier {
   final Map<String, Map<int, String>> _codePicked = {};
   final Map<String, int> _codePane = {};
   (String, int)? _codeEditing;
+
+  /// _codeFull are the Code panels showing the whole of their code, and
+  /// _codeScroll each pane scrolled by hand, in lines.
+  final Set<String> _codeFull = {};
+  final Map<String, Map<int, double>> _codeScroll = {};
 
   /// _codeRuns are the Run panels running now, by id, and what each has
   /// printed so far.

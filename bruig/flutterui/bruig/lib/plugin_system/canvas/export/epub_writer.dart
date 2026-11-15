@@ -704,7 +704,7 @@ String _stageTag(
         // A Run panel's web page, run live over the picture of its last
         // run: its own document (srcdoc is read as HTML, so a page that
         // is not strict XHTML still runs), its scripts kept to itself.
-        if (layer.frame case var f?) {
+        for (var f in layer.frames) {
           var r = f.rect;
           out.add('  <iframe class="run" title="Run" '
               // Newlines kept as newlines: in XHTML an attribute's own

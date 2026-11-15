@@ -378,6 +378,12 @@ class CanvasStageState extends State<CanvasStage>
   /// _codeScrub is the Code panel whose playbar track is being dragged.
   String? _codeScrub;
 
+  /// _codeOver is the Code panel and pane whose code the pointer is over:
+  /// the wheel and two fingers scroll it there, not the page. _codePinch
+  /// is one a two-finger slide began over.
+  (String, int)? _codeOver;
+  (String, int)? _codePinch;
+
   /// _inLive is a press that began on a live preview: the page's, which the
   /// stage leaves alone until it is let go.
   bool _inLive = false;
@@ -1684,6 +1690,10 @@ class CanvasStageState extends State<CanvasStage>
         controller.playCode(e);
         _mode = _DragMode.none;
         return true;
+      case CodePlayHit(part: CodePlayPart.full):
+        controller.toggleCodeFull(e);
+        _mode = _DragMode.none;
+        return true;
       case CodePlayHit(part: CodePlayPart.restart):
         controller.restartCode(e);
         _mode = _DragMode.none;
@@ -1921,6 +1931,33 @@ class CanvasStageState extends State<CanvasStage>
       onLog: controller.liveCodeLog,
       onSnap: (snap) => controller.codeLiveSnap = snap,
     );
+  }
+
+  /// _hoverCode notes the pane of code under the pointer, if any: while
+  /// there, the page's scroll views hold still and the pane scrolls.
+  void _hoverCode(Offset stage) {
+    var over = _codePaneAt(stage);
+    if (over != _codeOver) setState(() => _codeOver = over);
+  }
+
+  /// _codePaneAt is the Code panel and pane whose code is at [stage].
+  (String, int)? _codePaneAt(Offset stage) {
+    var doc = _toDocument(stage);
+    var e = _hitElement(doc);
+    if (e is CodeElement && controller.codeEditing == null) {
+      if (codeHitAt(e, doc) case CodePaneHit(:var pane, inTabs: false)) {
+        return (e.id, pane);
+      }
+    }
+    return null;
+  }
+
+  /// _scrollCodeBy scrolls the pane [at] by [by] on the stage, down
+  /// positive.
+  void _scrollCodeBy((String, int) at, double by) {
+    var e = document.elementById(at.$1);
+    if (e is! CodeElement) return;
+    controller.scrollCode(e, at.$2, by / (_scale == 0 ? 1 : _scale));
   }
 
   /// _pressMetronome answers a metronome's buttons.
@@ -6753,6 +6790,7 @@ class CanvasStageState extends State<CanvasStage>
   /// _updateHover keeps the renderer told which button is under the pointer.
   void _updateHover(Offset stage) {
     _hoverAt = stage;
+    _hoverCode(stage);
     // For a Look at that faces the pointer.
     controller.stagePointer = _toDocument(stage);
     // The tile to be laid follows the pointer over a map being painted.
@@ -6919,7 +6957,9 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _scrollPhysics holds a page that scrolls still while it is locked.
   ScrollPhysics? get _scrollPhysics =>
-      controller.pageLocked ? const NeverScrollableScrollPhysics() : null;
+      controller.pageLocked || _codeOver != null
+          ? const NeverScrollableScrollPhysics()
+          : null;
 
   /// _pinchScale is the last scale of a pinch steering the camera.
   double _pinchScale = 1;
@@ -6973,6 +7013,8 @@ class CanvasStageState extends State<CanvasStage>
   ({double zoom, Offset pan, double scale, Offset doc})? _pinch;
 
   void _onPinchStart(PointerPanZoomStartEvent e) {
+    // Two fingers over a pane of code: they scroll it.
+    _codePinch = _codePaneAt(e.localPosition);
     // Locked, the page does not zoom: on a stage the fingers steer its
     // camera instead (see _onPinchUpdate).
     if (controller.pageLocked) {
@@ -6990,6 +7032,10 @@ class CanvasStageState extends State<CanvasStage>
   /// _onPinchUpdate zooms as the fingers spread or close, about where they
   /// are. A two-finger slide alone is the scroll views' to scroll.
   void _onPinchUpdate(PointerPanZoomUpdateEvent e) {
+    if (_codePinch case var at? when (e.scale - 1).abs() < 0.01) {
+      _scrollCodeBy(at, -e.panDelta.dy);
+      return;
+    }
     if (controller.pageLocked) {
       if (!controller.onStage3d) return;
       _steering();
@@ -7012,7 +7058,10 @@ class CanvasStageState extends State<CanvasStage>
         doc: p.doc, pan: p.pan, scale: p.scale);
   }
 
-  void _onPinchEnd(PointerPanZoomEndEvent e) => _pinch = null;
+  void _onPinchEnd(PointerPanZoomEndEvent e) {
+    _pinch = null;
+    _codePinch = null;
+  }
 
   // ------------------------------------------------------------------------
 
@@ -7338,7 +7387,10 @@ class CanvasStageState extends State<CanvasStage>
                 onPointerPanZoomEnd: _onPinchEnd,
                 child: MouseRegion(
                   cursor: _cursor(),
-                  onExit: (_) => controller.stagePointer = null,
+                  onExit: (_) {
+                    controller.stagePointer = null;
+                    if (_codeOver != null) setState(() => _codeOver = null);
+                  },
                   // Clipped to the stage's own box as well as the frame inside it: a
                   // CustomPainter may draw outside its bounds, and a zoomed canvas would
                   // paint over the sidebar, the band and the timeline.
@@ -7837,6 +7889,14 @@ class CanvasStageState extends State<CanvasStage>
   /// scrolls with the wheel.
   void _onPointerSignal(PointerSignalEvent signal) {
     if (signal is! PointerScrollEvent) return;
+    // Over a pane of code, the wheel scrolls it.
+    if (_codeOver case var at?) {
+      GestureBinding.instance.pointerSignalResolver.register(
+          signal,
+          (event) =>
+              _scrollCodeBy(at, (event as PointerScrollEvent).scrollDelta.dy));
+      return;
+    }
     // Locked, the wheel is claimed before the scroll views see it: on a
     // stage it steers the camera, on a page it does nothing.
     if (controller.pageLocked) {

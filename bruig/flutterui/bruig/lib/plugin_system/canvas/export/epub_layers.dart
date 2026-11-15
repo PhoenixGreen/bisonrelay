@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/render/code_html.dart';
+import 'package:bruig/plugin_system/canvas/render/code_painter.dart'
+    show codeBoxes;
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart'
     show codeRunBoxes;
@@ -229,9 +232,9 @@ class EpubLayer {
   /// keyboard is it as an instrument the reader plays, where it is one.
   final EpubKeyboard? keyboard;
 
-  /// frame is a page run live over it: a Run panel's web page, in a frame
-  /// of its own in the book. Null for anything else.
-  final EpubFrame? frame;
+  /// frames are pages over it, in frames of their own in the book: a Run
+  /// panel's web page, run live; a Code panel's files, to be scrolled.
+  final List<EpubFrame> frames;
 
   const EpubLayer({
     required this.id,
@@ -248,7 +251,7 @@ class EpubLayer {
     this.reactions = const [],
     this.controls = const [],
     this.keyboard,
-    this.frame,
+    this.frames = const [],
   });
 
   /// moves is whether anything on it changes with the playhead.
@@ -497,7 +500,7 @@ Future<StageResult?> buildEpubStage(
   var changing = <String>{};
   for (var e in drawn) {
     // A Run panel whose page runs live in the book: a layer of its own.
-    if (_liveFrame(e, page, pixels) != null) moving.add(e.id);
+    if (_liveFrames(e, page, pixels).isNotEmpty) moving.add(e.id);
     if (e is BackgroundElement) continue;
     var changes = _changes(e, frames, page) || keyedVideo(e);
     if (changes) changing.add(e.id);
@@ -683,7 +686,7 @@ Future<StageResult?> buildEpubStage(
                     l.keyboard!.sound,
                     l.keyboard!.low,
                     l.keyboard!.step),
-            frame: l.frame,
+            frames: l.frames,
           ),
         _ => item,
       },
@@ -924,8 +927,10 @@ class _LayerMaker {
 
   Future<EpubLayer> make({required bool hovers}) async {
     var layer = await _make(hovers: hovers);
-    // A Run panel's web page, run live over the picture of its last run.
-    if (_liveFrame(e, page, pixels) case var frame?) {
+    // A Run panel's web page, run live over the picture of its last run;
+    // a Code panel's files over its panes, to be scrolled.
+    var frames = _liveFrames(e, page, pixels);
+    if (frames.isNotEmpty) {
       return EpubLayer(
           id: layer.id,
           visible: layer.visible,
@@ -941,7 +946,7 @@ class _LayerMaker {
           reactions: layer.reactions,
           controls: layer.controls,
           keyboard: layer.keyboard,
-          frame: frame);
+          frames: frames);
     }
     return layer;
   }
@@ -2385,20 +2390,33 @@ class EpubFrame {
   const EpubFrame(this.rect, this.html);
 }
 
-/// _liveFrame is [e]'s page run live in a book, where [e] is a Run panel
-/// that has run a web page: its page, without the app's console catcher.
-EpubFrame? _liveFrame(CanvasElement e, CanvasDocument page, double pixels) {
-  if (e is! CodeRunElement || e.result == null) return null;
+/// _liveFrames are [e]'s pages in frames of their own in a book: a Run
+/// panel's web page, run live (without the app's console catcher), where
+/// it has run one; each pane of a Code panel, the file it shows -- whole,
+/// to be scrolled and read.
+List<EpubFrame> _liveFrames(
+    CanvasElement e, CanvasDocument page, double pixels) {
+  Rect onPage(Rect r) => Rect.fromLTRB(
+      r.left * pixels, r.top * pixels, r.right * pixels, r.bottom * pixels);
+  if (e is CodeElement) {
+    var boxes = codeBoxes(e, e.bounds);
+    return [
+      for (var (i, p) in e.shownPanes.indexed)
+        if (i < boxes.panes.length)
+          if (p.shows case var id?)
+            if (e.file(id) case var f?)
+              EpubFrame(onPage(boxes.panes[i].code),
+                  codeFileHtml(e, f, px: e.fontSize * pixels)),
+    ];
+  }
+  if (e is! CodeRunElement || e.result == null) return const [];
   var code = page.elementById(e.code);
-  if (code is! CodeElement) return null;
+  if (code is! CodeElement) return const [];
   var entry = entryFile(e, code);
-  if (entry == null || runnerOf(e, code) != CodeRunner.web) return null;
+  if (entry == null || runnerOf(e, code) != CodeRunner.web) return const [];
   var preview = codeRunBoxes(e, e.bounds, runner: CodeRunner.web).preview;
-  if (preview == null) return null;
-  return EpubFrame(
-      Rect.fromLTRB(preview.left * pixels, preview.top * pixels,
-          preview.right * pixels, preview.bottom * pixels),
-      webPage(code, entry, head: ""));
+  if (preview == null) return const [];
+  return [EpubFrame(onPage(preview), webPage(code, entry, head: ""))];
 }
 
 /// _codeRunSpan is, while a page's layers are made, each Run panel's frame
@@ -2430,15 +2448,12 @@ void codeRunSpans(CanvasDocument doc) {
     CanvasElement e, int frames, Keyframe Function(int frame)? poseAt,
     {int rate = 24}) {
   var all = (0, frames - 1);
-  int at(double seconds) =>
-      (seconds * rate).round().clamp(0, frames - 1).toInt();
   switch (e) {
-    // A Code panel changes as it types and lights its lines; a Run panel
+    // A Code panel holds still in a book: its files are frames over its
+    // panes, whole, to be scrolled (see _liveFrames). A Run panel changes
     // when it runs, from waiting to its run.
-    case CodeElement c:
-      var end = lessonLength(c);
-      if (end <= 0) return null;
-      return (at(c.typing.on ? c.typing.start : 0), at(end));
+    case CodeElement _:
+      return null;
     case CodeRunElement r:
       // Its Code panel is not to hand here: when it runs is after its
       // typing, worked out where the page is (see _codeRunSpan).

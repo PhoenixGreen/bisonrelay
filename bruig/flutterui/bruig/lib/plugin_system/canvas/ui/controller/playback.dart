@@ -89,8 +89,9 @@ extension CanvasPlayback on CanvasController {
   void play() {
     // A stop waiting for an action is waited for no longer.
     _endWait();
-    // Each Code panel's panes show what the scene shows again.
+    // Each Code panel's panes show what the scene shows again, its clock's.
     _forgetCodePicks();
+    _codeFull.clear();
     // Playing only the slots: Play is the timeline's -- the slots stop, and
     // the piece plays from its playhead.
     if (_sessionOnly) {

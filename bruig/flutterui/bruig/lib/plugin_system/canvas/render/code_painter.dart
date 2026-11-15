@@ -209,7 +209,7 @@ TextSpan codeSpan(
 }
 
 /// CodePlayPart is a part of a Code panel's playbar.
-enum CodePlayPart { restart, play, track }
+enum CodePlayPart { full, restart, play, track }
 
 /// codePlaybar is where [e]'s playbar's parts are in its window bar [bar];
 /// empty where it shows none, or there is no lesson to play.
@@ -223,8 +223,10 @@ Map<CodePlayPart, Rect> codePlaybar(CodeElement e, Rect? bar) {
   var track = Rect.fromLTWH(right - trackW, bar.center.dy - b / 2, trackW, b);
   var play = Rect.fromLTWH(track.left - gap - b, bar.center.dy - b / 2, b, b);
   var restart = Rect.fromLTWH(play.left - gap * 0.6 - b, play.top, b, b);
-  if (restart.left < bar.left + fs * 8) return const {};
+  var full = Rect.fromLTWH(restart.left - gap * 1.4 - b, play.top, b, b);
+  if (full.left < bar.left + fs * 8) return const {};
   return {
+    CodePlayPart.full: full,
     CodePlayPart.restart: restart,
     CodePlayPart.play: play,
     CodePlayPart.track: track,
@@ -235,12 +237,25 @@ Map<CodePlayPart, Rect> codePlaybar(CodeElement e, Rect? bar) {
 /// lesson's track with the typing's end and each lit step marked, and the
 /// time.
 void _paintPlaybar(Canvas canvas, CodeElement e, CodeColours c,
-    Map<CodePlayPart, Rect> parts, double seconds, bool playing) {
+    Map<CodePlayPart, Rect> parts, double seconds, bool playing,
+    {bool full = false}) {
   var span = lessonSpan(e);
   if (span == null || parts.isEmpty) return;
   var fs = e.fontSize;
   var key = Paint()..color = c.line;
   var ink = Paint()..color = c.fg;
+  // Full code: the whole of it, by nobody's clock -- lit while it shows.
+  var f = parts[CodePlayPart.full]!;
+  canvas.drawRRect(RRect.fromRectAndRadius(f, Radius.circular(fs * 0.35)),
+      Paint()..color = full ? codeMark : c.line);
+  var fu = f.width * 0.2;
+  var lines = Paint()..color = full ? const Color(0xFF1D1606) : c.fg;
+  for (var (i, w) in [(-1, 2.0), (0, 1.4), (1, 1.8)]) {
+    canvas.drawRect(
+        Rect.fromLTWH(f.center.dx - fu, f.center.dy + i * fu * 0.8 - fu * 0.15,
+            fu * w, fu * 0.3),
+        lines);
+  }
   for (var part in [CodePlayPart.restart, CodePlayPart.play]) {
     var r = parts[part]!;
     canvas.drawRRect(
@@ -479,8 +494,25 @@ class CodeShow {
 
   /// playing is whether the canvas is playing: its playbar shows pause.
   final bool playing;
+
+  /// full shows the whole of its code and every lit step at once, by
+  /// nobody's clock (its playbar's Full code button).
+  final bool full;
+
+  /// scroll is each pane scrolled by hand, in lines, over what the scene
+  /// has it showing.
+  final Map<int, double> scroll;
+
+  /// onStage is whether it is drawn on the stage, where its playbar can
+  /// be pressed: not in a video or a book.
+  final bool onStage;
   const CodeShow(
-      {this.picked = const {}, this.editing = -1, this.playing = false});
+      {this.onStage = false,
+      this.picked = const {},
+      this.editing = -1,
+      this.playing = false,
+      this.full = false,
+      this.scroll = const {}});
 }
 
 /// codeShowOf is how the stage shows each Code panel, set by the
@@ -527,14 +559,15 @@ void paintCode(Canvas canvas, Rect box, CodeElement e,
       canvas.drawCircle(Offset(bar.left + fs * (1.2 + i * 1.05), bar.center.dy),
           fs * 0.34, Paint()..color = c.line);
     }
-    var play = codePlaybar(e, bar);
+    var play =
+        show.onStage ? codePlaybar(e, bar) : const <CodePlayPart, Rect>{};
     var titleRoom = play.isEmpty
         ? bar.width - fs * 5.5
-        : play[CodePlayPart.restart]!.left - bar.left - fs * 5.2;
+        : play[CodePlayPart.full]!.left - bar.left - fs * 5.2;
     _text(canvas, e.title, Offset(bar.left + fs * 4.6, bar.center.dy),
         _uiSize(e), c.dim,
         maxWidth: math.max(0, titleRoom));
-    _paintPlaybar(canvas, e, c, play, seconds, show.playing);
+    _paintPlaybar(canvas, e, c, play, seconds, show.playing, full: show.full);
   }
 
   var plan = codePlan(e);
@@ -615,8 +648,13 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
     CodePlan plan, List<CodeStep> lit, double seconds, CodeShow show) {
   var fs = e.fontSize;
   var ui = _uiSize(e);
-  var shown =
-      shownFile(e, pane.index, seconds, plan, picked: show.picked[pane.index]);
+  var shown = show.full
+      ? (show.picked[pane.index] ??
+          (pane.index < e.shownPanes.length
+              ? e.shownPanes[pane.index].shows
+              : null))
+      : shownFile(e, pane.index, seconds, plan,
+          picked: show.picked[pane.index]);
 
   // Its tabs.
   canvas.drawRect(pane.tabRow, Paint()..color = c.side);
@@ -685,7 +723,7 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
     return;
   }
 
-  var typed = typedCount(e, f.id, seconds, plan);
+  var typed = show.full ? f.text.length : typedCount(e, f.id, seconds, plan);
   var span = plan.files[f.id];
   // The caret only in the file being typed now, not one waiting its turn.
   var typing = typed < f.text.length &&
@@ -700,15 +738,20 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
   var digits = math.max(2, "${allLines.length}".length);
   var gutter = e.lineNumbers ? digits * charW + fs * 1.6 : fs * 0.5;
   var textLeft = pane.code.left + gutter;
-  var scroll = codeScrollLines(e, pane, f.id, typed, f.text, lit);
+  // Lit: as the clock has it; shown whole, every step of the file.
+  var here = [
+    for (var s in show.full ? e.steps : lit)
+      if (s.file == f.id) s
+  ];
+  // Scrolled by hand, where it has been; else as the scene has it.
+  var scroll = show.scroll[pane.index] ??
+      (show.full
+          ? 0.0
+          : codeScrollLines(e, pane, f.id, typed, f.text, lit).toDouble());
   var top = pane.code.top + pad - scroll * lh;
 
   // Lit lines: a band, a marker, the rest dimmed (for the first), and the
   // note beside them.
-  var here = [
-    for (var s in lit)
-      if (s.file == f.id) s
-  ];
   for (var s in here) {
     var from = s.from.clamp(1, allLines.length),
         to = s.to.clamp(from, allLines.length);
@@ -752,7 +795,7 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
   }
   tp.dispose();
 
-  if (here.isNotEmpty && e.dim) {
+  if (here.isNotEmpty && e.dim && !show.full) {
     var s = here.first;
     var from = s.from.clamp(1, allLines.length),
         to = s.to.clamp(from, allLines.length);
@@ -969,4 +1012,32 @@ double codeTrackSeconds(CodeElement e, Offset point) {
   var end = lessonSpan(e)?.$2 ?? 0;
   if (t == null) return 0;
   return end * ((point.dx - t.left) / t.width).clamp(0.0, 1.0);
+}
+
+/// codeScrollRoom is how many lines pane [pane] of [e] can be scrolled
+/// down showing [file]: as far as its last line at the pane's foot.
+double codeScrollRoom(CodeElement e, int pane, String file) {
+  var b = codeBoxes(e, e.bounds);
+  var f = e.file(file);
+  if (pane < 0 || pane >= b.panes.length || f == null) return 0;
+  var lh = codeLineHeight(e.fontSize);
+  var fits = (b.panes[pane].code.height - codeTextPad(e) * 2) / lh;
+  return math.max(0, f.text.split("\n").length - fits + 1);
+}
+
+/// codeShownScroll is how far pane [pane] of [e] is scrolled now, in
+/// lines: by hand where it has been, else as the scene has it at
+/// [seconds].
+double codeShownScroll(CodeElement e, int pane, double seconds, CodeShow show) {
+  var b = codeBoxes(e, e.bounds);
+  if (pane < 0 || pane >= b.panes.length) return 0;
+  if (show.scroll[pane] case var s?) return s;
+  if (show.full) return 0;
+  var plan = codePlan(e);
+  var file = shownFile(e, pane, seconds, plan, picked: show.picked[pane]);
+  var f = file == null ? null : e.file(file);
+  if (f == null) return 0;
+  return codeScrollLines(e, b.panes[pane], f.id,
+          typedCount(e, f.id, seconds, plan), f.text, litSteps(e, seconds))
+      .toDouble();
 }

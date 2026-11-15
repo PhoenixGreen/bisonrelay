@@ -1,3 +1,5 @@
+import 'package:flutter/gestures.dart';
+import 'dart:ui' as ui;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
@@ -229,13 +231,19 @@ void main() {
     var built = (await buildEpubStage(c.document, 0,
         pixels: 1, width: 1280, height: 720))!;
     var runLayer = built.stage.layers.firstWhere((l) => l.id == run.id);
-    expect(runLayer.frame, isNotNull);
-    expect(runLayer.frame!.html, contains("#count {"),
+    expect(runLayer.frames, hasLength(1));
+    expect(runLayer.frames.single.html, contains("#count {"),
         reason: "its stylesheet in it");
-    expect(runLayer.frame!.html, isNot(contains("flutter_inappwebview")),
+    expect(runLayer.frames.single.html, isNot(contains("flutter_inappwebview")),
         reason: "no app-only console catcher in a book");
-    expect(built.stage.layers.map((l) => l.id), contains(code.id),
-        reason: "its typing changes it");
+    // The code: a frame over each pane, its file whole, to be scrolled.
+    var codeLayer = built.stage.layers.firstWhere((l) => l.id == code.id);
+    expect(codeLayer.frames, hasLength(3));
+    var page = codeLayer.frames.first.html;
+    expect(page, contains("overflow:auto"));
+    expect(page, contains("&lt;/html&gt;"), reason: "the whole of index.html");
+    expect(page, contains("The page pulls in style.css"),
+        reason: "its lit steps' notes");
   });
 
   test("a project begun again as another kind: its files, empty", () {
@@ -522,6 +530,86 @@ void main() {
       var quick = ctl.document.elementById(e.id) as CodeElement;
       expect(quick.typing.speed, greaterThan(moved.typing.speed));
       expect(codePlan(quick).end, lessThan(end - 3));
+    });
+  });
+
+  group("reading the code", () {
+    testWidgets(
+        "over a pane, the wheel and two fingers scroll it, not the page",
+        (tester) async {
+      await stage(tester, "flutter");
+      var e = code();
+      var pane = codeBoxes(e, e.bounds).panes[0].code;
+      var p = at(pane.center);
+      var pan = c.pan;
+      var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: p);
+      await mouse.moveTo(p);
+      await tester.pump();
+      tester.binding.handlePointerEvent(
+          PointerScrollEvent(position: p, scrollDelta: const Offset(0, 120)));
+      await tester.pump();
+      var scrolled = c.codeShowFor(code()).scroll[0];
+      expect(scrolled, greaterThan(0), reason: "the pane scrolled down");
+      expect(c.pan, pan, reason: "the page did not move");
+      // Two fingers up: back towards the top.
+      var pad = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      await pad.panZoomStart(p);
+      await pad.panZoomUpdate(p, pan: const Offset(0, 40));
+      await pad.panZoomEnd();
+      await tester.pump();
+      expect(c.codeShowFor(code()).scroll[0], lessThan(scrolled!));
+      // No further than its last line.
+      for (var i = 0; i < 20; i++) {
+        tester.binding.handlePointerEvent(
+            PointerScrollEvent(position: p, scrollDelta: const Offset(0, 400)));
+      }
+      await tester.pump();
+      expect(c.codeShowFor(code()).scroll[0],
+          closeTo(codeScrollRoom(code(), 0, "f1"), 1e-6));
+      // Played, it goes back to the scene's own.
+      c.frame = 10;
+      expect(c.codeShowFor(code()).scroll, isEmpty);
+      await mouse.removePointer();
+    });
+
+    testWidgets("Full code: the whole of it, and every lit step, by no clock",
+        (tester) async {
+      await stage(tester, "web");
+      var e = code();
+      c.frame = 0;
+      var full = codePlaybar(e, codeBoxes(e, e.bounds).bar)[CodePlayPart.full]!;
+      await tester.tapAt(at(full.center));
+      await tester.pump();
+      expect(c.codeFull(e.id), isTrue);
+      expect(c.codeShowFor(e).full, isTrue);
+      // Drawn so: everything typed though the scene has typed nothing, and
+      // a note beside each of a file's lit steps.
+      Future<int> marks(CodeShow show) async {
+        var rec = ui.PictureRecorder();
+        paintCode(ui.Canvas(rec), e.bounds.shift(-e.bounds.topLeft), e,
+            seconds: 0, show: show);
+        var img =
+            await rec.endRecording().toImage(e.width.ceil(), e.height.ceil());
+        var d = (await img.toByteData())!;
+        var n = 0;
+        for (var i = 0; i < d.lengthInBytes; i += 4) {
+          if (d.getUint8(i) == 0xF2 &&
+              d.getUint8(i + 1) == 0xC1 &&
+              d.getUint8(i + 2) == 0x4E) {
+            n++;
+          }
+        }
+        return n;
+      }
+
+      var shown = await tester.runAsync(() => marks(c.codeShowFor(e)));
+      var plain = await tester.runAsync(() => marks(const CodeShow()));
+      expect(shown!, greaterThan(plain! + 300), reason: "the notes are there");
+      // Played, it goes back to the scene's moment.
+      c.playCode(e);
+      expect(c.codeFull(e.id), isFalse);
+      c.pause();
     });
   });
 }
