@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -226,5 +227,44 @@ void main() {
     var back = elementFromJson(e.copyWith(showDiagrams: false).toJson())
         as SheetElement;
     expect(back.showDiagrams, isFalse);
+  });
+
+  // Ken, 2026-11-15: "open string markings should be open circles not
+  // filled circles, and strings that shouldn't be played should be "X"".
+  test("by the nut: an open string a ring, a string not played crossed",
+      () async {
+    var part = const InstrumentPart(look: InstrumentLook.guitar);
+    const box = Rect.fromLTWH(0, 0, 900, 240);
+    var layout = keyboardLayout(part, box);
+    var c = guitarChord("C")!; // x32010
+    var rec = ui.PictureRecorder();
+    paintKeyboard(ui.Canvas(rec), box, part,
+        lit: c.keysOn(guitarStrings).toSet(),
+        places: {
+          for (var (s, f) in c.places) guitarStrings[s] + f: (s, f),
+        },
+        accent: const Color(0xFFFF0000));
+    var img = await rec.endRecording().toImage(900, 240);
+    var raw = (await img.toByteData())!;
+    bool red(Offset o) {
+      var i = (o.dy.round() * 900 + o.dx.round()) * 4;
+      return raw.getUint8(i) > 200 &&
+          raw.getUint8(i + 1) < 80 &&
+          raw.getUint8(i + 2) < 80;
+    }
+
+    // By the nut: string [s]'s place, open (fret 0).
+    Offset nutOf(int s) => layout.keys[s * (frets + 1)].rect.center;
+    var g = nutOf(3), lowE = nutOf(0);
+    expect(red(g), isFalse, reason: "the G string open: a ring, hollow");
+    var band = layout.keys[0].rect.height;
+    expect(
+        [
+          for (var dx = -band * 0.3; dx <= band * 0.3; dx += 1)
+            red(g + Offset(dx, 0))
+        ].contains(true),
+        isTrue,
+        reason: "its ring");
+    expect(red(lowE), isTrue, reason: "the low E not played: crossed");
   });
 }

@@ -79,12 +79,15 @@ extension CanvasSynths on CanvasController {
       ..reset()
       ..start();
     _synthTick = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      // As long as it has been -- a slow frame caught up -- and never less
+      // than a tick's worth.
       var samples = (_synthClock.elapsedMicroseconds * mixRate / 1e6)
           .round()
-          .clamp(0, mixRate ~/ 10);
+          .clamp(mixRate * 33 ~/ 1000, mixRate ~/ 10);
       _synthClock
         ..reset()
         ..start();
+      _synthSeconds += samples / mixRate;
       for (var w in _synthWatches.values) {
         w.advance(samples);
       }
@@ -102,7 +105,11 @@ extension CanvasSynths on CanvasController {
   /// reaches is making of it -- its sound, its level, where its envelope
   /// is.
   SynthShow synthShowFor(SynthModuleElement e, int frame) {
-    var seconds = frame / math.max(1, _document.frameRate);
+    // The timeline's time while it plays; the screens' own while a key
+    // sounds by itself, so an LFO's lamp beats.
+    var seconds = playing || _synthTick == null
+        ? frame / math.max(1, _document.frameRate)
+        : _synthSeconds;
     if (e.module == SynthModuleKind.keys) {
       return SynthShow(seconds: seconds, held: synthHeld(e.id));
     }
@@ -138,11 +145,26 @@ extension CanvasSynths on CanvasController {
       if (e is! SynthModuleElement || e.module != SynthModuleKind.out) continue;
       var ch = synthChannel(e);
       var patch = ch?.instrument?.patch;
-      if (ch == null || patch == null || patch.lanes.isEmpty) continue;
+      if (ch == null || patch == null) continue;
       var t = (_frame - ch.clip.at) / math.max(1, _document.frameRate);
       var now = patch.at(t);
-      audio.livePatch(e.channel, now);
-      _synthWatches[e.id]?.patch = now;
+      if (patch.lanes.isNotEmpty) audio.livePatch(e.channel, now);
+      // The timeline's notes on it watched for the screens, as a key held
+      // on the keyboard module is -- which wins while it is held.
+      if (_synthPressed.values.any((k) => k.isNotEmpty)) {
+        _synthWatches[e.id]?.patch = now;
+        continue;
+      }
+      var sounding = ch.instrument!.sounding(t);
+      var w = _synthWatches[e.id];
+      if (sounding.isNotEmpty &&
+          (w == null || w.released || !sounding.contains(w.key))) {
+        _synthWatches[e.id] = PatchWatch(now, sounding.reduce(math.max));
+        _synthTicking();
+      } else if (w != null) {
+        w.patch = now;
+        if (sounding.isEmpty && !w.released) w.release();
+      }
     }
   }
 
@@ -174,6 +196,18 @@ extension CanvasSynths on CanvasController {
   void unplugSynth(SynthModuleElement into, String input) {
     replaceElement(into.unplugged(input));
     _synthLive();
+  }
+
+  /// bigSynth makes [e]'s screen big, or as it was: the module as much
+  /// taller as its screen grows, at the scale it is drawn, its width kept.
+  void bigSynth(SynthModuleElement e, bool big) {
+    if (e.big == big) return;
+    var was = synthPanelFor(e);
+    var scale = synthPanelFit(e.bounds, was).$1;
+    var now = synthPanelOf(e.module, width: was.width, big: big);
+    var next = e.copyWith(big: big);
+    replaceElement(
+        next.withBase(height: e.height + (now.height - was.height) * scale));
   }
 
   /// resetSynth puts [e]'s settings back to the starting point (↺).

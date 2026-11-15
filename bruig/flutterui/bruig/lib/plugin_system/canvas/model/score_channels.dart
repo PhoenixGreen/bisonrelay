@@ -68,3 +68,35 @@ CanvasDocument scoreRemoved(CanvasDocument doc, String id) {
   var p = s?.partById(part.score.substring(i + 1));
   return s == null || p == null ? null : (s, p);
 }
+
+final Expando<Map<String, (List<ScoreNote>, Map<String, int>)>> _handNotes =
+    Expando("handNotes");
+
+/// scoreLeftHand are the keys of [part]'s notes sounding [seconds] in that
+/// its score writes on a second staff -- a piano's bass staff, the left
+/// hand's -- to be lit in the left hand's colour (Ken, 2026-11-15:
+/// "different colours ... to demonstrate which hand is playing which
+/// part"). Empty for a part of one staff, or one not from a score.
+Set<int> scoreLeftHand(
+    CanvasDocument doc, InstrumentPart part, double seconds) {
+  var found = scorePartOf(doc, part);
+  if (found == null) return const {};
+  var (score, p) = found;
+  if (p.staves.length < 2) return const {};
+  var kept = _handNotes[score] ??= {};
+  var (notes, staffOf) = kept[p.id] ??= (
+    score.partNotes(p.id),
+    {
+      for (var (i, st) in p.staves.indexed)
+        for (var b in st.bars)
+          for (var e in b) e.id: i
+    }
+  );
+  return {
+    for (var n in notes)
+      if (seconds >= n.note.start &&
+          seconds < n.note.end &&
+          (staffOf[n.event] ?? 0) >= 1)
+        n.note.key,
+  };
+}

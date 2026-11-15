@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -70,7 +71,7 @@ SynthModuleElement of(CanvasController c, SynthModuleKind kind) =>
 
 /// on is panel point [q] of [e], in document space.
 Offset on(SynthModuleElement e, Offset q) {
-  var (s, at) = synthPanelFit(e.bounds, synthPanelOf(e.module));
+  var (s, at) = synthPanelFit(e.bounds, synthPanelFor(e));
   return at + q * s;
 }
 
@@ -746,5 +747,80 @@ void main() {
           reason: "the cables, a picture over every module");
       c.dispose();
     });
+  });
+
+  // Ken, 2026-11-15: "make the scopes bigger ... strech the modules to make
+  // the scopes wider".
+  test("stretched, a module's screen widens; big, it grows taller", () {
+    var c = CanvasController(page, audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.addSynthRack();
+    var env = of(c, SynthModuleKind.env);
+    var plain = synthPanelFor(env);
+    expect(plain.width, synthPanelWidth);
+    c.replaceElement(env.withBase(width: env.width * 2));
+    var wide = synthPanelFor(of(c, SynthModuleKind.env));
+    expect(wide.width, closeTo(2 * synthPanelWidth, 1));
+    expect(wide.screen!.width, greaterThan(plain.screen!.width * 1.9));
+    expect(wide.outs["env"]!.dx, greaterThan(wide.width - 30),
+        reason: "its jacks at its edges still");
+    var scale = synthScaleOf(of(c, SynthModuleKind.env));
+    c.bigSynth(of(c, SynthModuleKind.env), true);
+    var big = of(c, SynthModuleKind.env);
+    expect(big.big, isTrue);
+    var bp = synthPanelFor(big);
+    expect(
+        bp.screen!.height, closeTo(plain.screen!.height * synthBigScreen, 1));
+    expect(synthScaleOf(big), closeTo(scale, 1e-6),
+        reason: "drawn at the scale it was: taller, not smaller");
+    expect(bp.width, closeTo(wide.width, 1));
+    // Its header's button does it on the stage too: the part is there.
+    expect(synthPartAt(big, on(big, bp.big!.center))!.kind, SynthPartKind.big);
+    var back = elementFromJson(big.toJson()) as SynthModuleElement;
+    expect(back.big, isTrue);
+  });
+
+  test("the timeline's notes on a speaker show on its modules' screens",
+      () async {
+    var c = CanvasController(page, audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.addSynthRack();
+    var ch = c.synthChannel(of(c, SynthModuleKind.out))!;
+    c.replaceElement(ch.copyWith(
+        instrument:
+            ch.instrument!.copyWith(notes: const [MidiNote(69, 0, 2, 100)])));
+    var osc = of(c, SynthModuleKind.osc);
+    expect(c.synthShowFor(osc, 0).wave, isNull);
+    c.play();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    var wave = c.synthShowFor(osc, c.frame).wave;
+    c.pause();
+    expect(wave, isNotNull, reason: "watched as the timeline plays it");
+    expect(wave!.length, greaterThan(100));
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+  });
+
+  testWidgets("the stage redraws a held key's screens as they tick",
+      (tester) async {
+    var c = CanvasController(page, audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.addSynthRack();
+    await staged(tester, c);
+    StagePainter painter() => tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((p) => p.painter)
+        .whereType<StagePainter>()
+        .first;
+    var before = painter();
+    c.synthKeyDown(of(c, SynthModuleKind.keys), 69);
+    await tester.pump(const Duration(milliseconds: 120));
+    var after = painter();
+    expect(after.keysTick, greaterThan(before.keysTick));
+    expect(after.shouldRepaint(before), isTrue,
+        reason: "each tick repaints, though nothing else has changed");
+    c.synthKeyUp(of(c, SynthModuleKind.keys), 69);
+    // Died away, the screens stop ticking.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 100));
   });
 }

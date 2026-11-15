@@ -345,6 +345,24 @@ void main() {
     await settled(tester);
   });
 
+  testWidgets("bars widened by hand: one button puts them all back",
+      (tester) async {
+    var c = await studio(tester);
+    expect(find.byKey(const ValueKey("scoreResetWidths")), findsNothing,
+        reason: "nothing to reset");
+    c.setScore(scoreOf(c)
+        .withBarInfo(1, (b) => b.copyWith(width: 1.6))
+        .withBarInfo(2, (b) => b.copyWith(width: 0.7)));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("scoreResetWidths")));
+    await tester.pump();
+    expect(scoreOf(c).bars.every((b) => b.width == 1), isTrue);
+    c.undo();
+    await tester.pump();
+    expect(scoreOf(c).bars[1].width, 1.6, reason: "one step to undo");
+    await settled(tester);
+  });
+
   testWidgets("a strum mark clicked turns the other way", (tester) async {
     var c = await studio(tester);
     var state = tester.state(find.byType(ScoreStudio)) as dynamic;

@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/score_channels.dart'
+    show scoreLeftHand;
 import 'package:bruig/plugin_system/canvas/model/fretting.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -36,6 +39,10 @@ class AudioState {
   /// A key with none is placed with the others sounding.
   final Map<int, FretPlace> places;
 
+  /// left are the keys sounding the left hand plays (see scoreLeftHand),
+  /// lit in the instrument's leftAccent.
+  final Set<int> left;
+
   const AudioState(
       {this.playing = false,
       this.muted = false,
@@ -43,7 +50,8 @@ class AudioState {
       this.keys = const {},
       this.recording = false,
       this.next = const {},
-      this.places = const {}});
+      this.places = const {},
+      this.left = const {}});
 
   factory AudioState.idle(AudioElement e) =>
       AudioState(muted: e.clip.muted, volume: e.clip.volume);
@@ -52,7 +60,8 @@ class AudioState {
   /// nothing is live -- a video being made, a page drawn: an instrument's
   /// keys lit with the notes under the playhead, as the editor lights them
   /// while it plays (Ken, 2026-11-14: in a video, the keys stayed dark).
-  factory AudioState.atFrame(AudioElement e, int frame, int frameRate) {
+  factory AudioState.atFrame(AudioElement e, int frame, int frameRate,
+      {CanvasDocument? doc}) {
     var part = e.instrument;
     if (part == null) return AudioState.idle(e);
     var seconds = (frame - e.clip.at) / (frameRate < 1 ? 1 : frameRate);
@@ -60,7 +69,8 @@ class AudioState {
         muted: e.clip.muted,
         volume: e.clip.volume,
         keys: part.sounding(seconds),
-        places: placesAt(part, seconds));
+        places: placesAt(part, seconds),
+        left: doc == null ? const {} : scoreLeftHand(doc, part, seconds));
   }
 }
 
@@ -128,6 +138,8 @@ void paintAudio(ui.Canvas canvas, Rect bounds, AudioElement e, AudioState state,
         lit: state.keys,
         next: state.next,
         places: state.places,
+        left: state.left,
+        leftAccent: e.leftAccent,
         accent: e.accent,
         recording: state.recording);
     return;

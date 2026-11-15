@@ -190,6 +190,12 @@ List<Widget> sheetSettings(
                     e.showDiagrams,
                     (v) => e.copyWith(showDiagrams: v)
                   ),
+                  (
+                    "sheetHandColours",
+                    "Colour each hand",
+                    e.handColours,
+                    (v) => e.copyWith(handColours: v)
+                  ),
                 ])
                   CanvasToggle(
                       key: ValueKey(key),
@@ -422,8 +428,7 @@ List<Widget> sheetSettings(
                     options: [
                       for (var l in InstrumentLook.values) (l, l.label)
                     ],
-                    onChanged: (l) => controller.setInstrument(
-                        keys, keys.instrument!.copyWith(look: l)),
+                    onChanged: (l) => controller.setSheetLook(e, l),
                   ),
                   CanvasTextButton(
                     key: const ValueKey("sheetKeyboard"),

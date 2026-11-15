@@ -246,6 +246,20 @@ extension CanvasScores on CanvasController {
   AudioElement? sheetKeyboard(SheetElement sheet) =>
       sheet.score.isEmpty ? null : scoreChannel(sheet.score, sheet.part);
 
+  /// setSheetLook draws [sheet]'s part's instrument as [look] -- keys, a
+  /// neck, pads -- and shows it under the sheet, where it was hidden: what
+  /// is chosen is seen (Ken, 2026-11-15: "you change the "Instrument"
+  /// setting it doesn't work"). One change to undo.
+  void setSheetLook(SheetElement sheet, InstrumentLook look) {
+    var keys = sheetKeyboard(sheet);
+    if (keys == null) return;
+    var mine = _interaction == null;
+    if (mine) beginInteraction();
+    setInstrument(keys, keys.instrument!.copyWith(look: look));
+    if (!keys.base.visible) showSheetKeyboard(sheet, true);
+    if (mine) endInteraction();
+  }
+
   /// showSheetKeyboard shows (or hides) the keyboard of [sheet]'s part on
   /// the canvas, under the sheet and as wide: the Instrument that follows
   /// it, lighting what is under the playhead.

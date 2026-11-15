@@ -92,6 +92,11 @@ class SheetElement extends CanvasElement {
   /// boxes under their symbols.
   final bool showDiagrams;
 
+  /// handColours lights a part of two staves (a piano's) in its
+  /// instrument's two colours: the right hand's notes, on the top staff, in
+  /// its Keys lit; the left's, below, in its Left hand (Ken, 2026-11-15).
+  final bool handColours;
+
   /// box is its frame: corners, a border, and room round the music (its
   /// fill is [paper]).
   final BoxSpec box;
@@ -123,6 +128,7 @@ class SheetElement extends CanvasElement {
     this.showNames = true,
     this.showMarks = true,
     this.showDiagrams = true,
+    this.handColours = true,
     this.box = sheetBox,
     this.fromBar = 0,
     this.toBar = 0,
@@ -157,6 +163,7 @@ class SheetElement extends CanvasElement {
       showNames: showNames,
       showMarks: showMarks,
       showDiagrams: showDiagrams,
+      handColours: handColours,
       box: box,
       fromBar: fromBar,
       toBar: toBar);
@@ -183,6 +190,7 @@ class SheetElement extends CanvasElement {
     bool? showNames,
     bool? showMarks,
     bool? showDiagrams,
+    bool? handColours,
     BoxSpec? box,
     int? fromBar,
     int? toBar,
@@ -208,6 +216,7 @@ class SheetElement extends CanvasElement {
           showNames: showNames ?? this.showNames,
           showMarks: showMarks ?? this.showMarks,
           showDiagrams: showDiagrams ?? this.showDiagrams,
+          handColours: handColours ?? this.handColours,
           box: box ?? this.box,
           fromBar: math.max(0, fromBar ?? this.fromBar),
           toBar: math.max(0, toBar ?? this.toBar));
@@ -234,6 +243,7 @@ class SheetElement extends CanvasElement {
         if (!showNames) "showNames": false,
         if (!showMarks) "showMarks": false,
         if (!showDiagrams) "showDiagrams": false,
+        if (!handColours) "handColours": false,
         "box": box.toJson(),
         if (fromBar > 0) "fromBar": fromBar,
         if (toBar > 0) "toBar": toBar,
@@ -262,6 +272,7 @@ class SheetElement extends CanvasElement {
               showNames: json["showNames"] != false,
               showMarks: json["showMarks"] != false,
               showDiagrams: json["showDiagrams"] != false,
+              handColours: json["handColours"] != false,
               box: json["box"] is Map<String, dynamic>
                   ? BoxSpec.fromJson(json["box"] as Map<String, dynamic>)
                   : sheetBox,

@@ -1210,7 +1210,8 @@ void paintElement(
                 bounds,
                 e,
                 audioState?.call(e) ??
-                    AudioState.atFrame(e, frame, document?.frameRate ?? 24),
+                    AudioState.atFrame(e, frame, document?.frameRate ?? 24,
+                        doc: document),
                 images: images));
       case VideoElement e:
         arriving(

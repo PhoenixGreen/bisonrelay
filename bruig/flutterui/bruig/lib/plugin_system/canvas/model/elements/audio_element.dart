@@ -52,6 +52,10 @@ enum AudioControl {
   }
 }
 
+/// defaultLeftAccent is an instrument's left hand's colour as it starts:
+/// a teal beside its amber right hand.
+const defaultLeftAccent = Color(0xFF2BB3C0);
+
 /// AudioElement is a sound on a canvas; see the top of this file.
 class AudioElement extends CanvasElement {
   final MediaClip clip;
@@ -70,6 +74,11 @@ class AudioElement extends CanvasElement {
   /// bar.
   final Color iconColor;
   final Color accent;
+
+  /// leftAccent is, on an instrument playing a part of two staves (a
+  /// piano's), the colour of the keys the left hand plays -- the bass
+  /// staff's -- the right hand's in [accent].
+  final Color leftAccent;
 
   /// box is what the icon sits on -- a disc, a rounded square, nothing.
   final BoxSpec box;
@@ -95,6 +104,7 @@ class AudioElement extends CanvasElement {
     this.mutedPicture = "",
     this.iconColor = const Color(0xFFFFFFFF),
     this.accent = const Color(0xFF3D7EFF),
+    this.leftAccent = defaultLeftAccent,
     this.box =
         const BoxSpec(fill: Color(0xFF223046), borderRadius: 999, padding: 10),
     this.controls = const [AudioControl.playPause],
@@ -128,6 +138,7 @@ class AudioElement extends CanvasElement {
       mutedPicture: mutedPicture,
       iconColor: iconColor,
       accent: accent,
+      leftAccent: leftAccent,
       box: box,
       controls: controls,
       animation: animation);
@@ -140,6 +151,7 @@ class AudioElement extends CanvasElement {
     String? mutedPicture,
     Color? iconColor,
     Color? accent,
+    Color? leftAccent,
     BoxSpec? box,
     List<AudioControl>? controls,
     ElementAnimation? animation,
@@ -154,6 +166,7 @@ class AudioElement extends CanvasElement {
           mutedPicture: mutedPicture ?? this.mutedPicture,
           iconColor: iconColor ?? this.iconColor,
           accent: accent ?? this.accent,
+          leftAccent: leftAccent ?? this.leftAccent,
           box: box ?? this.box,
           controls: controls ?? this.controls,
           animation: animation ?? this.animation);
@@ -167,6 +180,8 @@ class AudioElement extends CanvasElement {
         if (mutedPicture.isNotEmpty) "mutedPicture": mutedPicture,
         "iconColor": colorToJson(iconColor),
         "accent": colorToJson(accent),
+        if (leftAccent != defaultLeftAccent)
+          "leftAccent": colorToJson(leftAccent),
         "box": box.toJson(),
         "controls": [for (var c in controls) c.name],
         if (animation.any) "anim": animation.toJson(),
@@ -186,6 +201,7 @@ class AudioElement extends CanvasElement {
         mutedPicture: jsonString(json["mutedPicture"], ""),
         iconColor: colorFromJson(json["iconColor"], const Color(0xFFFFFFFF)),
         accent: colorFromJson(json["accent"], const Color(0xFF3D7EFF)),
+        leftAccent: colorFromJson(json["leftAccent"], defaultLeftAccent),
         box: jsonSpec(
             json["box"],
             BoxSpec.fromJson,

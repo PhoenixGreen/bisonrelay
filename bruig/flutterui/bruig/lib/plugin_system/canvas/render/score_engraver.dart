@@ -716,6 +716,10 @@ class ScorePaintState {
   /// paper and ink, given, are drawn in place of the options' (a Sheet
   /// music element's own colours); a paper with no opacity is no paper.
   final Color? paper, ink;
+
+  /// sounding is the colour of the notes in [playing]; left, where given,
+  /// theirs on a part's second staff -- a piano's left hand.
+  final Color? sounding, left;
   const ScorePaintState(
       {this.playing = const {},
       this.picked = const {},
@@ -724,7 +728,9 @@ class ScorePaintState {
       this.playhead,
       this.pickedMark,
       this.paper,
-      this.ink});
+      this.ink,
+      this.sounding,
+      this.left});
 }
 
 const _playingColour = Color(0xFFE2622B);
@@ -1070,7 +1076,9 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
       var e = pl.e;
       var colour = state.marks[e.id] ??
           (state.playing.contains(e.id)
-              ? _playingColour
+              ? (st.index >= 1 ? state.left : null) ??
+                  state.sounding ??
+                  _playingColour
               : state.picked.contains(e.id)
                   ? _pickedColour
                   : ink);

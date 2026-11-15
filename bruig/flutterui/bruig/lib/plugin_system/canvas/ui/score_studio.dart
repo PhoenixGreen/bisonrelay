@@ -723,6 +723,24 @@ class _ScoreStudioState extends State<ScoreStudio> {
                   onTap: () => edit(s.setStrum(sel!, Strum.up))),
             ],
           ],
+          // Bars widened or narrowed by their bar lines: all back as wide as
+          // their notes ask, at once (Ken, 2026-11-15).
+          if (s.bars.any((b) => b.width != 1)) ...[
+            gap(),
+            StudioPill(
+                key: const ValueKey("scoreResetWidths"),
+                label: "↔ Reset bar widths",
+                tooltip: "Every bar as wide as its notes ask",
+                onTap: () {
+                  var n = s;
+                  for (var (i, b) in s.bars.indexed) {
+                    if (b.width != 1) {
+                      n = n.withBarInfo(i, (x) => x.copyWith(width: 1));
+                    }
+                  }
+                  edit(n);
+                }),
+          ],
           gap(),
           _tool(context,
               key: const ValueKey("scoreUndo"),

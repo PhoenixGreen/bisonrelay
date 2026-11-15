@@ -255,13 +255,14 @@ Map<String, Color> sheetEventMarks(SheetView view, Map<int, Color> byNote) {
 }
 
 EngravedScore _engraved(
-    MusicScore s, String part, Set<int> staves, SheetElement e) {
+    MusicScore s, String part, Set<int> staves, SheetElement e,
+    {double width = 860}) {
   var cache = _layouts[s] ??= {};
   var title = e.title.isNotEmpty ? e.title : s.title;
   var bars = sheetBars(e, s);
   var key = "$part|${(staves.toList()..sort()).join(",")}|$title|"
       "${e.showTitle}${e.showSubtitle}${e.showComposer}${e.showTempo}"
-      "${e.showNames}${e.showMarks}${e.showDiagrams}|$bars";
+      "${e.showNames}${e.showMarks}${e.showDiagrams}|$bars|$width";
   return cache[key] ??= layoutScore(
       s,
       EngraveOptions(
@@ -278,7 +279,24 @@ EngravedScore _engraved(
           diagrams: e.showDiagrams,
           bars: bars,
           title: title,
-          width: 860));
+          width: width));
+}
+
+/// _pageWidth is how wide [e]'s part is engraved to fill [room] across, as
+/// the Studio's page does (Ken, 2026-11-15: "in the studio each
+/// instrument's music is full width of the page ... on the canvas it
+/// isn't"): a page of its systems, at 860 across, is as tall as it is;
+/// engraved as much wider as the room is for its height, the bars spread
+/// across it.
+double _pageWidth(EngravedScore engraved, SheetElement e, Rect room,
+    {double at = 860}) {
+  var systems = engraved.systems;
+  if (systems.isEmpty || room.height <= 0) return at;
+  var lines = math.min(math.max(1, e.lines), systems.length);
+  var tall = systems[lines - 1].bottom;
+  var w = room.width / room.height * tall;
+  // To the nearest twenty, within reason: a page is not one bar tall.
+  return ((w / 20).round() * 20).clamp(360, 3200).toDouble();
 }
 
 /// sheetViewOf is [e] showing its score part at [frame] in [bounds], or
@@ -290,7 +308,6 @@ SheetView? sheetViewOf(
   var part = s?.partById(e.part);
   var channel = part == null ? null : doc.elementById(part.channel);
   if (s == null || part == null || channel is! AudioElement) return null;
-  var es = _engraved(s, part.id, sheetStaves(part, e.hands), e);
   // Inside its frame's room, and under the playbar if it has one.
   var bar = sheetBarRect(e, bounds);
   bounds = e.box.inner(bounds);
@@ -299,6 +316,13 @@ SheetView? sheetViewOf(
         Rect.fromLTRB(bounds.left, bar.bottom, bounds.right, bounds.bottom);
   }
   if (bounds.width <= 0 || bounds.height <= 0) return null;
+  var staves = sheetStaves(part, e.hands);
+  // As wide as its room is for a page's height -- worked out twice, as a
+  // page's height moves a little with how many bars are on a line.
+  var width = _pageWidth(_engraved(s, part.id, staves, e), e, bounds);
+  width = _pageWidth(_engraved(s, part.id, staves, e, width: width), e, bounds,
+      at: width);
+  var es = _engraved(s, part.id, staves, e, width: width);
   var seconds = (frame - channel.clip.at) / math.max(1, doc.frameRate);
   var order = s.playOrder();
   var place = s.placeAt(order, seconds);
@@ -359,6 +383,13 @@ void paintScoreSheet(
           // sheet's own ink.
           paper: const Color(0x00000000),
           ink: e.ink,
+          // Each hand in its instrument's colour, on a piano's part.
+          sounding: e.handColours && view.part.staves.length >= 2
+              ? view.channel.accent
+              : null,
+          left: e.handColours && view.part.staves.length >= 2
+              ? view.channel.leftAccent
+              : null,
           playhead: (head ?? e.playhead) && view.place != null
               ? (bar: view.place!.bar, at: view.place!.at)
               : null));

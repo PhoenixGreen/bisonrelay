@@ -130,6 +130,28 @@ List<Widget> instrumentSettings(
                 ],
                 onChanged: (s) => set(part.copyWith(sound: s)),
               ),
+              // The keys lit as they sound: the right hand's, and the left
+              // hand's on a part of two staves (a piano's).
+              CanvasColorButton(
+                key: const ValueKey("instrumentLit"),
+                label: "Keys lit",
+                color: e.accent,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(accent: c));
+                  commit();
+                },
+              ),
+              CanvasColorButton(
+                key: const ValueKey("instrumentLeftHand"),
+                label: "Left hand",
+                color: e.leftAccent,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(leftAccent: c));
+                  commit();
+                },
+              ),
               if (part.sound == InstrumentSound.bank)
                 CanvasDropdown<int>(
                   key: const ValueKey("instrumentProgram"),

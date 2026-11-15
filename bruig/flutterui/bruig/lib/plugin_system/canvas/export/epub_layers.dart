@@ -1217,10 +1217,13 @@ class _LayerMaker {
         (c) => paintAudio(c, bounds, a, AudioState(muted: a.clip.muted)),
         bounds);
     if (rest != null) parts.add(EpubPart(rest));
-    var on = <int, Set<int>>{};
+    // The frames each key sounds on: by the right hand, and by the left
+    // on a piano's part, each lit in its own colour.
+    var on = <int, Set<int>>{}, leftOn = <int, Set<int>>{};
     for (var f = 0; f < frames; f++) {
-      for (var k in AudioState.atFrame(a, f, rate).keys) {
-        (on[k] ??= {}).add(f);
+      var state = AudioState.atFrame(a, f, rate, doc: page);
+      for (var k in state.keys) {
+        (state.left.contains(k) ? (leftOn[k] ??= {}) : (on[k] ??= {})).add(f);
       }
     }
     var layout = keyboardLayout(part, bounds);
@@ -1247,6 +1250,19 @@ class _LayerMaker {
         ));
         if (on[key.key] case var frames0?) {
           parts.add(EpubPart(pic, keys: _onOff(frames0.contains)));
+        }
+        if (leftOn[key.key] case var frames1?) {
+          var leftPic = await drawn(
+              (c) => paintAudio(
+                  c,
+                  bounds,
+                  a,
+                  AudioState(
+                      muted: a.clip.muted, keys: {key.key}, left: {key.key})),
+              key.rect);
+          if (leftPic != null) {
+            parts.add(EpubPart(leftPic, keys: _onOff(frames1.contains)));
+          }
         }
       }
     }
@@ -1279,7 +1295,7 @@ class _LayerMaker {
     var parts = <EpubPart>[];
     var rest = await drawn((c) => paintSynthModule(c, bounds, keys), bounds);
     if (rest != null) parts.add(EpubPart(rest));
-    var panel = synthPanelOf(keys.module);
+    var panel = synthPanelFor(keys);
     var (s, at) = synthPanelFit(bounds, panel);
     Rect onPage(Rect r) => Rect.fromLTRB(at.dx + r.left * s, at.dy + r.top * s,
         at.dx + r.right * s, at.dy + r.bottom * s);

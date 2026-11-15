@@ -60,6 +60,10 @@ class SynthModuleElement extends CanvasElement {
   /// channel is, on a speaker, the hidden instrument channel it plays on.
   final String channel;
 
+  /// big makes its screen big, for a teacher to show what it does and draw
+  /// beside it (Ken, 2026-11-15).
+  final bool big;
+
   const SynthModuleElement(
     super.base, {
     required this.module,
@@ -70,6 +74,7 @@ class SynthModuleElement extends CanvasElement {
     this.fixed = false,
     this.look = SynthLook.analogue,
     this.channel = "",
+    this.big = false,
   });
 
   @override
@@ -109,7 +114,8 @@ class SynthModuleElement extends CanvasElement {
       start: start,
       fixed: fixed,
       look: look,
-      channel: channel);
+      channel: channel,
+      big: big);
 
   /// startHere makes its settings and cables now the starting point.
   SynthModuleElement startHere() => SynthModuleElement(base,
@@ -121,7 +127,8 @@ class SynthModuleElement extends CanvasElement {
           values: values, choices: choices, inputs: inputs),
       fixed: fixed,
       look: look,
-      channel: channel);
+      channel: channel,
+      big: big);
 
   @override
   CanvasElement rebase(ElementBase base) => SynthModuleElement(base,
@@ -132,7 +139,8 @@ class SynthModuleElement extends CanvasElement {
       start: start,
       fixed: fixed,
       look: look,
-      channel: channel);
+      channel: channel,
+      big: big);
 
   SynthModuleElement copyWith({
     Map<String, double>? values,
@@ -142,6 +150,7 @@ class SynthModuleElement extends CanvasElement {
     bool? fixed,
     SynthLook? look,
     String? channel,
+    bool? big,
   }) =>
       SynthModuleElement(base,
           module: module,
@@ -151,7 +160,8 @@ class SynthModuleElement extends CanvasElement {
           start: start ?? this.start,
           fixed: fixed ?? this.fixed,
           look: look ?? this.look,
-          channel: channel ?? this.channel);
+          channel: channel ?? this.channel,
+          big: big ?? this.big);
 
   /// withValue and withChoice are it with one setting changed.
   SynthModuleElement withValue(String name, double v) =>
@@ -178,6 +188,7 @@ class SynthModuleElement extends CanvasElement {
       if (fixed) "fixed": true,
       if (look != SynthLook.analogue) "look": look.name,
       if (channel.isNotEmpty) "channel": channel,
+      if (big) "big": true,
     };
   }
 
@@ -198,7 +209,8 @@ class SynthModuleElement extends CanvasElement {
         start: s,
         fixed: json["fixed"] == true,
         look: SynthLook.fromName(json["look"] as String?),
-        channel: json["channel"] is String ? json["channel"] as String : "");
+        channel: json["channel"] is String ? json["channel"] as String : "",
+        big: json["big"] == true);
   }
 }
 

@@ -184,6 +184,11 @@ class StagePainter extends CustomPainter {
   final VideoShow Function(VideoElement)? videoShow;
   final int audioRevision;
 
+  /// keysTick is the controller's keysHeld: a key pressed or let go, and
+  /// each tick of a synth's screens while a note sounds (see
+  /// CanvasSynths._synthTicking) -- which change nothing else compared here.
+  final int keysTick;
+
   /// flowGrips are the two dots on a selected text box -- see TextFlowGrips.
   final TextFlowGrips? flowGrips;
 
@@ -396,6 +401,7 @@ class StagePainter extends CustomPainter {
     this.audioState,
     this.videoShow,
     this.audioRevision = 0,
+    this.keysTick = 0,
     required this.selection,
     this.pickedCopies = const {},
     this.trail = false,
@@ -1989,6 +1995,7 @@ class StagePainter extends CustomPainter {
       old.hoveredButton != hoveredButton ||
       old.counterTick != counterTick ||
       old.audioRevision != audioRevision ||
+      old.keysTick != keysTick ||
       // A new set each build: the same ids are the same selection.
       !setEquals(old.selection, selection) ||
       !setEquals(old.pickedCopies, pickedCopies) ||

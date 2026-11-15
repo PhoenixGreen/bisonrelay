@@ -1599,6 +1599,8 @@ class CanvasStageState extends State<CanvasStage>
             .setSynth(e.withChoice(name, synthChoices[name]![part.index]));
       case SynthPartKind.reset:
         if (!e.fixed) controller.resetSynth(e);
+      case SynthPartKind.big:
+        controller.bigSynth(e, !e.big);
       case SynthPartKind.look:
         controller.setSynth(e.copyWith(
             look: e.look == SynthLook.analogue
@@ -7012,6 +7014,7 @@ class CanvasStageState extends State<CanvasStage>
                         audioState: controller.audioState,
                         videoShow: controller.videoShow,
                         audioRevision: controller.audioRevision,
+                        keysTick: controller.keysHeld.value,
                         selection: {for (var e in _chosen) e.id},
                         // Its trail and onion skin while the Chain is
                         // open on its motion.

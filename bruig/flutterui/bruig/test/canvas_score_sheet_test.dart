@@ -24,6 +24,10 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
+import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -734,6 +738,142 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     expect(
         c.sheetKeyboard(sheetOf(c))!.instrument!.look, InstrumentLook.guitar);
-    expect(find.text("Show its instrument"), findsOneWidget);
+    // Chosen, it is shown (Ken, 2026-11-15).
+    expect(find.text("Hide its instrument"), findsOneWidget);
+  });
+
+  // Ken, 2026-11-15: "in the studio each instrument's music is full width
+  // of the page ... on the canvas it isn't".
+  test("a part fills its sheet's width, however wide the sheet", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    for (var box in [
+      sheetBox,
+      const Rect.fromLTWH(0, 0, 1240, 260),
+      const Rect.fromLTWH(0, 0, 600, 600),
+    ]) {
+      var view = sheetViewOf(sheetOf(c), box, c.document, 0)!;
+      var room = sheetOf(c).box.inner(box);
+      var drawn = view.window.width * view.scale;
+      expect(drawn, closeTo(room.width, room.width * 0.05),
+          reason: "$box: the music across the sheet");
+    }
+  });
+
+  test("the Instrument chosen for a part is shown, as chosen; one undo", () {
+    var c = lesson();
+    addTearDown(c.dispose);
+    expect(c.sheetKeyboard(sheetOf(c))!.base.visible, isFalse);
+    c.setSheetLook(sheetOf(c), InstrumentLook.guitar);
+    var keys = c.sheetKeyboard(sheetOf(c))!;
+    expect(keys.instrument!.look, InstrumentLook.guitar);
+    expect(keys.base.visible, isTrue, reason: "chosen, seen");
+    c.undo();
+    expect(c.sheetKeyboard(sheetOf(c))!.base.visible, isFalse);
+    expect(
+        c.sheetKeyboard(sheetOf(c))!.instrument!.look, InstrumentLook.keyboard);
+  });
+
+  // Ken, 2026-11-15: "different colours highlighted for left/right hands".
+  group("each hand in its colour", () {
+    test("the left hand's keys are the bass staff's", () {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var keys = c.sheetKeyboard(sheetOf(c))!;
+      var part = keys.instrument!;
+      var any = false;
+      for (var n in part.notes) {
+        var t = n.start + 0.01;
+        var left = scoreLeftHandAt(c, keys, t);
+        if (left.isEmpty) continue;
+        any = true;
+        expect(left.every((k) => k < 60), isTrue,
+            reason: "the left hand plays the bass staff, low");
+        expect(part.sounding(t).containsAll(left), isTrue);
+      }
+      expect(any, isTrue);
+      var state =
+          AudioState.atFrame(keys, frameOf(c, 0.01), 24, doc: c.document);
+      expect(state.left, isNotEmpty);
+      expect(state.keys.difference(state.left), isNotEmpty,
+          reason: "the right hand's notes too");
+    });
+
+    test("lit on the keyboard and on the sheet in their two colours", () async {
+      var c = lesson();
+      addTearDown(c.dispose);
+      var keys = c.sheetKeyboard(sheetOf(c))!.copyWith(
+          accent: const Color(0xFFFF0000), leftAccent: const Color(0xFF0000FF));
+      c.replaceElement(keys);
+      var part = keys.instrument!;
+      var layout = keyboardLayout(part, const Rect.fromLTWH(0, 0, 900, 160));
+      var rec = ui.PictureRecorder();
+      paintKeyboard(ui.Canvas(rec), const Rect.fromLTWH(0, 0, 900, 160), part,
+          lit: {48, 64},
+          left: {48},
+          accent: keys.accent,
+          leftAccent: keys.leftAccent);
+      var img = await rec.endRecording().toImage(900, 160);
+      var raw = (await img.toByteData())!;
+      Color at(Offset o) {
+        var i = (o.dy.round() * 900 + o.dx.round()) * 4;
+        return Color.fromARGB(
+            255, raw.getUint8(i), raw.getUint8(i + 1), raw.getUint8(i + 2));
+      }
+
+      Offset low(int key) {
+        var k = layout.keys.firstWhere((k) => k.key == key);
+        return Offset(k.rect.center.dx, k.rect.bottom - 8);
+      }
+
+      expect(at(low(48)).b, greaterThan(at(low(48)).r), reason: "left: blue");
+      expect(at(low(64)).r, greaterThan(at(low(64)).b), reason: "right: red");
+      // The sheet: a note on each staff sounding, in its hand's colour.
+      var score = c.scoreById(sheetOf(c).score)!;
+      var piano = score.partById(sheetOf(c).part)!;
+      var treble = piano.staves[0].bars[0].first;
+      var bass = piano.staves[1].bars[0].first;
+      Future<(int, int)> inks(SheetElement sheet, String id) async {
+        var view = sheetViewOf(sheet, sheetBox, c.document, frameOf(c, 0.01))!;
+        var rec2 = ui.PictureRecorder();
+        paintScoreSheet(ui.Canvas(rec2), sheetBox, sheet, view);
+        var img2 = await rec2.endRecording().toImage(1280, 720);
+        var raw2 = (await img2.toByteData())!;
+        var hit = view.engraved.hits
+            .firstWhere((h) => h.kind == ScoreHitKind.event && h.event == id);
+        var r = Rect.fromPoints(view.origin + hit.rect.topLeft * view.scale,
+            view.origin + hit.rect.bottomRight * view.scale);
+        var red = 0, blue = 0;
+        for (var y = r.top.floor(); y < r.bottom.ceil(); y++) {
+          for (var x = r.left.floor(); x < r.right.ceil(); x++) {
+            var i = (y * 1280 + x) * 4;
+            var cr = raw2.getUint8(i), cb = raw2.getUint8(i + 2);
+            var cg = raw2.getUint8(i + 1);
+            if (cr > 180 && cg < 90 && cb < 90) red++;
+            if (cb > 180 && cr < 90) blue++;
+          }
+        }
+        return (red, blue);
+      }
+
+      // No playhead over the notes: only the notes' own colours.
+      var plain = sheetOf(c).copyWith(playhead: false);
+      var (r1, b1) = await inks(plain, treble.id);
+      expect(r1, greaterThan(10), reason: "the right hand's note, red");
+      expect(b1, 0);
+      var (r2, b2) = await inks(plain, bass.id);
+      expect(b2, greaterThan(10), reason: "the left hand's note, blue");
+      expect(r2, 0);
+      var (_, b3) = await inks(plain.copyWith(handColours: false), bass.id);
+      expect(b3, 0, reason: "switched off, the one colour");
+      var off = sheetOf(c).copyWith(handColours: false);
+      expect(off.handColours, isFalse);
+      expect(
+          (elementFromJson(off.toJson()) as SheetElement).handColours, isFalse);
+    });
   });
 }
+
+/// scoreLeftHandAt is the keys the left hand plays [t] into [keys]'s part.
+Set<int> scoreLeftHandAt(CanvasController c, AudioElement keys, double t) =>
+    scoreLeftHand(c.document, keys.instrument!, t);

@@ -3,7 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/fretting.dart'
 import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart'
     show PatchWatch;
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart'
-    show SynthShow, synthShowOf;
+    show SynthShow, synthShowOf, synthPanelFor, synthPanelFit, synthPanelOf;
 import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
@@ -3378,6 +3378,9 @@ class CanvasController extends ChangeNotifier {
   final Map<String, PatchWatch> _synthWatches = {};
   Timer? _synthTick;
   final Stopwatch _synthClock = Stopwatch();
+
+  /// _synthSeconds is how long the screens have been ticking.
+  double _synthSeconds = 0;
 
   /// _pressedOn is each instrument with keys held, as it was when they were
   /// pressed: let go through it whatever has changed since -- the scene

@@ -144,6 +144,7 @@ extension CanvasInstruments on CanvasController {
           playing: playing,
           keys: {...part.sounding(seconds), ...?_held[e.id]},
           places: {...placesAt(part, seconds), ...?_heldPlaces[e.id]},
+          left: scoreLeftHand(_document, part, seconds),
           recording: _recording && _recordsInto(e),
           next: practised != null && practised.$2.id == e.id
               ? {for (var i in _waiting) part.notes[i].key}

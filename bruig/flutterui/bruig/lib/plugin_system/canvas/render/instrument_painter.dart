@@ -143,6 +143,8 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
     {Set<int> lit = const {},
     Set<int> next = const {},
     Map<int, FretPlace> places = const {},
+    Set<int> left = const {},
+    Color leftAccent = const Color(0xFF2BB3C0),
     Color accent = const Color(0xFF3D7EFF),
     bool recording = false}) {
   var layout = keyboardLayout(part, bounds);
@@ -177,7 +179,8 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
     return;
   }
   if (part.look == InstrumentLook.guitar || part.look == InstrumentLook.bass) {
-    _paintNeck(canvas, layout, part, lit, next, accent, places);
+    _paintNeck(canvas, layout, part, lit, next, accent,
+        placed: places, left: left, leftAccent: leftAccent);
     return;
   }
   var line = Paint()
@@ -190,6 +193,8 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
       var on = lit.contains(k.key);
       // Waited for by a practice take: blue, whatever else it is.
       var wanted = next.contains(k.key);
+      // The left hand's in its own colour.
+      var hand = left.contains(k.key) ? leftAccent : accent;
       var r = RRect.fromRectAndCorners(k.rect,
           bottomLeft: Radius.circular(k.rect.width * 0.12),
           bottomRight: Radius.circular(k.rect.width * 0.12));
@@ -197,10 +202,10 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
           ? (black ? const Color(0xFF3D7EFF) : const Color(0xFF9EC0FF))
           : black
               ? (on
-                  ? Color.lerp(accent, const Color(0xFF000000), 0.25)!
+                  ? Color.lerp(hand, const Color(0xFF000000), 0.25)!
                   : const Color(0xFF15161A))
               : (on
-                  ? Color.lerp(accent, const Color(0xFFFFFFFF), 0.35)!
+                  ? Color.lerp(hand, const Color(0xFFFFFFFF), 0.35)!
                   : const Color(0xFFF4F4F1));
       canvas.drawRRect(r, Paint()..color = colour);
       canvas.drawRRect(r, line);
@@ -234,7 +239,7 @@ void paintPlayingSurface(
         letters: letters, face: face, ink: ink);
   } else if (part.look == InstrumentLook.guitar ||
       part.look == InstrumentLook.bass) {
-    _paintNeck(canvas, layout, part, lit, const {}, accent, places);
+    _paintNeck(canvas, layout, part, lit, const {}, accent, placed: places);
   }
 }
 
@@ -365,7 +370,9 @@ void _paintPads(ui.Canvas canvas, KeyboardLayout layout, Set<int> lit,
 
 void _paintNeck(ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
     Set<int> lit, Set<int> next, Color accent,
-    [Map<int, FretPlace> placed = const {}]) {
+    {Map<int, FretPlace> placed = const {},
+    Set<int> left = const {},
+    Color leftAccent = const Color(0xFF2BB3C0)}) {
   var board = layout.board;
   var strings =
       part.look == InstrumentLook.guitar ? guitarStrings : bassStrings;
@@ -412,14 +419,47 @@ void _paintNeck(ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
     };
     var rest = neckPlaces(keys.where((k) => !own.containsKey(k)), strings,
         busy: {for (var p in own.values) p.$1});
-    for (var (string, fret) in [...own.values, ...rest]) {
+    var played = [...own.values, ...rest];
+    var open = (board.left + nut) / 2;
+    // Which key each place sounds, for the left hand's colour.
+    Color tone(int string, int fret) =>
+        colour == accent && left.contains(strings[string] + fret)
+            ? leftAccent
+            : colour;
+    for (var (string, fret) in played) {
       var y = board.bottom - (string + 0.5) * band;
-      var x = fret == 0
-          ? (board.left + nut) / 2
-          : (fretX(nut, board.right, fret - 1) +
-                  fretX(nut, board.right, fret)) /
-              2;
-      canvas.drawCircle(Offset(x, y), band * 0.32, Paint()..color = colour);
+      if (fret == 0) {
+        // An open string: a ring by the nut, as a chord chart marks one
+        // (Ken, 2026-11-15), not a finger.
+        canvas.drawCircle(
+            Offset(open, y),
+            band * 0.26,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = band * 0.1
+              ..color = tone(string, fret));
+        continue;
+      }
+      var x = (fretX(nut, board.right, fret - 1) +
+              fretX(nut, board.right, fret)) /
+          2;
+      canvas.drawCircle(
+          Offset(x, y), band * 0.32, Paint()..color = tone(string, fret));
+    }
+    // A chord: each string it leaves out crossed by the nut.
+    if (played.length >= 3) {
+      var used = {for (var (s, _) in played) s};
+      var cross = Paint()
+        ..strokeWidth = band * 0.1
+        ..strokeCap = StrokeCap.round
+        ..color = colour;
+      for (var s = 0; s < strings.length; s++) {
+        if (used.contains(s)) continue;
+        var c = Offset(open, board.bottom - (s + 0.5) * band);
+        var d = band * 0.2;
+        canvas.drawLine(c - Offset(d, d), c + Offset(d, d), cross);
+        canvas.drawLine(c + Offset(-d, d), c + Offset(d, -d), cross);
+      }
     }
   }
 }

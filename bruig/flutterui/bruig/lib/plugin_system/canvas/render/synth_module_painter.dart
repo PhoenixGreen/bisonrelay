@@ -25,13 +25,19 @@ const synthPanelWidth = 236.0;
 /// SynthPanel is where everything on a kind of module's panel is, in panel
 /// units.
 class SynthPanel {
+  /// width is as wide as its box makes it: stretched, its screen, keys and
+  /// knobs spread across (Ken, 2026-11-15: "strech the modules to make the
+  /// scopes wider"); never narrower than [synthPanelWidth].
+  final double width;
   final double height;
   final Rect header;
 
-  /// reset and look are the header's two buttons: ↺ (not on a keyboard or
-  /// speaker) and the A/D look switch.
+  /// reset, look and big are the header's buttons: ↺ (not on a keyboard
+  /// or speaker), the A/D look switch, and the big-screen switch (on a
+  /// module with a screen).
   final Rect? reset;
   final Rect look;
+  final Rect? big;
   final Rect? screen;
   final Rect? keys;
 
@@ -48,10 +54,12 @@ class SynthPanel {
   final Map<String, Offset> ins, outs;
 
   const SynthPanel._(
+      this.width,
       this.height,
       this.header,
       this.reset,
       this.look,
+      this.big,
       this.screen,
       this.keys,
       this.options,
@@ -61,7 +69,7 @@ class SynthPanel {
       this.ins,
       this.outs);
 
-  Size get size => Size(synthPanelWidth, height);
+  Size get size => Size(width, height);
 }
 
 /// synthJackRadius is a jack's, in panel units.
@@ -86,22 +94,44 @@ String? synthHint(SynthModuleKind k) => switch (k) {
       _ => null,
     };
 
-final _panels = <SynthModuleKind, SynthPanel>{};
+final _panels = <(SynthModuleKind, int, bool), SynthPanel>{};
 
-/// synthPanelOf is [kind]'s panel layout.
-SynthPanel synthPanelOf(SynthModuleKind kind) =>
-    _panels[kind] ??= _layout(kind);
+/// synthBigScreen is how many times taller a screen is made big, for a
+/// teacher to show what it is doing (Ken, 2026-11-15).
+const synthBigScreen = 2.6;
 
-SynthPanel _layout(SynthModuleKind kind) {
-  const w = synthPanelWidth, side = 10.0, gap = 8.0;
-  var header = const Rect.fromLTWH(0, 0, w, 38);
+/// synthPanelOf is [kind]'s panel layout, [width] across (to the unit),
+/// its screen made big with [big].
+SynthPanel synthPanelOf(SynthModuleKind kind,
+    {double width = synthPanelWidth, bool big = false}) {
+  var w = math.max(synthPanelWidth, width).roundToDouble();
+  return _panels[(kind, w.toInt(), big)] ??= _layout(kind, w, big);
+}
+
+/// synthPanelFor is module [e]'s panel: as wide as its box's shape makes
+/// it, at the height its kind has.
+SynthPanel synthPanelFor(SynthModuleElement e) {
+  var natural = synthPanelOf(e.module, big: e.big).height;
+  if (e.height <= 0 || e.width <= 0) {
+    return synthPanelOf(e.module, big: e.big);
+  }
+  return synthPanelOf(e.module,
+      width: e.width * natural / e.height, big: e.big);
+}
+
+SynthPanel _layout(SynthModuleKind kind, double w, bool bigScreen) {
+  const side = 10.0, gap = 8.0;
+  var header = Rect.fromLTWH(0, 0, w, 38);
   var look = Rect.fromLTWH(w - 14 - 22, 8, 22, 22);
   var reset = kind == SynthModuleKind.keys || kind == SynthModuleKind.out
       ? null
       : Rect.fromLTWH(look.left - 6 - 22, 8, 22, 22);
+  var big = _screenHeight(kind) > 0
+      ? Rect.fromLTWH((reset ?? look).left - 6 - 22, 8, 22, 22)
+      : null;
   var y = header.bottom + gap;
   Rect? screen, keys, hint;
-  var sh = _screenHeight(kind);
+  var sh = _screenHeight(kind) * (bigScreen ? synthBigScreen : 1);
   if (sh > 0) {
     screen = Rect.fromLTWH(side, y, w - 2 * side, sh);
     y += sh + gap;
@@ -122,7 +152,9 @@ SynthPanel _layout(SynthModuleKind kind) {
   var knobs = <Rect>[], dials = <Rect>[];
   var ks = synthKnobs[kind]!;
   if (ks.isNotEmpty) {
-    const cw = 54.0, ch = 72.0;
+    const ch = 72.0;
+    // Spread across a stretched panel, to a point.
+    var cw = ((w - 2 * side) / ks.length).clamp(54.0, 96.0);
     var x0 = (w - ks.length * cw) / 2;
     for (var i = 0; i < ks.length; i++) {
       var cell = Rect.fromLTWH(x0 + i * cw, y, cw, ch);
@@ -146,8 +178,8 @@ SynthPanel _layout(SynthModuleKind kind) {
     outs[p.name] = Offset(w - side - 14, y + rowH / 2 + i * rowH);
   }
   y += rows * rowH + 12;
-  return SynthPanel._(y, header, reset, look, screen, keys, options, knobs,
-      dials, hint, ins, outs);
+  return SynthPanel._(w, y, header, reset, look, big, screen, keys, options,
+      knobs, dials, hint, ins, outs);
 }
 
 /// synthPanelFit is how a panel sits in [box]: its scale, and where its
@@ -162,13 +194,13 @@ SynthPanel _layout(SynthModuleKind kind) {
 /// null off the panel.
 Offset? synthToPanel(SynthModuleElement e, Offset point) {
   var q = synthPanelPoint(e, point);
-  return (Offset.zero & synthPanelOf(e.module).size).contains(q) ? q : null;
+  return (Offset.zero & synthPanelFor(e).size).contains(q) ? q : null;
 }
 
 /// synthPanelPoint is [point], in document space, as a point on [e]'s
 /// panel -- on it or not: a drag that runs off it.
 Offset synthPanelPoint(SynthModuleElement e, Offset point) {
-  var p = synthPanelOf(e.module);
+  var p = synthPanelFor(e);
   var local = point;
   if (e.rotation != 0) {
     var c = e.bounds.center, a = -e.rotation * math.pi / 180;
@@ -184,7 +216,7 @@ Offset synthPanelPoint(SynthModuleElement e, Offset point) {
 /// synthJackAt is jack [port] (an output, with [out]) of [e], in document
 /// space.
 Offset? synthJackAt(SynthModuleElement e, String port, {required bool out}) {
-  var p = synthPanelOf(e.module);
+  var p = synthPanelFor(e);
   var j = (out ? p.outs : p.ins)[port];
   if (j == null) return null;
   var (s, at) = synthPanelFit(e.bounds, p);
@@ -289,7 +321,7 @@ const _vuFace = Color(0xFFEFE3BF);
 /// paintSynthModule draws [e] in [box].
 void paintSynthModule(ui.Canvas canvas, Rect box, SynthModuleElement e,
     {SynthShow show = const SynthShow()}) {
-  var p = synthPanelOf(e.module);
+  var p = synthPanelFor(e);
   var (s, at) = synthPanelFit(box, p);
   canvas.save();
   canvas.translate(at.dx, at.dy);
@@ -333,7 +365,7 @@ class _Panel {
       var top = p.screen?.top ?? p.keys?.top ?? p.header.bottom;
       var bottom = (p.knobs.lastOrNull ?? p.options.lastOrNull)?.bottom ?? top;
       c.drawRect(
-          Rect.fromLTRB(4, top - 2, synthPanelWidth - 4, bottom + 2),
+          Rect.fromLTRB(4, top - 2, p.width - 4, bottom + 2),
           Paint()
             ..color = (analogue ? face : const Color(0xFF14161C))
                 .withValues(alpha: 0.4));
@@ -374,9 +406,9 @@ class _Panel {
             ..color = const Color(0x59000000));
       for (var o in [
         const Offset(10, 10),
-        const Offset(synthPanelWidth - 10, 10),
+        Offset(p.width - 10, 10),
         Offset(10, p.height - 10),
-        Offset(synthPanelWidth - 10, p.height - 10),
+        Offset(p.width - 10, p.height - 10),
       ]) {
         _screw(o);
       }
@@ -466,6 +498,7 @@ class _Panel {
     }
     _button(p.look, analogue ? "A" : "D", false);
     if (p.reset case var r?) _button(r, "↺", e.changed);
+    if (p.big case var r?) _button(r, e.big ? "–" : "+", e.big);
   }
 
   void _button(Rect r, String label, bool lit) {
@@ -1475,7 +1508,7 @@ List<SynthCable> synthCables(List<CanvasElement> elements) {
 
 /// synthScaleOf is a module's panel scale on the canvas.
 double synthScaleOf(SynthModuleElement e) =>
-    synthPanelFit(e.bounds, synthPanelOf(e.module)).$1;
+    synthPanelFit(e.bounds, synthPanelFor(e)).$1;
 
 /// paintSynthCables draws the cables between the modules in [elements],
 /// over them all, as cables hang over a rack.
@@ -1527,7 +1560,7 @@ void paintSynthCable(ui.Canvas canvas, Offset a, Offset b, Color col, double s,
 // ------------------------------------------------------------ presses
 
 /// SynthPartKind is what on a panel can be pressed.
-enum SynthPartKind { key, knob, option, jack, reset, look, screen }
+enum SynthPartKind { key, knob, option, jack, reset, look, screen, big }
 
 /// SynthPart is what is under a press on a module: a key (by number), a
 /// knob or option (by place), a jack (by name, and whether an output), or
@@ -1561,7 +1594,7 @@ class SynthPart {
 SynthPart? synthPartAt(SynthModuleElement e, Offset point) {
   var q = synthToPanel(e, point);
   if (q == null) return null;
-  var p = synthPanelOf(e.module);
+  var p = synthPanelFor(e);
   const reach = synthJackRadius + 5;
   for (var MapEntry(:key, :value) in p.ins.entries) {
     if ((q - value).distance <= reach) {
@@ -1577,6 +1610,9 @@ SynthPart? synthPartAt(SynthModuleElement e, Offset point) {
     return const SynthPart(SynthPartKind.reset);
   }
   if (p.look.inflate(2).contains(q)) return const SynthPart(SynthPartKind.look);
+  if (p.big case var r? when r.inflate(2).contains(q)) {
+    return const SynthPart(SynthPartKind.big);
+  }
   if (p.keys case var r?) {
     if (synthKeyAt(r, q) case var k?) {
       return SynthPart(SynthPartKind.key, index: k);
@@ -1648,7 +1684,7 @@ const _envMax = {"a": 3.0, "d": 3.0, "r": 4.0};
 /// at, as hardware's is.
 String? synthScreenGrab(SynthModuleElement e, Offset q) {
   if (e.look != SynthLook.digital) return null;
-  var r = synthPanelOf(e.module).screen;
+  var r = synthPanelFor(e).screen;
   if (r == null || !r.inflate(4).contains(q)) return null;
   if (e.module == SynthModuleKind.filter) return "f";
   if (e.module != SynthModuleKind.env) return null;
@@ -1663,7 +1699,7 @@ String? synthScreenGrab(SynthModuleElement e, Offset q) {
 /// release; the filter's cutoff (across) and resonance (up).
 SynthModuleElement synthScreenDragged(
     SynthModuleElement e, String grab, Offset q) {
-  var r = synthPanelOf(e.module).screen!;
+  var r = synthPanelFor(e).screen!;
   if (e.module == SynthModuleKind.filter) {
     const lo = 20.0, hi = 20000.0, dbHi = 24.0, dbLo = -36.0;
     var f = lo *

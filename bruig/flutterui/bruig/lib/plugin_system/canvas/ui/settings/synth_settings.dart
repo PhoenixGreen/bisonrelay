@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart'
+    show synthPanelFor;
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
@@ -72,6 +74,19 @@ List<Widget> synthSettings(
                 if (e.fixed) "locked",
               ].join(" · "),
               children: [
+                if (synthPanelFor(e).screen != null)
+                  CanvasControlGroup(
+                      label: "Screen",
+                      help: "Big makes its screen taller, to show what it "
+                          "does; stretch the module to make it wider.",
+                      children: [
+                        CanvasToggle(
+                          key: const ValueKey("synthBig"),
+                          label: "Big screen",
+                          value: e.big,
+                          onChanged: (v) => controller.bigSynth(e, v),
+                        ),
+                      ]),
                 if (knobs.isNotEmpty || choice != null)
                   CanvasControlGroup(
                       label: "Settings",
