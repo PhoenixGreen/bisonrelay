@@ -50,7 +50,9 @@ enum ElementKind {
   // One module of a synth, patched to others with cables.
   synth("Synth module"),
   // What to make on a synth rack, and checks of the patch.
-  synthTask("Synth task");
+  synthTask("Synth task"),
+  // A metronome to practise to.
+  metronome("Metronome");
 
   final String label;
   const ElementKind(this.label);

@@ -140,45 +140,48 @@ class AudioRuntime extends ChangeNotifier {
   bool get unavailable => _unavailable;
   bool _unavailable = false;
 
-  AudioTrack? _click;
-  AudioVoice? _clickVoice;
-  (double, int)? _clickMetre;
-  int _clickGeneration = 0;
+  /// _clicks are each click sounding or ready, by its [metronome] key: the
+  /// canvas's, and each Metronome element's of its own.
+  final Map<String, _Click> _clicks = {};
 
-  /// metronome is the click as it should be now: sounding from [at] seconds,
-  /// a beat every [secondsPerBeat] in bars of [beatsPerBar], or -- not [on]
-  /// -- silent. Called whenever the playhead moves, as cue is: a click that
-  /// has drifted from [at] by more than a little is moved back to it, so a
-  /// loop's jump back or a seek takes the click with it.
+  /// metronome is the click [key] as it should be now: sounding from [at]
+  /// seconds, a beat every [secondsPerBeat] in bars of [beatsPerBar], or --
+  /// not [on] -- silent. Called whenever the playhead moves, as cue is: a
+  /// click that has drifted from [at] by more than a little is moved back
+  /// to it, so a loop's jump back or a seek takes the click with it. Each
+  /// key is a click of its own: the canvas's ("canvas"), and a Metronome
+  /// element's beside it.
   void metronome(
       {required bool on,
       double at = 0,
       double secondsPerBeat = 0.5,
-      int beatsPerBar = 4}) {
+      int beatsPerBar = 4,
+      String key = "canvas"}) {
+    var click = _clicks[key] ??= _Click();
     if (!on || _disposed) {
-      _clickGeneration++;
-      if (_clickVoice case var v?) engine.stop(v);
-      _clickVoice = null;
+      click.generation++;
+      if (click.voice case var v?) engine.stop(v);
+      click.voice = null;
       return;
     }
     var metre = (secondsPerBeat, beatsPerBar);
-    if (_clickMetre != metre) {
-      if (_clickVoice case var v?) engine.stop(v);
-      _clickVoice = null;
-      _click = null;
-      _clickMetre = metre;
+    if (click.metre != metre) {
+      if (click.voice case var v?) engine.stop(v);
+      click.voice = null;
+      click.track = null;
+      click.metre = metre;
     }
     // Counted from the start of the timeline: a beat falls where the ruler
     // says it does, wherever playing began.
-    if (_clickVoice case var v? when engine.alive(v)) {
+    if (click.voice case var v? when engine.alive(v)) {
       if ((engine.position(v) - at).abs() > 0.05) engine.seek(v, at);
       return;
     }
-    var generation = ++_clickGeneration;
+    var generation = ++click.generation;
     () async {
-      if (!await _ready() || generation != _clickGeneration) return;
-      var track = _click ??= engine.metronome(secondsPerBeat, beatsPerBar);
-      _clickVoice = engine.play(track, volume: 1, at: at);
+      if (!await _ready() || generation != click.generation) return;
+      var track = click.track ??= engine.metronome(secondsPerBeat, beatsPerBar);
+      click.voice = engine.play(track, volume: 1, at: math.max(0, at));
     }();
   }
 
@@ -898,7 +901,9 @@ class AudioRuntime extends ChangeNotifier {
 
   @override
   void dispose() {
-    metronome(on: false);
+    for (var key in [..._clicks.keys]) {
+      metronome(on: false, key: key);
+    }
     _disposed = true;
     _timer?.cancel();
     _timer = null;
@@ -920,4 +925,13 @@ class AudioRuntime extends ChangeNotifier {
     _tracks.clear();
     super.dispose();
   }
+}
+
+/// _Click is one click: its track, the voice playing it, its metre, and
+/// which start is the latest.
+class _Click {
+  AudioTrack? track;
+  AudioVoice? voice;
+  (double, int)? metre;
+  int generation = 0;
 }

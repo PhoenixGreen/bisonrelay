@@ -370,18 +370,33 @@ List<Widget> sheetSettings(
                 options: [for (var h in PracticeHands.values) (h, h.label)],
                 onChanged: (h) => now(e.copyWith(hands: h)),
               ),
+              // How fast it plays, on its playbar and in a take: slower to
+              // learn it, back to real time after.
               CanvasSlider(
                 key: const ValueKey("practiceTempo"),
-                label: "Tempo",
+                label: "Speed",
                 value: e.tempo,
-                min: 0.4,
-                max: 1.2,
+                min: sheetSlowest,
+                max: sheetFastest,
                 decimals: 2,
                 onChanged: (v) {
                   begin();
                   write(e.copyWith(tempo: (v * 20).round() / 20));
                 },
                 onCommit: commit,
+              ),
+              CanvasTextButton(
+                key: const ValueKey("sheetRealTime"),
+                label: "Real time",
+                onPressed: (e.tempo - 1).abs() < 1e-6
+                    ? null
+                    : () => controller.setSheetSpeed(e, 1),
+              ),
+              CanvasToggle(
+                key: const ValueKey("sheetClick"),
+                label: "Metronome click",
+                value: e.click,
+                onChanged: (v) => controller.setSheetClick(e, v),
               ),
               // A score part's playhead, by hand (Ken, 2026-11-14): to a
               // note pressed on the sheet, or a note at a time.

@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -1564,6 +1565,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
           ShapeElement.fromJson(json, base);
     case ElementKind.synthTask:
       return SynthTaskElement.fromJson(json, base);
+    case ElementKind.metronome:
+      return MetronomeElement.fromJson(json, base);
   }
 }
 

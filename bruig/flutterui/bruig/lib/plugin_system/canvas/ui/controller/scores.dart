@@ -112,6 +112,9 @@ extension CanvasScores on CanvasController {
   /// the playhead is not already in it), stopping at the end of its last
   /// (Ken, 2026-11-14: "pick a range of bars to display and playback").
   void playSheet(SheetElement sheet) {
+    // Slower or faster than real time: its notes played live, at its speed
+    // -- the parts' sounds are made at the speed they were written.
+    _slowSheet = (sheet.tempo - 1).abs() > 1e-6 ? sheet.id : null;
     var span = sheetFrames(sheet, _document);
     var ranged = sheet.fromBar > 0 || sheet.toBar > 0;
     if (span == null || !ranged) {
@@ -121,6 +124,92 @@ extension CanvasScores on CanvasController {
     if (_frame < span.$1 || _frame >= span.$2 - 1) frame = span.$1;
     play();
     _rangeEnd = span.$2;
+  }
+
+  /// setSheetSpeed plays [sheet] at [speed], a share of real time (1),
+  /// to the nearest step, slower or faster for practice (Ken, 2026-11-15);
+  /// playing, it goes on at the new speed from where it is.
+  void setSheetSpeed(SheetElement sheet, double speed) {
+    var v = ((speed / sheetSpeedStep).round() * sheetSpeedStep)
+        .clamp(sheetSlowest, sheetFastest)
+        .toDouble();
+    var now = _document.elementById(sheet.id);
+    if (now is! SheetElement || (now.tempo - v).abs() < 1e-9) return;
+    var next = now.copyWith(tempo: v);
+    var going = playing && (_slowSheet == sheet.id || _practice == null);
+    if (going) pause();
+    replaceElement(next);
+    if (going) playSheet(next);
+  }
+
+  /// setSheetClick switches [sheet]'s metronome on or off.
+  void setSheetClick(SheetElement sheet, bool on) {
+    var now = _document.elementById(sheet.id);
+    if (now is! SheetElement) return;
+    replaceElement(now.copyWith(click: on));
+    _syncMetronome();
+  }
+
+  /// _clicking is the sheet whose metronome sounds as the canvas plays --
+  /// the one played slower or faster, or the first on the page with its
+  /// click on -- with its score and the channel its part plays on.
+  (SheetElement, MusicScore, AudioElement)? get _clicking {
+    (SheetElement, MusicScore, AudioElement)? of(Object? e) {
+      if (e is! SheetElement || !e.click || !e.visible) return null;
+      var s = scoreById(e.score);
+      var ch = _document.elementById(s?.partById(e.part)?.channel ?? "");
+      return s != null && ch is AudioElement ? (e, s, ch) : null;
+    }
+
+    if (_slowSheet case var id?) {
+      if (of(_document.elementById(id)) case var c?) return c;
+    }
+    for (var e in _document.elements) {
+      if (of(e) case var c?) return c;
+    }
+    return null;
+  }
+
+  /// _slowStep plays the notes of the slowed sheet's score that start or
+  /// end between frames [was] and [now], live, on their channels: every
+  /// part of its score, as the timeline's sounds are quiet while it plays.
+  void _slowStep(int was, int now) {
+    var sheet = _document.elementById(_slowSheet ?? "");
+    if (sheet is! SheetElement) return;
+    var channels = <AudioElement>[
+      for (var e in _document.elements)
+        if (e is AudioElement &&
+            e.instrument != null &&
+            (sheet.score.isNotEmpty
+                ? e.instrument!.score.startsWith("${sheet.score}/")
+                : e.id == sheet.follows))
+          e,
+    ];
+    if (now < was) _slowRelease();
+    for (var ch in channels) {
+      var key = CanvasController._channelOf(ch);
+      var part = macroedPart(key, ch.instrument!);
+      var held = _slowHeld.putIfAbsent(key, () => {});
+      for (var n in ch.instrument!.notes) {
+        var start = _noteFrame(ch, n), end = _noteEndFrame(ch, n);
+        if (start >= was && start < now && held.add(n.key)) {
+          unawaited(audio.noteOn(key, part, n.key, n.velocity));
+        }
+        if (end >= was && end < now && held.remove(n.key)) {
+          audio.noteOff(key, n.key);
+        }
+      }
+    }
+  }
+
+  /// _slowRelease lets go of every note the slowed sheet is sounding.
+  void _slowRelease() {
+    for (var MapEntry(:key, :value) in _slowHeld.entries) {
+      for (var k in value) {
+        audio.noteOff(key, k);
+      }
+    }
+    _slowHeld.clear();
   }
 
   /// sheetToStart puts the playhead at the start of [sheet]'s part.
@@ -163,6 +252,15 @@ extension CanvasScores on CanvasController {
             } else {
               playSheet(sheet);
             }
+          case SheetBarPart.click:
+            setSheetClick(sheet, !sheet.click);
+          case SheetBarPart.slower:
+            setSheetSpeed(sheet, sheet.tempo - sheetSpeedStep);
+          case SheetBarPart.faster:
+            setSheetSpeed(sheet, sheet.tempo + sheetSpeedStep);
+          case SheetBarPart.speed || SheetBarPart.reset:
+            // Back to real time.
+            setSheetSpeed(sheet, 1);
           case SheetBarPart.track:
             // Along its bars as they play: all of them, or its range.
             var span = sheetFrames(sheet, _document);

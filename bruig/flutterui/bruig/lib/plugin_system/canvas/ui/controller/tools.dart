@@ -2107,7 +2107,10 @@ extension CanvasTools on CanvasController {
     for (var (e, at) in _joinedCuts(_timedOnScreen.toList())) {
       // Practising, the timeline's sounds are quiet: the piece is played
       // live -- the hand not being practised -- at the practice tempo.
-      var moment = at == null || _practice != null ? null : _momentOf(e, at);
+      // So too played slower or faster than real time (see playSheet).
+      var moment = at == null || _practice != null || _slowSheet != null
+          ? null
+          : _momentOf(e, at);
       // A channel playing from its slots is not playing the timeline.
       if (moment != null && (_clipChannels.isNotEmpty || offTimeline)) {
         var clip = switch (e) {

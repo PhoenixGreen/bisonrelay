@@ -47,7 +47,22 @@ class SheetView {
 
 /// SheetBarPart is a piece of a sheet's playbar (Ken, 2026-11-14: "a
 /// playbar over the top of the sheet music").
-enum SheetBarPart { start, back, play, on, track }
+enum SheetBarPart {
+  start,
+  back,
+  play,
+  on,
+  track,
+
+  /// click switches its metronome on and off; slower, faster and reset set
+  /// how fast it plays, and speed shows it (Ken, 2026-11-15) -- in the
+  /// editor, not a book, whose sound is made at the speed it was written.
+  click,
+  slower,
+  speed,
+  faster,
+  reset,
+}
 
 /// sheetBarRect is where [e]'s playbar is in [bounds], or null where it
 /// has none: a strip across the top, a finger's height however small the
@@ -103,7 +118,7 @@ Rect? sheetBarRect(SheetElement e, Rect bounds) {
 
 /// sheetBarParts are where each piece of a playbar in [bar] is: four
 /// buttons, a square each, then the track to the end.
-Map<SheetBarPart, Rect> sheetBarParts(Rect bar) {
+Map<SheetBarPart, Rect> sheetBarParts(Rect bar, {bool practice = true}) {
   var side = bar.height;
   var pad = side * 0.15;
   var out = <SheetBarPart, Rect>{};
@@ -117,10 +132,30 @@ Map<SheetBarPart, Rect> sheetBarParts(Rect bar) {
     out[p] = Rect.fromLTWH(x, bar.top, side, side);
     x += side;
   }
+  // The practice parts along the right: the click, then the speed between
+  // slower and faster, and back to real time.
+  var right = bar.right - pad;
+  if (practice) {
+    for (var (p, w) in [
+      (SheetBarPart.reset, side),
+      (SheetBarPart.faster, side),
+      (SheetBarPart.speed, side * 1.9),
+      (SheetBarPart.slower, side),
+      (SheetBarPart.click, side * 1.2),
+    ]) {
+      out[p] = Rect.fromLTWH(right - w, bar.top, w, side);
+      right -= w;
+    }
+    right -= pad * 2;
+  }
   out[SheetBarPart.track] =
-      Rect.fromLTRB(x + pad * 2, bar.top, bar.right - pad * 3, bar.bottom);
+      Rect.fromLTRB(x + pad * 2, bar.top, right - pad * 2, bar.bottom);
   return out;
 }
+
+/// sheetSpeedStep is how much a playbar's slower and faster change the
+/// speed by.
+const sheetSpeedStep = 0.05;
 
 /// sheetTrackLine is the line a playbar's [track] draws: its fill along it.
 Rect sheetTrackLine(Rect track) {
@@ -143,7 +178,7 @@ bool Function()? sheetPlaying;
 /// [sheetKnobRadius] say where they are.
 void paintSheetBar(
     ui.Canvas canvas, Rect bar, SheetElement e, double progress, bool playing,
-    {bool knob = true}) {
+    {bool knob = true, bool practice = true}) {
   var ink = e.ink;
   var r = bar.height * 0.22;
   canvas.drawRRect(
@@ -156,8 +191,22 @@ void paintSheetBar(
       Paint()
         ..color = ink.withValues(alpha: 0.18)
         ..strokeWidth = 1);
-  var parts = sheetBarParts(bar);
+  var parts = sheetBarParts(bar, practice: practice);
   var fill = Paint()..color = ink.withValues(alpha: 0.82);
+  void label(String t, Offset c, double size, Color colour) {
+    var tp = TextPainter(
+      text: TextSpan(
+          text: t,
+          style: TextStyle(
+              fontFamily: "Inter",
+              fontSize: size,
+              fontWeight: FontWeight.w700,
+              color: colour)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
+  }
+
   for (var MapEntry(key: p, value: box) in parts.entries) {
     var c = box.center, u = box.height * 0.16;
     switch (p) {
@@ -202,6 +251,50 @@ void paintSheetBar(
                 ..lineTo(c.dx - u * 0.8, c.dy + u * 1.25)
                 ..close(),
               fill);
+        }
+      case SheetBarPart.click:
+        // A metronome: its body, and its arm; lit while on.
+        if (e.click) {
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(box.deflate(box.height * 0.12),
+                  Radius.circular(box.height * 0.2)),
+              Paint()..color = const Color(0xFFE2622B).withValues(alpha: 0.2));
+        }
+        var colour = e.click ? const Color(0xFFE2622B) : fill.color;
+        var h = box.height * 0.56, w = h * 0.8;
+        var bottom = c.dy + h / 2;
+        canvas.drawPath(
+            Path()
+              ..moveTo(c.dx - w * 0.22, c.dy - h / 2)
+              ..lineTo(c.dx + w * 0.22, c.dy - h / 2)
+              ..lineTo(c.dx + w / 2, bottom)
+              ..lineTo(c.dx - w / 2, bottom)
+              ..close(),
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = h * 0.1
+              ..strokeJoin = StrokeJoin.round
+              ..color = colour);
+        canvas.drawLine(
+            Offset(c.dx, bottom - h * 0.15),
+            Offset(c.dx + w * 0.38, c.dy - h * 0.62),
+            Paint()
+              ..strokeWidth = h * 0.1
+              ..strokeCap = StrokeCap.round
+              ..color = colour);
+      case SheetBarPart.slower:
+        label("−", c, box.height * 0.55, fill.color);
+      case SheetBarPart.faster:
+        label("+", c, box.height * 0.55, fill.color);
+      case SheetBarPart.speed:
+        // How fast, as a share of real time: picked out when it is not.
+        var real = (e.tempo - 1).abs() < 1e-6;
+        label("${(e.tempo * 100).round()}%", c, box.height * 0.34,
+            real ? fill.color : const Color(0xFFE2622B));
+      case SheetBarPart.reset:
+        // Back to real time: there only when it is not.
+        if ((e.tempo - 1).abs() > 1e-6) {
+          label("1×", c, box.height * 0.36, fill.color);
         }
       case SheetBarPart.track:
         var t = sheetTrackLine(box);
@@ -364,7 +457,8 @@ void paintScoreSheet(
     double? progress,
     bool? playing,
     bool bar = true,
-    bool knob = true}) {
+    bool knob = true,
+    bool practice = true}) {
   // Its frame: the paper (or what fills the box) inside its corners, and
   // the border over the music, after it.
   var frame = e.box.copyWith(fill: e.paper);
@@ -397,7 +491,7 @@ void paintScoreSheet(
   if (sheetBarRect(e, bounds) case var strip? when bar) {
     paintSheetBar(canvas, strip, e, progress ?? sheetProgress(e, view),
         playing ?? sheetPlaying?.call() ?? false,
-        knob: knob);
+        knob: knob, practice: practice);
   }
   paintBoxBorder(canvas, bounds, frame);
 }

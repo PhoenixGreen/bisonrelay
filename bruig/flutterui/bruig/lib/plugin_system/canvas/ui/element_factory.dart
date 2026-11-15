@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
@@ -101,6 +102,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // A card that fits above the starting rack's keyboard, as the
     // prototype's did.
     ElementKind.synthTask => const Size(270, 160) * synthUnit(document),
+    // As a clockwork one stands: taller than wide.
+    ElementKind.metronome => Size(short * 0.22, short * 0.35),
   };
 }
 
@@ -371,6 +374,9 @@ CanvasElement newElement(
     case ElementKind.synth:
       return SynthModuleElement(base.copyWith(name: "Oscillator"),
           module: SynthModuleKind.osc);
+
+    case ElementKind.metronome:
+      return MetronomeElement(base.copyWith(name: "Metronome"));
 
     case ElementKind.synthTask:
       return SynthTaskElement(base.copyWith(name: "Synth task"),

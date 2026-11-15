@@ -272,6 +272,10 @@ extension CanvasPlayback on CanvasController {
   void pause() {
     _rangeEnd = null;
     if (_practice != null) _endPractice();
+    if (_slowSheet != null) {
+      _slowRelease();
+      _slowSheet = null;
+    }
     // Stopped, the slots stop with it -- and a recording is kept: what was
     // played is in the part, and what the slots played on the timeline.
     // Not a game's: its sounds go on through a Stop on its timeline -- the
@@ -342,8 +346,23 @@ extension CanvasPlayback on CanvasController {
   }
 
   void _syncMetronome() {
-    var on = playing && _metronome && _previewing == null && _previewAt == null;
+    var sheet = _clicking;
+    var on = playing &&
+        (_metronome || sheet != null) &&
+        _previewing == null &&
+        _previewAt == null;
     if (!on && _audio == null) return;
+    // A sheet's: on its score's beat, from where its part starts, at the
+    // speed it plays at.
+    if (sheet case (_, var score, var ch)?) {
+      var rate = _clockRate;
+      var (beats, unit) = score.timeAt(0);
+      var spb = 60 / score.tempoAt(0) * 4 / unit;
+      var t = (_frame - ch.clip.at) / math.max(1, _document.frameRate);
+      audio.metronome(
+          on: on, at: t / rate, secondsPerBeat: spb / rate, beatsPerBar: beats);
+      return;
+    }
     var a = _document.audio;
     audio.metronome(
         on: on,
@@ -810,6 +829,7 @@ extension CanvasPlayback on CanvasController {
     }
     _frame = next;
     if (_practice != null) _practiceStep(was, next);
+    if (_slowSheet != null) _slowStep(was, next);
 
     for (var action in _document.actions) {
       if (action.frame != next) continue;

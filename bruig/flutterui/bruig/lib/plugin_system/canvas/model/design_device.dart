@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'dart:ui' show Color;
@@ -455,6 +456,19 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
               (e, v) => (e as AudioElement).copyWith(accent: _colour(v))),
           ..._box((e) => (e as AudioElement).box,
               (e, b) => (e as AudioElement).copyWith(box: b)),
+        ],
+      // A metronome's wood and lamp.
+      MetronomeElement _ => [
+          DesignSetting(
+              "fill",
+              "Metronome",
+              (e) => _argb((e as MetronomeElement).body),
+              (e, v) => (e as MetronomeElement).copyWith(body: _colour(v))),
+          DesignSetting(
+              "accent",
+              "Metronome",
+              (e) => _argb((e as MetronomeElement).accent),
+              (e, v) => (e as MetronomeElement).copyWith(accent: _colour(v))),
         ],
       // Its knobs: keyed, the sound turns with them.
       SynthModuleElement m => [

@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
@@ -1624,6 +1626,26 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
+  /// _pressMetronome answers a metronome's buttons.
+  void _pressMetronome(MetronomeElement e, MetronomePart part) {
+    if (controller.selection.length != 1 ||
+        controller.selection.first != e.id) {
+      controller.selectOnly(e.id);
+    }
+    switch (part) {
+      case MetronomePart.play:
+        controller.toggleMetronome(e);
+      case MetronomePart.slower:
+        controller.metronomeStep(e, _shiftHeld ? -1.0 : -4.0);
+      case MetronomePart.faster:
+        controller.metronomeStep(e, _shiftHeld ? 1.0 : 4.0);
+      case MetronomePart.tap:
+        controller.tapMetronome(e);
+      case MetronomePart.beats:
+        controller.cycleMetronomeBeats(e);
+    }
+  }
+
   /// _pressSynthTask answers a task card's buttons: its target heard, or
   /// the patch checked against it.
   void _pressSynthTask(SynthTaskElement card, SynthTaskButton b) {
@@ -2374,6 +2396,14 @@ class CanvasStageState extends State<CanvasStage>
     // A synth module's controls answer a press whether it is picked or not,
     // as a rack's do; its panel otherwise is what picks and moves it.
     if (element is SynthModuleElement && _pressSynth(element, doc)) return;
+    // A metronome's buttons, pressed whether it is picked or not.
+    if (element is MetronomeElement) {
+      if (metronomePartAt(element, doc) case var part?) {
+        _pressMetronome(element, part);
+        _mode = _DragMode.none;
+        return;
+      }
+    }
     if (element is SynthTaskElement) {
       if (synthTaskButtonAt(element, doc) case var b?) {
         _pressSynthTask(element, b);

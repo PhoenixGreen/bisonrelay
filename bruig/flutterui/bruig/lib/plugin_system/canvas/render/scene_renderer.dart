@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
@@ -1187,6 +1189,14 @@ void paintElement(
       case SheetElement e:
         arriving(canvas, bounds, const ElementAnimation(), pose,
             () => paintSheetElement(canvas, bounds, e, document, frame));
+      case MetronomeElement e:
+        arriving(
+            canvas,
+            bounds,
+            const ElementAnimation(),
+            pose,
+            () => paintMetronome(canvas, bounds, e,
+                show: metronomeShowOf?.call(e) ?? const MetronomeShow()));
       case SynthTaskElement e:
         arriving(canvas, bounds, const ElementAnimation(), pose,
             () => paintSynthTask(canvas, bounds, e, document));

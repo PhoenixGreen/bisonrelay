@@ -1051,7 +1051,8 @@ class _LayerMaker {
               head: false,
               progress: 0,
               playing: false,
-              knob: false),
+              knob: false,
+              practice: false),
           bounds);
       if (pic == null) continue;
       parts.add(EpubPart(pic, keys: _onOff((f) => pageOf(vs[f]) == top)));
@@ -1125,7 +1126,7 @@ class _LayerMaker {
     // buttons the clock answers.
     var controls = <EpubControl>[];
     if (sheetBarRect(s, bounds) case var bar?) {
-      var parts0 = sheetBarParts(bar);
+      var parts0 = sheetBarParts(bar, practice: false);
       var track = parts0[SheetBarPart.track]!;
       // Its bars as they play: all of them, or the range it shows.
       var (from, to) = sheetFrames(s, page) ?? (0, frames);

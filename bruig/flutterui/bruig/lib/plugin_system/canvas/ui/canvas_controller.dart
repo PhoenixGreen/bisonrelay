@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart'
+    show MetronomeShow, metronomeShowOf;
 import 'package:bruig/plugin_system/canvas/model/fretting.dart'
     show FretPlace, placesAt;
 import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart'
@@ -216,6 +219,7 @@ part 'controller/copies.dart';
 part 'controller/cast.dart';
 part 'controller/scores.dart';
 part 'controller/synths.dart';
+part 'controller/metronomes.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -366,6 +370,7 @@ class CanvasController extends ChangeNotifier {
     sheetPlaying = () => playing;
     // The synth modules on the stage: their keys held, their time.
     synthShowOf = synthShowFor;
+    metronomeShowOf = metronomeShowFor;
   }
 
   CanvasDocument _document;
@@ -3366,6 +3371,20 @@ class CanvasController extends ChangeNotifier {
   /// pressed, by element id and key.
   final Map<String, Map<int, FretPlace>> _heldPlaces = {};
 
+  /// _metroStarted is each metronome going, by id, and when it started on
+  /// _metroClock; _metroTick redraws them; _metroTaps are each one's last
+  /// taps of Tap.
+  final Map<String, double> _metroStarted = {};
+  final Stopwatch _metroClock = Stopwatch();
+  Timer? _metroTick;
+  final Map<String, List<double>> _metroTaps = {};
+
+  /// _slowSheet is the sheet played slower or faster than real time, its
+  /// notes live (see playSheet); _slowHeld the keys it is sounding, by
+  /// channel.
+  String? _slowSheet;
+  final Map<String, Set<int>> _slowHeld = {};
+
   /// _synthPressed is each keyboard module's keys held, by element id.
   final Map<String, Set<int>> _synthPressed = {};
 
@@ -4370,6 +4389,7 @@ class CanvasController extends ChangeNotifier {
     _partTimer?.cancel();
     _synthTarget?.cancel();
     _synthTick?.cancel();
+    _metroTick?.cancel();
     _warpTimer?.cancel();
     for (var a in _arps.values) {
       a.timer?.cancel();

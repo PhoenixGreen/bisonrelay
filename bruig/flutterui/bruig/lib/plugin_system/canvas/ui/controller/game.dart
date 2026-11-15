@@ -614,7 +614,8 @@ extension CanvasGame on CanvasController {
   String? get practising => _practice;
 
   double get _clockRate {
-    var sheet = _practice == null ? null : _document.elementById(_practice!);
+    var id = _practice ?? _slowSheet;
+    var sheet = id == null ? null : _document.elementById(id);
     return sheet is SheetElement ? sheet.tempo : 1;
   }
 

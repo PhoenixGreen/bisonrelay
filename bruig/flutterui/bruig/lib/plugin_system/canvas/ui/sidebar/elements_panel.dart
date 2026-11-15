@@ -22,6 +22,7 @@ const List<ElementKind> _addable = [
   ElementKind.counter,
   ElementKind.audio,
   ElementKind.sheet,
+  ElementKind.metronome,
   ElementKind.video,
   ElementKind.background,
   ElementKind.player,
@@ -61,6 +62,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.object3d => Icons.view_in_ar,
       ElementKind.synth => Icons.cable,
       ElementKind.synthTask => Icons.checklist,
+      ElementKind.metronome => Icons.av_timer,
     };
 
 class CanvasElementsPanel extends StatelessWidget {

@@ -52,8 +52,9 @@ class SheetElement extends CanvasElement {
   final String title;
   final Color paper, ink;
 
-  /// mode, hands and tempo are how it is practised; tempo is a share of
-  /// the piece's own, from 0.4 to 1.2.
+  /// mode, hands and tempo are how it is practised; tempo is its speed, a
+  /// share of the piece's own (see sheetSlowest), at which its playbar and
+  /// a take play it -- 1 is real time.
   final PracticeMode mode;
   final PracticeHands hands;
   final double tempo;
@@ -97,6 +98,10 @@ class SheetElement extends CanvasElement {
   /// its Keys lit; the left's, below, in its Left hand (Ken, 2026-11-15).
   final bool handColours;
 
+  /// click sounds a metronome on the score's beat while the canvas plays,
+  /// at the speed it plays at (Ken, 2026-11-15).
+  final bool click;
+
   /// box is its frame: corners, a border, and room round the music (its
   /// fill is [paper]).
   final BoxSpec box;
@@ -129,6 +134,7 @@ class SheetElement extends CanvasElement {
     this.showMarks = true,
     this.showDiagrams = true,
     this.handColours = true,
+    this.click = false,
     this.box = sheetBox,
     this.fromBar = 0,
     this.toBar = 0,
@@ -164,6 +170,7 @@ class SheetElement extends CanvasElement {
       showMarks: showMarks,
       showDiagrams: showDiagrams,
       handColours: handColours,
+      click: click,
       box: box,
       fromBar: fromBar,
       toBar: toBar);
@@ -191,6 +198,7 @@ class SheetElement extends CanvasElement {
     bool? showMarks,
     bool? showDiagrams,
     bool? handColours,
+    bool? click,
     BoxSpec? box,
     int? fromBar,
     int? toBar,
@@ -204,7 +212,7 @@ class SheetElement extends CanvasElement {
           ink: ink ?? this.ink,
           mode: mode ?? this.mode,
           hands: hands ?? this.hands,
-          tempo: (tempo ?? this.tempo).clamp(0.4, 1.2),
+          tempo: (tempo ?? this.tempo).clamp(sheetSlowest, sheetFastest),
           key: autoKey ? null : (key ?? this.key)?.clamp(-7, 7),
           lines: (lines ?? this.lines).clamp(1, 8),
           playhead: playhead ?? this.playhead,
@@ -217,6 +225,7 @@ class SheetElement extends CanvasElement {
           showMarks: showMarks ?? this.showMarks,
           showDiagrams: showDiagrams ?? this.showDiagrams,
           handColours: handColours ?? this.handColours,
+          click: click ?? this.click,
           box: box ?? this.box,
           fromBar: math.max(0, fromBar ?? this.fromBar),
           toBar: math.max(0, toBar ?? this.toBar));
@@ -244,6 +253,7 @@ class SheetElement extends CanvasElement {
         if (!showMarks) "showMarks": false,
         if (!showDiagrams) "showDiagrams": false,
         if (!handColours) "handColours": false,
+        if (click) "click": true,
         "box": box.toJson(),
         if (fromBar > 0) "fromBar": fromBar,
         if (toBar > 0) "toBar": toBar,
@@ -273,6 +283,7 @@ class SheetElement extends CanvasElement {
               showMarks: json["showMarks"] != false,
               showDiagrams: json["showDiagrams"] != false,
               handColours: json["handColours"] != false,
+              click: json["click"] == true,
               box: json["box"] is Map<String, dynamic>
                   ? BoxSpec.fromJson(json["box"] as Map<String, dynamic>)
                   : sheetBox,
@@ -280,3 +291,7 @@ class SheetElement extends CanvasElement {
                   json["fromBar"] is num ? (json["fromBar"] as num).toInt() : 0,
               toBar: json["toBar"] is num ? (json["toBar"] as num).toInt() : 0);
 }
+
+/// sheetSlowest and sheetFastest are as slow and as fast as a sheet plays:
+/// a quarter of real time to half as fast again.
+const sheetSlowest = 0.25, sheetFastest = 1.5;

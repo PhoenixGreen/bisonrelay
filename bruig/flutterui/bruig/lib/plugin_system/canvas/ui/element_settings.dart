@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/metronome_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/synth_settings.dart';
@@ -147,6 +149,10 @@ List<Widget> elementSettings(
   if (element is SheetElement) {
     return sheetSettings(context, controller, element, write, begin, commit,
         panel: true);
+  }
+  if (element is MetronomeElement) {
+    return metronomeSettings(
+        context, controller, element, write, begin, commit);
   }
   if (element is SynthTaskElement) {
     return synthTaskSettings(
