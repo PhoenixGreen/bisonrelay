@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/code_settings.dart';
@@ -155,6 +156,9 @@ List<Widget> elementSettings(
   }
   if (element is CodeElement) {
     return codeSettings(context, controller, element, write, begin, commit);
+  }
+  if (element is CodeTaskElement) {
+    return codeTaskSettings(context, controller, element, write, begin, commit);
   }
   if (element is CodeRunElement) {
     return codeRunSettings(context, controller, element, write, begin, commit);

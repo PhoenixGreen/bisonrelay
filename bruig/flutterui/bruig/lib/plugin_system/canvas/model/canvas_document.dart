@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
@@ -1573,6 +1574,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return CodeElement.fromJson(json, base);
     case ElementKind.codeRun:
       return CodeRunElement.fromJson(json, base);
+    case ElementKind.codeTask:
+      return CodeTaskElement.fromJson(json, base);
   }
 }
 

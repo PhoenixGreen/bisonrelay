@@ -248,8 +248,8 @@ void main() {
       ChartElement(base),
       const TableElement(base),
       // Every other kind, as it is first added -- all but the camera, whose
-      // view is read where the stage is filmed, and a synth task card,
-      // which is words and checks.
+      // view is read where the stage is filmed, and a synth or code task
+      // card, which is words and checks.
       for (var kind in ElementKind.values)
         if (!const {
           ElementKind.text,
@@ -262,6 +262,7 @@ void main() {
           ElementKind.table,
           ElementKind.camera,
           ElementKind.synthTask,
+          ElementKind.codeTask,
           ElementKind.stage,
           ElementKind.parallax,
         }.contains(kind))

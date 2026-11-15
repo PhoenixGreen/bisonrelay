@@ -745,8 +745,8 @@ void main() {
           continue;
         }
         // A Run panel is put down with the Code panel it runs, by the Code
-        // chip.
-        if (kind == ElementKind.codeRun) {
+        // chip; a task card from a Code panel's settings.
+        if (kind == ElementKind.codeRun || kind == ElementKind.codeTask) {
           expect(find.text("Code"), findsWidgets);
           continue;
         }

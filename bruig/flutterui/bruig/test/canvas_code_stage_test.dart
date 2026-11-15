@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -352,4 +354,78 @@ void main() {
       expect(code().panes[0].tabs, ["f2", "f1"]);
     });
   });
+
+  group("a Code task card", () {
+    test("its checks: words found loosely, patterns, files, what was printed",
+        () {
+      var c = starter0("flutter");
+      const has = CodeCheck(CodeCheckKind.has, "Size 72",
+          text: "TextStyle(fontSize:72)");
+      expect(has.metBy(c, null), isTrue, reason: "spaces don't matter");
+      expect(
+          const CodeCheck(CodeCheckKind.lacks, "No 72", text: "fontSize: 72")
+              .metBy(c, null),
+          isFalse);
+      expect(
+          const CodeCheck(CodeCheckKind.has, "a coin count",
+                  text: r"int\s+coins\s*=\s*\d+", pattern: true)
+              .metBy(c, null),
+          isTrue);
+      expect(
+          const CodeCheck(CodeCheckKind.has, "not there",
+                  file: "other.dart", text: "coins")
+              .metBy(c, null),
+          isFalse,
+          reason: "only in the file named");
+      var run = CodeRunElement(const ElementBase(id: "r"),
+          result: CodeRunResult(
+              runner: "",
+              at: DateTime.utc(2026),
+              logs: const [CodeLog("Hi Ken")]));
+      expect(
+          const CodeCheck(CodeCheckKind.prints, "says hi", text: "Hi")
+              .metBy(c, run),
+          isTrue);
+      expect(
+          const CodeCheck(CodeCheckKind.builds, "builds").metBy(c, run), isNull,
+          reason: "known only by checking");
+    });
+
+    testWidgets(
+        "Check pressed: built, ticked, and passed -- until the code changes",
+        (tester) async {
+      await stage(tester, "flutter");
+      c.addCodeTask(code());
+      var card = c.document.elements.whereType<CodeTaskElement>().single;
+      c.setCodeTask(card.copyWith(checks: const [
+        CodeCheck(CodeCheckKind.has, "Count by two", text: "coins += 2"),
+        CodeCheck(CodeCheckKind.builds, "It builds and runs"),
+      ], passed: "Passed! On to Lesson 9."));
+      card = c.document.elements.whereType<CodeTaskElement>().single;
+      expect(card.height, closeTo(codeTaskFitHeight(card, card.width), 0.01));
+      await tester.pumpAndSettle();
+      await tester.tapAt(at(codeTaskLayout(card, card.width)
+          .button
+          .shift(card.bounds.topLeft)
+          .center));
+      await tester.pumpAndSettle();
+      var show = c.codeTaskShowFor(card);
+      expect(show.checked, isTrue);
+      expect(show.built, isTrue);
+      expect(codeTaskResult(card, c.document, show)!.$2, isFalse,
+          reason: "it still counts by one");
+      // Changed to count by two: checked again, it passes.
+      c.replaceElement(code().withFileText(
+          "f1", code().file("f1")!.text.replaceFirst("coins++", "coins += 2")));
+      expect(c.codeTaskShowFor(card).checked, isFalse,
+          reason: "a check holds only for the code it was made against");
+      await c.checkCodeTask(card);
+      expect(codeTaskResult(card, c.document, c.codeTaskShowFor(card)),
+          ("Passed! On to Lesson 9.", true));
+    });
+  });
 }
+
+CodeElement starter0(String key) => startedFrom(
+    codeStarters.firstWhere((s) => s.key == key),
+    const CodeElement(ElementBase(id: "c", width: 800, height: 600)));

@@ -5,6 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart'
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart'
     show CodeShow, codeShowOf;
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
+import 'package:bruig/plugin_system/canvas/media/code_dart_runner.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart'
@@ -230,6 +233,7 @@ part 'controller/synths.dart';
 part 'controller/metronomes.dart';
 part 'controller/codes.dart';
 part 'controller/code_runs.dart';
+part 'controller/code_tasks.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -383,6 +387,7 @@ class CanvasController extends ChangeNotifier {
     metronomeShowOf = metronomeShowFor;
     codeShowOf = codeShowFor;
     codeRunShowOf = codeRunShowFor;
+    codeTaskShowOf = codeTaskShowFor;
   }
 
   CanvasDocument _document;
@@ -3411,6 +3416,12 @@ class CanvasController extends ChangeNotifier {
   /// codeLiveSnap takes its picture, set by the stage's live preview.
   (String, List<CodeLog>)? _codeLive;
   Future<List<int>?> Function()? codeLiveSnap;
+
+  /// _codeTaskChecks is each task card's last check: the code it was made
+  /// against (a fingerprint) and whether that built; _codeTaskBusy the
+  /// cards checking now.
+  final Map<String, (int, bool?)> _codeTaskChecks = {};
+  final Set<String> _codeTaskBusy = {};
 
   /// codeRunHost runs code for Run panels: set by the app (the browser and
   /// interpreters, see media/code_run_host.dart), a fake in the tests; null

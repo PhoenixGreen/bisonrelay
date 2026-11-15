@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
@@ -2691,6 +2693,15 @@ class CanvasStageState extends State<CanvasStage>
     // press whether it is picked or not; its Run panel's Run button too.
     if (element is CodeElement && _pressCode(element, doc)) return;
     if (element is CodeRunElement && _pressCodeRun(element, doc)) return;
+    if (element is CodeTaskElement && codeTaskButtonAt(element, doc)) {
+      if (controller.selection.length != 1 ||
+          controller.selection.first != element.id) {
+        controller.selectOnly(element.id);
+      }
+      controller.checkCodeTask(element);
+      _mode = _DragMode.none;
+      return;
+    }
     if (element is SynthTaskElement) {
       if (synthTaskButtonAt(element, doc) case var b?) {
         _pressSynthTask(element, b);

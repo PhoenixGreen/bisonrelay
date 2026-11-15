@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
@@ -356,16 +357,24 @@ List<Widget> codeSettings(
                           }),
                       ]),
                       CanvasToggle(
-                        key: const ValueKey("codeShowFiles"),
-                        label: "Show the file list",
-                        value: e.showFiles,
-                        onChanged: (v) => now(e.copyWith(showFiles: v)),
-                      ),
-                      CanvasToggle(
                         key: const ValueKey("codeLinks"),
                         label: "Underline other files' names",
                         value: e.links,
                         onChanged: (v) => now(e.copyWith(links: v)),
+                      ),
+                    ]),
+                CanvasControlGroup(
+                    key: const ValueKey("codeTasks"),
+                    label: "Tasks",
+                    help: "A task card says what to do, ticks its checks as "
+                        "the code meets them, and when Check is pressed "
+                        "says whether it passed.",
+                    children: [
+                      CanvasTextButton(
+                        key: const ValueKey("codeAddTask"),
+                        label: "Add a task card",
+                        icon: Icons.fact_check_outlined,
+                        onPressed: () => controller.addCodeTask(e),
                       ),
                     ]),
                 CanvasControlGroup(
@@ -387,25 +396,34 @@ List<Widget> codeSettings(
                         ),
                     ]),
               ]),
-          PanelBit(PanelSection.look, summary: e.theme.label, children: [
-            CanvasControlGroup(
-                key: const ValueKey("codeWindow"),
-                label: "Window",
-                children: [
-                  CanvasToggle(
-                    key: const ValueKey("codeLineNumbers"),
-                    label: "Line numbers",
-                    value: e.lineNumbers,
-                    onChanged: (v) => now(e.copyWith(lineNumbers: v)),
-                  ),
-                  CanvasToggle(
-                    key: const ValueKey("codeWindowBar"),
-                    label: "Window bar",
-                    value: e.windowBar,
-                    onChanged: (v) => now(e.copyWith(windowBar: v)),
-                  ),
-                ]),
-          ]),
+          PanelBit(PanelSection.look,
+              summary:
+                  [e.theme.label, if (!e.showFiles) "no file list"].join(", "),
+              children: [
+                CanvasControlGroup(
+                    key: const ValueKey("codeWindow"),
+                    label: "Window",
+                    children: [
+                      CanvasToggle(
+                        key: const ValueKey("codeShowFiles"),
+                        label: "Files",
+                        value: e.showFiles,
+                        onChanged: (v) => now(e.copyWith(showFiles: v)),
+                      ),
+                      CanvasToggle(
+                        key: const ValueKey("codeLineNumbers"),
+                        label: "Line numbers",
+                        value: e.lineNumbers,
+                        onChanged: (v) => now(e.copyWith(lineNumbers: v)),
+                      ),
+                      CanvasToggle(
+                        key: const ValueKey("codeWindowBar"),
+                        label: "Window bar",
+                        value: e.windowBar,
+                        onChanged: (v) => now(e.copyWith(windowBar: v)),
+                      ),
+                    ]),
+              ]),
           PanelBit(PanelSection.motion,
               summary: [
                 if (e.typing.on) "types in" else "shown whole",
@@ -757,6 +775,227 @@ List<Widget> codeRunSettings(
                       "the timeline: nothing runs again, so every export is "
                       "the same. A book runs a web page live; Python, Go and "
                       "Dart show the saved output."),
+                ]),
+          ]),
+        ]),
+  ];
+}
+
+/// codeTaskSettings is a Code task card's: what it says, its checks, and
+/// what it says when checked.
+List<Widget> codeTaskSettings(
+  BuildContext context,
+  CanvasController controller,
+  CodeTaskElement e,
+  SettingsWrite write,
+  VoidCallback begin,
+  VoidCallback commit,
+) {
+  void now(CodeTaskElement next) {
+    begin();
+    controller.setCodeTask(next);
+    commit();
+  }
+
+  void typing(CodeTaskElement next) {
+    begin();
+    controller.setCodeTask(next, transient: true);
+  }
+
+  var codes = controller.document.elements.whereType<CodeElement>().toList();
+  var code = codes.where((c) => c.id == e.code).firstOrNull;
+  Widget checkCard(int k, CodeCheck c) {
+    void set(CodeCheck next, {bool keep = false}) {
+      var checks = [
+        for (var (j, x) in e.checks.indexed) j == k ? next : x,
+      ];
+      keep
+          ? typing(e.copyWith(checks: checks))
+          : now(e.copyWith(checks: checks));
+    }
+
+    return CanvasControlGroup(
+        key: ValueKey("codeCheck-$k"),
+        label: "Check ${k + 1}",
+        children: [
+          panelRow([
+            cell(
+                CanvasDropdown<CodeCheckKind>(
+                  key: ValueKey("codeCheckKind-$k"),
+                  label: "Kind",
+                  value: c.kind,
+                  options: [for (var x in CodeCheckKind.values) (x, x.label)],
+                  onChanged: (x) => set(c.copyWith(kind: x)),
+                ),
+                flex: 3),
+            cell(
+                CanvasIconButton(
+                  key: ValueKey("codeCheckDelete-$k"),
+                  icon: Icons.close,
+                  tooltip: "Delete this check",
+                  onPressed: () => now(e.copyWith(checks: [
+                    for (var (j, x) in e.checks.indexed)
+                      if (j != k) x
+                  ])),
+                ),
+                width: 36,
+                min: 36),
+          ]),
+          CanvasTextField(
+            key: ValueKey("codeCheckLabel-$k"),
+            label: "What it says",
+            value: c.label,
+            onChanged: (v) => set(c.copyWith(label: v), keep: true),
+            onCommit: commit,
+          ),
+          if (c.kind == CodeCheckKind.has ||
+              c.kind == CodeCheckKind.lacks ||
+              c.kind == CodeCheckKind.prints) ...[
+            CanvasTextField(
+              key: ValueKey("codeCheckText-$k"),
+              label: c.pattern ? "Pattern" : "Words",
+              value: c.text,
+              onChanged: (v) => set(c.copyWith(text: v), keep: true),
+              onCommit: commit,
+            ),
+            if (c.kind != CodeCheckKind.prints && code != null)
+              CanvasDropdown<String>(
+                key: ValueKey("codeCheckFile-$k"),
+                label: "In",
+                value: code.fileNamed(c.file) == null ? "" : c.file,
+                options: [
+                  ("", "Any file"),
+                  for (var f in code.files) (f.name, f.name),
+                ],
+                onChanged: (v) => set(c.copyWith(file: v)),
+              ),
+            CanvasToggle(
+              key: ValueKey("codeCheckPattern-$k"),
+              label: "A pattern (regular expression)",
+              value: c.pattern,
+              onChanged: (v) => set(c.copyWith(pattern: v)),
+            ),
+          ],
+        ]);
+  }
+
+  return [
+    elementPanel(context, controller, e, write, begin, commit,
+        quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+          panelRow([
+            cell(
+                CanvasTextButton(
+                  key: const ValueKey("codeTaskCheck"),
+                  label: "Check it now",
+                  icon: Icons.fact_check_outlined,
+                  primary: true,
+                  onPressed:
+                      code == null ? null : () => controller.checkCodeTask(e),
+                ),
+                flex: 3),
+            cell(
+                CanvasStepper(
+                  key: const ValueKey("codeTaskSize"),
+                  label: "Text size",
+                  value: e.textSize,
+                  min: 4,
+                  max: 1000,
+                  fill: true,
+                  onChanged: (v) => typing(e.copyWith(textSize: v)),
+                  onCommit: commit,
+                ),
+                flex: 2),
+          ]),
+        ]),
+        contentOpen: true,
+        bits: [
+          PanelBit(PanelSection.content,
+              summary: "${e.checks.length} check"
+                  "${e.checks.length == 1 ? "" : "s"}",
+              children: [
+                CanvasControlGroup(
+                    key: const ValueKey("codeTaskWords"),
+                    label: "Task",
+                    children: [
+                      CanvasDropdown<String>(
+                        key: const ValueKey("codeTaskCode"),
+                        label: "Marks the code in",
+                        value: code?.id ?? "",
+                        options: [
+                          if (code == null) ("", "—"),
+                          for (var c in codes) (c.id, "${c.name} · ${c.title}"),
+                        ],
+                        onChanged: (id) {
+                          if (id.isNotEmpty) now(e.copyWith(code: id));
+                        },
+                      ),
+                      CanvasTextField(
+                        key: const ValueKey("codeTaskTitle"),
+                        label: "Title",
+                        value: e.title,
+                        onChanged: (v) => typing(e.copyWith(title: v)),
+                        onCommit: commit,
+                      ),
+                      CanvasTextField(
+                        key: const ValueKey("codeTaskText"),
+                        label: "What to do",
+                        value: e.text,
+                        maxLines: 4,
+                        onChanged: (v) => typing(e.copyWith(text: v)),
+                        onCommit: commit,
+                      ),
+                    ]),
+                CanvasControlGroup(
+                    key: const ValueKey("codeTaskChecks"),
+                    label: "Checks",
+                    help: "What the code must do. \"The code has\" ticks as "
+                        "it is typed (spaces don't matter); \"It builds and "
+                        "runs\" is looked at when Check is pressed.",
+                    children: [
+                      for (var (k, c) in e.checks.indexed) checkCard(k, c),
+                      CanvasTextButton(
+                        key: const ValueKey("codeTaskAddCheck"),
+                        label: "Add a check",
+                        icon: Icons.add,
+                        onPressed: () => now(e.copyWith(checks: [
+                          ...e.checks,
+                          const CodeCheck(CodeCheckKind.has, "The code has …"),
+                        ])),
+                      ),
+                    ]),
+                CanvasControlGroup(
+                    key: const ValueKey("codeTaskSays"),
+                    label: "When checked",
+                    children: [
+                      CanvasTextField(
+                        key: const ValueKey("codeTaskPassed"),
+                        label: "Passed",
+                        value: e.passed,
+                        maxLines: 2,
+                        onChanged: (v) => typing(e.copyWith(passed: v)),
+                        onCommit: commit,
+                      ),
+                      CanvasTextField(
+                        key: const ValueKey("codeTaskNotYet"),
+                        label: "Not yet",
+                        value: e.notYet,
+                        maxLines: 2,
+                        onChanged: (v) => typing(e.copyWith(notYet: v)),
+                        onCommit: commit,
+                      ),
+                    ]),
+              ]),
+          PanelBit(PanelSection.look, children: [
+            CanvasControlGroup(
+                key: const ValueKey("codeTaskLook"),
+                label: "Colour",
+                children: [
+                  CanvasColorButton(
+                    key: const ValueKey("codeTaskAccent"),
+                    label: "Accent",
+                    color: e.accent,
+                    onChanged: (c) => now(e.copyWith(accent: c)),
+                  ),
                 ]),
           ]),
         ]),

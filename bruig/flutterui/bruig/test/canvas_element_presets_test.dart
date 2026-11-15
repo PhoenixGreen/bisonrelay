@@ -64,9 +64,12 @@ void main() {
     test("and a saved one cannot be confused for one", () async {
       var store = ElementPresetStore.instance;
       await store.load();
-      expect([for (var p in store.presets) if (p.builtIn) p.id],
-          [for (var p in builtinElementPresets) p.id],
-          reason: "only what ships is built in");
+      expect([
+        for (var p in store.presets)
+          if (p.builtIn) p.id
+      ], [
+        for (var p in builtinElementPresets) p.id
+      ], reason: "only what ships is built in");
     });
   });
 

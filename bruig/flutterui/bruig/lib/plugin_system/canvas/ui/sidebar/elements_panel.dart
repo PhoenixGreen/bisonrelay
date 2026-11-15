@@ -65,6 +65,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.metronome => Icons.av_timer,
       ElementKind.code => Icons.code,
       ElementKind.codeRun => Icons.play_circle_outline,
+      ElementKind.codeTask => Icons.fact_check_outlined,
     };
 
 class CanvasElementsPanel extends StatelessWidget {

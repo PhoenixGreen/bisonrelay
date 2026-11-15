@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
@@ -1210,6 +1212,14 @@ void paintElement(
             () => paintCode(canvas, bounds, e,
                 seconds: frame / frameRate,
                 show: codeShowOf?.call(e) ?? const CodeShow()));
+      case CodeTaskElement e:
+        arriving(
+            canvas,
+            bounds,
+            const ElementAnimation(),
+            pose,
+            () => paintCodeTask(canvas, bounds, e, document,
+                show: codeTaskShowOf?.call(e) ?? const CodeTaskShow()));
       case CodeRunElement e:
         var code = document?.elementById(e.code);
         var preview = e.result?.preview ?? "";

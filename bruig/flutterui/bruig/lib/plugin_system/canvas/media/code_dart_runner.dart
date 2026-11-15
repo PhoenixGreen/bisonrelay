@@ -135,6 +135,9 @@ class FlutterBuild {
 /// buildFlutterApp compiles [entry] (a Flutter app) and the project's other
 /// Dart files, and builds the widget its main would run.
 FlutterBuild buildFlutterApp(CodeElement code, CodeFile entry) {
+  // A lesson's app without Flutter's "DEBUG" ribbon across its corner,
+  // which a debug build of this app would otherwise put on it.
+  WidgetsApp.debugAllowBannerOverride = false;
   var src = flutterPreviewSource(entry.text);
   if (src == null) {
     return const FlutterBuild(
@@ -172,7 +175,9 @@ Future<List<int>?> pictureOfWidget(Widget widget, ui.Size size,
   );
   var pipeline = PipelineOwner()..rootNode = renderView;
   renderView.prepareInitialFrame();
-  var build = BuildOwner(focusManager: FocusManager());
+  // The app's own: a GlobalKey (ListTile's ink has one) is found only in
+  // the BuildOwner the app builds with.
+  var build = WidgetsBinding.instance.buildOwner!;
   var root = RenderObjectToWidgetAdapter<RenderBox>(
     container: boundary,
     child: MediaQuery(
@@ -195,7 +200,8 @@ Future<List<int>?> pictureOfWidget(Widget widget, ui.Size size,
     image.dispose();
     return data?.buffer.asUint8List();
   } finally {
-    // Taken down again, so nothing of it is left running.
+    // Taken down again, so nothing of it -- its keys, its state -- is left
+    // in the app's tree.
     var gone = RenderObjectToWidgetAdapter<RenderBox>(
             container: boundary, child: const SizedBox.shrink())
         .attachToRenderTree(build, root);

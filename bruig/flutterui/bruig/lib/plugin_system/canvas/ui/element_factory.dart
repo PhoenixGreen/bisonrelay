@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
@@ -110,6 +112,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.code => Size(wide * 0.6, short * 0.78),
     // Beside it, narrower: a page or a console is read down.
     ElementKind.codeRun => Size(wide * 0.3, short * 0.78),
+    // A card, a third of the page wide; its height is what it says.
+    ElementKind.codeTask => Size(wide * 0.32, short * 0.3),
   };
 }
 
@@ -391,6 +395,16 @@ CanvasElement newElement(
       return CodeElement(base.copyWith(name: "Code"),
               fontSize: codeFontFor(document))
           .startedAs(CodeKind.web);
+
+    case ElementKind.codeTask:
+      var code = document.elements.whereType<CodeElement>().firstOrNull;
+      var card = CodeTaskElement(base.copyWith(name: "Code task"),
+          code: code?.id ?? "",
+          textSize: codeFontFor(document) * 0.95,
+          checks: const [
+            CodeCheck(CodeCheckKind.builds, "It builds and runs")
+          ]);
+      return card.withBase(height: codeTaskFitHeight(card, card.width));
 
     case ElementKind.codeRun:
       return CodeRunElement(base.copyWith(name: "Run"),
