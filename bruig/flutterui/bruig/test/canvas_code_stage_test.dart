@@ -2,6 +2,8 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/presets/builtin_element_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
@@ -11,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/code_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -60,7 +63,7 @@ void main() {
     c = CanvasController(const CanvasDocument(frames: 2400, frameRate: 24),
         audioEngine: FakeEngine({}));
     addTearDown(c.dispose);
-    c.addCodeLesson(codeStarters.firstWhere((s) => s.key == starter));
+    c.addCodeLesson(starter: codeStarters.firstWhere((s) => s.key == starter));
     c.clearSelection();
     key = GlobalKey<CanvasStageState>();
     tester.view.physicalSize = const Size(1600, 1000);
@@ -81,8 +84,9 @@ void main() {
     return page.topLeft + doc * (page.width / c.document.size.width);
   }
 
-  testWidgets("the Code chip puts down a Code panel and its Run panel",
-      (tester) async {
+  testWidgets(
+      "the Code chip puts down an empty project and its Run panel; the "
+      "examples are its presets", (tester) async {
     var ctl = CanvasController(const CanvasDocument());
     addTearDown(ctl.dispose);
     tester.view.physicalSize = const Size(600, 1400);
@@ -92,20 +96,22 @@ void main() {
         SizedBox(width: 400, child: CanvasElementsPanel(controller: ctl))));
     await tester.tap(find.byKey(const ValueKey("addCode")));
     await tester.pumpAndSettle();
-    expect(find.text("Python"), findsOneWidget);
-    expect(find.text("Flutter app"), findsOneWidget);
-    await tester.tap(find.text("Python"));
-    await tester.pumpAndSettle();
     var codeEl = ctl.document.elements.whereType<CodeElement>().single;
     var runEl = ctl.document.elements.whereType<CodeRunElement>().single;
-    expect(codeEl.files.map((f) => f.name), ["words.py", "main.py"]);
+    expect(codeEl.project, CodeKind.web);
+    expect(codeEl.files.map((f) => (f.name, f.text)),
+        [("index.html", ""), ("style.css", ""), ("app.js", "")]);
+    expect(codeEl.typing.on, isFalse, reason: "nothing to type in");
     expect(runEl.code, codeEl.id);
-    expect(codeEl.file(runEl.entry)!.name, "main.py");
     expect(runEl.x, greaterThan(codeEl.bounds.right), reason: "beside it");
     expect(ctl.selection, {codeEl.id});
-    // The scene made long enough for the lesson.
-    expect(ctl.document.frames / ctl.document.frameRate,
-        greaterThan(codeEl.steps.last.at + codeEl.steps.last.length));
+    // The examples, as presets of a Code panel.
+    var names = [
+      for (var p in builtinElementPresets)
+        if (p.kind == ElementKind.code) p.name
+    ];
+    expect(names, hasLength(5));
+    expect(names.first, startsWith("Web page"));
   });
 
   testWidgets("a tab carried onto another pane moves there; pressed, shown",
@@ -209,7 +215,7 @@ void main() {
       () async {
     var c = CanvasController(const CanvasDocument(frames: 2400, frameRate: 24));
     addTearDown(c.dispose);
-    c.addCodeLesson(codeStarters.first);
+    c.addCodeLesson(starter: codeStarters.first);
     var code = c.document.elements.whereType<CodeElement>().single;
     var run = c.document.elements.whereType<CodeRunElement>().single;
     c.replaceElement(run.copyWith(
@@ -224,5 +230,126 @@ void main() {
         reason: "no app-only console catcher in a book");
     expect(built.stage.layers.map((l) => l.id), contains(code.id),
         reason: "its typing changes it");
+  });
+
+  test("a project begun again as another kind: its files, empty", () {
+    var e = const CodeElement(ElementBase(id: "c", width: 900, height: 600))
+        .startedAs(CodeKind.web);
+    expect(e.layout, CodeLayout.oneOverTwo);
+    expect(e.panes.map((p) => p.tabs.length), [1, 1, 1]);
+    var py = e.startedAs(CodeKind.python);
+    expect(py.files.map((f) => f.name), ["main.py"]);
+    expect(py.layout, CodeLayout.one);
+    var flutter = e.startedAs(CodeKind.flutter);
+    // An empty Flutter project's Dart is still an app to draw.
+    expect(
+        runnerOf(
+            CodeRunElement(const ElementBase(id: "r"), code: "c"), flutter),
+        CodeRunner.flutter);
+    // Kept, and read back from files alone for one saved before kinds.
+    var back = CodeElement.fromJson(
+        {...py.props(), "projectKind": null}, const ElementBase(id: "c"));
+    expect(back.project, CodeKind.python);
+  });
+
+  group("the Code Studio", () {
+    late _FakeHost host;
+    late Future<String?> Function(List<int>) save;
+    setUp(() {
+      host = _FakeHost();
+      CanvasController.codeRunHost = host;
+      save = CanvasController.saveCodePicture;
+      CanvasController.saveCodePicture = (png) async => "0123456789abcdef.png";
+    });
+    tearDown(() {
+      CanvasController.codeRunHost = null;
+      CanvasController.saveCodePicture = save;
+    });
+
+    Future<void> studio(WidgetTester tester, String starter) async {
+      c = CanvasController(const CanvasDocument(frames: 2400, frameRate: 24),
+          audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      c.addCodeLesson(
+          starter: codeStarters.firstWhere((s) => s.key == starter));
+      c.openCodeStudio(code().id);
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_app(CodeStudio(
+          controller: c, codeId: code().id, onDone: c.closeCodeStudio)));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("typed in: the panel's file, one change to undo",
+        (tester) async {
+      await studio(tester, "python");
+      var field = find.byKey(ValueKey("codeEditor-${code().id}-f1"));
+      expect(field, findsOneWidget);
+      await tester.enterText(field, "def f():\n    return 1");
+      await tester.pump();
+      await tester.enterText(field, "def f():\n    return 2");
+      await tester.pump();
+      expect(code().file("f1")!.text, "def f():\n    return 2");
+      await tester.tap(find.byKey(const ValueKey("codeStudioDone")));
+      await tester.pumpAndSettle();
+      expect(c.codeStudio.value, isNull);
+      c.undo();
+      expect(code().file("f1")!.text, startsWith("def count_words"));
+    });
+
+    testWidgets("a file picked opens in the pane last used; Run runs it",
+        (tester) async {
+      await studio(tester, "python");
+      // main.py into the left pane, beside words.py.
+      await tester.tap(find.byKey(const ValueKey("codeStudioFile-f2")));
+      await tester.pumpAndSettle();
+      expect(code().panes[0].tabs, ["f1", "f2"]);
+      expect(code().panes[0].active, "f2");
+      await tester.tap(find.byKey(const ValueKey("codeStudioRun")));
+      await tester.pumpAndSettle();
+      expect(host.ran, [(CodeRunner.python, "main.py")]);
+      // Kept by its Run panel, and shown here.
+      expect(run().result!.logs.single.text, "Page ready");
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("codeStudioOutput")),
+              matching: find.text("Page ready")),
+          findsOneWidget);
+    });
+
+    testWidgets("a tab dragged onto another pane moves there", (tester) async {
+      await studio(tester, "python");
+      var from =
+          tester.getCenter(find.byKey(const ValueKey("codeStudioTab-1-f2")));
+      // Past words.py, on the rest of its row: after it.
+      var row =
+          tester.getTopRight(find.byKey(const ValueKey("codeStudioTab-0-f1")));
+      var to = row + const Offset(80, 17);
+      var g = await tester.startGesture(from);
+      await tester.pump(const Duration(milliseconds: 50));
+      for (var i = 1; i <= 10; i++) {
+        await g.moveTo(Offset.lerp(from, to, i / 10)!);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(code().panes[0].tabs, ["f1", "f2"]);
+      expect(code().panes[1].tabs, isEmpty);
+      // Dropped on words.py: before it.
+      var back =
+          tester.getCenter(find.byKey(const ValueKey("codeStudioTab-0-f2")));
+      var onto =
+          tester.getCenter(find.byKey(const ValueKey("codeStudioTab-0-f1")));
+      g = await tester.startGesture(back);
+      await tester.pump(const Duration(milliseconds: 50));
+      for (var i = 1; i <= 10; i++) {
+        await g.moveTo(Offset.lerp(back, onto, i / 10)!);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(code().panes[0].tabs, ["f2", "f1"]);
+    });
   });
 }

@@ -52,6 +52,40 @@ enum CodeLanguage {
   }
 }
 
+/// CodeKind is what a project is (Ken, 2026-11-15: "the user can choose the
+/// code type in the Settings panel"): what it starts with, and what runs it.
+enum CodeKind {
+  web("Web page", CodeLayout.oneOverTwo, ["index.html", "style.css", "app.js"]),
+  python("Python", CodeLayout.one, ["main.py"]),
+  go("Go", CodeLayout.one, ["main.go"]),
+  dart("Dart", CodeLayout.one, ["main.dart"]),
+  flutter("Flutter app", CodeLayout.one, ["main.dart"]);
+
+  final String label;
+
+  /// layout and files are what an empty project of it starts with: one
+  /// pane for each file, as far as the layout has panes.
+  final CodeLayout layout;
+  final List<String> files;
+  const CodeKind(this.label, this.layout, this.files);
+
+  /// of is what [files] look like they are, for a project saved before it
+  /// had a kind of its own.
+  static CodeKind of(List<CodeFile> files) {
+    bool has(CodeLanguage l) => files.any((f) => f.language == l);
+    if (has(CodeLanguage.html)) return web;
+    if (has(CodeLanguage.python)) return python;
+    if (has(CodeLanguage.go)) return go;
+    if (files.any((f) =>
+        f.language == CodeLanguage.dart &&
+        f.text.contains("package:flutter/"))) {
+      return flutter;
+    }
+    if (has(CodeLanguage.dart)) return dart;
+    return web;
+  }
+}
+
 /// CodeLayout is how the panes sit: the five the prototype offered.
 enum CodeLayout {
   one("One pane", 1),
@@ -288,6 +322,9 @@ class CodeStep {
 class CodeElement extends CanvasElement {
   /// title is the project's name, on the window bar.
   final String title;
+
+  /// project is what the project is: see CodeKind.
+  final CodeKind project;
   final List<CodeFile> files;
   final CodeLayout layout;
   final List<CodePane> panes;
@@ -317,6 +354,7 @@ class CodeElement extends CanvasElement {
   const CodeElement(
     super.base, {
     this.title = "project",
+    this.project = CodeKind.web,
     this.files = const [],
     this.layout = CodeLayout.one,
     this.panes = const [],
@@ -339,6 +377,7 @@ class CodeElement extends CanvasElement {
   @override
   CanvasElement rebase(ElementBase base) => CodeElement(base,
       title: title,
+      project: project,
       files: files,
       layout: layout,
       panes: panes,
@@ -356,6 +395,7 @@ class CodeElement extends CanvasElement {
 
   CodeElement copyWith({
     String? title,
+    CodeKind? project,
     List<CodeFile>? files,
     CodeLayout? layout,
     List<CodePane>? panes,
@@ -373,6 +413,7 @@ class CodeElement extends CanvasElement {
   }) =>
       CodeElement(base,
           title: title ?? this.title,
+          project: project ?? this.project,
           files: files ?? this.files,
           layout: layout ?? this.layout,
           panes: panes ?? this.panes,
@@ -387,6 +428,35 @@ class CodeElement extends CanvasElement {
           typing: typing ?? this.typing,
           steps: steps ?? this.steps,
           dim: dim ?? this.dim);
+
+  /// startedAs is it begun again as an empty project of [k]: its kind's
+  /// files, empty, each in a pane of its own as far as there are panes;
+  /// nothing typed in or lit. Its look and box stay.
+  CodeElement startedAs(CodeKind k) {
+    var made = [
+      for (var (i, name) in k.files.indexed)
+        CodeFile(
+            id: "f${i + 1}",
+            name: name,
+            colour: codeFileColours[i % codeFileColours.length]),
+    ];
+    var panes = <CodePane>[];
+    for (var i = 0; i < k.layout.panes; i++) {
+      var tabs = i < k.layout.panes - 1
+          ? [if (i < made.length) made[i].id]
+          : [for (var f in made.skip(i)) f.id];
+      panes.add(CodePane(tabs: tabs, active: tabs.isEmpty ? "" : tabs.first));
+    }
+    return copyWith(
+        project: k,
+        files: made,
+        layout: k.layout,
+        panes: panes,
+        columns: k.layout.evenColumns,
+        rows: k.layout.evenRows,
+        typing: typing.copyWith(on: false),
+        steps: const []);
+  }
 
   CodeFile? file(String id) {
     for (var f in files) {
@@ -557,6 +627,7 @@ class CodeElement extends CanvasElement {
   @override
   Map<String, dynamic> props() => {
         "title": title,
+        "projectKind": project.name,
         "files": [for (var f in files) f.toJson()],
         "layout": layout.name,
         "panes": [for (var p in panes) p.toJson()],
@@ -584,12 +655,15 @@ class CodeElement extends CanvasElement {
 
     var layout =
         CodeLayout.values.asNameMap()[json["layout"]] ?? CodeLayout.one;
+    var files = [
+      for (var f in (json["files"] is List ? json["files"] as List : []))
+        if (CodeFile.fromJson(f) case var file?) file
+    ];
     return CodeElement(b,
         title: jsonString(json["title"], "project"),
-        files: [
-          for (var f in (json["files"] is List ? json["files"] as List : []))
-            if (CodeFile.fromJson(f) case var file?) file
-        ],
+        project: CodeKind.values.asNameMap()[json["projectKind"]] ??
+            CodeKind.of(files),
+        files: files,
         layout: layout,
         panes: [
           for (var p in (json["panes"] is List ? json["panes"] as List : []))

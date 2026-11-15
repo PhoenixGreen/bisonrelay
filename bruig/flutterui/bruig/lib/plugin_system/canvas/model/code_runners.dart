@@ -65,7 +65,8 @@ CodeRunner runnerOf(CodeRunElement run, CodeElement? code) {
     CodeLanguage.html || CodeLanguage.js || CodeLanguage.css => CodeRunner.web,
     CodeLanguage.python => CodeRunner.python,
     CodeLanguage.go => CodeRunner.go,
-    CodeLanguage.dart => isFlutter(f.text)
+    // A Flutter project's Dart is an app even before it says so.
+    CodeLanguage.dart => isFlutter(f.text) || code!.project == CodeKind.flutter
         ? (run.dartpad ? CodeRunner.dartpad : CodeRunner.flutter)
         : CodeRunner.dart,
     CodeLanguage.text => CodeRunner.none,

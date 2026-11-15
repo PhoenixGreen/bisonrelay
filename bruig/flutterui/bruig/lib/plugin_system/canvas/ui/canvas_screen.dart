@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/code_studio.dart';
 import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -563,13 +564,36 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<String?>(
-      valueListenable: _controller.scoreStudio,
-      builder: (context, score, _) => score != null
-          ? _scoreStudioPage(context, score)
-          : ValueListenableBuilder<bool>(
-              valueListenable: _controller.studio3dOpen,
-              builder: (context, studio3d, _) =>
-                  studio3d ? _studio3dPage(context) : _canvasPage(context)));
+      valueListenable: _controller.codeStudio,
+      builder: (context, code, _) => code != null
+          ? _codeStudioPage(context, code)
+          : _withoutCodeStudio(context));
+
+  Widget _withoutCodeStudio(BuildContext context) =>
+      ValueListenableBuilder<String?>(
+          valueListenable: _controller.scoreStudio,
+          builder: (context, score, _) => score != null
+              ? _scoreStudioPage(context, score)
+              : ValueListenableBuilder<bool>(
+                  valueListenable: _controller.studio3dOpen,
+                  builder: (context, studio3d, _) => studio3d
+                      ? _studio3dPage(context)
+                      : _canvasPage(context)));
+
+  /// _codeStudioPage is the Code Studio, given the whole page in place of
+  /// the canvas: see code_studio.dart.
+  Widget _codeStudioPage(BuildContext context, String code) {
+    var client = Provider.of<ClientModel>(context);
+    var theme = ThemeNotifier.of(context);
+    return ScreenWithChatSideMenu(
+        client,
+        contentAreaFrame(
+            theme,
+            CodeStudio(
+                controller: _controller,
+                codeId: code,
+                onDone: _controller.closeCodeStudio)));
+  }
 
   /// _scoreStudioPage is the Score Studio, given the whole page in place of
   /// the canvas: see score_studio.dart.

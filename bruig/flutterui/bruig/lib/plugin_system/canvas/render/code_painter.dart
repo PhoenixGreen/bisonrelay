@@ -797,9 +797,13 @@ CodeHit? codeHitAt(CodeElement e, Offset point) {
 
 /// codeDividerDragged is [e] with divider [d] moved to [point]: the two
 /// panes either side of it shared out again, neither under an eighth.
-CodeElement codeDividerDragged(CodeElement e, CodeDividerBox d, Offset point) {
-  var b = codeBoxes(e, e.bounds);
-  var area = b.panesArea;
+CodeElement codeDividerDragged(CodeElement e, CodeDividerBox d, Offset point) =>
+    codeDividerDraggedIn(e, d, point, codeBoxes(e, e.bounds).panesArea);
+
+/// codeDividerDraggedIn is the same for panes laid out in [area] (the Code
+/// Studio's, in its own pixels).
+CodeElement codeDividerDraggedIn(
+    CodeElement e, CodeDividerBox d, Offset point, Rect area) {
   var shares = [...(d.columns ? e.columns : e.rows)];
   if (d.index + 1 >= shares.length) return e;
   var sum = shares.fold(0.0, (a, b) => a + b);

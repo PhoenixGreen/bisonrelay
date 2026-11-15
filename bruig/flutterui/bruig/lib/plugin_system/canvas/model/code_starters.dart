@@ -1,10 +1,15 @@
+import 'dart:ui' show Size;
+
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
 import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 
-// code_starters.dart is what the Add panel's Code chip offers to start from
-// (as the prototype's Add › Code did): a small project in each language,
-// already laid out in panes, typing itself in, with a few lines lit to
-// explain it.
+// code_starters.dart is the examples a Code panel can start from, as its
+// built-in presets (Ken, 2026-11-15: "the current options should probably
+// be presets as they already have pre-built animations and code"): a small
+// project in each language, laid out in panes, typing itself in, with a few
+// lines lit to explain it.
 
 /// CodeStarter is one of them.
 class CodeStarter {
@@ -12,6 +17,7 @@ class CodeStarter {
   final String title;
   final String about;
   final String project;
+  final CodeKind kind;
   final List<(String, String)> files;
   final CodeLayout layout;
 
@@ -29,6 +35,7 @@ class CodeStarter {
       required this.title,
       required this.about,
       required this.project,
+      required this.kind,
       required this.files,
       required this.layout,
       required this.panes,
@@ -176,6 +183,7 @@ class _CounterAppState extends State<CounterApp> {
 const codeStarters = [
   CodeStarter(
       key: "web",
+      kind: CodeKind.web,
       title: "Web page",
       about: "HTML, CSS and JavaScript",
       project: "coins-page",
@@ -194,6 +202,7 @@ const codeStarters = [
       ]),
   CodeStarter(
       key: "python",
+      kind: CodeKind.python,
       title: "Python",
       about: "Two files, one import",
       project: "word-count",
@@ -211,6 +220,7 @@ const codeStarters = [
       ]),
   CodeStarter(
       key: "go",
+      kind: CodeKind.go,
       title: "Go",
       about: "One package, two files",
       project: "fibonacci",
@@ -226,6 +236,7 @@ const codeStarters = [
       ]),
   CodeStarter(
       key: "dart",
+      kind: CodeKind.dart,
       title: "Dart",
       about: "A class and a list",
       project: "basket",
@@ -241,6 +252,7 @@ const codeStarters = [
       ]),
   CodeStarter(
       key: "flutter",
+      kind: CodeKind.flutter,
       title: "Flutter app",
       about: "Widgets, drawn in the preview",
       project: "counter_app",
@@ -256,6 +268,7 @@ const codeStarters = [
       ]),
   CodeStarter(
       key: "blank",
+      kind: CodeKind.web,
       title: "Blank",
       about: "One empty web page",
       project: "project",
@@ -279,6 +292,7 @@ CodeElement startedFrom(CodeStarter s, CodeElement base) {
   ];
   var e = base.copyWith(
     title: s.project,
+    project: s.kind,
     files: files,
     layout: s.layout,
     panes: [
@@ -302,3 +316,23 @@ CodeElement startedFrom(CodeStarter s, CodeElement base) {
           note: note),
   ]);
 }
+
+/// codeExamplePresets are the examples as built-in presets of a Code panel,
+/// designed on a 1080p page (and scaled to the page they are used on).
+List<ElementPreset> get codeExamplePresets => [
+      for (var s in codeStarters)
+        if (s.key != "blank")
+          ElementPreset(
+            id: "code-${s.key}",
+            name: "${s.title}: ${s.project}",
+            kind: ElementKind.code,
+            builtIn: true,
+            madeOn: const Size(1920, 1080),
+            element: startedFrom(
+                    s,
+                    const CodeElement(
+                        ElementBase(id: "example", width: 1152, height: 842.4),
+                        fontSize: 17.28))
+                .toJson(),
+          ),
+    ];

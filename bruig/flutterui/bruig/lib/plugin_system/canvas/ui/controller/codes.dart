@@ -6,10 +6,10 @@ part of '../canvas_controller.dart';
 // and which tab each pane shows while paused.
 
 extension CanvasCodes on CanvasController {
-  /// addCodeLesson puts down a Code panel started from [starter] and a Run
-  /// panel beside it running it, the two filling most of the page side by
-  /// side, and picks the Code panel.
-  void addCodeLesson(CodeStarter starter, {Offset? center}) {
+  /// addCodeLesson puts down a Code panel -- an empty web page, or started
+  /// from [starter] -- and a Run panel beside it running it, the two
+  /// filling most of the page side by side, and picks the Code panel.
+  void addCodeLesson({CodeStarter? starter, Offset? center}) {
     var page = _document.size.rect;
     var fs = codeFontFor(_document);
     var gap = page.width * 0.02;
@@ -18,17 +18,18 @@ extension CanvasCodes on CanvasController {
     var mid = center ?? page.center;
     var left = mid.dx - (codeW + gap + runW) / 2;
     var top = mid.dy - h / 2;
-    var code = startedFrom(
-        starter,
-        CodeElement(
-            ElementBase(
-                id: newElementId(),
-                name: "Code",
-                x: left,
-                y: top,
-                width: codeW,
-                height: h),
-            fontSize: fs));
+    var blank = CodeElement(
+        ElementBase(
+            id: newElementId(),
+            name: "Code",
+            x: left,
+            y: top,
+            width: codeW,
+            height: h),
+        fontSize: fs);
+    var code = starter == null
+        ? blank.startedAs(CodeKind.web)
+        : startedFrom(starter, blank);
     var run = CodeRunElement(
         ElementBase(
             id: newElementId(),
@@ -38,7 +39,7 @@ extension CanvasCodes on CanvasController {
             width: runW,
             height: h),
         code: code.id,
-        entry: code.files[starter.entry].id,
+        entry: starter == null ? "" : code.files[starter.entry].id,
         outputSize: fs * 0.9);
     // A scene too short for the lesson is made long enough for it: its
     // typing, its lit lines and a moment after them.
@@ -51,6 +52,21 @@ extension CanvasCodes on CanvasController {
     apply(doc);
     selectOnly(code.id);
   }
+
+  /// openCodeStudio gives the page to the Code Studio, on Code panel [id].
+  void openCodeStudio(String id) {
+    if (playing) pause();
+    _codeEditing = null;
+    codeStudio.value = id;
+  }
+
+  void closeCodeStudio() => codeStudio.value = null;
+
+  /// codeRunFor is the Run panel that runs Code panel [e], if it has one.
+  CodeRunElement? codeRunFor(CodeElement e) => _document.elements
+      .whereType<CodeRunElement>()
+      .where((r) => r.code == e.id)
+      .firstOrNull;
 
   /// codeShowFor is how the stage shows Code panel [e]: the tabs picked by
   /// hand while paused, and the pane being edited.

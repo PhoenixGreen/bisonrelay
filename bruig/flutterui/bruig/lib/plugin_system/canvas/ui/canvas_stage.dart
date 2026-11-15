@@ -370,6 +370,10 @@ class CanvasStageState extends State<CanvasStage>
   ({String id, int pane, String file})? _codeTab;
   Offset? _codeTabAt;
 
+  /// _inLive is a press that began on a live preview: the page's, which the
+  /// stage leaves alone until it is let go.
+  bool _inLive = false;
+
   /// _codeEditBegun is whether the open code editor has changed anything
   /// yet: the change it makes is one to undo, begun at its first keystroke.
   bool _codeEditBegun = false;
@@ -1852,6 +1856,20 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
+  /// _codeLiveRect is where the live preview is on the stage, if one is
+  /// open.
+  Rect? _codeLiveRect() {
+    var e = document.elementById(controller.codeLive ?? "");
+    if (e is! CodeRunElement) return null;
+    var code = document.elementById(e.code);
+    var runner = runnerOf(e, code is CodeElement ? code : null);
+    var preview = codeRunBoxes(e, e.bounds, runner: runner).preview;
+    if (preview == null) return null;
+    var tl = _toStage(preview.topLeft);
+    return Rect.fromLTWH(
+        tl.dx, tl.dy, preview.width * _scale, preview.height * _scale);
+  }
+
   /// _codeLiveFor is the live preview over the Run panel open live.
   Widget? _codeLiveFor() {
     var id = controller.codeLive;
@@ -2279,9 +2297,16 @@ class CanvasStageState extends State<CanvasStage>
         controller.codeEditing != null) {
       return;
     }
-    // A press anywhere on the stage shuts a live preview (a press inside it
-    // goes to the preview itself).
-    if (controller.codeLive != null) controller.endLiveCode();
+    // A press off a live preview shuts it. One on it is the page's own: the
+    // stage hears every press over it, the preview's included, and shutting
+    // it there would take the page away from under the click.
+    if (controller.codeLive != null) {
+      if (_codeLiveRect()?.contains(event.localPosition) ?? false) {
+        _inLive = true;
+        return;
+      }
+      controller.endLiveCode();
+    }
     _focus.requestFocus();
     // Looking through the camera, the page is drawn moved and a press would
     // land somewhere other than it looks: the press puts the page back, and
@@ -5748,6 +5773,7 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   void _onPointerMove(PointerMoveEvent event) {
+    if (_inLive) return;
     _pointer = event;
     if (_noteWas != null) {
       _dragMarkerNote(_toDocument(event.localPosition));
@@ -6394,6 +6420,10 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   void _onPointerUp(PointerEvent event) {
+    if (_inLive) {
+      _inLive = false;
+      return;
+    }
     if (_noteWas != null) {
       _noteWas = null;
       controller.endInteraction();

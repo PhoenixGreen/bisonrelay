@@ -3189,6 +3189,10 @@ class CanvasController extends ChangeNotifier {
   /// null while the canvas has it (score_studio.dart).
   final ValueNotifier<String?> scoreStudio = ValueNotifier(null);
 
+  /// codeStudio is the Code panel the Code Studio has the page for, by id,
+  /// or null for the canvas. See code_studio.dart.
+  final ValueNotifier<String?> codeStudio = ValueNotifier(null);
+
   /// _rangeEnd is the frame a sheet's range of bars stops playing at (see
   /// playSheet), or null.
   int? _rangeEnd;

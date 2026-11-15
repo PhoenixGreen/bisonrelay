@@ -250,6 +250,31 @@ List<Widget> codeSettings(
         quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
           panelRow([
             cell(
+                CanvasDropdown<CodeKind>(
+                  key: const ValueKey("codeProject"),
+                  label: "Project",
+                  value: e.project,
+                  options: [for (var k in CodeKind.values) (k, k.label)],
+                  // Begun again as an empty project of that kind; Undo
+                  // brings the files back.
+                  onChanged: (k) {
+                    if (k != e.project) now(e.startedAs(k));
+                  },
+                ),
+                flex: 3),
+            cell(
+                CanvasTextButton(
+                  key: const ValueKey("codeOpenStudio"),
+                  label: "Code Studio",
+                  icon: Icons.open_in_full,
+                  primary: true,
+                  onPressed: () => controller.openCodeStudio(e.id),
+                ),
+                flex: 2),
+          ]),
+          const SizedBox(height: 8),
+          panelRow([
+            cell(
                 CanvasDropdown<CodeTheme>(
                   key: const ValueKey("codeTheme"),
                   label: "Colours",
@@ -297,7 +322,9 @@ List<Widget> codeSettings(
                     help: "The project's files. A file named in another's "
                         "code -- style.css in a page, an import -- is "
                         "underlined in its colour, so a learner can see "
-                        "what uses what.",
+                        "what uses what. Choosing a Project above starts "
+                        "the files again, empty (Undo brings them back); "
+                        "the examples are in More, under Presets.",
                     children: [
                       CanvasTextField(
                         key: const ValueKey("codeTitle"),

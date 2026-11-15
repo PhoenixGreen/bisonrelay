@@ -35,12 +35,18 @@ void main() {
   });
 
   group("what ships with the app", () {
-    test("is nothing: a design is saved from a canvas it was made on", () {
-      // There was a football league table here. It carried no page, so it
-      // arrived at whatever size it had been saved at -- which is what
-      // presets being sized to the canvas they land on was written to fix.
-      // Saving it again from a real canvas gives it one.
-      expect(builtinElementPresets, isEmpty);
+    test("is a Code panel's examples, each with the page it was made on", () {
+      // There was a football league table here once. It carried no page,
+      // so it arrived at whatever size it had been saved at -- which is
+      // what presets being sized to the canvas they land on was written to
+      // fix. What ships now (Ken, 2026-11-15: the Code examples as presets)
+      // carries its page, and builds.
+      expect(builtinElementPresets, isNotEmpty);
+      for (var p in builtinElementPresets) {
+        expect(p.kind, ElementKind.code, reason: p.name);
+        expect(p.madeOn, isNotNull, reason: p.name);
+        expect(p.build().kind, ElementKind.code, reason: p.name);
+      }
     });
 
     test("but a design that did ship would not be the reader's to lose", () {
@@ -58,7 +64,9 @@ void main() {
     test("and a saved one cannot be confused for one", () async {
       var store = ElementPresetStore.instance;
       await store.load();
-      expect(store.presets.where((p) => p.builtIn), isEmpty);
+      expect([for (var p in store.presets) if (p.builtIn) p.id],
+          [for (var p in builtinElementPresets) p.id],
+          reason: "only what ships is built in");
     });
   });
 

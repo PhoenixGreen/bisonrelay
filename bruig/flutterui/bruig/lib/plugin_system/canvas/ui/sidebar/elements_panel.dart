@@ -1,5 +1,4 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -241,76 +240,43 @@ class _AddSynth extends StatelessWidget {
 }
 
 
-/// _AddCode is the chip that puts down a Code panel and a Run panel beside
-/// it, from one of the examples (code_starters.dart): a menu of them opens
-/// from it, as the prototype's Add › Code did.
+/// _AddCode is the chip that puts down a Code panel -- an empty web page,
+/// its kind chosen in its settings and its examples among its presets --
+/// and the Run panel beside it that runs it.
 class _AddCode extends StatelessWidget {
   final CanvasController controller;
   const _AddCode(this.controller);
-
-  /// _pick opens the examples' menu by the chip; [dim] is the theme's
-  /// colour for what each is, read while building (not in a tap).
-  Future<void> _pick(BuildContext context, Color dim) async {
-    var box = context.findRenderObject() as RenderBox;
-    var at = box.localToGlobal(Offset.zero);
-    var picked = await showMenu<CodeStarter>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-          at.dx + box.size.width, at.dy, at.dx + box.size.width + 1, at.dy + 1),
-      items: [
-        for (var s in codeStarters)
-          PopupMenuItem<CodeStarter>(
-            key: ValueKey("addCode-${s.key}"),
-            value: s,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(s.title,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600)),
-                Text(s.about, style: TextStyle(fontSize: 11, color: dim)),
-              ],
-            ),
-          ),
-      ],
-    );
-    if (picked != null) controller.addCodeLesson(picked);
-  }
 
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     return Material(
       type: MaterialType.transparency,
-      child: Builder(
-        builder: (context) => InkWell(
-          key: const ValueKey("addCode"),
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => _pick(context, theme.colors.onSurfaceVariant),
-          child: Container(
-            width: 76,
-            constraints: const BoxConstraints(minHeight: 62),
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: theme.colors.outlineVariant),
-              color:
-                  theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
-            ),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.code,
-                      size: 20, color: theme.colors.onSurfaceVariant),
-                  const SizedBox(height: 4),
-                  Text("Code",
-                      style: TextStyle(
-                          fontSize: 10, color: theme.colors.onSurfaceVariant),
-                      textAlign: TextAlign.center),
-                ]),
+      child: InkWell(
+        key: const ValueKey("addCode"),
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => controller.addCodeLesson(),
+        child: Container(
+          width: 76,
+          constraints: const BoxConstraints(minHeight: 62),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: theme.colors.outlineVariant),
+            color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
           ),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.code,
+                    size: 20, color: theme.colors.onSurfaceVariant),
+                const SizedBox(height: 4),
+                Text("Code",
+                    style: TextStyle(
+                        fontSize: 10, color: theme.colors.onSurfaceVariant),
+                    textAlign: TextAlign.center),
+              ]),
         ),
       ),
     );

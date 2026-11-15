@@ -1,4 +1,3 @@
-import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
@@ -385,13 +384,13 @@ CanvasElement newElement(
     case ElementKind.metronome:
       return MetronomeElement(base.copyWith(name: "Metronome"));
 
-    // A blank page to write in, at a size read across the room on a
-    // 1080p page; the Code chip starts from an example (code_starters.dart).
+    // An empty web page to write in, at a size read across the room on a
+    // 1080p page; its kind is chosen in its settings, and the examples are
+    // its presets (code_starters.dart).
     case ElementKind.code:
-      return startedFrom(
-          codeStarters.last,
-          CodeElement(base.copyWith(name: "Code"),
-              fontSize: codeFontFor(document)));
+      return CodeElement(base.copyWith(name: "Code"),
+              fontSize: codeFontFor(document))
+          .startedAs(CodeKind.web);
 
     case ElementKind.codeRun:
       return CodeRunElement(base.copyWith(name: "Run"),
