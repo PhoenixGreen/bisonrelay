@@ -20,6 +20,11 @@ enum CodeCheckKind {
   /// lacks: the code no longer says it.
   lacks("The code no longer has"),
 
+  /// changes: the code no longer says [CodeCheck.before], and says
+  /// [CodeCheck.text] -- "coins++" made "coins += 2" (Ken: easier to set
+  /// than a pattern).
+  changes("The code changes"),
+
   /// builds: the project builds and runs without an error: looked at only
   /// when Check is pressed.
   builds("It builds and runs"),
@@ -41,39 +46,82 @@ class CodeCheck {
   /// file is the file it looks in, by name; empty for every file.
   final String file;
 
-  /// text is what it looks for, and [pattern] whether it is a regular
-  /// expression (spaces in the code matched loosely: see [matches]).
+  /// text is what it looks for -- any of its lines, each an answer it
+  /// accepts (see [answers]) -- and [pattern] whether it is instead one
+  /// regular expression.
   final String text;
   final bool pattern;
 
+  /// before is what a [CodeCheckKind.changes] check must no longer find.
+  final String before;
+
+  /// count is how many times, at least, a [CodeCheckKind.has] check must
+  /// find it: "three stars" without a pattern.
+  final int count;
+
   const CodeCheck(this.kind, this.label,
-      {this.file = "", this.text = "", this.pattern = false});
+      {this.file = "",
+      this.text = "",
+      this.pattern = false,
+      this.before = "",
+      this.count = 1});
 
   CodeCheck copyWith(
           {CodeCheckKind? kind,
           String? label,
           String? file,
           String? text,
-          bool? pattern}) =>
+          bool? pattern,
+          String? before,
+          int? count}) =>
       CodeCheck(kind ?? this.kind, label ?? this.label,
           file: file ?? this.file,
           text: text ?? this.text,
-          pattern: pattern ?? this.pattern);
+          pattern: pattern ?? this.pattern,
+          before: before ?? this.before,
+          count: (count ?? this.count).clamp(1, 999));
 
-  /// matches is whether [code] says [text]: a pattern as written, or the
-  /// words with any run of spaces in the code taken as one (so
-  /// `fontSize:40` and `fontSize: 40` both count).
-  bool matches(String code) {
-    if (text.isEmpty) return true;
-    if (pattern) {
+  /// answers are what it accepts: each line of [text], any of which does;
+  /// a pattern is one.
+  List<String> get answers => pattern
+      ? [if (text.isNotEmpty) text]
+      : [
+          for (var l in text.split("\n"))
+            if (l.trim().isNotEmpty) l.trim()
+        ];
+
+  /// _loose is [words] as a pattern: spaces anywhere in it, or none, match
+  /// any run of spaces in the code or none (so `fontSize:40` and
+  /// `fontSize: 40` both count), and it is found only as whole words
+  /// (`fontSize: 48` is not in `fontSize: 480`).
+  static RegExp _loose(String words) {
+    var chars = words.replaceAll(RegExp(r"\s+"), "").split("");
+    bool word(String c) => RegExp(r"\w").hasMatch(c);
+    var b = StringBuffer();
+    if (word(chars.first)) b.write(r"(?<!\w)");
+    b.write(chars.map(RegExp.escape).join(r"\s*"));
+    if (word(chars.last)) b.write(r"(?!\w)");
+    return RegExp(b.toString());
+  }
+
+  /// timesIn is how many times [code] says any of [words]' answers: a
+  /// pattern as written, or loosely (see [_loose]).
+  static int timesIn(String code, List<String> words, {bool pattern = false}) {
+    var n = 0;
+    for (var w in words) {
       try {
-        return RegExp(text, multiLine: true).hasMatch(code);
-      } catch (_) {
-        return false;
-      }
+        var re = pattern ? RegExp(w, multiLine: true) : _loose(w);
+        n += re.allMatches(code).length;
+      } catch (_) {}
     }
-    String loose(String s) => s.replaceAll(RegExp(r"\s+"), "");
-    return loose(code).contains(loose(text));
+    return n;
+  }
+
+  /// matches is whether [code] says it, as often as it must.
+  bool matches(String code) {
+    var a = answers;
+    if (a.isEmpty) return true;
+    return timesIn(code, a, pattern: pattern) >= count;
   }
 
   /// metBy is whether [code]'s files (and its Run panel's last run, [run])
@@ -84,19 +132,27 @@ class CodeCheck {
         return null;
       case CodeCheckKind.prints:
         var logs = run?.result?.logs ?? const <CodeLog>[];
+        var a = answers;
         return logs.any((l) =>
             l.kind != CodeLogKind.error &&
             (pattern
-                ? CodeCheck(kind, label, text: text, pattern: true)
-                    .matches(l.text)
-                : l.text.contains(text)));
-      case CodeCheckKind.has || CodeCheckKind.lacks:
+                ? timesIn(l.text, a, pattern: true) > 0
+                : a.isEmpty || a.any(l.text.contains)));
+      case CodeCheckKind.has || CodeCheckKind.lacks || CodeCheckKind.changes:
         if (code == null) return false;
-        var said = [
+        var all = [
           for (var f in code.files)
             if (file.isEmpty || f.name == file) f.text
-        ].any(matches);
-        return kind == CodeCheckKind.has ? said : !said;
+        ].join("\n");
+        var a = answers;
+        var times = a.isEmpty ? count : timesIn(all, a, pattern: pattern);
+        return switch (kind) {
+          CodeCheckKind.has => times >= count,
+          CodeCheckKind.lacks => times == 0,
+          _ => (before.trim().isEmpty ||
+                  timesIn(all, [before.trim()], pattern: pattern) == 0) &&
+              times > 0,
+        };
     }
   }
 
@@ -106,6 +162,8 @@ class CodeCheck {
         if (file.isNotEmpty) "file": file,
         if (text.isNotEmpty) "text": text,
         if (pattern) "pattern": true,
+        if (before.isNotEmpty) "before": before,
+        if (count != 1) "count": count,
       };
 
   static CodeCheck? fromJson(Object? j) {
@@ -115,7 +173,9 @@ class CodeCheck {
     return CodeCheck(kind, jsonString(j["label"], ""),
         file: jsonString(j["file"], ""),
         text: jsonString(j["text"], ""),
-        pattern: jsonBool(j["pattern"], false));
+        pattern: jsonBool(j["pattern"], false),
+        before: jsonString(j["before"], ""),
+        count: jsonInt(j["count"], 1).clamp(1, 999));
   }
 }
 

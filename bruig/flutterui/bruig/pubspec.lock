@@ -180,10 +180,9 @@ packages:
   dart_eval:
     dependency: "direct main"
     description:
-      name: dart_eval
-      sha256: b5ee154c5f9159d216de8b45854b18a9ebbd2fc71f70b7a4004b02eb03c520e1
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/dart_eval"
+      relative: true
+    source: path
     version: "0.8.5"
   dart_style:
     dependency: transitive

@@ -3,7 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_code_run_test.dart is a Run panel's Dart and Flutter, run in the
@@ -70,6 +70,53 @@ void main() {
         contains(r"Widget $$previewApp() => MyApp(a: f(1));"));
     expect(flutterPreviewSource("void main() {}"), isNull);
   });
+
+  // dart_eval 0.8.5 boxed a field's new value twice where the assignment's
+  // value was used, so Learn Flutter's lesson 8 answer -- coins += 2 in an
+  // arrow -- failed when + was pressed (patched: third_party/dart_eval).
+  for (var adds in ["coins++", "coins += 2", "coins = coins + 2"]) {
+    testWidgets("a counter whose button runs `() => $adds`", (tester) async {
+      var e = const CodeElement(ElementBase(id: "c"))
+          .startedAs(CodeKind.flutter)
+          .withFileText("f1", """
+import 'package:flutter/material.dart';
+
+void main() => runApp(const CounterApp());
+
+class CounterApp extends StatefulWidget {
+  const CounterApp({super.key});
+
+  @override
+  State<CounterApp> createState() => _CounterAppState();
+}
+
+class _CounterAppState extends State<CounterApp> {
+  int coins = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(child: Text('\$coins')),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => setState(() => $adds),
+          child: const Icon(Icons.add),
+        ),
+      ),
+    );
+  }
+}""");
+      var b = buildFlutterApp(e, e.files.first);
+      expect(b.error, isNull);
+      await tester.pumpWidget(b.widget!);
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
+      }
+      expect(tester.takeException(), isNull);
+      expect(find.text(adds == "coins++" ? "2" : "4"), findsOneWidget);
+    });
+  }
 
   testWidgets("a Flutter app's own widgets, built and drawn", (tester) async {
     var c = starter("flutter");

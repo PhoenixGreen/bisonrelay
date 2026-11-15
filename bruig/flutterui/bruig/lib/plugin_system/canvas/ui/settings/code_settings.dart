@@ -900,27 +900,63 @@ List<Widget> codeTaskSettings(
             onChanged: (v) => set(c.copyWith(label: v), keep: true),
             onCommit: commit,
           ),
-          if (c.kind == CodeCheckKind.has ||
-              c.kind == CodeCheckKind.lacks ||
-              c.kind == CodeCheckKind.prints) ...[
+          if (c.kind == CodeCheckKind.changes)
+            CanvasTextField(
+              key: ValueKey("codeCheckBefore-$k"),
+              label: c.pattern ? "Before (pattern)" : "Before",
+              hint: "coins++",
+              value: c.before,
+              onChanged: (v) => set(c.copyWith(before: v), keep: true),
+              onCommit: commit,
+            ),
+          if (c.kind != CodeCheckKind.builds) ...[
+            // Answers, one a line, any of which does: spaces don't
+            // matter, and only whole words count (Ken: a pattern is "very
+            // strange input and not easy to remember").
             CanvasTextField(
               key: ValueKey("codeCheckText-$k"),
-              label: c.pattern ? "Pattern" : "Words",
+              label: c.pattern
+                  ? "Pattern"
+                  : c.kind == CodeCheckKind.changes
+                      ? "After (any of these, one a line)"
+                      : "Any of these (one a line)",
+              hint: c.pattern ? "" : "coins += 2",
               value: c.text,
+              maxLines: c.pattern ? 1 : 3,
               onChanged: (v) => set(c.copyWith(text: v), keep: true),
               onCommit: commit,
             ),
-            if (c.kind != CodeCheckKind.prints && code != null)
-              CanvasDropdown<String>(
-                key: ValueKey("codeCheckFile-$k"),
-                label: "In",
-                value: code.fileNamed(c.file) == null ? "" : c.file,
-                options: [
-                  ("", "Any file"),
-                  for (var f in code.files) (f.name, f.name),
-                ],
-                onChanged: (v) => set(c.copyWith(file: v)),
-              ),
+            panelRow([
+              if (c.kind != CodeCheckKind.prints && code != null)
+                cell(
+                    CanvasDropdown<String>(
+                      key: ValueKey("codeCheckFile-$k"),
+                      label: "In",
+                      value: code.fileNamed(c.file) == null ? "" : c.file,
+                      options: [
+                        ("", "Any file"),
+                        for (var f in code.files) (f.name, f.name),
+                      ],
+                      onChanged: (v) => set(c.copyWith(file: v)),
+                    ),
+                    flex: 3),
+              if (c.kind == CodeCheckKind.has)
+                cell(
+                    CanvasStepper(
+                      key: ValueKey("codeCheckCount-$k"),
+                      label: "At least",
+                      value: c.count.toDouble(),
+                      min: 1,
+                      max: 999,
+                      step: 1,
+                      suffix: c.count == 1 ? " time" : " times",
+                      fill: true,
+                      onChanged: (v) =>
+                          set(c.copyWith(count: v.round()), keep: true),
+                      onCommit: commit,
+                    ),
+                    flex: 2),
+            ]),
             CanvasToggle(
               key: ValueKey("codeCheckPattern-$k"),
               label: "A pattern (regular expression)",
@@ -1000,9 +1036,13 @@ List<Widget> codeTaskSettings(
                 CanvasControlGroup(
                     key: const ValueKey("codeTaskChecks"),
                     label: "Checks",
-                    help: "What the code must do. \"The code has\" ticks as "
-                        "it is typed (spaces don't matter); \"It builds and "
-                        "runs\" is looked at when Check is pressed.",
+                    help: "What the code must do. Each ticks as it is typed: "
+                        "write what the code should say -- several "
+                        "answers one a line, any of which passes; spaces "
+                        "don't matter, and only whole words count. \"The "
+                        "code changes\" wants Before gone and After there. "
+                        "\"It builds and runs\" is looked at when Check is "
+                        "pressed.",
                     children: [
                       for (var (k, c) in e.checks.indexed) checkCard(k, c),
                       CanvasTextButton(

@@ -129,6 +129,12 @@ dependencies:
   flutter_eval:
     path: third_party/flutter_eval
 
+# A patched copy of dart_eval for flutter_eval too: see
+# third_party/dart_eval/PATCHES.md.
+dependency_overrides:
+  dart_eval:
+    path: third_party/dart_eval
+
 msix_config:
   display_name: Bison Relay GUI
   publisher_display_name: Company 0, LLC

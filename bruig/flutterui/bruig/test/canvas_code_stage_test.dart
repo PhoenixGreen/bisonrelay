@@ -23,6 +23,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_live_preview.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -480,6 +482,100 @@ void main() {
   });
 
   group("a Code task card", () {
+    testWidgets(
+        "a check set in its settings: The code changes, Before and After, "
+        "and how many times", (tester) async {
+      // At Ken's larger text size: the file and the count share a row.
+      tester.platformDispatcher.textScaleFactorTestValue = 1.25;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await stage(tester, "flutter");
+      c.addCodeTask(code());
+      var card = c.document.elements.whereType<CodeTaskElement>().single;
+      c.selectOnly(card.id);
+      CodeTaskElement task() =>
+          c.document.elements.whereType<CodeTaskElement>().single;
+      await tester.pumpWidget(_app(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => SingleChildScrollView(
+          child: SizedBox(
+            width: 340,
+            child: CanvasControlScope(
+              maxWidth: 300,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: elementSettings(context, c, c.selected!)),
+            ),
+          ),
+        ),
+      )));
+      await tester.pumpAndSettle();
+      var k = task().checks.length;
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("codeTaskAddCheck")));
+      await tester.tap(find.byKey(const ValueKey("codeTaskAddCheck")));
+      await tester.pumpAndSettle();
+      expect(task().checks.length, k + 1);
+      // No Before until it is a change; a count for "has".
+      expect(find.byKey(ValueKey("codeCheckBefore-$k")), findsNothing);
+      expect(find.byKey(ValueKey("codeCheckCount-$k")), findsOneWidget);
+      tester
+          .widget<CanvasDropdown<CodeCheckKind>>(
+              find.byKey(ValueKey("codeCheckKind-$k")))
+          .onChanged(CodeCheckKind.changes);
+      await tester.pumpAndSettle();
+      Future<void> type(String key, String text) async {
+        var field = find.descendant(
+            of: find.byKey(ValueKey(key)), matching: find.byType(TextField));
+        await tester.ensureVisible(field);
+        await tester.enterText(field, text);
+        await tester.pump();
+      }
+
+      await type("codeCheckBefore-$k", "coins++");
+      await type("codeCheckText-$k", "coins += 2\ncoins = coins + 2");
+      var check = task().checks[k];
+      expect(check.kind, CodeCheckKind.changes);
+      expect(check.before, "coins++");
+      expect(check.answers, ["coins += 2", "coins = coins + 2"]);
+      expect(find.byKey(ValueKey("codeCheckCount-$k")), findsNothing,
+          reason: "a count is for The code has");
+    });
+
+    test(
+        "checks without patterns: answers one a line, whole words, how "
+        "many times, and a change from Before to After", () {
+      CodeElement saying(String t) => const CodeElement(ElementBase(id: "c"))
+          .startedAs(CodeKind.flutter)
+          .withFileText("f1", t);
+      // Ken: "Pattern: coins\s*(\+=\s*2|...)" is "not easy to remember".
+      const adds = CodeCheck(CodeCheckKind.changes, "It adds two",
+          before: "coins++", text: "coins += 2\ncoins = coins + 2");
+      expect(adds.metBy(saying("setState(() => coins++);"), null), isFalse);
+      expect(adds.metBy(saying("setState(() => coins+=2);"), null), isTrue,
+          reason: "spaces don't matter");
+      expect(adds.metBy(saying("coins = coins + 2;"), null), isTrue,
+          reason: "either answer");
+      expect(adds.metBy(saying("coins += 2; coins++;"), null), isFalse,
+          reason: "Before still there");
+      // Whole words: 48 is not in 480.
+      const size = CodeCheck(CodeCheckKind.has, "48", text: "fontSize: 48");
+      expect(size.metBy(saying("fontSize: 480"), null), isFalse);
+      expect(size.metBy(saying("fontSize:48)"), null), isTrue);
+      // How many times.
+      const stars = CodeCheck(CodeCheckKind.has, "three stars",
+          text: "Icon(Icons.star)", count: 3);
+      var two = "Icon(Icons.star), Icon( Icons.star )";
+      expect(stars.metBy(saying(two), null), isFalse);
+      expect(stars.metBy(saying("$two, Icon(Icons.star)"), null), isTrue);
+      expect(stars.metBy(saying("$two, Icon(Icons.starHalf)"), null), isFalse,
+          reason: "a whole word");
+      // Kept.
+      var back = CodeCheck.fromJson(adds.toJson())!;
+      expect((back.kind, back.before, back.text),
+          (adds.kind, adds.before, adds.text));
+      expect(CodeCheck.fromJson(stars.toJson())!.count, 3);
+    });
+
     test("its checks: words found loosely, patterns, files, what was printed",
         () {
       var c = starter0("flutter");
