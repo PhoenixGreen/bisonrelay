@@ -25,6 +25,7 @@ const alone = {
   "canvas_score_studio_test.dart",
   "canvas_synth_module_test.dart",
   "canvas_metronome_test.dart",
+  "canvas_code_test.dart",
   // Needs a process where no look's shader has been loaded yet: once one
   // is, it stays, and an export that forgot to load it would still pass.
   "canvas_document_export_looks_test.dart",

@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'dart:convert';
@@ -1567,6 +1569,10 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return SynthTaskElement.fromJson(json, base);
     case ElementKind.metronome:
       return MetronomeElement.fromJson(json, base);
+    case ElementKind.code:
+      return CodeElement.fromJson(json, base);
+    case ElementKind.codeRun:
+      return CodeRunElement.fromJson(json, base);
   }
 }
 

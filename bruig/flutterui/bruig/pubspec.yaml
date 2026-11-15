@@ -122,6 +122,7 @@ dependencies:
   vector_math: ^2.4.4
   # For hook/build.dart, which compiles the Flutter GPU shaders.
   hooks: ^2.2.0
+  re_highlight: ^0.0.3
 
 msix_config:
   display_name: Bison Relay GUI

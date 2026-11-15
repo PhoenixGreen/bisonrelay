@@ -1,3 +1,9 @@
+import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/code_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
@@ -128,6 +134,12 @@ enum _DragMode {
 
   /// synthScreen is a digital envelope's or filter's screen dragged on.
   synthScreen,
+
+  /// codeDivider is the line between two of a Code panel's panes dragged;
+  /// codeTab one of its tabs carried, to another place or pane. See
+  /// _pressCode.
+  codeDivider,
+  codeTab,
 
   /// copies is copies of an element reused dragged on their own -- those
   /// picked, or made by an Alt-drag. See _moveCopies.
@@ -348,6 +360,18 @@ class CanvasStageState extends State<CanvasStage>
   /// _synthScreen is a digital module's screen being dragged: its module,
   /// and what was taken (see synthScreenGrab).
   (String, String)? _synthScreen;
+
+  /// _codeDivider is a Code panel's line between panes being dragged: the
+  /// panel's id and the line. _codeTab is one of its tabs pressed: the
+  /// panel, the pane and the file; _codeTabAt where it has been carried to
+  /// on the page, once it has moved.
+  (String, CodeDividerBox)? _codeDivider;
+  ({String id, int pane, String file})? _codeTab;
+  Offset? _codeTabAt;
+
+  /// _codeEditBegun is whether the open code editor has changed anything
+  /// yet: the change it makes is one to undo, begun at its first keystroke.
+  bool _codeEditBegun = false;
   ({
     SynthModuleElement from,
     String port,
@@ -1626,6 +1650,194 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
+  /// _pressCode answers a press on Code panel [e]: a tab shown (or, carried
+  /// off, moved), its cross closing it, a file in the list opened in the
+  /// pane last pressed, the line between two panes dragged; a second press
+  /// on a picked panel's code opens that pane for typing. False where the
+  /// panel itself is pressed, to pick and move it.
+  bool _pressCode(CodeElement e, Offset doc) {
+    var hit = codeHitAt(e, doc);
+    if (hit == null) return false;
+    var picked =
+        controller.selection.length == 1 && controller.selection.first == e.id;
+    void pick() {
+      if (!picked) controller.selectOnly(e.id);
+    }
+
+    switch (hit) {
+      case CodeDividerHit(:var divider):
+        pick();
+        controller.beginInteraction();
+        _codeDivider = (e.id, divider);
+        setState(() => _mode = _DragMode.codeDivider);
+        return true;
+      case CodeTabHit(:var pane, :var file, close: true):
+        pick();
+        controller.closeCodeTab(e, pane, file);
+        _mode = _DragMode.none;
+        return true;
+      case CodeTabHit(:var pane, :var file):
+        pick();
+        _codeTab = (id: e.id, pane: pane, file: file);
+        _codeTabAt = null;
+        setState(() => _mode = _DragMode.codeTab);
+        return true;
+      case CodeFileHit(:var file):
+        pick();
+        controller.openCodeFile(e, file);
+        _mode = _DragMode.none;
+        return true;
+      case CodePaneHit(:var pane, :var inTabs):
+        controller.pressCodePane(e, pane);
+        if (!inTabs &&
+            picked &&
+            !_shiftHeld &&
+            clock.now().difference(_lastClickAt) < _doubleClickWindow) {
+          _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
+          _codeEditBegun = false;
+          controller.editCodePane(e, pane);
+          _mode = _DragMode.none;
+          return true;
+        }
+        return false;
+    }
+  }
+
+  /// _pressCodeRun answers a Run panel's Run button.
+  bool _pressCodeRun(CodeRunElement e, Offset doc) {
+    var code = document.elementById(e.code);
+    var runner = runnerOf(e, code is CodeElement ? code : null);
+    if (!codeRunBoxes(e, e.bounds, runner: runner).runButton.contains(doc)) {
+      return false;
+    }
+    if (controller.selection.length != 1 ||
+        controller.selection.first != e.id) {
+      controller.selectOnly(e.id);
+    }
+    controller.runCode(e);
+    _mode = _DragMode.none;
+    return true;
+  }
+
+  /// _releaseCode ends a press on a Code panel: a line between panes let
+  /// go; a tab let go where it was pressed shown, or carried somewhere
+  /// moved there.
+  bool _releaseCode(Offset doc) {
+    if (_codeDivider != null) {
+      _codeDivider = null;
+      controller.endInteraction();
+      setState(() => _mode = _DragMode.none);
+      return true;
+    }
+    var tab = _codeTab;
+    if (tab == null) return false;
+    var carried = _codeTabAt != null;
+    setState(() {
+      _codeTab = null;
+      _codeTabAt = null;
+      _mode = _DragMode.none;
+    });
+    var e = document.elementById(tab.id);
+    if (e is! CodeElement) return true;
+    if (!carried) {
+      controller.showCodeTab(e, tab.pane, tab.file);
+      return true;
+    }
+    if (codeTabDrop(e, doc) case (var to, var index)?) {
+      controller.moveCodeTab(e, tab.file, tab.pane, to, index);
+    }
+    return true;
+  }
+
+  /// _codeTabCarried is a tab being carried: its name under the pointer,
+  /// and a mark where it would go.
+  List<Widget> _codeTabCarried() {
+    var tab = _codeTab, at = _codeTabAt;
+    if (tab == null || at == null) return const [];
+    var e = document.elementById(tab.id);
+    if (e is! CodeElement) return const [];
+    var f = e.file(tab.file);
+    if (f == null) return const [];
+    var theme = Theme.of(context);
+    var out = <Widget>[];
+    if (codeTabDrop(e, at) case (var pane, var index)?) {
+      var b = codeBoxes(e, e.bounds).panes[pane];
+      var x = b.tabs.isEmpty
+          ? b.tabRow.left + e.fontSize * 0.3
+          : index < b.tabs.length
+              ? b.tabs[index].rect.left
+              : b.tabs.last.rect.right;
+      var top = _toStage(Offset(x, b.tabRow.top + e.fontSize * 0.3));
+      out.add(Positioned(
+          left: top.dx - 2,
+          top: top.dy,
+          width: 4,
+          height: (b.tabRow.height - e.fontSize * 0.6) * _scale,
+          child: IgnorePointer(
+              child: ColoredBox(color: theme.colorScheme.primary))));
+    }
+    var p = _toStage(at);
+    out.add(Positioned(
+        left: p.dx + 12,
+        top: p.dy + 10,
+        child: IgnorePointer(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: theme.colorScheme.primary),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 8, height: 8, color: f.colour),
+              const SizedBox(width: 6),
+              Text(f.name, style: const TextStyle(fontSize: 12.5)),
+            ]),
+          ),
+        )));
+    return out;
+  }
+
+  /// _codeEditorFor is the code editor over the pane being edited, when one
+  /// is open.
+  Widget? _codeEditorFor() {
+    var (id, pane) = controller.codeEditing ?? ("", -1);
+    if (pane < 0) return null;
+    var e = document.elementById(id);
+    if (e is! CodeElement) return null;
+    var file = controller.codeShownFile(e, pane);
+    var rect = codeEditorRect(e, pane);
+    if (file == null || rect == null) return null;
+    var tl = _toStage(rect.topLeft);
+    return CodePaneEditor(
+      key: ValueKey("codeEditing-$id-$pane-$file"),
+      element: e,
+      file: file,
+      rect: Rect.fromLTWH(tl.dx, tl.dy, rect.width * _scale, rect.height * _scale),
+      scale: _scale,
+      onChanged: (text) {
+        var now = document.elementById(id);
+        if (now is! CodeElement) return;
+        if (!_codeEditBegun) {
+          _codeEditBegun = true;
+          controller.beginInteraction();
+        }
+        controller.replaceElement(now.withFileText(file, text), transient: true);
+      },
+      onDone: () {
+        if (_codeEditBegun) {
+          _codeEditBegun = false;
+          controller.endInteraction();
+        }
+        if (controller.codeEditing != null) {
+          var now = document.elementById(id);
+          if (now is CodeElement) controller.editCodePane(now, -1);
+        }
+        _focus.requestFocus();
+      },
+    );
+  }
+
   /// _pressMetronome answers a metronome's buttons.
   void _pressMetronome(MetronomeElement e, MetronomePart part) {
     if (controller.selection.length != 1 ||
@@ -2023,7 +2235,11 @@ class CanvasStageState extends State<CanvasStage>
     // (see CanvasTextEditor._onFocus). A cell editor counts: the stage
     // taking the focus would close it before its own picture button's tap
     // finished.
-    if (_editingText != null || _editingCell != null) return;
+    if (_editingText != null ||
+        _editingCell != null ||
+        controller.codeEditing != null) {
+      return;
+    }
     _focus.requestFocus();
     // Looking through the camera, the page is drawn moved and a press would
     // land somewhere other than it looks: the press puts the page back, and
@@ -2404,6 +2620,10 @@ class CanvasStageState extends State<CanvasStage>
         return;
       }
     }
+    // A Code panel's tabs, files and the lines between its panes answer a
+    // press whether it is picked or not; its Run panel's Run button too.
+    if (element is CodeElement && _pressCode(element, doc)) return;
+    if (element is CodeRunElement && _pressCodeRun(element, doc)) return;
     if (element is SynthTaskElement) {
       if (synthTaskButtonAt(element, doc) case var b?) {
         _pressSynthTask(element, b);
@@ -5688,6 +5908,18 @@ class CanvasStageState extends State<CanvasStage>
         _applyCounterPart(doc);
       case _DragMode.synthKnob:
         _turnSynthKnob(doc);
+      case _DragMode.codeDivider:
+        if (_codeDivider case (var id, var d)?) {
+          if (document.elementById(id) case CodeElement e) {
+            controller.replaceElement(codeDividerDragged(e, d, doc),
+                transient: true);
+          }
+        }
+      case _DragMode.codeTab:
+        if (_codeTabAt != null ||
+            (_toStage(doc) - _pressedAt).distance > _buttonClickSlop) {
+          setState(() => _codeTabAt = doc);
+        }
       case _DragMode.synthScreen:
         if (_synthScreen case (var id, var grab)?) {
           if (document.elementById(id) case SynthModuleElement e) {
@@ -6126,6 +6358,7 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
     if (_releaseSynth(_toDocument(event.localPosition))) return;
+    if (_releaseCode(_toDocument(event.localPosition))) return;
     // Let go before it was held long enough, so it was a press after all.
     _legendHold?.cancel();
     _legendHold = null;
@@ -7195,6 +7428,8 @@ class CanvasStageState extends State<CanvasStage>
                   ),
                 ),
               if (_editorFor() case var editor?) editor,
+              if (_codeEditorFor() case var code?) code,
+              ..._codeTabCarried(),
               if (_typingField() case var typing?) typing,
               if (_brushRing() case var ring?) ring,
               if (_cellEditorFor() case var cell?) cell,

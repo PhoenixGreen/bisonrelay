@@ -1,3 +1,7 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
@@ -1197,6 +1201,30 @@ void paintElement(
             pose,
             () => paintMetronome(canvas, bounds, e,
                 show: metronomeShowOf?.call(e) ?? const MetronomeShow()));
+      case CodeElement e:
+        arriving(
+            canvas,
+            bounds,
+            const ElementAnimation(),
+            pose,
+            () => paintCode(canvas, bounds, e,
+                seconds: frame / frameRate,
+                show: codeShowOf?.call(e) ?? const CodeShow()));
+      case CodeRunElement e:
+        var code = document?.elementById(e.code);
+        var preview = e.result?.preview ?? "";
+        arriving(
+            canvas,
+            bounds,
+            const ElementAnimation(),
+            pose,
+            () => paintCodeRun(
+                canvas, bounds, e, code is CodeElement ? code : null,
+                seconds: frame / frameRate,
+                image: preview.isEmpty
+                    ? null
+                    : images?.resolve(preview, const BackgroundRemoval()),
+                show: codeRunShowOf?.call(e) ?? const CodeRunShow()));
       case SynthTaskElement e:
         arriving(canvas, bounds, const ElementAnimation(), pose,
             () => paintSynthTask(canvas, bounds, e, document));

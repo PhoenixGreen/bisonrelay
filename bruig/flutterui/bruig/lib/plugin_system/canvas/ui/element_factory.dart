@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
@@ -104,6 +107,10 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.synthTask => const Size(270, 160) * synthUnit(document),
     // As a clockwork one stands: taller than wide.
     ElementKind.metronome => Size(short * 0.22, short * 0.35),
+    // An editor's window: most of the page's width, most of its height.
+    ElementKind.code => Size(wide * 0.6, short * 0.78),
+    // Beside it, narrower: a page or a console is read down.
+    ElementKind.codeRun => Size(wide * 0.3, short * 0.78),
   };
 }
 
@@ -378,6 +385,20 @@ CanvasElement newElement(
     case ElementKind.metronome:
       return MetronomeElement(base.copyWith(name: "Metronome"));
 
+    // A blank page to write in, at a size read across the room on a
+    // 1080p page; the Code chip starts from an example (code_starters.dart).
+    case ElementKind.code:
+      return startedFrom(
+          codeStarters.last,
+          CodeElement(base.copyWith(name: "Code"),
+              fontSize: codeFontFor(document)));
+
+    case ElementKind.codeRun:
+      return CodeRunElement(base.copyWith(name: "Run"),
+          code:
+              document.elements.whereType<CodeElement>().firstOrNull?.id ?? "",
+          outputSize: codeFontFor(document) * 0.9);
+
     case ElementKind.synthTask:
       return SynthTaskElement(base.copyWith(name: "Synth task"),
           speaker: document.elements
@@ -508,3 +529,9 @@ List<SynthModuleElement> synthRack(CanvasDocument document,
       }(),
   ];
 }
+
+
+/// codeFontFor is code's size on a new Code panel in [document]: about 17
+/// on a 1080p page.
+double codeFontFor(CanvasDocument document) =>
+    (document.size.height.toDouble() * 0.016).clamp(6.0, 120.0);

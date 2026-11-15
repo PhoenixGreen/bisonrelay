@@ -1,3 +1,11 @@
+import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
+import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/render/code_painter.dart'
+    show CodeShow, codeShowOf;
+import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart'
     show MetronomeShow, metronomeShowOf;
@@ -131,7 +139,7 @@ import 'package:bruig/plugin_system/canvas/model/play.dart' show
         gameSoundStop;
 import 'package:gamepads/gamepads.dart' show Gamepads, NormalizedGamepadEvent;
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart'
-    show newElement, newInstrument, synthRack, synthModule;
+    show newElement, newInstrument, synthRack, synthModule, codeFontFor;
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart'
     show synthTaskLayout, synthTaskScale;
@@ -220,6 +228,8 @@ part 'controller/cast.dart';
 part 'controller/scores.dart';
 part 'controller/synths.dart';
 part 'controller/metronomes.dart';
+part 'controller/codes.dart';
+part 'controller/code_runs.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -371,6 +381,8 @@ class CanvasController extends ChangeNotifier {
     // The synth modules on the stage: their keys held, their time.
     synthShowOf = synthShowFor;
     metronomeShowOf = metronomeShowFor;
+    codeShowOf = codeShowFor;
+    codeRunShowOf = codeRunShowFor;
   }
 
   CanvasDocument _document;
@@ -3272,6 +3284,7 @@ class CanvasController extends ChangeNotifier {
       notifyListeners();
     }
     if (next == _frame) return;
+    if (!playing) _forgetCodePicks();
     _frame = next;
     _syncTimeline();
     notifyListeners();
@@ -3378,6 +3391,26 @@ class CanvasController extends ChangeNotifier {
   final Stopwatch _metroClock = Stopwatch();
   Timer? _metroTick;
   final Map<String, List<double>> _metroTaps = {};
+
+  /// _codePicked is the tab each pane of each Code panel was shown by hand
+  /// while paused, by element id and pane; _codePane the pane last pressed;
+  /// _codeEditing the pane the stage's editor is open on.
+  final Map<String, Map<int, String>> _codePicked = {};
+  final Map<String, int> _codePane = {};
+  (String, int)? _codeEditing;
+
+  /// _codeRuns are the Run panels running now, by id, and what each has
+  /// printed so far.
+  final Map<String, List<CodeLog>> _codeRuns = {};
+
+  /// codeRunHost runs code for Run panels: set by the app (the browser and
+  /// interpreters, see media/code_run_host.dart), a fake in the tests; null
+  /// where code cannot be run.
+  static CodeRunHost? codeRunHost;
+
+  /// saveCodePicture keeps a run's preview picture, returning its asset id.
+  static Future<String?> Function(List<int> png) saveCodePicture =
+      (png) => CanvasAssets.save(png);
 
   /// _slowSheet is the sheet played slower or faster than real time, its
   /// notes live (see playSheet); _slowHeld the keys it is sounding, by

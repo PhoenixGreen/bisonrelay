@@ -52,7 +52,11 @@ enum ElementKind {
   // What to make on a synth rack, and checks of the patch.
   synthTask("Synth task"),
   // A metronome to practise to.
-  metronome("Metronome");
+  metronome("Metronome"),
+  // A little project of code, in panes with tabs (code_element.dart).
+  code("Code"),
+  // What a Code panel's project makes, run (code_run_element.dart).
+  codeRun("Run panel");
 
   final String label;
   const ElementKind(this.label);

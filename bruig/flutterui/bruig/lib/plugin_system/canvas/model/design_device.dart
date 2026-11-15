@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
@@ -456,6 +458,18 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
               (e, v) => (e as AudioElement).copyWith(accent: _colour(v))),
           ..._box((e) => (e as AudioElement).box,
               (e, b) => (e as AudioElement).copyWith(box: b)),
+        ],
+      // A Code panel's code, grown or shrunk; a Run panel's output.
+      CodeElement _ => [
+          DesignSetting("fontSize", "Code", (e) => (e as CodeElement).fontSize,
+              (e, v) => (e as CodeElement).copyWith(fontSize: v)),
+        ],
+      CodeRunElement _ => [
+          DesignSetting(
+              "wordsSize",
+              "Run panel",
+              (e) => (e as CodeRunElement).outputSize,
+              (e, v) => (e as CodeRunElement).copyWith(outputSize: v)),
         ],
       // A metronome's wood and lamp.
       MetronomeElement _ => [

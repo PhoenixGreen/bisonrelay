@@ -744,6 +744,12 @@ void main() {
           expect(find.text("Synth"), findsOneWidget);
           continue;
         }
+        // A Run panel is put down with the Code panel it runs, by the Code
+        // chip.
+        if (kind == ElementKind.codeRun) {
+          expect(find.text("Code"), findsWidgets);
+          continue;
+        }
         expect(find.text(kind.label), findsWidgets, reason: kind.name);
       }
 
