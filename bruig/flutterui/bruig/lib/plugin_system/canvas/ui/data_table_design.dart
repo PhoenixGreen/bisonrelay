@@ -3,10 +3,13 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_presets.dart'
+    show ChartUse;
 import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/table_design.dart';
+import 'package:bruig/plugin_system/canvas/model/table_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
@@ -65,6 +68,13 @@ class _TableDesignState extends State<TableDesign> {
   TablePart? _hover;
   int? _hoverStyle;
   bool _fine = false;
+
+  // The gallery of designs (Ken, 2026-11-17; prototype v7): open, the kind
+  // opened, the design picked, and what they're filtered by.
+  bool _gallery = false;
+  String? _galleryKind;
+  int? _galleryPreset;
+  ChartUse? _galleryUse;
 
   // Making a style (prototype v3): pointing is "click what to style";
   // options are what it could reach, offered from the click, hovered to see
@@ -243,11 +253,13 @@ class _TableDesignState extends State<TableDesign> {
           child: Column(children: [
             _crumbs(context),
             Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-            Expanded(child: _stage(context)),
+            Expanded(child: _gallery ? _designs(context) : _stage(context)),
           ]),
         ),
         VerticalDivider(width: 1, thickness: 1, color: colors.outlineVariant),
-        SizedBox(width: 380, child: _panel(context)),
+        SizedBox(
+            width: 380,
+            child: _gallery ? _designPanel(context) : _panel(context)),
       ]),
     );
   }
@@ -293,8 +305,264 @@ class _TableDesignState extends State<TableDesign> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant)),
         ),
+        const SizedBox(width: 8),
+        StudioPill(
+            key: const ValueKey("tableDesignGallery"),
+            label: _gallery ? "Back to the table" : "Designs",
+            icon: _gallery
+                ? Icons.arrow_back
+                : Icons.dashboard_customize_outlined,
+            selected: _gallery,
+            tooltip: "Starting designs for this table, drawn with its cells",
+            onTap: () => setState(() {
+                  _gallery = !_gallery;
+                  _galleryKind = null;
+                  _galleryPreset = null;
+                })),
         const SizedBox(width: 12),
       ]),
+    );
+  }
+
+  // ---- The gallery of designs.
+
+  Color get _ground =>
+      dataStyleNamed(t.style)?.ground ?? c.document.background.spec.background;
+
+  TableKind get _kindOpen => tableKinds.firstWhere((k) => k.id == _galleryKind);
+
+  Widget _designCard(BuildContext context,
+      {required Key key,
+      required String name,
+      required String says,
+      required TableElement? shown,
+      required bool picked,
+      List<ChartUse> uses = const [],
+      VoidCallback? onTap}) {
+    final colors = ThemeNotifier.of(context).colors;
+    return Opacity(
+      opacity: onTap == null ? 0.45 : 1,
+      child: Material(
+        color: colors.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+                color: picked ? colors.primary : colors.outlineVariant,
+                width: picked ? 2 : 1)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: key,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: shown == null
+                      ? ColoredBox(color: colors.surfaceContainerHighest)
+                      : CustomPaint(
+                          size: Size.infinite,
+                          painter: _DesignThumb(shown, _ground, c.images)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: colors.onSurface)),
+              Text(says,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11.5, color: colors.onSurfaceVariant)),
+              if (uses.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(uses.map((u) => u.label).join(" · "),
+                    style: TextStyle(fontSize: 10.5, color: colors.primary)),
+              ],
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _designGrid(List<Widget> cards) =>
+      LayoutBuilder(builder: (context, box) {
+        var n = math.max(1, (box.maxWidth / 260).floor());
+        var w = (box.maxWidth - 12 * (n - 1)) / n;
+        return Wrap(spacing: 12, runSpacing: 12, children: [
+          for (var card in cards)
+            SizedBox(width: w, height: w * 0.8, child: card),
+        ]);
+      });
+
+  Widget _designs(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    var shape = TableShape(t);
+    var head = Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (_galleryKind != null)
+              StudioPill(
+                  key: const ValueKey("tableGalleryBack"),
+                  label: "All tables",
+                  icon: Icons.arrow_back,
+                  onTap: () => setState(() {
+                        _galleryKind = null;
+                        _galleryPreset = null;
+                      })),
+            for (var (u, name) in [
+              (null, "All"),
+              for (var x in ChartUse.values) (x, x.label)
+            ])
+              StudioPill(
+                  key: ValueKey("tableGalleryUse-${u?.name ?? "all"}"),
+                  label: name,
+                  selected: _galleryUse == u,
+                  onTap: () => setState(() => _galleryUse = u)),
+          ]),
+    );
+    if (_galleryKind == null) {
+      var kinds = [
+        for (var k in tableKinds)
+          if (_galleryUse == null ||
+              k.presets.any((p) => p.uses.contains(_galleryUse)))
+            k
+      ];
+      return SingleChildScrollView(
+        key: const ValueKey("tableGallery"),
+        padding: const EdgeInsets.all(14),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          head,
+          _designGrid([
+            for (var k in kinds)
+              () {
+                var p = k.presets.firstWhere(
+                    (p) => p.needs?.call(shape) == null,
+                    orElse: () => k.presets.first);
+                var can = k.presets.any((p) => p.needs?.call(shape) == null);
+                return _designCard(context,
+                    key: ValueKey("tableKind-${k.id}"),
+                    name: k.name,
+                    says:
+                        can ? k.use : "Needs ${k.presets.first.needs!(shape)}",
+                    shown: presetTable(p, t),
+                    picked: false,
+                    onTap: () => setState(() {
+                          _galleryKind = k.id;
+                          _galleryPreset = null;
+                        }));
+              }(),
+          ]),
+        ]),
+      );
+    }
+    var kind = _kindOpen;
+    return SingleChildScrollView(
+      key: const ValueKey("tableGalleryPresets"),
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        head,
+        Text(kind.name,
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: colors.onSurface)),
+        _hint(context,
+            "${kind.use} Pick a starting design; it keeps the cells and your own styles."),
+        const SizedBox(height: 10),
+        _designGrid([
+          for (var (i, p) in kind.presets.indexed)
+            if (_galleryUse == null || p.uses.contains(_galleryUse))
+              _designCard(context,
+                  key: ValueKey("tablePreset-$i"),
+                  name: p.name,
+                  says: p.needs?.call(shape) == null
+                      ? p.says
+                      : "Needs ${p.needs!(shape)}",
+                  shown:
+                      p.needs?.call(shape) == null ? presetTable(p, t) : null,
+                  picked: _galleryPreset == i,
+                  uses: p.uses,
+                  onTap: p.needs?.call(shape) == null
+                      ? () => setState(() => _galleryPreset = i)
+                      : null),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _designPanel(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    var preset = _galleryKind != null && _galleryPreset != null
+        ? _kindOpen.presets[_galleryPreset!]
+        : null;
+    var shown = preset == null ? null : presetTable(preset, t);
+    return Container(
+      color: colors.surfaceContainerLow,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(
+              preset == null ? "Designs" : "${_kindOpen.name} · ${preset.name}",
+              key: const ValueKey("tableGalleryTitle"),
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: colors.onSurface)),
+          if (shown == null)
+            _hint(context,
+                "Each kind of table drawn with this table's cells. Open one to see its starting designs.")
+          else ...[
+            const SizedBox(height: 8),
+            AspectRatio(
+              aspectRatio: 1.4,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CustomPaint(
+                    key: const ValueKey("tableGalleryPreview"),
+                    size: Size.infinite,
+                    painter: _DesignThumb(shown, _ground, c.images)),
+              ),
+            ),
+            _hint(context, preset!.says),
+            _hint(context,
+                "It sets the header, lines, stripes, which columns are drawn rather than written, and what stands out. The cells, your own styles and the table's style stay."),
+          ],
+          _buttons([
+            if (shown != null)
+              StudioPill(
+                  key: const ValueKey("tableGalleryApply"),
+                  label: "Use this design",
+                  filled: true,
+                  onTap: () {
+                    _set(shown);
+                    setState(() {
+                      _gallery = false;
+                      _galleryKind = null;
+                      _galleryPreset = null;
+                      _picked = TablePart.table;
+                    });
+                  }),
+            StudioPill(
+                key: const ValueKey("tableGalleryCancel"),
+                label: "Cancel",
+                onTap: () => setState(() => _gallery = false)),
+          ]),
+        ]),
+      ),
     );
   }
 
@@ -1076,6 +1344,8 @@ class _TableDesignState extends State<TableDesign> {
             "change" => "Up green with ▲, down red with ▼, by the size of it.",
             "merge" =>
               "The same value in the rows below runs on as one tall cell.",
+            "heat" =>
+              "Shaded by its size among the column's numbers, the number written over it.",
             _ => "Written as typed.",
           }),
       StudioLabel("Styles on this column · ${stylesHere.length}"),
@@ -1937,4 +2207,28 @@ class _Dropdown<T> extends StatelessWidget {
       ),
     );
   }
+}
+
+/// _DesignThumb draws a table fitted on [ground], for the gallery.
+class _DesignThumb extends CustomPainter {
+  final TableElement t;
+  final Color ground;
+  final CanvasImageStore images;
+  _DesignThumb(this.t, this.ground, this.images) : super(repaint: images);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = ground);
+    var w = math.max(1.0, t.width), h = math.max(1.0, t.height);
+    var k = math.min((size.width - 10) / w, (size.height - 10) / h);
+    canvas.save();
+    canvas.translate((size.width - w * k) / 2, (size.height - h * k) / 2);
+    canvas.scale(k);
+    paintTable(canvas, Rect.fromLTWH(0, 0, w, h), t, images: images);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_DesignThumb old) =>
+      !identical(old.t, t) || old.ground != ground;
 }

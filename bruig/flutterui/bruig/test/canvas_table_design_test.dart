@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/table_design.dart';
+import 'package:bruig/plugin_system/canvas/model/table_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
@@ -532,6 +533,80 @@ void main() {
       await tester.pumpAndSettle();
       expect(table().groupRows, isTrue);
       expect(tester.takeException(), isNull);
+    });
+
+    // Ken, 2026-11-17 (prototype v7): the Table tab's gallery of designs,
+    // drawn with the table's own cells.
+    testWidgets("a design from the gallery: a kind, a design, used",
+        (tester) async {
+      await studio(tester);
+      var before = table().rules.length;
+      await tester.tap(find.byKey(const ValueKey("tableDesignGallery")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("tableKind-league")), findsOneWidget);
+      // No yes-and-no column here: Comparison says what it needs.
+      expect(find.textContaining("Needs a column of yes and no"), findsWidgets);
+      await tester.tap(find.byKey(const ValueKey("tableKind-heat")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("tablePreset-0")));
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey("tableGalleryTitle")))
+              .data,
+          "Heatmap table · Shaded by column");
+      await tester.tap(find.byKey(const ValueKey("tableGalleryApply")));
+      await tester.pumpAndSettle();
+      expect(table().columnKinds.values.toSet(), {"heat"});
+      expect(table().rules, hasLength(before), reason: "its own styles kept");
+      expect(table().rows, league, reason: "the cells kept");
+      // A league design adds its own styles, named; another replaces them.
+      await tester.tap(find.byKey(const ValueKey("tableDesignGallery")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("tableKind-league")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("tablePreset-1")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("tableGalleryApply")));
+      await tester.pumpAndSettle();
+      expect(table().rules.where((r) => r.name.startsWith(designPrefix)),
+          hasLength(1));
+      expect(table().columnKinds, isEmpty, reason: "the heat design replaced");
+      c.undo();
+      await tester.pumpAndSettle();
+      expect(table().columnKinds.values.toSet(), {"heat"});
+      expect(tester.takeException(), isNull);
+    });
+
+    test("every design applies to a table of every kind of column, and draws",
+        () {
+      var t = const TableElement(ElementBase(id: "t", width: 600, height: 300),
+          rows: [
+            ["Club", "Form", "Live", "Cover", "Moved", "Trend", "Pts"],
+            ["Arsenal", "W W D", "yes", "4", "+2", "3, 5, 8", "46"],
+            ["Chelsea", "L W W", "no", "2", "-1", "4, 4, 6", "40"],
+            ["Spurs", "D L L", "yes", "0", "0", "6, 5, 3", "29"],
+          ]);
+      var shape = TableShape(t);
+      expect(shape.results, [1]);
+      expect(shape.yesNo, [2]);
+      expect(shape.smallSteps, [3]);
+      expect(shape.changes, contains(4));
+      expect(shape.lists, [5]);
+      expect(shape.lastNumber, 6);
+      for (var k in tableKinds) {
+        for (var p in k.presets) {
+          expect(p.needs?.call(shape), isNull, reason: "${k.name} · ${p.name}");
+          var made = presetTable(p, t);
+          expect(made.rows, t.rows);
+          for (var st in dataStyles) {
+            var recorder = ui.PictureRecorder();
+            paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 600, 300),
+                tableInStyle(made, st));
+            recorder.endRecording().dispose();
+          }
+        }
+      }
     });
 
     test("a style's name, and a chart's own ground, are saved", () {

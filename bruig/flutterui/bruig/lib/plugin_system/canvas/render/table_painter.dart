@@ -147,6 +147,28 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         x += w;
         continue;
       }
+      // Shaded by its size among its column's numbers, then written over
+      // in an ink that reads on the shade (a heatmap table).
+      if (kind == "heat") {
+        var v = _number(e.cell(r, c));
+        var (lo, hi) = drawn.range(c);
+        if (v != null && hi >= lo) {
+          var f = hi - lo <= 0 ? 0.5 : (v - lo) / (hi - lo);
+          var high =
+              dataStyleNamed(e.style)?.palette.first ?? const Color(0xFF2667FF);
+          var low = Color.lerp(
+              e.cellFill.a > 0 ? e.cellFill : const Color(0xFFFFFFFF),
+              high,
+              0.07)!;
+          var fill = Color.lerp(low, high, f.clamp(0.0, 1.0))!;
+          canvas.drawRect(Rect.fromLTWH(x, y, w, h), Paint()..color = fill);
+          spec = spec.copyWith(
+              color: fill.computeLuminance() > 0.45
+                  ? const Color(0xFF1B1B1B)
+                  : const Color(0xFFFFFFFF));
+        }
+        kind = "";
+      }
       if (kind.isNotEmpty) {
         var box = Rect.fromLTWH(
             x + e.leftPad,
@@ -789,6 +811,22 @@ class _DrawnCells {
     return v.isNotEmpty && v == e.cell(r - 1, c).trim();
   }
 
+  final Map<int, (double, double)> _ranges = {};
+
+  /// range is the least and most of column [c]'s numbers, below the
+  /// header.
+  (double, double) range(int c) => _ranges.putIfAbsent(c, () {
+        var lo = double.infinity, hi = double.negativeInfinity;
+        for (var r = e.headerRow ? 1 : 0; r < e.rows.length; r++) {
+          if (groupRow(r)) continue;
+          var v = _number(e.cell(r, c));
+          if (v == null) continue;
+          lo = math.min(lo, v);
+          hi = math.max(hi, v);
+        }
+        return (lo, hi);
+      });
+
   /// runLength is how many rows the run begun at [r] spans.
   int runLength(int r, int c) {
     var n = 1;
@@ -929,4 +967,10 @@ bool paintCellKind(ui.Canvas canvas, String kind, String text, TextSpec spec,
       return true;
   }
   return false;
+}
+
+/// _number is the number [text] says ("£1,200", "45%", "−3"), or null.
+double? _number(String text) {
+  var t = text.trim().replaceAll("−", "-").replaceAll(RegExp(r"[^0-9.\-]"), "");
+  return t.isEmpty ? null : double.tryParse(t);
 }

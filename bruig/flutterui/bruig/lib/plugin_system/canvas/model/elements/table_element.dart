@@ -1304,4 +1304,5 @@ const tableCellKinds = [
   ("harvey", "Part-filled circles"),
   ("change", "Up or down"),
   ("merge", "Repeats as one"),
+  ("heat", "Shaded by size"),
 ];
