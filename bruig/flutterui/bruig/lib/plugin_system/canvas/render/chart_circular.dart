@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_variants.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -265,19 +266,22 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         }
       }
 
+      // Each spoke's name past its end, further out where it would meet
+      // another's (the shared label rule).
+      var placer = LabelPlacer(box.inflate(e.labelSpec.fontSize * 3));
+      var nameSpec = e.labelSpec.copyWith(
+          align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.middle);
       for (var i = 0; i < axes; i++) {
         if (e.showAxes) canvas.drawLine(centre, spoke(i, 1), web);
         if (!e.showXLabels) continue;
-        paintTextInBox(
-            canvas,
-            data.categories[i],
-            e.labelSpec.copyWith(
-                align: TextAlignSpec.center,
-                verticalAlign: VerticalAlignSpec.middle),
-            Rect.fromCenter(
-                center: spoke(i, 1.14),
-                width: radius * 0.7,
-                height: e.labelSpec.fontSize * 2));
+        var size = labelSize(data.categories[i], nameSpec);
+        var w = math.min(size.width, radius * 0.9), h = size.height;
+        var at = placer.place([
+              for (var f in [1.14, 1.24, 1.36])
+                Rect.fromCenter(center: spoke(i, f), width: w, height: h),
+            ]) ??
+            Rect.fromCenter(center: spoke(i, 1.14), width: w, height: h);
+        paintTextInBox(canvas, data.categories[i], nameSpec, at.inflate(2));
       }
 
       for (var s = 0; s < data.series.length; s++) {
@@ -356,12 +360,24 @@ void _sliceNames(ui.Canvas canvas, Offset centre, double radius, ChartElement e,
       for (var n in names)
         if ((math.cos(n.$1) >= 0) == right) n,
     ]..sort((a, b) => math.sin(a.$1).compareTo(math.sin(b.$1)));
-    var lastY = -double.infinity;
-    for (var (mid, _, name, _) in side) {
+    // Each below the last; then, where the last runs past the foot, the
+    // side moved back up, each above the next (the shared label rule's
+    // keep-inside).
+    var ys = <double>[];
+    for (var (mid, _, _, _) in side) {
+      var elbow = centre + Offset(math.cos(mid), math.sin(mid)) * radius * 1.12;
+      ys.add(math.max(
+          elbow.dy, ys.isEmpty ? -double.infinity : ys.last + fs * 1.3));
+    }
+    var foot = centre.dy + radius * 1.3;
+    for (var k = ys.length - 1; k >= 0; k--) {
+      var limit = k == ys.length - 1 ? foot : ys[k + 1] - fs * 1.3;
+      if (ys[k] > limit) ys[k] = limit;
+    }
+    for (var (k, (mid, _, name, _)) in side.indexed) {
       var edge = centre + Offset(math.cos(mid), math.sin(mid)) * radius;
       var elbow = centre + Offset(math.cos(mid), math.sin(mid)) * radius * 1.12;
-      var y = math.max(elbow.dy, lastY + fs * 1.3);
-      lastY = y;
+      var y = ys[k];
       var x = right ? centre.dx + radius * 1.2 : centre.dx - radius * 1.2;
       canvas.drawLine(edge, Offset(elbow.dx, y), line);
       canvas.drawLine(Offset(elbow.dx, y), Offset(x, y), line);

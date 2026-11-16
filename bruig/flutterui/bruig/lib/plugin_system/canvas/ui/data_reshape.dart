@@ -33,6 +33,7 @@ class SheetReshapePart extends StatefulWidget {
 class _SheetReshapePartState extends State<SheetReshapePart> {
   ReshapeKind _kind = ReshapeKind.long;
   Set<int> _keep = {0};
+  Set<int> _values = {2};
   int _rows = 0, _columns = 1, _value = 2, _by = 0, _on = 0, _otherOn = 0;
   String _how = "total";
   String _other = "";
@@ -84,6 +85,7 @@ class _SheetReshapePartState extends State<SheetReshapePart> {
         ? dates.first
         : (words.length > 1 ? words[1] : (g.cols > 1 ? 1 : 0));
     _value = numbers.isNotEmpty ? numbers.last : g.cols - 1;
+    _values = {_value};
     _by = words.isNotEmpty ? words.last : 0;
     _on = words.isNotEmpty ? words.first : 0;
     _otherOn = 0;
@@ -95,6 +97,7 @@ class _SheetReshapePartState extends State<SheetReshapePart> {
       rows: _rows,
       columns: _columns,
       value: _value,
+      values: _values.toList()..sort(),
       by: _by,
       how: _how,
       other: _other,
@@ -178,8 +181,24 @@ class _SheetReshapePartState extends State<SheetReshapePart> {
                 (v) => setState(() => _rows = v)),
             _drop("dataStudioReshapeColumns", "A column for each", _columns,
                 cols, (v) => setState(() => _columns = v)),
-            _drop("dataStudioReshapeValue", "Filled from", _value, cols,
-                (v) => setState(() => _value = v)),
+            // Filled from one column, or several: a column a word each.
+            const StudioLabel("Filled from"),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (var (i, h) in cols)
+                if (i != _rows && i != _columns)
+                  StudioPill(
+                      key: ValueKey("dataStudioReshapeValue-$i"),
+                      label: h,
+                      selected: _values.contains(i),
+                      onTap: () => setState(() {
+                            if (_values.contains(i)) {
+                              if (_values.length > 1) _values.remove(i);
+                            } else {
+                              _values.add(i);
+                            }
+                            _value = (_values.toList()..sort()).first;
+                          })),
+            ]),
             hint("A row a club a season becomes a column a season: what a "
                 "line chart of several clubs reads."),
           ],

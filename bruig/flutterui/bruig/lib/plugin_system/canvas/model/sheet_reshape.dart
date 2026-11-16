@@ -44,8 +44,11 @@ class SheetMade {
   final String names, valuesName;
 
   /// rows, columns and value are, for wide, the column naming each row, the
-  /// one whose words become columns, and the one filling them.
+  /// one whose words become columns, and the one filling them; [values],
+  /// where there are several (a column a word for each: "Arsenal · Pts",
+  /// "Arsenal · GD"), all of them.
   final int rows, columns, value;
+  final List<int> values;
 
   /// by and how are, for group, the column grouped by and what is made of
   /// each number column: "total", "average", "count", "most", "least".
@@ -64,6 +67,7 @@ class SheetMade {
       this.rows = 0,
       this.columns = 1,
       this.value = 2,
+      this.values = const [],
       this.by = 0,
       this.how = "total",
       this.other = "",
@@ -82,6 +86,7 @@ class SheetMade {
           "rows": rows,
           "columns": columns,
           "value": value,
+          if (values.length > 1) "values": values,
           "how": how,
         },
         if (kind == ReshapeKind.group) ...{"by": by, "how": how},
@@ -107,6 +112,11 @@ class SheetMade {
         rows: n("rows", 0),
         columns: n("columns", 1),
         value: n("value", 2),
+        values: [
+          if (j["values"] case List v)
+            for (var c in v)
+              if (c is num) c.toInt(),
+        ],
         by: n("by", 0),
         how: s("how", "total"),
         other: s("other", ""),
@@ -189,12 +199,15 @@ List<List<String>> reshaped(SheetMade m, DataSheet from, [DataSheet? other]) {
     case ReshapeKind.wide:
       var keys = <String>[], cols = <String>[];
       var cells = <String, List<String>>{};
+      var fill = m.values.length > 1 ? m.values : [m.value];
       for (var row in body) {
         var k = at(row, m.rows), c = at(row, m.columns);
         if (k.trim().isEmpty || c.trim().isEmpty) continue;
         if (!keys.contains(k)) keys.add(k);
         if (!cols.contains(c)) cols.add(c);
-        (cells["$k\u0000$c"] ??= []).add(at(row, m.value));
+        for (var v in fill) {
+          (cells["$k\u0000$c\u0000$v"] ??= []).add(at(row, v));
+        }
       }
       String one(List<String>? vs) {
         if (vs == null || vs.isEmpty) return "";
@@ -202,9 +215,19 @@ List<List<String>> reshaped(SheetMade m, DataSheet from, [DataSheet? other]) {
         var n = [for (var v in vs) _number(v)].whereType<double>().toList();
         return n.length == vs.length ? _plain(_aggregate(m.how, n)) : vs.last;
       }
+      var many = fill.length > 1;
       return [
-        [at(head, m.rows), ...cols],
-        for (var k in keys) [k, for (var c in cols) one(cells["$k\u0000$c"])],
+        [
+          at(head, m.rows),
+          for (var c in cols)
+            for (var v in fill) many ? "$c · ${at(head, v)}" : c,
+        ],
+        for (var k in keys)
+          [
+            k,
+            for (var c in cols)
+              for (var v in fill) one(cells["$k\u0000$c\u0000$v"]),
+          ],
       ];
     case ReshapeKind.group:
       var numbers = [

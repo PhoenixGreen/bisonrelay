@@ -46,6 +46,22 @@ void main() {
     expect(back, source.cells);
   });
 
+  test("wide from several value columns: a column a word for each", () {
+    var long = DataSheet(id: "l", cells: [
+      ["Season", "Club", "Pts", "GD"],
+      ["2024", "Arsenal", "74", "28"],
+      ["2025", "Arsenal", "79", "35"],
+    ]);
+    var m = const SheetMade("l", ReshapeKind.wide,
+        rows: 0, columns: 1, value: 2, values: [2, 3]);
+    expect(reshaped(m, long), [
+      ["Season", "Arsenal · Pts", "Arsenal · GD"],
+      ["2024", "74", "28"],
+      ["2025", "79", "35"],
+    ]);
+    expect(SheetMade.fromJson(m.toJson()), m);
+  });
+
   test("grouped: added up, averaged, counted", () {
     var s = DataSheet(
         id: "g",
