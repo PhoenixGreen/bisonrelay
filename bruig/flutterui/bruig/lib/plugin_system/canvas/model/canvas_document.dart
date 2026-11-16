@@ -1381,7 +1381,7 @@ class CanvasDocument {
     }
 
     // Tables and charts from before sheets get sheets of their own.
-    return dataRefreshed(dataAdopted(CanvasDocument(
+    return dataRefreshed(sourcesAdopted(dataAdopted(CanvasDocument(
       title: jsonString(json["title"], "Untitled canvas"),
       size: jsonSpec(json["size"], CanvasSize.fromJson, const CanvasSize()),
       background: jsonSpec(json["background"], CanvasBackground.fromJson,
@@ -1479,7 +1479,7 @@ class CanvasDocument {
           for (var s in json["sheets"] as List)
             if (DataSheet.fromJson(s) case var sheet?) sheet,
       ],
-    )));
+    ))));
   }
 
   /// decode reads a saved file, returning null rather than throwing, so a

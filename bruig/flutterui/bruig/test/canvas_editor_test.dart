@@ -3042,8 +3042,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byTooltip("Put the rows back in this order"), findsOneWidget);
-      expect(find.byTooltip("Choose where the data comes from first"),
-          findsOneWidget);
+      // Where the numbers come from is the sheet's connection now (Connect
+      // data, in the Data Studio): the table says so, with the way there.
+      expect(find.byKey(const ValueKey("tableSheetSource")), findsOneWidget);
     });
 
     testWidgets("a row and a column can be added and taken away",

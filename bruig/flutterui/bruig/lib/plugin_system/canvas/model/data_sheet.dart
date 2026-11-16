@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:flutter/foundation.dart';
@@ -215,13 +216,19 @@ class DataSheet {
   /// bars, colour scales and highlights, drawn by the tables showing them.
   final List<SheetRule> rules;
 
+  /// source is where its numbers come from (Connect data in the Data
+  /// Studio): a web address or a file, mapped into columns. Every table and
+  /// chart of the sheet follows a refresh. Off for a sheet typed in.
+  final DataSource source;
+
   const DataSheet(
       {required this.id,
       this.name = "Sheet",
       this.cells = const [],
       this.formats = const {},
       this.columnFormats = const {},
-      this.rules = const []});
+      this.rules = const [],
+      this.source = const DataSource()});
 
   /// formatAt is cell [r], [c]'s number format: its own, its column's, or
   /// null for General.
@@ -245,14 +252,16 @@ class DataSheet {
           List<List<String>>? cells,
           Map<String, CellFormat>? formats,
           Map<int, CellFormat>? columnFormats,
-          List<SheetRule>? rules}) =>
+          List<SheetRule>? rules,
+          DataSource? source}) =>
       DataSheet(
           id: id,
           name: name ?? this.name,
           cells: cells ?? this.cells,
           formats: formats ?? this.formats,
           columnFormats: columnFormats ?? this.columnFormats,
-          rules: rules ?? this.rules);
+          rules: rules ?? this.rules,
+          source: source ?? this.source);
 
   /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
   /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
@@ -313,6 +322,7 @@ class DataSheet {
               "$key": value.toJson()
           },
         if (rules.isNotEmpty) "rules": [for (var r in rules) r.toJson()],
+        if (source.kind != DataKind.typed) "source": source.toJson(),
       };
 
   static DataSheet? fromJson(Object? j) {
@@ -339,6 +349,9 @@ class DataSheet {
               if (int.tryParse("$key") case var c?)
                 if (CellFormat.fromJson(value) case var cf?) c: cf,
         },
+        source: j["source"] is Map<String, dynamic>
+            ? DataSource.fromJson(j["source"] as Map<String, dynamic>)
+            : const DataSource(),
         rules: [
           if (j["rules"] case List rs)
             for (var r in rs)

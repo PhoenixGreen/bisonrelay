@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_view_settings.dart';
 import 'package:flutter/material.dart';
@@ -105,8 +106,9 @@ List<PanelBit> tableBits(
           trailing: "${e.rows.length} rows, ${e.columnCount} columns",
           // The same Refresh the Data section carries, here where somebody
           // looking at the cells wants the numbers again.
-          action:
-              sourceRefreshButton(context, controller, e, write, begin, commit),
+          action: sourceRefreshButton(
+                  context, controller, e, write, begin, commit) ??
+              _sheetRefresh(controller, e),
           initiallyOpen: true,
           children: [
             TableDataEditor(
@@ -129,19 +131,27 @@ List<PanelBit> tableBits(
       ]),
       // Where the cells come from, a fold with its Refresh on its heading:
       // pressed without opening anything.
-      PanelBit(PanelSection.content, summary: e.source.kind.label, children: [
-        CanvasExpander(
-          label: "Data source",
-          remember: "tableSource",
-          trailing: e.source.kind.label,
-          action: sourceRefreshButton(
-              context, controller, e, write, begin, commit,
-              whenOff: true),
-          children: [
-            dataSourceSection(context, controller, e, write, begin, commit),
-          ],
-        ),
-      ]),
+      // A table showing a sheet takes its numbers from the sheet's
+      // connection (Connect data, in the Data Studio); only a table still
+      // holding a source of its own has the old section.
+      if (e.source.on || e.sheet == null)
+        PanelBit(PanelSection.content, summary: e.source.kind.label, children: [
+          CanvasExpander(
+            label: "Data source",
+            remember: "tableSource",
+            trailing: e.source.kind.label,
+            action: sourceRefreshButton(
+                context, controller, e, write, begin, commit,
+                whenOff: true),
+            children: [
+              dataSourceSection(context, controller, e, write, begin, commit),
+            ],
+          ),
+        ])
+      else
+        PanelBit(PanelSection.content, children: [
+          _sheetSource(context, controller, e),
+        ]),
       // Sorting is its own section beside the cells: it is about the data, not
       // the look, and too much for a band.
       PanelBit(PanelSection.content, children: [
@@ -960,4 +970,43 @@ void _setLevel(TableElement e, SettingsWrite write, VoidCallback begin,
   begin();
   write(e.copyWith(sort: e.sort.withLevel(level, value)));
   commit();
+}
+
+/// _sheetRefresh is the sheet's Refresh on the Table section's heading, for
+/// a table whose sheet is connected.
+Widget? _sheetRefresh(CanvasController controller, TableElement e) {
+  var id = e.sheet?.sheet;
+  var sheet = id == null ? null : controller.sheetById(id);
+  if (sheet == null || !sheet.source.on) return null;
+  return SheetRefreshButton(
+      key: ValueKey("sheetRefresh-${e.id}"),
+      controller: controller,
+      sheetId: sheet.id);
+}
+
+/// _sheetSource is where a table's numbers come from, when that is its
+/// sheet: said, with the way to change it.
+Widget _sheetSource(
+    BuildContext context, CanvasController controller, TableElement e) {
+  var sheet = controller.sheetById(e.sheet!.sheet);
+  var on = sheet != null && sheet.source.on;
+  return CanvasExpander(
+    key: const ValueKey("tableSheetSource"),
+    label: "Data source",
+    remember: "tableSource",
+    trailing: on ? sourceSays(sheet.source) : "Typed in",
+    action: _sheetRefresh(controller, e),
+    children: [
+      Text(
+          on
+              ? "From ${sourceSays(sheet.source)}, through its sheet "
+                  "“${sheet.name}”: every table and chart of the sheet "
+                  "follows a refresh."
+              : "Typed into its sheet “${sheet?.name ?? ""}”. Connect it to "
+                  "a web address or a file in the Data Studio.",
+          style: const TextStyle(fontSize: 12)),
+      const SizedBox(height: 6),
+      dataStudioButton(controller, e),
+    ],
+  );
 }

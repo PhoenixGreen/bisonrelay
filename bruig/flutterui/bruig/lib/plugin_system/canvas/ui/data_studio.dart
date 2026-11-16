@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -11,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_table_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
@@ -73,6 +76,23 @@ class _DataStudioState extends State<DataStudio> {
   String _said = "";
   DataStudioTab _tab = DataStudioTab.sheet;
 
+  // Connect data (data_connect.dart): the steps open in the side panel,
+  // the grid previewing what will come; after a refresh, the cells that
+  // changed light up for a moment.
+  bool _connecting = false;
+  bool _editingSource = false;
+  List<List<String>>? _preview;
+  Set<(int, int)> _flash = const {};
+  Timer? _flashing;
+
+  void _flashCells(Set<(int, int)> cells) {
+    _flashing?.cancel();
+    setState(() => _flash = cells);
+    _flashing = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _flash = const {});
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -86,6 +106,7 @@ class _DataStudioState extends State<DataStudio> {
   @override
   void dispose() {
     c.removeListener(_changed);
+    _flashing?.cancel();
     _gridFocus.dispose();
     _formula.dispose();
     _formulaFocus.dispose();
@@ -262,39 +283,95 @@ class _DataStudioState extends State<DataStudio> {
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Expanded(
               child: Column(children: [
-                Expanded(
-                  child: DataGrid(
-                    key: _grid,
-                    sheet: s,
-                    sel: _sel,
-                    look: look,
-                    images: c.images,
-                    focusNode: _gridFocus,
-                    outlines: [if (picked != null) _outlineOf(picked)],
-                    onSelect: (next) => setState(() => _sel = next),
-                    onEdit: (r, col, text) => c.setSheetCells(_sheet, r, col, [
-                      [text]
-                    ]),
-                    onPaste: (r, col, rows) {
-                      c.setSheetCells(_sheet, r, col, rows);
-                      _say("Pasted ${rows.length} row"
-                          "${rows.length == 1 ? "" : "s"}.");
-                    },
-                    onClear: (g) => c.clearSheetCells(_sheet, _used(g)),
-                    onFill: (from, to) {
-                      c.fillSheet(_sheet, from, to);
-                      _say("Filled ${to.a1}.");
-                    },
-                    onUndo: c.undo,
-                    onRedo: c.redo,
+                if (_preview != null)
+                  Container(
+                    key: const ValueKey("dataStudioPreviewBar"),
+                    width: double.infinity,
+                    color: colors.primary.withValues(alpha: 0.14),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Text(
+                        "Preview: what Connect will put in the sheet "
+                        "(${_preview!.length - 1} rows)",
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colors.onSurface)),
                   ),
+                Expanded(
+                  child: _preview != null
+                      ? DataGrid(
+                          key: const ValueKey("dataStudioPreviewGrid"),
+                          sheet: DataSheet(id: "preview", cells: _preview!),
+                          sel: const DataSel.at(0, 0),
+                          look: look,
+                          images: c.images,
+                          onSelect: (_) {},
+                          onEdit: (_, __, ___) {},
+                          onPaste: (_, __, ___) {},
+                          onClear: (_) {},
+                        )
+                      : DataGrid(
+                          key: _grid,
+                          flash: _flash,
+                          sheet: s,
+                          sel: _sel,
+                          look: look,
+                          images: c.images,
+                          focusNode: _gridFocus,
+                          outlines: [if (picked != null) _outlineOf(picked)],
+                          onSelect: (next) => setState(() => _sel = next),
+                          onEdit: (r, col, text) =>
+                              c.setSheetCells(_sheet, r, col, [
+                            [text]
+                          ]),
+                          onPaste: (r, col, rows) {
+                            c.setSheetCells(_sheet, r, col, rows);
+                            _say("Pasted ${rows.length} row"
+                                "${rows.length == 1 ? "" : "s"}.");
+                          },
+                          onClear: (g) => c.clearSheetCells(_sheet, _used(g)),
+                          onFill: (from, to) {
+                            c.fillSheet(_sheet, from, to);
+                            _say("Filled ${to.a1}.");
+                          },
+                          onUndo: c.undo,
+                          onRedo: c.redo,
+                        ),
                 ),
                 _sheetTabs(context),
               ]),
             ),
             VerticalDivider(
                 width: 1, thickness: 1, color: colors.outlineVariant),
-            SizedBox(width: 380, child: _side(context, s, picked)),
+            SizedBox(
+                width: 380,
+                child: _connecting
+                    ? Container(
+                        color: colors.surfaceContainerLow,
+                        child: ConnectData(
+                          key: ValueKey("dataStudioConnect-$_editingSource"),
+                          controller: c,
+                          sheetId: _sheet,
+                          editing: _editingSource,
+                          onPreview: (rows) => setState(() => _preview = rows),
+                          onCancel: () => setState(() {
+                            _connecting = false;
+                            _preview = null;
+                          }),
+                          onConnected: (id, changed) {
+                            setState(() {
+                              _connecting = false;
+                              _preview = null;
+                              _sheet = id;
+                            });
+                            _flashCells(changed);
+                            _say(
+                                "Connected: ${sourceSays(c.sheetById(id)?.source ?? const DataSource())}.");
+                          },
+                        ),
+                      )
+                    : _side(context, s, picked)),
           ]),
         ),
         Divider(height: 1, thickness: 1, color: colors.outlineVariant),
@@ -461,6 +538,16 @@ class _DataStudioState extends State<DataStudio> {
                     filled: true,
                     onTap: () => _addView(ElementKind.chart)),
                 gap(12),
+                StudioPill(
+                    key: const ValueKey("dataStudioConnectData"),
+                    label: "Connect data",
+                    tooltip: "Fill this sheet from a web address or a file, "
+                        "and refresh it",
+                    onTap: () => setState(() {
+                          _connecting = true;
+                          _editingSource = false;
+                        })),
+                gap(),
                 StudioPill(
                     key: const ValueKey("dataStudioImport"),
                     label: "Import",
@@ -755,7 +842,10 @@ class _DataStudioState extends State<DataStudio> {
                             borderRadius: const BorderRadius.vertical(
                                 bottom: Radius.circular(6)),
                           ),
-                          child: Text(sh.name,
+                          child: Text(
+                              sh.source.on
+                                  ? "${sh.name} · ${sourceSays(sh.source)}"
+                                  : sh.name,
                               style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
@@ -803,6 +893,16 @@ class _DataStudioState extends State<DataStudio> {
     return Container(
       color: colors.surfaceContainerLow,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (s.source.on)
+          SheetSourceCard(
+            controller: c,
+            sheet: s,
+            onEdit: () => setState(() {
+              _connecting = true;
+              _editingSource = true;
+            }),
+            onRefreshed: _flashCells,
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
           child: const StudioLabel("What the canvas shows"),

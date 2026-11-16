@@ -113,6 +113,9 @@ class DataGrid extends StatefulWidget {
   /// shown is what a cell shows, where it differs from what was typed.
   final String Function(int r, int c)? shown;
 
+  /// flash is cells to light up: what a refresh changed.
+  final Set<(int, int)> flash;
+
   /// images is where a cell naming a picture gets it, to show the picture
   /// rather than its name (as the tables showing the sheet do).
   final CanvasImageStore? images;
@@ -132,6 +135,7 @@ class DataGrid extends StatefulWidget {
     this.focusNode,
     this.shown,
     this.images,
+    this.flash = const {},
     super.key,
   });
 
@@ -581,6 +585,7 @@ class DataGridState extends State<DataGrid> {
                                 ? scrolled
                                 : Listenable.merge([scrolled, widget.images]),
                             images: widget.images,
+                            flash: widget.flash,
                             editing: _editing,
                             fillTo: _fillTo,
                             handle: widget.onFill != null,
@@ -723,6 +728,7 @@ class _Cells extends CustomPainter {
   final CellRange? fillTo;
   final bool handle;
   final CanvasImageStore? images;
+  final Set<(int, int)> flash;
   _Cells(
       {required this.sheet,
       required this.shown,
@@ -735,6 +741,7 @@ class _Cells extends CustomPainter {
       required this.editing,
       this.fillTo,
       this.images,
+      this.flash = const {},
       this.handle = false})
       : super(repaint: repaint);
 
@@ -760,6 +767,11 @@ class _Cells extends CustomPainter {
     }
     var g = sel.range;
     canvas.drawRect(block(g), Paint()..color = look.selection);
+    var lit = Paint()..color = const Color(0x592ED6A1);
+    for (var (r, c) in flash) {
+      if (r < r0 || r > r1 || c < c0 || c > c1) continue;
+      canvas.drawRect(cell(r, c).deflate(1), lit);
+    }
 
     var line = Paint()..color = look.line;
     for (var r = r0; r <= r1; r++) {
@@ -882,6 +894,7 @@ class _Cells extends CustomPainter {
       old.look != look ||
       old.editing != editing ||
       old.fillTo != fillTo ||
+      !identical(old.flash, flash) ||
       old.outlines.length != outlines.length ||
       !_sameOutlines(old.outlines, outlines);
 

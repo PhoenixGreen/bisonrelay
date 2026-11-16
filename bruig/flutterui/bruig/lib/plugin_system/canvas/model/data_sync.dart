@@ -931,3 +931,108 @@ DataSheet sheetFilled(DataSheet sheet, CellRange from, CellRange to) {
   }
   return sheet.withBlock(to.r0, to.c0, block).copyWith(formats: formats);
 }
+
+/// sourcesAdopted moves each table's data source onto its sheet (Connect
+/// data, 2026-11-16: the sheet owns its connection, and every table and
+/// chart of it follows one refresh). Only where the table shows its sheet
+/// whole from A1 and the sheet has no source of its own; the table's own is
+/// cleared, so there is one place it is kept. [doc] itself when there is
+/// nothing to move.
+CanvasDocument sourcesAdopted(CanvasDocument doc) {
+  var moved = <String, DataSource>{};
+  var from = <String>{};
+  for (var e in _allViews(doc)) {
+    if (e is! TableElement || !e.source.on) continue;
+    var link = e.sheet;
+    if (link == null || !link.plain) continue;
+    if (link.range.r0 != 0 || link.range.c0 != 0) continue;
+    var sheet = doc.sheets.where((s) => s.id == link.sheet).firstOrNull;
+    if (sheet == null || sheet.source.on || moved.containsKey(sheet.id)) {
+      continue;
+    }
+    moved[sheet.id] = e.source;
+    from.add(e.id);
+  }
+  if (moved.isEmpty) return doc;
+  var next = doc.copyWith(sheets: [
+    for (var s in doc.sheets)
+      if (moved[s.id] case var src?) s.copyWith(source: src) else s,
+  ]);
+  return _mapViews(
+      next,
+      (e) => e is TableElement && from.contains(e.id)
+          ? e.copyWith(source: const DataSource())
+          : e);
+}
+
+/// sheetFromSource is [sheet] filled with [rows] -- what a refresh brought,
+/// header first -- under [source]. The source's columns are written from
+/// A1, in place of what the sheet held; columns of the sheet's own past
+/// them are kept, matched row by row on the source's match column (else
+/// its first), so a note typed beside a team stays with that team. Columns
+/// the source marks keep are put back the same way, and with [keepHeads]
+/// (a sheet already connected) its own headings over the source's.
+DataSheet sheetFromSource(
+    DataSheet sheet, List<List<String>> rows, DataSource source,
+    {bool keepHeads = false}) {
+  var before = sheet.cells;
+  var after = keepColumns(before, rows, source);
+  if (keepHeads) after = keepHeaders(before, after);
+  var width = after.fold(0, (n, r) => math.max(n, r.length));
+  var own = before.isEmpty ? 0 : before.first.length - width;
+  if (own > 0 && before.first.length > width) {
+    var at = source.matchColumn < 0 ? 0 : source.matchColumn;
+    String key(List<String> r) =>
+        at < r.length ? r[at].trim().toLowerCase() : "";
+    var was = {
+      for (var r in before.skip(1))
+        if (key(r).isNotEmpty) key(r): r
+    };
+    List<String> rest(List<String>? r) => [
+          for (var c = width; c < width + own; c++)
+            r != null && c < r.length ? r[c] : ""
+        ];
+    after = [
+      for (var (i, row) in after.indexed)
+        [
+          ...row,
+          ...List.filled(width - row.length, ""),
+          ...rest(i == 0 ? before.first : was[key(row)]),
+        ]
+    ];
+  }
+  return sheet.copyWith(cells: after, source: source);
+}
+
+/// changedCells is every cell that reads differently in [after] than in
+/// [before], for a refresh to show what moved.
+Set<(int, int)> changedCells(
+    List<List<String>> before, List<List<String>> after) {
+  String at(List<List<String>> g, int r, int c) =>
+      r < g.length && c < g[r].length ? g[r][c] : "";
+  var out = <(int, int)>{};
+  var rows = math.max(before.length, after.length);
+  for (var r = 0; r < rows; r++) {
+    var cols = math.max(r < before.length ? before[r].length : 0,
+        r < after.length ? after[r].length : 0);
+    for (var c = 0; c < cols; c++) {
+      if (at(before, r, c) != at(after, r, c)) out.add((r, c));
+    }
+  }
+  return out;
+}
+
+/// viewsRegrown is [doc] with every view of sheet [id] that showed the
+/// whole of [was] now showing [now]: a refresh that brings more rows (or
+/// fewer) is seen whole in the tables and charts that showed it whole.
+CanvasDocument viewsRegrown(
+        CanvasDocument doc, String id, CellRange was, CellRange now) =>
+    was == now
+        ? doc
+        : _mapViews(doc, (e) {
+            var link = linkOf(e);
+            if (link == null || link.sheet != id || link.range != was) {
+              return e;
+            }
+            return withLink(e, link.copyWith(range: now));
+          });

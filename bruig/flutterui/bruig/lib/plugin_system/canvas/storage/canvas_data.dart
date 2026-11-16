@@ -71,6 +71,80 @@ class DataFiles {
   }
 }
 
+/// JsonResult is a source's answer read and decoded, or why it could not
+/// be: what [loadData] maps, kept whole by the Data Studio's Connect data so
+/// its columns can be chosen and previewed without asking again.
+class JsonResult {
+  final dynamic json;
+  final String? problem;
+  const JsonResult.ok(this.json) : problem = null;
+  const JsonResult.failed(this.problem) : json = null;
+  bool get worked => problem == null;
+}
+
+/// loadJson reads [source] and decodes it, with the same switches as
+/// [loadData].
+Future<JsonResult> loadJson(
+  DataSource source, {
+  bool allowFetching = false,
+  bool proxied = false,
+}) async {
+  if (!source.on) return const JsonResult.failed("There is no data source.");
+
+  String text;
+  switch (source.kind) {
+    case DataKind.typed:
+      return const JsonResult.failed("There is no data source.");
+
+    case DataKind.file:
+      try {
+        var file = File(source.where);
+        var type = await FileSystemEntity.type(source.where);
+        if (type == FileSystemEntityType.notFound) {
+          return JsonResult.failed("There is no file at ${source.where}.");
+        }
+        // Not a device, a pipe or a folder, and not more than a table holds.
+        if (type != FileSystemEntityType.file) {
+          return const JsonResult.failed("That is not a file.");
+        }
+        if (await file.length() > maxDataFileBytes) {
+          return const JsonResult.failed("That file is too big to be data.");
+        }
+        text = await file.readAsString();
+      } catch (exception) {
+        debugPrint("Unable to read the canvas data file: $exception");
+        return const JsonResult.failed("That file could not be read.");
+      }
+
+    case DataKind.url:
+      if (!allowFetching) {
+        return const JsonResult.failed(
+            "Fetching is switched off. Turn it on in Settings > Plugins > "
+            "Canvas, or use a file instead.");
+      }
+      // Refused rather than quietly bypassed: a reader using a SOCKS proxy has
+      // said how they want to reach the network, and this request would not
+      // go that way.
+      if (proxied) {
+        return const JsonResult.failed(
+            "This app is set to reach the network through a proxy, which a "
+            "fetch from the canvas cannot use. Use a file instead.");
+      }
+      var fetched = await _fetch(source);
+      if (fetched == null) {
+        return const JsonResult.failed("Nothing came back from that address.");
+      }
+      text = fetched;
+  }
+
+  try {
+    return JsonResult.ok(jsonDecode(text));
+  } catch (exception) {
+    debugPrint("The canvas data is not JSON: $exception");
+    return const JsonResult.failed("That is not JSON.");
+  }
+}
+
 /// loadData reads [source] and maps it into rows. [allowFetching] and
 /// [proxied] are handed in rather than read here, so the decision is
 /// testable and this file does not reach for the app's settings.
@@ -79,62 +153,15 @@ Future<DataResult> loadData(
   bool allowFetching = false,
   bool proxied = false,
 }) async {
-  if (!source.on) return const DataResult.failed("There is no data source.");
+  var read =
+      await loadJson(source, allowFetching: allowFetching, proxied: proxied);
+  if (!read.worked) return DataResult.failed(read.problem);
+  return mapData(read.json, source);
+}
 
-  String text;
-  switch (source.kind) {
-    case DataKind.typed:
-      return const DataResult.failed("There is no data source.");
-
-    case DataKind.file:
-      try {
-        var file = File(source.where);
-        var type = await FileSystemEntity.type(source.where);
-        if (type == FileSystemEntityType.notFound) {
-          return DataResult.failed("There is no file at ${source.where}.");
-        }
-        // Not a device, a pipe or a folder, and not more than a table holds.
-        if (type != FileSystemEntityType.file) {
-          return const DataResult.failed("That is not a file.");
-        }
-        if (await file.length() > maxDataFileBytes) {
-          return const DataResult.failed("That file is too big to be data.");
-        }
-        text = await file.readAsString();
-      } catch (exception) {
-        debugPrint("Unable to read the canvas data file: $exception");
-        return const DataResult.failed("That file could not be read.");
-      }
-
-    case DataKind.url:
-      if (!allowFetching) {
-        return const DataResult.failed(
-            "Fetching is switched off. Turn it on in Settings > Plugins > "
-            "Canvas, or use a file instead.");
-      }
-      // Refused rather than quietly bypassed: a reader using a SOCKS proxy has
-      // said how they want to reach the network, and this request would not
-      // go that way.
-      if (proxied) {
-        return const DataResult.failed(
-            "This app is set to reach the network through a proxy, which a "
-            "fetch from the canvas cannot use. Use a file instead.");
-      }
-      var fetched = await _fetch(source);
-      if (fetched == null) {
-        return const DataResult.failed("Nothing came back from that address.");
-      }
-      text = fetched;
-  }
-
-  dynamic json;
-  try {
-    json = jsonDecode(text);
-  } catch (exception) {
-    debugPrint("The canvas data is not JSON: $exception");
-    return const DataResult.failed("That is not JSON.");
-  }
-
+/// mapData is [json] mapped by [source] into rows, as [loadData] does after
+/// reading it.
+DataResult mapData(dynamic json, DataSource source) {
   var rows = rowsFromJson(json, source);
   if (rows.isEmpty) {
     return DataResult.failed(source.rowsPath.isEmpty
@@ -152,6 +179,33 @@ Future<DataResult> loadData(
   );
 }
 
+/// fieldsAt is every field the records at [rowsPath] in [json] have: in
+/// their own order with [sorted] false, as a first mapping lays them out.
+List<String> fieldsAt(dynamic json, String rowsPath, {bool sorted = true}) =>
+    _fieldsIn(valueAtPath(json, rowsPath), sorted: sorted);
+
+/// listsIn is every list of records inside [json] -- where a table's rows
+/// might be -- as (path, how many), the answer itself first if it is one.
+/// For Connect data's "which list is the rows".
+List<(String, int)> listsIn(dynamic json, {String prefix = "", int depth = 0}) {
+  var out = <(String, int)>[];
+  if (json is List) {
+    if (json.isNotEmpty && (json.first is Map || json.first is List)) {
+      out.add((prefix, json.length));
+    }
+    if (json.isNotEmpty && depth < 4) {
+      out.addAll(listsIn(json.first,
+          prefix: prefix.isEmpty ? "0" : "$prefix.0", depth: depth + 1));
+    }
+  } else if (json is Map && depth < 4) {
+    for (var MapEntry(:key, :value) in json.entries) {
+      out.addAll(listsIn(value,
+          prefix: prefix.isEmpty ? "$key" : "$prefix.$key", depth: depth + 1));
+    }
+  }
+  return out;
+}
+
 /// _fieldsIn is every dotted path a record has, whether or not it holds
 /// anything: a field that came back null is still a field, and leaving it out
 /// would mark a column mapped to it as missing.
@@ -159,11 +213,13 @@ Future<DataResult> loadData(
 /// The first record only, and a list by its first entry. A field missing
 /// from the first record but present in others cannot be seen, which is why
 /// the preset's own list is offered alongside this one.
-List<String> _fieldsIn(dynamic records, {String prefix = "", int depth = 0}) {
+List<String> _fieldsIn(dynamic records,
+    {String prefix = "", int depth = 0, bool sorted = true}) {
   if (records is List) {
     return records.isEmpty
         ? const []
-        : _fieldsIn(records.first, prefix: prefix, depth: depth);
+        : _fieldsIn(records.first,
+            prefix: prefix, depth: depth, sorted: sorted);
   }
   if (records is! Map || depth > 3) return const [];
 
@@ -172,12 +228,13 @@ List<String> _fieldsIn(dynamic records, {String prefix = "", int depth = 0}) {
     var path = prefix.isEmpty ? "${entry.key}" : "$prefix.${entry.key}";
     var value = entry.value;
     if (value is Map || (value is List && value.isNotEmpty)) {
-      out.addAll(_fieldsIn(value, prefix: path, depth: depth + 1));
+      out.addAll(
+          _fieldsIn(value, prefix: path, depth: depth + 1, sorted: sorted));
     } else {
       out.add(path);
     }
   }
-  out.sort();
+  if (sorted) out.sort();
   return out;
 }
 

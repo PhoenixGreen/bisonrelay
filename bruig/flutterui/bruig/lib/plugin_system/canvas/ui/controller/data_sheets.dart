@@ -48,6 +48,29 @@ extension CanvasDataSheets on CanvasController {
     return id;
   }
 
+  /// setSheetSource connects sheet [id] to [source] (or, typed, disconnects
+  /// it, keeping the numbers it has), fetching nothing.
+  void setSheetSource(String id, DataSource source) {
+    var s = sheetById(id);
+    if (s != null) setSheet(s.copyWith(source: source));
+  }
+
+  /// receiveSheet puts what a refresh of [source] brought into sheet [id] --
+  /// [rows], header first -- in one step to undo: the sheet, and every
+  /// table and chart that showed it whole grown or shrunk to what came. It
+  /// answers the cells that changed, for the grid to show.
+  Set<(int, int)> receiveSheet(
+      String id, List<List<String>> rows, DataSource source) {
+    var s = sheetById(id);
+    if (s == null) return const {};
+    var next = sheetFromSource(s, rows, source, keepHeads: s.source.on);
+    var doc = _document.copyWith(sheets: [
+      for (var x in _document.sheets) x.id == id ? next : x,
+    ]);
+    apply(viewsRegrown(doc, id, s.used, next.used));
+    return changedCells(s.cells, next.cells);
+  }
+
   /// addReadSheets puts [read] -- sheets read from a file (sheet_files.dart)
   /// -- in the canvas, as one change to undo, and answers their ids.
   List<String> addReadSheets(List<ReadSheet> read) {

@@ -432,10 +432,16 @@ void main() {
     expect(encoded.toLowerCase(), isNot(contains("x-auth-token")));
     expect(encoded.toLowerCase(), isNot(contains("\"key\"")));
 
-    var back = CanvasDocument.decode(encoded)!.elements.first as TableElement;
-    expect(back.source.host, "api.football-data.org");
-    expect(back.source.columns.length, footballDataColumns.length);
-    expect(back.source.preset, "football-data.org");
+    // Opened, the source is its sheet's (Connect data): the table shows the
+    // sheet, and the sheet owns the connection.
+    var doc = CanvasDocument.decode(encoded)!;
+    var back = doc.sheets.single.source;
+    expect((doc.elements.first as TableElement).source.on, isFalse);
+    expect(back.host, "api.football-data.org");
+    expect(back.columns.length, footballDataColumns.length);
+    expect(back.preset, "football-data.org");
+    // And saved again, still no key.
+    expect(doc.encode().toLowerCase(), isNot(contains("x-auth-token")));
   });
   group("a chart reading a table", () {
     TableElement league() => TableElement(
