@@ -35,12 +35,16 @@ class StudioPill extends StatelessWidget {
   /// filled is the page's main action ("Next", "Done").
   final bool filled;
   final String tooltip;
+
+  /// icon goes before the label, or alone where the label is empty.
+  final IconData? icon;
   const StudioPill(
       {required this.label,
       this.selected = false,
       this.onTap,
       this.filled = false,
       this.tooltip = "",
+      this.icon,
       super.key});
 
   @override
@@ -67,10 +71,22 @@ class StudioPill extends StatelessWidget {
         customBorder: const StadiumBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w600, color: ink)),
+          padding: EdgeInsets.symmetric(
+              horizontal: label.isEmpty ? 7 : 12, vertical: 6),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null)
+              Icon(icon, size: label.isEmpty ? 16 : 14, color: ink),
+            if (icon != null && label.isNotEmpty) const SizedBox(width: 4),
+            // Wrapping where it is long, as a plain label did.
+            if (label.isNotEmpty)
+              Flexible(
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: ink)),
+              ),
+          ]),
         ),
       ),
     );

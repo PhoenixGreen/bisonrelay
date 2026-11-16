@@ -98,8 +98,10 @@ List<PanelBit> tableBits(
       // Which rows of its sheet it shows, and how ordered (Data element).
       PanelBit(PanelSection.content, children: [dataRowsGroup(controller, e)]),
       // Its own section, like the chart's numbers: the cells are long and seldom
-      // changed once right, and pushed everything else off the bottom.
-      PanelBit(PanelSection.content, children: [
+      // changed once right, and pushed everything else off the bottom. Not
+      // in the Data Studio, whose grid is the same cells, bigger.
+      if (!InDataStudio.of(context))
+        PanelBit(PanelSection.content, children: [
         CanvasExpander(
           label: "Table",
           remember: "tableCells",

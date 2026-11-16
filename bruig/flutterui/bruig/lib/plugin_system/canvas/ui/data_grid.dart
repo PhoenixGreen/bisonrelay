@@ -120,6 +120,20 @@ class DataGrid extends StatefulWidget {
   /// rather than its name (as the tables showing the sheet do).
   final CanvasImageStore? images;
 
+  /// onResize gives the grid a new size, rows by columns: the − and + at
+  /// the end of the row numbers and of the column letters (Ken, 2026-11-16),
+  /// with a box for how many. None, and the grid has no such ends.
+  final void Function(int rows, int columns)? onResize;
+
+  /// onRowsOrColumns puts [n] rows (or columns) in before [at], or takes
+  /// them out from it: the menu a row number or column letter opens on a
+  /// right-click.
+  final void Function(
+      {required bool rows,
+      required bool insert,
+      required int at,
+      required int n})? onRowsOrColumns;
+
   const DataGrid({
     required this.sheet,
     required this.sel,
@@ -136,6 +150,8 @@ class DataGrid extends StatefulWidget {
     this.shown,
     this.images,
     this.flash = const {},
+    this.onResize,
+    this.onRowsOrColumns,
     super.key,
   });
 
@@ -165,8 +181,13 @@ class DataGridState extends State<DataGrid> {
   /// come between two frames, each going on from where the last left it.
   late DataSel _now = widget.sel;
 
-  int get _rows => math.max(200, widget.sheet.rowCount + 60);
-  int get _cols => math.max(26, widget.sheet.columnCount + 10);
+  int get _rows => widget.sheet.shownRows;
+  int get _cols => widget.sheet.shownColumns;
+
+  /// How many rows and columns the − and + at the grid's ends take off or
+  /// put on.
+  final TextEditingController _rowStep = TextEditingController(text: "1");
+  final TextEditingController _columnStep = TextEditingController(text: "1");
   String _shown(int r, int c) =>
       widget.shown?.call(r, c) ?? sheetShown(widget.sheet, r, c);
 
@@ -193,6 +214,8 @@ class DataGridState extends State<DataGrid> {
     if (_ownFocus) _focus.dispose();
     _edit.dispose();
     _editFocus.dispose();
+    _rowStep.dispose();
+    _columnStep.dispose();
     super.dispose();
   }
 
@@ -233,7 +256,7 @@ class DataGridState extends State<DataGrid> {
 
   /// _select picks [s] -- and, unless [stay], scrolls to the cell it was
   /// moved to. A whole row or column picked by its header stays where the
-  /// view is, as in Calc (it went to row 200).
+  /// view is, as in Calc (it went to the last row).
   void _select(DataSel s, {bool stay = false}) {
     var clamp = DataSel(s.ar.clamp(0, _rows - 1), s.ac.clamp(0, _cols - 1),
         s.fr.clamp(0, _rows - 1), s.fc.clamp(0, _cols - 1));
@@ -336,9 +359,14 @@ class DataGridState extends State<DataGrid> {
         from.r0, from.c0, math.max(from.r1, to.r1), math.max(from.c1, to.c1)));
   }
 
-  void _headerDown(Offset local, {required bool column}) {
+  void _headerDown(PointerDownEvent e, {required bool column}) {
+    var local = e.localPosition;
     if (_editing != null) _commit();
     _focus.requestFocus();
+    if (e.buttons & kSecondaryMouseButton != 0) {
+      _headerMenu(e.position, local, column: column);
+      return;
+    }
     if (column) {
       var c = ((local.dx + _h.offset) / dataColumnWidth)
           .floor()
@@ -359,6 +387,161 @@ class DataGridState extends State<DataGrid> {
               : DataSel(r, 0, r, _cols - 1),
           stay: true);
     }
+  }
+
+  /// _headerMenu is the right-click menu of a row number or column letter:
+  /// rows (or columns) put in either side of those picked, or taken out --
+  /// the row it was opened on picked first, unless it is among them.
+  Future<void> _headerMenu(Offset global, Offset local,
+      {required bool column}) async {
+    var on = onRowsOrColumns;
+    if (on == null) return;
+    var g = _now.range;
+    int at, n;
+    if (column) {
+      var c = ((local.dx + _h.offset) / dataColumnWidth)
+          .floor()
+          .clamp(0, _cols - 1);
+      var whole = g.r0 == 0 && g.r1 >= _rows - 1 && c >= g.c0 && c <= g.c1;
+      if (!whole) _select(DataSel(0, c, _rows - 1, c), stay: true);
+      at = whole ? g.c0 : c;
+      n = whole ? g.cols : 1;
+    } else {
+      var r =
+          ((local.dy + _v.offset) / dataRowHeight).floor().clamp(0, _rows - 1);
+      var whole = g.c0 == 0 && g.c1 >= _cols - 1 && r >= g.r0 && r <= g.r1;
+      if (!whole) _select(DataSel(r, 0, r, _cols - 1), stay: true);
+      at = whole ? g.r0 : r;
+      n = whole ? g.rows : 1;
+    }
+    var noun = column
+        ? (n == 1 ? "column" : "$n columns")
+        : (n == 1 ? "row" : "$n rows");
+    var choice = await showMenu<String>(
+      context: context,
+      position:
+          RelativeRect.fromLTRB(global.dx, global.dy, global.dx, global.dy),
+      items: [
+        PopupMenuItem(
+            key: const ValueKey("dataGridMenu-before"),
+            value: "before",
+            child: Text("Insert $noun ${column ? "left" : "above"}")),
+        PopupMenuItem(
+            key: const ValueKey("dataGridMenu-after"),
+            value: "after",
+            child: Text("Insert $noun ${column ? "right" : "below"}")),
+        PopupMenuItem(
+            key: const ValueKey("dataGridMenu-delete"),
+            value: "delete",
+            child: Text("Delete $noun")),
+      ],
+    );
+    if (choice == null || !mounted) return;
+    on(
+        rows: !column,
+        insert: choice != "delete",
+        at: choice == "after" ? at + n : at,
+        n: n);
+    _focus.requestFocus();
+  }
+
+  /// onRowsOrColumns is the grid's own, or null.
+  void Function(
+      {required bool rows,
+      required bool insert,
+      required int at,
+      required int n})? get onRowsOrColumns => widget.onRowsOrColumns;
+
+  /// _step is how many the − and + at an end take off or put on: what is
+  /// typed in its box, 1 when that isn't a number.
+  int _step(TextEditingController box) =>
+      math.max(1, int.tryParse(box.text.trim()) ?? 1);
+
+  void _resize({int rows = 0, int columns = 0}) {
+    var on = widget.onResize;
+    if (on == null) return;
+    on(math.max(1, _rows + rows * _step(_rowStep)),
+        math.max(1, _cols + columns * _step(_columnStep)));
+    _focus.requestFocus();
+  }
+
+  /// _ends is the − [n] + of the grid's last row ([rows]) or column.
+  Widget _ends({required bool rows}) {
+    var look = widget.look;
+    var noun = rows ? "rows" : "columns";
+    Widget button(String key, IconData icon, String tip, VoidCallback onTap) =>
+        Tooltip(
+          message: tip,
+          child: InkWell(
+            key: ValueKey(key),
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+                width: 22,
+                height: 22,
+                child: Icon(icon, size: 16, color: look.headInk)),
+          ),
+        );
+    var box = SizedBox(
+      width: 38,
+      height: 20,
+      child: TextField(
+        key: ValueKey("dataGrid${rows ? "Row" : "Column"}Step"),
+        controller: rows ? _rowStep : _columnStep,
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        style: TextStyle(fontSize: 12, color: look.ink),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 4),
+          filled: true,
+          fillColor: look.paper,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(color: look.line)),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(color: look.line)),
+        ),
+        onSubmitted: (_) => _resize(rows: rows ? 1 : 0, columns: rows ? 0 : 1),
+      ),
+    );
+    var less = button(
+        "dataGrid${rows ? "Rows" : "Columns"}Less",
+        Icons.remove,
+        "Take $noun off the end",
+        () => _resize(rows: rows ? -1 : 0, columns: rows ? 0 : -1));
+    var more = button(
+        "dataGrid${rows ? "Rows" : "Columns"}More",
+        Icons.add,
+        "More $noun at the end",
+        () => _resize(rows: rows ? 1 : 0, columns: rows ? 0 : 1));
+    // Drawn as the grid is, at its own size, whatever the app's text size.
+    return MediaQuery.withNoTextScaling(
+      child: Material(
+        color: look.head,
+        child: rows
+            ? Row(children: [
+                SizedBox(
+                    width: dataHeaderWidth,
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [less, more])),
+                const SizedBox(width: 6),
+                box,
+                const SizedBox(width: 6),
+                Text(noun, style: TextStyle(fontSize: 12, color: look.headInk)),
+              ])
+            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                less,
+                const SizedBox(width: 2),
+                box,
+                const SizedBox(width: 2),
+                more,
+              ]),
+      ),
+    );
   }
 
   /// copyText is the selection as Calc and Excel take it: rows of cells
@@ -489,6 +672,7 @@ class DataGridState extends State<DataGrid> {
   Widget build(BuildContext context) {
     var look = widget.look;
     var rows = _rows, cols = _cols;
+    var ends = widget.onResize != null;
     var scrolled = Listenable.merge([_v, _h]);
     return Focus(
       focusNode: _focus,
@@ -509,148 +693,195 @@ class DataGridState extends State<DataGrid> {
               ),
               Expanded(
                 child: ClipRect(
-                  child: Listener(
-                    onPointerDown: (e) =>
-                        _headerDown(e.localPosition, column: true),
-                    child: CustomPaint(
-                      key: const ValueKey("dataGridColumns"),
-                      size: Size.infinite,
-                      painter: _Headers(
-                          look: look,
-                          scroll: _h,
-                          columns: true,
-                          from: widget.sel.range.c0,
-                          to: widget.sel.range.c1),
-                    ),
-                  ),
-                ),
-              ),
-            ]),
-          ),
-          Expanded(
-            child:
-                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              SizedBox(
-                width: dataHeaderWidth,
-                child: ClipRect(
-                  child: Listener(
-                    onPointerDown: (e) =>
-                        _headerDown(e.localPosition, column: false),
-                    child: CustomPaint(
-                      key: const ValueKey("dataGridRows"),
-                      size: Size.infinite,
-                      painter: _Headers(
-                          look: look,
-                          scroll: _v,
-                          columns: false,
-                          from: widget.sel.range.r0,
-                          to: widget.sel.range.r1),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: ClipRect(
                   child: Stack(children: [
                     Positioned.fill(
-                      child: Scrollbar(
-                        controller: _v,
-                        thumbVisibility: true,
-                        child: SingleChildScrollView(
-                          controller: _v,
-                          child: Scrollbar(
-                            controller: _h,
-                            thumbVisibility: true,
-                            child: SingleChildScrollView(
-                              controller: _h,
-                              scrollDirection: Axis.horizontal,
-                              child: SizedBox(
-                                  width: cols * dataColumnWidth,
-                                  height: rows * dataRowHeight),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: CustomPaint(
-                          key: const ValueKey("dataGridCells"),
-                          painter: _Cells(
-                            sheet: widget.sheet,
-                            shown: _shown,
-                            sel: widget.sel,
-                            outlines: widget.outlines,
-                            look: look,
-                            v: _v,
-                            h: _h,
-                            repaint: widget.images == null
-                                ? scrolled
-                                : Listenable.merge([scrolled, widget.images]),
-                            images: widget.images,
-                            flash: widget.flash,
-                            editing: _editing,
-                            fillTo: _fillTo,
-                            handle: widget.onFill != null,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
                       child: Listener(
-                        key: const ValueKey("dataGridPointer"),
-                        behavior: HitTestBehavior.translucent,
-                        onPointerDown: _down,
-                        onPointerMove: _move,
-                        onPointerUp: (_) => _up(),
-                        onPointerCancel: (_) {
-                          _dragging = false;
-                          _filling = false;
-                          setState(() => _fillTo = null);
-                        },
+                        onPointerDown: (e) => _headerDown(e, column: true),
+                        child: CustomPaint(
+                          key: const ValueKey("dataGridColumns"),
+                          size: Size.infinite,
+                          painter: _Headers(
+                              look: look,
+                              scroll: _h,
+                              columns: true,
+                              count: cols,
+                              from: widget.sel.range.c0,
+                              to: widget.sel.range.c1),
+                        ),
                       ),
                     ),
-                    if (_editing case (var r, var c))
+                    if (ends)
                       AnimatedBuilder(
-                        animation: scrolled,
-                        builder: (context, _) => Positioned(
-                          left: c * dataColumnWidth - _h.offset,
-                          top: r * dataRowHeight - _v.offset,
-                          height: dataRowHeight,
-                          width: math.max(dataColumnWidth * 1.6, 160),
-                          child: Focus(
-                            onKeyEvent: _editKey,
-                            skipTraversal: true,
-                            child: Material(
-                              color: look.paper,
-                              child: TextField(
-                                key: const ValueKey("dataGridEditor"),
-                                controller: _edit,
-                                focusNode: _editFocus,
-                                style: TextStyle(fontSize: 13, color: look.ink),
-                                cursorColor: look.edge,
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 6),
-                                  enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.zero,
-                                      borderSide: BorderSide(
-                                          color: look.edge, width: 2)),
-                                  focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.zero,
-                                      borderSide: BorderSide(
-                                          color: look.edge, width: 2)),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                        animation: _h,
+                        builder: (context, child) => Positioned(
+                            key: const ValueKey("dataGridColumnEnds"),
+                            left: cols * dataColumnWidth -
+                                (_h.hasClients ? _h.offset : 0),
+                            top: 0,
+                            bottom: 0,
+                            width: dataColumnWidth,
+                            child: child!),
+                        child: _ends(rows: false),
                       ),
                   ]),
                 ),
               ),
             ]),
+          ),
+          Expanded(
+            child: ClipRect(
+              child: Stack(children: [
+                Positioned.fill(
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: dataHeaderWidth,
+                          child: ClipRect(
+                            child: Listener(
+                              onPointerDown: (e) =>
+                                  _headerDown(e, column: false),
+                              child: CustomPaint(
+                                key: const ValueKey("dataGridRows"),
+                                size: Size.infinite,
+                                painter: _Headers(
+                                    look: look,
+                                    scroll: _v,
+                                    columns: false,
+                                    count: rows,
+                                    from: widget.sel.range.r0,
+                                    to: widget.sel.range.r1),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: ClipRect(
+                            child: Stack(children: [
+                              Positioned.fill(
+                                child: Scrollbar(
+                                  controller: _v,
+                                  thumbVisibility: true,
+                                  child: SingleChildScrollView(
+                                    controller: _v,
+                                    child: Scrollbar(
+                                      controller: _h,
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        controller: _h,
+                                        scrollDirection: Axis.horizontal,
+                                        // Room past the last row and column for
+                                        // their ends.
+                                        child: SizedBox(
+                                            width: (cols + (ends ? 1 : 0)) *
+                                                dataColumnWidth,
+                                            height: (rows + (ends ? 1.5 : 0)) *
+                                                dataRowHeight),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    key: const ValueKey("dataGridCells"),
+                                    painter: _Cells(
+                                      sheet: widget.sheet,
+                                      shown: _shown,
+                                      sel: widget.sel,
+                                      outlines: widget.outlines,
+                                      look: look,
+                                      v: _v,
+                                      h: _h,
+                                      repaint: widget.images == null
+                                          ? scrolled
+                                          : Listenable.merge(
+                                              [scrolled, widget.images]),
+                                      images: widget.images,
+                                      flash: widget.flash,
+                                      editing: _editing,
+                                      fillTo: _fillTo,
+                                      handle: widget.onFill != null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: Listener(
+                                  key: const ValueKey("dataGridPointer"),
+                                  behavior: HitTestBehavior.translucent,
+                                  onPointerDown: _down,
+                                  onPointerMove: _move,
+                                  onPointerUp: (_) => _up(),
+                                  onPointerCancel: (_) {
+                                    _dragging = false;
+                                    _filling = false;
+                                    setState(() => _fillTo = null);
+                                  },
+                                ),
+                              ),
+                              if (_editing case (var r, var c))
+                                AnimatedBuilder(
+                                  animation: scrolled,
+                                  builder: (context, _) => Positioned(
+                                    left: c * dataColumnWidth - _h.offset,
+                                    top: r * dataRowHeight - _v.offset,
+                                    height: dataRowHeight,
+                                    width: math.max(dataColumnWidth * 1.6, 160),
+                                    child: Focus(
+                                      onKeyEvent: _editKey,
+                                      skipTraversal: true,
+                                      child: Material(
+                                        color: look.paper,
+                                        child: TextField(
+                                          key: const ValueKey("dataGridEditor"),
+                                          controller: _edit,
+                                          focusNode: _editFocus,
+                                          style: TextStyle(
+                                              fontSize: 13, color: look.ink),
+                                          cursorColor: look.edge,
+                                          decoration: InputDecoration(
+                                            isDense: true,
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 6, vertical: 6),
+                                            enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.zero,
+                                                borderSide: BorderSide(
+                                                    color: look.edge,
+                                                    width: 2)),
+                                            focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.zero,
+                                                borderSide: BorderSide(
+                                                    color: look.edge,
+                                                    width: 2)),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ]),
+                          ),
+                        ),
+                      ]),
+                ),
+                if (ends)
+                  AnimatedBuilder(
+                    animation: _v,
+                    builder: (context, child) => Positioned(
+                        key: const ValueKey("dataGridRowEnds"),
+                        left: 0,
+                        right: 0,
+                        top: rows * dataRowHeight -
+                            (_v.hasClients ? _v.offset : 0),
+                        height: dataRowHeight,
+                        child: child!),
+                    child: _ends(rows: true),
+                  ),
+              ]),
+            ),
           ),
         ]),
       ),
@@ -665,10 +896,14 @@ class _Headers extends CustomPainter {
   final ScrollController scroll;
   final bool columns;
   final int from, to;
+
+  /// count is how many the grid has: none drawn past them.
+  final int count;
   _Headers(
       {required this.look,
       required this.scroll,
       required this.columns,
+      required this.count,
       required this.from,
       required this.to})
       : super(repaint: scroll);
@@ -679,7 +914,8 @@ class _Headers extends CustomPainter {
     var offset = scroll.hasClients ? scroll.offset : 0.0;
     var step = columns ? dataColumnWidth : dataRowHeight;
     var first = math.max(0, (offset / step).floor());
-    var last = ((offset + (columns ? size.width : size.height)) / step).ceil();
+    var last = math.min(count - 1,
+        ((offset + (columns ? size.width : size.height)) / step).ceil());
     var line = Paint()..color = look.line;
     for (var i = first; i <= last; i++) {
       var at = i * step - offset;
@@ -715,7 +951,10 @@ class _Headers extends CustomPainter {
 
   @override
   bool shouldRepaint(_Headers old) =>
-      old.from != from || old.to != to || old.look != look;
+      old.from != from ||
+      old.to != to ||
+      old.count != count ||
+      old.look != look;
 }
 
 /// _Cells paints the cells in view: what each shows (numbers to the right),
@@ -755,8 +994,13 @@ class _Cells extends CustomPainter {
     // the top or left edge gives a negative offset).
     var r0 = math.max(0, (dy / dataRowHeight).floor());
     var c0 = math.max(0, (dx / dataColumnWidth).floor());
-    var r1 = ((dy + size.height) / dataRowHeight).ceil();
-    var c1 = ((dx + size.width) / dataColumnWidth).ceil();
+    // No further than the grid's last row and column.
+    var r1 = math.min(
+        sheet.shownRows - 1, ((dy + size.height) / dataRowHeight).ceil());
+    var c1 = math.min(
+        sheet.shownColumns - 1, ((dx + size.width) / dataColumnWidth).ceil());
+    var bottom = math.min(size.height, sheet.shownRows * dataRowHeight - dy);
+    var right = math.min(size.width, sheet.shownColumns * dataColumnWidth - dx);
     Rect cell(int r, int c) => Rect.fromLTWH(c * dataColumnWidth - dx,
         r * dataRowHeight - dy, dataColumnWidth, dataRowHeight);
     Rect block(CellRange g) => Rect.fromLTRB(cell(g.r0, g.c0).left,
@@ -782,11 +1026,11 @@ class _Cells extends CustomPainter {
     var line = Paint()..color = look.line;
     for (var r = r0; r <= r1; r++) {
       var y = (r + 1) * dataRowHeight - dy - 1;
-      canvas.drawRect(Rect.fromLTWH(0, y, size.width, 1), line);
+      canvas.drawRect(Rect.fromLTWH(0, y, math.max(0, right), 1), line);
     }
     for (var c = c0; c <= c1; c++) {
       var x = (c + 1) * dataColumnWidth - dx - 1;
-      canvas.drawRect(Rect.fromLTWH(x, 0, 1, size.height), line);
+      canvas.drawRect(Rect.fromLTWH(x, 0, 1, math.max(0, bottom)), line);
     }
 
     var rows = math.min(r1, sheet.rowCount - 1);

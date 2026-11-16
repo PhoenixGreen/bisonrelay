@@ -106,6 +106,21 @@ extension CanvasDataSheets on CanvasController {
       apply(columnsInserted(_document, id, at, n));
   void deleteSheetColumns(String id, int at, [int n = 1]) =>
       apply(columnsDeleted(_document, id, at, n));
+  /// resizeSheet gives sheet [id]'s grid [rows] by [columns]: what is
+  /// typed past a new edge goes with them, in one undo.
+  void resizeSheet(String id, int rows, int columns) =>
+      apply(sheetResized(_document, id, rows, columns));
+
+  /// removeDataView takes table or chart [id] off the canvas, wherever it
+  /// is.
+  void removeDataView(String id) {
+    if (_document.elementById(id) != null) {
+      deleteElement(id);
+    } else {
+      apply(viewRemoved(_document, id));
+    }
+  }
+
   void sortSheetRows(String id, CellRange rows, int by,
           {bool descending = false}) =>
       apply(rowsSorted(_document, id, rows, by, descending: descending));

@@ -126,6 +126,14 @@ void main() {
         tester.getTopLeft(find.byType(DataGrid)) +
         Offset(dataHeaderWidth + col * dataColumnWidth + dataColumnWidth / 2,
             dataRowHeight + r * dataRowHeight + dataRowHeight / 2);
+    Offset columnLetter(WidgetTester tester, int col) =>
+        tester.getTopLeft(find.byType(DataGrid)) +
+        Offset(dataHeaderWidth + col * dataColumnWidth + dataColumnWidth / 2,
+            dataRowHeight / 2);
+    Offset rowNumber(WidgetTester tester, int r) =>
+        tester.getTopLeft(find.byType(DataGrid)) +
+        Offset(dataHeaderWidth / 2,
+            dataRowHeight + r * dataRowHeight + dataRowHeight / 2);
     DataSheet sheet() => c.document.sheets.single;
     ChartElement chart() => c.document.elementById("c1") as ChartElement;
     TableElement table() => c.document.elementById("t1") as TableElement;
@@ -278,8 +286,8 @@ void main() {
     });
 
     testWidgets(
-        "＋ Chart puts a chart of the selection on the canvas; − Column on a "
-        "series lets it go", (tester) async {
+        "＋ Chart puts a chart of the selection on the canvas; a series' "
+        "column deleted lets it go", (tester) async {
       await studio(tester);
       var before = c.document.elements.length;
       await tester.tapAt(cellAt(tester, 0, 0));
@@ -299,17 +307,151 @@ void main() {
       expect(made.data.categories, ["Arsenal", "Liverpool", "Chelsea"]);
       expect(made.data.series.single.name, "W");
       expect(find.byKey(ValueKey("dataStudioView-${made.id}")), findsOneWidget);
-      // GD (column D) taken out: the Points chart lets that series go.
-      await tester.tapAt(cellAt(tester, 1, 3));
-      await tester.pump();
-      await tester
-          .ensureVisible(find.byKey(const ValueKey("dataStudioColumnOut")));
+      // GD (column D) taken out, from its letter's right-click menu: the
+      // Points chart lets that series go.
+      await tester.tapAt(columnLetter(tester, 3),
+          buttons: kSecondaryMouseButton);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey("dataStudioColumnOut")));
+      await tester.tap(find.byKey(const ValueKey("dataGridMenu-delete")));
       await tester.pumpAndSettle();
       expect([for (var s in chart().data.series) s.name], ["Pts"]);
       expect(table().rows.first, ["Club", "W", "D", "Pts"]);
     });
+
+    // Ken, 2026-11-16: the bar's − Row, + Row, − Column and + Column moved
+    // to the ends of the row numbers and column letters, as − and + with a
+    // box for how many; 40 rows to start. Rows and columns put in or taken
+    // out where the selection is: the headers' right-click menu.
+    testWidgets("the grid's ends: 40 rows to start, more or fewer by a number",
+        (tester) async {
+      await studio(tester);
+      expect(find.byKey(const ValueKey("dataStudioRowIn")), findsNothing);
+      expect(sheet().shownRows, 40);
+      expect(sheet().shownColumns, 26);
+      // Scrolled to the grid's end, where the ends are (they follow the
+      // grid's scrolling, from outside its scroll view).
+      Future<void> toEnd() async {
+        for (var view in tester.widgetList<SingleChildScrollView>(
+            find.descendant(
+                of: find.byType(DataGrid),
+                matching: find.byType(SingleChildScrollView)))) {
+          var p = view.controller!.position;
+          p.jumpTo(p.maxScrollExtent);
+        }
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> press(String key) async {
+        await toEnd();
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pumpAndSettle();
+      }
+
+      await toEnd();
+
+      await tester.enterText(
+          find.byKey(const ValueKey("dataGridRowStep")), "5");
+      await press("dataGridRowsMore");
+      expect(sheet().gridRows, 45);
+      await press("dataGridColumnsMore");
+      expect(sheet().gridColumns, 27);
+      await press("dataGridColumnsLess");
+      expect(sheet().gridColumns, 26);
+      // Fewer than are typed in: what was past the edge goes, in one undo.
+      await tester.enterText(
+          find.byKey(const ValueKey("dataGridRowStep")), "42");
+      await press("dataGridRowsLess");
+      expect(sheet().gridRows, 3);
+      expect(sheet().rowCount, 3, reason: "Chelsea's row went");
+      expect(table().rows, hasLength(3));
+      c.undo();
+      await tester.pumpAndSettle();
+      expect(sheet().gridRows, 45);
+      expect(sheet().rowCount, 4);
+      // Saved with the canvas, and only where it isn't the usual size.
+      expect(DataSheet.fromJson(sheet().toJson())!.gridRows, 45);
+      expect(const DataSheet(id: "x").toJson().containsKey("gridRows"), false);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a row number's menu puts rows in above and below; deletes",
+        (tester) async {
+      await studio(tester);
+      Future<void> menu(int r, String choice) async {
+        await tester.tapAt(rowNumber(tester, r),
+            buttons: kSecondaryMouseButton);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey("dataGridMenu-$choice")));
+        await tester.pumpAndSettle();
+      }
+
+      await menu(1, "before");
+      expect(sheet().raw(2, 0), "Arsenal");
+      expect(sheet().raw(1, 0), "");
+      await menu(2, "after");
+      expect(sheet().raw(3, 0), "");
+      expect(sheet().raw(4, 0), "Liverpool");
+      await menu(1, "delete");
+      expect(sheet().raw(1, 0), "Arsenal");
+      // A column letter's: in to the left.
+      await tester.tapAt(columnLetter(tester, 0),
+          buttons: kSecondaryMouseButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("dataGridMenu-before")));
+      await tester.pumpAndSettle();
+      expect(sheet().raw(0, 1), "Club");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        "the side: one scroll; + Table, + Chart and Remove above the views; "
+        "no table cells", (tester) async {
+      await studio(tester);
+      // Nothing pinned: the preview scrolls away with the rest.
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("dataStudioSide")),
+              matching: find.byKey(const ValueKey("dataStudioPreview"))),
+          findsOneWidget);
+      double top(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
+      expect(top("dataStudioAddTable"), lessThan(top("dataStudioView-c1")));
+      expect(top("dataStudioRemoveView"), lessThan(top("dataStudioView-c1")));
+      // Sort, Undo and Redo on the row below the bar, with the formula.
+      double middle(String key) =>
+          tester.getCenter(find.byKey(ValueKey(key))).dy;
+      expect(
+          middle("dataStudioSortUp"), closeTo(middle("dataStudioFormula"), 4),
+          reason: "same row");
+      expect(top("dataStudioUndo"), greaterThan(top("dataStudioDone")));
+      // The table picked: its settings, but not its cells (the grid is
+      // them, bigger).
+      await tester.tap(find.byKey(const ValueKey("dataStudioView-t1")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("dataView")), findsOneWidget);
+      expect(find.byKey(const ValueKey("expander-tableCells")), findsNothing);
+      // Taken off the canvas, and undone.
+      await tester.tap(find.byKey(const ValueKey("dataStudioRemoveView")));
+      await tester.pumpAndSettle();
+      expect(c.document.elementById("t1"), isNull);
+      expect(find.byKey(const ValueKey("dataStudioView-t1")), findsNothing);
+      c.undo();
+      await tester.pumpAndSettle();
+      expect(c.document.elementById("t1"), isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (var scale in [0.65, 1.5]) {
+      testWidgets("nothing overflows at text size $scale, 1280 wide",
+          (tester) async {
+        await studio(tester);
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        tester.view.physicalSize = const Size(1280, 800);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey("dataStudioView-t1")));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets("sheets added and named; the picked view's own settings",
         (tester) async {

@@ -332,6 +332,12 @@ class DataSheet {
   final String spotlight;
   final Color spotlightColour;
 
+  /// gridRows and gridColumns are how many rows and columns the Data
+  /// Studio's grid has (Ken, 2026-11-16: 40 rows to start, more added at
+  /// the end of the row numbers): at least, since the cells typed always
+  /// show. See [shownRows].
+  final int gridRows, gridColumns;
+
   const DataSheet(
       {required this.id,
       this.name = "Sheet",
@@ -341,7 +347,16 @@ class DataSheet {
       this.rules = const [],
       this.source = const DataSource(),
       this.spotlight = "",
-      this.spotlightColour = const Color(0xFFF2B33D)});
+      this.spotlightColour = const Color(0xFFF2B33D),
+      this.gridRows = defaultGridRows,
+      this.gridColumns = defaultGridColumns});
+
+  static const int defaultGridRows = 40, defaultGridColumns = 26;
+
+  /// shownRows and shownColumns are how many the grid has: its own size, or
+  /// as many as are typed in, whichever is more.
+  int get shownRows => math.max(gridRows, rowCount);
+  int get shownColumns => math.max(gridColumns, columnCount);
 
   /// formatAt is cell [r], [c]'s number format: its own, its column's, or
   /// null for General.
@@ -368,7 +383,9 @@ class DataSheet {
           List<SheetRule>? rules,
           DataSource? source,
           String? spotlight,
-          Color? spotlightColour}) =>
+          Color? spotlightColour,
+          int? gridRows,
+          int? gridColumns}) =>
       DataSheet(
           id: id,
           name: name ?? this.name,
@@ -378,7 +395,9 @@ class DataSheet {
           rules: rules ?? this.rules,
           source: source ?? this.source,
           spotlight: spotlight ?? this.spotlight,
-          spotlightColour: spotlightColour ?? this.spotlightColour);
+          spotlightColour: spotlightColour ?? this.spotlightColour,
+          gridRows: gridRows ?? this.gridRows,
+          gridColumns: gridColumns ?? this.gridColumns);
 
   /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
   /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
@@ -442,6 +461,8 @@ class DataSheet {
         if (source.kind != DataKind.typed) "source": source.toJson(),
         if (spotlight.isNotEmpty) "spotlight": spotlight,
         if (spotlight.isNotEmpty) "spotlightColour": spotlightColour.toARGB32(),
+        if (gridRows != defaultGridRows) "gridRows": gridRows,
+        if (gridColumns != defaultGridColumns) "gridColumns": gridColumns,
       };
 
   static DataSheet? fromJson(Object? j) {
@@ -472,6 +493,12 @@ class DataSheet {
         spotlightColour: j["spotlightColour"] is int
             ? Color(j["spotlightColour"] as int)
             : const Color(0xFFF2B33D),
+        gridRows: j["gridRows"] is int
+            ? math.max(1, j["gridRows"] as int)
+            : defaultGridRows,
+        gridColumns: j["gridColumns"] is int
+            ? math.max(1, j["gridColumns"] as int)
+            : defaultGridColumns,
         source: j["source"] is Map<String, dynamic>
             ? DataSource.fromJson(j["source"] as Map<String, dynamic>)
             : const DataSource(),

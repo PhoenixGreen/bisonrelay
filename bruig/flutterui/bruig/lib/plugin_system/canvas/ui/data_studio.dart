@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_table_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_view_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
@@ -179,21 +180,43 @@ class _DataStudioState extends State<DataStudio> {
         "${descending ? "largest" : "smallest"} first.");
   }
 
-  void _rowsOrColumns({required bool rows, required bool insert}) {
-    var g = _sel.range;
-    var used = sheet!.used;
+  /// _rowsOrColumns puts [n] rows (or columns) in before [at], or takes
+  /// them out from it: the grid's right-click menu on its headers.
+  void _rowsOrColumns(
+      {required bool rows,
+      required bool insert,
+      required int at,
+      required int n}) {
     if (rows) {
-      var n = math.max(1, math.min(g.r1, math.max(g.r0, used.r1)) - g.r0 + 1);
       insert
-          ? c.insertSheetRows(_sheet, g.r0, n)
-          : c.deleteSheetRows(_sheet, g.r0, n);
+          ? c.insertSheetRows(_sheet, at, n)
+          : c.deleteSheetRows(_sheet, at, n);
     } else {
-      var n = math.max(1, math.min(g.c1, math.max(g.c0, used.c1)) - g.c0 + 1);
       insert
-          ? c.insertSheetColumns(_sheet, g.c0, n)
-          : c.deleteSheetColumns(_sheet, g.c0, n);
+          ? c.insertSheetColumns(_sheet, at, n)
+          : c.deleteSheetColumns(_sheet, at, n);
     }
+    var what = rows
+        ? (n == 1 ? "a row" : "$n rows")
+        : (n == 1 ? "a column" : "$n columns");
+    _say(insert ? "Put in $what." : "Took out $what.");
     _gridFocus.requestFocus();
+  }
+
+  /// _resize gives the grid [rows] by [columns] (its ends' − and +): the
+  /// selection kept inside it.
+  void _resize(int rows, int columns) {
+    var s = sheet!;
+    var cutting = s.rowCount > rows || s.columnCount > columns;
+    c.resizeSheet(_sheet, rows, columns);
+    var g = _sel;
+    setState(() => _sel = DataSel(
+        math.min(g.ar, rows - 1),
+        math.min(g.ac, columns - 1),
+        math.min(g.fr, rows - 1),
+        math.min(g.fc, columns - 1)));
+    _say("The sheet is $rows rows by $columns columns"
+        "${cutting ? "; what was past the edge went with them" : ""}.");
   }
 
   Future<void> _import() async {
@@ -341,6 +364,8 @@ class _DataStudioState extends State<DataStudio> {
                           },
                           onUndo: c.undo,
                           onRedo: c.redo,
+                          onResize: _resize,
+                          onRowsOrColumns: _rowsOrColumns,
                         ),
                 ),
                 _sheetTabs(context),
@@ -512,69 +537,9 @@ class _DataStudioState extends State<DataStudio> {
             scrollDirection: Axis.horizontal,
             reverse: true,
             child: Row(children: [
-              StudioPill(
-                  key: const ValueKey("dataStudioUndo"),
-                  label: "Undo",
-                  tooltip: "Undo (⌘Z)",
-                  onTap: c.canUndo ? c.undo : null),
-              gap(),
-              StudioPill(
-                  key: const ValueKey("dataStudioRedo"),
-                  label: "Redo",
-                  tooltip: "Redo (⇧⌘Z)",
-                  onTap: c.canRedo ? c.redo : null),
+              // Undo and Redo are on the row below on the Sheet tab.
+              if (_tab != DataStudioTab.sheet) ..._undoRedo(),
               if (_tab == DataStudioTab.sheet) ...[
-                gap(12),
-                StudioPill(
-                    key: const ValueKey("dataStudioSortUp"),
-                    label: "Sort ↑",
-                    tooltip: "The selection's rows by this column, smallest "
-                        "first",
-                    onTap: () => _sort(descending: false)),
-                gap(),
-                StudioPill(
-                    key: const ValueKey("dataStudioSortDown"),
-                    label: "Sort ↓",
-                    tooltip: "Largest first",
-                    onTap: () => _sort(descending: true)),
-                gap(12),
-                StudioPill(
-                    key: const ValueKey("dataStudioRowIn"),
-                    label: "+ Row",
-                    tooltip: "Rows above the selection",
-                    onTap: () => _rowsOrColumns(rows: true, insert: true)),
-                gap(),
-                StudioPill(
-                    key: const ValueKey("dataStudioRowOut"),
-                    label: "− Row",
-                    tooltip: "Take the selection's rows out",
-                    onTap: () => _rowsOrColumns(rows: true, insert: false)),
-                gap(),
-                StudioPill(
-                    key: const ValueKey("dataStudioColumnIn"),
-                    label: "+ Column",
-                    tooltip: "Columns left of the selection",
-                    onTap: () => _rowsOrColumns(rows: false, insert: true)),
-                gap(),
-                StudioPill(
-                    key: const ValueKey("dataStudioColumnOut"),
-                    label: "− Column",
-                    tooltip: "Take the selection's columns out",
-                    onTap: () => _rowsOrColumns(rows: false, insert: false)),
-                gap(12),
-                StudioPill(
-                    key: const ValueKey("dataStudioAddTable"),
-                    label: "+ Table",
-                    tooltip: "A table of the selection on the canvas",
-                    onTap: () => _addView(ElementKind.table)),
-                gap(),
-                StudioPill(
-                    key: const ValueKey("dataStudioAddChart"),
-                    label: "+ Chart",
-                    tooltip: "A chart of the selection on the canvas",
-                    filled: true,
-                    onTap: () => _addView(ElementKind.chart)),
-                gap(12),
                 StudioPill(
                     key: const ValueKey("dataStudioConnectData"),
                     label: "Connect data",
@@ -618,6 +583,23 @@ class _DataStudioState extends State<DataStudio> {
     );
   }
 
+  /// _undoRedo are Undo and Redo, as icons.
+  List<Widget> _undoRedo() => [
+        StudioPill(
+            key: const ValueKey("dataStudioUndo"),
+            label: "",
+            icon: Icons.undo,
+            tooltip: "Undo (⌘Z)",
+            onTap: c.canUndo ? c.undo : null),
+        const SizedBox(width: 4),
+        StudioPill(
+            key: const ValueKey("dataStudioRedo"),
+            label: "",
+            icon: Icons.redo,
+            tooltip: "Redo (⇧⌘Z)",
+            onTap: c.canRedo ? c.redo : null),
+      ];
+
   Widget _formulaBar(BuildContext context, DataSheet s) {
     final colors = ThemeNotifier.of(context).colors;
     InputDecoration box() => InputDecoration(
@@ -634,113 +616,151 @@ class _DataStudioState extends State<DataStudio> {
     var format = s.formatAt(_sel.ar, _sel.ac);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(children: [
-        // How the selection's numbers are written (Calc's Number Format).
-        DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            key: const ValueKey("dataStudioFormat"),
-            value: _formatKey(format),
-            isDense: true,
-            style: TextStyle(fontSize: 13, color: colors.onSurface),
-            dropdownColor: colors.surfaceContainerHigh,
-            items: [
-              for (var (k, label) in _formatChoices)
-                DropdownMenuItem(value: k, child: Text(label)),
-            ],
-            onChanged: (k) {
-              if (k != null) _setFormat(s, _formatFor(k, format));
-            },
+      // The tools scroll sideways where the window is short of room (a big
+      // text size), the cell's box and its formula keeping theirs.
+      child: LayoutBuilder(
+        builder: (context, room) => Row(children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+                maxWidth: math.max(0, room.maxWidth - 104 - 48 - 240)),
+            child: SingleChildScrollView(
+              key: const ValueKey("dataStudioTools"),
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                ..._undoRedo(),
+                const SizedBox(width: 12),
+                StudioPill(
+                    key: const ValueKey("dataStudioSortUp"),
+                    label: "Sort",
+                    icon: Icons.arrow_upward,
+                    tooltip:
+                        "The selection's rows by this column, smallest first",
+                    onTap: () => _sort(descending: false)),
+                const SizedBox(width: 4),
+                StudioPill(
+                    key: const ValueKey("dataStudioSortDown"),
+                    label: "Sort",
+                    icon: Icons.arrow_downward,
+                    tooltip: "Largest first",
+                    onTap: () => _sort(descending: true)),
+                const SizedBox(width: 12),
+                // How the selection's numbers are written (Calc's Number Format).
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    key: const ValueKey("dataStudioFormat"),
+                    value: _formatKey(format),
+                    isDense: true,
+                    style: TextStyle(fontSize: 13, color: colors.onSurface),
+                    dropdownColor: colors.surfaceContainerHigh,
+                    items: [
+                      for (var (k, label) in _formatChoices)
+                        DropdownMenuItem(value: k, child: Text(label)),
+                    ],
+                    onChanged: (k) {
+                      if (k != null) _setFormat(s, _formatFor(k, format));
+                    },
+                  ),
+                ),
+                const SizedBox(width: 6),
+                StudioPill(
+                    key: const ValueKey("dataStudioFewer"),
+                    label: ".0−",
+                    tooltip: "Fewer decimals",
+                    onTap: () => _setFormat(
+                        s,
+                        (format ?? const CellFormat(CellFormatKind.general))
+                            .copyWith(
+                                decimals:
+                                    math.max(0, (format?.places ?? 0) - 1)))),
+                const SizedBox(width: 4),
+                StudioPill(
+                    key: const ValueKey("dataStudioMore"),
+                    label: ".00+",
+                    tooltip: "More decimals",
+                    onTap: () => _setFormat(
+                        s,
+                        (format ?? const CellFormat(CellFormatKind.general))
+                            .copyWith(
+                                decimals:
+                                    math.min(10, (format?.places ?? 0) + 1)))),
+                const SizedBox(width: 12),
+                // Calc's conditional formatting: bars, scales and highlights over
+                // the selection, drawn by the tables showing it.
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    key: const ValueKey("dataStudioRules"),
+                    value: null,
+                    isDense: true,
+                    hint: Text("Colour rules",
+                        style:
+                            TextStyle(fontSize: 13, color: colors.onSurface)),
+                    style: TextStyle(fontSize: 13, color: colors.onSurface),
+                    dropdownColor: colors.surfaceContainerHigh,
+                    items: [
+                      for (var (k, label) in _ruleChoices)
+                        DropdownMenuItem(value: k, child: Text(label)),
+                    ],
+                    onChanged: (k) {
+                      if (k != null) _setRule(s, k);
+                    },
+                  ),
+                ),
+              ]),
+            ),
           ),
-        ),
-        const SizedBox(width: 6),
-        StudioPill(
-            key: const ValueKey("dataStudioFewer"),
-            label: ".0−",
-            tooltip: "Fewer decimals",
-            onTap: () => _setFormat(
-                s,
-                (format ?? const CellFormat(CellFormatKind.general)).copyWith(
-                    decimals: math.max(0, (format?.places ?? 0) - 1)))),
-        const SizedBox(width: 4),
-        StudioPill(
-            key: const ValueKey("dataStudioMore"),
-            label: ".00+",
-            tooltip: "More decimals",
-            onTap: () => _setFormat(
-                s,
-                (format ?? const CellFormat(CellFormatKind.general)).copyWith(
-                    decimals: math.min(10, (format?.places ?? 0) + 1)))),
-        const SizedBox(width: 12),
-        // Calc's conditional formatting: bars, scales and highlights over
-        // the selection, drawn by the tables showing it.
-        DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            key: const ValueKey("dataStudioRules"),
-            value: null,
-            isDense: true,
-            hint: Text("Colour rules",
-                style: TextStyle(fontSize: 13, color: colors.onSurface)),
-            style: TextStyle(fontSize: 13, color: colors.onSurface),
-            dropdownColor: colors.surfaceContainerHigh,
-            items: [
-              for (var (k, label) in _ruleChoices)
-                DropdownMenuItem(value: k, child: Text(label)),
-            ],
-            onChanged: (k) {
-              if (k != null) _setRule(s, k);
-            },
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 104,
+            child: TextField(
+              key: const ValueKey("dataStudioNameBox"),
+              controller: _name,
+              focusNode: _nameFocus,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontFamily: "monospace",
+                  color: colors.onSurface),
+              decoration: box(),
+              onSubmitted: (text) {
+                var g = CellRange.parse(text);
+                if (g == null) {
+                  _say("Type a cell like B4 or a range like A1:C9.");
+                } else {
+                  setState(() => _sel = DataSel(g.r0, g.c0, g.r1, g.c1));
+                }
+                _gridFocus.requestFocus();
+              },
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 104,
-          child: TextField(
-            key: const ValueKey("dataStudioNameBox"),
-            controller: _name,
-            focusNode: _nameFocus,
-            style: TextStyle(
-                fontSize: 12.5,
-                fontFamily: "monospace",
-                color: colors.onSurface),
-            decoration: box(),
-            onSubmitted: (text) {
-              var g = CellRange.parse(text);
-              if (g == null) {
-                _say("Type a cell like B4 or a range like A1:C9.");
-              } else {
-                setState(() => _sel = DataSel(g.r0, g.c0, g.r1, g.c1));
-              }
-              _gridFocus.requestFocus();
-            },
+          const SizedBox(width: 8),
+          Text("fx",
+              style: TextStyle(
+                  fontStyle: FontStyle.italic,
+                  fontFamily: "Georgia",
+                  color: colors.onSurfaceVariant)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              key: const ValueKey("dataStudioFormula"),
+              controller: _formula,
+              focusNode: _formulaFocus,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: "monospace",
+                  color: colors.onSurface),
+              decoration: box().copyWith(
+                  hintText: "Type a value, or a formula: =SUM(B2:B9)"),
+              onSubmitted: (text) {
+                if (text != s.raw(_sel.ar, _sel.ac)) {
+                  c.setSheetCells(_sheet, _sel.ar, _sel.ac, [
+                    [text]
+                  ]);
+                }
+                _gridFocus.requestFocus();
+              },
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Text("fx",
-            style: TextStyle(
-                fontStyle: FontStyle.italic,
-                fontFamily: "Georgia",
-                color: colors.onSurfaceVariant)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: TextField(
-            key: const ValueKey("dataStudioFormula"),
-            controller: _formula,
-            focusNode: _formulaFocus,
-            style: TextStyle(
-                fontSize: 13, fontFamily: "monospace", color: colors.onSurface),
-            decoration: box()
-                .copyWith(hintText: "Type a value, or a formula: =SUM(B2:B9)"),
-            onSubmitted: (text) {
-              if (text != s.raw(_sel.ar, _sel.ac)) {
-                c.setSheetCells(_sheet, _sel.ar, _sel.ac, [
-                  [text]
-                ]);
-              }
-              _gridFocus.requestFocus();
-            },
-          ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -811,7 +831,7 @@ class _DataStudioState extends State<DataStudio> {
   /// letters, as their columns'.
   void _setFormat(DataSheet s, CellFormat? f) {
     var g = _sel.range;
-    var columns = g.r0 == 0 && g.r1 >= math.max(199, s.rowCount);
+    var columns = g.r0 == 0 && g.r1 >= s.shownRows - 1;
     c.formatSheetCells(_sheet, columns ? g : _used(g), f, columns: columns);
     _gridFocus.requestFocus();
   }
@@ -927,68 +947,110 @@ class _DataStudioState extends State<DataStudio> {
   Widget _side(BuildContext context, DataSheet s, CanvasElement? picked) {
     final colors = ThemeNotifier.of(context).colors;
     var views = _views;
+    String nameOf(CanvasElement v) => v.name.isEmpty ? v.kind.label : v.name;
+    // One scroll, nothing held at the top (Ken, 2026-11-16: the preview
+    // pinned there made the settings under it hard to get through).
     return Container(
       color: colors.surfaceContainerLow,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (s.source.on)
-          SheetSourceCard(
-            controller: c,
-            sheet: s,
-            onEdit: () => setState(() {
-              _connecting = true;
-              _editingSource = true;
-            }),
-            onRefreshed: _flashCells,
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
-          child: const StudioLabel("What the canvas shows"),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: SizedBox(
-            height: 190,
-            child: picked == null
-                ? Center(
-                    child: Text(
-                        "Nothing on the canvas shows this sheet. Select cells "
-                        "and press + Table or + Chart.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: colors.onSurfaceVariant)))
-                : ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: CustomPaint(
-                      key: const ValueKey("dataStudioPreview"),
-                      painter: _ViewPreview(
-                          picked, c.document.background.spec.background),
-                      size: Size.infinite,
-                    ),
-                  ),
-          ),
-        ),
-        if (views.isNotEmpty)
+      child: SingleChildScrollView(
+        key: const ValueKey("dataStudioSide"),
+        padding: const EdgeInsets.only(bottom: 24),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (s.source.on)
+            SheetSourceCard(
+              controller: c,
+              sheet: s,
+              onEdit: () => setState(() {
+                _connecting = true;
+                _editingSource = true;
+              }),
+              onRefreshed: _flashCells,
+            ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+            child: const StudioLabel("What the canvas shows"),
+          ),
+          // Put down from the selection, or the picked one taken off.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
             child: Wrap(spacing: 4, runSpacing: 4, children: [
-              for (var v in views)
-                StudioPill(
-                  key: ValueKey("dataStudioView-${v.id}"),
-                  label: "${v is ChartElement ? "Chart" : "Table"} · "
-                      "${v.name.isEmpty ? v.kind.label : v.name} · "
-                      "${linkOf(v)!.range.a1}",
-                  selected: v.id == picked?.id,
-                  onTap: () => setState(() => _view = v.id),
-                ),
+              StudioPill(
+                  key: const ValueKey("dataStudioAddTable"),
+                  label: "Table",
+                  icon: Icons.add,
+                  tooltip: "A table of the selection on the canvas",
+                  onTap: () => _addView(ElementKind.table)),
+              StudioPill(
+                  key: const ValueKey("dataStudioAddChart"),
+                  label: "Chart",
+                  icon: Icons.add,
+                  tooltip: "A chart of the selection on the canvas",
+                  onTap: () => _addView(ElementKind.chart)),
+              StudioPill(
+                  key: const ValueKey("dataStudioRemoveView"),
+                  label: "Remove",
+                  icon: Icons.remove,
+                  tooltip: picked == null
+                      ? "Nothing to take off the canvas"
+                      : "Take ${nameOf(picked)} off the canvas",
+                  onTap: picked == null
+                      ? null
+                      : () {
+                          var name = nameOf(picked);
+                          c.removeDataView(picked.id);
+                          setState(() => _view = null);
+                          _say("$name is off the canvas.");
+                        }),
             ]),
           ),
-        Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-        Expanded(
-          child: picked == null
-              ? const SizedBox.shrink()
-              : SingleChildScrollView(
-                  key: ValueKey("dataStudioSettings-${picked.id}"),
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                  child: CanvasControlScope(
+          if (views.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              child: Wrap(spacing: 4, runSpacing: 4, children: [
+                for (var v in views)
+                  StudioPill(
+                    key: ValueKey("dataStudioView-${v.id}"),
+                    label: "${v is ChartElement ? "Chart" : "Table"} · "
+                        "${nameOf(v)} · ${linkOf(v)!.range.a1}",
+                    selected: v.id == picked?.id,
+                    onTap: () => setState(() => _view = v.id),
+                  ),
+              ]),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: SizedBox(
+              height: 190,
+              child: picked == null
+                  ? Center(
+                      child: Text(
+                          "Nothing on the canvas shows this sheet. Select "
+                          "cells and press + Table or + Chart.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: colors.onSurfaceVariant)))
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: CustomPaint(
+                        key: const ValueKey("dataStudioPreview"),
+                        painter: _ViewPreview(
+                            picked, c.document.background.spec.background),
+                        size: Size.infinite,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          if (picked != null)
+            Padding(
+              key: ValueKey("dataStudioSettings-${picked.id}"),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              // The sheet is the main area: its table's own cells aren't
+              // repeated here.
+              child: InDataStudio(
+                child: Builder(
+                  builder: (context) => CanvasControlScope(
                     maxWidth: 340,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -996,8 +1058,10 @@ class _DataStudioState extends State<DataStudio> {
                     ),
                   ),
                 ),
-        ),
-      ]),
+              ),
+            ),
+        ]),
+      ),
     );
   }
 

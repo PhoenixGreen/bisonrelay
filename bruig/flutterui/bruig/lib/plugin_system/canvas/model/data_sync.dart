@@ -755,6 +755,49 @@ CanvasDocument rowsDeleted(CanvasDocument doc, String id, int at, int n) {
   });
 }
 
+/// sheetResized is [doc] with sheet [id]'s grid [rows] by [columns] (at
+/// least one of each): what is typed past the new edge goes, the views of
+/// it following as when rows or columns are taken out.
+CanvasDocument sheetResized(
+    CanvasDocument doc, String id, int rows, int columns) {
+  var s = _sheetIn(doc, id);
+  if (s == null) return doc;
+  rows = math.max(1, rows);
+  columns = math.max(1, columns);
+  var out = doc;
+  if (s.rowCount > rows) out = rowsDeleted(out, id, rows, s.rowCount - rows);
+  if (s.columnCount > columns) {
+    out = columnsDeleted(out, id, columns, s.columnCount - columns);
+  }
+  var now = _sheetIn(out, id)!;
+  return out.copyWith(sheets: [
+    for (var x in out.sheets)
+      x.id == id ? now.copyWith(gridRows: rows, gridColumns: columns) : x,
+  ]);
+}
+
+/// viewRemoved is [doc] without Data element [id], wherever it is: this
+/// scene, another, or the master.
+CanvasDocument viewRemoved(CanvasDocument doc, String id) {
+  List<CanvasElement> without(List<CanvasElement> list) =>
+      list.any((e) => e.id == id) ? [...list.where((e) => e.id != id)] : list;
+  var out = doc.elementById(id) != null ? doc.removeElement(id) : doc;
+  for (var (i, scene) in out.allScenes.indexed) {
+    if (!out.editingMaster && i == out.at) continue;
+    var list = without(scene.elements);
+    if (!identical(list, scene.elements)) {
+      out = out.withScene(i, scene.copyWith(elements: list));
+    }
+  }
+  if (out.master case var master? when !out.editingMaster) {
+    var list = without(master.elements);
+    if (!identical(list, master.elements)) {
+      out = out.copyWith(master: master.copyWith(elements: list));
+    }
+  }
+  return out;
+}
+
 /// columnsInserted is [doc] with [n] empty columns put in sheet [id] before
 /// column [at].
 CanvasDocument columnsInserted(CanvasDocument doc, String id, int at, int n) {
