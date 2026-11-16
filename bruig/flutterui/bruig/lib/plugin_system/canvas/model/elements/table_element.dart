@@ -731,6 +731,19 @@ class TableElement extends CanvasElement {
   /// Empty, none.
   final String style;
 
+  /// columnKinds is how some columns' cells are drawn rather than written
+  /// (Ken, 2026-11-17; prototype v7's table kinds), by column: "spark" a
+  /// small line of the numbers in the cell ("3, 5, 4, 8"); "ticks" a tick
+  /// for yes and a cross for no; "harvey" a part-filled circle for how much
+  /// (0-4, or a share); "change" an arrow up or down and the size of it;
+  /// "merge" a run of the same value as one tall cell. See tableCellKinds.
+  final Map<int, String> columnKinds;
+
+  /// groupRows draws a row with only its first cell filled as a heading
+  /// across the table, for rows in groups (fixtures by date, a statement
+  /// by section).
+  final bool groupRows;
+
   /// sheet is the range of the canvas sheet this table shows (see
   /// data_sheet.dart): its rows are that range's, kept in step both ways
   /// (data_sync.dart). Null only until it is given a sheet of its own.
@@ -801,6 +814,8 @@ class TableElement extends CanvasElement {
     this.animation = const ElementAnimation(),
     this.turn = TableTurn.together,
     this.style = "",
+    this.columnKinds = const {},
+    this.groupRows = false,
     this.sheet,
     this.sheetLooks = const [],
   });
@@ -1020,6 +1035,8 @@ class TableElement extends CanvasElement {
     ElementAnimation? animation,
     TableTurn? turn,
     String? style,
+    Map<int, String>? columnKinds,
+    bool? groupRows,
     SheetLink? sheet,
     bool clearSheet = false,
     List<List<SheetCellLook?>>? sheetLooks,
@@ -1059,6 +1076,8 @@ class TableElement extends CanvasElement {
           animation: animation,
           turn: turn,
           style: style,
+          columnKinds: columnKinds,
+          groupRows: groupRows,
           sheet: sheet,
           clearSheet: clearSheet,
           sheetLooks: sheetLooks);
@@ -1099,6 +1118,8 @@ class TableElement extends CanvasElement {
     ElementAnimation? animation,
     TableTurn? turn,
     String? style,
+    Map<int, String>? columnKinds,
+    bool? groupRows,
     SheetLink? sheet,
     bool clearSheet = false,
     List<List<SheetCellLook?>>? sheetLooks,
@@ -1135,6 +1156,8 @@ class TableElement extends CanvasElement {
           animation: animation ?? this.animation,
           turn: turn ?? this.turn,
           style: style ?? this.style,
+          columnKinds: columnKinds ?? this.columnKinds,
+          groupRows: groupRows ?? this.groupRows,
           sheet: clearSheet ? null : sheet ?? this.sheet,
           sheetLooks: sheetLooks ?? this.sheetLooks);
 
@@ -1171,6 +1194,12 @@ class TableElement extends CanvasElement {
         if (animation.any) "anim": animation.toJson(),
         if (turn != TableTurn.together) "turn": turn.name,
         if (style.isNotEmpty) "style": style,
+        if (columnKinds.isNotEmpty)
+          "columnKinds": {
+            for (var MapEntry(:key, :value) in columnKinds.entries)
+              "$key": value
+          },
+        if (groupRows) "groupRows": true,
         if (sheet != null) "sheet": sheet!.toJson(),
       };
 
@@ -1246,6 +1275,13 @@ class TableElement extends CanvasElement {
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
         turn: TableTurn.fromName(jsonStr(json["turn"])),
         style: jsonStr(json["style"]) ?? "",
+        columnKinds: {
+          if (json["columnKinds"] case Map m)
+            for (var MapEntry(:key, :value) in m.entries)
+              if (int.tryParse("$key") case var c? when value is String)
+                c: value,
+        },
+        groupRows: json["groupRows"] == true,
         sheet: SheetLink.fromJson(json["sheet"]));
   }
 
@@ -1258,3 +1294,14 @@ class TableElement extends CanvasElement {
     return identical(next, rows) ? this : copyWith(rows: next);
   }
 }
+
+/// tableCellKinds is the ways a column's cells can be drawn (see
+/// TableElement.columnKinds), as (name, what it says); "" writes them.
+const tableCellKinds = [
+  ("", "Words"),
+  ("spark", "A small line"),
+  ("ticks", "Ticks and crosses"),
+  ("harvey", "Part-filled circles"),
+  ("change", "Up or down"),
+  ("merge", "Repeats as one"),
+];

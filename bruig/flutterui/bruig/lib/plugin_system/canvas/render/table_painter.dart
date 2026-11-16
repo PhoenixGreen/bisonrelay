@@ -2,6 +2,7 @@ import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -87,14 +88,76 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   }
 
   // Cells.
+  var drawn = _DrawnCells(e);
   y = rect.top;
   for (var r = 0; r < e.rows.length; r++) {
     var h = heights[r];
     var x = rect.left;
+    // A heading across the table (TableElement.groupRows).
+    if (drawn.groupRow(r)) {
+      var band = Rect.fromLTWH(rect.left, y, rect.width, h);
+      canvas.drawRect(
+          band,
+          Paint()
+            ..color = e.headerFill.withValues(alpha: e.headerFill.a * 0.55));
+      paintTextInBox(
+          canvas,
+          e.cell(r, 0),
+          e.headerSpec.copyWith(align: TextAlignSpec.left, weight: 700),
+          Rect.fromLTWH(
+              rect.left + e.leftPad,
+              y + e.topPad,
+              math.max(1, rect.width - e.leftPad - e.rightPad),
+              math.max(1, h - e.topPad - e.bottomPad)),
+          clip: true);
+      y += h;
+      continue;
+    }
     for (var c = 0; c < cols; c++) {
       var w = widths[c];
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
       var spec = isHeader ? e.headerSpec : e.cellSpec;
+      // Drawn rather than written, by its column's kind.
+      var kind = isHeader ? "" : (e.columnKinds[c] ?? "");
+      if (kind == "merge") {
+        if (drawn.continues(r, c)) {
+          x += w;
+          continue;
+        }
+        var run = drawn.runLength(r, c);
+        var tall = heights.skip(r).take(run).fold(0.0, (a, b) => a + b);
+        if (run > 1) {
+          // Over the rows it spans, hiding their own fills.
+          canvas.drawRect(
+              Rect.fromLTWH(x, y, w, tall),
+              Paint()
+                ..color =
+                    e.cellFill.a > 0 ? e.cellFill : const Color(0x00000000));
+        }
+        paintTextInBox(
+            canvas,
+            e.cell(r, c),
+            spec.copyWith(verticalAlign: VerticalAlignSpec.middle),
+            Rect.fromLTWH(
+                x + e.leftPad,
+                y + e.topPad,
+                math.max(1, w - e.leftPad - e.rightPad),
+                math.max(1, tall - e.topPad - e.bottomPad)),
+            clip: true);
+        x += w;
+        continue;
+      }
+      if (kind.isNotEmpty) {
+        var box = Rect.fromLTWH(
+            x + e.leftPad,
+            y + e.topPad,
+            math.max(1, w - e.leftPad - e.rightPad),
+            math.max(1, h - e.topPad - e.bottomPad));
+        if (paintCellKind(canvas, kind, e.cell(r, c), spec, box, e)) {
+          x += w;
+          continue;
+        }
+      }
 
       // A picture, if the cell names one: inside the cell's padding and
       // centred, so a column of badges lines up whatever their shapes.
@@ -230,18 +293,32 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       ..color = e.gridColor
       ..strokeWidth = e.gridWidth;
 
+    // Each line in pieces where a merged cell runs on across it, or a
+    // group heading spans the row.
     if (e.grid.drawsHorizontal) {
       var ry = rect.top;
       for (var r = 0; r < e.rows.length - 1; r++) {
         ry += heights[r];
-        canvas.drawLine(Offset(rect.left, ry), Offset(rect.right, ry), paint);
+        var rx = rect.left;
+        for (var c = 0; c < cols; c++) {
+          if (!drawn.continues(r + 1, c)) {
+            canvas.drawLine(Offset(rx, ry), Offset(rx + widths[c], ry), paint);
+          }
+          rx += widths[c];
+        }
       }
     }
     if (e.grid.drawsVertical) {
       var rx = rect.left;
       for (var c = 0; c < cols - 1; c++) {
         rx += widths[c];
-        canvas.drawLine(Offset(rx, rect.top), Offset(rx, rect.bottom), paint);
+        var ry = rect.top;
+        for (var r = 0; r < e.rows.length; r++) {
+          if (!drawn.groupRow(r)) {
+            canvas.drawLine(Offset(rx, ry), Offset(rx, ry + heights[r]), paint);
+          }
+          ry += heights[r];
+        }
       }
     }
   }
@@ -680,4 +757,176 @@ List<double> _rowHeights(TableElement e, Rect rect) {
     for (var r = 0; r < n; r++)
       (e.headerRow && r == 0) ? unit * headerShare : unit,
   ];
+}
+
+/// _DrawnCells is what the cell kinds and group rows change about which
+/// cells a table draws (TableElement.columnKinds, groupRows).
+class _DrawnCells {
+  final TableElement e;
+  _DrawnCells(this.e);
+
+  bool _header(int r) => e.headerRow && r == 0;
+
+  /// groupRow is whether row [r] is a heading across the table: only its
+  /// first cell filled.
+  bool groupRow(int r) {
+    if (!e.groupRows || _header(r) || r >= e.rows.length) return false;
+    if (e.cell(r, 0).trim().isEmpty) return false;
+    for (var c = 1; c < e.columnCount; c++) {
+      if (e.cell(r, c).trim().isNotEmpty) return false;
+    }
+    return true;
+  }
+
+  /// continues is whether cell [r], [c] is part of a merged run begun
+  /// above it: the same value as the cell above, in a "merge" column.
+  bool continues(int r, int c) {
+    if (e.columnKinds[c] != "merge" || r <= 0 || r >= e.rows.length) {
+      return false;
+    }
+    if (_header(r - 1) || groupRow(r) || groupRow(r - 1)) return false;
+    var v = e.cell(r, c).trim();
+    return v.isNotEmpty && v == e.cell(r - 1, c).trim();
+  }
+
+  /// runLength is how many rows the run begun at [r] spans.
+  int runLength(int r, int c) {
+    var n = 1;
+    while (continues(r + n, c)) {
+      n++;
+    }
+    return n;
+  }
+}
+
+/// paintCellKind draws [text] as a column's kind says (see
+/// TableElement.columnKinds) in [box], answering whether it did: a cell
+/// that can't be read that way is written as words instead.
+bool paintCellKind(ui.Canvas canvas, String kind, String text, TextSpec spec,
+    Rect box, TableElement e) {
+  var style = dataStyleNamed(e.style);
+  var ink = spec.color;
+  var accent = style?.accent ?? ink;
+  var quiet = ink.withValues(alpha: ink.a * 0.32);
+  var t = text.trim();
+  switch (kind) {
+    case "spark":
+      var nums = [
+        for (var part in t.split(RegExp(r"[,;\s]+")))
+          if (double.tryParse(part.replaceAll(RegExp(r"[^0-9.\-]"), ""))
+              case var v?)
+            v
+      ];
+      if (nums.length < 2) return false;
+      var lo = nums.reduce(math.min), hi = nums.reduce(math.max);
+      var line = Rect.fromCenter(
+          center: box.center,
+          width: box.width,
+          height: math.min(box.height, spec.fontSize * 1.6));
+      var pts = [
+        for (var i = 0; i < nums.length; i++)
+          Offset(
+              line.left + line.width * i / (nums.length - 1),
+              line.bottom -
+                  (hi - lo <= 0 ? 0.5 : (nums[i] - lo) / (hi - lo)) *
+                      line.height)
+      ];
+      var path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (var q in pts.skip(1)) {
+        path.lineTo(q.dx, q.dy);
+      }
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1.2, spec.fontSize * 0.09)
+            ..strokeJoin = StrokeJoin.round
+            ..color = ink.withValues(alpha: ink.a * 0.75));
+      canvas.drawCircle(
+          pts.last, math.max(2, spec.fontSize * 0.16), Paint()..color = accent);
+      return true;
+    case "ticks":
+      if (t.isEmpty || t == "-" || t == "—") {
+        paintTextInBox(canvas, "—",
+            spec.copyWith(align: TextAlignSpec.center, color: quiet), box,
+            clip: true);
+        return true;
+      }
+      var yes = RegExp(r"^(y|yes|true|1|✓|✔|x|on|tick)$", caseSensitive: false)
+          .hasMatch(t);
+      var no = RegExp(r"^(n|no|false|0|✗|✘|off|cross)$", caseSensitive: false)
+          .hasMatch(t);
+      if (!yes && !no) return false;
+      var s = math.min(box.height, spec.fontSize * 1.1) * 0.5;
+      var c = box.center;
+      var paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.6, s * 0.28)
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = yes ? accent : quiet;
+      canvas.drawPath(
+          yes
+              ? (Path()
+                ..moveTo(c.dx - s * 0.8, c.dy)
+                ..lineTo(c.dx - s * 0.2, c.dy + s * 0.6)
+                ..lineTo(c.dx + s * 0.9, c.dy - s * 0.7))
+              : (Path()
+                ..moveTo(c.dx - s * 0.6, c.dy - s * 0.6)
+                ..lineTo(c.dx + s * 0.6, c.dy + s * 0.6)
+                ..moveTo(c.dx + s * 0.6, c.dy - s * 0.6)
+                ..lineTo(c.dx - s * 0.6, c.dy + s * 0.6)),
+          paint);
+      return true;
+    case "harvey":
+      var v = double.tryParse(t.replaceAll("%", ""));
+      if (v == null) return false;
+      // A share: whole steps out of 4 (a Harvey ball's), a fraction of 1,
+      // or a percentage.
+      var f = t.contains("%") || v > 4
+          ? v / 100
+          : v == v.roundToDouble()
+              ? v / 4
+              : v;
+      f = f.clamp(0.0, 1.0);
+      var r = math.min(box.height, spec.fontSize * 1.2) * 0.5;
+      var c = box.center;
+      canvas.drawCircle(
+          c,
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1, r * 0.14)
+            ..color = ink);
+      if (f > 0) {
+        canvas.drawArc(Rect.fromCircle(center: c, radius: r), -math.pi / 2,
+            math.pi * 2 * f, true, Paint()..color = ink);
+      }
+      return true;
+    case "change":
+      var v = double.tryParse(t.replaceAll(RegExp(r"[^0-9.\-+]"), ""));
+      if (v == null) return false;
+      var up = v > 0, down = v < 0;
+      var colour = up
+          ? (style?.rise ?? const Color(0xFF2EA44F))
+          : down
+              ? (style?.fall ?? const Color(0xFFE5534B))
+              : quiet;
+      var size = v.abs();
+      var said = size == size.roundToDouble()
+          ? size.toStringAsFixed(0)
+          : size.toString();
+      paintTextInBox(
+          canvas,
+          up
+              ? "▲ $said"
+              : down
+                  ? "▼ $said"
+                  : "–",
+          spec.copyWith(color: colour, weight: 700),
+          box,
+          clip: true);
+      return true;
+  }
+  return false;
 }

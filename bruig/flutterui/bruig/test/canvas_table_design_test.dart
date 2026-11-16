@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
@@ -461,6 +462,75 @@ void main() {
       expect(table().cornerRadius, 8);
       expect(table().rules, hasLength(rules.length),
           reason: "its own styles stay");
+      expect(tester.takeException(), isNull);
+    });
+
+    // Ken, 2026-11-17: the new cell types -- small lines, ticks, part-filled
+    // circles, up or down, merged repeats -- and headings across.
+    test("cells drawn by their column's kind, saved, and drawn", () {
+      var t = const TableElement(ElementBase(id: "t", width: 600, height: 300),
+          rows: [
+            ["Group", "Club", "Form", "TV", "Cover", "Moved"],
+            ["TOP", "", "", "", "", ""],
+            ["Europe", "Arsenal", "3, 4, 7", "yes", "4", "+2"],
+            ["Europe", "Chelsea", "2, 5", "no", "1", "-1"],
+            ["Rest", "Spurs", "nothing", "maybe", "?", "0"],
+          ],
+          columnKinds: {
+            0: "merge",
+            2: "spark",
+            3: "ticks",
+            4: "harvey",
+            5: "change"
+          },
+          groupRows: true,
+          grid: TableGrid.all);
+      var back = TableElement.fromJson(
+          jsonDecode(jsonEncode(t.toJson())) as Map<String, dynamic>, t.base);
+      expect(back.columnKinds, t.columnKinds);
+      expect(back.groupRows, isTrue);
+      expect(
+          const TableElement(ElementBase(id: "x"))
+              .toJson()
+              .containsKey("columnKinds"),
+          isFalse);
+      var recorder = ui.PictureRecorder();
+      paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 600, 300), t);
+      recorder.endRecording().dispose();
+      // What a kind can't read is written instead.
+      var canvas = ui.Canvas(ui.PictureRecorder());
+      const box = Rect.fromLTWH(0, 0, 80, 20);
+      var spec = t.cellSpec;
+      expect(paintCellKind(canvas, "spark", "3, 4, 7", spec, box, t), isTrue);
+      expect(paintCellKind(canvas, "spark", "nothing", spec, box, t), isFalse);
+      expect(paintCellKind(canvas, "ticks", "maybe", spec, box, t), isFalse);
+      expect(paintCellKind(canvas, "ticks", "", spec, box, t), isTrue);
+      expect(paintCellKind(canvas, "harvey", "?", spec, box, t), isFalse);
+      expect(paintCellKind(canvas, "change", "-1", spec, box, t), isTrue);
+    });
+
+    testWidgets("a column's cells shown as ticks; rows as headings across",
+        (tester) async {
+      await studio(tester);
+      await tester.tapAt(at(tester, -1, 2));
+      await tester.pumpAndSettle();
+      final kind = find.byKey(const ValueKey("tableColumnKind"));
+      await tester.ensureVisible(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Part-filled circles").last);
+      await tester.pumpAndSettle();
+      expect(table().columnKinds, {2: "harvey"});
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      final groups =
+          find.byKey(const ValueKey("studioPill-tableGroupRows-true"));
+      await tester.ensureVisible(groups);
+      await tester.pumpAndSettle();
+      await tester.tap(groups);
+      await tester.pumpAndSettle();
+      expect(table().groupRows, isTrue);
       expect(tester.takeException(), isNull);
     });
 

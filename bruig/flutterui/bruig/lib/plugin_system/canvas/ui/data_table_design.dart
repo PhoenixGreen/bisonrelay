@@ -840,6 +840,15 @@ class _TableDesignState extends State<TableDesign> {
             options: const [(true, "Shown"), (false, "None")],
             onChanged: (v) => _set(t.copyWith(headerRow: v))),
         StudioPills<bool>(
+            id: "tableGroupRows",
+            label: "Rows with only a first cell",
+            value: t.groupRows,
+            options: const [
+              (false, "Rows like the rest"),
+              (true, "Headings across")
+            ],
+            onChanged: (v) => _set(t.copyWith(groupRows: v))),
+        StudioPills<bool>(
             id: "tableHeaderColumn",
             label: "Header column",
             value: t.headerColumn,
@@ -1044,6 +1053,31 @@ class _TableDesignState extends State<TableDesign> {
       }, format: (v) => "${v.round()}"),
       _hint(context,
           "The others make room. Widths are kept as shares of the table's."),
+      // Drawn rather than written (TableElement.columnKinds).
+      const StudioLabel("Its cells show"),
+      _Dropdown<String>(
+          key: const ValueKey("tableColumnKind"),
+          value: t.columnKinds[col] ?? "",
+          options: [for (var (k, says) in tableCellKinds) (k, says)],
+          onChanged: (k) => _set(t.copyWith(columnKinds: {
+                for (var MapEntry(:key, :value) in t.columnKinds.entries)
+                  if (key != col) key: value,
+                if (k.isNotEmpty) col: k,
+              }))),
+      _hint(
+          context,
+          switch (t.columnKinds[col] ?? "") {
+            "spark" =>
+              "Each cell's numbers, like “3, 5, 4, 8”, as a small line ending on a dot.",
+            "ticks" =>
+              "Yes, true or 1 a tick; no, false or 0 a cross; blank a dash.",
+            "harvey" =>
+              "0 to 4, a share up to 1, or a percentage, as a part-filled circle.",
+            "change" => "Up green with ▲, down red with ▼, by the size of it.",
+            "merge" =>
+              "The same value in the rows below runs on as one tall cell.",
+            _ => "Written as typed.",
+          }),
       StudioLabel("Styles on this column · ${stylesHere.length}"),
       ..._styleList(context, stylesHere),
       _buttons([
