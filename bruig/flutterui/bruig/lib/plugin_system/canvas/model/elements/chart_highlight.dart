@@ -192,6 +192,14 @@ List<Color?> marksOf(List<ChartHighlight> highlights, List<String> labels,
   return out;
 }
 
+/// litOf is which of [labels] [highlights] light, all together.
+Set<int> litOf(List<ChartHighlight> highlights, List<String> labels,
+        List<double> Function(int by) valuesOf) =>
+    {
+      for (var h in highlights)
+        if (!h.off) ..._reached(h, labels, valuesOf)
+    };
+
 Set<int> _reached(ChartHighlight h, List<String> labels,
     List<double> Function(int by) valuesOf) {
   switch (h.reach) {

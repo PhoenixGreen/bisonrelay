@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_presets.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_story.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
@@ -1926,7 +1927,20 @@ class ChartsDesignState extends State<ChartsDesign>
                 "A step from each mark on the timeline. At a Stop mark the canvas waits, so in a presentation the next step comes at a click.",
               ChartStepsFollow.scenes =>
                 "A step in each scene or page it is in: step 1 in the first, step 2 in the next. Put linked copies of it in the scenes after.",
+              ChartStepsFollow.speech =>
+                "A step as each line of the narration is spoken: timed by the voice. A camera aimed at what the narration names follows it.",
             }),
+      ],
+      // The narration's lines as its steps (chart_story.dart): each titled
+      // with its line, lighting the names it says.
+      if (narrationLines(c.document) case var lines when lines.isNotEmpty) ...[
+        StudioPill(
+            key: const ValueKey("chartsStorySteps"),
+            label: "Steps from the narration",
+            tooltip: "A step for each of its ${lines.length} lines, lighting "
+                "the names each says, taken as the line is spoken",
+            onTap: () => _set(storySteps(e, lines))),
+        const SizedBox(height: 6),
       ],
       if (_playable &&
           (e.steps.length < 2 || e.follow == ChartStepsFollow.time.name)) ...[

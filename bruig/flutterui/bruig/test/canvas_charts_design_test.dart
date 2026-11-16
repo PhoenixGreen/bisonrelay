@@ -408,6 +408,8 @@ void main() {
     expect(chart().follow, "marks");
     expect(find.byKey(const ValueKey("chartsSlider-Each")), findsNothing);
     final own = find.byKey(const ValueKey("studioPill-chartsFollow-time"));
+    await tester.ensureVisible(own);
+    await tester.pumpAndSettle();
     await tester.tap(own);
     await tester.pumpAndSettle();
     expect(chart().follow, "time");

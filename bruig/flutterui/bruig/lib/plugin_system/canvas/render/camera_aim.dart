@@ -1,10 +1,9 @@
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_story.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:flutter/painting.dart';
@@ -20,6 +19,7 @@ List<(String, String)> aimChoices(ChartElement e) => [
       ("", "The whole chart"),
       ("leader", "Whoever leads"),
       ("top:3", "The top three"),
+      if (e.steps.length > 1) ("lit", "What the narration names"),
       for (var c in e.data.categories) ("item:$c", c),
     ];
 
@@ -30,21 +30,19 @@ Rect? chartAimRect(
     ChartElement e, String aimAt, int frame, CanvasDocument doc) {
   var bounds = e.bounds;
   if (aimAt.isEmpty) return bounds;
-  // The chart as it is then: part-way through its race.
-  var link = e.sheet;
-  var sheet = link == null
-      ? null
-      : doc.sheets.where((s) => s.id == link.sheet).firstOrNull;
-  if (e.play > 0 && sheet != null) {
-    var rate = doc.frameRate;
-    var since = (frame - (arrivalEnd(e, rate) ?? 0)) / rate;
-    e = chartPlaying(e, sheet, since);
-  }
+  // The chart as it is then: at its step, part-way through its race.
+  e = chartShownAt(e, doc, frame);
   var d = e.data;
   if (d.categories.isEmpty || d.series.isEmpty) return null;
   // Which marks, by name or by size.
   Set<int> wanted;
-  if (aimAt.startsWith("item:")) {
+  if (aimAt == "lit") {
+    // What its step lights: the names the line being spoken says; the
+    // whole chart where it names none.
+    wanted = litOf(e.highlights, d.categories,
+        (_) => [for (var i = 0; i < d.categories.length; i++) d.valueAt(0, i)]);
+    if (wanted.isEmpty) return bounds;
+  } else if (aimAt.startsWith("item:")) {
     var i = d.categories.indexOf(aimAt.substring(5));
     if (i < 0) return null;
     wanted = {i};

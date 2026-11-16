@@ -152,7 +152,11 @@ double playLength(ChartElement e, DataSheet sheet) {
 enum ChartStepsFollow {
   time("Its own pace"),
   marks("Timeline marks"),
-  scenes("Scenes or pages");
+  scenes("Scenes or pages"),
+
+  /// speech is a step as each line of the narration is spoken (Ken,
+  /// 2026-11-17: chart_story.dart).
+  speech("The narration");
 
   final String label;
   const ChartStepsFollow(this.label);
