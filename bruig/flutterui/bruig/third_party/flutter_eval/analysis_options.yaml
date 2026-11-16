@@ -1,6 +1,9 @@
 analyzer:
   exclude:
     - build/**
+    # Upstream's demo apps: not built in bruig and never given a pub get,
+    # so their imports don't resolve (shown red in the editor).
+    - examples/**
 include: package:flutter_lints/flutter.yaml
 
 # Additional information about this file can be found at
