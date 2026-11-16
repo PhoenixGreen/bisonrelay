@@ -524,11 +524,20 @@ class ChartData {
   /// charts that do not mark them.
   final List<bool> estimated;
 
+  /// marks are colours of the categories' own, where a chart's highlights or
+  /// colour-by give them one (null keeps the series' colour). Worked out
+  /// from its sheet by data_sync.dart, so never saved.
+  final List<Color?> marks;
+
   const ChartData({
     this.categories = const [],
     this.series = const [],
     this.estimated = const [],
+    this.marks = const [],
   });
+
+  /// markAt is category [i]'s own colour, or null.
+  Color? markAt(int i) => i >= 0 && i < marks.length ? marks[i] : null;
 
   bool get isEmpty => series.isEmpty || categories.isEmpty;
 
@@ -536,11 +545,13 @@ class ChartData {
     List<String>? categories,
     List<ChartSeries>? series,
     List<bool>? estimated,
+    List<Color?>? marks,
   }) =>
       ChartData(
         categories: categories ?? this.categories,
         series: series ?? this.series,
         estimated: estimated ?? this.estimated,
+        marks: marks ?? this.marks,
       );
 
   /// withRowRemoved takes a row out of the categories, every series and the

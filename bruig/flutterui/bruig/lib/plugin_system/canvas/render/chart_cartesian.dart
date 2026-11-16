@@ -753,8 +753,11 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 
       // A bar with its own colour (see barsTakeColours) is drawn flat: the
       // series' gradient is a ramp of the series' colour.
-      var ownColour = barsTakeColours(e) && i < e.sliceColors.length;
-      var colour = ownColour ? barColour(e, i) : series.color;
+      // A highlight's or a colour-by's colour first (ChartData.marks).
+      var mark = e.data.markAt(i);
+      var ownColour =
+          mark != null || (barsTakeColours(e) && i < e.sliceColors.length);
+      var colour = mark ?? (ownColour ? barColour(e, i) : series.color);
       var arrived = 1.0;
       if (e.animation.on && (reveal < 1 || seriesReveal != null)) {
         // Staggered by category, so grouped bars arrive together. The
@@ -1149,7 +1152,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                 : weight * 1.4;
         // The point colour, or the series'. Either takes the line's arrival
         // fade, so dot and line come on together.
-        var dotPaint = series.pointColorOn(e.pointColor);
+        var dotPaint = e.data.markAt(i) ?? series.pointColorOn(e.pointColor);
         var dotColour = dotPaint.a > 0
             ? dotPaint.withValues(
                 alpha: dotPaint.a *

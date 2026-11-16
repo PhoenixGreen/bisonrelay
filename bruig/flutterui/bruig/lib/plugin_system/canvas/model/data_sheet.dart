@@ -118,6 +118,30 @@ class SheetLink {
   final int whereColumn;
   final String where;
 
+  // How a chart reads its rows (the Data Studio's Charts tab, prototype v6):
+
+  /// group brings rows with the same label together: "" each row, or
+  /// "total", "average", "count", "most", "least" of their numbers.
+  final String group;
+
+  /// bottom takes the last [top] rows rather than the first.
+  final bool bottom;
+
+  /// places is which places to show, as "1-3, 16-19", counted after the
+  /// order; [gap] puts an empty slot between groups of them.
+  final String places;
+  final bool gap;
+
+  /// colourBy is a column (counted from the range's first) that colours each
+  /// mark: words a colour each, numbers a scale; on a line chart, words
+  /// make a line each. -1, none.
+  final int colourBy;
+
+  /// through is a column of dates the chart shows one at a time, [at] the
+  /// one shown (empty, the last). -1, none.
+  final int through;
+  final String at;
+
   const SheetLink(this.sheet, this.range,
       {this.labels = 0,
       this.series = const [],
@@ -125,11 +149,30 @@ class SheetLink {
       this.descending = true,
       this.top = 0,
       this.whereColumn = -1,
-      this.where = ""});
+      this.where = "",
+      this.group = "",
+      this.bottom = false,
+      this.places = "",
+      this.gap = true,
+      this.colourBy = -1,
+      this.through = -1,
+      this.at = ""});
 
   /// plain is whether it shows its range's rows as they are.
   bool get plain =>
-      sortBy < 0 && top <= 0 && (whereColumn < 0 || where.trim().isEmpty);
+      sortBy < 0 &&
+      top <= 0 &&
+      (whereColumn < 0 || where.trim().isEmpty) &&
+      !charted;
+
+  /// charted is whether it reads its rows as only a chart can: grouped, one
+  /// date at a time, coloured by a column, or by places or from the bottom.
+  bool get charted =>
+      group.isNotEmpty ||
+      through >= 0 ||
+      colourBy >= 0 ||
+      places.trim().isNotEmpty ||
+      (bottom && top > 0);
 
   SheetLink copyWith(
           {String? sheet,
@@ -140,7 +183,14 @@ class SheetLink {
           bool? descending,
           int? top,
           int? whereColumn,
-          String? where}) =>
+          String? where,
+          String? group,
+          bool? bottom,
+          String? places,
+          bool? gap,
+          int? colourBy,
+          int? through,
+          String? at}) =>
       SheetLink(sheet ?? this.sheet, range ?? this.range,
           labels: labels ?? this.labels,
           series: series ?? this.series,
@@ -148,7 +198,14 @@ class SheetLink {
           descending: descending ?? this.descending,
           top: top ?? this.top,
           whereColumn: whereColumn ?? this.whereColumn,
-          where: where ?? this.where);
+          where: where ?? this.where,
+          group: group ?? this.group,
+          bottom: bottom ?? this.bottom,
+          places: places ?? this.places,
+          gap: gap ?? this.gap,
+          colourBy: colourBy ?? this.colourBy,
+          through: through ?? this.through,
+          at: at ?? this.at);
 
   Map<String, dynamic> toJson() => {
         "id": sheet,
@@ -160,6 +217,13 @@ class SheetLink {
         if (top > 0) "top": top,
         if (whereColumn >= 0 && where.isNotEmpty) "whereColumn": whereColumn,
         if (whereColumn >= 0 && where.isNotEmpty) "where": where,
+        if (group.isNotEmpty) "group": group,
+        if (bottom) "bottom": true,
+        if (places.isNotEmpty) "places": places,
+        if (!gap) "gap": false,
+        if (colourBy >= 0) "colourBy": colourBy,
+        if (through >= 0) "through": through,
+        if (at.isNotEmpty) "at": at,
       };
 
   static SheetLink? fromJson(Object? j) {
@@ -178,7 +242,14 @@ class SheetLink {
         descending: j["ascending"] != true,
         top: n("top", 0),
         whereColumn: n("whereColumn", -1),
-        where: j["where"] is String ? j["where"] as String : "");
+        where: j["where"] is String ? j["where"] as String : "",
+        group: j["group"] is String ? j["group"] as String : "",
+        bottom: j["bottom"] == true,
+        places: j["places"] is String ? j["places"] as String : "",
+        gap: j["gap"] != false,
+        colourBy: n("colourBy", -1),
+        through: n("through", -1),
+        at: j["at"] is String ? j["at"] as String : "");
   }
 
   @override
@@ -192,11 +263,33 @@ class SheetLink {
       other.descending == descending &&
       other.top == top &&
       other.whereColumn == whereColumn &&
-      other.where == where;
+      other.where == where &&
+      other.group == group &&
+      other.bottom == bottom &&
+      other.places == places &&
+      other.gap == gap &&
+      other.colourBy == colourBy &&
+      other.through == through &&
+      other.at == at;
 
   @override
-  int get hashCode => Object.hash(sheet, range, labels, Object.hashAll(series),
-      sortBy, descending, top, whereColumn, where);
+  int get hashCode => Object.hash(
+      sheet,
+      range,
+      labels,
+      Object.hashAll(series),
+      sortBy,
+      descending,
+      top,
+      whereColumn,
+      where,
+      group,
+      bottom,
+      places,
+      gap,
+      colourBy,
+      through,
+      at);
 }
 
 /// DataSheet is one sheet: its name and what was typed in each cell, row by

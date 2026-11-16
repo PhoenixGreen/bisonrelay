@@ -58,9 +58,12 @@ List<double> _values(ChartElement e, [int s = 0]) => [
 
 /// itemColour is item [i]'s colour: the chart's slice colours, else the
 /// palette -- one colour an item whatever the series.
-Color itemColour(ChartElement e, int i) => i < e.sliceColors.length
-    ? e.sliceColors[i]
-    : chartPalette[i % chartPalette.length];
+Color itemColour(ChartElement e, int i) =>
+    // A highlight's or a colour-by's colour first (ChartData.marks).
+    e.data.markAt(i) ??
+    (i < e.sliceColors.length
+        ? e.sliceColors[i]
+        : chartPalette[i % chartPalette.length]);
 
 String _value(ChartElement e, double v, [int s = 0]) => formatSeries(e, s, v);
 

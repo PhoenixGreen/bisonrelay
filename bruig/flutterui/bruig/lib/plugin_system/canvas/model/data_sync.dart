@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -7,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 
 // data_sync.dart keeps every Data element -- a table or a chart -- in step
 // with the sheet it views (data_sheet.dart), whichever side changed:
@@ -74,8 +76,11 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
     return e.copyWith(rows: block, sheetLooks: looks);
   }
   if (e is ChartElement) {
-    var data = chartDataOf(sheet, link, e.data);
-    return sameData(e.data, data) ? e : e.copyWith(data: data);
+    var data = chartDataOf(sheet, link, e.data,
+        type: e.type, highlights: e.highlights);
+    return sameData(e.data, data) && listEquals(e.data.marks, data.marks)
+        ? e
+        : e.copyWith(data: data);
   }
   return e;
 }
@@ -85,7 +90,52 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
 /// shows it, a series from each of [SheetLink.series] read from the cells'
 /// values (so "\$14.20" and a formula are numbers). Each series keeps how
 /// [was]'s one in its place looked; a blank or a word is a gap.
-ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was) {
+ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
+    {ChartType type = ChartType.bar,
+    List<ChartHighlight> highlights = const []}) {
+  var (data, valuesOf) = link.charted
+      ? _chartedData(sheet, link, was, type)
+      : (
+          _plainData(sheet, link, was),
+          (int col) {
+            var g = link.range;
+            return [
+              for (var r in viewRows(sheet, link))
+                switch (sheetValue(sheet, r, g.c0 + col)) {
+                  double v => v,
+                  _ => double.nan,
+                }
+            ];
+          }
+        );
+  if (!highlights.any((h) => !h.off) || data.series.isEmpty) return data;
+  var first = link.series.isEmpty ? -1 : link.series.first;
+  List<double> by(int col) => valuesOf(col < 0 ? first : col);
+  // A line each (colour by words): the highlights pick out lines, ranked by
+  // where each ends.
+  if (data.categories.isNotEmpty &&
+      data.series.length > 1 &&
+      link.colourBy >= 0 &&
+      (type == ChartType.line || type == ChartType.area)) {
+    var names = [for (var s in data.series) s.name];
+    List<double> ends(int col) => [
+          for (var s in data.series)
+            s.values.lastWhere((v) => !v.isNaN, orElse: () => double.nan)
+        ];
+    var lit = marksOf(highlights, names, ends, (i) => data.series[i].color);
+    return data.copyWith(series: [
+      for (var (i, s) in data.series.indexed)
+        lit[i] == null ? s : s.copyWith(color: lit[i]),
+    ]);
+  }
+  var lit = marksOf(highlights, data.categories, by,
+      (i) => data.markAt(i) ?? data.series.first.color);
+  return data.copyWith(marks: [
+    for (var i = 0; i < data.categories.length; i++) lit[i] ?? data.markAt(i),
+  ]);
+}
+
+ChartData _plainData(DataSheet sheet, SheetLink link, ChartData was) {
   var g = link.range;
   var rows = viewRows(sheet, link);
   var series = <ChartSeries>[
@@ -500,6 +550,17 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
       remake.add(e.id);
       continue;
     }
+    // Its highlights or its type changed: its marks, and a line per word,
+    // are made again from the sheet.
+    if (e is ChartElement &&
+        old is ChartElement &&
+        (!listEquals(old.highlights, e.highlights) || old.type != e.type)) {
+      remake.add(e.id);
+      continue;
+    }
+    // A chart reading its rows as only a chart can (grouped, one date at a
+    // time) holds no cells of the sheet to write back.
+    if (link.charted) continue;
     var sheet = sheets[link.sheet]!;
     if (changed.contains(link.sheet)) continue;
     if (identical(viewFromSheet(e, sheet), e)) continue;
@@ -1036,3 +1097,241 @@ CanvasDocument viewsRegrown(
             }
             return withLink(e, link.copyWith(range: now));
           });
+
+/// _aggregate is [how] of [values] -- a group's numbers -- gaps left out
+/// (count counts the rows).
+double _aggregate(String how, List<double> values) {
+  if (how == "count") return values.length.toDouble();
+  var v = [
+    for (var x in values)
+      if (!x.isNaN) x
+  ];
+  if (v.isEmpty) return double.nan;
+  return switch (how) {
+    "total" => v.fold(0.0, (a, b) => a + b),
+    "average" => v.fold(0.0, (a, b) => a + b) / v.length,
+    "most" => v.reduce(math.max),
+    "least" => v.reduce(math.min),
+    _ => v.last,
+  };
+}
+
+/// placesIn reads "1-3, 16-19" as the places it names.
+Set<int> placesIn(String spec) {
+  var out = <int>{};
+  for (var part in spec.split(",")) {
+    var m = RegExp(r"^\s*(\d+)\s*(?:-\s*(\d+))?\s*$").firstMatch(part);
+    if (m == null) continue;
+    var a = int.parse(m.group(1)!), b = int.parse(m.group(2) ?? m.group(1)!);
+    for (var i = math.min(a, b); i <= math.max(a, b) && i - a < 1000; i++) {
+      out.add(i);
+    }
+  }
+  return out;
+}
+
+/// resultColours are the colours a column of results is given, as a form
+/// guide's boxes are: a win green, a draw grey, a loss red.
+const Map<String, Color> resultColours = {
+  "w": Color(0xFF2FE08A),
+  "d": Color(0xFFC9D6EA),
+  "l": Color(0xFFE8645A),
+};
+
+/// scaleColour is where [v] sits between [lo] and [hi], from red to green.
+Color scaleColour(double v, double lo, double hi) {
+  var t = hi == lo ? 1.0 : ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
+  return Color.lerp(const Color(0xFFE8645A), const Color(0xFF2FE08A), t)!;
+}
+
+/// _chartedData is a chart reading its rows as only a chart can (see
+/// SheetLink.charted): one date at a time, rows with the same label brought
+/// together, a line for each word of a column, places picked, marks
+/// coloured by a column. With it, the numbers of any column of the range,
+/// one per category, for the highlights to rank.
+(ChartData, List<double> Function(int col)) _chartedData(
+    DataSheet sheet, SheetLink link, ChartData was, ChartType type) {
+  var g = link.range;
+  String shown(int r, int col) => sheetShown(sheet, r, g.c0 + col);
+  double number(int r, int col) => switch (sheetValue(sheet, r, g.c0 + col)) {
+        double v => v,
+        _ => double.nan,
+      };
+  var rows = viewRows(
+      sheet,
+      SheetLink(link.sheet, g,
+          whereColumn: link.whereColumn, where: link.where));
+  bool words(int col) {
+    var seen = 0, text = 0;
+    for (var r in rows) {
+      var v = sheetValue(sheet, r, g.c0 + col);
+      if (v == null || v == "") continue;
+      seen++;
+      if (v is! double) text++;
+    }
+    return seen > 0 && text * 2 >= seen;
+  }
+
+  // One date at a time: the one asked for, else the last.
+  if (link.through >= 0 && link.through < g.cols) {
+    var dates = <String>[];
+    for (var r in rows) {
+      var d = shown(r, link.through);
+      if (!dates.contains(d)) dates.add(d);
+    }
+    var at = dates.contains(link.at) ? link.at : dates.lastOrNull ?? "";
+    rows = [
+      for (var r in rows)
+        if (shown(r, link.through) == at) r
+    ];
+  }
+
+  var colourBy =
+      link.colourBy >= 0 && link.colourBy < g.cols ? link.colourBy : -1;
+  var lines = colourBy >= 0 &&
+      words(colourBy) &&
+      (type == ChartType.line || type == ChartType.area);
+  var keys = <String>[], subs = <String>[];
+  var groups = <String, List<int>>{};
+  for (var r in rows) {
+    var k = shown(r, link.labels);
+    var sub = lines ? shown(r, colourBy) : "";
+    if (!keys.contains(k)) keys.add(k);
+    if (lines && !subs.contains(sub)) subs.add(sub);
+    (groups["$k\u0000$sub"] ??= []).add(r);
+  }
+  double valueOf(List<int> rs, int col) {
+    var v = [for (var r in rs) number(r, col)];
+    if (link.group.isEmpty) return v.isEmpty ? double.nan : v.last;
+    return _aggregate(link.group, v);
+  }
+
+  if (lines) {
+    var col = link.series.isEmpty ? -1 : link.series.first;
+    var series = [
+      for (var (i, sub) in subs.indexed)
+        () {
+          var values = [
+            for (var k in keys)
+              col < 0 || groups["$k\u0000$sub"] == null
+                  ? double.nan
+                  : valueOf(groups["$k\u0000$sub"]!, col)
+          ];
+          return i < was.series.length && was.series[i].name == sub
+              ? was.series[i].copyWith(values: values)
+              : ChartSeries(
+                  name: sub,
+                  color: chartPalette[i % chartPalette.length],
+                  values: values);
+        }(),
+    ];
+    List<double> lineValues(int c) => [
+          for (var k in keys)
+            valueOf([
+              for (var sub in subs) ...?groups["$k\u0000$sub"],
+            ], c)
+        ];
+    return (ChartData(categories: keys, series: series), lineValues);
+  }
+
+  // A mark per label, in order of a column if asked.
+  var items = [for (var k in keys) (k, groups["$k\u0000"]!)];
+  if (link.sortBy >= 0) {
+    var keyed = [
+      for (var (i, it) in items.indexed) (i, it, valueOf(it.$2, link.sortBy))
+    ];
+    keyed.sort((a, b) {
+      if (a.$3.isNaN || b.$3.isNaN) {
+        var d = a.$3.isNaN == b.$3.isNaN ? 0 : (a.$3.isNaN ? 1 : -1);
+        return d != 0 ? d : a.$1.compareTo(b.$1);
+      }
+      var d = a.$3.compareTo(b.$3);
+      if (link.descending) d = -d;
+      return d != 0 ? d : a.$1.compareTo(b.$1);
+    });
+    items = [for (var (_, it, _) in keyed) it];
+  }
+  // Which places: the first or last few, or places named, a gap between
+  // groups of them.
+  var placed = [for (var (i, it) in items.indexed) (i + 1, it)];
+  if (link.top > 0 && placed.length > link.top) {
+    placed = link.bottom
+        ? placed.sublist(placed.length - link.top)
+        : placed.sublist(0, link.top);
+  }
+  var wanted = placesIn(link.places);
+  if (wanted.isNotEmpty) {
+    placed = [
+      for (var p in placed)
+        if (wanted.contains(p.$1)) p
+    ];
+  }
+  var shownItems = <(String, List<int>)?>[];
+  for (var (i, p) in placed.indexed) {
+    if (link.gap &&
+        wanted.isNotEmpty &&
+        i > 0 &&
+        p.$1 != placed[i - 1].$1 + 1) {
+      shownItems.add(null);
+    }
+    shownItems.add(p.$2);
+  }
+
+  List<double> columnValues(int col) => [
+        for (var it in shownItems) it == null ? double.nan : valueOf(it.$2, col)
+      ];
+  var series = <ChartSeries>[
+    for (var (i, col) in link.series.indexed)
+      () {
+        var name = sheetShown(sheet, g.r0, g.c0 + col);
+        var values = columnValues(col);
+        return i < was.series.length
+            ? was.series[i].copyWith(name: name, values: values)
+            : ChartSeries(
+                name: name,
+                color: chartPalette[i % chartPalette.length],
+                values: values);
+      }(),
+  ];
+
+  // Coloured by a column: words a colour each (results as a form guide's),
+  // numbers a scale.
+  var marks = <Color?>[];
+  if (colourBy >= 0) {
+    if (words(colourBy)) {
+      var seen = <String>[];
+      for (var r in rows) {
+        var w = shown(r, colourBy);
+        if (!seen.contains(w)) seen.add(w);
+      }
+      marks = [
+        for (var it in shownItems)
+          if (it == null)
+            null
+          else
+            () {
+              var w = shown(it.$2.last, colourBy);
+              return resultColours[w.trim().toLowerCase()] ??
+                  chartPalette[seen.indexOf(w) % chartPalette.length];
+            }(),
+      ];
+    } else {
+      var v = columnValues(colourBy);
+      var real = [
+        for (var x in v)
+          if (!x.isNaN) x
+      ];
+      var lo = real.isEmpty ? 0.0 : real.reduce(math.min);
+      var hi = real.isEmpty ? 0.0 : real.reduce(math.max);
+      marks = [for (var x in v) x.isNaN ? null : scaleColour(x, lo, hi)];
+    }
+  }
+
+  return (
+    ChartData(
+        categories: [for (var it in shownItems) it?.$1 ?? "…"],
+        series: series,
+        marks: marks),
+    columnValues
+  );
+}

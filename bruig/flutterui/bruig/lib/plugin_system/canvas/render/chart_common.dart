@@ -43,6 +43,8 @@ SliceProgress sliceProgress(
 /// sliceColour is what the i-th value of a circular chart is drawn in, for
 /// the painter and the legend alike.
 Color sliceColour(ChartElement e, int i) {
+  // A highlight's or a colour-by's colour first (ChartData.marks).
+  if (e.data.markAt(i) case var mark?) return mark;
   if (i >= 0 && i < e.sliceColors.length) return e.sliceColors[i];
   var series = e.data.series;
   if (e.type != ChartType.radialBar && series.length > 1 && i < series.length) {
