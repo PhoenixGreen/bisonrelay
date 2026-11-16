@@ -186,4 +186,26 @@ void main() {
       }
     }
   });
+
+  // The research's motion rules: a line drawn steadily, bars easing out
+  // without overshooting, staggered a little.
+  test("designs arrive by the motion rules", () {
+    var all = picksOf(
+        sheet, range, [0, 1, 2], const [2, 3, 4, 5, 6], const [0], const [1]);
+    for (var k in chartKinds) {
+      for (var pr in k.presets) {
+        var chart = presetChart(k, pr, all, like);
+        if (chart == null || !chart.animation.on) continue;
+        var a = chart.animation;
+        expect(
+            a.ease,
+            isNot(
+                anyOf(ChartEase.overshoot, ChartEase.bounce, ChartEase.spring)),
+            reason: "${k.name} · ${pr.name}: no overshoot on data marks");
+        if (a.preset == ChartAnimationPreset.drawOn) {
+          expect(a.ease, ChartEase.linear, reason: "${k.name} · ${pr.name}");
+        }
+      }
+    }
+  });
 }

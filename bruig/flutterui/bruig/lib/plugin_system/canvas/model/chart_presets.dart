@@ -146,8 +146,28 @@ ChartHighlight _top(int n, {bool named = true}) => ChartHighlight(
     reach: ChartReach.top, n: n, fade: true, named: named, colour: _accent);
 const _accent = Color(0xFFF2B33D);
 
+/// _arrive is how a design arrives, by the research's motion rules (its
+/// section 4.7): a line drawn at a steady rate, since easing bends the
+/// sense of time; bars and slices easing out, staggered a little, never
+/// overshooting a value the data doesn't have; dots popping in close
+/// together; a whole-plot wipe or sweep steady.
 ChartAnimation _arrive(ChartAnimationPreset p, {bool inTurn = false}) =>
-    ChartAnimation(preset: p, seriesInTurn: inTurn);
+    ChartAnimation(
+        preset: p,
+        seriesInTurn: inTurn,
+        ease: switch (p) {
+          ChartAnimationPreset.drawOn ||
+          ChartAnimationPreset.wipe ||
+          ChartAnimationPreset.sweep =>
+            ChartEase.linear,
+          _ => ChartEase.easeOut,
+        },
+        gap: switch (p) {
+          ChartAnimationPreset.grow => 0.3,
+          ChartAnimationPreset.popIn || ChartAnimationPreset.random => 0.15,
+          ChartAnimationPreset.fadeIn => 0.25,
+          _ => 0.55,
+        });
 
 String? _needsDates(Picks p) => p.dates.isEmpty ? "a date column" : null;
 
