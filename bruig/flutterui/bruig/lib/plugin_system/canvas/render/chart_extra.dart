@@ -1,3 +1,4 @@
+export 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -5,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_analysis.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
 import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -1039,72 +1041,18 @@ void _parliament(
 
 // ------------------------------------------------------------ tile map
 
-/// usStates is where each US state's tile sits, column then row: the
-/// layout the tile-map maps of NPR and the like share.
-const Map<String, (int, int)> usStates = {
-  "AK": (0, 0),
-  "ME": (11, 0),
-  "VT": (10, 1),
-  "NH": (11, 1),
-  "WA": (1, 2),
-  "ID": (2, 2),
-  "MT": (3, 2),
-  "ND": (4, 2),
-  "MN": (5, 2),
-  "IL": (6, 2),
-  "WI": (7, 2),
-  "MI": (8, 2),
-  "NY": (9, 2),
-  "RI": (10, 2),
-  "MA": (11, 2),
-  "OR": (1, 3),
-  "NV": (2, 3),
-  "WY": (3, 3),
-  "SD": (4, 3),
-  "IA": (5, 3),
-  "IN": (6, 3),
-  "OH": (7, 3),
-  "PA": (8, 3),
-  "NJ": (9, 3),
-  "CT": (10, 3),
-  "CA": (1, 4),
-  "UT": (2, 4),
-  "CO": (3, 4),
-  "NE": (4, 4),
-  "MO": (5, 4),
-  "KY": (6, 4),
-  "WV": (7, 4),
-  "VA": (8, 4),
-  "MD": (9, 4),
-  "DE": (10, 4),
-  "AZ": (2, 5),
-  "NM": (3, 5),
-  "KS": (4, 5),
-  "AR": (5, 5),
-  "TN": (6, 5),
-  "NC": (7, 5),
-  "SC": (8, 5),
-  "DC": (9, 5),
-  "OK": (4, 6),
-  "LA": (5, 6),
-  "MS": (6, 6),
-  "AL": (7, 6),
-  "GA": (8, 6),
-  "HI": (0, 7),
-  "TX": (4, 7),
-  "FL": (9, 7),
-};
-
 void _tileMap(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, String mode) {
   var d = e.data, n = d.categories.length;
   var codes = [for (var c in d.categories) c.trim().toUpperCase()];
-  var known = codes.where(usStates.containsKey).length;
-  // On the US map when most are states; otherwise in a grid, in order.
+  // On a map -- the US, Europe, the UK -- when most are its places;
+  // otherwise in a grid, in order.
+  var map = tileMapOf(codes);
   var places = <(int, int)>[];
-  if (known * 2 > n) {
-    for (var c in codes) {
-      places.add(usStates[c] ?? (11, 7));
+  if (map case (var tiles, var named)) {
+    var spare = tiles.values.fold(0, (m, p) => math.max(m, p.$1)) + 1;
+    for (var c in named) {
+      places.add(tiles[c] ?? (spare, 0));
     }
   } else {
     var cols = math.max(
@@ -1113,8 +1061,10 @@ void _tileMap(
       places.add((i % cols, i ~/ cols));
     }
   }
-  var cols = places.fold(0, (m, p) => math.max(m, p.$1)) + 1;
-  var rows = places.fold(0, (m, p) => math.max(m, p.$2)) + 1;
+  // On a map, the whole of it; else the places.
+  var spread = [...places, ...?map?.$1.values];
+  var cols = spread.fold(0, (m, p) => math.max(m, p.$1)) + 1;
+  var rows = spread.fold(0, (m, p) => math.max(m, p.$2)) + 1;
   var cell = math.min(
       area.width / (cols + (mode == "hex" ? 0.5 : 0)), area.height / rows);
   var left = area.left + (area.width - cell * cols) / 2,
@@ -1126,6 +1076,19 @@ void _tileMap(
   var hiC = d.series.first.color;
   var loC =
       Color.lerp(e.panel.a > 0 ? e.panel : const Color(0xFFF4F4F4), hiC, 0.1)!;
+  // The rest of the map, faint, so its shape reads (on the Charts canvas,
+  // twelve states floated in the empty).
+  if (map case (var tiles, _)) {
+    var taken = places.toSet();
+    for (var t in tiles.values.toSet()) {
+      if (taken.contains(t)) continue;
+      var x = left + t.$1 * cell + (mode == "hex" && t.$2.isOdd ? cell / 2 : 0);
+      var r =
+          Rect.fromLTWH(x, top + t.$2 * cell, cell, cell).deflate(cell * 0.05);
+      canvas.drawRRect(RRect.fromRectAndRadius(r, Radius.circular(cell * 0.12)),
+          Paint()..color = Color.lerp(loC, hiC, 0.04)!.withValues(alpha: 0.7));
+    }
+  }
   for (var i = 0; i < n; i++) {
     var p = sliceProgress(e, reveal, i, n);
     if (p.gone) continue;

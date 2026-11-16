@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart'
@@ -81,5 +82,17 @@ void main() {
     expect(kindOf("Club\tMatchday\nA\t80\nB\t130"), ColumnKind.numbers);
     expect(kindOf("Club\tWeek\nA\t1\nB\t2"), ColumnKind.dates);
     expect(kindOf("Club\tSeason\nA\t2024\nB\t2025"), ColumnKind.dates);
+  });
+
+  // The improvements report's tenth item: maps beyond the US.
+  test("a tile map of Europe's countries or the UK's regions", () {
+    expect(tileMapOf(["GB", "FR", "DE", "ES"])!.$1, same(europeCountries));
+    var uk = tileMapOf(["LONDON", "SCOTLAND", "WALES"])!;
+    expect(uk.$1, same(ukRegions));
+    expect(uk.$2, ["LDN", "SCO", "WAL"], reason: "by name or by code");
+    expect(tileMapOf(["CA", "TX", "NY"])!.$1, same(usStates));
+    expect(tileMapOf(["Arsenal", "Spurs"]), isNull);
+    var map = chart(ChartType.tileMap, "Country\tFans\nGB\t40\nFR\t30");
+    expect(partsOf(map), hasLength(2));
   });
 }

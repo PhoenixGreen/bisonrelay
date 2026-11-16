@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
 
 // chart_presets.dart is the Charts tab's gallery (Ken, 2026-11-17, from
 // prototype v7 and its research): every kind of chart, grouped by the
@@ -799,7 +800,7 @@ final chartKinds = _withWays(<ChartKind>[
             [_a], (e, p) => _mode(e, "circles", pop: true)),
       ],
       caveat:
-          "Places named by US state codes (TX, CA…) sit on the map; others in a grid.",
+          "Places named by US state codes (TX), European country codes (FR) or UK regions (London) sit on the map; others in a grid.",
       isNew: true),
   ChartKind(
       ChartType.pyramid,
@@ -1421,16 +1422,14 @@ KindFit kindFit(ChartKind k, Picks p) {
         return const KindFit(0.4, "Its numbers aren't years or dates.");
       }
     case ChartType.tileMap:
-      var codes = 0;
       var named = p.names.isNotEmpty ? p.names.first : p.labels;
-      for (var r = g.r0 + 1; r <= g.r1; r++) {
-        if (RegExp(r"^[A-Z]{2}$")
-            .hasMatch(sheetShown(p.sheet, r, g.c0 + named).trim())) {
-          codes++;
-        }
-      }
-      if (codes * 2 < rows) {
-        return const KindFit(0.5, "Not US state codes: drawn as a grid.");
+      var codes = [
+        for (var r = g.r0 + 1; r <= g.r1; r++)
+          sheetShown(p.sheet, r, g.c0 + named).trim().toUpperCase()
+      ];
+      if (tileMapOf(codes) == null) {
+        return const KindFit(0.5,
+            "Not places on a map (US states, European countries, UK regions): drawn as a grid.");
       }
     case ChartType.slope || ChartType.dumbbell || ChartType.pyramid:
       if (numbers.length > 2) {
