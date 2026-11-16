@@ -65,6 +65,14 @@ List<double> _values(ChartElement e, [int s = 0]) => [
 
 /// itemColour is item [i]'s colour: the chart's slice colours, else the
 /// palette -- one colour an item whatever the series.
+/// inkOn is an ink that reads on [fill]: dark on a light one, white on a
+/// dark one; on a see-through fill, null keeps the chart's own.
+Color? inkOn(Color fill) => fill.a < 0.6
+    ? null
+    : fill.computeLuminance() > 0.45
+        ? const Color(0xFF1B1B1B)
+        : const Color(0xFFFFFFFF);
+
 Color itemColour(ChartElement e, int i) =>
     // A highlight's or a colour-by's colour first (ChartData.marks).
     e.data.markAt(i) ??
@@ -749,12 +757,14 @@ void _funnel(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       ..lineTo(cx + w1 / 2, top + h)
       ..lineTo(cx - w1 / 2, top + h)
       ..close();
-    canvas.drawPath(path, Paint()..color = slice.tint(itemColour(e, i)));
+    var fill = slice.tint(itemColour(e, i));
+    canvas.drawPath(path, Paint()..color = fill);
     var words = [
       if (e.showXLabels) e.data.categories[i],
       if (e.showValues) _value(e, values[i]),
     ].join("   ");
-    var spec = _label(e);
+    // Inside the stage, in an ink that reads on it.
+    var spec = _label(e).copyWith(color: inkOn(fill));
     if (_widthOf(words, spec) + 12 <= math.min(w0, w1)) {
       _text(canvas, words, spec, Rect.fromLTWH(cx - w0 / 2, top, w0, h));
     } else if (words.isNotEmpty && slice.size >= 1) {
@@ -801,9 +811,6 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     if (slice.gone) continue;
     canvas.drawCircle(
         c, r * slice.size, Paint()..color = slice.tint(itemColour(e, i)));
-    var longest = e.data.categories[i]
-        .split(RegExp(r"\s+"))
-        .fold<int>(0, (m, w) => math.max(m, w.length));
     if (slice.size < 1) continue;
     var lines = [
       if (e.showXLabels) e.data.categories[i],
@@ -813,8 +820,19 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     // Too small for its words -- a name broken mid-word ("Treas / ury")
     // reads worse than none -- they go beside it on a line (Ken,
     // 2026-11-14: tiny bubbles lost theirs).
-    if (r * 1.6 < longest * e.labelSpec.fontSize * 0.62 ||
-        r < e.labelSpec.fontSize * 1.6) {
+    // Smaller first, down to six tenths, while they still go inside: the
+    // largest bubble lost its name to a callout (the shared label rule).
+    var inside = _label(e);
+    var widest = lines
+        .split(RegExp(r"\s+"))
+        .map((w) => _widthOf(w, inside))
+        .fold(0.0, math.max);
+    var rows = lines.split("\n").length;
+    var k = math.min(
+        1.0,
+        math.min(r * 1.6 / math.max(1, widest),
+            r * 1.2 / (rows * inside.fontSize * 1.25)));
+    if (k < 0.6) {
       var away = c - area.center;
       var dir =
           away.distance < 1e-6 ? const Offset(1, 0) : away / away.distance;
@@ -840,7 +858,12 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           right: right);
       continue;
     }
-    _text(canvas, lines, _label(e),
+    _text(
+        canvas,
+        lines,
+        inside.copyWith(
+            fontSize: inside.fontSize * k,
+            color: inkOn(slice.tint(itemColour(e, i)))),
         Rect.fromCenter(center: c, width: r * 1.6, height: r * 1.2));
   }
 }

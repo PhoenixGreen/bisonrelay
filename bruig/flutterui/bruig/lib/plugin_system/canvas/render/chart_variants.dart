@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -632,12 +633,21 @@ void _market(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     if (tile.width > 40 && tile.height > 22 && p.size > 0.9) {
       var ink = _ink(Color.alphaBlend(
           fill, e.panel.a > 0 ? e.panel : const Color(0xFFFFFFFF)));
-      _say(
-          canvas,
-          e.data.categories[i],
-          _lab(e, TextAlignSpec.left).copyWith(color: ink, weight: 700),
-          Rect.fromLTWH(tile.left + 6, tile.top + 4, tile.width - 12,
-              e.labelSpec.fontSize * 1.6));
+      // Its name smaller where it won't go across the tile, and left out
+      // where even that won't do: never broken mid-word.
+      var spec = _lab(e, TextAlignSpec.left).copyWith(color: ink, weight: 700);
+      // On one line, over the change written under it.
+      var wide = labelSize(e.data.categories[i], spec).width;
+      var room = tile.width - 12;
+      var k = wide <= room ? 1.0 : room / wide;
+      if (k >= 0.55) {
+        _say(
+            canvas,
+            e.data.categories[i],
+            spec.copyWith(fontSize: spec.fontSize * k),
+            Rect.fromLTWH(tile.left + 6, tile.top + 4, room + 2,
+                e.labelSpec.fontSize * 1.6));
+      }
       if (!c.isNaN) {
         _say(
             canvas,

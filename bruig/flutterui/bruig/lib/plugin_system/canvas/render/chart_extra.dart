@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -300,28 +301,28 @@ void _dumbbell(
   var rowH = plot.height / n;
   var dot = math.min(rowH * 0.22, 9.0);
   var a = d.series[0].color, b = d.series[1].color;
-  // The key, once, over the first row at its two dots.
+  // The key, once, over the first row at its two dots -- kept apart where
+  // the dots are close (the shared label rule: "20242025" before).
   if (n > 0 && !_v(e, 0, 0).isNaN && !_v(e, 1, 0).isNaN) {
-    _say(
-        canvas,
-        d.series[0].name,
-        _lab(e, TextAlignSpec.center).copyWith(color: a),
-        Rect.fromCenter(
-            center: Offset(x(_v(e, 0, 0)), area.top + head / 2),
-            width: plot.width / 3,
-            height: head));
-    _say(
-        canvas,
-        d.series[1].name,
-        _lab(e, TextAlignSpec.center).copyWith(color: b),
-        Rect.fromCenter(
-            center: Offset(
-                x(_v(e, 1, 0)),
-                area.top +
-                    head / 2 +
-                    (x(_v(e, 0, 0)) - x(_v(e, 1, 0))).abs().clamp(0, 1) * 0),
-            width: plot.width / 3,
-            height: head));
+    var placer = LabelPlacer(
+        Rect.fromLTWH(area.left, area.top, area.width, head),
+        gap: fs * 0.6);
+    for (var (k, colour) in [(0, a), (1, b)]) {
+      var spec = _lab(e, TextAlignSpec.center).copyWith(color: colour);
+      var size = labelSize(d.series[k].name, spec);
+      var cx = x(_v(e, k, 0)), cy = area.top + head / 2;
+      Rect box(double left) =>
+          Rect.fromLTWH(left, cy - size.height / 2, size.width, size.height);
+      // Over its dot; else the side away from the other's.
+      var away = _v(e, k, 0) < _v(e, 1 - k, 0);
+      var at = placer.place([
+        box(cx - size.width / 2),
+        box(away ? cx - size.width : cx),
+        box(away ? cx : cx - size.width),
+        box(away ? area.left : area.right - size.width),
+      ]);
+      if (at != null) _say(canvas, d.series[k].name, spec, at.inflate(1));
+    }
   }
   for (var i = 0; i < n; i++) {
     var v0 = _v(e, 0, i), v1 = _v(e, 1, i);

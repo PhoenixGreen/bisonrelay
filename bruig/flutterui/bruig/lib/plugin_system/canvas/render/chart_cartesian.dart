@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -583,6 +584,16 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   }
 }
 
+/// _rowNames is how names beside bars [slot] tall are written: smaller
+/// where a row is short for them, then every second or third row's.
+AxisNames _rowNames(TextSpec spec, double slot) {
+  var need = spec.fontSize * 1.25;
+  if (need <= slot) return const AxisNames(1, 1);
+  var scale = slot / need;
+  if (scale >= 0.75) return AxisNames(scale, 1);
+  return AxisNames(0.75, math.max(2, (need * 0.75 / slot).ceil()));
+}
+
 double _widestCategory(List<String> categories, TextSpec spec, Rect area) {
   var w = 0.0;
   for (var c in categories) {
@@ -698,31 +709,50 @@ void _axisLabels(
     }
   }
   var slots = showNames && across == null ? categories.length : 0;
+  // Too many to write in full: smaller, then every second or third, rather
+  // than each cut to a few letters (the shared label rule, label_placer).
+  var names = slots == 0
+      ? const AxisNames(1, 1)
+      : horizontal
+          ? _rowNames(spec, plot.height / slots)
+          : AxisNames.of(categories, spec, plot.width / slots);
+  var nameSpec2 = names.scale < 1
+      ? spec.copyWith(fontSize: spec.fontSize * names.scale)
+      : spec;
   for (var i = 0; i < slots; i++) {
+    if (!names.shows(i, slots)) continue;
     if (horizontal) {
       var slot = plot.height / slots;
       // Part-way to a new place while the chart plays (ChartData.slots).
       var y = plot.top + slot * e.data.slotAt(i);
+      var tall = slot * names.every;
       paintTextInBox(
           canvas,
           categories[i],
-          spec.copyWith(
+          nameSpec2.copyWith(
               align: TextAlignSpec.right,
               verticalAlign: VerticalAlignSpec.middle),
-          Rect.fromLTRB(area.left, y,
-              plot.left - spec.fontSize * 0.4 - e.yLabelGap, y + slot),
+          Rect.fromLTRB(
+              area.left,
+              y + slot / 2 - tall / 2,
+              plot.left - spec.fontSize * 0.4 - e.yLabelGap,
+              y + slot / 2 + tall / 2),
           clip: true);
     } else {
       var slot = plot.width / slots;
       var x = plot.left + slot * e.data.slotAt(i);
+      var wide = slot * names.every;
       paintTextInBox(
           canvas,
           categories[i],
-          spec.copyWith(
+          nameSpec2.copyWith(
               align: TextAlignSpec.center,
               verticalAlign: VerticalAlignSpec.top),
-          Rect.fromLTWH(x, plot.bottom + spec.fontSize * 0.35 + e.xLabelGap,
-              slot, spec.fontSize * 1.6),
+          Rect.fromLTWH(
+              x + slot / 2 - wide / 2,
+              plot.bottom + spec.fontSize * 0.35 + e.xLabelGap,
+              wide,
+              spec.fontSize * 1.6),
           clip: true);
     }
   }
@@ -1549,6 +1579,18 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     if (kind == ChartType.scatter ||
         e.showValues ||
         series.pointsOn(e.showPoints)) {
+      // A scatter's words kept apart and off the dots (the shared label
+      // rule): each in the first clear place round its point, else none.
+      LabelPlacer? placer;
+      if (kind == ChartType.scatter && e.showValues) {
+        var r0 = series.pointSizeOn(e.pointSize) > 0
+            ? series.pointSizeOn(e.pointSize)
+            : math.max(4.5, weight * 2.4);
+        placer = LabelPlacer(plot.inflate(e.valueSpec.fontSize), keepClear: [
+          for (var i = 0; i < points.length; i++)
+            if (present[i]) Rect.fromCircle(center: points[i], radius: r0),
+        ]);
+      }
       for (var i = 0; i < points.length; i++) {
         if (!present[i]) continue;
         var dot = perPoint
@@ -1594,6 +1636,20 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
               : 1.0;
           // A scatter's point written as its name where it has one.
           var name = kind == ChartType.scatter ? data.pointNameAt(i) : "";
+          if (placer != null) {
+            var words = name.isNotEmpty
+                ? name
+                : formatSeries(e, s, data.valueAt(s, i) * shown);
+            var spec = e.valueSpec.copyWith(
+                align: TextAlignSpec.center,
+                verticalAlign: VerticalAlignSpec.middle);
+            var at = placer.place(
+                LabelPlacer.around(points[i], labelSize(words, spec), radius));
+            if (at != null) {
+              paintTextInBox(canvas, words, spec, at.inflate(1));
+            }
+            continue;
+          }
           paintTextInBox(
               canvas,
               name.isNotEmpty
