@@ -200,7 +200,7 @@ const chartKinds = <ChartKind>[
             _aboveAverage),
         ChartPreset(
             "Poster columns",
-            "Thick round-topped columns with their values printed.",
+            "Thick round-topped columns on pale tracks, the values printed inside.",
             [_i],
             _posterColumns),
       ]),
@@ -214,13 +214,21 @@ const chartKinds = <ChartKind>[
       [
         ChartPreset(
             "Ranked list",
-            "Sorted, the value at the end of each bar, no grid.",
+            "Sorted, each name on its own line above a thin bar, the value at the end.",
             [_a, _i],
             _rankedList),
-        ChartPreset("Highlight one", "Every bar grey but the leader, named.",
-            [_a, _v], _barsOneLit),
-        ChartPreset("Thick, labelled", "Thick rounded bars with their values.",
-            [_i, _v], _thickBars),
+        ChartPreset("Highlight one", "Every bar grey but the leader.", [_a, _v],
+            _barsOneLit),
+        ChartPreset(
+            "Labels inside",
+            "Thick rounded bars with their values written inside.",
+            [_i, _v],
+            _thickBars),
+        ChartPreset(
+            "Track bars",
+            "A pale full-length track behind each bar, so it reads as filled up.",
+            [_i],
+            _trackBars),
         ChartPreset("Scale and grid", "Hairlines and a scale; no value labels.",
             [_a], _barsScale),
         ChartPreset("Top five", "Only the first five.", [_a, _i], _topFive),
@@ -290,6 +298,8 @@ const chartKinds = <ChartKind>[
         ChartPreset("Small charts",
             "A small chart for each thing, on one scale.", [_a], _splitLines,
             needs: _needsName),
+        ChartPreset("Steps", "Flat then straight up: for values that jump.",
+            [_a], _stepLines),
         ChartPreset("Drawn on", "The lines trace themselves along the dates.",
             [_v], _drawnLines,
             plays: true),
@@ -323,6 +333,15 @@ const chartKinds = <ChartKind>[
         ChartPreset("Popping in", "Points appear in no particular order.", [_v],
             _scatterPop,
             plays: true),
+        ChartPreset(
+            "Quadrants",
+            "Dashed lines at the averages split it in four.",
+            [_i, _a],
+            _scatterQuadrants),
+        ChartPreset("With a trend", "A straight trend line through the points.",
+            [_a], _scatterTrend),
+        ChartPreset("Joined", "The points joined in the order of the rows.",
+            [_a], _scatterJoined),
       ]),
   ChartKind(
       ChartType.candlestick,
@@ -373,6 +392,13 @@ const chartKinds = <ChartKind>[
             [_i, _v],
             _donutLeader),
         ChartPreset("Thin ring", "A thin ring with a key.", [_a], _donutThin),
+        ChartPreset(
+            "Half doughnut",
+            "An arch with the total in its opening: shares of seats.",
+            [_i, _a],
+            _donutHalf),
+        ChartPreset("Gapped", "Gaps between the parts: friendlier.", [_i],
+            _donutGapped),
       ]),
   ChartKind(
       ChartType.waffle,
@@ -581,8 +607,11 @@ SheetLink? _bulletReads(Picks p) =>
 
 // ---- The presets (B1: the chart's own fields; B2 adds what they lack).
 
-ChartElement _plain(ChartElement e) =>
-    e.copyWith(highlights: const [], notes: const [], showLegend: false);
+ChartElement _plain(ChartElement e) => e.copyWith(
+    highlights: const [],
+    notes: const [],
+    showLegend: false,
+    design: const ChartDesign());
 
 ChartElement _cleanColumns(ChartElement e, Picks p) => _plain(e).copyWith(
     showGrid: true,
@@ -629,24 +658,37 @@ ChartElement _posterColumns(ChartElement e, Picks p) => _plain(e).copyWith(
     showValues: true,
     barRadius: 40,
     barGap: 0.18,
+    design: const ChartDesign(track: true, valuesInside: true),
     animation: _arrive(ChartAnimationPreset.popIn));
 
 ChartElement _rankedList(ChartElement e, Picks p) => _plain(e).copyWith(
     showGrid: false,
     showAxes: false,
-    showYLabels: true,
+    showXLabels: false,
     showValues: true,
     barRadius: 2,
-    barGap: 0.45,
+    barGap: 0.3,
+    design: const ChartDesign(labelsAbove: true),
     animation: _arrive(ChartAnimationPreset.grow));
 ChartElement _barsOneLit(ChartElement e, Picks p) =>
     _rankedList(e, p).copyWith(highlights: [_top(1)]);
 ChartElement _thickBars(ChartElement e, Picks p) => _plain(e).copyWith(
     showGrid: false,
     showAxes: false,
+    showXLabels: false,
     showValues: true,
     barRadius: 40,
-    barGap: 0.12,
+    barGap: 0.14,
+    design: const ChartDesign(valuesInside: true),
+    animation: _arrive(ChartAnimationPreset.grow));
+ChartElement _trackBars(ChartElement e, Picks p) => _plain(e).copyWith(
+    showGrid: false,
+    showAxes: false,
+    showXLabels: false,
+    showValues: true,
+    barRadius: 40,
+    barGap: 0.5,
+    design: const ChartDesign(track: true),
     animation: _arrive(ChartAnimationPreset.grow));
 ChartElement _barsScale(ChartElement e, Picks p) => _plain(e).copyWith(
     showGrid: true,
@@ -721,6 +763,8 @@ ChartElement _splitLines(ChartElement e, Picks p) => p.names.isEmpty
     ? e
     : _relink(_editorialLines(e, p),
         (l) => l.copyWith(split: p.names.first, colourBy: -1));
+ChartElement _stepLines(ChartElement e, Picks p) =>
+    _editorialLines(e, p).copyWith(design: const ChartDesign(step: true));
 ChartElement _drawnLines(ChartElement e, Picks p) => _editorialLines(e, p)
     .copyWith(animation: _arrive(ChartAnimationPreset.drawOn, inTurn: true));
 
@@ -745,6 +789,15 @@ ChartElement _scatterLit(ChartElement e, Picks p) =>
 ChartElement _scatterPop(ChartElement e, Picks p) =>
     _scatterNamed(e, p).copyWith(
         showValues: false, animation: _arrive(ChartAnimationPreset.random));
+
+ChartElement _scatterQuadrants(ChartElement e, Picks p) => _scatterNamed(e, p)
+    .copyWith(showGrid: false, design: const ChartDesign(quadrants: true));
+ChartElement _scatterTrend(ChartElement e, Picks p) => _scatterNamed(e, p)
+    .copyWith(showValues: false, design: const ChartDesign(trend: true));
+ChartElement _scatterJoined(ChartElement e, Picks p) =>
+    _scatterNamed(e, p).copyWith(
+        design: const ChartDesign(connect: true),
+        animation: _arrive(ChartAnimationPreset.drawOn));
 
 ChartElement _candleClassic(ChartElement e, Picks p) => _plain(e)
     .copyWith(showGrid: true, animation: _arrive(ChartAnimationPreset.wipe));
@@ -779,6 +832,18 @@ ChartElement _donutThin(ChartElement e, Picks p) => _plain(e).copyWith(
     centreLabel: "",
     showLegend: true,
     animation: _arrive(ChartAnimationPreset.sweep));
+ChartElement _donutHalf(ChartElement e, Picks p) => _plain(e).copyWith(
+    innerRadius: 0.58,
+    centreLabel: "{total}",
+    showLegend: true,
+    design: const ChartDesign(half: true),
+    animation: _arrive(ChartAnimationPreset.sweep));
+ChartElement _donutGapped(ChartElement e, Picks p) => _plain(e).copyWith(
+    innerRadius: 0.62,
+    centreLabel: "{total}",
+    showLegend: true,
+    design: const ChartDesign(gaps: true),
+    animation: _arrive(ChartAnimationPreset.grow));
 String _seriesName(ChartElement e) =>
     e.data.series.isEmpty ? "" : e.data.series.first.name;
 
@@ -940,4 +1005,14 @@ ChartElement? presetChart(
     if (m.fits(chart.type, p)) chart = m.apply(chart, p);
   }
   return read(chart);
+}
+
+/// reread is [c] with its data read again from [sheet] -- after a style has
+/// recoloured its series, so its faded marks are tints of the new colours.
+ChartElement reread(ChartElement c, DataSheet sheet) {
+  var link = c.sheet;
+  if (link == null) return c;
+  return c.copyWith(
+      data: chartDataOf(sheet, link, c.data,
+          type: c.type, highlights: chartLights(c.highlights, sheet)));
 }

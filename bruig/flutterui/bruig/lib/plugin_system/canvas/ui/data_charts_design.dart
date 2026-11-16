@@ -951,7 +951,7 @@ class ChartsDesignState extends State<ChartsDesign>
     var made = presetChart(kind, preset, p, e.copyWith(title: ""), mods: mods);
     if (made == null) return null;
     var st = _gStyle;
-    return st == null ? made : chartInStyle(made, st);
+    return st == null ? made : reread(chartInStyle(made, st), p.sheet);
   }
 
   Color get _galleryGround =>
@@ -2050,6 +2050,23 @@ class ChartsDesignState extends State<ChartsDesign>
   /// _kindParts are the settings only some kinds of chart have: a
   /// doughnut's hole and the words in it, a pictogram's icons.
   List<Widget> _kindParts(BuildContext context) => [
+        if (e.type == ChartType.pie || e.type == ChartType.donut) ...[
+          const StudioLabel("Its shape"),
+          StudioPills<bool>(
+              id: "chartsHalf",
+              label: "",
+              value: e.design.half,
+              options: const [(false, "A whole circle"), (true, "An arch")],
+              onChanged: (v) =>
+                  _set(e.copyWith(design: e.design.copyWith(half: v)))),
+          StudioPills<bool>(
+              id: "chartsGaps",
+              label: "Between the slices",
+              value: e.design.gaps,
+              options: const [(false, "Touching"), (true, "A gap")],
+              onChanged: (v) =>
+                  _set(e.copyWith(design: e.design.copyWith(gaps: v)))),
+        ],
         if (e.type == ChartType.donut || e.type == ChartType.gauge) ...[
           StudioLabel(e.type == ChartType.donut ? "Its middle" : "The dial"),
           _slider("Hole", e.innerRadius, 0.2, 0.9, 0.55,
@@ -2326,8 +2343,52 @@ class ChartsDesignState extends State<ChartsDesign>
                 (true, "Log (×10 a step)")
               ],
               onChanged: (v) => _set(e.copyWith(logScale: v))),
+        ..._designParts(context),
         ..._numbersParts(context),
       ];
+
+  /// _designParts are the ways its marks are drawn beyond its type
+  /// (ChartDesign): tracks, values inside, names above; steps; quadrants,
+  /// a trend, joined points.
+  List<Widget> _designParts(BuildContext context) {
+    var d = e.design;
+    void put(ChartDesign next) => _set(e.copyWith(design: next));
+    StudioPills<bool> onOff(String id, String label, bool value,
+            ChartDesign Function(bool) next,
+            {String on = "On", String off = "Off"}) =>
+        StudioPills<bool>(
+            id: id,
+            label: label,
+            value: value,
+            options: [(true, on), (false, off)],
+            onChanged: (v) => put(next(v)));
+    return [
+      if (e.type.isBar && !e.type.isStacked) ...[
+        onOff("chartsTrack", "Tracks behind bars", d.track,
+            (v) => d.copyWith(track: v)),
+        if (e.showValues)
+          onOff("chartsValuesInside", "Values", d.valuesInside,
+              (v) => d.copyWith(valuesInside: v),
+              on: "Inside the bars", off: "Past the ends"),
+      ],
+      if (e.type == ChartType.horizontalBar)
+        onOff("chartsLabelsAbove", "Names", d.labelsAbove,
+            (v) => d.copyWith(labelsAbove: v),
+            on: "Above each bar", off: "Beside"),
+      if (e.type == ChartType.line)
+        onOff(
+            "chartsStep", "Between points", d.step, (v) => d.copyWith(step: v),
+            on: "Steps", off: "Straight or curved"),
+      if (e.type == ChartType.scatter) ...[
+        onOff("chartsQuadrants", "Quadrants", d.quadrants,
+            (v) => d.copyWith(quadrants: v)),
+        onOff(
+            "chartsTrend", "Trend line", d.trend, (v) => d.copyWith(trend: v)),
+        onOff("chartsConnect", "Points joined", d.connect,
+            (v) => d.copyWith(connect: v)),
+      ],
+    ];
+  }
 
   /// _numbersParts is how the chart writes its numbers: shortened or in
   /// full, decimals, and a sign or unit either side ("\$300", "40%").

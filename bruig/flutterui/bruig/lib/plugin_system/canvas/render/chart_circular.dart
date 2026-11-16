@@ -30,7 +30,17 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       var values = data.series.first.values;
       var total = values.fold<double>(0, (t, v) => t + v.abs());
       if (total <= 0) return;
-      var start = -math.pi / 2;
+      // An arch (ChartDesign.half): half a turn from nine o'clock, standing
+      // on the bottom of the box, for shares of seats.
+      var half = e.design.half;
+      var turn = half ? math.pi : math.pi * 2;
+      if (half) {
+        radius = math.min(area.width / 2, area.height * 0.92) * 0.92;
+        centre = Offset(area.center.dx, area.center.dy + radius / 2);
+      }
+      var start = half ? -math.pi : -math.pi / 2;
+      // A gap between slices (ChartDesign.gaps).
+      var gap = e.design.gaps ? 0.045 : 0.0;
       // Names round the outside, where the legend does not have them (Ken,
       // 2026-11-14: names were only in the legend): room made for them.
       var named = e.showXLabels && !e.showLegend;
@@ -39,7 +49,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       var names = <(double, double, String, bool)>[];
 
       for (var i = 0; i < values.length; i++) {
-        var sweep = values[i].abs() / total * math.pi * 2;
+        var sweep = values[i].abs() / total * turn;
         var color = sliceColour(e, i);
 
         // Each slice opens out of the middle in turn. A sweep is the clip in
@@ -53,16 +63,18 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         var sliceInner = inner * slice.size;
         color = slice.tint(color);
 
+        var from = start + (sweep > gap * 2 ? gap / 2 : 0);
+        var span = sweep > gap * 2 ? sweep - gap : sweep;
         var path = Path()
-          ..moveTo(centre.dx + math.cos(start) * sliceInner,
-              centre.dy + math.sin(start) * sliceInner)
-          ..lineTo(centre.dx + math.cos(start) * sliceRadius,
-              centre.dy + math.sin(start) * sliceRadius)
-          ..arcTo(Rect.fromCircle(center: centre, radius: sliceRadius), start,
-              sweep, false);
+          ..moveTo(centre.dx + math.cos(from) * sliceInner,
+              centre.dy + math.sin(from) * sliceInner)
+          ..lineTo(centre.dx + math.cos(from) * sliceRadius,
+              centre.dy + math.sin(from) * sliceRadius)
+          ..arcTo(Rect.fromCircle(center: centre, radius: sliceRadius), from,
+              span, false);
         if (sliceInner > 0) {
           path.arcTo(Rect.fromCircle(center: centre, radius: sliceInner),
-              start + sweep, -sweep, false);
+              from + span, -span, false);
         } else {
           path.lineTo(centre.dx, centre.dy);
         }
@@ -91,7 +103,15 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         start += sweep;
       }
       if (inner > 0 && e.centreLabel.trim().isNotEmpty) {
-        paintCentreLabel(canvas, centre, inner, e, values, total, reveal);
+        // An arch's words sit in its opening, above the floor.
+        paintCentreLabel(
+            canvas,
+            half ? centre - Offset(0, inner * 0.38) : centre,
+            inner,
+            e,
+            values,
+            total,
+            reveal);
       }
       if (named) _sliceNames(canvas, centre, radius, e, names);
 

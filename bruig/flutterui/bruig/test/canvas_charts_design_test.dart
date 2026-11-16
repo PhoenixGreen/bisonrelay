@@ -340,6 +340,9 @@ void main() {
     await pick(ChartPartKind.plot);
     await tap("studioPill-chartsLogScale-true");
     expect(chart().logScale, isTrue);
+    // How its marks are drawn: tracks behind the bars.
+    await tap("studioPill-chartsTrack-true");
+    expect(chart().design.track, isTrue);
     await tap("studioPill-chartsDecimals-0");
     expect(chart().numbers.decimals, 0);
     await tester.enterText(

@@ -277,7 +277,10 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   // the bottom. The label switches and type belong to the axis, so "X labels"
   // means whatever is written along the bottom either way.
   var sideSpec = e.yLabels, bottomSpec = e.xLabels;
-  var sideOn = e.showYLabels, bottomOn = e.showXLabels;
+  // Names over sideways bars take no gutter: each sits above its bar
+  // (ChartDesign.labelsAbove), written by _bars.
+  var above = horizontal && e.design.labelsAbove;
+  var sideOn = e.showYLabels && !above, bottomOn = e.showXLabels;
 
   // The value labels' gutter is as wide as the widest of them.
   var valueGutter = 0.0;
@@ -364,8 +367,16 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     tp.dispose();
   }
   if (e.showAxisLabels) {
-    _axisLabels(canvas, area, plot, range, e, horizontal, valueGutter,
-        categoryGutter, axisTitleGutter);
+    _axisLabels(
+        canvas,
+        area,
+        plot,
+        range,
+        above ? e.copyWith(showYLabels: false) : e,
+        horizontal,
+        valueGutter,
+        categoryGutter,
+        axisTitleGutter);
   }
   // Bands go behind the marks; lines and words over them (_notes).
   _notes(canvas, plot, range, e, horizontal, behind: true);
@@ -905,6 +916,50 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     }
   }
 
+  // A name over each sideways bar: the bar takes the lower part of its slot
+  // and its name the line above (ChartDesign.labelsAbove).
+  var above = horizontal && e.design.labelsAbove;
+  if (above) {
+    var spec = e.yLabels;
+    for (var i = 0; i < slots; i++) {
+      var top = plot.top + slotSize * e.data.slotAt(i);
+      paintTextInBox(
+          canvas,
+          data.categories[i],
+          spec.copyWith(
+              align: TextAlignSpec.left,
+              verticalAlign: VerticalAlignSpec.bottom),
+          Rect.fromLTWH(plot.left, top, plot.width, slotSize * 0.46));
+    }
+  }
+  Rect inSlot(Rect bar) => above
+      ? Rect.fromLTWH(
+          bar.left, bar.top + bar.height * 0.42, bar.width, bar.height * 0.58)
+      : bar;
+
+  // A pale full-length track behind each bar (ChartDesign.track), so a bar
+  // reads as so much of the whole filled.
+  if (e.design.track && !stacked) {
+    // From the labels' ink, so it shows on a dark ground as on a light one.
+    var track = Paint()..color = e.labelSpec.color.withValues(alpha: 0.16);
+    for (var i = 0; i < slots; i++) {
+      for (var at = 0; at < which.length; at++) {
+        var start = (horizontal ? plot.top : plot.left) +
+            slotSize * e.data.slotAt(i) +
+            (slotSize - barSpan) / 2 +
+            (grouped ? barSize * at : 0);
+        var thick = grouped ? barSize : barSpan;
+        var rect = inSlot(horizontal
+            ? Rect.fromLTWH(plot.left, start, plot.width, thick)
+            : Rect.fromLTWH(start, plot.top, thick, plot.height));
+        var r = math.min(e.barRadius, math.min(rect.width, rect.height) / 2);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, Radius.circular(math.max(0, r))),
+            track);
+      }
+    }
+  }
+
   // Values are written after every bar is drawn, so a stack's next part
   // does not cover the one before's (Ken, 2026-11-14: the Charts canvas).
   var labels = <(String, Rect, TextAlignSpec, Color?)>[];
@@ -954,8 +1009,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       Rect bar;
       if (horizontal) {
         var y = slotStart + inset + (grouped ? barSize * at : 0);
-        bar = Rect.fromLTWH(plot.left + plot.width * lo, y,
-            plot.width * (hi - lo), grouped ? barSize : barSpan);
+        bar = inSlot(Rect.fromLTWH(plot.left + plot.width * lo, y,
+            plot.width * (hi - lo), grouped ? barSize : barSpan));
       } else {
         var x = slotStart + inset + (grouped ? barSize * at : 0);
         bar = Rect.fromLTWH(x, plot.bottom - plot.height * hi,
@@ -1052,6 +1107,26 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             negTotal += v;
           }
           stackArrived = arrived.clamp(0.0, 1.0);
+        } else if (e.design.valuesInside &&
+            (horizontal ? bar.width : bar.height) >=
+                (horizontal ? fs * (label.length * 0.62 + 1.2) : fs * 1.8)) {
+          // Inside its end, in an ink that reads on it (ChartDesign).
+          var pad = fs * 0.45;
+          var box = horizontal
+              ? (v < 0
+                  ? Rect.fromLTWH(
+                      bar.left + pad, bar.top, bar.width - pad * 2, bar.height)
+                  : Rect.fromLTWH(
+                      bar.left + pad, bar.top, bar.width - pad * 2, bar.height))
+              : Rect.fromLTWH(bar.left, bar.top + pad, bar.width, fs * 1.3);
+          labels.add((
+            label,
+            box,
+            horizontal
+                ? (v < 0 ? TextAlignSpec.left : TextAlignSpec.right)
+                : TextAlignSpec.center,
+            _inkOn(colour)
+          ));
         } else {
           labels.add((
             label,
@@ -1199,8 +1274,69 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       runs.last.add(i);
     }
 
+    // A scatter's extras, under its dots (ChartDesign): its points joined
+    // in the order of the rows; a straight trend through them; and, once,
+    // dashed lines at the averages splitting it in four.
+    if (kind == ChartType.scatter) {
+      var dots = [
+        for (var i = 0; i < n; i++)
+          if (present[i]) points[i]
+      ];
+      var faint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1, weight * 0.6)
+        ..color =
+            colour.withValues(alpha: colour.a * 0.7 * progress.clamp(0.0, 1.0));
+      if (e.design.connect && dots.length > 1) {
+        canvas.drawPath(_linePath(dots, false), faint);
+      }
+      if (e.design.trend && dots.length > 1) {
+        var mx = dots.fold(0.0, (a, p) => a + p.dx) / dots.length;
+        var my = dots.fold(0.0, (a, p) => a + p.dy) / dots.length;
+        var sxx = 0.0, sxy = 0.0;
+        for (var p in dots) {
+          sxx += (p.dx - mx) * (p.dx - mx);
+          sxy += (p.dx - mx) * (p.dy - my);
+        }
+        if (sxx > 0) {
+          var k = sxy / sxx;
+          double yAt(double x) =>
+              (my + k * (x - mx)).clamp(plot.top, plot.bottom);
+          canvas.drawLine(
+              Offset(plot.left, yAt(plot.left)),
+              Offset(plot.right, yAt(plot.right)),
+              faint..strokeWidth = math.max(1.2, weight * 0.7));
+        }
+      }
+      if (e.design.quadrants && at == 0 && dots.isNotEmpty) {
+        var mx = dots.fold(0.0, (a, p) => a + p.dx) / dots.length;
+        var my = dots.fold(0.0, (a, p) => a + p.dy) / dots.length;
+        var dash = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = e.axisColor.withValues(alpha: 0.7);
+        canvas.drawPath(
+            _dashed(
+                Path()
+                  ..moveTo(mx, plot.top)
+                  ..lineTo(mx, plot.bottom),
+                1.4),
+            dash);
+        canvas.drawPath(
+            _dashed(
+                Path()
+                  ..moveTo(plot.left, my)
+                  ..lineTo(plot.right, my),
+                1.4),
+            dash);
+      }
+    }
+
     if (kind != ChartType.scatter) {
-      var smooth = series.smoothOn(e.smooth) && kind.usesSmooth;
+      // Steps (ChartDesign.step): flat to the next point, then straight up
+      // or down to it.
+      var stepped = e.design.step && kind == ChartType.line;
+      var smooth = !stepped && series.smoothOn(e.smooth) && kind.usesSmooth;
       // path is the whole line: the area is closed from it and drawing-on
       // measures along it. The stroke is split into solid and dashed: when
       // the data marks estimates, a stretch touching one is dashed.
@@ -1211,12 +1347,16 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       for (var run in runs) {
         if (run.length < 2) continue;
         var pts = [for (var i in run) points[i]];
-        path.addPath(_linePath(pts, smooth), Offset.zero);
+        path.addPath(
+            _linePath(stepped ? _stepped(pts) : pts, smooth), Offset.zero);
         for (var k = 0; k < run.length - 1; k++) {
           var soft = marks &&
               (data.isEstimated(run[k]) || data.isEstimated(run[k + 1]));
-          (soft ? dashed : solid)
-              .addPath(_segmentPath(pts, k, smooth), Offset.zero);
+          (soft ? dashed : solid).addPath(
+              stepped
+                  ? _linePath(_stepped([pts[k], pts[k + 1]]), false)
+                  : _segmentPath(pts, k, smooth),
+              Offset.zero);
         }
       }
       // Which points have readings, before drawing-on hides the ones not yet
@@ -1567,6 +1707,15 @@ Offset? _pathEnd(Path path) {
   }
   return out;
 }
+
+/// _stepped is [points] with a corner before each: flat along to the next
+/// point's place, then up or down to it.
+List<Offset> _stepped(List<Offset> points) => [
+      for (var i = 0; i < points.length; i++) ...[
+        if (i > 0) Offset(points[i].dx, points[i - 1].dy),
+        points[i],
+      ],
+    ];
 
 /// _linePath joins the points, optionally through a Catmull-Rom style smooth.
 ///

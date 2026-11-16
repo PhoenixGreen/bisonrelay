@@ -99,4 +99,46 @@ void main() {
     expect(styled.sheet, chart.sheet);
     expect(styled.sliceColors, isEmpty, reason: "columns keep one colour");
   });
+
+  test("a chart's design: saved only when set, and drawn", () {
+    var d = const ChartDesign(track: true, labelsAbove: true, half: true);
+    var c =
+        const ChartElement(ElementBase(id: "c"), type: ChartType.horizontalBar)
+            .copyWith(design: d);
+    var back = ChartElement.fromJson(c.toJson(), c.base);
+    expect(back.design, d);
+    expect(
+        const ChartElement(ElementBase(id: "c")).toJson().containsKey("design"),
+        isFalse);
+    // Every switch drawn, on the types it means something for.
+    var all = picksOf(sheet, range, [0, 1, 2, 3, 4], const [2, 3, 4, 5, 6],
+        const [0], const [1]);
+    for (var type in [
+      ChartType.bar,
+      ChartType.horizontalBar,
+      ChartType.line,
+      ChartType.scatter,
+      ChartType.pie,
+      ChartType.donut
+    ]) {
+      var kind = chartKinds.firstWhere((k) => k.type == type);
+      var chart = presetChart(kind, kind.presets.first, all, like);
+      if (chart == null) continue;
+      var on = chart.copyWith(
+          showValues: true,
+          design: const ChartDesign(
+              track: true,
+              valuesInside: true,
+              labelsAbove: true,
+              step: true,
+              quadrants: true,
+              trend: true,
+              connect: true,
+              half: true,
+              gaps: true));
+      var recorder = ui.PictureRecorder();
+      paintChart(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 480, 300), on);
+      recorder.endRecording().dispose();
+    }
+  });
 }

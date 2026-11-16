@@ -12,11 +12,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 // The chart's data, animation and key live in their own files, exported so
 // that importing chart_element.dart still brings a whole chart.
 export 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/chart_design.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/chart_highlight.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
 
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
@@ -371,6 +373,10 @@ class ChartElement extends CanvasElement {
   /// which one its settings show picked. Empty, none.
   final String style;
 
+  /// design is how its marks are drawn beyond its type: tracks behind
+  /// bars, values inside them, steps, quadrants... (chart_design.dart).
+  final ChartDesign design;
+
   const ChartElement(
     super.base, {
     this.type = ChartType.bar,
@@ -440,6 +446,7 @@ class ChartElement extends CanvasElement {
     this.follow = "time",
     this.panel = const Color(0x00000000),
     this.style = "",
+    this.design = const ChartDesign(),
   });
 
   @override
@@ -586,6 +593,7 @@ class ChartElement extends CanvasElement {
     String? follow,
     Color? panel,
     String? style,
+    ChartDesign? design,
   }) =>
       _copy(base,
           type: type,
@@ -656,7 +664,8 @@ class ChartElement extends CanvasElement {
           stepAt: stepAt,
           follow: follow,
           panel: panel,
-          style: style);
+          style: style,
+          design: design);
 
   /// _copy is copyWith and rebase sharing one body, so no field can be
   /// dropped from one of them.
@@ -731,6 +740,7 @@ class ChartElement extends CanvasElement {
     String? follow,
     Color? panel,
     String? style,
+    ChartDesign? design,
   }) =>
       ChartElement(newBase,
           type: type ?? this.type,
@@ -801,7 +811,8 @@ class ChartElement extends CanvasElement {
           stepAt: stepAt ?? this.stepAt,
           follow: follow ?? this.follow,
           panel: panel ?? this.panel,
-          style: style ?? this.style);
+          style: style ?? this.style,
+          design: design ?? this.design);
 
   @override
   Map<String, dynamic> props() => {
@@ -879,6 +890,7 @@ class ChartElement extends CanvasElement {
         if (follow != "time") "follow": follow,
         if (panel.a > 0) "panel": colorToJson(panel),
         if (style.isNotEmpty) "style": style,
+        if (design.any) "design": design.toJson(),
       };
 
   factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) => ChartElement(
@@ -997,7 +1009,8 @@ class ChartElement extends CanvasElement {
       stepAt: jsonInt(json["stepAt"], 0),
       follow: jsonString(json["follow"], "time"),
       panel: colorFromJson(json["panel"], const Color(0x00000000)),
-      style: jsonString(json["style"], ""));
+      style: jsonString(json["style"], ""),
+      design: ChartDesign.fromJson(json["design"]));
 }
 
 /// ChartSourceMap is which of a fetched source's columns the chart draws: the
