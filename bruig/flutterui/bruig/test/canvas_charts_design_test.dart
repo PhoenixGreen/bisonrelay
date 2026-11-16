@@ -478,8 +478,10 @@ void main() {
     await tester.tap(layOut);
     await tester.pumpAndSettle();
     var t = c.document.elementById("t1")!, ch = c.document.elementById("c1")!;
+    // Two a row, filling the page: side by side, the same width, apart.
     expect(ch.base.y, t.base.y);
-    expect(ch.base.x, t.base.x + t.base.width + 40);
+    expect(ch.base.width, t.base.width);
+    expect(ch.base.x, greaterThan(t.base.x + t.base.width));
     expect(tester.takeException(), isNull);
   });
 

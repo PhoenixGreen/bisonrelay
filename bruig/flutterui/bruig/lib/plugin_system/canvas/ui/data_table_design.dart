@@ -1012,6 +1012,13 @@ class _TableDesignState extends State<TableDesign> {
             onPick: (st) => _set(tableInStyle(t, st))),
         _hint(context,
             "Its colours, typefaces, rules and corners at once; the cells and their styles stay."),
+        if (dataStyleNamed(t.style) case var st?)
+          StudioPill(
+              key: const ValueKey("tableStylePage"),
+              label: "The whole page in ${st.name}",
+              tooltip: "Every chart, table and word on this page, and its "
+                  "ground, as one step to undo",
+              onTap: () => c.stylePage(st)),
         StudioLabel("Styles on this table · ${t.rules.length}"),
         _hint(
             context,

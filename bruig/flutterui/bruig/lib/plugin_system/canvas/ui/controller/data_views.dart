@@ -6,6 +6,41 @@ part of '../canvas_controller.dart';
 // its sheet is data_sync.dart's, in apply.
 
 extension CanvasDataViews on CanvasController {
+  /// stylePage puts the page being made in [style] (page_style.dart): its
+  /// charts and tables, its words by their size, and its ground. One change
+  /// to undo (Ken, 2026-11-17, the improvements report's fifth item).
+  void stylePage(DataStyle style) {
+    var before = _document.elements;
+    var after = pageInStyle(before, style);
+    var mine = _interaction == null;
+    if (mine) beginInteraction();
+    for (var (i, e) in after.indexed) {
+      if (!identical(e, before[i])) replaceElement(e);
+    }
+    var bg = _document.background;
+    setBackground(
+        bg.copyWith(spec: bg.spec.copyWith(background: style.ground)));
+    if (mine) endInteraction();
+  }
+
+  /// layOutPage puts [views] over the page in [layout], filling it below
+  /// where the first of them starts. One change to undo.
+  void layOutPage(List<CanvasElement> views, PageLayout layout) {
+    if (views.isEmpty) return;
+    var page = _document.size.size;
+    var top = views.map((v) => v.base.y).reduce(math.min);
+    var area = layoutArea(page, top);
+    var rects = pageLayoutRects(views.length, layout, area, page.width * 0.025);
+    var mine = _interaction == null;
+    if (mine) beginInteraction();
+    for (var (i, v) in views.indexed) {
+      var r = rects[i];
+      replaceElement(v.rebase(v.base
+          .copyWith(x: r.left, y: r.top, width: r.width, height: r.height)));
+    }
+    if (mine) endInteraction();
+  }
+
   DataSheet? sheetById(String id) =>
       _document.sheets.where((s) => s.id == id).firstOrNull;
 

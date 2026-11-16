@@ -131,6 +131,8 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_reshape.dart';
+import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
+import 'package:bruig/plugin_system/canvas/model/page_style.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
 import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/score_roll.dart';

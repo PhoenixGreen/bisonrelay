@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/chart_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
+import 'package:bruig/plugin_system/canvas/model/page_style.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -763,13 +764,19 @@ class ChartsDesignState extends State<ChartsDesign>
             padding: const EdgeInsets.all(12),
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _Menu<PageLayout>(
+                  key: const ValueKey("chartsLayout"),
+                  value: _pageLayout,
+                  options: [for (var l in PageLayout.values) (l, l.label)],
+                  onChanged: (l) => setState(() => _pageLayout = l)),
+              const SizedBox(height: 8),
               StudioPill(
                   key: const ValueKey("chartsLayOut"),
                   label: "Lay them out together",
                   filled: true,
                   onTap: _layOut),
               _hint(context,
-                  "The ones on this page, side by side in rows from where the first is, as one step to undo."),
+                  "The ones on this page, filling it below where the top one is, as one step to undo."),
             ]),
           ),
         ),
@@ -777,28 +784,16 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  /// _layOut puts this sheet's views on the page side by side, two to a
-  /// row, from where the top-left one is.
+  /// _layOut puts this sheet's views over the page in the layout chosen,
+  /// filling it below where the top one starts (page_style.dart).
   void _layOut() {
     var views = _onPage;
     if (views.isEmpty) return;
-    var x0 = views.map((v) => v.base.x).reduce(math.min);
-    var y0 = views.map((v) => v.base.y).reduce(math.min);
-    const gap = 40.0;
     _end();
-    c.beginInteraction();
-    var y = y0;
-    for (var i = 0; i < views.length; i += 2) {
-      var row = views.skip(i).take(2).toList();
-      var x = x0;
-      for (var v in row) {
-        c.replaceElement(v.rebase(v.base.copyWith(x: x, y: y)));
-        x += v.base.width + gap;
-      }
-      y += row.map((v) => v.base.height).reduce(math.max) + gap;
-    }
-    c.endInteraction();
+    c.layOutPage(views, _pageLayout);
   }
+
+  PageLayout _pageLayout = PageLayout.rows2;
 
   // What each column holds, as the gallery reads it: worked out again only
   // when the sheet or the range changes.
@@ -1888,6 +1883,21 @@ class ChartsDesignState extends State<ChartsDesign>
           element: e,
           onPick: (st) => _set(
               chartInStyle(e, st, panel: e.panel.a > 0 || e.style.isEmpty))),
+      // The page around it too: every chart, table and word on it, and its
+      // ground (page_style.dart).
+      if (dataStyleNamed(e.style) case var st?)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: StudioPill(
+              key: const ValueKey("chartsStylePage"),
+              label: "The whole page in ${st.name}",
+              tooltip: "Every chart, table and word on this page, and its "
+                  "ground, as one step to undo",
+              onTap: () {
+                _end();
+                c.stylePage(st);
+              }),
+        ),
       StudioPills<bool>(
           id: "chartsGround",
           label: "Ground",
