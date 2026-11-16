@@ -1592,15 +1592,19 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                       animation.preset == ChartAnimationPreset.grow)
               ? dot.clamp(0.0, 1.0)
               : 1.0;
+          // A scatter's point written as its name where it has one.
+          var name = kind == ChartType.scatter ? data.pointNameAt(i) : "";
           paintTextInBox(
               canvas,
-              formatSeries(e, s, data.valueAt(s, i) * shown),
+              name.isNotEmpty
+                  ? name
+                  : formatSeries(e, s, data.valueAt(s, i) * shown),
               e.valueSpec.copyWith(
                   align: TextAlignSpec.center,
                   verticalAlign: VerticalAlignSpec.bottom),
               Rect.fromCenter(
                   center: points[i].translate(0, -e.valueSpec.fontSize * 1.4),
-                  width: e.valueSpec.fontSize * 6,
+                  width: e.valueSpec.fontSize * (name.isNotEmpty ? 10 : 6),
                   height: e.valueSpec.fontSize * 1.6));
         }
       }

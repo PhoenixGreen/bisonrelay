@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/table_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -212,6 +213,17 @@ void main() {
 
   // Ken, 2026-11-17: the remaining designs -- every way of every kind
   // drawn; the top and the rest; a histogram.
+  test("no two designs of a kind share a name; nor do two of a table", () {
+    for (var k in chartKinds) {
+      var names = [for (var p in k.presets) p.name];
+      expect(names.toSet(), hasLength(names.length), reason: k.name);
+    }
+    for (var k in tableKinds) {
+      var names = [for (var p in k.presets) p.name];
+      expect(names.toSet(), hasLength(names.length), reason: k.name);
+    }
+  });
+
   test("every way of every kind draws, arriving and at rest", () {
     var all = picksOf(sheet, range, [0, 1, 2, 3, 4, 5, 6],
         const [2, 3, 4, 5, 6], const [0], const [1]);

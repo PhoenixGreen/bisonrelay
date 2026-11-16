@@ -3014,6 +3014,16 @@ enum ColumnKind { numbers, dates, names, empty }
 List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
   var datey = RegExp(r"date|week|month|year|day|time|season|round|period",
       caseSensitive: false);
+  // A heading that is a date word itself ("Week", "Season 2025", "Year"),
+  // not one that merely holds one ("Days injured").
+  var dateHead = RegExp(
+      r"^\s*(date|week|wk|gameweek|matchday|month|year|yr|day|time|season|"
+      r"round|period|quarter|qtr)s?(\s*\d+|\s*\(.*\))?\s*$",
+      caseSensitive: false);
+  var monthOrDay = RegExp(
+      r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|mon|tue|wed|thu|"
+      r"fri|sat|sun|q[1-4])",
+      caseSensitive: false);
   return [
     for (var col = 0; col < range.cols; col++)
       () {
@@ -3022,19 +3032,32 @@ List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
             sheetValue(sheet, r, range.c0 + col)
         ].where((v) => v != null && v != "").toList();
         if (values.isEmpty) return ColumnKind.empty;
-        if (values.whereType<double>().length * 2 > values.length) {
-          return ColumnKind.numbers;
-        }
         var head = sheetShown(sheet, range.r0, range.c0 + col);
+        var numbers = values.whereType<double>().toList();
+        if (numbers.length * 2 > values.length) {
+          // Whole numbers that count time -- weeks 1 to 38, seasons, years
+          // -- are when, not how much (found making the Charts canvas: no
+          // line could be drawn of points by season).
+          var whole = numbers.length == values.length &&
+              numbers.every((v) => v == v.roundToDouble());
+          var years = whole && numbers.every((v) => v >= 1800 && v <= 2200);
+          return whole && (dateHead.hasMatch(head) || years)
+              ? ColumnKind.dates
+              : ColumnKind.numbers;
+        }
         var words = [for (var v in values) "$v"];
-        // Runs: each value comes as one block of rows, more than one long.
+        // Runs: each value comes as one block of rows, more than one long --
+        // a long sheet's weeks or dates. Words in runs that don't read as
+        // dates ("Top four", "Chasing") are groups: names.
         var runs = <String>[];
         for (var w in words) {
           if (runs.isEmpty || runs.last != w) runs.add(w);
         }
         var blocks =
             runs.toSet().length == runs.length && runs.length < words.length;
-        return datey.hasMatch(head) || blocks
+        var datelike = words
+            .every((w) => RegExp(r"\d").hasMatch(w) || monthOrDay.hasMatch(w));
+        return datey.hasMatch(head) || (blocks && datelike)
             ? ColumnKind.dates
             : ColumnKind.names;
       }(),

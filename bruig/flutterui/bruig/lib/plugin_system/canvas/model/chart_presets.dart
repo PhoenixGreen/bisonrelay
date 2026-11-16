@@ -175,6 +175,16 @@ String? _needsDates(Picks p) => p.dates.isEmpty ? "a date column" : null;
 
 SheetLink? _oneNumber(Picks p) =>
     p.numbers.isEmpty ? null : p.link(p.labels, [p.numbers.first]);
+
+/// _whenReads is a timeline's: its events named, placed by a column of
+/// numbers -- or by the years they happened, which read as dates.
+SheetLink? _whenReads(Picks p) {
+  if (p.numbers.isNotEmpty) return _oneNumber(p);
+  if (p.dates.isEmpty) return null;
+  var named = p.names.isNotEmpty ? p.names.first : p.dates.first;
+  return p.link(named, [p.dates.first]);
+}
+
 SheetLink? _ranked(Picks p) => p.numbers.isEmpty
     ? null
     : p.link(p.labels, [p.numbers.first]).copyWith(sortBy: p.numbers.first);
@@ -182,12 +192,22 @@ SheetLink? _several(Picks p) =>
     p.numbers.length < 2 ? null : p.link(p.labels, p.numbers.take(6).toList());
 SheetLink? _overTime(Picks p) {
   if (p.numbers.isEmpty || p.dates.isEmpty) return null;
-  var l = p.link(p.dates.first, [p.numbers.first]);
-  return p.names.isNotEmpty ? l.copyWith(colourBy: p.names.first) : l;
+  // A long sheet: one number, a line for each name. A wide one: a line
+  // for each column of numbers (found making the Charts canvas: five
+  // clubs' columns ticked drew Arsenal's alone).
+  if (p.names.isNotEmpty) {
+    return p.link(p.dates.first, [p.numbers.first]).copyWith(
+        colourBy: p.names.first);
+  }
+  return p.link(p.dates.first, p.numbers.take(6).toList());
 }
 
-SheetLink? _pair(Picks p) =>
-    p.numbers.length < 2 ? null : p.link(p.numbers.first, [p.numbers[1]]);
+SheetLink? _pair(Picks p) => p.numbers.length < 2
+    ? null
+    : p.link(p.numbers.first, [p.numbers[1]]).copyWith(
+        // The points named by the names ticked (found making the Charts
+        // canvas: "Every point named" wrote their numbers).
+        pointNames: p.names.isNotEmpty ? p.names.first : -1);
 
 final chartKinds = _withWays(<ChartKind>[
   ChartKind(
@@ -276,8 +296,11 @@ final chartKinds = _withWays(<ChartKind>[
             [_a], _pairsValues),
         ChartPreset("Pairs, no axis", "No grid or axis; a key at the top.",
             [_i, _v], _pairsClean),
-        ChartPreset("Small charts", "One small chart per series, on one scale.",
-            [_a], _pairsSplit),
+        ChartPreset(
+            "Small charts",
+            "A small chart for each, its pair side by side, on one scale.",
+            [_a],
+            _pairsSplit),
       ]),
   ChartKind(
       ChartType.stackedBar,
@@ -525,7 +548,7 @@ final chartKinds = _withWays(<ChartKind>[
       "Timeline",
       "Events along a line.",
       [ChartQuestion.time],
-      _oneNumber,
+      _whenReads,
       "a column of numbers (dates or years)",
       [
         ChartPreset(
@@ -693,7 +716,11 @@ final chartKinds = _withWays(<ChartKind>[
             (e, p) => _mode(e, "grid", values: true),
             needs: _needsTwoNumbers),
         ChartPreset("Calendar", "Weeks across, days down.", [_a, _i],
-            (e, p) => _first(_mode(e, "calendar"))),
+            (e, p) => _first(_mode(e, "calendar")),
+            // A day a row, or it is a grid of nothing (found making the
+            // Charts canvas: clubs by month drew five grey squares).
+            needs: (p) =>
+                p.dates.isEmpty ? "a column of dates, a day a row" : null),
         ChartPreset(
             "Stripes",
             "One stripe per row, cool to warm: the poster form.",
@@ -966,8 +993,7 @@ ChartElement _pairsClean(ChartElement e, Picks p) => _plain(e).copyWith(
     legend: e.legend.copyWith(placement: LegendPlacement.top),
     animation: _arrive(ChartAnimationPreset.grow, inTurn: true));
 ChartElement _pairsSplit(ChartElement e, Picks p) => _relink(_plain(e),
-        (l) => l.copyWith(split: p.names.isNotEmpty ? p.names.first : -1))
-    .copyWith(type: ChartType.bar);
+    (l) => l.copyWith(split: p.names.isNotEmpty ? p.names.first : -1));
 
 ChartElement _stackKeyed(ChartElement e, Picks p) => _plain(e).copyWith(
     showLegend: true,
@@ -1234,6 +1260,16 @@ ChartElement? presetChart(
     {Set<ChartModifier> mods = const {}}) {
   var link = kind.reads(p);
   if (link == null || preset.needs?.call(p) != null) return null;
+  // A long sheet -- a row a club a week -- ranked or shared out: each
+  // club once, as at the latest date, not every week's row (found making
+  // the Charts canvas: Bars of Week, Club and Pts listed 36 bars).
+  if (!kind.questions.contains(ChartQuestion.time) &&
+      p.names.isNotEmpty &&
+      p.dates.isNotEmpty) {
+    link = link.copyWith(
+        labels: p.dates.contains(link.labels) ? p.names.first : link.labels,
+        through: p.dates.first);
+  }
   ChartElement read(ChartElement c) => c.copyWith(
       data: chartDataOf(p.sheet, c.sheet!, const ChartData(),
           type: c.type, highlights: chartLights(c.highlights, p.sheet)));
@@ -1317,7 +1353,7 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
   ChartType.gauge: [
     ChartPreset("Needle over bands", "A needle over three graduated bands.",
         [_i], (e, p) => _way(_gaugeSweep(e, p), "bands")),
-    ChartPreset("Dial", "Open at the bottom with ticks: a speedometer.",
+    ChartPreset("Speedometer", "Open at the bottom with ticks, like a car's.",
         [_i, _v], (e, p) => _way(_gaugeSweep(e, p), "dial")),
   ],
   ChartType.pictogram: [
@@ -1343,7 +1379,10 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
         "Up and down",
         "Sized by the first number, coloured by whether the second is up or down.",
         [_a],
-        (e, p) => _way(_treemap(e, p), "market"),
+        // The second number read too: the change it is coloured by
+        // (found making the Charts canvas: it read the size alone).
+        (e, p) => _relink(_way(_treemap(e, p), "market"),
+            (l) => l.copyWith(series: p.numbers.take(2).toList())),
         needs: (p) =>
             p.numbers.length < 2 ? "a second column: the change" : null),
   ],
@@ -1374,7 +1413,7 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
   ],
   ChartType.radialBar: [
     ChartPreset(
-        "Rings",
+        "Rings on tracks",
         "Full rings on pale tracks, each a share of the largest.",
         [_i, _v],
         (e, p) => _way(_radialSweep(e, p), "rings")),

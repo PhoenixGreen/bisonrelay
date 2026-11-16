@@ -89,6 +89,8 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
     return sameData(e.data, data) &&
             listEquals(e.data.marks, data.marks) &&
             listEquals(e.data.named, data.named) &&
+            listEquals(e.data.groups, data.groups) &&
+            listEquals(e.data.pointNames, data.pointNames) &&
             e.data.at == data.at &&
             _samePanels(e.data.panels, data.panels)
         ? e
@@ -126,19 +128,44 @@ ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
             ];
           }
         );
+  // A scatter's points named from their own column, row for row.
+  if (link.pointNames >= 0 &&
+      link.pointNames < link.range.cols &&
+      !link.charted) {
+    data = data.copyWith(pointNames: [
+      for (var r in viewRows(sheet, link))
+        sheetShown(sheet, r, link.range.c0 + link.pointNames)
+    ]);
+  }
+  // A few lines, a column each, are named at their ends, as a few lines a
+  // name each are (found making the Charts canvas: "Editorial lines" of
+  // five clubs' columns named none).
+  if ((type == ChartType.line || type == ChartType.area) &&
+      data.named.isEmpty &&
+      data.series.length > 1 &&
+      data.series.length <= 6) {
+    data =
+        data.copyWith(named: [for (var i = 0; i < data.series.length; i++) i]);
+  }
   if (!highlights.any((h) => !h.off) || data.series.isEmpty) return data;
   var first = link.series.isEmpty ? -1 : link.series.first;
   List<double> by(int col) => valuesOf(col < 0 ? first : col);
   // A line each (colour by words): the highlights pick out lines, ranked by
   // where each ends.
+  // (A line a column, as well as a line a name: found making the Charts
+  // canvas, where five clubs' columns lit nothing.)
+  // A radar's shapes too, each ranked by its total: "the leader" is the
+  // biggest shape (found making the Charts canvas: nothing faded).
+  var radar = type == ChartType.radar;
   if (data.categories.isNotEmpty &&
       data.series.length > 1 &&
-      link.colourBy >= 0 &&
-      (type == ChartType.line || type == ChartType.area)) {
+      (type == ChartType.line || type == ChartType.area || radar)) {
     var names = [for (var s in data.series) s.name];
     List<double> ends(int col) => [
           for (var s in data.series)
-            s.values.lastWhere((v) => !v.isNaN, orElse: () => double.nan)
+            radar
+                ? s.values.where((v) => !v.isNaN).fold(0.0, (a, b) => a + b)
+                : s.values.lastWhere((v) => !v.isNaN, orElse: () => double.nan)
         ];
     var lit = marksOf(highlights, names, ends, (i) => data.series[i].color);
     return data.copyWith(series: [
@@ -884,10 +911,21 @@ CanvasDocument columnsInserted(CanvasDocument doc, String id, int at, int n) {
     var (c0, c1) = _spanAfter(g.c0, g.c1, at, n)!;
     // Inside the range: the columns past it, counted from its start, move.
     int rel(int p) => g.c0 + p >= at && at > g.c0 ? p + n : p;
+    // A column the link names that isn't one: still none.
+    int relOr(int p) => p < 0 ? p : rel(p);
     return l.copyWith(
         range: CellRange(g.r0, c0, g.r1, c1),
         labels: rel(l.labels),
-        series: [for (var p in l.series) rel(p)]);
+        series: [for (var p in l.series) rel(p)],
+        // Every other column it names moves too (found making the Charts
+        // canvas: a column put in left a sort, a colour-by and the rest
+        // pointing at their old places).
+        sortBy: relOr(l.sortBy),
+        whereColumn: relOr(l.whereColumn),
+        colourBy: relOr(l.colourBy),
+        through: relOr(l.through),
+        split: relOr(l.split),
+        pointNames: relOr(l.pointNames));
   });
 }
 
@@ -914,13 +952,21 @@ CanvasDocument columnsDeleted(CanvasDocument doc, String id, int at, int n) {
       return (a < at ? a : a - n) - span.$1;
     }
 
+    // Every other column it names: where it is now, or none if it went.
+    int relOr(int p) => p < 0 ? p : rel(p) ?? -1;
     return l.copyWith(
         range: CellRange(g.r0, span.$1, g.r1, span.$2),
         labels: rel(l.labels) ?? 0,
         series: [
           for (var p in l.series)
             if (rel(p) case var q?) q
-        ]);
+        ],
+        sortBy: relOr(l.sortBy),
+        whereColumn: relOr(l.whereColumn),
+        colourBy: relOr(l.colourBy),
+        through: relOr(l.through),
+        split: relOr(l.split),
+        pointNames: relOr(l.pointNames));
   });
 }
 

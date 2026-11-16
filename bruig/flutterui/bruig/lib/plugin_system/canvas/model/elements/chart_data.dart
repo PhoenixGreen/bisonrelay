@@ -588,6 +588,11 @@ class ChartData {
   /// in groups gather by. Worked out, never saved.
   final List<String> groups;
 
+  /// pointNames are the categories' own names where the categories are
+  /// numbers -- a scatter's clubs, its labels being their wage bills
+  /// (SheetLink.pointNames). Worked out, never saved.
+  final List<String> pointNames;
+
   const ChartData({
     this.categories = const [],
     this.series = const [],
@@ -599,7 +604,12 @@ class ChartData {
     this.slots = const [],
     this.whole = const [],
     this.groups = const [],
+    this.pointNames = const [],
   });
+
+  /// pointNameAt is category [i]'s own name, or "".
+  String pointNameAt(int i) =>
+      i >= 0 && i < pointNames.length ? pointNames[i] : "";
 
   /// groupAt is category [i]'s group word, or "".
   String groupAt(int i) => i >= 0 && i < groups.length ? groups[i] : "";
@@ -623,6 +633,7 @@ class ChartData {
     List<double>? slots,
     List<bool>? whole,
     List<String>? groups,
+    List<String>? pointNames,
   }) =>
       ChartData(
         categories: categories ?? this.categories,
@@ -635,6 +646,7 @@ class ChartData {
         slots: slots ?? this.slots,
         whole: whole ?? this.whole,
         groups: groups ?? this.groups,
+        pointNames: pointNames ?? this.pointNames,
       );
 
   /// withRowRemoved takes a row out of the categories, every series and the

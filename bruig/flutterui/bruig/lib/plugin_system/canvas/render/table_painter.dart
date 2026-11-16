@@ -91,7 +91,12 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     }
   }
 
-  // Cells.
+  // Cells, their words all made smaller together where a row is too short
+  // for them or a word too wide for its column: cut to slivers or broken
+  // mid-word ("Ran / k") otherwise (found making the Charts canvas).
+  var fit = _textFit(e, rect.size, widths, heights);
+  TextSpec fitted(TextSpec t) =>
+      fit < 1 ? t.copyWith(fontSize: t.fontSize * fit) : t;
   var drawn = _DrawnCells(e);
   y = rect.top;
   for (var r = 0; r < e.rows.length; r++) {
@@ -107,7 +112,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       paintTextInBox(
           canvas,
           e.cell(r, 0),
-          e.headerSpec.copyWith(align: TextAlignSpec.left, weight: 700),
+          fitted(e.headerSpec).copyWith(align: TextAlignSpec.left, weight: 700),
           Rect.fromLTWH(
               rect.left + e.leftPad,
               y + e.topPad,
@@ -120,7 +125,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     for (var c = 0; c < cols; c++) {
       var w = widths[c];
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
-      var spec = isHeader ? e.headerSpec : e.cellSpec;
+      var spec = fitted(isHeader ? e.headerSpec : e.cellSpec);
       // Drawn rather than written, by its column's kind.
       var kind = isHeader ? "" : (e.columnKinds[c] ?? "");
       if (kind == "merge") {
@@ -816,6 +821,60 @@ void _placeholder(ui.Canvas canvas, Rect rect, TableElement e) {
           align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.middle),
       rect,
       clip: true);
+}
+
+// The last text fit worked out, for one element at one size: it lays out
+// every word, so it is not done per frame.
+TableElement? _fitOf;
+Size _fitSize = Size.zero;
+double _fitK = 1;
+
+/// tableTextFit is how much smaller [e]'s words are drawn in [rect] so
+/// each fits its cell (see _textFit): 1 where they fit as they are.
+double tableTextFit(TableElement e, Rect rect) => e.rows.isEmpty
+    ? 1
+    : _textFit(e, rect.size, _columnWidths(e, rect, e.columnCount),
+        _rowHeights(e, rect));
+
+/// _textFit is how much smaller [e]'s words must all be for each cell's
+/// lines to fit its row and its longest word its column: 1 where they
+/// already do, never below a quarter. Cells drawn rather than written, and
+/// pictures, are left out; a heading across the table has its whole width.
+double _textFit(
+    TableElement e, Size size, List<double> widths, List<double> heights) {
+  if (identical(_fitOf, e) && _fitSize == size) return _fitK;
+  var drawn = _DrawnCells(e);
+  var k = 1.0;
+  for (var r = 0; r < e.rows.length && r < heights.length; r++) {
+    var group = drawn.groupRow(r);
+    for (var c = 0; c < widths.length; c++) {
+      var text = e.cell(r, c).trim();
+      if (text.isEmpty || TableElement.pictureIn(text) != null) continue;
+      var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
+      var kind = isHeader ? "" : (e.columnKinds[c] ?? "");
+      if (kind.isNotEmpty && kind != "heat") continue;
+      var spec = isHeader || group ? e.headerSpec : e.cellSpec;
+      var lines = "\n".allMatches(text).length + 1;
+      var tall = heights[r] - e.topPad - e.bottomPad;
+      var needH = spec.fontSize * spec.lineHeight * lines;
+      if (tall > 0 && needH > tall) k = math.min(k, tall / needH);
+      var wide = (group ? widths.fold(0.0, (a, b) => a + b) : widths[c]) -
+          e.leftPad -
+          e.rightPad;
+      var word = 0.0;
+      for (var w in text.split(RegExp(r"\s+"))) {
+        if (w.isEmpty) continue;
+        word = math.max(
+            word, layoutText(w, spec, maxWidth: double.infinity).width);
+      }
+      if (wide > 0 && word > wide) k = math.min(k, wide / word);
+      if (group) break;
+    }
+  }
+  _fitOf = e;
+  _fitSize = size;
+  _fitK = k.clamp(0.25, 1.0);
+  return _fitK;
 }
 
 /// tableColumnWidths is where a table's columns fall. Public so the stage's

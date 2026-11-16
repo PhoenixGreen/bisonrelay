@@ -599,8 +599,9 @@ void _treemap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     var slice = sliceProgress(e, reveal, i, rects.length);
     if (slice.gone) continue;
     var tile = _grown(r.deflate(1.5), slice.size);
+    var fill = slice.tint(itemColour(e, i));
     canvas.drawRRect(RRect.fromRectAndRadius(tile, const Radius.circular(4)),
-        Paint()..color = slice.tint(itemColour(e, i)));
+        Paint()..color = fill);
     var lines = [
       if (e.showXLabels) e.data.categories[i],
       if (e.showValues) _value(e, values[i]),
@@ -610,8 +611,17 @@ void _treemap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     // (Ken, 2026-11-14: slivers lost theirs); where they will not go even
     // so, into the note in the largest tile.
     var room = tile.deflate(math.min(8, tile.shortestSide * 0.12));
-    var spec = _label(e, align: TextAlignSpec.left)
-        .copyWith(verticalAlign: VerticalAlignSpec.top);
+    // Its words in an ink that reads on it: a light tile's dark, a dark
+    // tile's white (found making the Charts canvas: Playful's pale words
+    // on its yellow). A faded tile's on the ground behind it.
+    var solid = fill.a > 0.6;
+    var spec = _label(e, align: TextAlignSpec.left).copyWith(
+        verticalAlign: VerticalAlignSpec.top,
+        color: solid
+            ? (fill.computeLuminance() > 0.45
+                ? const Color(0xFF1B1B1B)
+                : const Color(0xFFFFFFFF))
+            : null);
     var wide = lines.map((l) => _widthOf(l, spec)).fold<double>(0, math.max);
     var tall = spec.fontSize * 1.3 * lines.length;
     var flat = math.min(
@@ -849,6 +859,16 @@ void _bullet(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   if (e.yMax.isFinite && e.yMax > 0) most = e.yMax;
   if (most <= 0) return;
   var n = values.length;
+  // Each row on its own scale where they are of different sizes -- season
+  // tickets in thousands, debuts in ones -- as a bullet graph's measures
+  // are; on one where they are alike, so they compare (found making the
+  // Charts canvas: three of four rows drew nothing).
+  double rowMost(int i) => math.max(values[i], targets?[i] ?? 0) * 1.1;
+  var rows = [for (var i = 0; i < n; i++) rowMost(i)].where((m) => m > 0);
+  var own = !(e.yMax.isFinite && e.yMax > 0) &&
+      rows.isNotEmpty &&
+      rows.reduce(math.max) > rows.reduce(math.min) * 3;
+  double scaleOf(int i) => own && rowMost(i) > 0 ? rowMost(i) : most;
   var rowH = area.height / n;
   var labelW = e.showXLabels ? area.width * 0.26 : 0.0;
   var figureW = e.showValues ? area.width * 0.12 : 0.0;
@@ -873,11 +893,11 @@ void _bullet(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     }
     if (slice.gone) continue;
     var bar = band * 0.42;
-    var w = width * (values[i] / most).clamp(0.0, 1.0) * slice.size;
+    var w = width * (values[i] / scaleOf(i)).clamp(0.0, 1.0) * slice.size;
     canvas.drawRect(Rect.fromLTWH(left, top + (rowH - bar) / 2, w, bar),
         Paint()..color = slice.tint(itemColour(e, i)));
     if (targets != null && targets[i] > 0) {
-      var x = left + width * (targets[i] / most).clamp(0.0, 1.0);
+      var x = left + width * (targets[i] / scaleOf(i)).clamp(0.0, 1.0);
       canvas.drawLine(
           Offset(x, by + band * 0.12),
           Offset(x, by + band * 0.88),

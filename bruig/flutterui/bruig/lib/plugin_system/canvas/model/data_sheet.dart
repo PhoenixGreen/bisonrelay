@@ -159,6 +159,10 @@ class SheetLink {
   /// many equal ranges. 0, none.
   final int bins;
 
+  /// pointNames is a column (counted from the range's first) that names
+  /// each point of a scatter, whose labels are its numbers across. -1, none.
+  final int pointNames;
+
   const SheetLink(this.sheet, this.range,
       {this.labels = 0,
       this.series = const [],
@@ -177,7 +181,8 @@ class SheetLink {
       this.split = -1,
       this.numbering = false,
       this.others = false,
-      this.bins = 0});
+      this.bins = 0,
+      this.pointNames = -1});
 
   /// plain is whether it shows its range's rows as they are.
   bool get plain =>
@@ -218,7 +223,8 @@ class SheetLink {
           int? split,
           bool? numbering,
           bool? others,
-          int? bins}) =>
+          int? bins,
+          int? pointNames}) =>
       SheetLink(sheet ?? this.sheet, range ?? this.range,
           labels: labels ?? this.labels,
           series: series ?? this.series,
@@ -237,7 +243,8 @@ class SheetLink {
           split: split ?? this.split,
           numbering: numbering ?? this.numbering,
           others: others ?? this.others,
-          bins: bins ?? this.bins);
+          bins: bins ?? this.bins,
+          pointNames: pointNames ?? this.pointNames);
 
   Map<String, dynamic> toJson() => {
         "id": sheet,
@@ -260,6 +267,7 @@ class SheetLink {
         if (numbering) "numbering": true,
         if (others) "others": true,
         if (bins > 0) "bins": bins,
+        if (pointNames >= 0) "pointNames": pointNames,
       };
 
   static SheetLink? fromJson(Object? j) {
@@ -289,7 +297,8 @@ class SheetLink {
         split: n("split", -1),
         numbering: j["numbering"] == true,
         others: j["others"] == true,
-        bins: n("bins", 0));
+        bins: n("bins", 0),
+        pointNames: n("pointNames", -1));
   }
 
   @override
@@ -314,30 +323,33 @@ class SheetLink {
       other.split == split &&
       other.numbering == numbering &&
       other.others == others &&
-      other.bins == bins;
+      other.bins == bins &&
+      other.pointNames == pointNames;
 
   @override
-  int get hashCode => Object.hash(
-      sheet,
-      range,
-      labels,
-      Object.hashAll(series),
-      sortBy,
-      descending,
-      top,
-      whereColumn,
-      where,
-      group,
-      bottom,
-      places,
-      gap,
-      colourBy,
-      through,
-      at,
-      split,
-      numbering,
-      others,
-      bins);
+  int get hashCode => Object.hashAll([
+        sheet,
+        range,
+        labels,
+        Object.hashAll(series),
+        sortBy,
+        descending,
+        top,
+        whereColumn,
+        where,
+        group,
+        bottom,
+        places,
+        gap,
+        colourBy,
+        through,
+        at,
+        split,
+        numbering,
+        others,
+        bins,
+        pointNames,
+      ]);
 }
 
 /// DataSheet is one sheet: its name and what was typed in each cell, row by

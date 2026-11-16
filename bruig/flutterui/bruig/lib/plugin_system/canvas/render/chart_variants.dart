@@ -406,8 +406,14 @@ void _timelineDown(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 void _gaugeNeedle(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     {required bool dial}) {
   var v = _vals(e);
-  var total =
-      e.yMax.isFinite && e.yMax > 0 ? e.yMax : v.fold(0.0, (a, b) => a + b);
+  // Its top as the dial's: the axis's top where set, else the values'
+  // total where there are several, else a hundred (found making the
+  // Charts canvas: one value of 84 read 100%).
+  var total = e.yMax.isFinite && e.yMax > 0
+      ? e.yMax
+      : v.length > 1
+          ? v.fold(0.0, (a, b) => a + b)
+          : 100.0;
   if (total <= 0) return;
   var share = (v.first / total).clamp(0.0, 1.0) *
       (e.animation.on ? reveal.clamp(0.0, 1.0) : 1.0);
