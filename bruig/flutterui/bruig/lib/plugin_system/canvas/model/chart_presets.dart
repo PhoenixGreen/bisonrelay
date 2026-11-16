@@ -189,7 +189,7 @@ SheetLink? _overTime(Picks p) {
 SheetLink? _pair(Picks p) =>
     p.numbers.length < 2 ? null : p.link(p.numbers.first, [p.numbers[1]]);
 
-final chartKinds = <ChartKind>[
+final chartKinds = _withWays(<ChartKind>[
   ChartKind(
       ChartType.bar,
       "Columns",
@@ -251,7 +251,11 @@ final chartKinds = <ChartKind>[
             _trackBars),
         ChartPreset("Scale and grid", "Hairlines and a scale; no value labels.",
             [_a], _barsScale),
-        ChartPreset("Top five", "Only the first five.", [_a, _i], _topFive),
+        ChartPreset(
+            "Top five and the rest",
+            "The first five, then everyone else added up as one grey bar.",
+            [_a, _i],
+            _topFive),
         ChartPreset(
             "Bar race",
             "Plays through the dates: bars swap places, the date large behind.",
@@ -786,7 +790,7 @@ final chartKinds = <ChartKind>[
             (e, p) => _mode(e, "butterfly", values: true, grow: true)),
       ],
       isNew: true),
-];
+]);
 
 SheetLink? _twoNumbers(Picks p) =>
     p.numbers.length < 2 ? null : p.link(p.labels, p.numbers.take(2).toList());
@@ -926,8 +930,16 @@ ChartElement _barsScale(ChartElement e, Picks p) => _plain(e).copyWith(
     showValues: false,
     barRadius: 0,
     animation: _arrive(ChartAnimationPreset.wipe));
-ChartElement _topFive(ChartElement e, Picks p) =>
-    _relink(_rankedList(e, p), (l) => l.copyWith(top: 5));
+ChartElement _topFive(ChartElement e, Picks p) {
+  var made =
+      _relink(_rankedList(e, p), (l) => l.copyWith(top: 5, others: true));
+  // The rest in grey: a rule picking out just that one bar.
+  return made.copyWith(highlights: [
+    const ChartHighlight(
+        reach: ChartReach.one, who: "All others", colour: Color(0xFFB0B0B0)),
+  ]);
+}
+
 ChartElement _barRace(ChartElement e, Picks p) {
   if (p.dates.isEmpty) return e;
   var v = p.numbers.first;
@@ -1246,3 +1258,140 @@ ChartElement reread(ChartElement c, DataSheet sheet) {
       data: chartDataOf(sheet, link, c.data,
           type: c.type, highlights: chartLights(c.highlights, sheet)));
 }
+
+/// _way is [e] drawn another of its kind's ways (ChartDesign.mode).
+ChartElement _way(ChartElement e, String m) =>
+    e.copyWith(design: e.design.copyWith(mode: m));
+
+/// _waysOf is the starting designs the older kinds gained with their other
+/// ways (Ken, 2026-11-17: "do the remaining designs"), after their own.
+final Map<ChartType, List<ChartPreset>> _waysOf = {
+  ChartType.bar: [
+    ChartPreset(
+        "Histogram",
+        "How the numbers spread: counted into eight ranges, columns touching.",
+        [_a],
+        (e, p) => _relink(_cleanColumns(e, p), (l) => l.copyWith(bins: 8))
+            .copyWith(barGap: 0.04, showValues: true)),
+  ],
+  ChartType.funnel: [
+    ChartPreset(
+        "Bars from one edge",
+        "Stages as bars on one baseline, so lengths compare; the share kept beside.",
+        [_a],
+        (e, p) => _way(_funnel(e, p), "bars")),
+    ChartPreset(
+        "What was lost",
+        "Each stage over a pale ghost of the one before.",
+        [_a, _v],
+        (e, p) => _way(_funnelTurn(e, p), "ghost")),
+  ],
+  ChartType.bubbles: [
+    ChartPreset(
+        "In a row",
+        "Circles side by side on one floor, so sizes compare.",
+        [_i, _a],
+        (e, p) => _way(_bubbles(e, p), "row")),
+  ],
+  ChartType.timeline: [
+    ChartPreset(
+        "Down the page",
+        "Events down a line at the left, for long stories.",
+        [_i, _v],
+        (e, p) => _way(_timelineTurn(e, p), "down")),
+  ],
+  ChartType.gauge: [
+    ChartPreset("Needle over bands", "A needle over three graduated bands.",
+        [_i], (e, p) => _way(_gaugeSweep(e, p), "bands")),
+    ChartPreset("Dial", "Open at the bottom with ticks: a speedometer.",
+        [_i, _v], (e, p) => _way(_gaugeSweep(e, p), "dial")),
+  ],
+  ChartType.pictogram: [
+    ChartPreset(
+        "A row each",
+        "Icons in a row per category, compared like bars.",
+        [_a, _i],
+        (e, p) => _way(_pictoPeople(e, p), "rows")),
+    ChartPreset("One big icon", "A large figure filling up to the first share.",
+        [_i, _v], (e, p) => _way(_pictoPeople(e, p), "big")),
+  ],
+  ChartType.sankey: [
+    ChartPreset("Follow the largest", "Every flow faded but the largest.",
+        [_a, _v], (e, p) => _sankey(e, p).copyWith(highlights: [_top(1)])),
+  ],
+  ChartType.treemap: [
+    ChartPreset(
+        "Up and down",
+        "Sized by the first number, coloured by whether the second is up or down.",
+        [_a],
+        (e, p) => _way(_treemap(e, p), "market"),
+        needs: (p) =>
+            p.numbers.length < 2 ? "a second column: the change" : null),
+  ],
+  ChartType.shareBar: [
+    ChartPreset("From the middle", "Two sides growing out from a centre line.",
+        [_a, _v], (e, p) => _way(_shareWipe(e, p), "middle")),
+    ChartPreset(
+        "With the halfway mark",
+        "A line at the halfway mark and how many make a majority.",
+        [_a, _v],
+        (e, p) => _way(_shareBar(e, p), "majority")),
+  ],
+  ChartType.lollipop: [
+    ChartPreset(
+        "From the average",
+        "Stems out from an average line, above and below in two colours.",
+        [_a],
+        (e, p) => _way(_lollipop(e, p), "average")),
+    ChartPreset("Value in the dot", "Large dots with the value inside.",
+        [_i, _v], (e, p) => _way(_lollipop(e, p), "big")),
+  ],
+  ChartType.slope: [
+    ChartPreset(
+        "Rank to rank",
+        "Places rather than values: who went up the table.",
+        [_a, _v],
+        (e, p) => _way(_slope(e, p), "rank")),
+  ],
+  ChartType.radialBar: [
+    ChartPreset(
+        "Rings",
+        "Full rings on pale tracks, each a share of the largest.",
+        [_i, _v],
+        (e, p) => _way(_radialSweep(e, p), "rings")),
+    ChartPreset(
+        "Bars round a circle",
+        "Bars standing out from a centre circle.",
+        [_i, _v],
+        (e, p) => _way(_radial(e, p), "bars")),
+    ChartPreset("Rose", "A wedge each, its area matching its value.", [_a, _i],
+        (e, p) => _way(_radial(e, p), "rose")),
+  ],
+  ChartType.radar: [
+    ChartPreset("Dots on spokes", "Values as dots, no filled area to mislead.",
+        [_a], (e, p) => _way(_radar(e, p), "dots")),
+  ],
+  ChartType.waffle: [
+    ChartPreset("Dots", "Circles instead of squares, for a rounded look.", [_i],
+        (e, p) => _way(_waffle(e, p), "dots")),
+    ChartPreset("Rising", "Filling from the bottom up, like a column.",
+        [_i, _v], (e, p) => _way(_waffleFill(e, p), "rising")),
+  ],
+  ChartType.candlestick: [
+    ChartPreset("Print mono", "Up candles hollow, down solid, in one ink.",
+        [_a], (e, p) => _way(_candleClassic(e, p), "mono")),
+    ChartPreset("Price bars", "A tick each side for open and close.", [_a],
+        (e, p) => _way(_candleClassic(e, p), "bars")),
+    ChartPreset("Simple range", "High to low as a bar, the close as a dot.",
+        [_v, _i], (e, p) => _way(_candleClean(e, p), "range")),
+  ],
+};
+
+List<ChartKind> _withWays(List<ChartKind> kinds) => [
+      for (var k in kinds)
+        _waysOf[k.type] == null
+            ? k
+            : ChartKind(k.type, k.name, k.use, k.questions, k.reads, k.needs,
+                [...k.presets, ..._waysOf[k.type]!],
+                caveat: k.caveat, isNew: k.isNew),
+    ];

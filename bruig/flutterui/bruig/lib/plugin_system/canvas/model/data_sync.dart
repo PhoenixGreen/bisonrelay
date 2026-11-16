@@ -108,6 +108,9 @@ ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
   if (link.split >= 0 && link.split < link.range.cols) {
     return _splitData(sheet, link, was, type, highlights);
   }
+  if (link.bins > 0 && link.series.isNotEmpty) {
+    return _binnedData(sheet, link, was);
+  }
   var (data, valuesOf) = link.charted
       ? _chartedData(sheet, link, was, type)
       : (
@@ -1362,6 +1365,11 @@ Color scaleColour(double v, double lo, double hi) {
         if (wanted.contains(p.$1)) p
     ];
   }
+  // Everyone after the top, added up as one more (SheetLink.others).
+  var rest =
+      link.others && link.top > 0 && !link.bottom && items.length > link.top
+          ? items.sublist(link.top)
+          : const <(String, List<int>)>[];
   var shownItems = <(String, List<int>)?>[];
   for (var (i, p) in placed.indexed) {
     if (link.gap &&
@@ -1374,7 +1382,13 @@ Color scaleColour(double v, double lo, double hi) {
   }
 
   List<double> columnValues(int col) => [
-        for (var it in shownItems) it == null ? double.nan : valueOf(it.$2, col)
+        for (var it in shownItems)
+          it == null ? double.nan : valueOf(it.$2, col),
+        if (rest.isNotEmpty)
+          rest.fold(0.0, (a, it) {
+            var v = valueOf(it.$2, col);
+            return v.isNaN ? a : a + v;
+          }),
       ];
   var series = <ChartSeries>[
     for (var (i, col) in link.series.indexed)
@@ -1425,11 +1439,49 @@ Color scaleColour(double v, double lo, double hi) {
 
   return (
     ChartData(
-        categories: [for (var it in shownItems) it?.$1 ?? "…"],
+        categories: [
+          for (var it in shownItems) it?.$1 ?? "…",
+          if (rest.isNotEmpty) "All others",
+        ],
         series: series,
-        marks: marks,
+        marks: marks.isEmpty || rest.isEmpty ? marks : [...marks, null],
         at: shownAt),
     columnValues
+  );
+}
+
+/// _binnedData is a histogram (SheetLink.bins): the first series' numbers
+/// counted into equal ranges, a column a range.
+ChartData _binnedData(DataSheet sheet, SheetLink link, ChartData was) {
+  var g = link.range, c = g.c0 + link.series.first;
+  var values = [
+    for (var r = g.r0 + 1; r <= g.r1; r++)
+      if (sheetValue(sheet, r, c) case double v) v
+  ];
+  if (values.isEmpty) return const ChartData();
+  var lo = values.reduce(math.min), hi = values.reduce(math.max);
+  var n = link.bins.clamp(1, 60);
+  if (hi - lo <= 0) hi = lo + 1;
+  var width = (hi - lo) / n;
+  var counts = List.filled(n, 0.0);
+  for (var v in values) {
+    counts[((v - lo) / width).floor().clamp(0, n - 1)]++;
+  }
+  String at(double v) => numText(double.parse(v.toStringAsFixed(2)));
+  var name = sheetShown(sheet, g.r0, c);
+  return ChartData(
+    categories: [
+      for (var i = 0; i < n; i++)
+        "${at(lo + width * i)}–${at(lo + width * (i + 1))}"
+    ],
+    series: [
+      was.series.isNotEmpty
+          ? was.series.first.copyWith(name: "How many: $name", values: counts)
+          : ChartSeries(
+              name: "How many: $name",
+              color: chartPalette.first,
+              values: counts),
+    ],
   );
 }
 

@@ -151,6 +151,14 @@ class SheetLink {
   /// to the club in it, so it goes on reading 1, 2, 3.
   final bool numbering;
 
+  /// others adds, after the first [top], one more item -- "All others" --
+  /// adding up the rest (a top ten and everyone else).
+  final bool others;
+
+  /// bins draws a histogram: the first series' numbers counted into this
+  /// many equal ranges. 0, none.
+  final int bins;
+
   const SheetLink(this.sheet, this.range,
       {this.labels = 0,
       this.series = const [],
@@ -167,7 +175,9 @@ class SheetLink {
       this.through = -1,
       this.at = "",
       this.split = -1,
-      this.numbering = false});
+      this.numbering = false,
+      this.others = false,
+      this.bins = 0});
 
   /// plain is whether it shows its range's rows as they are.
   bool get plain =>
@@ -184,6 +194,8 @@ class SheetLink {
       colourBy >= 0 ||
       places.trim().isNotEmpty ||
       (bottom && top > 0) ||
+      (others && top > 0) ||
+      bins > 0 ||
       split >= 0;
 
   SheetLink copyWith(
@@ -204,7 +216,9 @@ class SheetLink {
           int? through,
           String? at,
           int? split,
-          bool? numbering}) =>
+          bool? numbering,
+          bool? others,
+          int? bins}) =>
       SheetLink(sheet ?? this.sheet, range ?? this.range,
           labels: labels ?? this.labels,
           series: series ?? this.series,
@@ -221,7 +235,9 @@ class SheetLink {
           through: through ?? this.through,
           at: at ?? this.at,
           split: split ?? this.split,
-          numbering: numbering ?? this.numbering);
+          numbering: numbering ?? this.numbering,
+          others: others ?? this.others,
+          bins: bins ?? this.bins);
 
   Map<String, dynamic> toJson() => {
         "id": sheet,
@@ -242,6 +258,8 @@ class SheetLink {
         if (at.isNotEmpty) "at": at,
         if (split >= 0) "split": split,
         if (numbering) "numbering": true,
+        if (others) "others": true,
+        if (bins > 0) "bins": bins,
       };
 
   static SheetLink? fromJson(Object? j) {
@@ -269,7 +287,9 @@ class SheetLink {
         through: n("through", -1),
         at: j["at"] is String ? j["at"] as String : "",
         split: n("split", -1),
-        numbering: j["numbering"] == true);
+        numbering: j["numbering"] == true,
+        others: j["others"] == true,
+        bins: n("bins", 0));
   }
 
   @override
@@ -292,7 +312,9 @@ class SheetLink {
       other.through == through &&
       other.at == at &&
       other.split == split &&
-      other.numbering == numbering;
+      other.numbering == numbering &&
+      other.others == others &&
+      other.bins == bins;
 
   @override
   int get hashCode => Object.hash(
@@ -313,7 +335,9 @@ class SheetLink {
       through,
       at,
       split,
-      numbering);
+      numbering,
+      others,
+      bins);
 }
 
 /// DataSheet is one sheet: its name and what was typed in each cell, row by

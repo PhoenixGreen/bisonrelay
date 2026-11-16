@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:flutter/painting.dart';
@@ -207,5 +208,50 @@ void main() {
         }
       }
     }
+  });
+
+  // Ken, 2026-11-17: the remaining designs -- every way of every kind
+  // drawn; the top and the rest; a histogram.
+  test("every way of every kind draws, arriving and at rest", () {
+    var all = picksOf(sheet, range, [0, 1, 2, 3, 4, 5, 6],
+        const [2, 3, 4, 5, 6], const [0], const [1]);
+    for (var k in chartKinds) {
+      var ways = chartModes[k.type.name];
+      if (ways == null) continue;
+      for (var pr in k.presets) {
+        var chart = presetChart(k, pr, all, like);
+        if (chart == null) continue;
+        for (var (m, _) in ways) {
+          var c = chart.copyWith(design: chart.design.copyWith(mode: m));
+          for (var reveal in [1.0, 0.4]) {
+            var recorder = ui.PictureRecorder();
+            paintChart(
+                ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 480, 300), c,
+                reveal: reveal);
+            recorder.endRecording().dispose();
+          }
+        }
+      }
+    }
+  });
+
+  test("the top five and everyone else; a histogram's counts", () {
+    var link = const SheetLink("s", CellRange(0, 0, 6, 6),
+        labels: 1, series: [2], sortBy: 2, top: 2, others: true);
+    var d = chartDataOf(sheet, link, const ChartData());
+    expect(d.categories.last, "All others");
+    expect(d.categories, hasLength(3));
+    var shown = d.series.single.values;
+    // Each club once (its latest points): Arsenal 6, Chelsea 4, and Spurs'
+    // 3 as everyone else.
+    expect(d.categories.take(2), ["Arsenal", "Chelsea"]);
+    expect(shown, [6, 4, 3], reason: "nothing lost");
+    expect(SheetLink.fromJson(link.toJson()), link);
+    var bins = chartDataOf(
+        sheet,
+        link.copyWith(top: 0, others: false, bins: 3, sortBy: -1),
+        const ChartData());
+    expect(bins.categories, hasLength(3));
+    expect(bins.series.single.values.fold(0.0, (a, b) => a + b), 6);
   });
 }

@@ -805,6 +805,12 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     }
 
     var paint = Paint()..color = colour;
+    // Its way (ChartDesign.mode): candles; print mono (up hollow, down
+    // solid, in one ink); price bars (a tick each side for open and
+    // close); or a simple range, high to low with a dot at the close.
+    var way = modeOf(e.design, "candlestick");
+    if (way == "mono")
+      paint.color = e.labelSpec.color.withValues(alpha: paint.color.a);
     var top = y(ohlc.top);
     var bottom = y(ohlc.bottom);
     var middle = (top + bottom) / 2;
@@ -819,16 +825,64 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       bottom = middle + (bottom - middle) * arrived;
     }
 
-    canvas.drawRect(
-        Rect.fromLTRB(centre - wickWidth / 2, wickTop, centre + wickWidth / 2,
+    notePart(
+        ChartPartKind.mark,
+        Rect.fromLTRB(centre - bodyWidth / 2, wickTop, centre + bodyWidth / 2,
             wickBottom),
-        paint);
+        series: 0,
+        index: i);
+    if (way == "range") {
+      var thick = math.max(2.0, bodyWidth * 0.5);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTRB(
+                  centre - thick / 2, wickTop, centre + thick / 2, wickBottom),
+              Radius.circular(thick / 2)),
+          Paint()..color = e.labelSpec.color.withValues(alpha: 0.25));
+      var close = y(ohlc.close);
+      canvas.drawCircle(Offset(centre, middle + (close - middle) * arrived),
+          math.max(2.5, thick * 0.6), paint);
+    } else if (way == "bars") {
+      canvas.drawRect(
+          Rect.fromLTRB(centre - wickWidth / 2, wickTop, centre + wickWidth / 2,
+              wickBottom),
+          paint);
+      var tick = Paint()
+        ..color = paint.color
+        ..strokeWidth = wickWidth * 1.4;
+      var open = y(ohlc.open), close = y(ohlc.close);
+      canvas.drawLine(
+          Offset(centre - bodyWidth / 2, middle + (open - middle) * arrived),
+          Offset(centre, middle + (open - middle) * arrived),
+          tick);
+      canvas.drawLine(
+          Offset(centre, middle + (close - middle) * arrived),
+          Offset(centre + bodyWidth / 2, middle + (close - middle) * arrived),
+          tick);
+    } else {
+      canvas.drawRect(
+          Rect.fromLTRB(centre - wickWidth / 2, wickTop, centre + wickWidth / 2,
+              wickBottom),
+          paint);
 
-    var body = Rect.fromLTRB(centre - bodyWidth / 2, top,
-        centre + bodyWidth / 2, math.max(bottom, top + wickWidth));
-    var r = math.min(e.barRadius, math.min(body.width, body.height) / 2);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(body, Radius.circular(math.max(0, r))), paint);
+      var body = Rect.fromLTRB(centre - bodyWidth / 2, top,
+          centre + bodyWidth / 2, math.max(bottom, top + wickWidth));
+      var r = math.min(e.barRadius, math.min(body.width, body.height) / 2);
+      if (way == "mono" && ohlc.rose) {
+        // Up candles hollow: an outline on the ground.
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                body.deflate(wickWidth / 2), Radius.circular(math.max(0, r))),
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = wickWidth
+              ..color = paint.color);
+      } else {
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(body, Radius.circular(math.max(0, r))),
+            paint);
+      }
+    }
 
     if (e.showValues) {
       // Only the close is written.

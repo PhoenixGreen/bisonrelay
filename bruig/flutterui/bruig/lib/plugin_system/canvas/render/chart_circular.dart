@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_variants.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -17,6 +18,8 @@ import 'package:flutter/painting.dart';
 
 /// paintCircular draws the pie, donut, radial-bar and radar types.
 void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
+  // Another of its ways (chart_variants.dart).
+  if (paintVariant(canvas, area, e, reveal)) return;
   var side = math.min(area.width, area.height);
   var box = Rect.fromCenter(center: area.center, width: side, height: side)
       .deflate(side * 0.06);

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_extra.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_variants.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -22,7 +23,9 @@ import 'package:flutter/painting.dart';
 /// paintInfographic draws [e], one of the infographic types, in [area].
 void paintInfographic(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
-  if (e.data.series.isEmpty || e.data.categories.isEmpty) return;
+    if (e.data.series.isEmpty || e.data.categories.isEmpty) return;
+  // Another of its ways (chart_variants.dart).
+  if (paintVariant(canvas, area, e, reveal)) return;
   switch (e.type) {
     case ChartType.gauge:
       _gauge(canvas, area, e, reveal);

@@ -166,6 +166,47 @@ const Map<String, List<(String, String)>> chartModes = {
     ("circles", "Sized circles")
   ],
   "pyramid": [("pyramid", "Pyramid"), ("butterfly", "Butterfly")],
+  // The older kinds' other ways (chart_variants.dart, and candles in
+  // chart_cartesian.dart); each one's first is its own painter.
+  "funnel": [
+    ("tapered", "Tapered"),
+    ("bars", "Bars from one edge"),
+    ("ghost", "What was lost")
+  ],
+  "bubbles": [("packed", "Packed"), ("row", "In a row")],
+  "timeline": [("line", "Along a line"), ("down", "Down the page")],
+  "gauge": [("arc", "Arc"), ("bands", "Needle over bands"), ("dial", "Dial")],
+  "pictogram": [
+    ("icons", "Icons"),
+    ("rows", "A row each"),
+    ("big", "One big icon")
+  ],
+  "treemap": [("tiles", "Tiles"), ("market", "Up and down")],
+  "shareBar": [
+    ("bar", "One bar"),
+    ("middle", "From the middle"),
+    ("majority", "With the halfway mark")
+  ],
+  "lollipop": [
+    ("ranked", "Ranked"),
+    ("average", "From the average"),
+    ("big", "Value in the dot")
+  ],
+  "slope": [("values", "Values"), ("rank", "Rank to rank")],
+  "radialBar": [
+    ("arcs", "Arcs"),
+    ("rings", "Rings"),
+    ("bars", "Bars round a circle"),
+    ("rose", "Rose")
+  ],
+  "radar": [("filled", "Filled"), ("dots", "Dots on spokes")],
+  "waffle": [("squares", "Squares"), ("dots", "Dots"), ("rising", "Rising")],
+  "candlestick": [
+    ("candles", "Candles"),
+    ("mono", "Print mono"),
+    ("bars", "Price bars"),
+    ("range", "Simple range")
+  ],
 };
 
 /// modeOf is [design]'s way for a kind named [type], its first when unset.

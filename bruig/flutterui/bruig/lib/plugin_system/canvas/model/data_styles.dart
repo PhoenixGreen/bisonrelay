@@ -213,7 +213,13 @@ ChartElement chartInStyle(ChartElement e, DataStyle s, {bool panel = true}) {
         ? s.round
         : e.barRadius,
     highlights: [
-      for (var h in e.highlights) h.copyWith(colour: s.accent),
+      // Only those in the usual highlight colour or the last style's
+      // accent: one chosen on purpose (the rest in grey) keeps its own.
+      for (var h in e.highlights)
+        h.colour == const Color(0xFFF2B33D) ||
+                h.colour == dataStyleNamed(e.style)?.accent
+            ? h.copyWith(colour: s.accent)
+            : h,
     ],
     data: e.data.copyWith(series: [
       for (var (i, x) in e.data.series.indexed)
