@@ -1252,6 +1252,137 @@ Picks picksOf(DataSheet sheet, CellRange range, List<int> picks,
   ]);
 }
 
+/// KindFit is how well a kind suits the ticked columns: [score] 1 for
+/// well, less where it reads badly, and [why] says so in plain words (Ken,
+/// 2026-11-17, the improvements report's third item: the gallery offered a
+/// gauge of eight clubs and a pie of twenty as readily as bars).
+class KindFit {
+  final double score;
+  final String? why;
+  const KindFit(this.score, [this.why]);
+  static const good = KindFit(1);
+  bool get poor => score < 0.6;
+}
+
+const _parts = {
+  ChartType.pie,
+  ChartType.donut,
+  ChartType.shareBar,
+  ChartType.parliament,
+};
+
+/// kindFit is how well [k] suits [p]'s ticked columns (see KindFit). Only
+/// for a kind that can read them.
+KindFit kindFit(ChartKind k, Picks p) {
+  var g = p.range;
+  var rows = g.rows - 1;
+  var numbers = p.numbers;
+  List<double> col(int c) => [
+        for (var r = g.r0 + 1; r <= g.r1; r++)
+          if (sheetValue(p.sheet, r, g.c0 + c) case double v) v
+      ];
+  var first = numbers.isEmpty ? const <double>[] : col(numbers.first);
+  var below = first.any((v) => v < 0);
+  // A long sheet (dates and names ticked) is read at its latest date: as
+  // many rows as names.
+  if (p.dates.isNotEmpty && p.names.isNotEmpty) {
+    var seen = <String>{};
+    for (var r = g.r0 + 1; r <= g.r1; r++) {
+      seen.add(sheetShown(p.sheet, r, g.c0 + p.names.first));
+    }
+    if (k.questions.contains(ChartQuestion.time) == false) rows = seen.length;
+  }
+  switch (k.type) {
+    case var t when _parts.contains(t):
+      if (below) return const KindFit(0.2, "Shares can't be below zero.");
+      if (rows > 6) {
+        return KindFit(
+            0.3,
+            "$rows parts: past six they are hard to tell "
+            "apart. Bars read better.");
+      }
+    case ChartType.waffle || ChartType.pictogram:
+      if (below) return const KindFit(0.2, "Shares can't be below zero.");
+      if (rows > 4) {
+        return KindFit(
+            0.4,
+            "$rows parts in one picture: best with two to "
+            "four.");
+      }
+    case ChartType.gauge:
+      if (rows > 1) {
+        return KindFit(0.4, "Shows one number: the first of $rows.");
+      }
+    case ChartType.bigNumber:
+      if (rows > 1 && p.dates.isEmpty) {
+        return KindFit(0.5, "Shows one number, the last of $rows.");
+      }
+    case ChartType.radar:
+      if (rows < 3) return const KindFit(0.2, "Needs three or more spokes.");
+      if (rows > 10) return KindFit(0.4, "$rows spokes are hard to read.");
+    case ChartType.line || ChartType.area:
+      if (rows < 3) return KindFit(0.4, "Only $rows dates to join.");
+    case ChartType.bar:
+      if (rows > 15) {
+        return KindFit(0.6, "$rows columns: Bars fit long lists better.");
+      }
+    case ChartType.bubbles:
+      if (below) return const KindFit(0.2, "Sizes can't be below zero.");
+      if (rows > 25) return KindFit(0.5, "$rows circles: hard to compare.");
+    case ChartType.treemap:
+      if (below) return const KindFit(0.2, "Sizes can't be below zero.");
+      if (rows < 3) return const KindFit(0.5, "Few parts for a treemap.");
+    case ChartType.funnel:
+      var falls = 0;
+      for (var i = 1; i < first.length; i++) {
+        if (first[i] <= first[i - 1]) falls++;
+      }
+      if (first.length > 1 && falls * 2 < first.length - 1) {
+        return const KindFit(0.4, "Its numbers don't fall stage by stage.");
+      }
+    case ChartType.timeline:
+      var years = first.isNotEmpty &&
+          first.every((v) => v == v.roundToDouble() && v > 1000 && v < 3000);
+      if (!years && p.dates.isEmpty) {
+        return const KindFit(0.4, "Its numbers aren't years or dates.");
+      }
+    case ChartType.tileMap:
+      var codes = 0;
+      var named = p.names.isNotEmpty ? p.names.first : p.labels;
+      for (var r = g.r0 + 1; r <= g.r1; r++) {
+        if (RegExp(r"^[A-Z]{2}$")
+            .hasMatch(sheetShown(p.sheet, r, g.c0 + named).trim())) {
+          codes++;
+        }
+      }
+      if (codes * 2 < rows) {
+        return const KindFit(0.5, "Not US state codes: drawn as a grid.");
+      }
+    case ChartType.slope || ChartType.dumbbell || ChartType.pyramid:
+      if (numbers.length > 2) {
+        return KindFit(
+            0.8,
+            "Uses the first two of ${numbers.length} "
+            "columns.");
+      }
+    case ChartType.heatmap:
+      if (numbers.length < 3) {
+        return const KindFit(0.5, "Best with three or more columns.");
+      }
+    case ChartType.beeswarm:
+      if (rows < 8) return const KindFit(0.5, "Few values to spread.");
+    case ChartType.scatter:
+      if (rows < 5) return const KindFit(0.6, "Few points to relate.");
+    case ChartType.diverging:
+      if (!below) {
+        return const KindFit(0.5, "Nothing below zero to diverge.");
+      }
+    default:
+      break;
+  }
+  return KindFit.good;
+}
+
 /// presetChart is [kind]'s [preset] (and [mods]) made from [p]: a new chart
 /// of [like]'s size, reading the ticked columns, its data read. Null when
 /// the kind can't read them, or the preset needs what they lack.

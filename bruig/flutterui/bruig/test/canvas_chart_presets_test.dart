@@ -340,4 +340,28 @@ void main() {
         completion(contains(rgba(accent))));
     await expectLater(colours(flow), completion(isNot(contains(rgba(accent)))));
   });
+
+  // Ken, 2026-11-17 (the improvements report's third item): the gallery
+  // ranks kinds by how well they suit the ticked columns, and says why.
+  test("how well a kind suits the columns ticked, and why", () {
+    DataSheet sheetOf(String tsv) => DataSheet(
+        id: "f", cells: [for (var l in tsv.split("\n")) l.split("\t")]);
+    Picks pick(DataSheet s, {List<int> names = const [0]}) =>
+        picksOf(s, s.used, [0, 1], const [1], const [], names);
+    KindFit fit(ChartType t, DataSheet s) =>
+        kindFit(chartKinds.firstWhere((k) => k.type == t), pick(s));
+    var eight = sheetOf("Club\tPts\n"
+        "${[for (var i = 0; i < 8; i++) "C$i\t${20 - i}"].join("\n")}");
+    expect(fit(ChartType.horizontalBar, eight).score, 1);
+    expect(fit(ChartType.pie, eight).poor, isTrue);
+    expect(fit(ChartType.pie, eight).why, contains("8 parts"));
+    expect(fit(ChartType.gauge, eight).why, contains("first of 8"));
+    expect(fit(ChartType.funnel, eight).score, 1, reason: "they fall");
+    var rising = sheetOf("Stage\tN\nA\t1\nB\t5\nC\t9");
+    expect(fit(ChartType.funnel, rising).poor, isTrue);
+    expect(fit(ChartType.tileMap, eight).why, contains("grid"));
+    var signed = sheetOf("Club\tChange\nA\t5\nB\t-3\nC\t2");
+    expect(fit(ChartType.pie, signed).why, contains("below zero"));
+    expect(fit(ChartType.diverging, signed).score, 1);
+  });
 }

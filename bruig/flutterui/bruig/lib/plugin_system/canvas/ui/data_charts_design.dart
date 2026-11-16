@@ -1113,16 +1113,28 @@ class ChartsDesignState extends State<ChartsDesign>
       for (var k in shown)
         if (k.reads(p) == null) k
     ];
-    // The best fit for the ticked columns first, as the suggestions had it.
-    fit.sort(
-        (a, b) => (a.type == best ? 0 : 1).compareTo(b.type == best ? 0 : 1));
+    // The best fit for the ticked columns first, as the suggestions had it;
+    // then by how well each suits them (kindFit), a poor one saying why.
+    var suits = {for (var k in fit) k.type: kindFit(k, p)};
+    var order = {for (var (i, k) in fit.indexed) k.type: i};
+    fit.sort((a, b) {
+      var first = (a.type == best ? 0 : 1).compareTo(b.type == best ? 0 : 1);
+      if (first != 0) return first;
+      var bySuit = suits[b.type]!.score.compareTo(suits[a.type]!.score);
+      return bySuit != 0 ? bySuit : order[a.type]!.compareTo(order[b.type]!);
+    });
     Widget card(ChartKind k, bool fits) {
       var preset = k.presets.firstWhere(
           (pr) => _galleryUse == null || pr.uses.contains(_galleryUse),
           orElse: () => k.presets.first);
       var chart = fits ? _galleryChart(k, preset) : null;
+      var suit = suits[k.type] ?? KindFit.good;
       return Opacity(
-        opacity: fits ? 1 : 0.45,
+        opacity: !fits
+            ? 0.45
+            : suit.poor
+                ? 0.7
+                : 1,
         child: Material(
           color: colors.surfaceContainerHigh,
           shape: RoundedRectangleBorder(
@@ -1176,14 +1188,17 @@ class ChartsDesignState extends State<ChartsDesign>
                       if (k.isNew)
                         _badge(context, "New", const Color(0xFFFF7A59)),
                     ]),
-                    Text(fits ? k.use : "Needs ${k.needs}",
+                    Text(!fits ? "Needs ${k.needs}" : suit.why ?? k.use,
+                        key: ValueKey("chartsKindSays-${k.type.name}"),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        // A warning in amber: the theme's tertiary is a
+                        // panel fill, and words in it vanish.
                         style: TextStyle(
                             fontSize: 11.5,
-                            color: fits
+                            color: fits && suit.why == null
                                 ? colors.onSurfaceVariant
-                                : colors.tertiary)),
+                                : const Color(0xFFD99A3E))),
                   ]),
             ),
           ),
