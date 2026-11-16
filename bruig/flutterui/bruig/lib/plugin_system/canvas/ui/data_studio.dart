@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_reshape.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_table_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -1068,6 +1069,16 @@ class _DataStudioState extends State<DataStudio> {
           rule(),
           // What on the canvas is made from it.
           part(_madeFrom(context, s, picked)),
+          rule(),
+          // Another sheet made from this one, or what this one is made from
+          // (data_reshape.dart): last, as the least often wanted.
+          part([
+            SheetReshapePart(
+                key: const ValueKey("dataStudioReshapePart"),
+                controller: c,
+                sheet: s,
+                onOpen: (id) => setState(() => _sheet = id)),
+          ]),
         ]),
       ),
     );

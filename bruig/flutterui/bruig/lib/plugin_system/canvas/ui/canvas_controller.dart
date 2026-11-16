@@ -130,6 +130,7 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/sheet_reshape.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
 import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/score_roll.dart';
@@ -1774,6 +1775,9 @@ class CanvasController extends ChangeNotifier {
         designedAt: (e, f) => designedNow(e, f, designing));
     // Each Data element shows its sheet, and what one changes of its own
     // data goes into the sheet for the rest (see data_sync.dart).
+    // A sheet made from another follows it, before its views follow it
+    // (sheet_reshape.dart).
+    next = sheetsMade(_document, next);
     next = dataSynced(_document, next);
 
     // A picture's frame takes in what was put past it once a change is made,

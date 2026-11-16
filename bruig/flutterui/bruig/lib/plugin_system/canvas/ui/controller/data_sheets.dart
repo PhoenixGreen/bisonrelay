@@ -64,6 +64,24 @@ extension CanvasDataSheets on CanvasController {
     return id;
   }
 
+  /// addMadeSheet puts in a new sheet made from another as [made] says
+  /// (sheet_reshape.dart), named for what it is, and answers its id. It
+  /// follows its source from then on.
+  String addMadeSheet(SheetMade made, {String? name}) {
+    var from = sheetById(made.from);
+    if (from == null) return "";
+    var other = made.kind == ReshapeKind.join ? sheetById(made.other) : null;
+    var mine = _interaction == null;
+    if (mine) beginInteraction();
+    var id = addSheet(
+        name: name ?? made.says(from, other),
+        cells: reshaped(made, from, other));
+    var s = sheetById(id)!;
+    setSheet(s.copyWith(made: made));
+    if (mine) endInteraction();
+    return id;
+  }
+
   /// setSheetSource connects sheet [id] to [source] (or, typed, disconnects
   /// it, keeping the numbers it has), fetching nothing.
   void setSheetSource(String id, DataSource source) {

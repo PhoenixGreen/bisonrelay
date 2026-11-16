@@ -50,7 +50,8 @@ void main() {
     expect(crowded.shows(1, 20), isFalse);
   });
 
-  test("a scatter of close points draws its names through the placer", () async {
+  test("a scatter of close points draws its names through the placer",
+      () async {
     var names = [for (var i = 0; i < 8; i++) "Club $i"];
     var c = ChartElement(const ElementBase(id: "s", width: 300, height: 200),
         type: ChartType.scatter,

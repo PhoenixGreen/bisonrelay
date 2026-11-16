@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
+import 'package:bruig/plugin_system/canvas/model/sheet_reshape.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
@@ -386,6 +387,10 @@ class DataSheet {
   /// show. See [shownRows].
   final int gridRows, gridColumns;
 
+  /// made is how it is made from another sheet (sheet_reshape.dart): made
+  /// again when that one changes. Null for a sheet typed in or connected.
+  final SheetMade? made;
+
   const DataSheet(
       {required this.id,
       this.name = "Sheet",
@@ -397,7 +402,8 @@ class DataSheet {
       this.spotlight = "",
       this.spotlightColour = const Color(0xFFF2B33D),
       this.gridRows = defaultGridRows,
-      this.gridColumns = defaultGridColumns});
+      this.gridColumns = defaultGridColumns,
+      this.made});
 
   static const int defaultGridRows = 40, defaultGridColumns = 26;
 
@@ -433,7 +439,9 @@ class DataSheet {
           String? spotlight,
           Color? spotlightColour,
           int? gridRows,
-          int? gridColumns}) =>
+          int? gridColumns,
+          SheetMade? made,
+          bool unmade = false}) =>
       DataSheet(
           id: id,
           name: name ?? this.name,
@@ -445,7 +453,8 @@ class DataSheet {
           spotlight: spotlight ?? this.spotlight,
           spotlightColour: spotlightColour ?? this.spotlightColour,
           gridRows: gridRows ?? this.gridRows,
-          gridColumns: gridColumns ?? this.gridColumns);
+          gridColumns: gridColumns ?? this.gridColumns,
+          made: unmade ? null : made ?? this.made);
 
   /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
   /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
@@ -511,6 +520,7 @@ class DataSheet {
         if (spotlight.isNotEmpty) "spotlightColour": spotlightColour.toARGB32(),
         if (gridRows != defaultGridRows) "gridRows": gridRows,
         if (gridColumns != defaultGridColumns) "gridColumns": gridColumns,
+        if (made != null) "made": made!.toJson(),
       };
 
   static DataSheet? fromJson(Object? j) {
@@ -547,6 +557,7 @@ class DataSheet {
         gridColumns: j["gridColumns"] is int
             ? math.max(1, j["gridColumns"] as int)
             : defaultGridColumns,
+        made: SheetMade.fromJson(j["made"]),
         source: j["source"] is Map<String, dynamic>
             ? DataSource.fromJson(j["source"] as Map<String, dynamic>)
             : const DataSource(),
