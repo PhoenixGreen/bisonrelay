@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_cartesian.dart';
@@ -70,14 +71,15 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   var floating = e.floatingLabels;
   if (!floating) {
     var was = area;
-    area = _flowLabel(canvas, area, body, e.title, e.titleBox, e.titleSpec);
+    area = _flowLabel(
+        canvas, area, body, liveWords(data, e.title), e.titleBox, e.titleSpec);
     if (area.top > was.top) {
       notePart(ChartPartKind.title,
           Rect.fromLTRB(was.left, was.top, was.right, area.top));
     }
     was = area;
-    area = _flowLabel(canvas, area, body, e.description, e.descriptionBox,
-        descriptionSpec(e));
+    area = _flowLabel(canvas, area, body, liveWords(data, e.description),
+        e.descriptionBox, descriptionSpec(e));
     if (area.top > was.top) {
       notePart(ChartPartKind.description,
           Rect.fromLTRB(was.left, was.top, was.right, area.top));
@@ -130,12 +132,12 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   if (clipping) canvas.restore();
 
   if (floating) {
-    _placedLabel(
-        canvas, rect, e.title, e.titleBox, defaultTitlePlacement, e.titleSpec);
+    _placedLabel(canvas, rect, liveWords(data, e.title), e.titleBox,
+        defaultTitlePlacement, e.titleSpec);
     _placedLabel(
         canvas,
         rect,
-        e.description,
+        liveWords(data, e.description),
         e.descriptionBox,
         defaultDescriptionPlacement(e.titleBox, e.title.isNotEmpty),
         descriptionSpec(e));

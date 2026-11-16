@@ -333,3 +333,83 @@ class ChartNote {
   int get hashCode => Object.hash(
       kind, text, value.isNaN ? -1 : value, from, to, who, colour, off);
 }
+
+/// ChartStep is one step of a chart told in parts (prototype v6's steps):
+/// its own title, highlights, notes and date, the rest of the chart shared.
+/// On the timeline the chart moves from step to step (ChartElement.play
+/// seconds each), easing between them.
+@immutable
+class ChartStep {
+  final String name;
+  final String title;
+  final List<ChartHighlight> highlights;
+  final List<ChartNote> notes;
+
+  /// at is the date it shows, for a chart playing through dates; empty, the
+  /// last.
+  final String at;
+
+  const ChartStep({
+    this.name = "",
+    this.title = "",
+    this.highlights = const [],
+    this.notes = const [],
+    this.at = "",
+  });
+
+  ChartStep copyWith({
+    String? name,
+    String? title,
+    List<ChartHighlight>? highlights,
+    List<ChartNote>? notes,
+    String? at,
+  }) =>
+      ChartStep(
+        name: name ?? this.name,
+        title: title ?? this.title,
+        highlights: highlights ?? this.highlights,
+        notes: notes ?? this.notes,
+        at: at ?? this.at,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (name.isNotEmpty) "name": name,
+        if (title.isNotEmpty) "title": title,
+        if (highlights.isNotEmpty)
+          "highlights": [for (var h in highlights) h.toJson()],
+        if (notes.isNotEmpty) "notes": [for (var n in notes) n.toJson()],
+        if (at.isNotEmpty) "at": at,
+      };
+
+  static ChartStep? fromJson(Object? j) {
+    if (j is! Map) return null;
+    return ChartStep(
+      name: jsonString(j["name"], ""),
+      title: jsonString(j["title"], ""),
+      highlights: [
+        if (j["highlights"] case List hs)
+          for (var h in hs)
+            if (ChartHighlight.fromJson(h) case var hl?) hl,
+      ],
+      notes: [
+        if (j["notes"] case List ns)
+          for (var n in ns)
+            if (ChartNote.fromJson(n) case var note?) note,
+      ],
+      at: jsonString(j["at"], ""),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChartStep &&
+      other.name == name &&
+      other.title == title &&
+      listEquals(other.highlights, highlights) &&
+      listEquals(other.notes, notes) &&
+      other.at == at;
+
+  @override
+  int get hashCode => Object.hash(
+      name, title, Object.hashAll(highlights), Object.hashAll(notes), at);
+}

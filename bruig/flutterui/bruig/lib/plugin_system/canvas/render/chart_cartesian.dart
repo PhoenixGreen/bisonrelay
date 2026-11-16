@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
@@ -491,7 +492,7 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         canvas.drawRect(
             r, Paint()..color = note.colour.withValues(alpha: 0.18));
         if (note.text.isNotEmpty) {
-          var tp = words(note.text, note.colour);
+          var tp = words(liveWords(data, note.text), note.colour);
           tp.paint(
               canvas,
               horizontal
@@ -533,7 +534,9 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           }
           hit = Rect.fromLTRB(plot.left, y - 5, plot.right, y + 5);
         }
-        var said = note.text.isEmpty ? number(v) : "${note.text} ${number(v)}";
+        var said = note.text.isEmpty
+            ? number(v)
+            : "${liveWords(data, note.text)} ${number(v)}";
         var tp = words(said, note.colour);
         tp.paint(
             canvas,
@@ -550,7 +553,8 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         if (i < 0 || data.series.isEmpty || !data.hasValueAt(0, i)) continue;
         var f = range.fraction(data.valueAt(0, i)).clamp(0.0, 1.0);
         var tp = words(
-            note.text.isEmpty ? note.who : note.text, const Color(0xFF1D2127));
+            note.text.isEmpty ? note.who : liveWords(data, note.text),
+            const Color(0xFF1D2127));
         var at = horizontal
             ? Offset(plot.left + plot.width * f + 8,
                 plot.top + slot * (i + 0.5) - tp.height / 2)
@@ -686,7 +690,8 @@ void _axisLabels(
   for (var i = 0; i < slots; i++) {
     if (horizontal) {
       var slot = plot.height / slots;
-      var y = plot.top + slot * i;
+      // Part-way to a new place while the chart plays (ChartData.slots).
+      var y = plot.top + slot * e.data.slotAt(i);
       paintTextInBox(
           canvas,
           categories[i],
@@ -698,7 +703,7 @@ void _axisLabels(
           clip: true);
     } else {
       var slot = plot.width / slots;
-      var x = plot.left + slot * i;
+      var x = plot.left + slot * e.data.slotAt(i);
       paintTextInBox(
           canvas,
           categories[i],
@@ -881,7 +886,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         : null;
     for (var i = 0; i < slots; i++) {
       var start = (horizontal ? plot.top : plot.left) +
-          slotSize * i +
+          slotSize * e.data.slotAt(i) +
           (slotSize - barSpan) / 2 +
           (grouped ? barSize * at : 0) +
           lead;
@@ -905,7 +910,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   var labels = <(String, Rect, TextAlignSpec, Color?)>[];
   var fs = e.valueSpec.fontSize;
   for (var i = 0; i < slots; i++) {
-    var slotStart = (horizontal ? plot.top : plot.left) + slotSize * i;
+    var slotStart =
+        (horizontal ? plot.top : plot.left) + slotSize * e.data.slotAt(i);
     var inset = (slotSize - barSpan) / 2;
 
     var stackPos = 0.0, stackNeg = 0.0;

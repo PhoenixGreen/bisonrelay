@@ -24,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
@@ -1151,6 +1152,18 @@ void paintElement(
               () => paintVector(canvas, bounds, e, images));
         }
       case ChartElement e:
+        // Playing through its dates or steps (chart_play.dart): read at how
+        // long it has been since it arrived.
+        if (e.play > 0) {
+          var sheet =
+              document?.sheets.where((s) => s.id == e.sheet?.sheet).firstOrNull;
+          if (sheet != null) {
+            var since =
+                (frame + betweenFrames - (arrivalEnd(e, frameRate) ?? 0)) /
+                    frameRate;
+            e = chartPlaying(e, sheet, since);
+          }
+        }
         // How much has arrived (all, with no animation), how much has left,
         // and how far each offset series has got.
         paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,

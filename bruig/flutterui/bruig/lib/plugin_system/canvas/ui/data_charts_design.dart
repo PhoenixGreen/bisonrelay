@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -94,7 +96,13 @@ const _commonTypes = [
   ChartType.donut,
 ];
 
-class ChartsDesignState extends State<ChartsDesign> {
+class ChartsDesignState extends State<ChartsDesign>
+    with SingleTickerProviderStateMixin {
+  /// _preview plays the chart through its dates or steps on the stage, as
+  /// the canvas will once it has arrived (chart_play.dart).
+  late final AnimationController _preview = AnimationController(vsync: this)
+    ..addListener(() => setState(() {}));
+
   CanvasController get c => widget.controller;
   ChartElement get e => widget.chart;
   ChartPick _picked = ChartPick.chart;
@@ -139,8 +147,140 @@ class ChartsDesignState extends State<ChartsDesign> {
   @override
   void dispose() {
     _end();
+    _preview.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  // ---- Motion: a preview, and steps.
+
+  /// _playable is whether the chart can move: it plays through a column of
+  /// dates, or has steps.
+  bool get _playable => e.sheet!.through >= 0 || e.steps.length > 1;
+
+  /// _shown is the chart as the stage draws it: playing, while previewing.
+  ChartElement _shown() {
+    var s = _sheet;
+    if (!_preview.isAnimating || s == null) return e;
+    var playing = e.play > 0 ? e : e.copyWith(play: 1.0);
+    return chartPlaying(playing, s, _preview.value * playLength(playing, s));
+  }
+
+  void _play() {
+    var s = _sheet;
+    if (s == null) return;
+    var each = e.play > 0 ? e.play : 1.0;
+    var length = playLength(e.play > 0 ? e : e.copyWith(play: each), s);
+    if (length <= 0) return;
+    _preview.duration = Duration(milliseconds: (length * 1000).round());
+    _preview.forward(from: 0);
+  }
+
+  /// _stepsSaved is the chart's steps with the one being worked on saved
+  /// from its own fields.
+  List<ChartStep> _stepsSaved() => [
+        for (var k = 0; k < e.steps.length; k++) stepOf(e, k),
+      ];
+
+  /// _loadStep is [next] (steps saved) showing step [k] in its own fields.
+  ChartElement _loadStep(ChartElement next, int k) {
+    var st = next.steps[k];
+    return next.copyWith(
+        stepAt: k,
+        title: st.title,
+        highlights: st.highlights,
+        notes: st.notes,
+        sheet: next.sheet!.copyWith(at: st.at));
+  }
+
+  void _toStep(int k) {
+    if (k == e.stepAt || k < 0 || k >= e.steps.length) return;
+    _set(_loadStep(e.copyWith(steps: _stepsSaved()), k));
+    _pick(ChartPick.chart);
+  }
+
+  /// _addStep is a copy of the step being worked on, after it, to change.
+  void _addStep() {
+    var here = ChartStep(
+        title: e.title,
+        highlights: e.highlights,
+        notes: e.notes,
+        at: e.sheet!.at);
+    if (e.steps.isEmpty) {
+      _set(e.copyWith(steps: [
+        here.copyWith(name: "Step 1"),
+        here.copyWith(name: "Step 2"),
+      ], stepAt: 1));
+    } else {
+      var steps = _stepsSaved()
+        ..insert(
+            e.stepAt + 1, here.copyWith(name: "Step ${e.steps.length + 1}"));
+      _set(e.copyWith(steps: steps, stepAt: e.stepAt + 1));
+    }
+    _pick(ChartPick.chart);
+  }
+
+  void _deleteStep() {
+    if (e.steps.length < 2) return;
+    var steps = _stepsSaved()..removeAt(e.stepAt);
+    if (steps.length == 1) {
+      // One step left is no steps: the chart is that step.
+      var only = e.copyWith(steps: steps, stepAt: 0);
+      _set(_loadStep(only, 0).copyWith(steps: const [], stepAt: 0));
+    } else {
+      _set(_loadStep(
+          e.copyWith(steps: steps), (e.stepAt - 1).clamp(0, steps.length - 1)));
+    }
+    _pick(ChartPick.chart);
+  }
+
+  Widget _stepStrip(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+      child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text("STEPS",
+                style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0.8,
+                    fontWeight: FontWeight.w700,
+                    color: colors.onSurfaceVariant)),
+            if (e.steps.isEmpty)
+              const StudioPill(label: "1 Whole chart", selected: true)
+            else
+              for (var (k, st) in e.steps.indexed)
+                StudioPill(
+                    key: ValueKey("chartsStep-$k"),
+                    label: "${k + 1} ${st.name.isEmpty ? "Step" : st.name}",
+                    selected: k == e.stepAt,
+                    onTap: () => _toStep(k)),
+            StudioPill(
+                key: const ValueKey("chartsAddStep"),
+                label: "+",
+                tooltip: "A step: a copy of this one to change",
+                onTap: _addStep),
+            if (e.steps.length > 1)
+              StudioPill(
+                  key: const ValueKey("chartsDeleteStep"),
+                  label: "Delete step",
+                  onTap: _deleteStep),
+            if (_playable)
+              StudioPill(
+                  key: const ValueKey("chartsPreview"),
+                  label: _preview.isAnimating ? "Playing…" : "▶ Preview",
+                  filled: true,
+                  onTap: _preview.isAnimating ? null : _play),
+            if (e.steps.isEmpty)
+              Text(
+                  "Add a step to tell it in parts: each has its own title, highlights, notes and date.",
+                  style: TextStyle(
+                      fontSize: 11.5, color: colors.onSurfaceVariant)),
+          ]),
+    );
   }
 
   // ---- Writing.
@@ -235,6 +375,7 @@ class ChartsDesignState extends State<ChartsDesign> {
             if (_offering != null && _gallery == null)
               _offer(context, _offering!),
             if (_gallery == null) ..._checkRows(context),
+            if (_gallery == null && !_boardOn) _stepStrip(context),
             Divider(height: 1, thickness: 1, color: colors.outlineVariant),
             Expanded(
                 child: _gallery != null
@@ -1044,7 +1185,7 @@ class ChartsDesignState extends State<ChartsDesign> {
               key: const ValueKey("chartsStage"),
               size: Size(box.maxWidth, box.maxHeight),
               painter: _ChartStage(
-                e: e,
+                e: _shown(),
                 k: k,
                 o: o,
                 ground: c.document.background.spec.background,
@@ -1290,6 +1431,28 @@ class ChartsDesignState extends State<ChartsDesign> {
       ]),
       _hint(context,
           "Its colours for a dark page (Night, Mono) or a light one (Paper, Bright)."),
+      const StudioLabel("Motion"),
+      if (_playable) ...[
+        StudioSlider(
+          key: const ValueKey("chartsSlider-Each"),
+          label: e.steps.length > 1 ? "Each step" : "Each date",
+          value: e.play,
+          min: 0,
+          max: 6,
+          rest: 0,
+          format: (v) => v <= 0 ? "Still" : "${v.toStringAsFixed(1)}s",
+          onChanged: (v) =>
+              _live(e.copyWith(play: (v * 10).roundToDouble() / 10)),
+          onChangeEnd: (_) => _end(),
+        ),
+        _hint(
+            context,
+            e.play <= 0
+                ? "Still: it shows ${e.steps.length > 1 ? "this step" : "one date"}. Give it seconds and, once it has arrived on the canvas, it plays through them."
+                : "Once it has arrived on the canvas it plays through its ${e.steps.length > 1 ? "steps" : "dates"}, ${e.play.toStringAsFixed(1)}s each: ${_sheet == null ? 0 : playLength(e, _sheet!).toStringAsFixed(1)}s in all. ▶ Preview, above the chart, shows it here."),
+      ] else
+        _hint(context,
+            "Play through a column of dates, or add steps, and it can move."),
       StudioPills<String>(
           id: "chartsRows",
           label: "Rows shown",
@@ -1495,6 +1658,8 @@ class ChartsDesignState extends State<ChartsDesign> {
           key: ValueKey("chartsNoteText-$i"),
           text: n.text,
           hint: n.kind == ChartNoteKind.label ? n.who : "Words beside it",
+          words: wordChoices(e.data),
+          reads: (t) => liveWords(e.data, t),
           onChanged: (v) => put(n.copyWith(text: v), live: true)),
       if (n.kind == ChartNoteKind.line) ...[
         StudioPills<bool>(
@@ -1580,7 +1745,11 @@ class ChartsDesignState extends State<ChartsDesign> {
             key: const ValueKey("chartsTitleText"),
             text: e.title,
             hint: "A title",
+            words: wordChoices(e.data),
+            reads: (t) => liveWords(e.data, t),
             onChanged: (v) => _live(e.copyWith(title: v))),
+        _hint(context,
+            "Words in { } are worked out from the numbers, and change when they do."),
         _slider(
             "Size",
             e.titleSpec.fontSize,
@@ -1974,10 +2143,18 @@ class _SlotChip extends StatelessWidget {
 class _Field extends StatefulWidget {
   final String text, hint;
   final ValueChanged<String> onChanged;
+
+  /// words are live words to put in with a press (chart_words.dart), as
+  /// (what the button says, what it puts in); [reads] says what the field
+  /// reads now, worked out.
+  final List<(String, String)> words;
+  final String Function(String)? reads;
   const _Field(
       {required this.text,
       required this.hint,
       required this.onChanged,
+      this.words = const [],
+      this.reads,
       super.key});
 
   @override
@@ -2002,13 +2179,29 @@ class _FieldState extends State<_Field> {
     super.dispose();
   }
 
+  /// _insert puts [word] where the cursor is (or at the end), as typed.
+  void _insert(String word) {
+    var sel = _c.selection;
+    var at = sel.isValid ? sel.start : _c.text.length;
+    var to = sel.isValid ? sel.end : _c.text.length;
+    var text = _c.text.replaceRange(at, to, word);
+    _c.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: at + word.length));
+    widget.onChanged(text);
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
-    return TextField(
+    var field = TextField(
       controller: _c,
       focusNode: _f,
-      onChanged: widget.onChanged,
+      onChanged: (v) {
+        widget.onChanged(v);
+        if (widget.reads != null) setState(() {});
+      },
       style: TextStyle(fontSize: 13, color: colors.onSurface),
       decoration: InputDecoration(
         isDense: true,
@@ -2022,6 +2215,36 @@ class _FieldState extends State<_Field> {
             borderSide: BorderSide.none),
       ),
     );
+    var reads = widget.reads;
+    if (widget.words.isEmpty && reads == null) return field;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      field,
+      if (widget.words.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text("Insert",
+                    style: TextStyle(
+                        fontSize: 11.5, color: colors.onSurfaceVariant)),
+                for (var (label, word) in widget.words)
+                  StudioPill(
+                      key: ValueKey("chartsWord-$label"),
+                      label: label,
+                      onTap: () => _insert(word)),
+              ]),
+        ),
+      if (reads != null && _c.text.contains("{"))
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text("Reads now: ${reads(_c.text)}",
+              key: const ValueKey("chartsReadsNow"),
+              style: TextStyle(fontSize: 12, color: colors.onSurface)),
+        ),
+    ]);
   }
 }
 

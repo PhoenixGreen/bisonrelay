@@ -76,12 +76,8 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
     return e.copyWith(rows: block, sheetLooks: looks);
   }
   if (e is ChartElement) {
-    var data = chartDataOf(sheet, link, e.data, type: e.type, highlights: [
-      ...e.highlights,
-      if (sheet.spotlight.isNotEmpty)
-        ChartHighlight(
-            who: sheet.spotlight, colour: sheet.spotlightColour, named: true),
-    ]);
+    var data = chartDataOf(sheet, link, e.data,
+        type: e.type, highlights: chartLights(e.highlights, sheet));
     return sameData(e.data, data) &&
             listEquals(e.data.marks, data.marks) &&
             listEquals(e.data.named, data.named) &&
@@ -1431,3 +1427,14 @@ bool _samePanels(List<ChartPanel> a, List<ChartPanel> b) {
   }
   return true;
 }
+
+/// chartLights is [highlights] with [sheet]'s spotlight after them, so it
+/// wins: what a chart of the sheet lights.
+List<ChartHighlight> chartLights(
+        List<ChartHighlight> highlights, DataSheet sheet) =>
+    [
+      ...highlights,
+      if (sheet.spotlight.isNotEmpty)
+        ChartHighlight(
+            who: sheet.spotlight, colour: sheet.spotlightColour, named: true),
+    ];

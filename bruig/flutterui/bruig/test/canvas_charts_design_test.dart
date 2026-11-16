@@ -251,6 +251,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets("steps: added, changed, switched between, previewed, deleted",
+      (tester) async {
+    await studio(tester);
+    c.replaceElement(chart().copyWith(title: "{leader by Pts} on top"));
+    await tester.pumpAndSettle();
+    // The title's live words, read as they stand.
+    var s = state(tester);
+    var heading = s.parts.firstWhere((p) => p.kind == ChartPartKind.title);
+    await tester.tapAt(
+        tester.getTopLeft(find.byKey(const ValueKey("chartsStage"))) +
+            s.stageOffsetOf(heading));
+    await tester.pumpAndSettle();
+    expect(
+        tester.widget<Text>(find.byKey(const ValueKey("chartsReadsNow"))).data,
+        "Reads now: Arsenal on top");
+    expect(find.byKey(const ValueKey("chartsWord-Leader")), findsOneWidget);
+
+    // A second step, its own title.
+    await tester.tap(find.byKey(const ValueKey("chartsAddStep")));
+    await tester.pumpAndSettle();
+    expect(chart().steps, hasLength(2));
+    expect(chart().stepAt, 1);
+    c.replaceElement(chart().copyWith(title: "The bottom one"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("chartsStep-0")));
+    await tester.pumpAndSettle();
+    expect(chart().title, "{leader by Pts} on top");
+    await tester.tap(find.byKey(const ValueKey("chartsStep-1")));
+    await tester.pumpAndSettle();
+    expect(chart().title, "The bottom one");
+
+    // Previewed: it plays, and stops.
+    await tester.tap(find.byKey(const ValueKey("chartsPreview")));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text("Playing…"), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text("▶ Preview"), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey("chartsDeleteStep")));
+    await tester.pumpAndSettle();
+    expect(chart().steps, isEmpty, reason: "one step left is no steps");
+    expect(chart().title, "{leader by Pts} on top");
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("a look; a check with its fix; the board laid out",
       (tester) async {
     await studio(tester);

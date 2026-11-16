@@ -561,6 +561,15 @@ class ChartData {
   /// behind it. Worked out, never saved.
   final String at;
 
+  /// slots are where each category is drawn along the axis, in slots
+  /// counted from the first (its index, when empty): a ranked bar part-way
+  /// to its new place while the chart plays. Worked out, never saved.
+  final List<double> slots;
+
+  /// whole is, for each series, whether its numbers are whole -- kept from
+  /// where a blend set off, so live words do not read 25.4 part-way.
+  final List<bool> whole;
+
   const ChartData({
     this.categories = const [],
     this.series = const [],
@@ -569,7 +578,12 @@ class ChartData {
     this.panels = const [],
     this.named = const [],
     this.at = "",
+    this.slots = const [],
+    this.whole = const [],
   });
+
+  /// slotAt is where category [i] is drawn, in slots from the first.
+  double slotAt(int i) => i >= 0 && i < slots.length ? slots[i] : i.toDouble();
 
   /// markAt is category [i]'s own colour, or null.
   Color? markAt(int i) => i >= 0 && i < marks.length ? marks[i] : null;
@@ -584,6 +598,8 @@ class ChartData {
     List<ChartPanel>? panels,
     List<int>? named,
     String? at,
+    List<double>? slots,
+    List<bool>? whole,
   }) =>
       ChartData(
         categories: categories ?? this.categories,
@@ -593,6 +609,8 @@ class ChartData {
         panels: panels ?? this.panels,
         named: named ?? this.named,
         at: at ?? this.at,
+        slots: slots ?? this.slots,
+        whole: whole ?? this.whole,
       );
 
   /// withRowRemoved takes a row out of the categories, every series and the
