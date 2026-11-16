@@ -51,6 +51,16 @@ class CameraElement extends CanvasElement {
   /// along, 0..1: a shutter open that share of the frame.
   final double motionBlur;
 
+  /// aim is a chart it frames (Ken, 2026-11-17, the improvements report's
+  /// sixth item): its id, or "" for none; [aimAt] what of it -- "" the
+  /// whole chart, "item:Arsenal" one mark by name, "top:3" the largest
+  /// three, "leader" whoever leads, followed through a race. [aimFill] is
+  /// how much of the frame that takes, 0.2..0.95. A keyframe's "aim" value
+  /// eases between its own framing (0) and the aim (1, where unkeyed).
+  final String aim;
+  final String aimAt;
+  final double aimFill;
+
   const CameraElement(super.base,
       {this.view,
       this.focus = 0,
@@ -59,7 +69,10 @@ class CameraElement extends CanvasElement {
       this.parallax = 0,
       this.vignette = 0,
       this.vignetteSoft = 0.5,
-      this.motionBlur = 0});
+      this.motionBlur = 0,
+      this.aim = "",
+      this.aimAt = "",
+      this.aimFill = 0.6});
 
   @override
   ElementKind get kind => ElementKind.camera;
@@ -78,6 +91,9 @@ class CameraElement extends CanvasElement {
     double? vignette,
     double? vignetteSoft,
     double? motionBlur,
+    String? aim,
+    String? aimAt,
+    double? aimFill,
   }) =>
       CameraElement(base ?? this.base,
           view: clearView ? null : view ?? this.view,
@@ -89,7 +105,10 @@ class CameraElement extends CanvasElement {
           vignetteSoft:
               (vignetteSoft ?? this.vignetteSoft).clamp(0.0, 1.0).toDouble(),
           motionBlur:
-              (motionBlur ?? this.motionBlur).clamp(0.0, 1.0).toDouble());
+              (motionBlur ?? this.motionBlur).clamp(0.0, 1.0).toDouble(),
+          aim: aim ?? this.aim,
+          aimAt: aimAt ?? this.aimAt,
+          aimFill: (aimFill ?? this.aimFill).clamp(0.2, 0.95).toDouble());
 
   CameraElement withView(StageCamera? view) =>
       copyWith(view: view, clearView: view == null);
@@ -110,6 +129,9 @@ class CameraElement extends CanvasElement {
         if (vignette != 0) "vignette": vignette,
         if (vignetteSoft != 0.5) "vignetteSoft": vignetteSoft,
         if (motionBlur != 0) "motionBlur": motionBlur,
+        if (aim.isNotEmpty) "aim": aim,
+        if (aimAt.isNotEmpty) "aimAt": aimAt,
+        if (aimFill != 0.6) "aimFill": aimFill,
       };
 
   static CameraElement fromJson(Map<String, dynamic> json, ElementBase base) {
@@ -134,6 +156,9 @@ class CameraElement extends CanvasElement {
       vignette: jsonDouble(json["vignette"], 0),
       vignetteSoft: jsonDouble(json["vignetteSoft"], 0.5),
       motionBlur: jsonDouble(json["motionBlur"], 0),
+      aim: jsonString(json["aim"], ""),
+      aimAt: jsonString(json["aimAt"], ""),
+      aimFill: jsonDouble(json["aimFill"], 0.6),
     );
   }
 }

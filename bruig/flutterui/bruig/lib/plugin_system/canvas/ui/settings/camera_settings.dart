@@ -1,8 +1,11 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/render/camera_aim.dart'
+    show aimChoices;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show cameraFraming, cameraLookAt;
+    show cameraFraming, cameraLookAt, poseAimAt;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -70,6 +73,10 @@ List<Widget> cameraLensGroups(
           commit();
         },
       );
+
+  // How far it is turned to its aim here: keyed, or all the way.
+  var aimMix =
+      (track.keyAt(frame)?.values["aim"] ?? poseAimAt(e, frame, doc)) ?? 1.0;
 
   var others = [
     for (var x in doc.elements)
@@ -211,6 +218,84 @@ List<Widget> cameraLensGroups(
             },
             onCommit: commit,
           ),
+        ]),
+    // Part of a chart framed, followed through a race (Ken, 2026-11-17:
+    // the improvements report's sixth item). camera_aim.dart.
+    CanvasControlGroup(
+        key: const ValueKey("cameraAim"),
+        label: "Aim at a chart",
+        help: "Frames part of a chart -- one club, the top three, whoever "
+            "leads -- where it is drawn on each frame. Key \"How far\" to "
+            "move in from its own framing and back out.",
+        children: [
+          CanvasDropdown<String>(
+            key: const ValueKey("cameraAimChart"),
+            label: "Chart",
+            value: doc.elementById(e.aim) is ChartElement ? e.aim : "",
+            options: [
+              ("", "None"),
+              for (var x in doc.elements)
+                if (x is ChartElement)
+                  (x.id, x.name.isEmpty ? "Chart" : x.name),
+            ],
+            onChanged: (id) {
+              begin();
+              write(now().copyWith(aim: id, aimAt: ""));
+              commit();
+            },
+          ),
+          if (doc.elementById(e.aim) case ChartElement chart) ...[
+            CanvasDropdown<String>(
+              key: const ValueKey("cameraAimAt"),
+              label: "Frames",
+              value:
+                  aimChoices(chart).any((c) => c.$1 == e.aimAt) ? e.aimAt : "",
+              options: aimChoices(chart),
+              onChanged: (v) {
+                begin();
+                write(now().copyWith(aimAt: v));
+                commit();
+              },
+            ),
+            panelRow([
+              cell(CanvasStepper(
+                key: const ValueKey("cameraAimFill"),
+                label: "Fills",
+                value: e.aimFill * 100,
+                min: 20,
+                max: 95,
+                step: 5,
+                dragStep: 1,
+                defaultValue: 60,
+                suffix: "%",
+                width: 104,
+                onChanged: (v) {
+                  begin();
+                  write(now().copyWith(aimFill: v / 100));
+                },
+                onCommit: commit,
+              )),
+              cell(CanvasStepper(
+                key: const ValueKey("cameraAimMix"),
+                label: "How far",
+                value: aimMix * 100,
+                min: 0,
+                max: 100,
+                step: 10,
+                dragStep: 1,
+                defaultValue: 100,
+                suffix: "%",
+                width: 104,
+                onChanged: (v) => set("aim", v / 100, (cam) {
+                  // Not keyed: all the way, as unkeyed; keyed, at the
+                  // playhead.
+                  return keyHere(cam, "aim", v / 100);
+                }),
+                onCommit: commit,
+              )),
+              cell(keyButton("aim", aimMix), width: 36),
+            ]),
+          ],
         ]),
     CanvasControlGroup(
         label: "Lens",

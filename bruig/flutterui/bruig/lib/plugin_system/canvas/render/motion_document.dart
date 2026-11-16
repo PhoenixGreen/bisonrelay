@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/render/model3d/model_scene.dart'
     show ModelPlay;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/render/camera_aim.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
@@ -1129,6 +1130,14 @@ extension MovedElement on CanvasElement {
 CameraElement? cameraOf(CanvasDocument doc) =>
     doc.elements.whereType<CameraElement>().where((c) => c.visible).firstOrNull;
 
+/// poseAimAt is how far [cam] is turned to its aim on [frame] by its keys,
+/// or null where they don't say.
+double? poseAimAt(CameraElement cam, int frame, CanvasDocument doc) =>
+    poseWithMotion(cam, frame, doc).values["aim"];
+
+// The last aimed framing worked out: a frame asks for it more than once.
+((CameraElement, int, CanvasDocument), (double, Offset))? _aimedLast;
+
 /// cameraFraming is how [cam] frames the page on [frame]: a zoom -- never
 /// less than one, so the page is always filled -- and the point it is
 /// centred on, held in far enough that the picture stays on the page. Its
@@ -1143,8 +1152,20 @@ CameraElement? cameraOf(CanvasDocument doc) =>
   var zoom = math.max(
       1.0, page.width / math.max(1.0, box.width) * math.max(0.01, pose.scale));
   var roll = cam.rotation + pose.rotate;
-  zoom = math.max(zoom, cameraRollCover(roll, page.size));
   var c = box.center + Offset(pose.dx, pose.dy);
+  // Turned towards part of a chart it aims at, by its keyed "aim" (all the
+  // way, unkeyed): camera_aim.dart.
+  if (cam.aim.isNotEmpty) {
+    var key = (cam, frame, doc);
+    if (_aimedLast?.$1 == key) {
+      (zoom, c) = _aimedLast!.$2;
+    } else {
+      (zoom, c) =
+          aimedFraming(cam, zoom, c, frame, doc, pose.values["aim"] ?? 1.0);
+      _aimedLast = (key, (zoom, c));
+    }
+  }
+  zoom = math.max(zoom, cameraRollCover(roll, page.size));
   var (hx, hy) = cameraHalfExtents(zoom, roll, page.size);
   return (
     zoom,
