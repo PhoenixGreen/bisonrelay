@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -116,6 +117,52 @@ void main() {
           league, linkOf(league, labels: 0, series: [3]).copyWith(colourBy: 2));
       expect(byGd.marks[0], const Color(0xFF2FE08A), reason: "the most, green");
       expect(byGd.marks[5], const Color(0xFFE8645A), reason: "the least, red");
+    });
+
+    test("small charts, one per team, on one scale", () {
+      var link = linkOf(weeks, labels: 0, series: [4]).copyWith(split: 1);
+      var d = read(weeks, link, type: ChartType.line);
+      expect([for (var p in d.panels) p.name], ["Arsenal", "Chelsea", "Spurs"]);
+      expect(d.panels[1].data.categories, ["16 Aug", "23 Aug"]);
+      expect(d.panels[1].data.series.single.values, [1, 4]);
+      expect(SheetLink.fromJson(jsonDecode(jsonEncode(link.toJson()))), link);
+      // A highlight lights the panel of the top one by where it ends.
+      var lit = read(weeks, link, type: ChartType.line, highlights: const [
+        ChartHighlight(reach: ChartReach.top, n: 1, colour: Color(0xFF123456)),
+      ]);
+      expect([for (var p in lit.panels) p.colour],
+          [const Color(0xFF123456), null, null]);
+      // Drawn: a panel each, found where it was drawn.
+      var parts = <ChartPart>[];
+      chartParts = parts;
+      var recorder = ui.PictureRecorder();
+      paintChart(
+          ui.Canvas(recorder),
+          const Rect.fromLTWH(0, 0, 600, 400),
+          ChartElement(const ElementBase(id: "c", width: 600, height: 400),
+              type: ChartType.line, data: lit));
+      chartParts = null;
+      recorder.endRecording().dispose();
+      expect(parts.where((p) => p.kind == ChartPartKind.mark), hasLength(3));
+    });
+
+    test("lines named at their ends; the date of a race", () {
+      var lines = linkOf(weeks, labels: 0, series: [4]).copyWith(colourBy: 1);
+      expect(read(weeks, lines, type: ChartType.line).named, [0, 1, 2]);
+      var one = read(weeks, lines, type: ChartType.line, highlights: const [
+        ChartHighlight(reach: ChartReach.top, n: 1, fade: true),
+      ]);
+      expect(one.named, [0], reason: "only the line picked out");
+      var race = linkOf(weeks, labels: 1, series: [4]).copyWith(through: 0);
+      expect(read(weeks, race).at, "23 Aug");
+      expect(read(weeks, race.copyWith(at: "16 Aug")).at, "16 Aug");
+      var recorder = ui.PictureRecorder();
+      paintChart(
+          ui.Canvas(recorder),
+          const Rect.fromLTWH(0, 0, 600, 400),
+          ChartElement(const ElementBase(id: "c", width: 600, height: 400),
+              type: ChartType.line, data: one));
+      recorder.endRecording().dispose();
     });
 
     test("the new options go through JSON", () {
@@ -230,7 +277,8 @@ void main() {
     test("notes go through JSON, the average kept as no value", () {
       const notes = [
         ChartNote(text: "Average"),
-        ChartNote(kind: ChartNoteKind.band, from: 18, to: 20, text: "Drop zone"),
+        ChartNote(
+            kind: ChartNoteKind.band, from: 18, to: 20, text: "Drop zone"),
         ChartNote(kind: ChartNoteKind.label, who: "Arsenal", text: "Top"),
         ChartNote(value: 40, text: "Safe", off: true),
       ];
@@ -275,9 +323,12 @@ void main() {
         ColumnKind.numbers,
         ColumnKind.numbers,
       ]);
-      expect([for (var i in chartIdeas(sheet, range, [0, 1, 4])) i.name], [
+      expect([
+        for (var i in chartIdeas(sheet, range, [0, 1, 4])) i.name
+      ], [
         "Race through Date",
         "A line per Team",
+        "A small chart for each Team",
         "Total each Date",
         "Points per Team, the most",
       ]);
@@ -290,10 +341,21 @@ void main() {
 
       var lsheet = sheetOf(league);
       var lrange = CellRange(0, 0, league.length - 1, 3);
-      expect([for (var i in chartIdeas(lsheet, lrange, [0, 3])) i.name],
-          ["Ranked bars", "Columns", "Lollipop", "Donut"]);
-      expect([for (var i in chartIdeas(lsheet, lrange, [2, 3])) i.name],
-          ["Scatter", "Side by side", "Slope"]);
+      expect([
+        for (var i in chartIdeas(lsheet, lrange, [0, 3])) i.name
+      ], [
+        "Ranked bars",
+        "Columns",
+        "Lollipop",
+        "Donut"
+      ]);
+      expect([
+        for (var i in chartIdeas(lsheet, lrange, [2, 3])) i.name
+      ], [
+        "Scatter",
+        "Side by side",
+        "Slope"
+      ]);
       expect(chartIdeas(lsheet, lrange, [0]), isEmpty,
           reason: "no numbers, nothing to draw");
     });

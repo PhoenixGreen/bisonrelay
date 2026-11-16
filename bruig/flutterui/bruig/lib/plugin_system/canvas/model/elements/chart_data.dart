@@ -515,6 +515,25 @@ class Ohlc {
 
 /// ChartData is the categories and the series together, and the parser that
 /// fills them in from pasted text.
+/// ChartPanel is one of a split chart's small charts: whose it is, its
+/// numbers, and the colour a highlight gives it (null, the chart's own).
+class ChartPanel {
+  final String name;
+  final ChartData data;
+  final Color? colour;
+  const ChartPanel(this.name, this.data, {this.colour});
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChartPanel &&
+      other.name == name &&
+      other.colour == colour &&
+      identical(other.data, data);
+
+  @override
+  int get hashCode => Object.hash(name, colour, data);
+}
+
 class ChartData {
   final List<String> categories;
   final List<ChartSeries> series;
@@ -529,11 +548,27 @@ class ChartData {
   /// from its sheet by data_sync.dart, so never saved.
   final List<Color?> marks;
 
+  /// panels are the small charts of a chart split by a column (one per
+  /// team), drawn side by side on one scale; empty for one chart. Worked
+  /// out from the sheet, never saved, as [marks] are.
+  final List<ChartPanel> panels;
+
+  /// named is which series have their names written at the ends of their
+  /// lines (a highlight's, or all of a few). Worked out, never saved.
+  final List<int> named;
+
+  /// at is the date a chart playing through dates shows, written large
+  /// behind it. Worked out, never saved.
+  final String at;
+
   const ChartData({
     this.categories = const [],
     this.series = const [],
     this.estimated = const [],
     this.marks = const [],
+    this.panels = const [],
+    this.named = const [],
+    this.at = "",
   });
 
   /// markAt is category [i]'s own colour, or null.
@@ -546,12 +581,18 @@ class ChartData {
     List<ChartSeries>? series,
     List<bool>? estimated,
     List<Color?>? marks,
+    List<ChartPanel>? panels,
+    List<int>? named,
+    String? at,
   }) =>
       ChartData(
         categories: categories ?? this.categories,
         series: series ?? this.series,
         estimated: estimated ?? this.estimated,
         marks: marks ?? this.marks,
+        panels: panels ?? this.panels,
+        named: named ?? this.named,
+        at: at ?? this.at,
       );
 
   /// withRowRemoved takes a row out of the categories, every series and the

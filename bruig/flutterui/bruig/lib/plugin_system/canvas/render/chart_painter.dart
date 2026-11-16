@@ -117,7 +117,9 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     }
   }
 
-  if (e.type.isInfographic) {
+  if (data.panels.isNotEmpty) {
+    _paintPanels(canvas, area, e);
+  } else if (e.type.isInfographic) {
     paintInfographic(canvas, area, e, showing);
   } else if (e.type.isCircular) {
     paintCircular(canvas, area, e, showing);
@@ -525,4 +527,111 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     return area;
   }
   return left;
+}
+
+/// _paintPanels draws a split chart (ChartData.panels): a small chart for
+/// each, in a grid, all on one scale so they compare; each named at its top
+/// with where it ends, and lit in its highlight's colour.
+void _paintPanels(ui.Canvas canvas, Rect area, ChartElement e) {
+  var panels = e.data.panels;
+  var n = panels.length;
+  var cols = math.max(
+      1, math.sqrt(n * area.width / math.max(1.0, area.height)).round());
+  var rows = (n / cols).ceil();
+  const gap = 8.0;
+  var w = (area.width - gap * (cols - 1)) / cols;
+  var h = (area.height - gap * (rows - 1)) / rows;
+  if (w <= 8 || h <= 8) return;
+
+  // One scale for them all.
+  var lo = 0.0, hi = 0.0;
+  for (var p in panels) {
+    for (var s in p.data.series) {
+      for (var v in s.values) {
+        if (v.isNaN) continue;
+        lo = math.min(lo, v);
+        hi = math.max(hi, v);
+      }
+    }
+  }
+  if (hi <= lo) hi = lo + 1;
+  var size = math.max(8.0, e.labelSpec.fontSize * 0.9);
+
+  void write(String text, Color colour, Offset at, {bool right = false}) {
+    var tp = TextPainter(
+        text: TextSpan(
+            text: text,
+            style: TextStyle(
+                fontSize: size,
+                fontWeight: FontWeight.w700,
+                color: colour,
+                fontFamily: e.labelSpec.fontFamily)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: "…")
+      ..layout(maxWidth: math.max(1.0, w * 0.6));
+    tp.paint(canvas, right ? at - Offset(tp.width, 0) : at);
+    tp.dispose();
+  }
+
+  for (var (i, p) in panels.indexed) {
+    var cell = Rect.fromLTWH(area.left + (i % cols) * (w + gap),
+        area.top + (i ~/ cols) * (h + gap), w, h);
+    var lit = p.colour != null && p.colour!.a > 0.5;
+    canvas.drawRRect(RRect.fromRectAndRadius(cell, const Radius.circular(6)),
+        Paint()..color = e.gridColor);
+    if (lit) {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(cell.deflate(0.75), const Radius.circular(6)),
+          Paint()
+            ..color = p.colour!
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5);
+    }
+    write(p.name, lit ? p.colour! : e.labelSpec.color,
+        cell.topLeft + const Offset(6, 4));
+    var series = p.data.series;
+    if (series.isNotEmpty) {
+      var last = series.first.values
+          .lastWhere((v) => !v.isNaN, orElse: () => double.nan);
+      if (!last.isNaN) {
+        write(
+            last == last.roundToDouble()
+                ? "${last.round()}"
+                : last.toStringAsFixed(1),
+            lit ? p.colour! : e.labelSpec.color,
+            cell.topRight + const Offset(-6, 4),
+            right: true);
+      }
+    }
+    var inner = Rect.fromLTRB(
+        cell.left + 4, cell.top + size * 1.8, cell.right - 4, cell.bottom - 4);
+    if (inner.height > 8 && series.isNotEmpty) {
+      var mini = e.copyWith(
+        data: p.data.copyWith(series: [
+          for (var (j, s) in series.indexed)
+            j == 0 && p.colour != null ? s.copyWith(color: p.colour) : s,
+        ]),
+        title: "",
+        description: "",
+        showLegend: false,
+        showXLabels: false,
+        showYLabels: false,
+        showValues: false,
+        yMin: lo,
+        yMax: hi,
+        highlights: const [],
+        notes: const [],
+      );
+      // The small chart's own parts are not the big one's.
+      var noting = chartParts;
+      chartParts = null;
+      try {
+        paintChart(canvas, inner, mini);
+      } finally {
+        chartParts = noting;
+      }
+    }
+    notePart(ChartPartKind.mark, cell, series: 0, index: i);
+  }
 }

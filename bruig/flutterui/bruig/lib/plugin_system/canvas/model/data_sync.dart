@@ -82,7 +82,11 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
         ChartHighlight(
             who: sheet.spotlight, colour: sheet.spotlightColour, named: true),
     ]);
-    return sameData(e.data, data) && listEquals(e.data.marks, data.marks)
+    return sameData(e.data, data) &&
+            listEquals(e.data.marks, data.marks) &&
+            listEquals(e.data.named, data.named) &&
+            e.data.at == data.at &&
+            _samePanels(e.data.panels, data.panels)
         ? e
         : e.copyWith(data: data);
   }
@@ -97,6 +101,9 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
 ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
     {ChartType type = ChartType.bar,
     List<ChartHighlight> highlights = const []}) {
+  if (link.split >= 0 && link.split < link.range.cols) {
+    return _splitData(sheet, link, was, type, highlights);
+  }
   var (data, valuesOf) = link.charted
       ? _chartedData(sheet, link, was, type)
       : (
@@ -130,6 +137,10 @@ ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
     return data.copyWith(series: [
       for (var (i, s) in data.series.indexed)
         lit[i] == null ? s : s.copyWith(color: lit[i]),
+    ], named: [
+      // The lines picked out are named at their ends; the faded are not.
+      for (var (i, c) in lit.indexed)
+        if (c != null && c.a > 0.5) i
     ]);
   }
   var lit = marksOf(highlights, data.categories, by,
@@ -1177,6 +1188,7 @@ Color scaleColour(double v, double lo, double hi) {
   }
 
   // One date at a time: the one asked for, else the last.
+  var shownAt = "";
   if (link.through >= 0 && link.through < g.cols) {
     var dates = <String>[];
     for (var r in rows) {
@@ -1184,6 +1196,7 @@ Color scaleColour(double v, double lo, double hi) {
       if (!dates.contains(d)) dates.add(d);
     }
     var at = dates.contains(link.at) ? link.at : dates.lastOrNull ?? "";
+    shownAt = at;
     rows = [
       for (var r in rows)
         if (shown(r, link.through) == at) r
@@ -1225,7 +1238,11 @@ Color scaleColour(double v, double lo, double hi) {
               ? was.series[i].copyWith(values: values)
               : ChartSeries(
                   name: sub,
-                  color: chartPalette[i % chartPalette.length],
+                  // Past six lines they start grey, so a highlight is what
+                  // shows (prototype v6).
+                  color: subs.length > 6
+                      ? const Color(0x88C9D6EA)
+                      : chartPalette[i % chartPalette.length],
                   values: values);
         }(),
     ];
@@ -1235,7 +1252,17 @@ Color scaleColour(double v, double lo, double hi) {
               for (var sub in subs) ...?groups["$k\u0000$sub"],
             ], c)
         ];
-    return (ChartData(categories: keys, series: series), lineValues);
+    return (
+      ChartData(
+          categories: keys,
+          series: series,
+          at: shownAt,
+          // A few lines are named at their ends; many wait for a highlight.
+          named: series.length <= 6
+              ? [for (var i = 0; i < series.length; i++) i]
+              : const []),
+      lineValues
+    );
   }
 
   // A mark per label, in order of a column if asked.
@@ -1335,7 +1362,8 @@ Color scaleColour(double v, double lo, double hi) {
     ChartData(
         categories: [for (var it in shownItems) it?.$1 ?? "…"],
         series: series,
-        marks: marks),
+        marks: marks,
+        at: shownAt),
     columnValues
   );
 }
@@ -1351,4 +1379,55 @@ SheetCellLook? _spotlit(DataSheet sheet, int r, CellRange g) {
     }
   }
   return null;
+}
+
+/// _splitData is a chart split by a column (SheetLink.split): a small
+/// chart of the rows of each word of it -- Arsenal's, Chelsea's -- in the
+/// sheet's order, at most thirty; the highlights pick out panels, ranked by
+/// where each ends. The first panel's numbers stand in for the chart's own.
+ChartData _splitData(DataSheet sheet, SheetLink link, ChartData was,
+    ChartType type, List<ChartHighlight> highlights) {
+  var g = link.range;
+  var names = <String>[];
+  for (var r = g.r0 + 1; r <= g.r1 && names.length < 30; r++) {
+    var v = sheetShown(sheet, r, g.c0 + link.split);
+    if (v.trim().isNotEmpty && !names.contains(v)) names.add(v);
+  }
+  var inner = link.copyWith(split: -1, whereColumn: link.split);
+  var panels = [
+    for (var n in names)
+      ChartPanel(
+          n, chartDataOf(sheet, inner.copyWith(where: n), was, type: type)),
+  ];
+  if (panels.isEmpty) return const ChartData();
+  double end(ChartData d) => d.series.isEmpty
+      ? double.nan
+      : d.series.first.values
+          .lastWhere((v) => !v.isNaN, orElse: () => double.nan);
+  if (highlights.any((h) => !h.off)) {
+    var lit = marksOf(
+        highlights,
+        names,
+        (_) => [for (var p in panels) end(p.data)],
+        (i) => panels[i].data.series.isEmpty
+            ? chartPalette.first
+            : panels[i].data.series.first.color);
+    panels = [
+      for (var (i, p) in panels.indexed)
+        ChartPanel(p.name, p.data, colour: lit[i]),
+    ];
+  }
+  return panels.first.data.copyWith(panels: panels, marks: const []);
+}
+
+bool _samePanels(List<ChartPanel> a, List<ChartPanel> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].name != b[i].name ||
+        a[i].colour != b[i].colour ||
+        !sameData(a[i].data, b[i].data)) {
+      return false;
+    }
+  }
+  return true;
 }

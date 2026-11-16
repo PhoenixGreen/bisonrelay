@@ -689,6 +689,14 @@ class ChartsDesignState extends State<ChartsDesign> {
                     _setLink(l.copyWith(through: col, at: ""));
                     setState(() => _offering = null);
                   }),
+            if (!numbers && col != l.labels)
+              StudioPill(
+                  key: const ValueKey("chartsPutSplit"),
+                  label: "Small charts by",
+                  onTap: () {
+                    _setLink(l.copyWith(split: col));
+                    setState(() => _offering = null);
+                  }),
             StudioPill(
                 label: "Cancel", onTap: () => setState(() => _offering = null)),
           ]),
@@ -923,6 +931,18 @@ class ChartsDesignState extends State<ChartsDesign> {
                   ],
                   onChanged: (v) => _setLink(l.copyWith(colourBy: v))),
             ]),
+            slot("Small charts by", [
+              _Menu<int>(
+                  key: const ValueKey("chartsSplit"),
+                  width: 130,
+                  value: l.split,
+                  options: [
+                    (-1, "One chart"),
+                    for (var col in wordColumns)
+                      if (col != l.labels) (col, _columnName(col)),
+                  ],
+                  onChanged: (v) => _setLink(l.copyWith(split: v))),
+            ]),
             slot("Play through", [
               _Menu<int>(
                   key: const ValueKey("chartsThrough"),
@@ -1079,6 +1099,10 @@ class ChartsDesignState extends State<ChartsDesign> {
           seriesName(p.series),
           "Every mark of it. Click one again for that one alone."
         ),
+      "mark" when data.panels.isNotEmpty => (
+          _markLabel(p.index),
+          "Its small chart: ${data.panels[p.index].data.categories.length} points."
+        ),
       "mark" => (
           p.index < data.categories.length ? data.categories[p.index] : "Mark",
           "${seriesName(p.series)}: ${data.hasValueAt(p.series, p.index) ? _num(data.valueAt(p.series, p.index)) : "–"}"
@@ -1150,6 +1174,16 @@ class ChartsDesignState extends State<ChartsDesign> {
         ),
       ]),
     );
+  }
+
+  /// _markLabel is what mark [i] is of: its category, or on a split chart,
+  /// whose small chart it is.
+  String _markLabel(int i) {
+    var data = e.data;
+    if (data.panels.isNotEmpty) {
+      return i >= 0 && i < data.panels.length ? data.panels[i].name : "";
+    }
+    return i >= 0 && i < data.categories.length ? data.categories[i] : "";
   }
 
   static String _num(double v) =>
@@ -1615,7 +1649,7 @@ class ChartsDesignState extends State<ChartsDesign> {
   }
 
   List<Widget> _markPanel(BuildContext context, int s, int i) {
-    var label = i < e.data.categories.length ? e.data.categories[i] : "";
+    var label = _markLabel(i);
     return [
       _buttons([
         StudioPill(
@@ -2185,6 +2219,12 @@ List<ChartIdea> chartIdeas(DataSheet sheet, CellRange range, List<int> picks) {
               colour: Color(0xFF2FE08A),
               named: true),
         ]));
+    out.add(ChartIdea(
+        "A small chart for each $nn",
+        "One little chart each, all on one scale, so they compare.",
+        ChartType.line,
+        link(d, [v]).copyWith(split: n),
+        title: "Every $nn, on the same scale"));
     out.add(ChartIdea(
         "Total each $dn",
         "Every row of each ${dn.toLowerCase()} added up.",

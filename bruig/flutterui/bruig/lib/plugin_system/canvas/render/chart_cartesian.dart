@@ -319,8 +319,25 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   // the box it is aligned and snapped by.
   var topAir = sideOn ? sideSpec.fontSize : 0.0;
   var rightAir = bottomOn ? bottomSpec.fontSize : 0.0;
-  var plot = Rect.fromLTRB(
-      left, area.top + topAir * 0.6, area.right - rightAir * 0.5, bottom);
+  // Room on the right for the names written at the ends of lines.
+  var nameRoom = 0.0;
+  for (var i in data.named) {
+    if (i < 0 || i >= data.series.length) continue;
+    var tp = TextPainter(
+        text: TextSpan(
+            text: data.series[i].name,
+            style: TextStyle(
+                fontSize: e.labelSpec.fontSize * 0.9,
+                fontWeight: FontWeight.w700,
+                fontFamily: e.labelSpec.fontFamily)),
+        textDirection: TextDirection.ltr)
+      ..layout();
+    nameRoom = math.max(nameRoom, tp.width + 12);
+    tp.dispose();
+  }
+  nameRoom = math.min(nameRoom, area.width * 0.3);
+  var plot = Rect.fromLTRB(left, area.top + topAir * 0.6,
+      area.right - rightAir * 0.5 - nameRoom, bottom);
   if (plot.width <= 4 || plot.height <= 4) return;
   notePart(ChartPartKind.plot, plot);
   notePart(ChartPartKind.xLabels,
@@ -329,6 +346,22 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
       Rect.fromLTRB(area.left, plot.top, plot.left, plot.bottom));
 
   _grid(canvas, plot, range, e, horizontal);
+  // The date a chart playing through dates shows, large and faint behind it.
+  if (data.at.isNotEmpty) {
+    var tp = TextPainter(
+        text: TextSpan(
+            text: data.at,
+            style: TextStyle(
+                fontSize: math.min(plot.height * 0.16, 80),
+                fontWeight: FontWeight.w800,
+                color: e.titleSpec.color.withValues(alpha: 0.16),
+                fontFamily: e.titleSpec.fontFamily)),
+        textDirection: TextDirection.ltr)
+      ..layout(maxWidth: plot.width);
+    tp.paint(
+        canvas, Offset(plot.right - tp.width - 8, plot.bottom - tp.height - 4));
+    tp.dispose();
+  }
   if (e.showAxisLabels) {
     _axisLabels(canvas, area, plot, range, e, horizontal, valueGutter,
         categoryGutter, axisTitleGutter);
@@ -368,7 +401,53 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   if (lines.isNotEmpty) {
     _lines(canvas, plot, range, e, lines, reveal, seriesReveal);
   }
+  _lineNames(canvas, plot, range, e);
   _notes(canvas, plot, range, e, horizontal, behind: false);
+}
+
+/// _lineNames writes the names of the lines picked to be named
+/// (ChartData.named) just past where each ends, in its colour, nudged
+/// apart where two end close together.
+void _lineNames(
+    ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e) {
+  var data = e.data;
+  var n = data.categories.length;
+  if (data.named.isEmpty || n == 0) return;
+  var placed = <(double, TextPainter)>[];
+  for (var s in data.named) {
+    if (s < 0 || s >= data.series.length) continue;
+    var series = data.series[s];
+    if (series.hidden || !series.typeIn(e.type).isLinear) continue;
+    var at = -1;
+    for (var i = series.values.length - 1; i >= 0; i--) {
+      if (!series.values[i].isNaN) {
+        at = i;
+        break;
+      }
+    }
+    if (at < 0) continue;
+    var y = plot.bottom -
+        plot.height * range.fraction(series.values[at]).clamp(0.0, 1.0);
+    var tp = TextPainter(
+        text: TextSpan(
+            text: series.name,
+            style: TextStyle(
+                fontSize: e.labelSpec.fontSize * 0.9,
+                fontWeight: FontWeight.w700,
+                color: series.color,
+                fontFamily: e.labelSpec.fontFamily)),
+        textDirection: TextDirection.ltr)
+      ..layout();
+    placed.add((y - tp.height / 2, tp));
+  }
+  placed.sort((a, b) => a.$1.compareTo(b.$1));
+  var last = double.negativeInfinity;
+  for (var (y, tp) in placed) {
+    var top = math.max(y, last);
+    tp.paint(canvas, Offset(plot.right + 6, top));
+    last = top + tp.height;
+    tp.dispose();
+  }
 }
 
 /// _notes draws a chart's notes (ChartNote): with [behind], its bands, in

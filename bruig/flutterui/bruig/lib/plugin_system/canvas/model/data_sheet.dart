@@ -142,6 +142,10 @@ class SheetLink {
   final int through;
   final String at;
 
+  /// split draws a small chart for each word of a column (Arsenal's, then
+  /// Chelsea's...), all on one scale. -1, one chart.
+  final int split;
+
   const SheetLink(this.sheet, this.range,
       {this.labels = 0,
       this.series = const [],
@@ -156,7 +160,8 @@ class SheetLink {
       this.gap = true,
       this.colourBy = -1,
       this.through = -1,
-      this.at = ""});
+      this.at = "",
+      this.split = -1});
 
   /// plain is whether it shows its range's rows as they are.
   bool get plain =>
@@ -172,7 +177,8 @@ class SheetLink {
       through >= 0 ||
       colourBy >= 0 ||
       places.trim().isNotEmpty ||
-      (bottom && top > 0);
+      (bottom && top > 0) ||
+      split >= 0;
 
   SheetLink copyWith(
           {String? sheet,
@@ -190,7 +196,8 @@ class SheetLink {
           bool? gap,
           int? colourBy,
           int? through,
-          String? at}) =>
+          String? at,
+          int? split}) =>
       SheetLink(sheet ?? this.sheet, range ?? this.range,
           labels: labels ?? this.labels,
           series: series ?? this.series,
@@ -205,7 +212,8 @@ class SheetLink {
           gap: gap ?? this.gap,
           colourBy: colourBy ?? this.colourBy,
           through: through ?? this.through,
-          at: at ?? this.at);
+          at: at ?? this.at,
+          split: split ?? this.split);
 
   Map<String, dynamic> toJson() => {
         "id": sheet,
@@ -224,6 +232,7 @@ class SheetLink {
         if (colourBy >= 0) "colourBy": colourBy,
         if (through >= 0) "through": through,
         if (at.isNotEmpty) "at": at,
+        if (split >= 0) "split": split,
       };
 
   static SheetLink? fromJson(Object? j) {
@@ -249,7 +258,8 @@ class SheetLink {
         gap: j["gap"] != false,
         colourBy: n("colourBy", -1),
         through: n("through", -1),
-        at: j["at"] is String ? j["at"] as String : "");
+        at: j["at"] is String ? j["at"] as String : "",
+        split: n("split", -1));
   }
 
   @override
@@ -270,7 +280,8 @@ class SheetLink {
       other.gap == gap &&
       other.colourBy == colourBy &&
       other.through == through &&
-      other.at == at;
+      other.at == at &&
+      other.split == split;
 
   @override
   int get hashCode => Object.hash(
@@ -289,7 +300,8 @@ class SheetLink {
       gap,
       colourBy,
       through,
-      at);
+      at,
+      split);
 }
 
 /// DataSheet is one sheet: its name and what was typed in each cell, row by
