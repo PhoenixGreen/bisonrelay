@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_cartesian.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_circular.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_infographic.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_notes.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -175,6 +176,14 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     }
   }
 
+  // Notes bound to the data on a kind without axes find their items where
+  // it draws them (chart_notes.dart): its marks gathered as it draws, into
+  // any gathering already going (the Charts tab's).
+  var axisless = data.panels.isEmpty && e.type.isCircular;
+  var noting = axisless && boundNotes(e).isNotEmpty;
+  var gathering = chartParts;
+  var mine = <ChartPart>[];
+  if (noting) chartParts = mine;
   if (data.panels.isNotEmpty) {
     _paintPanels(canvas, area, e);
   } else if (e.type.isInfographic) {
@@ -183,6 +192,12 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     paintCircular(canvas, area, e, showing);
   } else {
     paintCartesian(canvas, area, e, showing, seriesReveal);
+  }
+  if (noting) {
+    chartParts = gathering;
+    gathering?.addAll(mine);
+    paintBoundNotes(canvas, area, e, mine,
+        animation.on ? ((showing - 0.6) / 0.4).clamp(0.0, 1.0) : 1.0);
   }
 
   if (clipping) canvas.restore();

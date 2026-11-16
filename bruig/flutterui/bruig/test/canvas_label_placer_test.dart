@@ -112,4 +112,28 @@ void main() {
     expect(await parts(arriving, reveal: 0.3), isEmpty);
     expect(await parts(arriving, reveal: 1), hasLength(2));
   });
+
+  test("notes on kinds without axes find their items where they are drawn",
+      () async {
+    const notes = [
+      ChartNote(kind: ChartNoteKind.callout, who: "B", text: "Most"),
+      ChartNote(kind: ChartNoteKind.bracket, who: "A", whom: "B"),
+      ChartNote(kind: ChartNoteKind.label, who: "C"),
+    ];
+    for (var t in [ChartType.pie, ChartType.treemap, ChartType.bubbles]) {
+      var c = ChartElement(const ElementBase(id: "c", width: 300, height: 200),
+          type: t,
+          data: ChartData.parse("N\tV\nA\t3\nB\t9\nC\t5"),
+          notes: notes);
+      var found = chartParts = <ChartPart>[];
+      var rec = ui.PictureRecorder();
+      paintChart(ui.Canvas(rec), const Rect.fromLTWH(0, 0, 300, 200), c);
+      rec.endRecording().dispose();
+      chartParts = null;
+      expect(found.where((p) => p.kind == ChartPartKind.note), hasLength(3),
+          reason: t.name);
+      expect(found.where((p) => p.kind == ChartPartKind.mark), hasLength(3),
+          reason: "${t.name}: its own marks still gathered for the Charts tab");
+    }
+  });
 }

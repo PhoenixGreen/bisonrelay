@@ -610,6 +610,7 @@ void _treemap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     var fill = slice.tint(itemColour(e, i));
     canvas.drawRRect(RRect.fromRectAndRadius(tile, const Radius.circular(4)),
         Paint()..color = fill);
+    notePart(ChartPartKind.mark, r, series: 0, index: i);
     var lines = [
       if (e.showXLabels) e.data.categories[i],
       if (e.showValues) _value(e, values[i]),
@@ -717,6 +718,9 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           ..color = colour
           ..strokeWidth = math.max(1.5, dot * 0.35));
     canvas.drawCircle(Offset(x, y), dot, Paint()..color = colour);
+    notePart(ChartPartKind.mark,
+        Rect.fromCircle(center: Offset(x, y), radius: dot * 1.5),
+        series: 0, index: i);
     if (slice.size < 1) continue;
     var top = up ? end - labelH - figureH : end;
     _text(canvas, _value(e, values[i]), figureSpec,
@@ -759,6 +763,7 @@ void _funnel(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       ..close();
     var fill = slice.tint(itemColour(e, i));
     canvas.drawPath(path, Paint()..color = fill);
+    notePart(ChartPartKind.mark, path.getBounds(), series: 0, index: i);
     var words = [
       if (e.showXLabels) e.data.categories[i],
       if (e.showValues) _value(e, values[i]),
@@ -811,6 +816,8 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     if (slice.gone) continue;
     canvas.drawCircle(
         c, r * slice.size, Paint()..color = slice.tint(itemColour(e, i)));
+    notePart(ChartPartKind.mark, Rect.fromCircle(center: c, radius: r),
+        series: 0, index: i);
     if (slice.size < 1) continue;
     var lines = [
       if (e.showXLabels) e.data.categories[i],
@@ -919,6 +926,9 @@ void _bullet(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     var w = width * (values[i] / scaleOf(i)).clamp(0.0, 1.0) * slice.size;
     canvas.drawRect(Rect.fromLTWH(left, top + (rowH - bar) / 2, w, bar),
         Paint()..color = slice.tint(itemColour(e, i)));
+    notePart(ChartPartKind.mark,
+        Rect.fromLTWH(left, top + (rowH - bar) / 2, math.max(w, 2), bar),
+        series: 0, index: i);
     if (targets != null && targets[i] > 0) {
       var x = left + width * (targets[i] / scaleOf(i)).clamp(0.0, 1.0);
       canvas.drawLine(
@@ -985,6 +995,8 @@ void _slope(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           ..strokeCap = StrokeCap.round);
     canvas.drawCircle(p0, dot, Paint()..color = colour);
     if (slice.size >= 1) canvas.drawCircle(p1, dot, Paint()..color = colour);
+    notePart(ChartPartKind.mark, Rect.fromCircle(center: p1, radius: dot * 1.5),
+        series: 0, index: i);
     var h = e.labelSpec.fontSize * 1.6;
     var left = [
       if (e.showXLabels) e.data.categories[i],
@@ -1063,6 +1075,7 @@ void _shareBar(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       var piece = Rect.fromLTWH(x, top, w * slice.size, barH);
       canvas.drawRect(
           piece.deflate(0.75), Paint()..color = slice.tint(itemColour(e, i)));
+      notePart(ChartPartKind.mark, piece, series: 0, index: i);
       if (slice.size >= 1 && named) {
         if (callouts[i] case (var words, var mid, var right, var row)) {
           var y = top + barH + below + fs * 0.6 + lineH * (row + 0.5);
@@ -1123,6 +1136,9 @@ void _lollipop(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           ..color = colour
           ..strokeWidth = math.max(2, dot * 0.4));
     canvas.drawCircle(Offset(end, y), dot, Paint()..color = colour);
+    notePart(ChartPartKind.mark,
+        Rect.fromCircle(center: Offset(end, y), radius: dot * 1.5),
+        series: 0, index: i);
     if (e.showValues && slice.size >= 1) {
       _text(
           canvas,
