@@ -282,6 +282,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(chart().title, "The bottom one");
 
+    // Moved on by the timeline's marks: no pace of its own then.
+    final marks = find.byKey(const ValueKey("studioPill-chartsFollow-marks"));
+    await tester.ensureVisible(marks);
+    await tester.tap(marks);
+    await tester.pumpAndSettle();
+    expect(chart().follow, "marks");
+    expect(find.byKey(const ValueKey("chartsSlider-Each")), findsNothing);
+    final own = find.byKey(const ValueKey("studioPill-chartsFollow-time"));
+    await tester.tap(own);
+    await tester.pumpAndSettle();
+    expect(chart().follow, "time");
+
     // Previewed: it plays, and stops.
     await tester.tap(find.byKey(const ValueKey("chartsPreview")));
     await tester.pump(const Duration(milliseconds: 300));

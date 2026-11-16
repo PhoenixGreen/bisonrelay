@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -102,6 +105,9 @@ ChartElement chartPlaying(ChartElement e, DataSheet sheet, double seconds) {
   ChartData read(ChartElement c) => chartDataOf(sheet, c.sheet!, c.data,
       type: c.type, highlights: chartLights(c.highlights, sheet));
 
+  // Steps that follow the marks or the scenes are not paced here: see
+  // chartAtStep, and the renderer.
+  if (e.steps.length > 1 && e.follow != ChartStepsFollow.time.name) return e;
   if (e.steps.length > 1) {
     var n = e.steps.length;
     var pos = (math.max(0.0, seconds) / e.play).clamp(0.0, n - 1.0);
@@ -134,4 +140,135 @@ double playLength(ChartElement e, DataSheet sheet) {
   var n =
       e.steps.length > 1 ? e.steps.length : throughDates(sheet, link).length;
   return math.max(0, n - 1) * e.play;
+}
+
+// ---- Steps that follow the timeline's marks, or the scenes.
+
+/// ChartStepsFollow is what moves a chart from step to step: its own pace
+/// (ChartElement.play seconds each); the timeline's marks, a step from each
+/// mark on -- a Stop mark waits for a click, so a presentation moves on a
+/// step at a click; or the scenes (or pages), a step in each scene the chart
+/// is in.
+enum ChartStepsFollow {
+  time("Its own pace"),
+  marks("Timeline marks"),
+  scenes("Scenes or pages");
+
+  final String label;
+  const ChartStepsFollow(this.label);
+
+  static ChartStepsFollow fromName(String? name) =>
+      values.firstWhere((f) => f.name == name, orElse: () => time);
+}
+
+/// stepGlide is how long a chart takes to ease into a step it is moved to
+/// by a mark, in seconds.
+const double stepGlide = 0.6;
+
+/// chartAtStep is [e] on step [k], eased in from step [k] - 1 for the first
+/// [stepGlide] seconds after [since] seconds into it.
+ChartElement chartAtStep(ChartElement e, DataSheet sheet, int k, double since) {
+  if (e.steps.isEmpty || e.sheet == null) return e;
+  k = k.clamp(0, e.steps.length - 1);
+  ChartData read(ChartElement c) => chartDataOf(sheet, c.sheet!, c.data,
+      type: c.type, highlights: chartLights(c.highlights, sheet));
+  var here = chartWithStep(e, k);
+  var f = easeBetween(since / stepGlide);
+  if (k == 0 || f >= 1) return here.copyWith(data: read(here));
+  var was = chartWithStep(e, k - 1);
+  var data = chartBlend(read(was), read(here), f);
+  return (f < 0.5 ? was : here).copyWith(data: data);
+}
+
+/// stepByMarks is which step a chart following the timeline's marks is on
+/// at [frame] of a document with marks at [marks], and how many seconds it
+/// has been on it: a step from each mark on, the first before any.
+(int, double) stepByMarks(List<int> marks, int steps, double frame, int rate) {
+  var at = [...marks]..sort();
+  var k = 0;
+  var from = double.negativeInfinity;
+  for (var m in at) {
+    if (m > frame) break;
+    k++;
+    from = m.toDouble();
+  }
+  k = k.clamp(0, math.max(0, steps - 1));
+  var since = from.isInfinite ? double.infinity : (frame - from) / rate;
+  return (k, since);
+}
+
+/// stepByScenes is which step a chart following the scenes is on: its
+/// place among the scenes it is in -- [inScenes], the indices of the scenes
+/// holding it or a linked copy of it -- the scene [at] being shown.
+int stepByScenes(List<int> inScenes, int at) {
+  var k = inScenes.indexOf(at);
+  return k < 0 ? 0 : k;
+}
+
+// ---- Gliding when the numbers change, in the editor.
+
+/// chartGlides are charts easing from the numbers they had to the ones
+/// they have after a change (a refresh, an edit): by id, what they were
+/// drawn as and the frame time the glide began at (null until it is first
+/// drawn). Kept here, not in the document: it is how the editor draws a
+/// moment, not the design, and an export never sees it.
+final Map<String, (ChartData, Duration?)> chartGlides = {};
+
+/// chartGlideTime is how long a glide takes.
+const Duration chartGlideTime = Duration(milliseconds: 650);
+
+/// chartGlideBeat ticks after each frame a chart was drawn part-way through
+/// a glide, so whoever draws charts draws the next frame (the controller
+/// passes it to the stage, see CanvasController). Frames, not a timer: a
+/// glide never outlives what draws it, and runs on a test's clock.
+final ValueNotifier<int> chartGlideBeat = ValueNotifier(0);
+
+bool _beating = false;
+
+/// _frameNow is the time of the frame being drawn, or null where there is
+/// no scheduler (a plain test, an export in another isolate).
+Duration? _frameNow() {
+  try {
+    return SchedulerBinding.instance.currentSystemFrameTimeStamp;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// startGlide eases chart [id] from [from] -- what it was drawn as, part
+/// way through a glide already if it was in one -- to whatever it is next
+/// drawn with.
+void startGlide(String id, ChartData from) {
+  chartGlides[id] = (from, null);
+}
+
+/// glided is [now] as chart [id] is drawn in this frame: part-way from what
+/// it was if it is gliding, else [now] itself. A finished glide is
+/// forgotten; one under way asks for the next frame.
+ChartData glided(String id, ChartData now) {
+  var g = chartGlides[id];
+  if (g == null) return now;
+  var at = _frameNow();
+  if (at == null) {
+    chartGlides.remove(id);
+    return now;
+  }
+  var from = g.$2;
+  if (from == null) {
+    from = at;
+    chartGlides[id] = (g.$1, at);
+  }
+  var t = (at - from).inMicroseconds / chartGlideTime.inMicroseconds;
+  if (t >= 1 || t < 0) {
+    chartGlides.remove(id);
+    return now;
+  }
+  if (!_beating) {
+    _beating = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _beating = false;
+      chartGlideBeat.value++;
+    });
+  }
+  return chartBlend(g.$1, now, easeBetween(t));
 }

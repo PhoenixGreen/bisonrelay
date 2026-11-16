@@ -67,6 +67,7 @@ import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
@@ -1724,6 +1725,43 @@ class CanvasController extends ChangeNotifier {
   /// apply replaces the document, pushing the old one onto the undo history.
   /// [transient] skips the history, for the many small changes inside one
   /// gesture; [beginInteraction] already remembered where it started.
+  /// _glideCharts starts a glide (chart_play.dart) for each chart on the
+  /// page whose numbers [next] changes from [was] -- a refresh, a typed
+  /// cell, an undo -- so it eases to them rather than jumping; and keeps
+  /// the stage drawing while any glides.
+  void _glideCharts(CanvasDocument was, CanvasDocument next) {
+    if (identical(was.elements, next.elements)) return;
+    var before = {
+      for (var e in was.elements)
+        if (e is ChartElement) e.id: e
+    };
+    var started = false;
+    if (!_glideListening) {
+      _glideListening = true;
+      chartGlideBeat.addListener(_glideBeat);
+    }
+    for (var e in next.elements) {
+      if (e is! ChartElement) continue;
+      var old = before[e.id];
+      if (old == null ||
+          old.data.series.isEmpty ||
+          identical(old.data, e.data)) {
+        continue;
+      }
+      if (sameData(old.data, e.data) || old.type != e.type) continue;
+      // From what it is drawn as now: part-way, if it is already gliding.
+      startGlide(e.id, glided(e.id, old.data));
+      started = true;
+    }
+    // A frame to start it; chartGlideBeat asks for the rest.
+    if (started) keysHeld.value++;
+  }
+
+  bool _glideListening = false;
+
+  /// _glideBeat passes chart_play's beat to the stage, as keysHeld.
+  void _glideBeat() => keysHeld.value++;
+
   void apply(CanvasDocument next, {bool transient = false}) {
     _endPreview();
     if (identical(next, _document)) return;
@@ -1750,6 +1788,7 @@ class CanvasController extends ChangeNotifier {
       _redo.clear();
     }
 
+    _glideCharts(_document, next);
     _document = next;
     _edits++;
     scheduleAutosave();
@@ -4458,6 +4497,8 @@ class CanvasController extends ChangeNotifier {
   @override
   void dispose() {
     _endWait();
+    chartGlideBeat.removeListener(_glideBeat);
+    chartGlides.clear();
     slotsScroll.dispose();
     _heardWatch?.cancel();
     _previewDir?.delete(recursive: true).catchError((_) => _previewDir!);

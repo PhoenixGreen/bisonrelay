@@ -1127,7 +1127,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   var acrossAt = across == null ? null : acrossValuesOf(e);
   double xAt(int i) => acrossAt != null
       ? plot.left + plot.width * across!.fraction(acrossAt[i])
-      : plot.left + plot.width * (n == 1 ? 0.5 : (i + 0.5) / n);
+      // Part-way to a new place while the chart plays (ChartData.slots).
+      : plot.left + plot.width * (n == 1 ? 0.5 : (data.slotAt(i) + 0.5) / n);
   double yAt(double v) =>
       plot.bottom - plot.height * range.fraction(v).clamp(-0.2, 1.2);
 

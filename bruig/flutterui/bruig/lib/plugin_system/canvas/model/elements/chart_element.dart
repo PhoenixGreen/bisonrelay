@@ -358,6 +358,11 @@ class ChartElement extends CanvasElement {
   final List<ChartStep> steps;
   final int stepAt;
 
+  /// follow is what moves it from step to step: its own pace, the
+  /// timeline's marks, or the scenes (see ChartStepsFollow, chart_play.dart).
+  /// Kept as the name, so an older build reads a chart it does not know.
+  final String follow;
+
   const ChartElement(
     super.base, {
     this.type = ChartType.bar,
@@ -424,6 +429,7 @@ class ChartElement extends CanvasElement {
     this.play = 0,
     this.steps = const [],
     this.stepAt = 0,
+    this.follow = "time",
   });
 
   @override
@@ -567,6 +573,7 @@ class ChartElement extends CanvasElement {
     double? play,
     List<ChartStep>? steps,
     int? stepAt,
+    String? follow,
   }) =>
       _copy(base,
           type: type,
@@ -634,7 +641,8 @@ class ChartElement extends CanvasElement {
           notes: notes,
           play: play,
           steps: steps,
-          stepAt: stepAt);
+          stepAt: stepAt,
+          follow: follow);
 
   /// _copy is copyWith and rebase sharing one body, so no field can be
   /// dropped from one of them.
@@ -706,6 +714,7 @@ class ChartElement extends CanvasElement {
     double? play,
     List<ChartStep>? steps,
     int? stepAt,
+    String? follow,
   }) =>
       ChartElement(newBase,
           type: type ?? this.type,
@@ -773,7 +782,8 @@ class ChartElement extends CanvasElement {
           notes: notes ?? this.notes,
           play: play ?? this.play,
           steps: steps ?? this.steps,
-          stepAt: stepAt ?? this.stepAt);
+          stepAt: stepAt ?? this.stepAt,
+          follow: follow ?? this.follow);
 
   @override
   Map<String, dynamic> props() => {
@@ -848,6 +858,7 @@ class ChartElement extends CanvasElement {
         if (play > 0) "play": play,
         if (steps.isNotEmpty) "steps": [for (var st in steps) st.toJson()],
         if (steps.isNotEmpty) "stepAt": stepAt,
+        if (follow != "time") "follow": follow,
       };
 
   factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) => ChartElement(
@@ -963,7 +974,8 @@ class ChartElement extends CanvasElement {
           for (var st in ss)
             if (ChartStep.fromJson(st) case var step?) step,
       ],
-      stepAt: jsonInt(json["stepAt"], 0));
+      stepAt: jsonInt(json["stepAt"], 0),
+      follow: jsonString(json["follow"], "time"));
 }
 
 /// ChartSourceMap is which of a fetched source's columns the chart draws: the

@@ -146,6 +146,7 @@ class ChartsDesignState extends State<ChartsDesign>
 
   @override
   void dispose() {
+    c.keysHeld.removeListener(_glideTick);
     _end();
     _preview.dispose();
     _focus.dispose();
@@ -161,9 +162,32 @@ class ChartsDesignState extends State<ChartsDesign>
   /// _shown is the chart as the stage draws it: playing, while previewing.
   ChartElement _shown() {
     var s = _sheet;
-    if (!_preview.isAnimating || s == null) return e;
-    var playing = e.play > 0 ? e : e.copyWith(play: 1.0);
+    if (!_preview.isAnimating || s == null) {
+      // Numbers just changed ease to their new values, as on the canvas.
+      return chartGlides.containsKey(e.id)
+          ? e.copyWith(data: glided(e.id, e.data))
+          : e;
+    }
+    // The preview plays steps at a pace, whatever moves them on the canvas.
+    var playing = (e.play > 0 ? e : e.copyWith(play: 1.0))
+        .copyWith(follow: ChartStepsFollow.time.name);
     return chartPlaying(playing, s, _preview.value * playLength(playing, s));
+  }
+
+  /// _gliding is whether the stage was drawing a glide at the last tick, so
+  /// the tick after it ends draws the numbers themselves.
+  bool _gliding = false;
+
+  void _glideTick() {
+    var now = chartGlides.containsKey(e.id);
+    if ((now || _gliding) && mounted) setState(() {});
+    _gliding = now;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    c.keysHeld.addListener(_glideTick);
   }
 
   void _play() {
@@ -1432,7 +1456,26 @@ class ChartsDesignState extends State<ChartsDesign>
       _hint(context,
           "Its colours for a dark page (Night, Mono) or a light one (Paper, Bright)."),
       const StudioLabel("Motion"),
-      if (_playable) ...[
+      if (e.steps.length > 1) ...[
+        StudioPills<String>(
+            id: "chartsFollow",
+            label: "Steps move on with",
+            value: e.follow,
+            options: [for (var f in ChartStepsFollow.values) (f.name, f.label)],
+            onChanged: (v) => _set(e.copyWith(follow: v))),
+        _hint(
+            context,
+            switch (ChartStepsFollow.fromName(e.follow)) {
+              ChartStepsFollow.time =>
+                "Once it has arrived, a step after another at the pace below.",
+              ChartStepsFollow.marks =>
+                "A step from each mark on the timeline. At a Stop mark the canvas waits, so in a presentation the next step comes at a click.",
+              ChartStepsFollow.scenes =>
+                "A step in each scene or page it is in: step 1 in the first, step 2 in the next. Put linked copies of it in the scenes after.",
+            }),
+      ],
+      if (_playable &&
+          (e.steps.length < 2 || e.follow == ChartStepsFollow.time.name)) ...[
         StudioSlider(
           key: const ValueKey("chartsSlider-Each"),
           label: e.steps.length > 1 ? "Each step" : "Each date",

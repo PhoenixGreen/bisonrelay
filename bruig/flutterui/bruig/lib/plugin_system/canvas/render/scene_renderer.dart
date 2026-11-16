@@ -1154,15 +1154,46 @@ void paintElement(
       case ChartElement e:
         // Playing through its dates or steps (chart_play.dart): read at how
         // long it has been since it arrived.
-        if (e.play > 0) {
-          var sheet =
-              document?.sheets.where((s) => s.id == e.sheet?.sheet).firstOrNull;
-          if (sheet != null) {
-            var since =
-                (frame + betweenFrames - (arrivalEnd(e, frameRate) ?? 0)) /
-                    frameRate;
-            e = chartPlaying(e, sheet, since);
-          }
+        var sheet =
+            document?.sheets.where((s) => s.id == e.sheet?.sheet).firstOrNull;
+        var doc = document;
+        if (sheet != null &&
+            doc != null &&
+            e.steps.length > 1 &&
+            e.follow == ChartStepsFollow.marks.name) {
+          // A step from each mark on the timeline (a Stop waits for a click).
+          var (k, since) = stepByMarks([
+            for (var a in doc.actions)
+              if (a.kind == TimelineActionKind.stop ||
+                  a.kind == TimelineActionKind.pause ||
+                  a.kind == TimelineActionKind.locator)
+                a.frame
+          ], e.steps.length, frame + betweenFrames, frameRate);
+          e = chartAtStep(e, sheet, k, since);
+        } else if (sheet != null &&
+            doc != null &&
+            e.steps.length > 1 &&
+            e.follow == ChartStepsFollow.scenes.name) {
+          // A step in each scene (or page) it is in, linked copies included.
+          var chart = e;
+          bool mine(CanvasElement x) =>
+              x.id == chart.id ||
+              (chart.base.cast.isNotEmpty && x.base.cast == chart.base.cast);
+          var inScenes = [
+            for (var (i, scene) in doc.allScenes.indexed)
+              if ((i == doc.at ? doc.elements : scene.elements).any(mine)) i
+          ];
+          e = chartAtStep(
+              e, sheet, stepByScenes(inScenes, doc.at), double.infinity);
+        } else if (e.play > 0 && sheet != null) {
+          var since =
+              (frame + betweenFrames - (arrivalEnd(e, frameRate) ?? 0)) /
+                  frameRate;
+          e = chartPlaying(e, sheet, since);
+        }
+        // In the editor, numbers just changed ease to their new values.
+        if (editing && chartGlides.isNotEmpty) {
+          e = e.copyWith(data: glided(e.id, e.data));
         }
         // How much has arrived (all, with no animation), how much has left,
         // and how far each offset series has got.

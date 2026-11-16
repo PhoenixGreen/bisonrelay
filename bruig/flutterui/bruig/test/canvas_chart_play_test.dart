@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -7,13 +8,21 @@ import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_audio_fake.dart';
 
 // canvas_chart_play_test.dart is a chart in motion and its live words
 // (prototype v6): words in braces worked out from the numbers, whole ones
 // kept whole part-way; a chart part-way between two dates, bars between
 // their places; playing through its dates without a stop, and through its
-// steps, each held then eased into the next.
+// steps, each held then eased into the next. Steps moved on by the
+// timeline's marks or by the scenes instead of their own pace; a chart
+// gliding to new numbers in the editor; lines sliding between places.
 
 const weeks = [
   ["Date", "Team", "Points"],
@@ -132,5 +141,141 @@ void main() {
       expect(back.stepAt, 1);
       expect(back.steps, e.steps);
     });
+  });
+
+  group("steps that follow", () {
+    var e = ChartElement(const ElementBase(id: "c"),
+        sheet: race.copyWith(through: -1),
+        play: 2,
+        title: "Whole league",
+        follow: ChartStepsFollow.marks.name,
+        steps: const [
+          ChartStep(name: "All", title: "Whole league"),
+          ChartStep(
+              name: "Top",
+              title: "Top one",
+              highlights: [ChartHighlight(reach: ChartReach.top, n: 1)]),
+          ChartStep(name: "End", title: "The end"),
+        ]);
+
+    test("the marks: a step from each mark on", () {
+      // Marks at 2s and 5s at 30 frames a second, given out of order.
+      expect(stepByMarks([150, 60], 3, 30, 30), (0, double.infinity));
+      expect(stepByMarks([150, 60], 3, 75, 30), (1, 0.5));
+      expect(stepByMarks([150, 60], 3, 210, 30), (2, 2.0));
+      expect(stepByMarks([10, 20, 30, 40], 3, 45, 30).$1, 2,
+          reason: "no further than the last step");
+      expect(stepByMarks([], 3, 500, 30), (0, double.infinity));
+    });
+
+    test("the scenes: a step in each scene it is in", () {
+      expect(stepByScenes([1, 3, 4], 3), 1);
+      expect(stepByScenes([1, 3, 4], 4), 2);
+      expect(stepByScenes([1, 3, 4], 0), 0, reason: "not in it: the first");
+    });
+
+    test("eased into a step, then held; not paced by its own clock", () {
+      expect(chartPlaying(e, sheet, 4), same(e));
+      var held = chartAtStep(e, sheet, 1, 5);
+      expect(held.title, "Top one");
+      expect(held.data.marks, isNotEmpty);
+      var early = chartAtStep(e, sheet, 1, 0.05);
+      expect(early.title, "Whole league", reason: "still most like the first");
+      var late = chartAtStep(e, sheet, 1, stepGlide * 0.9);
+      expect(late.title, "Top one");
+      expect(chartAtStep(e, sheet, 9, 5).title, "The end");
+      expect(chartAtStep(e, sheet, 0, 0).title, "Whole league");
+    });
+
+    test("what it follows goes through JSON; its own pace by default", () {
+      ChartElement round(ChartElement c) => elementFromJson(
+              jsonDecode(jsonEncode(c.toJson())) as Map<String, dynamic>)
+          as ChartElement;
+      expect(round(e).follow, "marks");
+      var own = e.copyWith(follow: "time");
+      expect(own.toJson().containsKey("follow"), isFalse);
+      expect(round(own).follow, "time");
+      expect(ChartStepsFollow.fromName("nonsense"), ChartStepsFollow.time);
+    });
+  });
+
+  group("gliding to new numbers", () {
+    tearDown(chartGlides.clear);
+    ChartData points(List<double> v) => ChartData(
+        categories: const ["A", "B"],
+        series: [ChartSeries(name: "P", color: Colors.blue, values: v)]);
+
+    testWidgets("eased frame by frame, then let go", (tester) async {
+      // A frame drawn after [wait], as the stage draws one when asked.
+      Future<void> frame([Duration wait = Duration.zero]) async {
+        tester.binding.scheduleFrame();
+        await tester.pump(wait);
+      }
+
+      var beats = chartGlideBeat.value;
+      startGlide("g", points([0, 10]));
+      await frame();
+      expect(glided("g", points([10, 0])).series.single.values, [0, 10],
+          reason: "the first frame drawn starts it");
+      await frame(chartGlideTime ~/ 2);
+      var half = glided("g", points([10, 0])).series.single.values;
+      expect(half[0], inExclusiveRange(0, 10));
+      expect(half[1], inExclusiveRange(0, 10));
+      await frame();
+      expect(chartGlideBeat.value, greaterThan(beats),
+          reason: "asks for the next frame while under way");
+      await frame(chartGlideTime);
+      expect(glided("g", points([10, 0])).series.single.values, [10, 0]);
+      expect(chartGlides, isEmpty);
+    });
+
+    testWidgets("a change of numbers in the editor starts one", (tester) async {
+      var doc = CanvasDocument.fromJson(CanvasDocument(elements: [
+        ChartElement(const ElementBase(id: "c", width: 400, height: 300),
+            data: points([1, 2])),
+      ]).toJson());
+      var c = CanvasController(doc, audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      var chart = c.document.elementById("c") as ChartElement;
+      c.replaceElement(chart.copyWith(title: "Only words"));
+      expect(chartGlides, isEmpty, reason: "the same numbers: nothing to ease");
+      c.replaceElement(chart.copyWith(data: points([5, 1])));
+      expect(chartGlides.keys, ["c"]);
+      expect(chartGlides["c"]!.$1.series.single.values, [1, 2]);
+      await tester.pump(chartGlideTime * 2);
+    });
+  });
+
+  test("lines slide between places, as bars do", () {
+    List<double> xs(ChartData d) {
+      var parts = <ChartPart>[];
+      chartParts = parts;
+      var recorder = ui.PictureRecorder();
+      paintChart(
+          ui.Canvas(recorder),
+          const Rect.fromLTWH(0, 0, 600, 400),
+          ChartElement(const ElementBase(id: "c", width: 600, height: 400),
+              type: ChartType.line, data: d));
+      chartParts = null;
+      recorder.endRecording().dispose();
+      return [
+        for (var p in parts.where((p) => p.kind == ChartPartKind.mark))
+          p.rect.center.dx
+      ];
+    }
+
+    var d = ChartData(categories: const [
+      "A",
+      "B",
+      "C"
+    ], series: [
+      ChartSeries(name: "P", color: Colors.blue, values: const [1, 2, 3]),
+    ]);
+    var still = xs(d);
+    var moving = xs(d.copyWith(slots: [0.5, 0.5, 2]));
+    expect(moving[0], greaterThan(still[0]));
+    expect(moving[1], lessThan(still[1]));
+    expect(moving[0], closeTo(moving[1], 0.01), reason: "passing each other");
+    expect(moving[2], closeTo(still[2], 0.01));
   });
 }
