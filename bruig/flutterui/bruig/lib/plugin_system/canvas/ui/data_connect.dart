@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_studio_side.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
@@ -450,94 +451,89 @@ class _ConnectDataState extends State<ConnectData> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = ThemeNotifier.of(context).colors;
     const says = [
       "Where the data comes from.",
       "What to ask it for.",
       "Which list is the rows, and which columns to keep.",
       "Where it goes.",
     ];
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(widget.editing ? "Edit connection" : "Connect data",
-              key: const ValueKey("connectTitle"),
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: colors.onSurface)),
-          Text("Step $_step of 4 · ${says[_step - 1]}",
-              key: const ValueKey("connectStep"),
-              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          Row(children: [
-            for (var i = 1; i <= 4; i++)
-              Expanded(
-                child: Container(
-                  height: 4,
-                  margin: const EdgeInsets.only(right: 4),
-                  decoration: BoxDecoration(
-                      color:
-                          i <= _step ? colors.primary : colors.outlineVariant,
-                      borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-          ]),
-        ]),
+    const names = ["Source", "Ask", "Columns", "Into"];
+    const icons = [
+      Icons.hub_outlined,
+      Icons.tune,
+      Icons.view_column_outlined,
+      Icons.input,
+    ];
+    void cancel() {
+      widget.onPreview(null);
+      widget.onCancel();
+    }
+
+    // The Studio's sidebar shape (data_studio_side.dart; Ken, 2026-11-17:
+    // "Build all four"): the way back to the sheet in its header, where the
+    // run has got to under it, each step as an open section, and Back and
+    // Next pinned at the foot.
+    return StudioSide(
+      header: StudioSideHeader(
+        icon: Icons.link,
+        crumbs: [
+          ("Sheet", cancel),
+          (widget.editing ? "Edit connection" : "Connect data", null),
+        ],
+        crumbKey: "connectCrumb",
+        title: widget.editing ? "Edit connection" : "Connect data",
+        titleKey: const ValueKey("connectTitle"),
+        onUp: cancel,
       ),
-      Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-      Expanded(
-        child: SingleChildScrollView(
-          key: ValueKey("connectPanel-$_step"),
-          padding: const EdgeInsets.fromLTRB(14, 6, 14, 16),
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: switch (_step) {
-                1 => _sources(context),
-                2 => _settings(context),
-                3 => _columns(context),
-                _ => _into(context),
-              }),
-        ),
-      ),
-      if (_problem != null)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-          child: Text(_problem!,
+      scrollKey: ValueKey("connectPanel-$_step"),
+      quick: [
+        StudioSteps(
+            names: names,
+            at: _step,
+            onBack: _busy ? null : (i) => setState(() => _step = i)),
+        const SizedBox(height: 8),
+        Text("Step $_step of 4 · ${says[_step - 1]}",
+            key: const ValueKey("connectStep"),
+            style: TextStyle(
+                fontSize: 12,
+                color: ThemeNotifier.of(context).colors.onSurfaceVariant)),
+      ],
+      body: [
+        StudioStepCard(
+            icon: icons[_step - 1],
+            title: says[_step - 1].replaceAll(".", ""),
+            children: switch (_step) {
+              1 => _sources(context),
+              2 => _settings(context),
+              3 => _columns(context),
+              _ => _into(context),
+            }),
+        if (_problem != null)
+          Text(_problem!,
               key: const ValueKey("connectProblem"),
               style: const TextStyle(fontSize: 12, color: Color(0xFFE8645A))),
-        ),
-      Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-      Padding(
-        padding: const EdgeInsets.all(10),
-        child: Wrap(spacing: 6, runSpacing: 6, children: [
-          StudioPill(
-              key: const ValueKey("connectCancel"),
-              label: "Cancel",
-              onTap: () {
-                widget.onPreview(null);
-                widget.onCancel();
-              }),
-          if (_step > 1)
-            StudioPill(
-                key: const ValueKey("connectBack"),
-                label: "Back",
-                onTap: _busy ? null : () => setState(() => _step--)),
-          StudioPill(
-              key: const ValueKey("connectNext"),
-              label: _busy
-                  ? "Fetching…"
-                  : switch (_step) {
-                      2 => "Fetch an example",
-                      4 => "Connect",
-                      _ => "Next",
-                    },
-              filled: true,
-              onTap: _busy || !_canGo ? null : _next),
-        ]),
-      ),
-    ]);
+      ],
+      footer: studioButtons([
+        studioButton("Cancel",
+            key: const ValueKey("connectCancel"), onPressed: cancel),
+        if (_step > 1)
+          studioButton("Back",
+              key: const ValueKey("connectBack"),
+              icon: Icons.arrow_back,
+              onPressed: _busy ? null : () => setState(() => _step--)),
+        studioButton(
+            _busy
+                ? "Fetching…"
+                : switch (_step) {
+                    2 => "Fetch an example",
+                    4 => "Connect",
+                    _ => "Next",
+                  },
+            key: const ValueKey("connectNext"),
+            primary: true,
+            onPressed: _busy || !_canGo ? null : _next),
+      ]),
+    );
   }
 
   bool get _canGo => switch (_step) {
@@ -569,40 +565,16 @@ class _ConnectDataState extends State<ConnectData> {
       );
 
   Widget _card(BuildContext context, String id, String title, String says,
-      bool on, VoidCallback tap) {
-    final colors = ThemeNotifier.of(context).colors;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Material(
-        color: colors.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(9),
-            side: BorderSide(
-                color: on ? colors.primary : const Color(0x00000000),
-                width: 1.5)),
-        child: InkWell(
+          bool on, VoidCallback tap) =>
+      StudioItem(
           key: ValueKey("connectSource-$id"),
-          borderRadius: BorderRadius.circular(9),
-          onTap: tap,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title,
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: colors.onSurface)),
-              if (says.isNotEmpty)
-                Text(says,
-                    style: TextStyle(
-                        fontSize: 11.5, color: colors.onSurfaceVariant)),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
+          mark: Icon(on ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 16),
+          title: title,
+          subtitle: says,
+          lit: on,
+          subtitleLines: 3,
+          onTap: tap);
 
   List<Widget> _sources(BuildContext context) => [
         const StudioLabel("Ready-made"),
@@ -832,9 +804,12 @@ class _ConnectDataState extends State<ConnectData> {
                                   for (var (j, x) in _src.columns.indexed)
                                     j == i ? x.copyWith(picture: v ?? false) : x
                                 ]))),
-                        Text("As a picture",
-                            style: TextStyle(
-                                fontSize: 11.5, color: colors.onSurface)),
+                        Flexible(
+                          child: Text("As a picture",
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11.5, color: colors.onSurface)),
+                        ),
                       ]),
                   ]),
             ),

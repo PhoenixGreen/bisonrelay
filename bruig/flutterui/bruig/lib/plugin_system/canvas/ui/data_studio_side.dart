@@ -26,11 +26,15 @@ class StudioSide extends StatelessWidget {
   /// scrollKey names the scroll, by what is picked, so it starts at the top
   /// when the pick changes.
   final Key? scrollKey;
+
+  /// footer is pinned under the scroll: a run of steps' Back and Next.
+  final Widget? footer;
   const StudioSide(
       {required this.header,
       this.quick = const [],
       required this.body,
       this.scrollKey,
+      this.footer,
       super.key});
 
   @override
@@ -56,6 +60,10 @@ class StudioSide extends StatelessWidget {
               ),
             ),
           ),
+          if (footer != null) ...[
+            Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+            Padding(padding: const EdgeInsets.all(10), child: footer),
+          ],
         ]),
       ),
     );
@@ -596,6 +604,9 @@ class StudioItem extends StatelessWidget {
 
   /// trailing goes before its chevron: a button of its own.
   final Widget? trailing;
+
+  /// subtitleLines is how many lines its second line may take.
+  final int subtitleLines;
   const StudioItem(
       {required this.mark,
       required this.title,
@@ -609,6 +620,7 @@ class StudioItem extends StatelessWidget {
       this.lit = false,
       this.onHover,
       this.trailing,
+      this.subtitleLines = 1,
       super.key});
 
   @override
@@ -645,7 +657,7 @@ class StudioItem extends StatelessWidget {
                             color: colors.onSurface)),
                     if (subtitle.isNotEmpty)
                       Text(subtitle,
-                          maxLines: 1,
+                          maxLines: subtitleLines,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 11.5, color: muted)),
                   ],
@@ -725,14 +737,21 @@ Widget studioButton(String label,
         IconData? icon,
         bool primary = false,
         String tooltip = ""}) =>
-    CanvasTextButton(
-        key: key,
-        label: label,
-        icon: icon,
-        tooltip: tooltip,
-        primary: primary,
-        grow: false,
-        onPressed: onPressed);
+    // As wide as its words at whatever text size: the kit's own width is
+    // guessed from the number of letters, and cut "Back" short at a larger
+    // text size.
+    IntrinsicWidth(
+      child: CanvasCellFill(
+        child: CanvasTextButton(
+            key: key,
+            label: label,
+            icon: icon,
+            tooltip: tooltip,
+            primary: primary,
+            grow: false,
+            onPressed: onPressed),
+      ),
+    );
 
 /// studioNote is a line of plain words: what a list holds, where none.
 class StudioNote extends StatelessWidget {
@@ -814,3 +833,124 @@ Widget studioParts(List<Widget> parts) => SizedBox(
         ]);
       }),
     );
+
+/// StudioStepCard is one step of a run of them, drawn as an open section:
+/// its picture and name over what it asks.
+class StudioStepCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
+  const StudioStepCard(
+      {required this.icon,
+      required this.title,
+      required this.children,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.25),
+        border: Border.all(color: colors.outline.withValues(alpha: 0.5)),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: colors.surfaceContainerHighest),
+              child: Icon(icon, size: 16, color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(title,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colors.onSurface)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+/// StudioSteps is where a run of steps has got to: each numbered and named,
+/// those done ticked and pressable to go back to.
+class StudioSteps extends StatelessWidget {
+  final List<String> names;
+
+  /// at is the step showing, counted from 1.
+  final int at;
+  final ValueChanged<int>? onBack;
+  const StudioSteps(
+      {required this.names, required this.at, this.onBack, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    return Row(children: [
+      for (var (i, name) in names.indexed) ...[
+        if (i > 0)
+          Expanded(
+            flex: 1,
+            child: Container(
+                height: 1.5,
+                color: i < at ? colors.primary : colors.outlineVariant),
+          ),
+        InkWell(
+          key: ValueKey("studioStep-${i + 1}"),
+          borderRadius: BorderRadius.circular(8),
+          onTap: i + 1 < at && onBack != null ? () => onBack!(i + 1) : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i + 1 <= at ? colors.primary : null,
+                  border: Border.all(
+                      color:
+                          i + 1 <= at ? colors.primary : colors.outlineVariant),
+                ),
+                child: i + 1 < at
+                    ? Icon(Icons.check, size: 13, color: colors.onPrimary)
+                    : Text("${i + 1}",
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: i + 1 == at
+                                ? colors.onPrimary
+                                : colors.onSurfaceVariant)),
+              ),
+              const SizedBox(height: 3),
+              Text(name,
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight:
+                          i + 1 == at ? FontWeight.w700 : FontWeight.w400,
+                      color: i + 1 == at
+                          ? colors.onSurface
+                          : colors.onSurfaceVariant)),
+            ]),
+          ),
+        ),
+      ],
+    ]);
+  }
+}
