@@ -163,7 +163,8 @@ const Map<String, List<(String, String)>> chartModes = {
   "tileMap": [
     ("squares", "Squares"),
     ("hex", "Hexagons"),
-    ("circles", "Sized circles")
+    ("circles", "Sized circles"),
+    ("drawn", "A drawn map")
   ],
   "pyramid": [("pyramid", "Pyramid"), ("butterfly", "Butterfly")],
   "scatter": [("dots", "Dots"), ("sized", "Sized by a third number")],

@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/chart_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
+import 'package:bruig/plugin_system/canvas/model/world_map.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart'
@@ -94,5 +95,22 @@ void main() {
     expect(tileMapOf(["Arsenal", "Spurs"]), isNull);
     var map = chart(ChartType.tileMap, "Country\tFans\nGB\t40\nFR\t30");
     expect(partsOf(map), hasLength(2));
+  });
+
+  test("a drawn world map: countries by code or name, framed on them", () {
+    expect(worldCountries.length, greaterThan(150));
+    expect(countryFor("FR")!.name, "France");
+    expect(countryFor("fra")!.a2, "FR");
+    expect(countryFor("United Kingdom")!.a2, "GB");
+    expect(countryFor("UK")!.a2, "GB");
+    expect(countryFor("Narnia"), isNull);
+    // France's main land, not French Guiana: Europe framed as Europe.
+    var view = mapView([countryFor("FR")!, countryFor("DE")!]);
+    expect(view.left, greaterThan(-20));
+    expect(view.bottom, greaterThan(40));
+    var map = chart(
+        ChartType.tileMap, "Country\tFans\nFrance\t30\nDE\t35\nNowhere\t1",
+        mode: "drawn");
+    expect(partsOf(map), hasLength(2), reason: "the two it knows");
   });
 }

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
+import 'package:bruig/plugin_system/canvas/model/world_map.dart';
 
 // chart_presets.dart is the Charts tab's gallery (Ken, 2026-11-17, from
 // prototype v7 and its research): every kind of chart, grouped by the
@@ -798,6 +799,11 @@ final chartKinds = _withWays(<ChartKind>[
             (e, p) => _mode(e, "hex", values: true, pop: true)),
         ChartPreset("Sized circles", "A circle per place, sized by its value.",
             [_a], (e, p) => _mode(e, "circles", pop: true)),
+        ChartPreset(
+            "Drawn map",
+            "Countries drawn and shaded by value, framed on those named.",
+            [_a, _i, _v],
+            (e, p) => _mode(e, "drawn", values: true)),
       ],
       caveat:
           "Places named by US state codes (TX), European country codes (FR) or UK regions (London) sit on the map; others in a grid.",
@@ -1427,9 +1433,10 @@ KindFit kindFit(ChartKind k, Picks p) {
         for (var r = g.r0 + 1; r <= g.r1; r++)
           sheetShown(p.sheet, r, g.c0 + named).trim().toUpperCase()
       ];
-      if (tileMapOf(codes) == null) {
+      var countries = codes.where((c) => countryFor(c) != null).length;
+      if (tileMapOf(codes) == null && countries * 2 < codes.length) {
         return const KindFit(0.5,
-            "Not places on a map (US states, European countries, UK regions): drawn as a grid.");
+            "Not places on a map (countries, US states, UK regions): drawn as a grid.");
       }
     case ChartType.slope || ChartType.dumbbell || ChartType.pyramid:
       if (numbers.length > 2) {

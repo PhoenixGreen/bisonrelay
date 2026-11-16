@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_analysis.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
+import 'package:bruig/plugin_system/canvas/model/world_map.dart';
 import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -1043,6 +1044,10 @@ void _parliament(
 
 void _tileMap(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, String mode) {
+  if (mode == "drawn") {
+    _drawnMap(canvas, area, e, reveal);
+    return;
+  }
   var d = e.data, n = d.categories.length;
   var codes = [for (var c in d.categories) c.trim().toUpperCase()];
   // On a map -- the US, Europe, the UK -- when most are its places;
@@ -1149,6 +1154,100 @@ void _tileMap(
               r.left, r.top + r.height * 0.52, r.width, r.height * 0.36));
     }
   }
+}
+
+/// _drawnMap is the world's countries drawn (world_map.dart), framed on
+/// those the sheet names and shaded by their values, the rest a faint
+/// ground: a choropleth (Ken, 2026-11-17: the report's leftovers).
+void _drawnMap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
+  var d = e.data, n = d.categories.length;
+  var found = [for (var c in d.categories) countryFor(c)];
+  var view = mapView(found.whereType<WorldCountry>());
+  // Longitude narrowed by the cosine of the view's middle latitude: shapes
+  // near their true proportions at that latitude.
+  var k = math.cos(view.center.dy * math.pi / 180).clamp(0.2, 1.0);
+  var w = view.width * k, h = view.height;
+  var scale = math.min(area.width / w, area.height / h);
+  var left = area.left + (area.width - w * scale) / 2;
+  var top = area.top + (area.height - h * scale) / 2;
+  Offset at(Offset lonLat) => Offset(left + (lonLat.dx - view.left) * k * scale,
+      top + (view.bottom - lonLat.dy) * scale);
+  Path pathOf(WorldCountry c) {
+    var path = Path();
+    for (var ring in c.rings) {
+      var p0 = at(ring.first);
+      path.moveTo(p0.dx, p0.dy);
+      for (var (j, q) in ring.indexed) {
+        if (j == 0) continue;
+        var p = at(q);
+        // Across the 180th meridian: broken, not a line across the world.
+        if ((q.dx - ring[j - 1].dx).abs() > 180) {
+          path.moveTo(p.dx, p.dy);
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      path.close();
+    }
+    return path;
+  }
+
+  var vals = [for (var i = 0; i < n; i++) _v(e, 0, i)];
+  var ok = vals.where((v) => !v.isNaN).toList();
+  var lo = ok.isEmpty ? 0.0 : ok.reduce(math.min);
+  var hi = ok.isEmpty ? 1.0 : ok.reduce(math.max);
+  var hiC = d.series.first.color;
+  var ground = e.panel.a > 0 ? e.panel : const Color(0xFFF4F4F4);
+  var loC = Color.lerp(ground, hiC, 0.12)!;
+  var edge = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = math.max(0.5, scale * 0.04)
+    ..color = ground.withValues(alpha: 0.9);
+  canvas.save();
+  canvas.clipRect(area);
+  // The rest of the world in view, faint.
+  var named = found.whereType<WorldCountry>().toSet();
+  for (var c in worldCountries) {
+    if (named.contains(c) || !c.bounds.overlaps(view)) continue;
+    var path = pathOf(c);
+    canvas.drawPath(path,
+        Paint()..color = Color.lerp(ground, hiC, 0.05)!.withValues(alpha: 0.8));
+    canvas.drawPath(path, edge);
+  }
+  for (var i = 0; i < n; i++) {
+    var c = found[i];
+    if (c == null) continue;
+    var p = sliceProgress(e, reveal, i, n);
+    if (p.gone) continue;
+    var v = vals[i];
+    var f = v.isNaN || hi - lo <= 0 ? 0.5 : (v - lo) / (hi - lo);
+    var fill = p.tint(_col(e, i, _shade(loC, hiC, f)));
+    var path = pathOf(c);
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = fill.withValues(alpha: fill.a * p.size.clamp(0.0, 1.0)));
+    canvas.drawPath(path, edge);
+    var box = path.getBounds();
+    notePart(ChartPartKind.mark, box, series: 0, index: i);
+    // Its words over its main land.
+    var land = c.main;
+    box = Rect.fromPoints(at(land.topLeft), at(land.bottomRight));
+    // Its code or value where it is big enough to hold it.
+    if (p.size >= 1 && (e.showXLabels || e.showValues)) {
+      var words = [
+        if (e.showXLabels) c.a2,
+        if (e.showValues && !v.isNaN) _num(e, v),
+      ].join(" ");
+      var spec = _lab(e, TextAlignSpec.center, e.labelSpec.fontSize * 0.75)
+          .copyWith(color: _ink(fill), weight: 700);
+      if (_width(words, spec) < box.width * 0.9 &&
+          box.height > spec.fontSize * 1.4) {
+        _say(canvas, words, spec, box);
+      }
+    }
+  }
+  canvas.restore();
 }
 
 // ------------------------------------------------------------ pyramid
