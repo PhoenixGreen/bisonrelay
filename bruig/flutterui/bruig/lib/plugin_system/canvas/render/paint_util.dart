@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
     show CanvasImageSource;
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:flutter/painting.dart';
+import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
 // paint_util.dart is the drawing every element does the same way: laying out
 // a string, filling a box, and turning a shape's name into a path.
@@ -844,7 +845,7 @@ double paintTextInBox(
     }
     if (phase.drawsOutline) soft?.paint(canvas, offset);
     if (phase.drawsOutline) outline?.paint(canvas, offset);
-    if (phase.drawsLetters) painter.paint(canvas, offset);
+    if (phase.drawsLetters) paintTp(painter, canvas, offset);
   }
 
   if (!spec.fill.on) {
@@ -1240,7 +1241,7 @@ void paintCentredGlyphs(
             maxWidth: double.infinity, scale: scale, outline: true)
         .paint(canvas, at);
   }
-  painter.paint(canvas, at);
+  paintTp(painter, canvas, at);
 }
 
 /// lineEdges is where one line of a laid-out paragraph gives way to the next,
@@ -1435,7 +1436,7 @@ void paintTextInColumns(
       }
       if (phase.drawsOutline) soft?.paint(canvas, at);
       if (phase.drawsOutline) outline?.paint(canvas, at);
-      if (phase.drawsLetters) painter.paint(canvas, at);
+      if (phase.drawsLetters) paintTp(painter, canvas, at);
     }
 
     var column = Rect.fromLTWH(left, box.top + dy, width, used);
@@ -2339,7 +2340,7 @@ double paintRunsInBox(
     canvas.save();
     canvas.clipRect(box);
   }
-  painter.paint(canvas, Offset(box.left, box.top + dy));
+  paintTp(painter, canvas, Offset(box.left, box.top + dy));
   if (clip) canvas.restore();
   return painter.height;
 }

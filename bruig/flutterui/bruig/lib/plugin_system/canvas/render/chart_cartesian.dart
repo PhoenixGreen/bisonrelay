@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
+import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
 // chart_cartesian.dart draws every chart type that has an x and a y axis:
 // bars, grouped and stacked bars, horizontal bars, lines, areas and scatter.
@@ -365,8 +366,8 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
                 fontFamily: e.titleSpec.fontFamily)),
         textDirection: TextDirection.ltr)
       ..layout(maxWidth: plot.width);
-    tp.paint(
-        canvas, Offset(plot.right - tp.width - 8, plot.bottom - tp.height - 4));
+    paintTp(tp, canvas,
+        Offset(plot.right - tp.width - 8, plot.bottom - tp.height - 4));
     tp.dispose();
   }
   if (e.showAxisLabels) {
@@ -462,7 +463,7 @@ void _lineNames(
   var last = double.negativeInfinity;
   for (var (y, tp) in placed) {
     var top = math.max(y, last);
-    tp.paint(canvas, Offset(plot.right + 6, top));
+    paintTp(tp, canvas, Offset(plot.right + 6, top));
     last = top + tp.height;
     tp.dispose();
   }
@@ -538,7 +539,8 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             r, Paint()..color = note.colour.withValues(alpha: 0.18));
         if (note.text.isNotEmpty) {
           var tp = words(liveWords(data, note.text), note.colour);
-          tp.paint(
+          paintTp(
+              tp,
               canvas,
               horizontal
                   ? Offset(r.right - tp.width - 4, r.top + 2)
@@ -583,7 +585,8 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             ? number(v)
             : "${liveWords(data, note.text)} ${number(v)}";
         var tp = words(said, note.colour);
-        tp.paint(
+        paintTp(
+            tp,
             canvas,
             horizontal
                 ? Offset(hit.center.dx + 4, plot.top)
@@ -610,7 +613,7 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         canvas.drawRRect(
             RRect.fromRectAndRadius(pill, const Radius.circular(5)),
             Paint()..color = note.colour);
-        tp.paint(canvas, at);
+        paintTp(tp, canvas, at);
         tp.dispose();
         notePart(ChartPartKind.note, pill, index: k);
 
@@ -683,7 +686,7 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           canvas.drawRRect(
               RRect.fromRectAndRadius(at, const Radius.circular(5)),
               Paint()..color = note.colour);
-          tp.paint(canvas, Offset(at.left + 7, at.top + 4));
+          paintTp(tp, canvas, Offset(at.left + 7, at.top + 4));
           canvas.restore();
         }
         tp.dispose();
@@ -720,7 +723,7 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           hit = Rect.fromLTRB(x0, y - 6, x1, y + size * 1.4);
           if (grow >= 1) {
             var tp = words(said, note.colour);
-            tp.paint(canvas, Offset(mid - tp.width / 2, y + 2));
+            paintTp(tp, canvas, Offset(mid - tp.width / 2, y + 2));
             tp.dispose();
           }
         } else {
@@ -735,7 +738,9 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           canvas.drawPath(path, stroke);
           var tp = words(said, note.colour);
           hit = Rect.fromLTWH(x - 6, y0, tp.width + 12, y1 - y0);
-          if (grow >= 1) tp.paint(canvas, Offset(x + 4, mid - tp.height / 2));
+          if (grow >= 1) {
+            paintTp(tp, canvas, Offset(x + 4, mid - tp.height / 2));
+          }
           tp.dispose();
         }
         notePart(ChartPartKind.note, hit, index: k);

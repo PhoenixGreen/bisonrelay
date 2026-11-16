@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/export/vector_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_presets.dart';
@@ -2268,6 +2269,33 @@ class ChartsDesignState extends State<ChartsDesign>
               summary: e.type.label,
               open: true,
               children: kind),
+        // Sharp at any size, its words still words (the improvements
+        // report's vector export).
+        studioSection(
+            remember: "charts.save",
+            icon: Icons.save_alt,
+            title: "Save it",
+            summary: "As SVG or PDF, sharp at any size",
+            children: [
+              studioGroup(
+                  "",
+                  [
+                    studioButtons([
+                      for (var f in VectorFormat.values)
+                        studioButton(f.label,
+                            key: ValueKey("chartsSave-${f.extension}"),
+                            icon: Icons.download_outlined,
+                            tooltip: "This chart as it stands, as an "
+                                "${f.label}: shapes and words, not pixels",
+                            onPressed: () => saveVector(context, e, f,
+                                ground: c.document.background.spec.background)),
+                    ]),
+                  ],
+                  help: "Drawn as it finally stands. Its words stay words "
+                      "and its shapes stay shapes, so it prints sharp and "
+                      "can be edited in a drawing program. A gradient, a "
+                      "blur or a picture in it goes in as a picture."),
+            ]),
         studioSection(
             remember: "charts.motion",
             icon: Icons.animation,

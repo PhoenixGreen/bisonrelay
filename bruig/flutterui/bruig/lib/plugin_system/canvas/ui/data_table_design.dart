@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/export/vector_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_presets.dart'
@@ -1328,6 +1329,33 @@ class _TableDesignState extends State<TableDesign> {
                       const SizedBox.shrink(),
                   ]),
               ]),
+            ]),
+        // Sharp at any size, its words still words (the improvements
+        // report's vector export).
+        studioSection(
+            remember: "table.save",
+            icon: Icons.save_alt,
+            title: "Save it",
+            summary: "As SVG or PDF, sharp at any size",
+            children: [
+              studioGroup(
+                  "",
+                  [
+                    studioButtons([
+                      for (var f in VectorFormat.values)
+                        studioButton(f.label,
+                            key: ValueKey("tableSave-${f.extension}"),
+                            icon: Icons.download_outlined,
+                            tooltip: "This table as an ${f.label}: lines and "
+                                "words, not pixels",
+                            onPressed: () => saveVector(context, t, f,
+                                images: c.images,
+                                ground: c.document.background.spec.background)),
+                    ]),
+                  ],
+                  help: "Its words stay words and its lines stay lines, so "
+                      "it prints sharp and can be edited in a drawing "
+                      "program. Pictures in its cells go in as pictures."),
             ]),
         studioSection(
             remember: "table.motion",

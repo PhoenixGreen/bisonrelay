@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:flutter/painting.dart';
+import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
 // chart_notes.dart is notes bound to the data on the kinds without axes --
 // a pie, a treemap, bubbles, a waffle (Ken, 2026-11-17: the improvements
@@ -70,7 +71,7 @@ void paintBoundNotes(ui.Canvas canvas, Rect area, ChartElement e,
         at.inflate(2), Paint()..color = Color.fromRGBO(0, 0, 0, shown));
     canvas.drawRRect(RRect.fromRectAndRadius(at, const Radius.circular(5)),
         Paint()..color = colour);
-    tp.paint(canvas, Offset(at.left + 7, at.top + 4));
+    paintTp(tp, canvas, Offset(at.left + 7, at.top + 4));
     canvas.restore();
   }
 

@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_notes.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
 // chart_painter.dart draws a ChartElement's frame: the title, description,
 // legend and empty placeholder, and the room they leave for the picture.
@@ -570,7 +571,8 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
               ..color = entry.colour.withValues(alpha: entry.colour.a * 0.55))
             : (Paint()..color = entry.colour),
       );
-      painter.paint(
+      paintTp(
+          painter,
           canvas,
           Offset(x + layout.swatch + layout.gap * 0.6,
               y + (layout.rowHeight - painter.height) / 2));
@@ -643,7 +645,7 @@ void _paintPanels(ui.Canvas canvas, Rect area, ChartElement e) {
         maxLines: 1,
         ellipsis: "…")
       ..layout(maxWidth: math.max(1.0, w * 0.6));
-    tp.paint(canvas, right ? at - Offset(tp.width, 0) : at);
+    paintTp(tp, canvas, right ? at - Offset(tp.width, 0) : at);
     tp.dispose();
   }
 
