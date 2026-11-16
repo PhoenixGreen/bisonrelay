@@ -340,7 +340,9 @@ class DataGridState extends State<DataGrid> {
     if (_editing != null) _commit();
     _focus.requestFocus();
     if (column) {
-      var c = ((local.dx + _h.offset) / dataColumnWidth).floor();
+      var c = ((local.dx + _h.offset) / dataColumnWidth)
+          .floor()
+          .clamp(0, _cols - 1);
       var shift = HardwareKeyboard.instance.isShiftPressed;
       _select(
           shift
@@ -348,7 +350,8 @@ class DataGridState extends State<DataGrid> {
               : DataSel(0, c, _rows - 1, c),
           stay: true);
     } else {
-      var r = ((local.dy + _v.offset) / dataRowHeight).floor();
+      var r =
+          ((local.dy + _v.offset) / dataRowHeight).floor().clamp(0, _rows - 1);
       var shift = HardwareKeyboard.instance.isShiftPressed;
       _select(
           shift
@@ -675,7 +678,7 @@ class _Headers extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = look.head);
     var offset = scroll.hasClients ? scroll.offset : 0.0;
     var step = columns ? dataColumnWidth : dataRowHeight;
-    var first = (offset / step).floor();
+    var first = math.max(0, (offset / step).floor());
     var last = ((offset + (columns ? size.width : size.height)) / step).ceil();
     var line = Paint()..color = look.line;
     for (var i = first; i <= last; i++) {
@@ -748,7 +751,10 @@ class _Cells extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     var dy = v.hasClients ? v.offset : 0.0, dx = h.hasClients ? h.offset : 0.0;
-    var r0 = (dy / dataRowHeight).floor(), c0 = (dx / dataColumnWidth).floor();
+    // From the first row and column even scrolled past them (a bounce at
+    // the top or left edge gives a negative offset).
+    var r0 = math.max(0, (dy / dataRowHeight).floor());
+    var c0 = math.max(0, (dx / dataColumnWidth).floor());
     var r1 = ((dy + size.height) / dataRowHeight).ceil();
     var c1 = ((dx + size.width) / dataColumnWidth).ceil();
     Rect cell(int r, int c) => Rect.fromLTWH(c * dataColumnWidth - dx,

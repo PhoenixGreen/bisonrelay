@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -234,6 +235,31 @@ void main() {
       await tester.pumpAndSettle();
       expect([for (var r = 0; r < 4; r++) sheet().raw(r, 6)],
           ["1", "2", "3", "4"]);
+    });
+
+    // Ken, 2026-11-16: "RangeError ... Not in inclusive range 0..3: -3" from
+    // the grid's cells painter. On a Mac the grid bounces past its top and
+    // left edges, and the offset goes negative; the first row drawn was then
+    // row -3.
+    testWidgets("dragged past its top-left corner on a Mac: bounces, no error",
+        (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      try {
+        await studio(tester);
+        // As a trackpad flick leaves it: past both edges, bouncing back.
+        for (var view in tester.widgetList<SingleChildScrollView>(
+            find.descendant(
+                of: find.byType(DataGrid),
+                matching: find.byType(SingleChildScrollView)))) {
+          view.controller!.position.jumpTo(-61);
+        }
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(tester.takeException(), isNull, reason: "past the edge");
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: "bouncing back");
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
 
     testWidgets("pasted from a spreadsheet: tab-separated rows, put in place",
