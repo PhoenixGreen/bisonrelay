@@ -69,13 +69,35 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   // taking none and drawn after it so they stay readable.
   var floating = e.floatingLabels;
   if (!floating) {
+    var was = area;
     area = _flowLabel(canvas, area, body, e.title, e.titleBox, e.titleSpec);
+    if (area.top > was.top) {
+      notePart(ChartPartKind.title,
+          Rect.fromLTRB(was.left, was.top, was.right, area.top));
+    }
+    was = area;
     area = _flowLabel(canvas, area, body, e.description, e.descriptionBox,
         descriptionSpec(e));
+    if (area.top > was.top) {
+      notePart(ChartPartKind.description,
+          Rect.fromLTRB(was.left, was.top, was.right, area.top));
+    }
     // A one-series chart gets a legend too. A legend dragged off its slot
     // takes no room and is drawn over the plot below.
     if (e.showLegend && data.series.isNotEmpty && !e.legend.hasPlace) {
+      was = area;
       area = _legend(canvas, area, e, showing);
+      notePart(ChartPartKind.legend, _legendBlock(e, was, 1));
+    }
+  } else if (chartParts != null) {
+    for (var MapEntry(:key, :value) in chartLabelPlaces(e, rect).entries) {
+      notePart(
+          switch (key) {
+            ChartLabelPart.title => ChartPartKind.title,
+            ChartLabelPart.description => ChartPartKind.description,
+            ChartLabelPart.legend => ChartPartKind.legend,
+          },
+          value);
     }
   }
 

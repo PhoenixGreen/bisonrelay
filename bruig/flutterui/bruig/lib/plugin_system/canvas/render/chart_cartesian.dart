@@ -322,6 +322,11 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   var plot = Rect.fromLTRB(
       left, area.top + topAir * 0.6, area.right - rightAir * 0.5, bottom);
   if (plot.width <= 4 || plot.height <= 4) return;
+  notePart(ChartPartKind.plot, plot);
+  notePart(ChartPartKind.xLabels,
+      Rect.fromLTRB(plot.left, plot.bottom, plot.right, area.bottom));
+  notePart(ChartPartKind.yLabels,
+      Rect.fromLTRB(area.left, plot.top, plot.left, plot.bottom));
 
   _grid(canvas, plot, range, e, horizontal);
   if (e.showAxisLabels) {
@@ -813,6 +818,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           ? null
           : seriesShader(series, bar,
               alpha: series.color.a == 0 ? 1 : colour.a / series.color.a);
+      notePart(ChartPartKind.mark, bar, series: s, index: i);
       canvas.drawRRect(
           RRect.fromRectAndRadius(bar, Radius.circular(math.max(0, r))),
           Paint()
@@ -1125,6 +1131,16 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                   shader)
               ..shader = shader);
         if (clipped) canvas.restore();
+      }
+    }
+
+    if (chartParts != null) {
+      for (var i = 0; i < points.length; i++) {
+        if (present[i]) {
+          notePart(
+              ChartPartKind.mark, Rect.fromCircle(center: points[i], radius: 8),
+              series: s, index: i);
+        }
       }
     }
 

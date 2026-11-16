@@ -66,6 +66,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           path.lineTo(centre.dx, centre.dy);
         }
         path.close();
+        notePart(ChartPartKind.mark, path.getBounds(),
+            series: 0, index: i, path: path);
         canvas.drawPath(path, Paint()..color = color);
 
         if (e.showValues) {

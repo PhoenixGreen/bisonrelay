@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_table_design.dart';
@@ -58,7 +59,7 @@ bool _paper = true;
 
 /// DataStudioTab is what the studio shows: the sheet, or the design of one
 /// of its tables.
-enum DataStudioTab { sheet, table }
+enum DataStudioTab { sheet, table, charts }
 
 class _DataStudioState extends State<DataStudio> {
   CanvasController get c => widget.controller;
@@ -262,13 +263,16 @@ class _DataStudioState extends State<DataStudio> {
     if (!_nameFocus.hasFocus) _name.text = _sel.range.a1;
     var picked = _picked;
     var look = _paper ? DataGridLook.calc : DataGridLook.theme(colors);
-    if (_tab == DataStudioTab.table) {
+    if (_tab != DataStudioTab.sheet) {
       return Material(
         color: colors.surface,
         child: Column(children: [
           _topBar(context, s),
           Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-          Expanded(child: _tableTab(context, s)),
+          Expanded(
+              child: _tab == DataStudioTab.table
+                  ? _tableTab(context, s)
+                  : _chartsTab(context, s)),
         ]),
       );
     }
@@ -426,6 +430,36 @@ class _DataStudioState extends State<DataStudio> {
     ]);
   }
 
+  /// _chartsTab is the Charts tab: the chart picked among this sheet's
+  /// views, or its first; none, a way to make one.
+  Widget _chartsTab(BuildContext context, DataSheet s) {
+    final colors = ThemeNotifier.of(context).colors;
+    var charts = _views.whereType<ChartElement>().toList();
+    if (charts.isEmpty) {
+      return Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text("No chart on the canvas shows this sheet.",
+            style: TextStyle(color: colors.onSurface)),
+        const SizedBox(height: 12),
+        StudioPill(
+            key: const ValueKey("dataStudioChartMake"),
+            label: "+ Chart of this sheet",
+            filled: true,
+            onTap: () {
+              var made = c.addDataView(ElementKind.chart, _sheet, s.used);
+              setState(() => _view = startedChart(c, made).id);
+            }),
+      ]));
+    }
+    var chart = charts.where((v) => v.id == _view).firstOrNull ?? charts.first;
+    return ChartsDesign(
+        key: const ValueKey("dataStudioChartsDesign"),
+        controller: c,
+        sheetId: s.id,
+        chart: chart,
+        onPickChart: (id) => setState(() => _view = id));
+  }
+
   DataOutline _outlineOf(CanvasElement v) {
     var link = linkOf(v)!;
     if (v is ChartElement) {
@@ -455,6 +489,7 @@ class _DataStudioState extends State<DataStudio> {
         for (var (tab, name) in const [
           (DataStudioTab.sheet, "Sheet"),
           (DataStudioTab.table, "Table"),
+          (DataStudioTab.charts, "Charts"),
         ]) ...[
           StudioPill(
               key: ValueKey("dataStudioTab-${tab.name}"),
@@ -464,13 +499,15 @@ class _DataStudioState extends State<DataStudio> {
           gap(),
         ],
         gap(8),
+        // The sheet's name is on its tab under the grid; on the other tabs,
+        // here, since they have no tabs of sheets.
+        if (_tab != DataStudioTab.sheet)
+          Flexible(
+            child: Text(s.name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
+          ),
         Expanded(
-          child: Text(s.name,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
-        ),
-        Flexible(
-          flex: 6,
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             reverse: true,

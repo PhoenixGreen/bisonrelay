@@ -122,3 +122,33 @@ List<int> waffleCells(List<double> values, {int cells = 100}) {
   }
   return whole;
 }
+
+/// ChartPartKind is a part of a drawn chart, for the Data Studio's Charts
+/// tab to point at: the writing over it, its plot, the labels along each
+/// side, and each mark (a bar, a point, a slice).
+enum ChartPartKind { title, description, legend, plot, xLabels, yLabels, mark }
+
+/// ChartPart is where one part was drawn, in the painter's own coordinates.
+/// A mark has its series and category; a slice its outline.
+class ChartPart {
+  final ChartPartKind kind;
+  final Rect rect;
+  final int series, index;
+  final Path? path;
+  const ChartPart(this.kind, this.rect,
+      {this.series = -1, this.index = -1, this.path});
+
+  bool contains(Offset p) => path?.contains(p) ?? rect.contains(p);
+}
+
+/// chartParts collects where things are drawn while it is set: the Charts
+/// tab sets it around one paintChart and reads it back. Null otherwise, so
+/// the canvas pays nothing.
+List<ChartPart>? chartParts;
+
+/// notePart writes one part down, when parts are being collected.
+void notePart(ChartPartKind kind, Rect rect,
+    {int series = -1, int index = -1, Path? path}) {
+  chartParts
+      ?.add(ChartPart(kind, rect, series: series, index: index, path: path));
+}
