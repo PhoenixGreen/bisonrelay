@@ -1144,7 +1144,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       if (e.showValues && v != 0) {
         // Counts up with the bar, clamped so an overshoot never shows a number
         // larger than the data.
-        var label = formatTick(e, v * arrived.clamp(0.0, 1.0));
+        var label = formatSeries(e, s, v * arrived.clamp(0.0, 1.0));
         if (stacked) {
           // Inside its own part, where it fits, in a colour that reads on
           // it; the stack's total goes past its end (below).

@@ -9,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart'
@@ -224,5 +226,30 @@ void main() {
     var rec = ui.PictureRecorder();
     paintTable(ui.Canvas(rec), const Rect.fromLTWH(0, 0, 200, 80), cramped);
     rec.endRecording().dispose();
+  });
+
+  test("whole numbers stay whole part-way through a race or an arrival", () {
+    var a = ChartData.parse("Club\tPts\nArsenal\t3\nSpurs\t1");
+    var b = ChartData.parse("Club\tPts\nArsenal\t9\nSpurs\t4");
+    var mid = const ChartElement(ElementBase(id: "c"))
+        .copyWith(data: chartBlend(a, b, 0.55));
+    expect(formatSeries(mid, 0, mid.data.valueAt(0, 0)), "6");
+    var counting = const ChartElement(ElementBase(id: "c")).copyWith(data: b);
+    expect(formatSeries(counting, 0, 9 * 0.37), "3");
+    var decimals = const ChartElement(ElementBase(id: "c"))
+        .copyWith(data: ChartData.parse("Year\tDCR\n2016\t2.1\n2017\t5.8"));
+    expect(formatSeries(decimals, 0, 2.1), "2.1");
+  });
+
+  test("a table's padding shrinks with its words when they must fit", () {
+    var rows = cellsOf("Pos\tClub\tP\tW\tD\tL\n1\tArsenal\t20\t14\t4\t2\n"
+        "2\tLiverpool\t20\t13\t5\t2");
+    var t = TableElement(const ElementBase(id: "t", width: 260, height: 90),
+        rows: rows, cellPadding: 16);
+    var k = tableTextFit(t, const Rect.fromLTWH(0, 0, 260, 90));
+    // Padding of 16 a side in columns as narrow as "L": counted, so not the
+    // floor of a quarter.
+    expect(k, greaterThan(0.3));
+    expect(k, lessThan(1));
   });
 }

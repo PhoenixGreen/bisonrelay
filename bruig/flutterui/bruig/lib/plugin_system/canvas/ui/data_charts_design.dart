@@ -800,9 +800,28 @@ class ChartsDesignState extends State<ChartsDesign>
     c.endInteraction();
   }
 
+  // What each column holds, as the gallery reads it: worked out again only
+  // when the sheet or the range changes.
+  DataSheet? _kindsOf;
+  CellRange? _kindsRange;
+  List<ColumnKind> _kindsCache = const [];
+  ColumnKind _kindOf(int col) {
+    var s = _sheet;
+    if (s == null) return ColumnKind.empty;
+    if (!identical(_kindsOf, s) || _kindsRange != _link.range) {
+      _kindsOf = s;
+      _kindsRange = _link.range;
+      _kindsCache = columnKinds(s, _link.range);
+    }
+    return col < _kindsCache.length ? _kindsCache[col] : ColumnKind.empty;
+  }
+
   Widget _chip(BuildContext context, int col) {
     final colors = ThemeNotifier.of(context).colors;
     var numbers = _numbers(col);
+    // A column of weeks or years says so, as the gallery reads it as when
+    // (found making the Charts canvas: "123 Week").
+    var when = _kindOf(col) == ColumnKind.dates;
     return Material(
       color: colors.surfaceContainerHigh,
       shape: RoundedRectangleBorder(
@@ -826,12 +845,19 @@ class ChartsDesignState extends State<ChartsDesign>
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(numbers ? "123" : "abc",
+            Text(
+                when
+                    ? "date"
+                    : numbers
+                        ? "123"
+                        : "abc",
                 style: TextStyle(
                     fontSize: 9,
-                    color: numbers
-                        ? const Color(0xFF6FA4F8)
-                        : const Color(0xFFF2B33D))),
+                    color: when
+                        ? const Color(0xFF5FD3A8)
+                        : numbers
+                            ? const Color(0xFF6FA4F8)
+                            : const Color(0xFFF2B33D))),
             const SizedBox(width: 5),
             Text(_columnName(col),
                 style: TextStyle(

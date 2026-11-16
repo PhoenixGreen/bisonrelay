@@ -99,7 +99,16 @@ String formatTick(ChartElement e, double v) => e.numbers.format(v);
 /// Falls back to the chart's style. See ChartSeries.numbers.
 String formatSeries(ChartElement e, int s, double v) {
   var series = s >= 0 && s < e.data.series.length ? e.data.series[s] : null;
-  return (series?.numbers ?? e.numbers).format(v);
+  // Whole numbers stay whole part-way between two dates, as a chart's
+  // words do (ChartData.whole; found making the Charts canvas: a bar race
+  // wrote 6.4 points).
+  // And while counting up as it arrives, for a series of whole numbers.
+  var whole = s >= 0 && s < e.data.whole.length
+      ? e.data.whole[s]
+      : series != null &&
+          series.values.isNotEmpty &&
+          series.values.every((x) => x.isNaN || x == x.roundToDouble());
+  return (series?.numbers ?? e.numbers).format(whole ? v.roundToDouble() : v);
 }
 
 /// formatAxis prints a value-axis figure, in ChartElement.axisFigures (the

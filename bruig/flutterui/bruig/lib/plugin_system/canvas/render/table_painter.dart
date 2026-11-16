@@ -94,9 +94,14 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   // Cells, their words all made smaller together where a row is too short
   // for them or a word too wide for its column: cut to slivers or broken
   // mid-word ("Ran / k") otherwise (found making the Charts canvas).
+  // The type, the room round it and the styles' sizes made smaller
+  // together, as a smaller table's would be; its lines and corners kept.
   var fit = _textFit(e, rect.size, widths, heights);
-  TextSpec fitted(TextSpec t) =>
-      fit < 1 ? t.copyWith(fontSize: t.fontSize * fit) : t;
+  if (fit < 1) {
+    var whole = e;
+    e = (e.scaledBy(fit) as TableElement)
+        .copyWith(gridWidth: whole.gridWidth, cornerRadius: whole.cornerRadius);
+  }
   var drawn = _DrawnCells(e);
   y = rect.top;
   for (var r = 0; r < e.rows.length; r++) {
@@ -112,7 +117,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       paintTextInBox(
           canvas,
           e.cell(r, 0),
-          fitted(e.headerSpec).copyWith(align: TextAlignSpec.left, weight: 700),
+          e.headerSpec.copyWith(align: TextAlignSpec.left, weight: 700),
           Rect.fromLTWH(
               rect.left + e.leftPad,
               y + e.topPad,
@@ -125,7 +130,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     for (var c = 0; c < cols; c++) {
       var w = widths[c];
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
-      var spec = fitted(isHeader ? e.headerSpec : e.cellSpec);
+      var spec = isHeader ? e.headerSpec : e.cellSpec;
       // Drawn rather than written, by its column's kind.
       var kind = isHeader ? "" : (e.columnKinds[c] ?? "");
       if (kind == "merge") {
@@ -854,19 +859,24 @@ double _textFit(
       var kind = isHeader ? "" : (e.columnKinds[c] ?? "");
       if (kind.isNotEmpty && kind != "heat") continue;
       var spec = isHeader || group ? e.headerSpec : e.cellSpec;
+      // The room round the words shrinks with them, so it is counted
+      // with them (found making the Charts canvas: a 33-wide column with
+      // 31 of padding left nothing for its "4").
       var lines = "\n".allMatches(text).length + 1;
-      var tall = heights[r] - e.topPad - e.bottomPad;
-      var needH = spec.fontSize * spec.lineHeight * lines;
+      var tall = heights[r];
+      // A line's letters, not its leading: one line needs about its size.
+      var needH = spec.fontSize * (1 + (lines - 1) * spec.lineHeight) +
+          e.topPad +
+          e.bottomPad;
       if (tall > 0 && needH > tall) k = math.min(k, tall / needH);
-      var wide = (group ? widths.fold(0.0, (a, b) => a + b) : widths[c]) -
-          e.leftPad -
-          e.rightPad;
+      var wide = group ? widths.fold(0.0, (a, b) => a + b) : widths[c];
       var word = 0.0;
       for (var w in text.split(RegExp(r"\s+"))) {
         if (w.isEmpty) continue;
         word = math.max(
             word, layoutText(w, spec, maxWidth: double.infinity).width);
       }
+      word += e.leftPad + e.rightPad;
       if (wide > 0 && word > wide) k = math.min(k, wide / word);
       if (group) break;
     }
