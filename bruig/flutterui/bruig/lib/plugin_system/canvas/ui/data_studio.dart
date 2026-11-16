@@ -1035,6 +1035,17 @@ class _DataStudioState extends State<DataStudio> {
                 onCommit: (v) {
                   if (v.trim().isNotEmpty) c.renameSheet(s.id, v.trim());
                 }),
+            const SizedBox(height: 6),
+            // Kept in a folder, for the list of sheets (data_sheet_find).
+            _Box(
+                key: const ValueKey("dataStudioSheetFolder"),
+                text: s.folder,
+                hint: "Its folder (optional)",
+                onCommit: (v) {
+                  if (v.trim() != s.folder) {
+                    c.setSheet(s.copyWith(folder: v.trim()));
+                  }
+                }),
             const SizedBox(height: 8),
             // Wrapping onto a second line at a large text size.
             Wrap(

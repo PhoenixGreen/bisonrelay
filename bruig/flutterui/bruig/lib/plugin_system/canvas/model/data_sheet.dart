@@ -391,6 +391,10 @@ class DataSheet {
   /// again when that one changes. Null for a sheet typed in or connected.
   final SheetMade? made;
 
+  /// folder is the folder it is kept in, for the Data Studio's list of
+  /// sheets; "" for none.
+  final String folder;
+
   const DataSheet(
       {required this.id,
       this.name = "Sheet",
@@ -403,7 +407,8 @@ class DataSheet {
       this.spotlightColour = const Color(0xFFF2B33D),
       this.gridRows = defaultGridRows,
       this.gridColumns = defaultGridColumns,
-      this.made});
+      this.made,
+      this.folder = ""});
 
   static const int defaultGridRows = 40, defaultGridColumns = 26;
 
@@ -441,7 +446,8 @@ class DataSheet {
           int? gridRows,
           int? gridColumns,
           SheetMade? made,
-          bool unmade = false}) =>
+          bool unmade = false,
+          String? folder}) =>
       DataSheet(
           id: id,
           name: name ?? this.name,
@@ -454,7 +460,8 @@ class DataSheet {
           spotlightColour: spotlightColour ?? this.spotlightColour,
           gridRows: gridRows ?? this.gridRows,
           gridColumns: gridColumns ?? this.gridColumns,
-          made: unmade ? null : made ?? this.made);
+          made: unmade ? null : made ?? this.made,
+          folder: folder ?? this.folder);
 
   /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
   /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
@@ -521,6 +528,7 @@ class DataSheet {
         if (gridRows != defaultGridRows) "gridRows": gridRows,
         if (gridColumns != defaultGridColumns) "gridColumns": gridColumns,
         if (made != null) "made": made!.toJson(),
+        if (folder.isNotEmpty) "folder": folder,
       };
 
   static DataSheet? fromJson(Object? j) {
@@ -558,6 +566,7 @@ class DataSheet {
             ? math.max(1, j["gridColumns"] as int)
             : defaultGridColumns,
         made: SheetMade.fromJson(j["made"]),
+        folder: j["folder"] is String ? j["folder"] as String : "",
         source: j["source"] is Map<String, dynamic>
             ? DataSource.fromJson(j["source"] as Map<String, dynamic>)
             : const DataSource(),

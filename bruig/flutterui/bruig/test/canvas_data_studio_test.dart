@@ -792,6 +792,15 @@ void main() {
       var fourth = c.document.sheets[3];
       expect(find.byKey(ValueKey("dataStudioFound-${c.document.sheets[0].id}")),
           findsNothing);
+      // Kept in a folder: saved, and found by it too.
+      c.setSheet(fourth.copyWith(folder: "Away games"));
+      expect(DataSheet.fromJson(c.sheetById(fourth.id)!.toJson())!.folder,
+          "Away games");
+      await tester.enterText(
+          find.byKey(const ValueKey("dataStudioFindSheet")), "away");
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("dataStudioFolder-Away games")),
+          findsOneWidget);
       await tester.tap(find.byKey(ValueKey("dataStudioFound-${fourth.id}")));
       await tester.pumpAndSettle();
       expect(

@@ -110,9 +110,17 @@ class _SheetFinderState extends State<SheetFinder> {
       menuChildren: [
         StatefulBuilder(builder: (context, setMenu) {
           var q = _search.text.trim().toLowerCase();
+          // This page's first; the rest by their folders, those in none
+          // first; a search matches a name or a folder.
+          var rest = ordered.skip(here).toList()
+            ..sort((a, b) => a.folder.compareTo(b.folder));
+          var listed = [...ordered.take(here), ...rest];
           var shown = [
-            for (var (i, s) in ordered.indexed)
-              if (q.isEmpty || s.name.toLowerCase().contains(q)) (i, s)
+            for (var (i, s) in listed.indexed)
+              if (q.isEmpty ||
+                  s.name.toLowerCase().contains(q) ||
+                  s.folder.toLowerCase().contains(q))
+                (i, s)
           ];
           return SizedBox(
             width: 320,
@@ -146,9 +154,32 @@ class _SheetFinderState extends State<SheetFinder> {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          for (var (i, s) in shown) ...[
+                          for (var (k, (i, s)) in shown.indexed) ...[
                             if (q.isEmpty && i == here && here > 0)
                               Divider(height: 8, color: colors.outlineVariant),
+                            // A folder's name over its sheets.
+                            if (i >= here &&
+                                s.folder.isNotEmpty &&
+                                (k == 0 ||
+                                    shown[k - 1].$1 < here ||
+                                    shown[k - 1].$2.folder != s.folder))
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 8, 12, 2),
+                                child: Row(children: [
+                                  Icon(Icons.folder_outlined,
+                                      size: 14, color: colors.onSurfaceVariant),
+                                  const SizedBox(width: 6),
+                                  Text(s.folder.toUpperCase(),
+                                      key: ValueKey(
+                                          "dataStudioFolder-${s.folder}"),
+                                      style: TextStyle(
+                                          fontSize: 10.5,
+                                          letterSpacing: 0.8,
+                                          fontWeight: FontWeight.w700,
+                                          color: colors.onSurfaceVariant)),
+                                ]),
+                              ),
                             InkWell(
                               key: ValueKey("dataStudioFound-${s.id}"),
                               onTap: () => _open(s.id),
