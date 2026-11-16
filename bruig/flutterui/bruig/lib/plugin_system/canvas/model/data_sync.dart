@@ -621,6 +621,43 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
 /// chartColumnsOf is which columns of [range] of [sheet] (its first row
 /// the headings) a chart of it is labelled by -- the first that isn't
 /// numbers -- and draws: every column of numbers but that one.
+/// namingScore is how well column [col] of [range] (counted from its
+/// first) names its rows: the average length of each value's longest word,
+/// halved where values repeat. A club's name scores over its code, and both
+/// over a form guide ("W W D W W": one-letter words, however long the
+/// value). 0 for a column of numbers or nothing.
+double namingScore(DataSheet sheet, CellRange range, int col) {
+  var words = <String>[];
+  for (var r = range.r0 + 1; r <= range.r1; r++) {
+    var v = sheetValue(sheet, r, range.c0 + col);
+    if (v == null || v == "") continue;
+    if (v is double) return 0;
+    words.add("$v".trim());
+  }
+  if (words.isEmpty) return 0;
+  var longest = [
+    for (var w in words)
+      w.split(RegExp(r"\s+")).fold<int>(0, (m, t) => math.max(m, t.length))
+  ];
+  var score = longest.fold(0, (a, b) => a + b) / words.length;
+  return words.toSet().length == words.length ? score : score / 2;
+}
+
+/// namingColumn is the column of [range] that best names its rows
+/// (namingScore), or -1 when none is words.
+int namingColumn(DataSheet sheet, CellRange range) {
+  var best = -1;
+  var most = 0.0;
+  for (var c = 0; c < range.cols; c++) {
+    var score = namingScore(sheet, range, c);
+    if (score > most) {
+      most = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
 (int, List<int>) chartColumnsOf(DataSheet sheet, CellRange range) {
   var cols = range.cols;
   bool numbers(int c) {

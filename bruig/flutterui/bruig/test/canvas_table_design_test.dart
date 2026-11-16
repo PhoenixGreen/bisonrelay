@@ -598,6 +598,11 @@ void main() {
         paintTable(ui.Canvas(recorder), box, tableInStyle(made, st));
         recorder.endRecording().dispose();
       }
+      // As small as a gallery's thumbnail: the ribbon's words left out
+      // rather than set at a size below nothing (found in the gallery).
+      var recorder = ui.PictureRecorder();
+      paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 90, 60), made);
+      recorder.endRecording().dispose();
     });
 
     // Ken, 2026-11-17 (prototype v7): the Table tab's gallery of designs,

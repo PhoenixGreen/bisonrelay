@@ -63,6 +63,10 @@ class _DataStudioState extends State<DataStudio> {
   late String _sheet = widget.sheetId;
   DataSel _sel = const DataSel.at(0, 0);
   String? _view;
+
+  /// _chartFromGallery opens the Charts tab on its gallery once, after the
+  /// empty tab's button made the sheet's first chart.
+  bool _chartFromGallery = false;
   final GlobalKey<DataGridState> _grid = GlobalKey();
   final FocusNode _gridFocus = FocusNode();
   final TextEditingController _formula = TextEditingController();
@@ -354,7 +358,7 @@ class _DataStudioState extends State<DataStudio> {
                             [text]
                           ]),
                           onPaste: (r, col, rows) {
-                            c.setSheetCells(_sheet, r, col, rows);
+                            c.pasteSheetCells(_sheet, r, col, rows);
                             _say("Pasted ${rows.length} row"
                                 "${rows.length == 1 ? "" : "s"}.");
                           },
@@ -473,16 +477,23 @@ class _DataStudioState extends State<DataStudio> {
             filled: true,
             onTap: () {
               var made = c.addDataView(ElementKind.chart, _sheet, s.used);
-              setState(() => _view = startedChart(c, made).id);
+              setState(() {
+                _view = startedChart(c, made).id;
+                _chartFromGallery = true;
+              });
             }),
       ]));
     }
     var chart = charts.where((v) => v.id == _view).firstOrNull ?? charts.first;
+    // Read once: the tab's state opens on the gallery when it is made.
+    var gallery = _chartFromGallery;
+    _chartFromGallery = false;
     return ChartsDesign(
         key: const ValueKey("dataStudioChartsDesign"),
         controller: c,
         sheetId: s.id,
         chart: chart,
+        startInGallery: gallery,
         onPickChart: (id) => setState(() => _view = id));
   }
 

@@ -46,11 +46,18 @@ class ChartsDesign extends StatefulWidget {
   final String sheetId;
   final ChartElement chart;
   final ValueChanged<String> onPickChart;
+
+  /// startInGallery opens on the gallery, its design taking the place of
+  /// [chart] rather than adding another: the sheet's first chart, chosen
+  /// from the designs rather than made plain and then made again (found
+  /// making the Charts canvas, 2026-11-17).
+  final bool startInGallery;
   const ChartsDesign(
       {required this.controller,
       required this.sheetId,
       required this.chart,
       required this.onPickChart,
+      this.startInGallery = false,
       super.key});
 
   @override
@@ -119,6 +126,10 @@ class ChartsDesignState extends State<ChartsDesign>
   /// _gallery is the columns ticked for a new chart, while choosing one
   /// from the suggestions; null otherwise.
   List<int>? _gallery;
+
+  /// _replacing is whether the gallery's design takes the place of this
+  /// chart (ChartsDesign.startInGallery) rather than adding one.
+  bool _replacing = false;
 
   // The gallery (Ken, 2026-11-17; prototype v7): the kind opened, the
   // starting design picked, and what the cards are filtered by.
@@ -207,6 +218,11 @@ class ChartsDesignState extends State<ChartsDesign>
   void initState() {
     super.initState();
     c.keysHeld.addListener(_glideTick);
+    if (widget.startInGallery) {
+      _gallery = _startingPicks();
+      _galleryStyle = e.style;
+      _replacing = true;
+    }
   }
 
   void _play() {
@@ -901,18 +917,15 @@ class ChartsDesignState extends State<ChartsDesign>
     var g = _link.range;
     var kinds = columnKinds(s, g);
     var date = kinds.indexOf(ColumnKind.dates);
-    // The names column of the longest words (a team's name, not its code).
+    // The names column that names the rows best (a team's name, not its
+    // code or its form: namingScore).
     var name = -1;
-    var longest = 0.0;
+    var most = 0.0;
     for (var (col, k) in kinds.indexed) {
       if (k != ColumnKind.names) continue;
-      var words = [
-        for (var r = g.r0 + 1; r <= g.r1; r++) sheetShown(s, r, g.c0 + col)
-      ];
-      var length =
-          words.fold(0, (a, w) => a + w.length) / math.max(1, words.length);
-      if (length > longest) {
-        longest = length;
+      var score = namingScore(s, g, col);
+      if (score > most) {
+        most = score;
         name = col;
       }
     }
@@ -1398,7 +1411,10 @@ class ChartsDesignState extends State<ChartsDesign>
             StudioPill(
                 key: const ValueKey("chartsGalleryCancel"),
                 label: "Cancel",
-                onTap: () => setState(() => _gallery = null)),
+                onTap: () => setState(() {
+                      _gallery = null;
+                      _replacing = false;
+                    })),
           ]),
         ]),
       ),
@@ -1413,11 +1429,21 @@ class ChartsDesignState extends State<ChartsDesign>
     if (s == null) return;
     _end();
     c.beginInteraction();
-    var made = c.addDataView(ElementKind.chart, s.id, _link.range);
-    c.replaceElement(chart.rebase(made.base));
+    String id;
+    if (_replacing && c.document.elementById(e.id) != null) {
+      c.replaceElement(chart.rebase(e.base));
+      id = e.id;
+    } else {
+      var made = c.addDataView(ElementKind.chart, s.id, _link.range);
+      c.replaceElement(chart.rebase(made.base));
+      id = made.id;
+    }
     c.endInteraction();
-    setState(() => _gallery = null);
-    widget.onPickChart(made.id);
+    setState(() {
+      _gallery = null;
+      _replacing = false;
+    });
+    widget.onPickChart(id);
   }
 
   // ---- The slots.
@@ -2964,27 +2990,16 @@ CanvasElement startedChart(CanvasController c, CanvasElement made) {
   var sheet = link == null ? null : c.sheetById(link.sheet);
   if (link == null || sheet == null) return made;
   var g = link.range;
-  int? names, last;
-  var longest = 0.0;
+  int? last;
   for (var col = 0; col < g.cols; col++) {
     var values = [
       for (var r = g.r0 + 1; r <= g.r1; r++) sheetValue(sheet, r, g.c0 + col)
     ];
     var filled = values.where((v) => v != null && v != "").toList();
-    if (filled.isEmpty) continue;
-    if (filled.every((v) => v is double)) {
-      last = col;
-      continue;
-    }
-    var words = [for (var v in filled) "$v"];
-    if (words.toSet().length != words.length) continue;
-    var length = words.fold(0, (a, w) => a + w.length) / words.length;
-    if (length > longest) {
-      longest = length;
-      names = col;
-    }
+    if (filled.isNotEmpty && filled.every((v) => v is double)) last = col;
   }
-  if (names == null || last == null) return made;
+  var names = namingColumn(sheet, g);
+  if (names < 0 || last == null) return made;
   var next = withLink(made, link.copyWith(labels: names, series: [last]));
   c.replaceElement(next);
   return next;

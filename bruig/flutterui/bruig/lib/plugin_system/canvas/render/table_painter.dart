@@ -461,14 +461,18 @@ void _paintCards(ui.Canvas canvas, Rect rect, TableElement e, int cols,
       var w = layoutText(words, spec, maxWidth: double.infinity).width;
       var room = card.width - 4;
       if (w + h > room) {
-        spec = spec.copyWith(fontSize: size * (room - h) / w);
-        w = room - h;
+        // Too narrow for any words (a gallery's thumbnail): the band alone.
+        var fit = w <= 0 ? 0.0 : (room - h) / w;
+        spec = spec.copyWith(fontSize: math.max(0.0, size * fit));
+        w = math.max(0.0, room - h);
       }
       var band = Rect.fromCenter(
           center: Offset(card.center.dx, card.top), width: w + h, height: h);
       canvas.drawRRect(RRect.fromRectAndRadius(band, Radius.circular(h / 2)),
           Paint()..color = accent);
-      paintTextInBox(canvas, words, spec, band.inflate(2), clip: true);
+      if (spec.fontSize >= 4) {
+        paintTextInBox(canvas, words, spec, band.inflate(2), clip: true);
+      }
     }
   }
 }

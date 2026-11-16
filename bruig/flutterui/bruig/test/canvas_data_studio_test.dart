@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -615,6 +616,107 @@ void main() {
       await tester.pumpAndSettle();
       expect(ctl.dataStudio.value, ctl.document.sheets.single.id);
       expect(ctl.dataStudioView, "t1");
+    });
+  });
+
+  // Found making the Charts canvas (Ken, 2026-11-17: "try the whole
+  // system"): a new Data element's first steps.
+  group("a new Data element's first steps", () {
+    const form = [
+      ["Pos", "Club", "Pts", "Form"],
+      ["1", "Arsenal", "46", "W W D W W"],
+      ["2", "Liverpool", "44", "W D W W L"],
+      ["3", "Man United", "31", "L W L W D"],
+    ];
+
+    test("the rows are named by the club, not its form or its code", () {
+      var s = const DataSheet(id: "s", cells: form);
+      var g = const CellRange(0, 0, 3, 3);
+      expect(namingColumn(s, g), 1);
+      expect(namingScore(s, g, 3), lessThan(namingScore(s, g, 1)));
+      expect(namingScore(s, g, 2), 0, reason: "numbers name nothing");
+      var codes = const DataSheet(id: "c", cells: [
+        ["Code", "Club"],
+        ["ARS", "Arsenal"],
+        ["LIV", "Liverpool"],
+      ]);
+      expect(namingColumn(codes, const CellRange(0, 0, 2, 1)), 1);
+    });
+
+    test("a paste that grows the sheet grows the views that showed it all", () {
+      var c =
+          CanvasController(const CanvasDocument(), audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      c.addElement(newElement(ElementKind.table, c.document));
+      var t = c.document.elements.last as TableElement;
+      var id = t.sheet!.sheet;
+      c.pasteSheetCells(id, 0, 0, form);
+      var grown = c.document.elementById(t.id) as TableElement;
+      expect(grown.sheet!.range, const CellRange(0, 0, 3, 3));
+      expect(grown.rows.first, form.first);
+      c.undo();
+      expect((c.document.elementById(t.id) as TableElement).sheet!.range,
+          t.sheet!.range,
+          reason: "one step");
+    });
+
+    testWidgets(
+        "the first chart is chosen from the gallery, and takes its own place",
+        (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var c =
+          CanvasController(const CanvasDocument(), audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      c.addElement(newElement(ElementKind.table, c.document));
+      var t = c.document.elements.last as TableElement;
+      c.pasteSheetCells(t.sheet!.sheet, 0, 0, form);
+      c.openDataStudio(t.sheet!.sheet, view: t.id);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (_) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (_) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: DataStudio(
+                    controller: c,
+                    sheetId: c.dataStudio.value!,
+                    onDone: c.closeDataStudio))),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Charts").first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("dataStudioChartMake")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("chartsGallery")), findsOneWidget,
+          reason: "straight to the designs");
+      List<ChartElement> charts() =>
+          c.document.elements.whereType<ChartElement>().toList();
+      expect(charts().single.sheet!.labels, 1, reason: "Club, not Form");
+      await tester.tap(find.byKey(const ValueKey("chartsKind-horizontalBar")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("chartsPreset-0")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("chartsGalleryStart")));
+      await tester.pumpAndSettle();
+      expect(charts(), hasLength(1), reason: "in the starter's place");
+      expect(charts().single.type, ChartType.horizontalBar);
+      // Later, + New chart adds one beside it.
+      await tester.tap(find.byKey(const ValueKey("chartsNew")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("chartsKind-bar")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("chartsPreset-0")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("chartsGalleryStart")));
+      await tester.pumpAndSettle();
+      expect(charts(), hasLength(2));
+      expect(tester.takeException(), isNull);
     });
   });
 }

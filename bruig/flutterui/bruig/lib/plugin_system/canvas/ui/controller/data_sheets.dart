@@ -20,6 +20,22 @@ extension CanvasDataSheets on CanvasController {
     if (s != null) setSheet(s.withBlock(r, c, rows));
   }
 
+  /// pasteSheetCells writes [rows] into sheet [id] from row [r], column
+  /// [c], as setSheetCells does -- and, where the paste makes the sheet
+  /// bigger, grows every table and chart that showed it whole, in the same
+  /// step: a league pasted over a new Data element's sample is seen whole
+  /// in its table, as a refresh would be (found making the Charts canvas,
+  /// 2026-11-17: the table stayed on the sample's A1:C4).
+  void pasteSheetCells(String id, int r, int c, List<List<String>> rows) {
+    var s = sheetById(id);
+    if (s == null) return;
+    var next = s.withBlock(r, c, rows);
+    var doc = _document.copyWith(sheets: [
+      for (var x in _document.sheets) x.id == id ? next : x,
+    ]);
+    apply(viewsRegrown(doc, id, s.used, next.used));
+  }
+
   /// clearSheetCells empties [range] of sheet [id].
   void clearSheetCells(String id, CellRange range) =>
       setSheetCells(id, range.r0, range.c0, [
