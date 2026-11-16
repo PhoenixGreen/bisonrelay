@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_reshape.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_sheet_find.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_table_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -761,6 +762,7 @@ class _DataStudioState extends State<DataStudio> {
         if (viewsOf(c.document, x.id).isEmpty) x.id
     };
     if (unused.length == sheets.length) unused.remove(_sheet);
+    var (ordered, here) = sheetsInOrder(c.document);
     return Container(
       height: 36,
       decoration: BoxDecoration(
@@ -768,9 +770,28 @@ class _DataStudioState extends State<DataStudio> {
           border: Border(top: BorderSide(color: colors.outlineVariant))),
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(children: [
+        // Every sheet, searched as typed; and the tabs with this page's
+        // first (data_sheet_find.dart).
+        SheetFinder(
+            document: c.document,
+            current: _sheet,
+            onOpen: (id) => setState(() {
+                  _sheet = id;
+                  _sel = const DataSel.at(0, 0);
+                  _view = null;
+                  _asking = null;
+                })),
+        const SizedBox(width: 6),
         Expanded(
           child: ListView(scrollDirection: Axis.horizontal, children: [
-            for (var sh in sheets)
+            for (var (k, sh) in ordered.indexed) ...[
+              if (k == here && here > 0)
+                Container(
+                    key: const ValueKey("dataStudioTabsRest"),
+                    width: 1,
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                    color: colors.outlineVariant),
               Padding(
                 padding: const EdgeInsets.only(right: 2),
                 child: _renaming == sh.id
@@ -843,18 +864,23 @@ class _DataStudioState extends State<DataStudio> {
                         ),
                       ),
               ),
+            ],
           ]),
         ),
         if (_asking != null) ...[
-          Text(
-              _asking == "tidy"
-                  ? "Remove ${unused.length} sheet${unused.length == 1 ? "" : "s"} nothing shows?"
-                  : _views.isEmpty
-                      ? "Remove this sheet?"
-                      : "Remove this sheet and the ${_views.length} "
-                          "table${_views.length == 1 ? "" : "s"} or chart${_views.length == 1 ? "" : "s"} showing it?",
-              key: const ValueKey("dataStudioAsking"),
-              style: TextStyle(fontSize: 12.5, color: colors.onSurface)),
+          Flexible(
+            child: Text(
+                _asking == "tidy"
+                    ? "Remove ${unused.length} sheet${unused.length == 1 ? "" : "s"} nothing shows?"
+                    : _views.isEmpty
+                        ? "Remove this sheet?"
+                        : "Remove this sheet and the ${_views.length} "
+                            "table${_views.length == 1 ? "" : "s"} or chart${_views.length == 1 ? "" : "s"} showing it?",
+                key: const ValueKey("dataStudioAsking"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12.5, color: colors.onSurface)),
+          ),
           const SizedBox(width: 8),
           StudioPill(
               key: const ValueKey("dataStudioSure"),

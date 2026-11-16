@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_sheet_find.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
@@ -722,6 +723,85 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("chartsGalleryStart")));
       await tester.pumpAndSettle();
       expect(charts(), hasLength(2));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  // Ken, 2026-11-17 (the improvements report's last item): a canvas with a
+  // sheet a scene -- the Charts canvas had 46 -- has a way through them.
+  group("many sheets", () {
+    CanvasController many() {
+      var c =
+          CanvasController(const CanvasDocument(), audioEngine: FakeEngine({}));
+      for (var i = 0; i < 4; i++) {
+        if (i > 0) c.addScene();
+        var id = c.addSheet(name: "Sheet for scene ${i + 1}", cells: const [
+          ["A", "B"],
+          ["x", "1"],
+        ]);
+        c.addDataView(ElementKind.table, id, c.sheetById(id)!.used);
+      }
+      c.addSheet(name: "Nobody's", cells: const [
+        ["A"]
+      ]);
+      c.goToScene(2);
+      return c;
+    }
+
+    test("what shows each sheet, and this page's sheets first", () {
+      var c = many();
+      addTearDown(c.dispose);
+      var uses = sheetUses(c.document);
+      var third = c.document.sheets[2];
+      expect(uses[third.id]!.views, 1);
+      expect(uses[third.id]!.scenes, [3]);
+      expect(usesSay(uses[c.document.sheets.last.id]!), "Nothing shows it");
+      var (ordered, here) = sheetsInOrder(c.document);
+      expect(here, 1);
+      expect(ordered.first.id, third.id, reason: "this page's first");
+    });
+
+    testWidgets("found by its name, and opened", (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var c = many();
+      addTearDown(c.dispose);
+      c.openDataStudio(c.document.sheets.first.id);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (_) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (_) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: DataStudio(
+                    controller: c,
+                    sheetId: c.dataStudio.value!,
+                    onDone: c.closeDataStudio))),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("dataStudioSheets")));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey("dataStudioFindSheet")), "scene 4");
+      await tester.pumpAndSettle();
+      var fourth = c.document.sheets[3];
+      expect(find.byKey(ValueKey("dataStudioFound-${c.document.sheets[0].id}")),
+          findsNothing);
+      await tester.tap(find.byKey(ValueKey("dataStudioFound-${fourth.id}")));
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<TextField>(find.descendant(
+                  of: find.byKey(const ValueKey("dataStudioSheetName")),
+                  matching: find.byType(TextField)))
+              .controller!
+              .text,
+          "Sheet for scene 4");
       expect(tester.takeException(), isNull);
     });
   });
