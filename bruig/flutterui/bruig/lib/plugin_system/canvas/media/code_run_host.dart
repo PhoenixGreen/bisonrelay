@@ -265,8 +265,8 @@ class AppCodeRunHost implements CodeRunHost {
 }
 
 /// pyodideDir is where Pyodide is kept: the library's Runtimes folder.
-Future<String> pyodideDir() async => path.join(
-    await CanvasStorage.libraryDir(), "Runtimes", "pyodide-$pyodideVersion");
+Future<String> pyodideDir() async => path.join(await CanvasStorage.libraryDir(),
+    canvasRuntimesFolder, "pyodide-$pyodideVersion");
 
 /// _json is [v] as JSON to put in a page's script: "</" kept from ending
 /// the script early, as a file that mentions </script> would.
@@ -398,7 +398,7 @@ class _RunServer {
   /// yaegi unpacks the Go interpreter, once, from the app's assets.
   Future<void> yaegi() async {
     if (_yaegiPath != null && await File(_yaegiPath!).exists()) return;
-    var dir = path.join(await CanvasStorage.libraryDir(), "Runtimes");
+    var dir = path.join(await CanvasStorage.libraryDir(), canvasRuntimesFolder);
     await Directory(dir).create(recursive: true);
     var packed = await rootBundle.load("assets/code/yaegi.wasm.gz");
     var bytes = gzip.decode(packed.buffer.asUint8List());

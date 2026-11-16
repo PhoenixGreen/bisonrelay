@@ -398,7 +398,7 @@ void main() {
       // What is downloaded -- voices, the sound bank, the VRoid characters --
       // lives beside the documents, and is not one of their folders.
       var library = await CanvasStorage.libraryDir();
-      for (var f in ["voices", "soundbanks", "VRoid", "Models", "Audio", "Videos", "Vectors"]) {
+      for (var f in ["voices", "soundbanks", "VRoid", "Models", "Audio", "Videos", "Vectors", "Runtimes"]) {
         await Directory(path.join(library, f)).create(recursive: true);
       }
       expect(await CanvasStorage.createFolder("Mine"), isTrue);

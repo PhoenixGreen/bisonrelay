@@ -49,6 +49,11 @@ const canvasVoicesFolder = "voices";
 const canvasSoundBankFolder = "soundbanks";
 const canvasVroidFolder = "VRoid";
 
+/// canvasRuntimesFolder is where the Code element's runners keep what they
+/// unpack or fetch the first time they run: Pyodide for Python, Yaegi for
+/// Go (code_run_host.dart).
+const canvasRuntimesFolder = "Runtimes";
+
 /// isCanvasAppFolder is whether [name] is one of the folders the app keeps
 /// its own things in at the top of the library. None is listed with the
 /// documents, and no folder of documents can take one's name. Without
@@ -66,6 +71,7 @@ final _appFolders = {
     canvasSoundBankFolder,
     canvasVroidFolder,
     canvasCharacter3dFolder,
+    canvasRuntimesFolder,
   ])
     f.toLowerCase(),
 };
