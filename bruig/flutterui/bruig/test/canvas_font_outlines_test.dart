@@ -24,6 +24,7 @@ final faces = <(String, String, int)>[
   ("PT Serif (TrueType)", "assets/fonts/PTSerif-Regular.ttf", 0),
   ("Bebas Neue (TrueType)", "assets/fonts/BebasNeue-Regular.ttf", 0),
   ("Oswald Bold (TrueType)", "assets/fonts/Oswald-Bold.ttf", 0),
+  ("Bangers (TrueType)", "assets/fonts/Bangers-Regular.ttf", 0),
   ("Arial", "/System/Library/Fonts/Supplemental/Arial.ttf", 0),
   ("Georgia", "/System/Library/Fonts/Supplemental/Georgia.ttf", 0),
   ("Helvetica (collection)", "/System/Library/Fonts/Helvetica.ttc", 0),
@@ -85,6 +86,17 @@ void main() {
     var bebas = await FontFiles.instance.load("Bebas Neue", 700, true);
     expect(widthOfA(bebas!.face), widthOfA(file("BebasNeue-Regular.ttf")));
     expect(bebas.lean, isTrue, reason: "no italic: leant over");
+  });
+
+  // Comic lettering (Ken, 2026-11-16): offered, and its one face, which
+  // leans already, never leant further.
+  test("Bangers is offered, and its face never leant again", () async {
+    expect(canvasFonts, contains("Bangers"));
+    for (var italic in [false, true]) {
+      var pick = await FontFiles.instance.load("Bangers", 400, italic);
+      expect(pick!.face.unitsPerEm, greaterThan(0));
+      expect(pick.lean, isFalse, reason: "italic $italic");
+    }
   });
 
   for (var (name, path, index) in faces) {

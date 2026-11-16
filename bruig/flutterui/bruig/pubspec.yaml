@@ -345,6 +345,11 @@ flutter:
           weight: 600
         - asset: assets/fonts/Oswald-Bold.ttf
           weight: 700
+    # Bangers, SIL Open Font License 1.1 -- see assets/fonts/Bangers-OFL.txt.
+    # Comic lettering, for titles in the dcrcomic manner (Ken, 2026-11-16).
+    - family: Bangers
+      fonts:
+        - asset: assets/fonts/Bangers-Regular.ttf
 
   #     fonts:
   #       - asset: fonts/Schyler-Regular.ttf

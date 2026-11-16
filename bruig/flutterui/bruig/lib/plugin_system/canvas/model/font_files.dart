@@ -136,6 +136,9 @@ class FontFiles {
       // One weight, and no italic: leant over where one is asked for.
       case "Bebas Neue":
         return [(("assets/fonts/BebasNeue-Regular.ttf", null), italic)];
+      // Comic lettering: one face, already leaning, so never leant again.
+      case "Bangers":
+        return [(("assets/fonts/Bangers-Regular.ttf", null), false)];
       // Four weights, the nearest taken; no italic.
       case "Oswald":
         var name = switch (weight) {
