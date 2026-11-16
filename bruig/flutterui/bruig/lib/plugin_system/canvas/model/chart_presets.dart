@@ -182,11 +182,78 @@ SheetLink? _oneNumber(Picks p) =>
 /// _whenReads is a timeline's: its events named, placed by a column of
 /// numbers -- or by the years they happened, which read as dates.
 SheetLink? _whenReads(Picks p) {
-  if (p.numbers.isNotEmpty) return _oneNumber(p);
-  if (p.dates.isEmpty) return null;
+  // Its dates first: a number ticked beside them is what happened then (a
+  // price, a count), for the ways that size or plot by it.
+  if (p.dates.isEmpty) return p.numbers.isEmpty ? null : _oneNumber(p);
   var named = p.names.isNotEmpty ? p.names.first : p.dates.first;
   return p.link(named, [p.dates.first]);
 }
+
+/// _wordsOf is the average length of name column [col]'s words, and how
+/// many different ones it has.
+(double, int) _wordsOf(Picks p, int col) {
+  var g = p.range;
+  var words = [
+    for (var r = g.r0 + 1; r <= g.r1; r++)
+      sheetShown(p.sheet, r, g.c0 + col).trim()
+  ].where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return (0, 0);
+  return (
+    words.map((w) => w.length).reduce((a, b) => a + b) / words.length,
+    words.toSet().length
+  );
+}
+
+/// _aboutOf is the ticked column of words saying more about each event --
+/// the longest, beyond the names -- or -1.
+int _aboutOf(Picks p) {
+  var best = -1;
+  var longest = 18.0;
+  for (var col in p.names.skip(1)) {
+    var (mean, _) = _wordsOf(p, col);
+    if (mean > longest) {
+      longest = mean;
+      best = col;
+    }
+  }
+  return best;
+}
+
+/// _groupOf is the ticked column of words sorting the events into groups --
+/// a few words, each on several rows -- or -1.
+int _groupOf(Picks p) {
+  var about = _aboutOf(p);
+  var rows = p.range.r1 - p.range.r0;
+  var best = -1, fewest = rows;
+  for (var col in p.names.skip(1)) {
+    if (col == about) continue;
+    var (_, distinct) = _wordsOf(p, col);
+    if (distinct >= 1 && distinct < fewest) {
+      fewest = distinct;
+      best = col;
+    }
+  }
+  return best;
+}
+
+/// _timelineLink is a timeline's link reading [series] (start, and an end or
+/// a number), coloured by its groups where [grouped].
+ChartElement _timelineWay(ChartElement e, Picks p, String way,
+    {bool ends = false, bool number = false, bool grouped = false}) {
+  var out = _relink(
+      _way(e, way),
+      (l) => l.copyWith(series: [
+            l.series.first,
+            if (ends && p.dates.length > 1) p.dates[1],
+            if (number && p.numbers.isNotEmpty) p.numbers.first,
+          ], colourBy: grouped ? _groupOf(p) : -1, pointNames: _aboutOf(p)));
+  return out;
+}
+
+String? _needsEnds(Picks p) =>
+    p.dates.length < 2 ? "a second column of dates: when each ends" : null;
+String? _needsNumber(Picks p) =>
+    p.numbers.isEmpty ? "a column of numbers beside the dates" : null;
 
 SheetLink? _ranked(Picks p) => p.numbers.isEmpty
     ? null
@@ -1245,6 +1312,10 @@ ChartElement _timeline(ChartElement e, Picks p) => _plain(e)
     .copyWith(showValues: true, animation: _arrive(ChartAnimationPreset.none));
 ChartElement _timelineTurn(ChartElement e, Picks p) => _plain(e)
     .copyWith(showValues: true, animation: _arrive(ChartAnimationPreset.popIn));
+ChartElement _timelineGrow(ChartElement e, Picks p) => _plain(e)
+    .copyWith(showValues: true, animation: _arrive(ChartAnimationPreset.grow));
+ChartElement _timelineDraw(ChartElement e, Picks p) => _plain(e).copyWith(
+    showValues: true, animation: _arrive(ChartAnimationPreset.drawOn));
 
 ChartElement _funnel(ChartElement e, Picks p) => _relink(
     _plain(e).copyWith(
@@ -1591,6 +1662,56 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
         "Events down a line at the left, for long stories.",
         [_i, _v],
         (e, p) => _way(_timelineTurn(e, p), "down")),
+    // The research's designs (Ken, 2026-11-17: "more designs for the
+    // timeline chart"; data-design-prototype/timeline-research).
+    ChartPreset(
+        "Spans",
+        "Each from its start to its end, packed into rows, like a Gantt chart.",
+        [_i, _a],
+        (e, p) => _timelineWay(_timelineGrow(e, p), p, "spans",
+            ends: true, grouped: true),
+        needs: _needsEnds),
+    ChartPreset(
+        "Swimlanes",
+        "A lane for each group, its events in it.",
+        [_i, _a],
+        (e, p) => _timelineWay(_timelineGrow(e, p), p, "lanes",
+            ends: true, grouped: true),
+        needs: (p) =>
+            _groupOf(p) < 0 ? "a column of groups to make lanes" : null),
+    ChartPreset(
+        "Era bands",
+        "Periods as bands behind, the events in front.",
+        [_i, _a],
+        (e, p) => _timelineWay(_timelineGrow(e, p), p, "eras", ends: true),
+        needs: _needsEnds),
+    ChartPreset(
+        "On a value line",
+        "A line of numbers over time, the events numbered on it with a key.",
+        [_a, _i],
+        (e, p) => _timelineWay(_timelineDraw(e, p), p, "value", number: true),
+        needs: _needsNumber),
+    ChartPreset(
+        "Cards",
+        "A card for each event either side of a spine, with a line about it.",
+        [_i, _v],
+        (e, p) => _timelineWay(_timelineTurn(e, p), p, "cards"),
+        plays: true),
+    ChartPreset(
+        "Bubbles in lanes",
+        "Circles sized by a number at their dates, a lane for each group.",
+        [_i, _a],
+        (e, p) => _timelineWay(_timelineTurn(e, p), p, "bubbles",
+            number: true, grouped: true),
+        needs: _needsNumber),
+    ChartPreset(
+        "Serpentine",
+        "The line folded down the page, drawing on as it plays.",
+        [_v, _i],
+        (e, p) => _timelineWay(_timelineDraw(e, p), p, "serpentine"),
+        plays: true),
+    ChartPreset("We are here", "Solid up to today, dashed after it: a roadmap.",
+        [_i, _a], (e, p) => _timelineWay(_timeline(e, p), p, "progress")),
   ],
   ChartType.gauge: [
     ChartPreset("Needle over bands", "A needle over three graduated bands.",

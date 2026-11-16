@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_timelines.dart';
 import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -37,6 +38,8 @@ bool paintVariant(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       _bubbleClusters(canvas, area, e, reveal);
     case (ChartType.timeline, "down"):
       _timelineDown(canvas, area, e, reveal);
+    case (ChartType.timeline, var way) when timelineWays.contains(way):
+      paintTimelineWay(canvas, area, e, reveal, way);
     case (ChartType.gauge, "bands" || "dial"):
       _gaugeNeedle(canvas, area, e, reveal, dial: mode == "dial");
     case (ChartType.pictogram, "rows"):

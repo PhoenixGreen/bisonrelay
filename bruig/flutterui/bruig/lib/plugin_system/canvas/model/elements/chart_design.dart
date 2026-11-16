@@ -187,7 +187,18 @@ const Map<String, List<(String, String)>> chartModes = {
     ("row", "In a row"),
     ("clusters", "In groups")
   ],
-  "timeline": [("line", "Along a line"), ("down", "Down the page")],
+  "timeline": [
+    ("line", "Along a line"),
+    ("down", "Down the page"),
+    ("spans", "Spans"),
+    ("lanes", "Swimlanes"),
+    ("eras", "Era bands"),
+    ("value", "On a value line"),
+    ("cards", "Cards"),
+    ("bubbles", "Bubbles in lanes"),
+    ("serpentine", "Serpentine"),
+    ("progress", "We are here")
+  ],
   "gauge": [("arc", "Arc"), ("bands", "Needle over bands"), ("dial", "Dial")],
   "pictogram": [
     ("icons", "Icons"),
