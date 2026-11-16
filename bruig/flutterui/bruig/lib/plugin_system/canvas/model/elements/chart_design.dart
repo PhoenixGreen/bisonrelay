@@ -36,6 +36,11 @@ class ChartDesign {
   /// gaps leaves a gap between a pie's or doughnut's slices.
   final bool gaps;
 
+  /// mode is which way one of the new kinds is drawn: a dumbbell's "gap",
+  /// "arrows" or "range"; a heatmap's "grid", "calendar" or "stripes"... (see
+  /// chartModes). Empty, its first.
+  final String mode;
+
   const ChartDesign({
     this.track = false,
     this.valuesInside = false,
@@ -46,6 +51,7 @@ class ChartDesign {
     this.connect = false,
     this.half = false,
     this.gaps = false,
+    this.mode = "",
   });
 
   bool get any =>
@@ -57,7 +63,8 @@ class ChartDesign {
       trend ||
       connect ||
       half ||
-      gaps;
+      gaps ||
+      mode.isNotEmpty;
 
   ChartDesign copyWith({
     bool? track,
@@ -69,6 +76,7 @@ class ChartDesign {
     bool? connect,
     bool? half,
     bool? gaps,
+    String? mode,
   }) =>
       ChartDesign(
         track: track ?? this.track,
@@ -80,6 +88,7 @@ class ChartDesign {
         connect: connect ?? this.connect,
         half: half ?? this.half,
         gaps: gaps ?? this.gaps,
+        mode: mode ?? this.mode,
       );
 
   Map<String, dynamic> toJson() => {
@@ -92,6 +101,7 @@ class ChartDesign {
         if (connect) "connect": true,
         if (half) "half": true,
         if (gaps) "gaps": true,
+        if (mode.isNotEmpty) "mode": mode,
       };
 
   static ChartDesign fromJson(Object? j) {
@@ -107,6 +117,7 @@ class ChartDesign {
       connect: b("connect"),
       half: b("half"),
       gaps: b("gaps"),
+      mode: j["mode"] is String ? j["mode"] as String : "",
     );
   }
 
@@ -116,4 +127,50 @@ class ChartDesign {
 
   @override
   int get hashCode => toJson().toString().hashCode;
+}
+
+/// chartModes is each new kind's ways, as (name, what it says); the first
+/// is the one an empty ChartDesign.mode means.
+const Map<String, List<(String, String)>> chartModes = {
+  "diverging": [
+    ("bars", "Bars either side"),
+    ("likert", "Agree or disagree"),
+    ("columns", "Columns up and down")
+  ],
+  "dumbbell": [
+    ("gap", "Two dots joined"),
+    ("arrows", "Arrows"),
+    ("range", "A range")
+  ],
+  "waterfall": [("bridge", "Bridge"), ("down", "Down the page")],
+  "heatmap": [
+    ("grid", "Grid"),
+    ("calendar", "Calendar"),
+    ("stripes", "Stripes")
+  ],
+  "bigNumber": [
+    ("hero", "The number"),
+    ("delta", "With the change"),
+    ("spark", "With a sparkline"),
+    ("tiles", "Four tiles")
+  ],
+  "beeswarm": [
+    ("swarm", "Beeswarm"),
+    ("strip", "A strip"),
+    ("barcode", "Barcode")
+  ],
+  "parliament": [("rows", "Seats in rows"), ("wedges", "Wedges")],
+  "tileMap": [
+    ("squares", "Squares"),
+    ("hex", "Hexagons"),
+    ("circles", "Sized circles")
+  ],
+  "pyramid": [("pyramid", "Pyramid"), ("butterfly", "Butterfly")],
+};
+
+/// modeOf is [design]'s way for a kind named [type], its first when unset.
+String modeOf(ChartDesign design, String type) {
+  var ways = chartModes[type];
+  if (ways == null) return design.mode;
+  return ways.any((w) => w.$1 == design.mode) ? design.mode : ways.first.$1;
 }

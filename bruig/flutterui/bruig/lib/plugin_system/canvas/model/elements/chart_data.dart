@@ -202,7 +202,20 @@ enum ChartType {
   bullet("Bullet", "A bar against its target, over bands"),
   slope("Slope", "Each category from one value to the next"),
   shareBar("Share bar", "One bar split into the shares"),
-  lollipop("Lollipop", "A dot on a stick for each value");
+  lollipop("Lollipop", "A dot on a stick for each value"),
+
+  // The research's new kinds (Ken, 2026-11-17: "all" of them; prototype
+  // v7). Drawn in chart_extra.dart; none has axes either. Each has ways
+  // (ChartDesign.mode) its gallery designs pick between.
+  diverging("Diverging bars", "Up or down from zero: winners and losers"),
+  dumbbell("Dumbbell", "The gap between two values for each one"),
+  waterfall("Waterfall", "A start, each step up or down, and the end"),
+  heatmap("Heatmap", "A grid of values as shades"),
+  bigNumber("Big number", "One headline figure with its context"),
+  beeswarm("Dot spread", "Every value a dot, to show how they spread"),
+  parliament("Parliament", "Seats by party in a half circle"),
+  tileMap("Tile map", "A square per place, shaded by its value"),
+  pyramid("Pyramid", "Two sides mirrored, band by band");
 
   final String label;
   final String description;

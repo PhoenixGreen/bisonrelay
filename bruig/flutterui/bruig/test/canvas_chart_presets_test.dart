@@ -141,4 +141,49 @@ void main() {
       recorder.endRecording().dispose();
     }
   });
+
+  // Ken, 2026-11-17: the research's nine new kinds, each with its ways.
+  test("the new kinds: in the gallery, their ways saved, each drawn", () {
+    var added = [
+      ChartType.diverging,
+      ChartType.dumbbell,
+      ChartType.waterfall,
+      ChartType.heatmap,
+      ChartType.bigNumber,
+      ChartType.beeswarm,
+      ChartType.parliament,
+      ChartType.tileMap,
+      ChartType.pyramid,
+    ];
+    for (var t in added) {
+      var kind = chartKinds.firstWhere((k) => k.type == t);
+      expect(kind.isNew, isTrue);
+      expect(chartModes[t.name], isNotNull);
+    }
+    expect(modeOf(const ChartDesign(), "dumbbell"), "gap");
+    expect(modeOf(const ChartDesign(mode: "arrows"), "dumbbell"), "arrows");
+    expect(modeOf(const ChartDesign(mode: "nonsense"), "dumbbell"), "gap");
+    var c = const ChartElement(ElementBase(id: "c"), type: ChartType.heatmap)
+        .copyWith(design: const ChartDesign(mode: "calendar"));
+    expect(ChartElement.fromJson(c.toJson(), c.base).design.mode, "calendar");
+    expect(ChartElement.fromJson(c.toJson(), c.base).type, ChartType.heatmap);
+    // Every way of every new kind drawn from the sheet, at rest and arriving.
+    var all = picksOf(sheet, range, [0, 1, 2, 3, 4, 5, 6],
+        const [2, 3, 4, 5, 6], const [0], const [1]);
+    for (var t in added) {
+      var kind = chartKinds.firstWhere((k) => k.type == t);
+      for (var (m, _) in chartModes[t.name]!) {
+        var chart = presetChart(kind, kind.presets.first, all, like);
+        if (chart == null) continue;
+        chart = chart.copyWith(design: chart.design.copyWith(mode: m));
+        for (var reveal in [1.0, 0.3]) {
+          var recorder = ui.PictureRecorder();
+          paintChart(
+              ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 480, 300), chart,
+              reveal: reveal);
+          recorder.endRecording().dispose();
+        }
+      }
+    }
+  });
 }

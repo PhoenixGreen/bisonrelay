@@ -2050,6 +2050,15 @@ class ChartsDesignState extends State<ChartsDesign>
   /// _kindParts are the settings only some kinds of chart have: a
   /// doughnut's hole and the words in it, a pictogram's icons.
   List<Widget> _kindParts(BuildContext context) => [
+        // The new kinds' ways (ChartDesign.mode, chartModes).
+        if (chartModes[e.type.name] case var ways?)
+          StudioPills<String>(
+              id: "chartsMode",
+              label: "Drawn as",
+              value: modeOf(e.design, e.type.name),
+              options: [for (var (m, says) in ways) (m, says)],
+              onChanged: (m) =>
+                  _set(e.copyWith(design: e.design.copyWith(mode: m)))),
         if (e.type == ChartType.pie || e.type == ChartType.donut) ...[
           const StudioLabel("Its shape"),
           StudioPills<bool>(

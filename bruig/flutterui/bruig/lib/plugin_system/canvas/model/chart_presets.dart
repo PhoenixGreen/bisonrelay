@@ -169,7 +169,7 @@ SheetLink? _overTime(Picks p) {
 SheetLink? _pair(Picks p) =>
     p.numbers.length < 2 ? null : p.link(p.numbers.first, [p.numbers[1]]);
 
-const chartKinds = <ChartKind>[
+final chartKinds = <ChartKind>[
   ChartKind(
       ChartType.bar,
       "Columns",
@@ -590,7 +590,217 @@ const chartKinds = <ChartKind>[
         ChartPreset("Leader lit", "Grey stems, the leader in the accent.",
             [_a, _v], _lollipopLit),
       ]),
+  // ---- The research's new kinds (Ken, 2026-11-17).
+  ChartKind(
+      ChartType.diverging,
+      "Diverging bars",
+      "Winners and losers either side of zero; survey answers.",
+      [ChartQuestion.deviation, ChartQuestion.ranking],
+      _ranked,
+      "a column of numbers (up and down)",
+      [
+        ChartPreset(
+            "Gains and losses",
+            "Sorted, up one colour, down another, names on the far side of zero.",
+            [_a, _i, _v],
+            _divBars),
+        ChartPreset("Agree or disagree",
+            "Survey answers centred on the middle one.", [_a], _divLikert,
+            needs: _needsThree),
+        ChartPreset("Change columns", "Columns up and down from zero.",
+            [_a, _v], _divColumns),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.dumbbell,
+      "Dumbbell",
+      "The gap between two values for each thing.",
+      [ChartQuestion.deviation, ChartQuestion.time],
+      _twoNumbers,
+      "two columns of numbers",
+      [
+        ChartPreset("The gap", "Two dots joined, named once at the top.",
+            [_a, _i], (e, p) => _mode(e, "gap")),
+        ChartPreset(
+            "Arrows",
+            "From before to after, coloured by the way it went.",
+            [_a, _v],
+            (e, p) => _mode(e, "arrows")),
+        ChartPreset(
+            "Range",
+            "A pale bar from one to the other, a tick at the second.",
+            [_a, _i],
+            (e, p) => _mode(e, "range")),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.waterfall,
+      "Waterfall",
+      "How a start figure becomes an end figure, step by step.",
+      [ChartQuestion.part, ChartQuestion.flow],
+      _oneNumber,
+      "a column of numbers: a start, then the changes",
+      [
+        ChartPreset(
+            "Bridge",
+            "Totals grey, rises and falls coloured, joined by thin lines.",
+            [_a, _v],
+            (e, p) => _mode(e, "bridge", values: true, grow: true)),
+        ChartPreset("Down the page", "Steps running down, for long names.",
+            [_a], (e, p) => _mode(e, "down", values: true, grow: true)),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.heatmap,
+      "Heatmap",
+      "A value across two dimensions as shades.",
+      [
+        ChartQuestion.time,
+        ChartQuestion.correlation,
+        ChartQuestion.distribution
+      ],
+      _allNumbers,
+      "columns of numbers",
+      [
+        ChartPreset(
+            "Grid with values",
+            "A shade per value, each number printed.",
+            [_a],
+            (e, p) => _mode(e, "grid", values: true),
+            needs: _needsTwoNumbers),
+        ChartPreset("Calendar", "Weeks across, days down.", [_a, _i],
+            (e, p) => _first(_mode(e, "calendar"))),
+        ChartPreset(
+            "Stripes",
+            "One stripe per row, cool to warm: the poster form.",
+            [_i, _v],
+            (e, p) => _first(_mode(e, "stripes"))),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.bigNumber,
+      "Big number",
+      "One headline figure with its context.",
+      [ChartQuestion.single],
+      _oneNumber,
+      "a column of numbers",
+      [
+        ChartPreset(
+            "Hero number",
+            "The latest figure, huge, its name under it.",
+            [_v, _i],
+            (e, p) => _mode(e, "hero", grow: true)),
+        ChartPreset("With the change", "And how it moved since the one before.",
+            [_v, _i, _a], (e, p) => _mode(e, "delta", grow: true)),
+        ChartPreset("With a sparkline", "Over a small line of its history.",
+            [_a, _v], (e, p) => _mode(e, "spark", grow: true)),
+        ChartPreset("Four tiles", "The first four, side by side.", [_a, _i],
+            (e, p) => _mode(e, "tiles", grow: true)),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.beeswarm,
+      "Dot spread",
+      "Every value as a dot, to show how they spread.",
+      [ChartQuestion.distribution],
+      _allNumbers,
+      "a column of numbers",
+      [
+        ChartPreset("Beeswarm", "Dots pushed apart so none overlap.", [_a, _v],
+            (e, p) => _mode(e, "swarm", pop: true)),
+        ChartPreset("Strip", "Soft dots along a line.", [_a],
+            (e, p) => _mode(e, "strip", pop: true)),
+        ChartPreset("Barcode", "A thin tick per value.", [_a],
+            (e, p) => _mode(e, "barcode")),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.parliament,
+      "Parliament",
+      "Seats by party in a half circle.",
+      [ChartQuestion.part],
+      _oneNumber,
+      "a column of numbers (seats)",
+      [
+        ChartPreset("Seats in rows", "A dot a seat, the majority marked.",
+            [_a, _i, _v], (e, p) => _mode(e, "rows", values: true, pop: true)),
+        ChartPreset("Wedges", "Each party a solid wedge.", [_i],
+            (e, p) => _mode(e, "wedges", values: true, grow: true)),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.tileMap,
+      "Tile map",
+      "A value per place, every place the same size.",
+      [ChartQuestion.spatial],
+      _oneNumber,
+      "a column of numbers, named by place",
+      [
+        ChartPreset(
+            "Squares",
+            "A shaded square per place, its code inside.",
+            [_a, _i, _v],
+            (e, p) => _mode(e, "squares", values: true, pop: true)),
+        ChartPreset("Hexagons", "Hexagon tiles.", [_i],
+            (e, p) => _mode(e, "hex", values: true, pop: true)),
+        ChartPreset("Sized circles", "A circle per place, sized by its value.",
+            [_a], (e, p) => _mode(e, "circles", pop: true)),
+      ],
+      caveat:
+          "Places named by US state codes (TX, CA…) sit on the map; others in a grid.",
+      isNew: true),
+  ChartKind(
+      ChartType.pyramid,
+      "Pyramid",
+      "Two sides mirrored band by band: age, home and away.",
+      [ChartQuestion.distribution, ChartQuestion.magnitude],
+      _twoNumbers,
+      "two columns of numbers",
+      [
+        ChartPreset("Pyramid", "Bands with no gaps, a colour each side.",
+            [_a, _i], (e, p) => _mode(e, "pyramid", grow: true)),
+        ChartPreset(
+            "Butterfly",
+            "Names down the middle, values at the ends.",
+            [_a, _i, _v],
+            (e, p) => _mode(e, "butterfly", values: true, grow: true)),
+      ],
+      isNew: true),
 ];
+
+SheetLink? _twoNumbers(Picks p) =>
+    p.numbers.length < 2 ? null : p.link(p.labels, p.numbers.take(2).toList());
+SheetLink? _allNumbers(Picks p) =>
+    p.numbers.isEmpty ? null : p.link(p.labels, p.numbers.take(8).toList());
+String? _needsThree(Picks p) =>
+    p.numbers.length < 3 ? "three or more columns of answers" : null;
+String? _needsTwoNumbers(Picks p) =>
+    p.numbers.length < 2 ? "two or more columns of numbers" : null;
+
+/// _mode is [e] drawn its kind's way [m] (ChartDesign.mode).
+ChartElement _mode(ChartElement e, String m,
+        {bool values = false, bool grow = false, bool pop = false}) =>
+    _plain(e).copyWith(
+        design: ChartDesign(mode: m),
+        showValues: values || e.type == ChartType.bigNumber,
+        animation: _arrive(grow
+            ? ChartAnimationPreset.grow
+            : pop
+                ? ChartAnimationPreset.popIn
+                : ChartAnimationPreset.fadeIn));
+
+/// _first is [e] reading only its first column of numbers.
+ChartElement _first(ChartElement e) => _relink(e,
+    (l) => l.copyWith(series: l.series.isEmpty ? l.series : [l.series.first]));
+
+ChartElement _divBars(ChartElement e, Picks p) =>
+    _mode(e, "bars", values: true, grow: true);
+ChartElement _divColumns(ChartElement e, Picks p) => _relink(
+    _mode(e, "columns", values: true, grow: true),
+    (l) => l.copyWith(sortBy: -1));
+ChartElement _divLikert(ChartElement e, Picks p) => _relink(
+    _mode(e, "likert", values: true, grow: true),
+    (l) => l.copyWith(series: p.numbers.take(7).toList(), sortBy: -1));
 
 String? _needsName(Picks p) =>
     p.names.isEmpty ? "a column of names to split by" : null;

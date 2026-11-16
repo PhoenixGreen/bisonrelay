@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_extra.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -43,10 +44,11 @@ void paintInfographic(
       _slope(canvas, area, e, reveal);
     case ChartType.shareBar:
       _shareBar(canvas, area, e, reveal);
-    case ChartType.lollipop:
+        case ChartType.lollipop:
       _lollipop(canvas, area, e, reveal);
     default:
-      break;
+      // The research's new kinds (chart_extra.dart).
+      paintExtra(canvas, area, e, reveal);
   }
 }
 

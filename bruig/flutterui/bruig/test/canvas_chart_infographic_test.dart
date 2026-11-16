@@ -27,6 +27,18 @@ const samples = {
   ChartType.slope: "Cat\t2020\t2026\nStaked\t50\t62\nMixed\t20\t67",
   ChartType.shareBar: "Cat\tShare\nPoS\t89\nTreasury\t10\nPoW\t1",
   ChartType.lollipop: "Cat\tYes\nDCP-0012\t99.9\nDCP-0013\t99.98",
+  // The research's new kinds (Ken, 2026-11-17), drawn in chart_extra.dart.
+  ChartType.diverging: "Cat\tChange\nA\t8\nB\t-3\nC\t11\nD\t-7",
+  ChartType.dumbbell: "Cat\tThen\tNow\nA\t38\t46\nB\t47\t44\nC\t29\t40",
+  ChartType.waterfall:
+      "Cat\tGBP\nStart\t120\nTickets\t45\nWages\t-95\nPrize\t25",
+  ChartType.heatmap:
+      "Cat\tAug\tSep\tOct\n0-15\t3\t4\t2\n16-30\t4\t6\t5\n31-45\t6\t5\t8",
+  ChartType.bigNumber: "Cat\tCrowd\n2023\t58.4\n2024\t59.6",
+  ChartType.beeswarm: "Cat\tGoals\nA\t1\nB\t3\nC\t2\nD\t0\nE\t4\nF\t2",
+  ChartType.parliament: "Cat\tSeats\nLeft\t202\nCentre\t72\nRight\t121",
+  ChartType.tileMap: "Cat\tFans\nCA\t41\nTX\t58\nNY\t64\nFL\t30",
+  ChartType.pyramid: "Cat\tHome\tAway\n65+\t6\t4\n45-64\t12\t10\n18-44\t16\t15",
 };
 
 ChartElement chart(ChartType type, String tsv,
