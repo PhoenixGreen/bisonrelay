@@ -33,16 +33,20 @@ ChartElement? morphFrom(ChartElement e, CanvasDocument doc) {
   return null;
 }
 
-/// _marks is each item [e] draws in [rect], by name: where, and its colour.
-Map<String, (Rect, Color)> _marks(ChartElement e, Rect rect) {
+/// _marks is each item [e] draws in [rect], by name: its outline (a
+/// slice's own shape, else its box), and its colour.
+Map<String, (Path, Color)> _marks(ChartElement e, Rect rect) {
   var found = chartParts = <ChartPart>[];
   var recorder = ui.PictureRecorder();
-  paintChart(ui.Canvas(recorder), rect,
-      e.copyWith(animation: e.animation.copyWith(preset: ChartAnimationPreset.none)));
+  paintChart(
+      ui.Canvas(recorder),
+      rect,
+      e.copyWith(
+          animation: e.animation.copyWith(preset: ChartAnimationPreset.none)));
   recorder.endRecording().dispose();
   chartParts = null;
   var d = e.data;
-  var out = <String, (Rect, Color)>{};
+  var out = <String, (Path, Color)>{};
   for (var p in found) {
     if (p.kind != ChartPartKind.mark || p.index < 0) continue;
     if (p.index >= d.categories.length || p.series > 0) continue;
@@ -51,10 +55,47 @@ Map<String, (Rect, Color)> _marks(ChartElement e, Rect rect) {
         ? sliceColour(e, p.index)
         : d.markAt(p.index) ??
             (d.series.isEmpty ? const Color(0xFF888888) : d.series.first.color);
-    var r = out[name]?.$1;
-    out[name] = (r == null ? p.rect : r.expandToInclude(p.rect), colour);
+    // Several parts of one item (a stack's): their box together.
+    var had = out[name]?.$1;
+    out[name] = (
+      had == null
+          ? (p.path ?? (Path()..addRect(p.rect)))
+          : (Path()..addRect(had.getBounds().expandToInclude(p.rect))),
+      colour
+    );
   }
   return out;
+}
+
+const _points = 64;
+
+/// _outline is [path]'s outline as [_points] points, evenly along it,
+/// starting from its point nearest its box's top-left.
+List<Offset> _outline(Path path) {
+  var metrics = path.computeMetrics().toList();
+  if (metrics.isEmpty) return List.filled(_points, path.getBounds().center);
+  var m = metrics.reduce((a, b) => a.length >= b.length ? a : b);
+  var pts = [
+    for (var i = 0; i < _points; i++)
+      m.getTangentForOffset(m.length * i / _points)?.position ??
+          path.getBounds().center
+  ];
+  var corner = path.getBounds().topLeft;
+  var start = 0;
+  for (var i = 1; i < _points; i++) {
+    if ((pts[i] - corner).distance < (pts[start] - corner).distance) start = i;
+  }
+  return [...pts.skip(start), ...pts.take(start)];
+}
+
+/// _between is the shape part-way, [t], from outline [a] to [b].
+Path _between(List<Offset> a, List<Offset> b, double t) {
+  var path = Path();
+  for (var i = 0; i < _points; i++) {
+    var q = Offset.lerp(a[i], b[i], t)!;
+    i == 0 ? path.moveTo(q.dx, q.dy) : path.lineTo(q.dx, q.dy);
+  }
+  return path..close();
 }
 
 /// paintMorph draws [e] in [rect] arriving out of [from] (drawn in
@@ -69,30 +110,35 @@ void paintMorph(ui.Canvas canvas, Rect rect, ChartElement e, ChartElement from,
   if (settle > 0) {
     canvas.saveLayer(rect.inflate(rect.shortestSide),
         Paint()..color = Color.fromRGBO(0, 0, 0, settle));
-    paintChart(canvas, rect,
-        e.copyWith(animation: e.animation.copyWith(preset: ChartAnimationPreset.none)));
+    paintChart(
+        canvas,
+        rect,
+        e.copyWith(
+            animation:
+                e.animation.copyWith(preset: ChartAnimationPreset.none)));
     canvas.restore();
   }
   var tokens = 1 - settle;
   if (tokens <= 0) return;
-  void token(Rect a, Rect b, Color ca, Color cb) {
-    var r = Rect.lerp(a, b, travel)!;
+  // Each item's outline bent from its old shape to its new: a column into
+  // its slice.
+  void token(List<Offset> a, List<Offset> b, Color ca, Color cb) {
     var c = Color.lerp(ca, cb, travel)!;
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            r, Radius.circular(r.shortestSide.clamp(0.0, 40.0) * 0.18)),
+    canvas.drawPath(_between(a, b, travel),
         Paint()..color = c.withValues(alpha: c.a * tokens));
   }
 
+  List<Offset> point(Offset at) => List.filled(_points, at);
   for (var MapEntry(key: name, value: (b, cb)) in to.entries) {
     var old = was[name];
+    var target = _outline(b);
     // New: grown from a point where it will be.
-    var a = old?.$1 ?? Rect.fromCenter(center: b.center, width: 0, height: 0);
-    token(a, b, old?.$2 ?? cb, cb);
+    var start = old == null ? point(b.getBounds().center) : _outline(old.$1);
+    token(start, target, old?.$2 ?? cb, cb);
   }
   for (var MapEntry(key: name, value: (a, ca)) in was.entries) {
     if (to.containsKey(name)) continue;
     // Gone: shrunk to a point where it was.
-    token(a, Rect.fromCenter(center: a.center, width: 0, height: 0), ca, ca);
+    token(_outline(a), point(a.getBounds().center), ca, ca);
   }
 }
