@@ -727,6 +727,10 @@ class TableElement extends CanvasElement {
   /// column at a time. Leaving is always whole. See TableTurn.
   final TableTurn turn;
 
+  /// style is the name of the style it was last given (data_styles.dart).
+  /// Empty, none.
+  final String style;
+
   /// sheet is the range of the canvas sheet this table shows (see
   /// data_sheet.dart): its rows are that range's, kept in step both ways
   /// (data_sync.dart). Null only until it is given a sheet of its own.
@@ -796,6 +800,7 @@ class TableElement extends CanvasElement {
     this.hiddenHeaders = const [],
     this.animation = const ElementAnimation(),
     this.turn = TableTurn.together,
+    this.style = "",
     this.sheet,
     this.sheetLooks = const [],
   });
@@ -1014,6 +1019,7 @@ class TableElement extends CanvasElement {
     List<int>? hiddenHeaders,
     ElementAnimation? animation,
     TableTurn? turn,
+    String? style,
     SheetLink? sheet,
     bool clearSheet = false,
     List<List<SheetCellLook?>>? sheetLooks,
@@ -1052,6 +1058,7 @@ class TableElement extends CanvasElement {
           hiddenHeaders: hiddenHeaders,
           animation: animation,
           turn: turn,
+          style: style,
           sheet: sheet,
           clearSheet: clearSheet,
           sheetLooks: sheetLooks);
@@ -1091,6 +1098,7 @@ class TableElement extends CanvasElement {
     List<int>? hiddenHeaders,
     ElementAnimation? animation,
     TableTurn? turn,
+    String? style,
     SheetLink? sheet,
     bool clearSheet = false,
     List<List<SheetCellLook?>>? sheetLooks,
@@ -1126,6 +1134,7 @@ class TableElement extends CanvasElement {
           hiddenHeaders: hiddenHeaders ?? this.hiddenHeaders,
           animation: animation ?? this.animation,
           turn: turn ?? this.turn,
+          style: style ?? this.style,
           sheet: clearSheet ? null : sheet ?? this.sheet,
           sheetLooks: sheetLooks ?? this.sheetLooks);
 
@@ -1161,6 +1170,7 @@ class TableElement extends CanvasElement {
         if (hiddenHeaders.isNotEmpty) "hiddenHeaders": hiddenHeaders,
         if (animation.any) "anim": animation.toJson(),
         if (turn != TableTurn.together) "turn": turn.name,
+        if (style.isNotEmpty) "style": style,
         if (sheet != null) "sheet": sheet!.toJson(),
       };
 
@@ -1235,6 +1245,7 @@ class TableElement extends CanvasElement {
         animation: jsonSpec(
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
         turn: TableTurn.fromName(jsonStr(json["turn"])),
+        style: jsonStr(json["style"]) ?? "",
         sheet: SheetLink.fromJson(json["sheet"]));
   }
 

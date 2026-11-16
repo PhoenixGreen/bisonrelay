@@ -386,15 +386,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets("a look; a check with its fix; the board laid out",
+  // Ken, 2026-11-17: the six styles replace the Looks.
+  testWidgets("a style; a check with its fix; the board laid out",
       (tester) async {
     await studio(tester);
-    final paper = find.byKey(const ValueKey("chartsLook-Paper"));
-    await tester.ensureVisible(paper);
-    await tester.tap(paper);
+    final broadcast = find.byKey(const ValueKey("dataStyle-Broadcast"));
+    await tester.ensureVisible(broadcast);
+    await tester.tap(broadcast);
     await tester.pumpAndSettle();
-    expect(chart().titleSpec.color, const Color(0xFF3A2F1D));
-    expect(chart().data.series.first.color, const Color(0xFFC0563B));
+    expect(chart().style, "Broadcast");
+    expect(chart().panel, const Color(0xFF0B1022), reason: "its own ground");
+    expect(chart().titleSpec.fontFamily, "Oswald");
+    expect(chart().data.series.first.color, const Color(0xFF2FD3FF));
+    // On the canvas's ground instead.
+    final canvasGround =
+        find.byKey(const ValueKey("studioPill-chartsGround-false"));
+    await tester.ensureVisible(canvasGround);
+    await tester.tap(canvasGround);
+    await tester.pumpAndSettle();
+    expect(chart().panel.a, 0);
+    // Another style keeps it on the canvas's ground.
+    final editorial = find.byKey(const ValueKey("dataStyle-Editorial"));
+    await tester.ensureVisible(editorial);
+    await tester.pumpAndSettle();
+    await tester.tap(editorial);
+    await tester.pumpAndSettle();
+    expect(chart().style, "Editorial");
+    expect(chart().panel.a, 0);
+    expect(chart().titleSpec.fontFamily, "Georgia");
 
     // Labelled by the results, which repeat: said, and fixed in a click.
     expect(find.byKey(const ValueKey("chartsChecks")), findsNothing);

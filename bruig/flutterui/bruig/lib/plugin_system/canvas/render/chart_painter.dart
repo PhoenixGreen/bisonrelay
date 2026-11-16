@@ -55,6 +55,13 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   }
   // Nothing has arrived: the axes and labels arrive with the chart.
   if (animation.on && furthest <= 0) return;
+  // Its own ground, behind everything (a style's panel).
+  if (e.panel.a > 0) {
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            rect, Radius.circular(math.min(12, rect.shortestSide * 0.04))),
+        Paint()..color = e.panel);
+  }
   var data = e.data;
   if (data.series.isEmpty) {
     _placeholder(canvas, e.body.rectIn(rect), e);

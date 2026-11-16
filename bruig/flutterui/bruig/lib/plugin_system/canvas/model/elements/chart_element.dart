@@ -363,6 +363,14 @@ class ChartElement extends CanvasElement {
   /// Kept as the name, so an older build reads a chart it does not know.
   final String follow;
 
+  /// panel fills the chart's box behind everything (a style's ground, so a
+  /// dark Broadcast chart reads on a light page); clear, none.
+  final Color panel;
+
+  /// style is the name of the style it was last given (data_styles.dart):
+  /// which one its settings show picked. Empty, none.
+  final String style;
+
   const ChartElement(
     super.base, {
     this.type = ChartType.bar,
@@ -430,6 +438,8 @@ class ChartElement extends CanvasElement {
     this.steps = const [],
     this.stepAt = 0,
     this.follow = "time",
+    this.panel = const Color(0x00000000),
+    this.style = "",
   });
 
   @override
@@ -574,6 +584,8 @@ class ChartElement extends CanvasElement {
     List<ChartStep>? steps,
     int? stepAt,
     String? follow,
+    Color? panel,
+    String? style,
   }) =>
       _copy(base,
           type: type,
@@ -642,7 +654,9 @@ class ChartElement extends CanvasElement {
           play: play,
           steps: steps,
           stepAt: stepAt,
-          follow: follow);
+          follow: follow,
+          panel: panel,
+          style: style);
 
   /// _copy is copyWith and rebase sharing one body, so no field can be
   /// dropped from one of them.
@@ -715,6 +729,8 @@ class ChartElement extends CanvasElement {
     List<ChartStep>? steps,
     int? stepAt,
     String? follow,
+    Color? panel,
+    String? style,
   }) =>
       ChartElement(newBase,
           type: type ?? this.type,
@@ -783,7 +799,9 @@ class ChartElement extends CanvasElement {
           play: play ?? this.play,
           steps: steps ?? this.steps,
           stepAt: stepAt ?? this.stepAt,
-          follow: follow ?? this.follow);
+          follow: follow ?? this.follow,
+          panel: panel ?? this.panel,
+          style: style ?? this.style);
 
   @override
   Map<String, dynamic> props() => {
@@ -859,6 +877,8 @@ class ChartElement extends CanvasElement {
         if (steps.isNotEmpty) "steps": [for (var st in steps) st.toJson()],
         if (steps.isNotEmpty) "stepAt": stepAt,
         if (follow != "time") "follow": follow,
+        if (panel.a > 0) "panel": colorToJson(panel),
+        if (style.isNotEmpty) "style": style,
       };
 
   factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) => ChartElement(
@@ -975,7 +995,9 @@ class ChartElement extends CanvasElement {
             if (ChartStep.fromJson(st) case var step?) step,
       ],
       stepAt: jsonInt(json["stepAt"], 0),
-      follow: jsonString(json["follow"], "time"));
+      follow: jsonString(json["follow"], "time"),
+      panel: colorFromJson(json["panel"], const Color(0x00000000)),
+      style: jsonString(json["style"], ""));
 }
 
 /// ChartSourceMap is which of a fetched source's columns the chart draws: the

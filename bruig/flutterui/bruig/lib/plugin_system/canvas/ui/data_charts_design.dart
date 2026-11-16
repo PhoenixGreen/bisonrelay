@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -15,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_style_picker.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -1405,52 +1407,24 @@ class ChartsDesignState extends State<ChartsDesign>
         if (_numbers(col)) col
     ];
     return [
-      const StudioLabel("Looks"),
-      Row(children: [
-        for (var look in chartLooks)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Material(
-                color: colors.surfaceContainerHigh,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(
-                        color: e.titleSpec.color == look.ink &&
-                                e.gridColor == look.grid
-                            ? colors.primary
-                            : const Color(0x00000000))),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  key: ValueKey("chartsLook-${look.name}"),
-                  onTap: () => _set(look.on(e)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Column(children: [
-                      SizedBox(
-                        height: 44,
-                        child: CustomPaint(
-                            size: Size.infinite,
-                            painter: _Thumb(
-                                look.on(e).copyWith(
-                                    title: "",
-                                    showXLabels: false,
-                                    showLegend: false),
-                                look.ground)),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(look.name,
-                          style:
-                              TextStyle(fontSize: 11, color: colors.onSurface)),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ]),
+      // The six styles (Ken, 2026-11-17: they replace the Looks).
+      const StudioLabel("Style"),
+      DataStylePicker(
+          key: const ValueKey("chartsStyles"),
+          element: e,
+          onPick: (st) => _set(
+              chartInStyle(e, st, panel: e.panel.a > 0 || e.style.isEmpty))),
+      StudioPills<bool>(
+          id: "chartsGround",
+          label: "Ground",
+          value: e.panel.a > 0,
+          options: const [(true, "Its own"), (false, "The canvas")],
+          onChanged: (v) => _set(e.copyWith(
+              panel: v
+                  ? (dataStyleNamed(e.style)?.ground ?? const Color(0xFFFFFFFF))
+                  : const Color(0x00000000)))),
       _hint(context,
-          "Its colours for a dark page (Night, Mono) or a light one (Paper, Bright)."),
+          "A style sets its colours, typefaces and corners; the data and your words stay. Its own ground keeps a dark style readable on a light page."),
       const StudioLabel("Motion"),
       if (e.steps.length > 1) ...[
         StudioPills<String>(
@@ -2541,62 +2515,6 @@ CanvasElement startedChart(CanvasController c, CanvasElement made) {
   c.replaceElement(next);
   return next;
 }
-
-/// ChartLook is a chart's colours at once (prototype v5's looks): its words,
-/// its quieter writing, its grid and its marks, for a page of [ground].
-class ChartLook {
-  final String name;
-  final Color ground, ink, dim, grid, mark;
-  const ChartLook(this.name,
-      {required this.ground,
-      required this.ink,
-      required this.dim,
-      required this.grid,
-      required this.mark});
-
-  /// on is [e] in this look: its words, grid and axes, and its marks -- the
-  /// first series this look's colour, the rest the palette.
-  ChartElement on(ChartElement e) => e.copyWith(
-        titleSpec: e.titleSpec.copyWith(color: ink),
-        labelSpec: e.labelSpec.copyWith(color: dim),
-        valueSpec: e.valueSpec.copyWith(color: ink),
-        gridColor: grid,
-        axisColor: dim,
-        sliceColors: const [],
-        data: e.data.copyWith(series: [
-          for (var (i, s) in e.data.series.indexed)
-            s.copyWith(
-                color: i == 0 ? mark : chartPalette[i % chartPalette.length]),
-        ]),
-      );
-}
-
-const chartLooks = [
-  ChartLook("Night",
-      ground: Color(0xFF073E8C),
-      ink: Color(0xFFFFFFFF),
-      dim: Color(0xFFC9D6EA),
-      grid: Color(0x22FFFFFF),
-      mark: Color(0xFF4C8DF6)),
-  ChartLook("Paper",
-      ground: Color(0xFFFBF6E9),
-      ink: Color(0xFF3A2F1D),
-      dim: Color(0xFF6B4F1D),
-      grid: Color(0x226B4F1D),
-      mark: Color(0xFFC0563B)),
-  ChartLook("Mono",
-      ground: Color(0xFF0F1724),
-      ink: Color(0xFFE8EDF5),
-      dim: Color(0xFF8D97A6),
-      grid: Color(0x1AFFFFFF),
-      mark: Color(0xFFE8EDF5)),
-  ChartLook("Bright",
-      ground: Color(0xFFFFFFFF),
-      ink: Color(0xFF1D2127),
-      dim: Color(0xFF59606B),
-      grid: Color(0x1A000000),
-      mark: Color(0xFF4C8DF6)),
-];
 
 /// ColumnKind is what a column of a sheet holds, for the suggestions:
 /// numbers; dates (a column the rows come in runs of, or headed so); or

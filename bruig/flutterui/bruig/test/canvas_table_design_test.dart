@@ -5,6 +5,8 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/table_design.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
@@ -442,6 +444,42 @@ void main() {
       await pick("tableHeaderFont", "Oswald");
       expect(table().headerSpec.fontFamily, "Oswald");
       expect(tester.takeException(), isNull);
+    });
+
+    // Ken, 2026-11-17: the six styles replace the Looks, in both tabs.
+    testWidgets("a style for the whole table: its header, cells and corners",
+        (tester) async {
+      await studio(tester);
+      final poster = find.byKey(const ValueKey("dataStyle-Poster"));
+      await tester.ensureVisible(poster);
+      await tester.pumpAndSettle();
+      await tester.tap(poster);
+      await tester.pumpAndSettle();
+      expect(table().style, "Poster");
+      expect(table().headerFill, const Color(0xFF2667FF));
+      expect(table().headerSpec.color, const Color(0xFFFFFFFF));
+      expect(table().cornerRadius, 8);
+      expect(table().rules, hasLength(rules.length),
+          reason: "its own styles stay");
+      expect(tester.takeException(), isNull);
+    });
+
+    test("a style's name, and a chart's own ground, are saved", () {
+      var t = tableInStyle(table0(), dataStyleNamed("Report")!);
+      var back = TableElement.fromJson(
+          jsonDecode(jsonEncode(t.toJson())) as Map<String, dynamic>, t.base);
+      expect(back.style, "Report");
+      var ch = chartInStyle(const ChartElement(ElementBase(id: "c")),
+          dataStyleNamed("Broadcast")!);
+      var json = jsonDecode(jsonEncode(ch.toJson())) as Map<String, dynamic>;
+      var chBack = ChartElement.fromJson(json, ch.base);
+      expect(chBack.style, "Broadcast");
+      expect(chBack.panel, const Color(0xFF0B1022));
+      expect(
+          const ChartElement(ElementBase(id: "c"))
+              .toJson()
+              .containsKey("panel"),
+          isFalse);
     });
 
     testWidgets("New style by pointing: a team's row that goes with it",

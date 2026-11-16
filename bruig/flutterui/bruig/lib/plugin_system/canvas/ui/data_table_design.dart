@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/table_design.dart';
@@ -11,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_style_picker.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart'
     show sheetColumnName;
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
@@ -734,6 +736,14 @@ class _TableDesignState extends State<TableDesign> {
   }
 
   List<Widget> _tablePanel(BuildContext context) => [
+        // The six styles (Ken, 2026-11-17), as the Charts tab has.
+        const StudioLabel("Style of the whole table"),
+        DataStylePicker(
+            key: const ValueKey("tableStyles"),
+            element: t,
+            onPick: (st) => _set(tableInStyle(t, st))),
+        _hint(context,
+            "Its colours, typefaces, rules and corners at once; the cells and their styles stay."),
         StudioLabel("Styles on this table · ${t.rules.length}"),
         _hint(
             context,
