@@ -62,12 +62,12 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
         [for (var c = g.c0; c <= g.c1; c++) sheetShown(sheet, r, c)],
     ];
     var looks = <List<SheetCellLook?>>[];
-    if (sheet.rules.isNotEmpty) {
+    if (sheet.rules.isNotEmpty || sheet.spotlight.isNotEmpty) {
       looks = [
         for (var r in order)
           [
             for (var c = g.c0; c <= g.c1; c++)
-              r == g.r0 ? null : sheetLook(sheet, r, c)
+              r == g.r0 ? null : _spotlit(sheet, r, g) ?? sheetLook(sheet, r, c)
           ],
       ];
       if (looks.every((row) => row.every((l) => l == null))) looks = const [];
@@ -76,8 +76,12 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
     return e.copyWith(rows: block, sheetLooks: looks);
   }
   if (e is ChartElement) {
-    var data = chartDataOf(sheet, link, e.data,
-        type: e.type, highlights: e.highlights);
+    var data = chartDataOf(sheet, link, e.data, type: e.type, highlights: [
+      ...e.highlights,
+      if (sheet.spotlight.isNotEmpty)
+        ChartHighlight(
+            who: sheet.spotlight, colour: sheet.spotlightColour, named: true),
+    ]);
     return sameData(e.data, data) && listEquals(e.data.marks, data.marks)
         ? e
         : e.copyWith(data: data);
@@ -1334,4 +1338,17 @@ Color scaleColour(double v, double lo, double hi) {
         marks: marks),
     columnValues
   );
+}
+
+/// _spotlit is the look of row [r] of [g] when it is the sheet's spotlight
+/// -- a cell of it says the spotlit name -- else null.
+SheetCellLook? _spotlit(DataSheet sheet, int r, CellRange g) {
+  var who = sheet.spotlight.trim().toLowerCase();
+  if (who.isEmpty) return null;
+  for (var c = g.c0; c <= g.c1; c++) {
+    if (sheetShown(sheet, r, c).trim().toLowerCase() == who) {
+      return SheetCellLook(fill: sheet.spotlightColour.withValues(alpha: 0.35));
+    }
+  }
+  return null;
 }

@@ -314,6 +314,12 @@ class DataSheet {
   /// chart of the sheet follows a refresh. Off for a sheet typed in.
   final DataSource source;
 
+  /// spotlight is one row picked out everywhere the sheet is shown (the
+  /// Charts tab's "pick it out everywhere"): its mark lit in every chart of
+  /// the sheet, its row tinted in every table. Empty, none.
+  final String spotlight;
+  final Color spotlightColour;
+
   const DataSheet(
       {required this.id,
       this.name = "Sheet",
@@ -321,7 +327,9 @@ class DataSheet {
       this.formats = const {},
       this.columnFormats = const {},
       this.rules = const [],
-      this.source = const DataSource()});
+      this.source = const DataSource(),
+      this.spotlight = "",
+      this.spotlightColour = const Color(0xFFF2B33D)});
 
   /// formatAt is cell [r], [c]'s number format: its own, its column's, or
   /// null for General.
@@ -346,7 +354,9 @@ class DataSheet {
           Map<String, CellFormat>? formats,
           Map<int, CellFormat>? columnFormats,
           List<SheetRule>? rules,
-          DataSource? source}) =>
+          DataSource? source,
+          String? spotlight,
+          Color? spotlightColour}) =>
       DataSheet(
           id: id,
           name: name ?? this.name,
@@ -354,7 +364,9 @@ class DataSheet {
           formats: formats ?? this.formats,
           columnFormats: columnFormats ?? this.columnFormats,
           rules: rules ?? this.rules,
-          source: source ?? this.source);
+          source: source ?? this.source,
+          spotlight: spotlight ?? this.spotlight,
+          spotlightColour: spotlightColour ?? this.spotlightColour);
 
   /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
   /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
@@ -416,6 +428,8 @@ class DataSheet {
           },
         if (rules.isNotEmpty) "rules": [for (var r in rules) r.toJson()],
         if (source.kind != DataKind.typed) "source": source.toJson(),
+        if (spotlight.isNotEmpty) "spotlight": spotlight,
+        if (spotlight.isNotEmpty) "spotlightColour": spotlightColour.toARGB32(),
       };
 
   static DataSheet? fromJson(Object? j) {
@@ -442,6 +456,10 @@ class DataSheet {
               if (int.tryParse("$key") case var c?)
                 if (CellFormat.fromJson(value) case var cf?) c: cf,
         },
+        spotlight: j["spotlight"] is String ? j["spotlight"] as String : "",
+        spotlightColour: j["spotlightColour"] is int
+            ? Color(j["spotlightColour"] as int)
+            : const Color(0xFFF2B33D),
         source: j["source"] is Map<String, dynamic>
             ? DataSource.fromJson(j["source"] as Map<String, dynamic>)
             : const DataSource(),

@@ -226,3 +226,110 @@ Set<int> _reached(ChartHighlight h, List<String> labels,
       };
   }
 }
+
+/// ChartNoteKind is what a note on a chart is: a line across it at a value
+/// (or the average), a band behind some places (a drop zone), or a word
+/// over one mark.
+enum ChartNoteKind { line, band, label }
+
+/// ChartNote is something written or drawn on a chart beside its data
+/// (prototype v5's notes): an average line, a band behind 18th to 20th, a
+/// word over a bar.
+@immutable
+class ChartNote {
+  final ChartNoteKind kind;
+
+  /// text is its words: a line's and a band's label, a label's text.
+  final String text;
+
+  /// value is where a line crosses; NaN, the average of the first series.
+  final double value;
+
+  /// from and to are the places a band lies behind, counting from 1 along
+  /// the chart as it shows them.
+  final int from, to;
+
+  /// who is the label of the mark a label is written over.
+  final String who;
+
+  final Color colour;
+  final bool off;
+
+  const ChartNote({
+    this.kind = ChartNoteKind.line,
+    this.text = "",
+    this.value = double.nan,
+    this.from = 1,
+    this.to = 1,
+    this.who = "",
+    this.colour = const Color(0xFFF2B33D),
+    this.off = false,
+  });
+
+  ChartNote copyWith({
+    ChartNoteKind? kind,
+    String? text,
+    double? value,
+    int? from,
+    int? to,
+    String? who,
+    Color? colour,
+    bool? off,
+  }) =>
+      ChartNote(
+        kind: kind ?? this.kind,
+        text: text ?? this.text,
+        value: value ?? this.value,
+        from: from ?? this.from,
+        to: to ?? this.to,
+        who: who ?? this.who,
+        colour: colour ?? this.colour,
+        off: off ?? this.off,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "kind": kind.name,
+        if (text.isNotEmpty) "text": text,
+        if (kind == ChartNoteKind.line && !value.isNaN) "value": value,
+        if (kind == ChartNoteKind.band) "from": from,
+        if (kind == ChartNoteKind.band) "to": to,
+        if (who.isNotEmpty) "who": who,
+        "colour": colour.toARGB32(),
+        if (off) "off": true,
+      };
+
+  static ChartNote? fromJson(Object? j) {
+    if (j is! Map) return null;
+    int n(String k, int or) => j[k] is num ? (j[k] as num).toInt() : or;
+    return ChartNote(
+      kind:
+          ChartNoteKind.values.where((k) => k.name == j["kind"]).firstOrNull ??
+              ChartNoteKind.line,
+      text: jsonString(j["text"], ""),
+      value: j["value"] is num ? (j["value"] as num).toDouble() : double.nan,
+      from: n("from", 1),
+      to: n("to", 1),
+      who: jsonString(j["who"], ""),
+      colour: j["colour"] is int
+          ? Color(j["colour"] as int)
+          : const Color(0xFFF2B33D),
+      off: j["off"] == true,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChartNote &&
+      other.kind == kind &&
+      other.text == text &&
+      (other.value == value || (other.value.isNaN && value.isNaN)) &&
+      other.from == from &&
+      other.to == to &&
+      other.who == who &&
+      other.colour == colour &&
+      other.off == off;
+
+  @override
+  int get hashCode => Object.hash(
+      kind, text, value.isNaN ? -1 : value, from, to, who, colour, off);
+}

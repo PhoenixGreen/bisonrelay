@@ -333,6 +333,8 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     _axisLabels(canvas, area, plot, range, e, horizontal, valueGutter,
         categoryGutter, axisTitleGutter);
   }
+  // Bands go behind the marks; lines and words over them (_notes).
+  _notes(canvas, plot, range, e, horizontal, behind: true);
 
   // Split by how each series is drawn, so bars can have a line over them. A
   // series with no type of its own is drawn as the chart's type.
@@ -365,6 +367,125 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   if (e.type.isCandles) _candles(canvas, plot, range, e, reveal);
   if (lines.isNotEmpty) {
     _lines(canvas, plot, range, e, lines, reveal, seriesReveal);
+  }
+  _notes(canvas, plot, range, e, horizontal, behind: false);
+}
+
+/// _notes draws a chart's notes (ChartNote): with [behind], its bands, in
+/// a wash of their colour behind the places they cover; otherwise its lines
+/// across the plot at a value or the average, and its words over a mark.
+void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
+    bool horizontal,
+    {required bool behind}) {
+  var data = e.data;
+  var n = data.categories.length;
+  if (n == 0 || e.notes.isEmpty) return;
+  var slot = (horizontal ? plot.height : plot.width) / n;
+  var size = math.max(9.0, e.labelSpec.fontSize * 0.85);
+
+  TextPainter words(String text, Color colour) => TextPainter(
+      text: TextSpan(
+          text: text,
+          style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w700,
+              color: colour,
+              fontFamily: e.labelSpec.fontFamily)),
+      textDirection: TextDirection.ltr)
+    ..layout();
+
+  String number(double v) =>
+      v == v.roundToDouble() ? "${v.round()}" : v.toStringAsFixed(1);
+
+  for (var (k, note) in e.notes.indexed) {
+    if (note.off) continue;
+    switch (note.kind) {
+      case ChartNoteKind.band:
+        if (!behind) continue;
+        var a = note.from.clamp(1, n) - 1;
+        var b = math.max(a + 1, note.to.clamp(1, n));
+        var r = horizontal
+            ? Rect.fromLTRB(
+                plot.left, plot.top + slot * a, plot.right, plot.top + slot * b)
+            : Rect.fromLTRB(plot.left + slot * a, plot.top,
+                plot.left + slot * b, plot.bottom);
+        canvas.drawRect(
+            r, Paint()..color = note.colour.withValues(alpha: 0.18));
+        if (note.text.isNotEmpty) {
+          var tp = words(note.text, note.colour);
+          tp.paint(
+              canvas,
+              horizontal
+                  ? Offset(r.right - tp.width - 4, r.top + 2)
+                  : Offset(r.center.dx - tp.width / 2, r.top + 3));
+          tp.dispose();
+        }
+        notePart(ChartPartKind.note, r, index: k);
+
+      case ChartNoteKind.line:
+        if (behind) continue;
+        var v = note.value;
+        if (v.isNaN) {
+          var values = [
+            if (data.series.isNotEmpty)
+              for (var x in data.series.first.values)
+                if (!x.isNaN) x
+          ];
+          if (values.isEmpty) continue;
+          v = values.fold(0.0, (a, b) => a + b) / values.length;
+        }
+        var f = range.fraction(v).clamp(0.0, 1.0);
+        var paint = Paint()
+          ..color = note.colour
+          ..strokeWidth = 2;
+        Rect hit;
+        if (horizontal) {
+          var x = plot.left + plot.width * f;
+          for (var y = plot.top; y < plot.bottom; y += 10) {
+            canvas.drawLine(
+                Offset(x, y), Offset(x, math.min(plot.bottom, y + 6)), paint);
+          }
+          hit = Rect.fromLTRB(x - 5, plot.top, x + 5, plot.bottom);
+        } else {
+          var y = plot.bottom - plot.height * f;
+          for (var x = plot.left; x < plot.right; x += 10) {
+            canvas.drawLine(
+                Offset(x, y), Offset(math.min(plot.right, x + 6), y), paint);
+          }
+          hit = Rect.fromLTRB(plot.left, y - 5, plot.right, y + 5);
+        }
+        var said = note.text.isEmpty ? number(v) : "${note.text} ${number(v)}";
+        var tp = words(said, note.colour);
+        tp.paint(
+            canvas,
+            horizontal
+                ? Offset(hit.center.dx + 4, plot.top)
+                : Offset(
+                    plot.right - tp.width - 2, hit.center.dy - tp.height - 3));
+        tp.dispose();
+        notePart(ChartPartKind.note, hit, index: k);
+
+      case ChartNoteKind.label:
+        if (behind) continue;
+        var i = data.categories.indexOf(note.who);
+        if (i < 0 || data.series.isEmpty || !data.hasValueAt(0, i)) continue;
+        var f = range.fraction(data.valueAt(0, i)).clamp(0.0, 1.0);
+        var tp = words(
+            note.text.isEmpty ? note.who : note.text, const Color(0xFF1D2127));
+        var at = horizontal
+            ? Offset(plot.left + plot.width * f + 8,
+                plot.top + slot * (i + 0.5) - tp.height / 2)
+            : Offset(plot.left + slot * (i + 0.5) - tp.width / 2,
+                plot.bottom - plot.height * f - tp.height - 12);
+        var pill =
+            Rect.fromLTWH(at.dx - 6, at.dy - 3, tp.width + 12, tp.height + 6);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(pill, const Radius.circular(5)),
+            Paint()..color = note.colour);
+        tp.paint(canvas, at);
+        tp.dispose();
+        notePart(ChartPartKind.note, pill, index: k);
+    }
   }
 }
 

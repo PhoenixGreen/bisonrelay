@@ -4,10 +4,13 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -220,6 +223,79 @@ void main() {
             chart.copyWith(type: type));
         recorder.endRecording().dispose();
       }
+    });
+  });
+
+  group("notes, the spotlight, and suggestions", () {
+    test("notes go through JSON, the average kept as no value", () {
+      const notes = [
+        ChartNote(text: "Average"),
+        ChartNote(kind: ChartNoteKind.band, from: 18, to: 20, text: "Drop zone"),
+        ChartNote(kind: ChartNoteKind.label, who: "Arsenal", text: "Top"),
+        ChartNote(value: 40, text: "Safe", off: true),
+      ];
+      for (var n in notes) {
+        expect(ChartNote.fromJson(jsonDecode(jsonEncode(n.toJson()))), n);
+      }
+      expect(ChartNote.fromJson(notes.first.toJson())!.value.isNaN, isTrue);
+    });
+
+    test("a spotlit row: lit in the chart, tinted in the table", () {
+      var doc = CanvasDocument.fromJson(CanvasDocument(elements: [
+        TableElement(const ElementBase(id: "t", width: 400, height: 200),
+            rows: league),
+        ChartElement(const ElementBase(id: "c", width: 400, height: 300),
+            fromTable: const TableLink(
+                tableId: "t", categoryColumn: 0, valueColumns: [3])),
+      ]).toJson());
+      var c = CanvasController(doc, audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      var sheet = c.document.sheets.single;
+      c.setSheet(sheet.copyWith(spotlight: "Chelsea"));
+      var chart = c.document.elementById("c") as ChartElement;
+      expect(chart.data.marks[3], const Color(0xFFF2B33D));
+      var table = c.document.elementById("t") as TableElement;
+      expect(table.sheetLooks[4].first?.fill, isNotNull,
+          reason: "Chelsea's row");
+      expect(table.sheetLooks[1].first, isNull);
+      var back = DataSheet.fromJson(
+          jsonDecode(jsonEncode(c.document.sheets.single.toJson())));
+      expect(back!.spotlight, "Chelsea");
+      c.setSheet(c.document.sheets.single.copyWith(spotlight: ""));
+      expect((c.document.elementById("c") as ChartElement).data.marks, isEmpty);
+    });
+
+    test("what columns hold, and what they suggest", () {
+      var sheet = sheetOf(weeks);
+      var range = CellRange(0, 0, weeks.length - 1, weeks.first.length - 1);
+      expect(columnKinds(sheet, range), [
+        ColumnKind.dates,
+        ColumnKind.names,
+        ColumnKind.names,
+        ColumnKind.numbers,
+        ColumnKind.numbers,
+      ]);
+      expect([for (var i in chartIdeas(sheet, range, [0, 1, 4])) i.name], [
+        "Race through Date",
+        "A line per Team",
+        "Total each Date",
+        "Points per Team, the most",
+      ]);
+      var race = chartIdeas(sheet, range, [0, 1, 4]).first;
+      expect(race.link.through, 0);
+      var data =
+          race.preview(sheet, ChartElement(const ElementBase(id: "x"))).data;
+      expect(data.categories, ["Arsenal", "Chelsea", "Spurs"]);
+      expect(data.series.single.values, [4, 4, 3]);
+
+      var lsheet = sheetOf(league);
+      var lrange = CellRange(0, 0, league.length - 1, 3);
+      expect([for (var i in chartIdeas(lsheet, lrange, [0, 3])) i.name],
+          ["Ranked bars", "Columns", "Lollipop", "Donut"]);
+      expect([for (var i in chartIdeas(lsheet, lrange, [2, 3])) i.name],
+          ["Scatter", "Side by side", "Slope"]);
+      expect(chartIdeas(lsheet, lrange, [0]), isEmpty,
+          reason: "no numbers, nothing to draw");
     });
   });
 }

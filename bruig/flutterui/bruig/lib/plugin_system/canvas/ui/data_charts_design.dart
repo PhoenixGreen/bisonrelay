@@ -5,8 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -99,6 +102,13 @@ class ChartsDesignState extends State<ChartsDesign> {
   int? _hoverHighlight;
   int? _offering;
   Timer? _ending;
+
+  /// _gallery is the columns ticked for a new chart, while choosing one
+  /// from the suggestions; null otherwise.
+  List<int>? _gallery;
+
+  /// _boardOn shows every view of the sheet together (prototype v5's board).
+  bool _boardOn = false;
   final FocusNode _focus = FocusNode();
 
   /// parts and where they were drawn, for clicks: what the painter noted
@@ -118,6 +128,9 @@ class ChartsDesignState extends State<ChartsDesign> {
       _hover = null;
     }
     if (_picked.kind == "highlight" && _picked.index >= e.highlights.length) {
+      _picked = ChartPick.chart;
+    }
+    if (_picked.kind == "note" && _picked.index >= e.notes.length) {
       _picked = ChartPick.chart;
     }
     if (_picked.series >= e.data.series.length) _picked = ChartPick.chart;
@@ -218,16 +231,154 @@ class ChartsDesignState extends State<ChartsDesign> {
         VerticalDivider(width: 1, thickness: 1, color: colors.outlineVariant),
         Expanded(
           child: Column(children: [
-            _shelf(context),
-            if (_offering != null) _offer(context, _offering!),
+            if (_gallery == null) _shelf(context),
+            if (_offering != null && _gallery == null)
+              _offer(context, _offering!),
+            if (_gallery == null) ..._checkRows(context),
             Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-            Expanded(child: _stage(context)),
+            Expanded(
+                child: _gallery != null
+                    ? _ideas(context)
+                    : _boardOn
+                        ? _board(context)
+                        : _stage(context)),
           ]),
         ),
         VerticalDivider(width: 1, thickness: 1, color: colors.outlineVariant),
-        SizedBox(width: 380, child: _panel(context)),
+        SizedBox(
+            width: 380,
+            child: _gallery != null ? _galleryPanel(context) : _panel(context)),
       ]),
     );
+  }
+
+  // ---- Checks: what makes a chart hard to read, each with a fix.
+
+  /// _checks is what might make the chart hard to read, each with the fixes
+  /// that would help (prototype v5-v6's checks).
+  List<(String, List<(String, VoidCallback)>)> _checks() {
+    var s = _sheet;
+    if (s == null) return const [];
+    var l = _link,
+        data = e.data,
+        out = <(String, List<(String, VoidCallback)>)>[];
+    var n = data.categories.length;
+    if ((e.type == ChartType.pie || e.type == ChartType.donut) && n > 8) {
+      out.add((
+        "$n slices are hard to read.",
+        [
+          (
+            "Ranked bars",
+            () => _setLinkAndType(
+                l.copyWith(sortBy: l.series.firstOrNull ?? -1),
+                ChartType.horizontalBar)
+          ),
+          (
+            "The biggest eight",
+            () =>
+                _setLink(l.copyWith(sortBy: l.series.firstOrNull ?? -1, top: 8))
+          ),
+        ]
+      ));
+    }
+    // Labels said more than once and nothing bringing them together: only
+    // the last of each is drawn.
+    if (l.group.isEmpty && l.through < 0 && !(l.colourBy >= 0 && n > 0)) {
+      var g = l.range, seen = <String>{}, twice = false;
+      for (var r = g.r0 + 1; r <= g.r1; r++) {
+        if (!seen.add(sheetShown(s, r, g.c0 + l.labels))) twice = true;
+      }
+      if (twice) {
+        var kinds = columnKinds(s, g);
+        var date = kinds.indexOf(ColumnKind.dates);
+        out.add((
+          "Each ${_columnName(l.labels)} has several rows; only the last is shown.",
+          [
+            if (date >= 0 && date != l.labels)
+              (
+                "Play through ${_columnName(date)}",
+                () => _setLink(l.copyWith(through: date))
+              ),
+            ("Total for each", () => _setLink(l.copyWith(group: "total"))),
+          ]
+        ));
+      }
+    }
+    if ((e.type == ChartType.line || e.type == ChartType.area) &&
+        data.series.length > 8 &&
+        !e.highlights.any((h) => !h.off) &&
+        s.spotlight.isEmpty) {
+      out.add((
+        "${data.series.length} lines are hard to follow.",
+        [
+          (
+            "Light up the top 3",
+            () => _set(e.copyWith(highlights: [
+                  ...e.highlights,
+                  const ChartHighlight(
+                      reach: ChartReach.top,
+                      n: 3,
+                      colour: Color(0xFF2FE08A),
+                      named: true),
+                ]))
+          ),
+        ]
+      ));
+    }
+    var base = data.series.isEmpty ? null : data.series.first.color;
+    for (var (i, h) in e.highlights.indexed) {
+      if (h.off || base == null || h.colour != base) continue;
+      out.add((
+        "“${_highlightName(h)}” is the same colour as the rest.",
+        [
+          (
+            "Make it gold",
+            () {
+              var all = [...e.highlights];
+              all[i] = h.copyWith(colour: const Color(0xFFF2B33D));
+              _set(e.copyWith(highlights: all));
+            }
+          ),
+        ]
+      ));
+    }
+    return out;
+  }
+
+  void _setLinkAndType(SheetLink link, ChartType type) =>
+      _set(withLink(e.copyWith(type: type), link) as ChartElement);
+
+  List<Widget> _checkRows(BuildContext context) {
+    var checks = _checks();
+    if (checks.isEmpty) return const [];
+    return [
+      Container(
+        key: const ValueKey("chartsChecks"),
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+        child: Column(children: [
+          for (var (i, (say, fixes)) in checks.indexed)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(children: [
+                Expanded(
+                  child: Text(say,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: Color(0xFFF2B33D))),
+                ),
+                for (var (j, (label, fix)) in fixes.indexed)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: StudioPill(
+                        key: ValueKey("chartsFix-$i-$j"),
+                        label: label,
+                        onTap: fix),
+                  ),
+              ]),
+            ),
+        ]),
+      ),
+    ];
   }
 
   // ---- Left: columns and charts.
@@ -285,6 +436,30 @@ class ChartsDesignState extends State<ChartsDesign> {
                 ),
               ),
             ),
+          if (_sheet case var sheet? when sheet.spotlight.isNotEmpty) ...[
+            const StudioLabel("Picked out everywhere"),
+            Row(children: [
+              Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                      color: sheet.spotlightColour,
+                      borderRadius: BorderRadius.circular(3))),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(sheet.spotlight,
+                    key: const ValueKey("chartsSpotlightName"),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, color: colors.onSurface)),
+              ),
+              StudioPill(
+                  key: const ValueKey("chartsSpotlightOff"),
+                  label: "Stop",
+                  onTap: () => c.setSheet(sheet.copyWith(spotlight: ""))),
+            ]),
+            Text("In every chart of this sheet, and its tables.",
+                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+          ],
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,
@@ -292,16 +467,133 @@ class ChartsDesignState extends State<ChartsDesign> {
                 key: const ValueKey("chartsNew"),
                 label: "+ New chart",
                 filled: true,
-                onTap: () {
-                  var s = _sheet;
-                  if (s == null) return;
-                  var made = c.addDataView(ElementKind.chart, s.id, s.used);
-                  widget.onPickChart(startedChart(c, made).id);
-                }),
+                onTap: () => setState(() {
+                      _gallery = _startingPicks();
+                      _offering = null;
+                      _boardOn = false;
+                    })),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StudioPill(
+                key: const ValueKey("chartsBoard"),
+                label: "Board",
+                selected: _boardOn,
+                tooltip: "Every view of this sheet together",
+                onTap: () => setState(() {
+                      _boardOn = !_boardOn;
+                      _gallery = null;
+                    })),
           ),
         ]),
       ),
     );
+  }
+
+  // ---- The board: every view of the sheet together.
+
+  /// _views is the tables and charts of this sheet on the page being made.
+  List<CanvasElement> get _onPage => [
+        for (var v in c.document.elements)
+          if (linkOf(v)?.sheet == widget.sheetId) v
+      ];
+
+  Widget _board(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    var views = viewsOf(c.document, widget.sheetId);
+    return GridView.extent(
+      key: const ValueKey("chartsBoardGrid"),
+      padding: const EdgeInsets.all(14),
+      maxCrossAxisExtent: 340,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 1.1,
+      children: [
+        for (var v in views)
+          Material(
+            color: colors.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(10),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: ValueKey("chartsBoardView-${v.id}"),
+              onTap: v is ChartElement
+                  ? () {
+                      setState(() => _boardOn = false);
+                      widget.onPickChart(v.id);
+                    }
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(7),
+                          child: CustomPaint(
+                            size: Size.infinite,
+                            painter: _ViewThumb(v, c.images,
+                                c.document.background.spec.background),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                          "${v is ChartElement ? "Chart" : "Table"} · "
+                          "${v.name.isEmpty ? v.kind.label : v.name}",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: colors.onSurface)),
+                    ]),
+              ),
+            ),
+          ),
+        Material(
+          color: colors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child:
+                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              StudioPill(
+                  key: const ValueKey("chartsLayOut"),
+                  label: "Lay them out together",
+                  filled: true,
+                  onTap: _layOut),
+              _hint(context,
+                  "The ones on this page, side by side in rows from where the first is, as one step to undo."),
+            ]),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// _layOut puts this sheet's views on the page side by side, two to a
+  /// row, from where the top-left one is.
+  void _layOut() {
+    var views = _onPage;
+    if (views.isEmpty) return;
+    var x0 = views.map((v) => v.base.x).reduce(math.min);
+    var y0 = views.map((v) => v.base.y).reduce(math.min);
+    const gap = 40.0;
+    _end();
+    c.beginInteraction();
+    var y = y0;
+    for (var i = 0; i < views.length; i += 2) {
+      var row = views.skip(i).take(2).toList();
+      var x = x0;
+      for (var v in row) {
+        c.replaceElement(v.rebase(v.base.copyWith(x: x, y: y)));
+        x += v.base.width + gap;
+      }
+      y += row.map((v) => v.base.height).reduce(math.max) + gap;
+    }
+    c.endInteraction();
   }
 
   Widget _chip(BuildContext context, int col) {
@@ -312,12 +604,21 @@ class ChartsDesignState extends State<ChartsDesign> {
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(7),
           side: BorderSide(
-              color:
-                  _offering == col ? colors.primary : colors.outlineVariant)),
+              color: _offering == col || (_gallery?.contains(col) ?? false)
+                  ? colors.primary
+                  : colors.outlineVariant,
+              width: _gallery?.contains(col) ?? false ? 2 : 1)),
       child: InkWell(
         key: ValueKey("chartsColumn-$col"),
         borderRadius: BorderRadius.circular(7),
-        onTap: () => setState(() => _offering = _offering == col ? null : col),
+        onTap: () => setState(() {
+          var g = _gallery;
+          if (g != null) {
+            _gallery = g.contains(col) ? ([...g]..remove(col)) : [...g, col];
+          } else {
+            _offering = _offering == col ? null : col;
+          }
+        }),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -392,6 +693,150 @@ class ChartsDesignState extends State<ChartsDesign> {
                 label: "Cancel", onTap: () => setState(() => _offering = null)),
           ]),
     );
+  }
+
+  // ---- Suggestions: a new chart chosen by how it looks with your numbers.
+
+  /// _startingPicks are the columns ticked when the gallery opens: the one
+  /// naming the rows (or a date) and the last of numbers.
+  List<int> _startingPicks() {
+    var s = _sheet;
+    if (s == null) return const [];
+    var g = _link.range;
+    var kinds = columnKinds(s, g);
+    var date = kinds.indexOf(ColumnKind.dates);
+    // The names column of the longest words (a team's name, not its code).
+    var name = -1;
+    var longest = 0.0;
+    for (var (col, k) in kinds.indexed) {
+      if (k != ColumnKind.names) continue;
+      var words = [
+        for (var r = g.r0 + 1; r <= g.r1; r++) sheetShown(s, r, g.c0 + col)
+      ];
+      var length =
+          words.fold(0, (a, w) => a + w.length) / math.max(1, words.length);
+      if (length > longest) {
+        longest = length;
+        name = col;
+      }
+    }
+    var number = kinds.lastIndexOf(ColumnKind.numbers);
+    return [
+      if (date >= 0) date,
+      if (name >= 0) name,
+      if (number >= 0) number,
+    ];
+  }
+
+  Widget _ideas(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    var s = _sheet;
+    if (s == null) return const SizedBox.shrink();
+    var ideas = chartIdeas(s, _link.range, _gallery!);
+    if (ideas.isEmpty) {
+      return Center(
+          child: Text("Tick at least one column of numbers on the left.",
+              style: TextStyle(color: colors.onSurfaceVariant)));
+    }
+    return GridView.extent(
+      key: const ValueKey("chartsGallery"),
+      padding: const EdgeInsets.all(14),
+      maxCrossAxisExtent: 300,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.95,
+      children: [
+        for (var (i, idea) in ideas.indexed)
+          Material(
+            color: colors.surfaceContainerHigh,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(
+                    color: i == 0 ? colors.primary : colors.outlineVariant)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: ValueKey("chartsIdea-$i"),
+              onTap: () => _make(idea),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(7),
+                          child: CustomPaint(
+                            size: Size.infinite,
+                            painter: _Thumb(idea.preview(s, e),
+                                c.document.background.spec.background),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text("${idea.name}${i == 0 ? " · best fit" : ""}",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: colors.onSurface)),
+                      Text(idea.why,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11.5, color: colors.onSurfaceVariant)),
+                    ]),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _galleryPanel(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    return Container(
+      color: colors.surfaceContainerLow,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text("New chart",
+              key: const ValueKey("chartsTitle"),
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: colors.onSurface)),
+          _hint(context,
+              "Tick the columns to show on the left. The suggestions are drawn with your numbers, the best fit first: one number makes bars; two, a scatter; a date with names, a race or a line each."),
+          _buttons([
+            StudioPill(
+                key: const ValueKey("chartsGalleryCancel"),
+                label: "Cancel",
+                onTap: () => setState(() => _gallery = null)),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  /// _make puts the chosen idea on the canvas as a chart of this sheet, one
+  /// step to undo, and opens it.
+  void _make(ChartIdea idea) {
+    var s = _sheet;
+    if (s == null) return;
+    _end();
+    c.beginInteraction();
+    var made = c.addDataView(ElementKind.chart, s.id, _link.range);
+    if (made is ChartElement) {
+      c.replaceElement(withLink(
+          made.copyWith(
+              type: idea.type, title: idea.title, highlights: idea.highlights),
+          idea.link.copyWith(sheet: s.id, range: _link.range)));
+    }
+    c.endInteraction();
+    setState(() => _gallery = null);
+    widget.onPickChart(made.id);
   }
 
   // ---- The slots.
@@ -541,6 +986,9 @@ class ChartsDesignState extends State<ChartsDesign> {
         if (best.kind == ChartPartKind.mark) {
           return ChartPick("mark", series: best.series, index: best.index);
         }
+        if (best.kind == ChartPartKind.note) {
+          return ChartPick("note", index: best.index);
+        }
         return ChartPick(best.kind.name);
       }
 
@@ -594,7 +1042,7 @@ class ChartsDesignState extends State<ChartsDesign> {
 
   static int _rank(ChartPartKind k) => switch (k) {
         ChartPartKind.title || ChartPartKind.description => 5,
-        ChartPartKind.legend => 4,
+        ChartPartKind.legend || ChartPartKind.note => 4,
         ChartPartKind.mark => 3,
         ChartPartKind.xLabels || ChartPartKind.yLabels => 2,
         ChartPartKind.plot => 1,
@@ -638,6 +1086,14 @@ class ChartsDesignState extends State<ChartsDesign> {
       "highlight" => (
           _highlightName(e.highlights[p.index]),
           "A highlight: lit up on the chart."
+        ),
+      "note" => (
+          switch (e.notes[p.index].kind) {
+            ChartNoteKind.line => "Line",
+            ChartNoteKind.band => "Band",
+            ChartNoteKind.label => "Label",
+          },
+          "A note on the chart."
         ),
       _ => ("Chart", ""),
     };
@@ -687,6 +1143,7 @@ class ChartsDesignState extends State<ChartsDesign> {
                   "series" => _seriesPanel(context, p.series),
                   "mark" => _markPanel(context, p.series, p.index),
                   "highlight" => _highlightPanel(context, p.index),
+                  "note" => _notePanel(context, p.index),
                   _ => const [],
                 }),
           ),
@@ -753,6 +1210,52 @@ class ChartsDesignState extends State<ChartsDesign> {
         if (_numbers(col)) col
     ];
     return [
+      const StudioLabel("Looks"),
+      Row(children: [
+        for (var look in chartLooks)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Material(
+                color: colors.surfaceContainerHigh,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(
+                        color: e.titleSpec.color == look.ink &&
+                                e.gridColor == look.grid
+                            ? colors.primary
+                            : const Color(0x00000000))),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: ValueKey("chartsLook-${look.name}"),
+                  onTap: () => _set(look.on(e)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Column(children: [
+                      SizedBox(
+                        height: 44,
+                        child: CustomPaint(
+                            size: Size.infinite,
+                            painter: _Thumb(
+                                look.on(e).copyWith(
+                                    title: "",
+                                    showXLabels: false,
+                                    showLegend: false),
+                                look.ground)),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(look.name,
+                          style:
+                              TextStyle(fontSize: 11, color: colors.onSurface)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ]),
+      _hint(context,
+          "Its colours for a dark page (Night, Mono) or a light one (Paper, Bright)."),
       StudioPills<String>(
           id: "chartsRows",
           label: "Rows shown",
@@ -875,9 +1378,146 @@ class ChartsDesignState extends State<ChartsDesign> {
       ]),
       _hint(context,
           "A highlight follows the numbers: “top 3” lights whoever is in the top three after a refresh."),
+      StudioLabel("Notes · ${e.notes.length}"),
+      for (var (i, n) in e.notes.indexed)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Material(
+            color: colors.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              key: ValueKey("chartsNote-$i"),
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _pick(ChartPick("note", index: i)),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(children: [
+                  Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                          color: n.colour,
+                          borderRadius: BorderRadius.circular(4))),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(_noteName(n),
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: colors.onSurface)),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      _buttons([
+        StudioPill(
+            key: const ValueKey("chartsAddAverage"),
+            label: "+ Average line",
+            onTap: () => _addNote(const ChartNote(text: "Average"))),
+        StudioPill(
+            key: const ValueKey("chartsAddBand"),
+            label: "+ Band",
+            onTap: () => _addNote(ChartNote(
+                kind: ChartNoteKind.band,
+                from: 1,
+                to: math.min(3, math.max(1, e.data.categories.length)),
+                text: "Top",
+                colour: const Color(0xFF2FE08A)))),
+      ]),
       if (l.charted)
         _hint(context,
             "Read as only a chart can (grouped, by places, one date at a time), its numbers are worked out from the sheet and not written back to it."),
+    ];
+  }
+
+  void _addNote(ChartNote note) {
+    _set(e.copyWith(notes: [...e.notes, note]));
+    _pick(ChartPick("note", index: e.notes.length));
+  }
+
+  static String _noteName(ChartNote n) => switch (n.kind) {
+        ChartNoteKind.line =>
+          "${n.text.isEmpty ? "Line" : n.text} · ${n.value.isNaN ? "at the average" : "at ${_num(n.value)}"}",
+        ChartNoteKind.band =>
+          "${n.text.isEmpty ? "Band" : n.text} · places ${n.from}–${n.to}",
+        ChartNoteKind.label =>
+          "“${n.text.isEmpty ? n.who : n.text}” on ${n.who}",
+      };
+
+  List<Widget> _notePanel(BuildContext context, int i) {
+    var n = e.notes[i];
+    void put(ChartNote next, {bool live = false}) {
+      var all = [...e.notes];
+      all[i] = next;
+      live ? _live(e.copyWith(notes: all)) : _set(e.copyWith(notes: all));
+    }
+
+    var count = math.max(1, e.data.categories.length);
+    return [
+      const StudioLabel("Says"),
+      _Field(
+          key: ValueKey("chartsNoteText-$i"),
+          text: n.text,
+          hint: n.kind == ChartNoteKind.label ? n.who : "Words beside it",
+          onChanged: (v) => put(n.copyWith(text: v), live: true)),
+      if (n.kind == ChartNoteKind.line) ...[
+        StudioPills<bool>(
+            id: "chartsNoteAt",
+            label: "At",
+            value: n.value.isNaN,
+            options: const [(true, "The average"), (false, "A number")],
+            onChanged: (v) => put(n.copyWith(value: v ? double.nan : 0))),
+        if (!n.value.isNaN) ...[
+          const SizedBox(height: 6),
+          _Field(
+              key: ValueKey("chartsNoteValue-$i"),
+              text: _num(n.value),
+              hint: "A number",
+              onChanged: (v) {
+                var x = double.tryParse(v.trim());
+                if (x != null) put(n.copyWith(value: x), live: true);
+              }),
+        ],
+      ],
+      if (n.kind == ChartNoteKind.band) ...[
+        _slider(
+            "From place",
+            n.from.toDouble(),
+            1,
+            count.toDouble(),
+            1,
+            (v) => put(
+                n.copyWith(from: v.round(), to: math.max(v.round(), n.to)),
+                live: true)),
+        _slider(
+            "To place",
+            n.to.toDouble(),
+            1,
+            count.toDouble(),
+            1,
+            (v) => put(
+                n.copyWith(to: v.round(), from: math.min(v.round(), n.from)),
+                live: true)),
+        _hint(context,
+            "Behind those places, whoever is in them: a cut-off that stays put."),
+      ],
+      _swatches("chartsNoteColour", "Colour", n.colour,
+          (v) => put(n.copyWith(colour: v))),
+      _buttons([
+        StudioPill(
+            key: const ValueKey("chartsNoteOff"),
+            label: n.off ? "Switch on" : "Switch off",
+            onTap: () => put(n.copyWith(off: !n.off))),
+        StudioPill(
+            key: const ValueKey("chartsNoteDelete"),
+            label: "Delete",
+            onTap: () {
+              _set(e.copyWith(notes: [...e.notes]..removeAt(i)));
+              _pick(ChartPick.chart);
+            }),
+      ]),
     ];
   }
 
@@ -989,6 +1629,21 @@ class ChartsDesignState extends State<ChartsDesign> {
               ]));
               _pick(ChartPick("highlight", index: e.highlights.length));
             }),
+        StudioPill(
+            key: const ValueKey("chartsSpotlight"),
+            label: "Pick $label out everywhere",
+            tooltip: "In every chart of this sheet, and its tables' rows",
+            onTap: () {
+              var sheet = _sheet;
+              if (sheet != null) c.setSheet(sheet.copyWith(spotlight: label));
+            }),
+        StudioPill(
+            key: const ValueKey("chartsLabelMark"),
+            label: "Label it",
+            onTap: () => _addNote(ChartNote(
+                kind: ChartNoteKind.label,
+                who: label,
+                colour: const Color(0xFFFFFFFF)))),
         StudioPill(
             label: "Its series",
             onTap: () => _pick(ChartPick("series", series: s))),
@@ -1154,6 +1809,10 @@ class _ChartStage extends CustomPainter {
                     q.series == p.series &&
                     q.index == p.index)
                   q
+            ],
+          "note" => [
+              for (var q in parts)
+                if (q.kind == ChartPartKind.note && q.index == p.index) q
             ],
           "chart" || "highlight" => const [],
           _ => [
@@ -1364,4 +2023,289 @@ CanvasElement startedChart(CanvasController c, CanvasElement made) {
   var next = withLink(made, link.copyWith(labels: names, series: [last]));
   c.replaceElement(next);
   return next;
+}
+
+/// ChartLook is a chart's colours at once (prototype v5's looks): its words,
+/// its quieter writing, its grid and its marks, for a page of [ground].
+class ChartLook {
+  final String name;
+  final Color ground, ink, dim, grid, mark;
+  const ChartLook(this.name,
+      {required this.ground,
+      required this.ink,
+      required this.dim,
+      required this.grid,
+      required this.mark});
+
+  /// on is [e] in this look: its words, grid and axes, and its marks -- the
+  /// first series this look's colour, the rest the palette.
+  ChartElement on(ChartElement e) => e.copyWith(
+        titleSpec: e.titleSpec.copyWith(color: ink),
+        labelSpec: e.labelSpec.copyWith(color: dim),
+        valueSpec: e.valueSpec.copyWith(color: ink),
+        gridColor: grid,
+        axisColor: dim,
+        sliceColors: const [],
+        data: e.data.copyWith(series: [
+          for (var (i, s) in e.data.series.indexed)
+            s.copyWith(
+                color: i == 0 ? mark : chartPalette[i % chartPalette.length]),
+        ]),
+      );
+}
+
+const chartLooks = [
+  ChartLook("Night",
+      ground: Color(0xFF073E8C),
+      ink: Color(0xFFFFFFFF),
+      dim: Color(0xFFC9D6EA),
+      grid: Color(0x22FFFFFF),
+      mark: Color(0xFF4C8DF6)),
+  ChartLook("Paper",
+      ground: Color(0xFFFBF6E9),
+      ink: Color(0xFF3A2F1D),
+      dim: Color(0xFF6B4F1D),
+      grid: Color(0x226B4F1D),
+      mark: Color(0xFFC0563B)),
+  ChartLook("Mono",
+      ground: Color(0xFF0F1724),
+      ink: Color(0xFFE8EDF5),
+      dim: Color(0xFF8D97A6),
+      grid: Color(0x1AFFFFFF),
+      mark: Color(0xFFE8EDF5)),
+  ChartLook("Bright",
+      ground: Color(0xFFFFFFFF),
+      ink: Color(0xFF1D2127),
+      dim: Color(0xFF59606B),
+      grid: Color(0x1A000000),
+      mark: Color(0xFF4C8DF6)),
+];
+
+/// ColumnKind is what a column of a sheet holds, for the suggestions:
+/// numbers; dates (a column the rows come in runs of, or headed so); or
+/// names.
+enum ColumnKind { numbers, dates, names, empty }
+
+/// columnKinds is each column of [range]'s kind.
+List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
+  var datey = RegExp(r"date|week|month|year|day|time|season|round|period",
+      caseSensitive: false);
+  return [
+    for (var col = 0; col < range.cols; col++)
+      () {
+        var values = [
+          for (var r = range.r0 + 1; r <= range.r1; r++)
+            sheetValue(sheet, r, range.c0 + col)
+        ].where((v) => v != null && v != "").toList();
+        if (values.isEmpty) return ColumnKind.empty;
+        if (values.whereType<double>().length * 2 > values.length) {
+          return ColumnKind.numbers;
+        }
+        var head = sheetShown(sheet, range.r0, range.c0 + col);
+        var words = [for (var v in values) "$v"];
+        // Runs: each value comes as one block of rows, more than one long.
+        var runs = <String>[];
+        for (var w in words) {
+          if (runs.isEmpty || runs.last != w) runs.add(w);
+        }
+        var blocks =
+            runs.toSet().length == runs.length && runs.length < words.length;
+        return datey.hasMatch(head) || blocks
+            ? ColumnKind.dates
+            : ColumnKind.names;
+      }(),
+  ];
+}
+
+/// ChartIdea is one suggestion: its name, why it suits, and the chart it
+/// makes -- a kind, a way of reading the sheet, and any highlights.
+class ChartIdea {
+  final String name, why, title;
+  final ChartType type;
+  final SheetLink link;
+  final List<ChartHighlight> highlights;
+  const ChartIdea(this.name, this.why, this.type, this.link,
+      {this.title = "", this.highlights = const []});
+
+  /// preview is the chart as it would look, for its card, the size of
+  /// [like].
+  ChartElement preview(DataSheet sheet, ChartElement like) {
+    var chart = ChartElement(
+        ElementBase(id: "idea", width: like.width, height: like.height),
+        type: type,
+        title: title,
+        highlights: highlights,
+        sheet: link);
+    return chart.copyWith(
+        data: chartDataOf(sheet, link, const ChartData(),
+            type: type, highlights: highlights));
+  }
+}
+
+/// chartIdeas is what the ticked columns [picks] of [range] could be drawn
+/// as, the best fit first (prototype v6's suggestions): a date with names
+/// and a number, a race, a line each, totals; a date and a number, totals
+/// and averages; names and one number, ranked bars, columns, a lollipop, a
+/// donut; two numbers, a scatter, side by side, a slope.
+List<ChartIdea> chartIdeas(DataSheet sheet, CellRange range, List<int> picks) {
+  var kinds = columnKinds(sheet, range);
+  String name(int col) {
+    var n = sheetShown(sheet, range.r0, range.c0 + col).trim();
+    return n.isEmpty ? columnName(range.c0 + col) : n;
+  }
+
+  List<int> ofKind(ColumnKind k) => [
+        for (var p in picks)
+          if (p < kinds.length && kinds[p] == k) p
+      ];
+  var nums = ofKind(ColumnKind.numbers);
+  var dates = ofKind(ColumnKind.dates);
+  var names = ofKind(ColumnKind.names);
+  if (nums.isEmpty) return const [];
+  var v = nums.first, vn = name(v);
+  SheetLink link(int labels, List<int> series) =>
+      SheetLink(sheet.id, range, labels: labels, series: series);
+  var out = <ChartIdea>[];
+
+  if (dates.isNotEmpty && names.isNotEmpty) {
+    var d = dates.first, n = names.first, dn = name(d), nn = name(n);
+    out.add(ChartIdea(
+        "Race through $dn",
+        "Ranked by $vn, one ${dn.toLowerCase()} at a time: watch them overtake.",
+        ChartType.horizontalBar,
+        link(n, [v]).copyWith(through: d, sortBy: v),
+        title: "$vn by $nn"));
+    out.add(ChartIdea("A line per $nn", "Each its own line; the top three lit.",
+        ChartType.line, link(d, [v]).copyWith(colourBy: n),
+        title: "$vn through the ${dn.toLowerCase()}s",
+        highlights: const [
+          ChartHighlight(
+              reach: ChartReach.top,
+              n: 3,
+              colour: Color(0xFF2FE08A),
+              named: true),
+        ]));
+    out.add(ChartIdea(
+        "Total each $dn",
+        "Every row of each ${dn.toLowerCase()} added up.",
+        ChartType.bar,
+        link(d, [v]).copyWith(group: "total"),
+        title: "$vn each ${dn.toLowerCase()}"));
+    out.add(ChartIdea(
+        "$vn per $nn, the most",
+        "Each one's best, longest first.",
+        ChartType.horizontalBar,
+        link(n, [v]).copyWith(group: "most", sortBy: v),
+        title: "$vn by $nn"));
+  } else if (dates.isNotEmpty) {
+    var d = dates.first, dn = name(d);
+    out.add(ChartIdea(
+        "Total each $dn",
+        "The rows of each ${dn.toLowerCase()} added up.",
+        ChartType.bar,
+        link(d, [v]).copyWith(group: "total"),
+        title: "$vn each ${dn.toLowerCase()}"));
+    out.add(ChartIdea(
+        "Average each $dn",
+        "What a typical row was, one ${dn.toLowerCase()} after another.",
+        ChartType.line,
+        link(d, [v]).copyWith(group: "average"),
+        title: "Average $vn"));
+    out.add(ChartIdea("Total as an area", "The same totals, filled in.",
+        ChartType.area, link(d, [v]).copyWith(group: "total")));
+  } else {
+    var n = names.isNotEmpty
+        ? names.first
+        : kinds.indexWhere((k) => k == ColumnKind.names);
+    if (n < 0) n = 0;
+    var nn = name(n);
+    if (nums.length == 1) {
+      out.add(ChartIdea(
+          "Ranked bars",
+          "One number each, longest first: the easiest to compare.",
+          ChartType.horizontalBar,
+          link(n, [v]).copyWith(sortBy: v),
+          title: "$vn by $nn"));
+      out.add(ChartIdea("Columns", "In the sheet's order, left to right.",
+          ChartType.bar, link(n, [v]),
+          title: vn));
+      out.add(ChartIdea("Lollipop", "Bars made light: good with many rows.",
+          ChartType.lollipop, link(n, [v]),
+          title: vn));
+      out.add(ChartIdea(
+          "Donut",
+          "Shares of a whole: the biggest eight. With twenty, bars read better.",
+          ChartType.donut,
+          link(n, [v]).copyWith(sortBy: v, top: 8),
+          title: vn));
+    } else {
+      var w = nums[1], wn = name(w);
+      out.add(ChartIdea(
+          "Scatter",
+          "How $vn and $wn go together: $vn across, $wn up.",
+          ChartType.scatter,
+          link(v, [w]),
+          title: "$vn and $wn"));
+      out.add(ChartIdea("Side by side", "Each number for each $nn.",
+          ChartType.groupedBar, link(n, nums.take(4).toList()),
+          title: nums.take(4).map(name).join(" and ")));
+      out.add(ChartIdea("Slope", "From $vn to $wn, a line each.",
+          ChartType.slope, link(n, [v, w]),
+          title: "$vn to $wn"));
+    }
+  }
+  return out;
+}
+
+/// _ViewThumb draws a table or a chart fitted to a board card.
+class _ViewThumb extends CustomPainter {
+  final CanvasElement e;
+  final CanvasImageStore images;
+  final Color ground;
+  _ViewThumb(this.e, this.images, this.ground) : super(repaint: images);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = ground);
+    var w = math.max(1.0, e.width), h = math.max(1.0, e.height);
+    var k = math.min((size.width - 8) / w, (size.height - 8) / h);
+    canvas.save();
+    canvas.translate((size.width - w * k) / 2, (size.height - h * k) / 2);
+    canvas.scale(k);
+    var rect = Rect.fromLTWH(0, 0, w, h);
+    switch (e) {
+      case TableElement t:
+        paintTable(canvas, rect, t, images: images);
+      case ChartElement ch:
+        paintChart(canvas, rect, ch);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ViewThumb old) =>
+      !identical(old.e, e) || old.ground != ground;
+}
+
+/// _Thumb draws a suggestion's chart fitted to its card.
+class _Thumb extends CustomPainter {
+  final ChartElement e;
+  final Color ground;
+  _Thumb(this.e, this.ground);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = ground);
+    var w = math.max(1.0, e.width), h = math.max(1.0, e.height);
+    var k = math.min((size.width - 8) / w, (size.height - 8) / h);
+    canvas.save();
+    canvas.translate((size.width - w * k) / 2, (size.height - h * k) / 2);
+    canvas.scale(k);
+    paintChart(canvas, Rect.fromLTWH(0, 0, w, h), e);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_Thumb old) =>
+      !identical(old.e, e) || old.ground != ground;
 }

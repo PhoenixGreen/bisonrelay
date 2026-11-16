@@ -126,7 +126,16 @@ List<int> waffleCells(List<double> values, {int cells = 100}) {
 /// ChartPartKind is a part of a drawn chart, for the Data Studio's Charts
 /// tab to point at: the writing over it, its plot, the labels along each
 /// side, and each mark (a bar, a point, a slice).
-enum ChartPartKind { title, description, legend, plot, xLabels, yLabels, mark }
+enum ChartPartKind {
+  title,
+  description,
+  legend,
+  plot,
+  xLabels,
+  yLabels,
+  mark,
+  note
+}
 
 /// ChartPart is where one part was drawn, in the painter's own coordinates.
 /// A mark has its series and category; a slice its outline.

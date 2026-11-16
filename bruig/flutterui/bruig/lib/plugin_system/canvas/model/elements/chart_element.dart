@@ -343,6 +343,10 @@ class ChartElement extends CanvasElement {
   /// chart_highlight.dart), worked into the data's marks by data_sync.dart.
   final List<ChartHighlight> highlights;
 
+  /// notes are lines, bands and words drawn on it beside its data (see
+  /// chart_highlight.dart).
+  final List<ChartNote> notes;
+
   const ChartElement(
     super.base, {
     this.type = ChartType.bar,
@@ -405,6 +409,7 @@ class ChartElement extends CanvasElement {
     this.smooth = false,
     this.sheet,
     this.highlights = const [],
+    this.notes = const [],
   });
 
   @override
@@ -544,6 +549,7 @@ class ChartElement extends CanvasElement {
     SheetLink? sheet,
     bool clearSheet = false,
     List<ChartHighlight>? highlights,
+    List<ChartNote>? notes,
   }) =>
       _copy(base,
           type: type,
@@ -607,7 +613,8 @@ class ChartElement extends CanvasElement {
           smooth: smooth,
           sheet: sheet,
           clearSheet: clearSheet,
-          highlights: highlights);
+          highlights: highlights,
+          notes: notes);
 
   /// _copy is copyWith and rebase sharing one body, so no field can be
   /// dropped from one of them.
@@ -675,6 +682,7 @@ class ChartElement extends CanvasElement {
     SheetLink? sheet,
     bool clearSheet = false,
     List<ChartHighlight>? highlights,
+    List<ChartNote>? notes,
   }) =>
       ChartElement(newBase,
           type: type ?? this.type,
@@ -738,7 +746,8 @@ class ChartElement extends CanvasElement {
           strokeWidth: strokeWidth ?? this.strokeWidth,
           smooth: smooth ?? this.smooth,
           sheet: clearSheet ? null : sheet ?? this.sheet,
-          highlights: highlights ?? this.highlights);
+          highlights: highlights ?? this.highlights,
+          notes: notes ?? this.notes);
 
   @override
   Map<String, dynamic> props() => {
@@ -809,6 +818,7 @@ class ChartElement extends CanvasElement {
         if (sheet != null) "sheet": sheet!.toJson(),
         if (highlights.isNotEmpty)
           "highlights": [for (var h in highlights) h.toJson()],
+        if (notes.isNotEmpty) "notes": [for (var n in notes) n.toJson()],
       };
 
   factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -916,6 +926,11 @@ class ChartElement extends CanvasElement {
             if (json["highlights"] case List hs)
               for (var h in hs)
                 if (ChartHighlight.fromJson(h) case var hl?) hl,
+          ],
+          notes: [
+            if (json["notes"] case List ns)
+              for (var n in ns)
+                if (ChartNote.fromJson(n) case var note?) note,
           ]);
 }
 

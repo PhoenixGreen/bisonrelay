@@ -208,7 +208,133 @@ void main() {
       await tester
           .tap(find.byKey(const ValueKey("studioPill-chartsRows-places")));
       await tester.pumpAndSettle();
+      // The suggestions too.
+      final add = find.byKey(const ValueKey("chartsNew"));
+      await tester.ensureVisible(add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("chartsIdea-0")), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets("a new chart chosen from suggestions drawn with the numbers",
+      (tester) async {
+    await studio(tester);
+    var before = c.document.elements.length;
+    final add = find.byKey(const ValueKey("chartsNew"));
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    expect(title(tester), "New chart");
+    // Club and Pts ticked to start: ranked bars first.
+    expect(find.text("Ranked bars · best fit"), findsOneWidget);
+    // GD ticked as well: a scatter is offered.
+    await tester.tap(find.byKey(const ValueKey("chartsColumn-2")));
+    await tester.pumpAndSettle();
+    expect(find.text("Scatter · best fit"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("chartsColumn-2")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("chartsIdea-0")));
+    await tester.pumpAndSettle();
+    expect(c.document.elements.length, before + 1);
+    var made = c.document.elements.last as ChartElement;
+    expect(made.type, ChartType.horizontalBar);
+    expect(made.sheet!.sortBy, 3);
+    expect(made.data.categories.first, "Arsenal");
+    expect(title(tester), made.name.isEmpty ? "Chart" : made.name,
+        reason: "the new chart is opened");
+    // One step to undo.
+    c.undo();
+    await tester.pumpAndSettle();
+    expect(c.document.elements.length, before);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("a look; a check with its fix; the board laid out",
+      (tester) async {
+    await studio(tester);
+    final paper = find.byKey(const ValueKey("chartsLook-Paper"));
+    await tester.ensureVisible(paper);
+    await tester.tap(paper);
+    await tester.pumpAndSettle();
+    expect(chart().titleSpec.color, const Color(0xFF3A2F1D));
+    expect(chart().data.series.first.color, const Color(0xFFC0563B));
+
+    // Labelled by the results, which repeat: said, and fixed in a click.
+    expect(find.byKey(const ValueKey("chartsChecks")), findsNothing);
+    c.replaceElement(
+        chart().copyWith(sheet: chart().sheet!.copyWith(labels: 1)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("chartsChecks")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("chartsFix-0-0")));
+    await tester.pumpAndSettle();
+    expect(chart().sheet!.group, "total");
+    expect(chart().data.categories, ["W", "D", "L"]);
+    expect(chart().data.series.single.values, [79, 44, 40]);
+    expect(find.byKey(const ValueKey("chartsChecks")), findsNothing);
+
+    // The board: the table and the chart, laid out side by side.
+    await tester.tap(find.byKey(const ValueKey("chartsBoard")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("chartsBoardView-t1")), findsOneWidget);
+    expect(find.byKey(const ValueKey("chartsBoardView-c1")), findsOneWidget);
+    final layOut = find.byKey(const ValueKey("chartsLayOut"));
+    await tester.ensureVisible(layOut);
+    await tester.tap(layOut);
+    await tester.pumpAndSettle();
+    var t = c.document.elementById("t1")!, ch = c.document.elementById("c1")!;
+    expect(ch.base.y, t.base.y);
+    expect(ch.base.x, t.base.x + t.base.width + 40);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("notes added and changed; a club picked out everywhere",
+      (tester) async {
+    await studio(tester);
+    final average = find.byKey(const ValueKey("chartsAddAverage"));
+    await tester.ensureVisible(average);
+    await tester.tap(average);
+    await tester.pumpAndSettle();
+    expect(chart().notes.single.kind, ChartNoteKind.line);
+    expect(chart().notes.single.value.isNaN, isTrue, reason: "the average");
+    expect(title(tester), "Line");
+    expect(state(tester).parts.where((p) => p.kind == ChartPartKind.note),
+        hasLength(1),
+        reason: "drawn, and found where it was drawn");
+    await tester
+        .tap(find.byKey(const ValueKey("studioPill-chartsNoteAt-false")));
+    await tester.pumpAndSettle();
+    expect(chart().notes.single.value, 0);
+
+    // A bar labelled, and picked out everywhere.
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.tapAt(barAt(tester, 1));
+    await tester.pumpAndSettle();
+    await tester.tapAt(barAt(tester, 1));
+    await tester.pumpAndSettle();
+    expect(title(tester), "Liverpool");
+    await tester.tap(find.byKey(const ValueKey("chartsLabelMark")));
+    await tester.pumpAndSettle();
+    expect(chart().notes.last.kind, ChartNoteKind.label);
+    expect(chart().notes.last.who, "Liverpool");
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.tapAt(barAt(tester, 2));
+    await tester.pumpAndSettle();
+    await tester.tapAt(barAt(tester, 2));
+    await tester.pumpAndSettle();
+    final spot = find.byKey(const ValueKey("chartsSpotlight"));
+    await tester.ensureVisible(spot);
+    await tester.tap(spot);
+    await tester.pumpAndSettle();
+    expect(c.document.sheets.single.spotlight, "Chelsea");
+    expect(chart().data.marks[2], const Color(0xFFF2B33D));
+    expect(find.byKey(const ValueKey("chartsSpotlightName")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("chartsSpotlightOff")));
+    await tester.pumpAndSettle();
+    expect(c.document.sheets.single.spotlight, "");
+    expect(tester.takeException(), isNull);
+  });
 }
