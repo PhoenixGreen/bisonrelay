@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/table_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_panel_helpers.dart';
 
 // canvas_table_design_test.dart is the Data Studio's Table tab (Ken,
 // 2026-11-15: a design view to "select cells or rows or columns or tables
@@ -198,6 +200,10 @@ void main() {
   });
 
   group("the Table tab", () {
+    // The sidebar's sections open, as these tests are of what each control
+    // does; where they are folded is the sidebar's own test.
+    setUp(() => CanvasSection.openAll = true);
+    tearDown(() => CanvasSection.openAll = false);
     late CanvasController c;
     TableElement table() => c.document.elementById("t1") as TableElement;
 
@@ -302,7 +308,12 @@ void main() {
       expect(table().rules[3].rows, ">1");
       expect(title(tester), "GD · gold fill");
 
-      // A fill picked: the GD cells take it, on the canvas too.
+      // A fill picked: the GD cells take it, on the canvas too. Its
+      // palette opens under it first.
+      final field = find.byKey(const ValueKey("tableStyleFill"));
+      await tester.ensureVisible(field);
+      await tester.tap(field);
+      await tester.pumpAndSettle();
       final fill = find.byKey(const ValueKey("tableStyleFill-2fe08a"));
       await tester.ensureVisible(fill);
       await tester.tap(fill);
@@ -355,15 +366,11 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("the table's own look: a slider is one step to undo",
+    testWidgets("the table's own look: a stepper is one step to undo",
         (tester) async {
       await studio(tester);
       var before = table().cornerRadius;
-      var corners = find.descendant(
-          of: find.byKey(const ValueKey("tableSlider-Corners")),
-          matching: find.byType(Slider));
-      await tester.ensureVisible(corners);
-      await tester.drag(corners, const Offset(60, 0));
+      await typeNumber(tester, "tableSlider-Corners", "20");
       await tester.pumpAndSettle(const Duration(milliseconds: 500));
       expect(table().cornerRadius, isNot(before));
       c.undo();
@@ -405,7 +412,9 @@ void main() {
           reason: "the first column read down the sheet's own rows");
       expect(table().rows[1][4], "40", reason: "Chelsea's points, first");
       await tap("studioPill-tableRowsNumbering-false");
-      await tap("studioPill-tableRowsTop-3");
+      await tap("studioPill-tableRowsTop-5");
+      await typeNumber(tester, "tableRowsHowMany", "3");
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
       expect(table().sheet!.top, 3);
       expect(table().rows.skip(1).map((r) => r[0]),
           ["Chelsea", "Liverpool", "Arsenal"]);
@@ -417,10 +426,10 @@ void main() {
       expect(c.document.sheets.single.cells, hasLength(4),
           reason: "the sheet isn't changed");
       // The look.
-      await tap("studioPill-tableHeaderColumn-true");
+      await tap("tableHeaderColumn");
       expect(table().headerColumn, isTrue);
       var outline = table().showOutline;
-      await tap("studioPill-tableOutline-${!outline}");
+      await tap("tableOutline");
       expect(table().showOutline, !outline);
       await tap("studioPill-tableColumns-even");
       expect(table().evenColumns, isFalse);
@@ -827,10 +836,8 @@ void main() {
         }
         await tester.tap(find.byKey(const ValueKey("tableStyle-1")));
         await tester.pumpAndSettle();
-        final fine = find.byKey(const ValueKey("tableStyleFine"));
-        await tester.ensureVisible(fine);
-        await tester.tap(fine);
-        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey("tableSlider-Nudge down")),
+            findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }

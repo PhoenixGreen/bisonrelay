@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -51,6 +52,10 @@ CanvasDocument opened() => CanvasDocument.fromJson(CanvasDocument(elements: [
     ]).toJson());
 
 void main() {
+  // The sidebars' sections open, as these tests are of what each control
+  // does; where they are folded is the sidebar's own test.
+  setUp(() => CanvasSection.openAll = true);
+  tearDown(() => CanvasSection.openAll = false);
   group("rows and columns", () {
     test("a column taken out of a chart's series lets that series go", () {
       var doc = opened();
@@ -420,13 +425,19 @@ void main() {
         "made from it", (tester) async {
       await studio(tester);
       double top(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
-      // In that order, one scroll, no view's own settings.
+      // In the sidebar's order (the sidebar prototype, 2026-11-17): the
+      // selection's strip first, then what shows the sheet, where it comes
+      // from, and the sheet itself; no view's own settings.
+      expect(top("dataStudioSum"), lessThan(top("dataStudioFormat")));
+      expect(top("dataStudioFormat"), lessThan(top("dataStudioView-c1")));
+      expect(top("dataStudioView-c1"), lessThan(top("dataStudioAddTable")));
+      expect(top("dataStudioAddTable"), lessThan(top("dataStudioConnectData")));
       expect(
           top("dataStudioConnectData"), lessThan(top("dataStudioSheetName")));
-      expect(top("dataStudioSheetName"), lessThan(top("dataStudioSum")));
-      expect(top("dataStudioFormat"), lessThan(top("dataStudioAddTable")));
-      expect(top("dataStudioAddTable"), lessThan(top("dataStudioView-c1")));
       expect(find.byKey(const ValueKey("dataView")), findsNothing);
+      // A view picked: what can be done with it, beside it.
+      await tester.tap(find.byKey(const ValueKey("dataStudioView-c1")));
+      await tester.pumpAndSettle();
       expect(
           find.descendant(
               of: find.byKey(const ValueKey("dataStudioSide")),

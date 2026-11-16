@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/sheet_reshape.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -28,6 +29,10 @@ const wide = """Season\tArsenal\tChelsea
 2025\t79\t66""";
 
 void main() {
+  // The sidebars' sections open, as these tests are of what each control
+  // does; where they are folded is the sidebar's own test.
+  setUp(() => CanvasSection.openAll = true);
+  tearDown(() => CanvasSection.openAll = false);
   var source = DataSheet(id: "w", name: "Points", cells: cellsOf(wide));
 
   test("wide to long, and long back to wide", () {

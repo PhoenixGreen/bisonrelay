@@ -15,6 +15,8 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart' show CanvasHint;
+import 'package:bruig/plugin_system/canvas/ui/data_studio_side.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_style_picker.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart'
     show sheetColumnName;
@@ -57,7 +59,6 @@ const _palette = [
 ];
 const _hoverInk = Color(0xFF9B7CF4);
 
-int? _rgb(Color c) => c.a == 0 ? null : c.toARGB32() & 0xFFFFFF;
 Color _colour(int? v) =>
     v == null ? const Color(0x00000000) : Color(0xFF000000 | v);
 
@@ -67,7 +68,6 @@ class _TableDesignState extends State<TableDesign> {
   TablePart _picked = TablePart.table;
   TablePart? _hover;
   int? _hoverStyle;
-  bool _fine = false;
 
   // The gallery of designs (Ken, 2026-11-17; prototype v7): open, the kind
   // opened, the design picked, and what they're filtered by.
@@ -161,7 +161,6 @@ class _TableDesignState extends State<TableDesign> {
 
   void _pick(TablePart p) => setState(() {
         _picked = p;
-        _fine = false;
         _made = false;
         _pointing = false;
         _options = null;
@@ -264,40 +263,15 @@ class _TableDesignState extends State<TableDesign> {
     );
   }
 
+  /// _crumbs is the bar over the stage: what can be done there, and the
+  /// designs. The way to what is picked is in the sidebar's header now.
   Widget _crumbs(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
-    var trail = <TablePart>[TablePart.table];
-    if (_picked.kind == TablePartKind.cell) {
-      trail.add(TablePart.column(_picked.col));
-    }
-    if (_picked != TablePart.table) trail.add(_picked);
     return SizedBox(
       height: 38,
       child: Row(children: [
-        const SizedBox(width: 8),
+        const SizedBox(width: 14),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              for (var (i, p) in trail.indexed) ...[
-                if (i > 0)
-                  Text("›", style: TextStyle(color: colors.onSurfaceVariant)),
-                TextButton(
-                  key: ValueKey("tableDesignCrumb-$i"),
-                  onPressed: () => _pick(p),
-                  child: Text(_partName(p),
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: i == trail.length - 1
-                              ? colors.onSurface
-                              : colors.onSurfaceVariant)),
-                ),
-              ],
-            ]),
-          ),
-        ),
-        Flexible(
           child: Text(
               _pointing
                   ? "Click what to style · Esc to stop"
@@ -504,65 +478,65 @@ class _TableDesignState extends State<TableDesign> {
   }
 
   Widget _designPanel(BuildContext context) {
-    final colors = ThemeNotifier.of(context).colors;
     var preset = _galleryKind != null && _galleryPreset != null
         ? _kindOpen.presets[_galleryPreset!]
         : null;
     var shown = preset == null ? null : presetTable(preset, t);
-    return Container(
-      color: colors.surfaceContainerLow,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(
-              preset == null ? "Designs" : "${_kindOpen.name} · ${preset.name}",
-              key: const ValueKey("tableGalleryTitle"),
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: colors.onSurface)),
-          if (shown == null)
-            _hint(context,
-                "Each kind of table drawn with this table's cells. Open one to see its starting designs.")
-          else ...[
-            const SizedBox(height: 8),
-            AspectRatio(
-              aspectRatio: 1.4,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CustomPaint(
-                    key: const ValueKey("tableGalleryPreview"),
-                    size: Size.infinite,
-                    painter: _DesignThumb(shown, _ground, c.images)),
-              ),
-            ),
-            _hint(context, preset!.says),
-            _hint(context,
-                "It sets the header, lines, stripes, which columns are drawn rather than written, and what stands out. The cells, your own styles and the table's style stay."),
-          ],
-          _buttons([
-            if (shown != null)
-              StudioPill(
-                  key: const ValueKey("tableGalleryApply"),
-                  label: "Use this design",
-                  filled: true,
-                  onTap: () {
-                    _set(shown);
-                    setState(() {
-                      _gallery = false;
-                      _galleryKind = null;
-                      _galleryPreset = null;
-                      _picked = TablePart.table;
-                    });
-                  }),
-            StudioPill(
-                key: const ValueKey("tableGalleryCancel"),
-                label: "Cancel",
-                onTap: () => setState(() => _gallery = false)),
-          ]),
-        ]),
+    return StudioSide(
+      header: StudioSideHeader(
+        icon: Icons.dashboard_customize_outlined,
+        crumbs: [
+          ("Table", () => setState(() => _gallery = false)),
+          ("Designs", null),
+        ],
+        crumbKey: "tableGalleryCrumb",
+        title:
+            preset == null ? "Designs" : "${_kindOpen.name} · ${preset.name}",
+        titleKey: const ValueKey("tableGalleryTitle"),
+        onUp: () => setState(() => _gallery = false),
       ),
+      quick: [
+        if (shown == null)
+          _note("Each kind of table drawn with this table's cells. Open one "
+              "to see its starting designs.")
+        else ...[
+          AspectRatio(
+            aspectRatio: 1.4,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CustomPaint(
+                  key: const ValueKey("tableGalleryPreview"),
+                  size: Size.infinite,
+                  painter: _DesignThumb(shown, _ground, c.images)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _note(preset!.says),
+          const SizedBox(height: 4),
+          _note("It sets the header, lines, stripes, which columns are drawn "
+              "rather than written, and what stands out. The cells, your own "
+              "styles and the table's style stay."),
+        ],
+        const SizedBox(height: 10),
+        studioButtons([
+          if (shown != null)
+            studioButton("Use this design",
+                key: const ValueKey("tableGalleryApply"),
+                primary: true, onPressed: () {
+              _set(shown);
+              setState(() {
+                _gallery = false;
+                _galleryKind = null;
+                _galleryPreset = null;
+                _picked = TablePart.table;
+              });
+            }),
+          studioButton("Cancel",
+              key: const ValueKey("tableGalleryCancel"),
+              onPressed: () => setState(() => _gallery = false)),
+        ]),
+      ],
+      body: const [],
     );
   }
 
@@ -701,516 +675,685 @@ class _TableDesignState extends State<TableDesign> {
     if (p.kind == TablePartKind.row) setState(() => _rows = [p.row]);
   }
 
-  // ---- The panel.
+  // ---- The panel: the Studio's sidebar (data_studio_side.dart; Ken,
+  // 2026-11-17, the sidebar prototype): the way to what is picked in its
+  // header, what is changed most in a strip under it, then sections that
+  // fold, each saying what is set in it.
+
+  /// _trail is the way to what is picked, from the table.
+  List<TablePart> get _trail {
+    var trail = <TablePart>[TablePart.table];
+    if (_picked.kind == TablePartKind.cell) {
+      trail.add(TablePart.column(_picked.col));
+    }
+    if (_picked != TablePart.table) trail.add(_picked);
+    return trail;
+  }
 
   Widget _panel(BuildContext context) {
-    final colors = ThemeNotifier.of(context).colors;
     var p = _picked;
     var drafting = _pointing || _options != null;
     var several = _rows.length > 1 && !drafting;
-    var (title, says) = drafting
-        ? (
-            "New style",
-            _pointing
-                ? "Step 1 of 2: click what to style."
-                : "Step 1 of 2: what it reaches."
-          )
+    var trail = _trail;
+    var crumbs = drafting
+        ? <(String, VoidCallback?)>[("Table", _cancelNew), ("New style", null)]
         : several
-            ? ("${_rows.length} rows", "Picked with shift on their tabs.")
+            ? <(String, VoidCallback?)>[
+                ("Table", () => _pick(TablePart.table)),
+                ("${_rows.length} rows", null)
+              ]
+            : <(String, VoidCallback?)>[
+                for (var (i, part) in trail.indexed)
+                  (
+                    _partName(part),
+                    i == trail.length - 1 ? null : () => _pick(part)
+                  ),
+              ];
+    var title = drafting
+        ? "New style"
+        : several
+            ? "${_rows.length} rows"
             : switch (p.kind) {
-                TablePartKind.table => (
-                    t.name.isEmpty ? "Table" : t.name,
-                    "Its look, and every style on it."
-                  ),
-                TablePartKind.header => (
-                    "Header row",
-                    "Its fill, words and height."
-                  ),
-                TablePartKind.column => (
-                    t.columnName(p.col),
-                    "Column ${_columnLetter(p.col)}: its width and the styles on it."
-                  ),
-                TablePartKind.row => (
-                    "Row ${_rowLabel(p.row)}",
-                    t.cell(p.row,
-                        t.headerColumn ? 0 : math.min(2, t.columnCount - 1))
-                  ),
-                TablePartKind.cell => (
-                    "Cell ${_columnLetter(p.col)}${_rowLabel(p.row)}",
-                    t.cell(p.row, p.col).isEmpty
-                        ? "Empty"
-                        : "“${t.cell(p.row, p.col)}”"
-                  ),
-                TablePartKind.style => (
-                    styleName(t, p.style),
-                    styleReach(t, t.rules[p.style])
-                  ),
+                TablePartKind.table =>
+                  t.name.isEmpty ? "The whole table" : t.name,
+                TablePartKind.header => "Header row",
+                TablePartKind.column => t.columnName(p.col),
+                TablePartKind.row => "Row ${_rowLabel(p.row)}",
+                TablePartKind.cell =>
+                  "Cell ${_columnLetter(p.col)}${_rowLabel(p.row)}",
+                TablePartKind.style => styleName(t, p.style),
               };
     var key = drafting
         ? "new"
         : several
             ? "rows"
             : p.kind.name;
-    return Container(
-      color: colors.surfaceContainerLow,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title,
-                key: const ValueKey("tableDesignTitle"),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: colors.onSurface)),
-            const SizedBox(height: 2),
-            Text(says,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
-          ]),
-        ),
-        Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-        Expanded(
-          child: SingleChildScrollView(
-            key: ValueKey("tableDesignPanel-$key"),
-            padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: drafting
-                    ? _newPanel(context)
-                    : several
-                        ? _rowsPanel(context)
-                        : switch (p.kind) {
-                            TablePartKind.table => _tablePanel(context),
-                            TablePartKind.header => _headerPanel(context),
-                            TablePartKind.column =>
-                              _columnPanel(context, p.col),
-                            TablePartKind.row => _rowPanel(context, p.row),
-                            TablePartKind.cell =>
-                              _cellPanel(context, p.row, p.col),
-                            TablePartKind.style =>
-                              _stylePanel(context, p.style),
-                          }),
-          ),
-        ),
-      ]),
+    var (quick, body) = drafting
+        ? _newPanel(context)
+        : several
+            ? _rowsPanel(context)
+            : switch (p.kind) {
+                TablePartKind.table => _tablePanel(context),
+                TablePartKind.header => _headerPanel(context),
+                TablePartKind.column => _columnPanel(context, p.col),
+                TablePartKind.row => _rowPanel(context, p.row),
+                TablePartKind.cell => _cellPanel(context, p.row, p.col),
+                TablePartKind.style => _stylePanel(context, p.style),
+              };
+    return StudioSide(
+      header: StudioSideHeader(
+        icon: p.kind == TablePartKind.style && !drafting
+            ? Icons.auto_fix_high
+            : Icons.table_chart_outlined,
+        crumbs: crumbs,
+        crumbKey: "tableDesignCrumb",
+        title: title,
+        titleKey: const ValueKey("tableDesignTitle"),
+        onUp: p == TablePart.table && !drafting && !several ? null : _up,
+      ),
+      scrollKey: ValueKey("tableDesignPanel-$key"),
+      quick: quick,
+      body: body,
     );
   }
 
   /// _newPanel is the New style's first step: pointing, or the options.
-  List<Widget> _newPanel(BuildContext context) {
-    final colors = ThemeNotifier.of(context).colors;
+  (List<Widget>, List<Widget>) _newPanel(BuildContext context) {
     var options = _options;
-    return [
-      if (options == null) ...[
-        _hint(context,
-            "Click a cell, a row tab or a column tab on the table. Shift-click row tabs for several rows."),
-      ] else ...[
-        const StudioLabel("What should it reach?"),
-        _hint(context, "Hover one to see it lit on the table."),
-        const SizedBox(height: 6),
-        if (options.isEmpty) _hint(context, "Nothing to offer from that."),
-        for (var (i, o) in options.indexed)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: MouseRegion(
-              onEnter: (_) => setState(() => _optionHover = i),
-              onExit: (_) => setState(() => _optionHover = null),
-              child: Material(
-                color: colors.surfaceContainerHigh,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(
-                        color: _optionHover == i
-                            ? _hoverInk
-                            : const Color(0x00000000))),
-                child: InkWell(
-                  key: ValueKey("tableReach-$i"),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => _make(o),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                    child: Text(o.label,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: colors.onSurface)),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        _hint(context,
-            "“Wherever it is” follows that team as the numbers move it; “whoever is there” stays on that place."),
-      ],
-      _buttons([
-        if (options != null)
-          StudioPill(
-              key: const ValueKey("tableNewRepoint"),
-              label: "Click something else",
-              onTap: () => setState(() {
-                    _options = null;
-                    _pointing = true;
-                  })),
-        StudioPill(
-            key: const ValueKey("tableNewCancel"),
-            label: "Cancel",
-            onTap: _cancelNew),
-      ]),
-    ];
+    return (
+      const <Widget>[],
+      [
+        studioSection(
+            remember: "table.new",
+            icon: Icons.ads_click,
+            title: options == null
+                ? "Click what to style"
+                : "What should it reach?",
+            summary: options == null
+                ? "A cell, a row tab or a column tab"
+                : "Hover one to see it lit",
+            open: true,
+            children: [
+              studioGroup(
+                  "",
+                  [
+                    if (options == null)
+                      const StudioNote(
+                          "Click a cell, a row tab or a column tab on the table. "
+                          "Shift-click row tabs for several rows.")
+                    else ...[
+                      if (options.isEmpty)
+                        const StudioNote("Nothing to offer from that."),
+                      for (var (i, o) in options.indexed)
+                        StudioItem(
+                            key: ValueKey("tableReach-$i"),
+                            mark: const Icon(Icons.adjust, size: 14),
+                            title: o.label,
+                            lit: _optionHover == i,
+                            onHover: (h) =>
+                                setState(() => _optionHover = h ? i : null),
+                            onTap: () => _make(o)),
+                    ],
+                    studioButtons([
+                      if (options != null)
+                        studioButton("Click something else",
+                            key: const ValueKey("tableNewRepoint"),
+                            onPressed: () => setState(() {
+                                  _options = null;
+                                  _pointing = true;
+                                })),
+                      studioButton("Cancel",
+                          key: const ValueKey("tableNewCancel"),
+                          onPressed: _cancelNew),
+                    ]),
+                  ],
+                  help: options == null
+                      ? null
+                      : "“Wherever it is” follows that team as the numbers "
+                          "move it; “whoever is there” stays on that place."),
+            ]),
+      ]
+    );
   }
 
   /// _rowsPanel is several rows picked with shift.
-  List<Widget> _rowsPanel(BuildContext context) => [
-        _hint(
-            context,
-            "${[
-              for (var r in _rows) _rowLabel(r)
-            ].join(", ")}. A style on them can keep to these places or go with who is in them."),
-        _buttons([
-          StudioPill(
-              key: const ValueKey("tableDesignStyleRows"),
-              label: "+ New style for these",
-              filled: true,
-              onTap: () => _offer(
-                  reachOptions(t, TablePart.row(_rows.last), rows: _rows))),
-        ]),
+  (List<Widget>, List<Widget>) _rowsPanel(BuildContext context) => (
+        [
+          StudioNote(
+              "${[for (var r in _rows) _rowLabel(r)].join(", ")}. A style on "
+              "them can keep to these places or go with who is in them."),
+          const SizedBox(height: 8),
+          studioButtons([
+            studioButton("New style for these",
+                key: const ValueKey("tableDesignStyleRows"),
+                icon: Icons.add,
+                primary: true,
+                onPressed: () => _offer(
+                    reachOptions(t, TablePart.row(_rows.last), rows: _rows))),
+          ]),
+        ],
+        const <Widget>[]
+      );
+
+  /// _hint is what a group is for, behind its "?".
+  Widget _hint(BuildContext context, String text) => CanvasHint(text);
+
+  /// _note is words that must be seen: a state, a warning.
+  Widget _note(String text, {Color? color}) => StudioNote(text, colour: color);
+
+  /// _styleColours are the colours of the table's style, offered first.
+  List<Color> get _styleColours {
+    var s = dataStyleNamed(t.style);
+    if (s == null) {
+      return [
+        for (var c in [
+          t.cellFill,
+          t.cellSpec.color,
+          t.headerFill,
+          t.headerSpec.color,
+          t.gridColor
+        ])
+          if (c.a > 0) c
       ];
-
-  Widget _hint(BuildContext context, String text, {Color? color}) => Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 12,
-                color: color ??
-                    ThemeNotifier.of(context).colors.onSurfaceVariant)),
-      );
-
-  Widget _buttons(List<Widget> pills) => Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Wrap(spacing: 6, runSpacing: 6, children: pills),
-      );
-
-  Widget _swatches(
-      String id, String label, Color value, ValueChanged<Color> set,
-      {bool none = true}) {
-    var v = _rgb(value);
-    var palette = [if (v != null && !_palette.contains(v)) v, ..._palette];
-    return StudioSwatches(
-        id: id,
-        label: label,
-        palette: palette,
-        value: v,
-        asMade: none,
-        onPick: (x) => set(_colour(x)));
-  }
-
-  Widget _slider(String label, double value, double min, double max,
-          double rest, void Function(double) live,
-          {String Function(double)? format}) =>
-      StudioSlider(
-        key: ValueKey("tableSlider-$label"),
-        label: label,
-        value: value,
-        min: min,
-        max: max,
-        rest: rest,
-        format: format ?? (v) => v.toStringAsFixed(v.abs() < 10 ? 1 : 0),
-        onChanged: live,
-        onChangeEnd: (_) => _end(),
-      );
-
-  /// _styleList is styles [indices], each a row: an eye to switch it off,
-  /// its name and reach, a mark when it does nothing. Hovered, everything it
-  /// reaches lights up on the table.
-  List<Widget> _styleList(BuildContext context, List<int> indices) {
-    final colors = ThemeNotifier.of(context).colors;
+    }
     return [
-      for (var i in indices)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 3),
-          child: MouseRegion(
-            onEnter: (_) => setState(() => _hoverStyle = i),
-            onExit: (_) => setState(() => _hoverStyle = null),
-            child: Material(
-              color: colors.surfaceContainerHigh,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: BorderSide(
-                      color: _hoverStyle == i
-                          ? _hoverInk
-                          : const Color(0x00000000))),
-              child: InkWell(
-                key: ValueKey("tableStyle-$i"),
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => _pick(TablePart.style(i)),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(2, 4, 8, 4),
-                  child: Row(children: [
-                    IconButton(
-                      key: ValueKey("tableStyleEye-$i"),
-                      visualDensity: VisualDensity.compact,
-                      iconSize: 16,
-                      icon: Icon(
-                          t.rules[i].off
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: colors.onSurfaceVariant),
-                      onPressed: () => _setRule(
-                          i, t.rules[i].copyWith(off: !t.rules[i].off)),
-                    ),
-                    Expanded(
-                      child: Opacity(
-                        opacity: t.rules[i].off ? 0.5 : 1,
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(styleName(t, i),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: colors.onSurface)),
-                              Text(styleReach(t, t.rules[i]),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colors.onSurfaceVariant)),
-                            ]),
-                      ),
-                    ),
-                    if (styleIdle(t, t.rules[i]) != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Text("does nothing",
-                            key: ValueKey("tableStyleIdle-$i"),
-                            style: const TextStyle(
-                                fontSize: 10.5, color: Color(0xFFF2B33D))),
-                      ),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        ),
+      s.ground,
+      s.ink,
+      s.dim,
+      s.accent,
+      s.headFill,
+      s.headInk,
+      s.grid,
+      ...s.palette.take(4)
     ];
   }
 
-  List<Widget> _tablePanel(BuildContext context) => [
-        // The six styles (Ken, 2026-11-17), as the Charts tab has.
-        const StudioLabel("Style of the whole table"),
-        DataStylePicker(
-            key: const ValueKey("tableStyles"),
-            element: t,
-            onPick: (st) => _set(tableInStyle(t, st))),
-        _hint(context,
-            "Its colours, typefaces, rules and corners at once; the cells and their styles stay."),
-        if (dataStyleNamed(t.style) case var st?)
-          StudioPill(
-              key: const ValueKey("tableStylePage"),
-              label: "The whole page in ${st.name}",
-              tooltip: "Every chart, table and word on this page, and its "
-                  "ground, as one step to undo",
-              onTap: () => c.stylePage(st)),
-        StudioLabel("Styles on this table · ${t.rules.length}"),
-        _hint(
-            context,
-            t.rules.isEmpty
-                ? "None yet. Click a column, row or cell and add one there."
-                : "Hover one to see what it reaches; click it to change it."),
-        const SizedBox(height: 6),
-        for (var (name, indices) in styleGroups(t)) ...[
-          StudioPartHeading("$name · ${indices.length}"),
-          ..._styleList(context, indices),
-        ],
-        _buttons([
-          StudioPill(
-              key: const ValueKey("tableDesignNewStyle"),
-              label: "+ New style",
-              onTap: () => setState(() {
-                    _pointing = true;
-                    _options = null;
-                  })),
-        ]),
-        const StudioLabel("Cells"),
-        _swatches("tableCellFill", "Fill", t.cellFill,
-            (v) => _set(t.copyWith(cellFill: v))),
-        _swatches("tableCellInk", "Words", t.cellSpec.color,
-            (v) => _set(t.copyWith(cellSpec: t.cellSpec.copyWith(color: v))),
-            none: false),
-        _slider(
-            "Size",
-            t.cellSpec.fontSize,
-            6,
-            72,
-            20,
-            (v) =>
-                _live(t.copyWith(cellSpec: t.cellSpec.copyWith(fontSize: v)))),
-        _typeface("tableCellFont", t.cellSpec,
-            (spec) => _set(t.copyWith(cellSpec: spec))),
-        _slider("Padding", t.cellPadding, 0, 40, 10,
-            (v) => _live(t.copyWith(cellPadding: v))),
-        // One figure until somebody wants four: a title row often wants
-        // more above and below.
-        StudioPills<bool>(
-            id: "tablePadSides",
-            label: "Padding sides",
-            value: t.evenPadding,
-            options: const [(true, "All the same"), (false, "Each side")],
-            onChanged: (even) => _set(even
-                ? t.copyWith(evenPadding: true)
-                : t.copyWith(
-                    padTop: t.topPad,
-                    padRight: t.rightPad,
-                    padBottom: t.bottomPad,
-                    padLeft: t.leftPad))),
-        if (!t.evenPadding) ...[
-          _slider("Top", t.topPad, 0, 40, t.cellPadding,
-              (v) => _live(t.copyWith(padTop: v))),
-          _slider("Right", t.rightPad, 0, 40, t.cellPadding,
-              (v) => _live(t.copyWith(padRight: v))),
-          _slider("Bottom", t.bottomPad, 0, 40, t.cellPadding,
-              (v) => _live(t.copyWith(padBottom: v))),
-          _slider("Left", t.leftPad, 0, 40, t.cellPadding,
-              (v) => _live(t.copyWith(padLeft: v))),
-        ],
-        _slider("Pictures", t.pictureScale, 0.2, 1.5, 1,
-            (v) => _live(t.copyWith(pictureScale: v)),
-            format: (v) => "${(v * 100).round()}%"),
-        StudioPills<bool>(
-            id: "tableZebra",
-            label: "Stripes",
-            value: t.zebra,
-            options: const [(true, "On"), (false, "Off")],
-            onChanged: (v) => _set(t.copyWith(zebra: v))),
-        if (t.zebra)
-          _swatches("tableZebraFill", "Stripe", t.zebraFill,
-              (v) => _set(t.copyWith(zebraFill: v.withValues(alpha: 0.1)))),
-        StudioPills<TableGrid>(
-            id: "tableGrid",
-            label: "Lines",
-            value: t.grid,
-            options: [for (var g in TableGrid.values) (g, g.label)],
-            onChanged: (v) => _set(t.copyWith(grid: v))),
-        if (t.grid != TableGrid.none) ...[
-          _swatches("tableGridColour", "Line colour", t.gridColor,
-              (v) => _set(t.copyWith(gridColor: v)),
-              none: false),
-          _slider("Thickness", t.gridWidth, 0, 6, 1,
-              (v) => _live(t.copyWith(gridWidth: v))),
-        ],
-        _slider("Corners", t.cornerRadius, 0, 40, 6,
-            (v) => _live(t.copyWith(cornerRadius: v))),
-        StudioPills<bool>(
-            id: "tableHeaderRow",
-            label: "Header row",
-            value: t.headerRow,
-            options: const [(true, "Shown"), (false, "None")],
-            onChanged: (v) => _set(t.copyWith(headerRow: v))),
-        StudioPills<bool>(
-            id: "tableGroupRows",
-            label: "Rows with only a first cell",
-            value: t.groupRows,
-            options: const [
-              (false, "Rows like the rest"),
-              (true, "Headings across")
-            ],
-            onChanged: (v) => _set(t.copyWith(groupRows: v))),
-        StudioPills<bool>(
-            id: "tableHeaderColumn",
-            label: "Header column",
-            value: t.headerColumn,
-            options: const [(true, "Shown"), (false, "None")],
-            onChanged: (v) => _set(t.copyWith(headerColumn: v))),
-        StudioPills<bool>(
-            id: "tableOutline",
-            label: "Outline",
-            value: t.showOutline,
-            options: const [(true, "On"), (false, "Off")],
-            onChanged: (v) => _set(t.copyWith(showOutline: v))),
-        StudioPills<bool>(
-            id: "tableCards",
-            label: "Columns after the first",
-            value: t.cards,
-            options: const [(false, "One table"), (true, "Cards apart")],
-            onChanged: (v) => _set(t.copyWith(cards: v))),
-        if (t.cards && t.columnCount > 1) ...[
-          const StudioLabel("Raised card"),
-          _Dropdown<int>(
-              key: const ValueKey("tablePicked"),
-              value: t.picked > 0 && t.picked < t.columnCount ? t.picked : -1,
-              options: [
-                (-1, "None"),
-                for (var c = 1; c < t.columnCount; c++)
-                  (
-                    c,
-                    t.cell(0, c).trim().isEmpty
-                        ? "Column ${c + 1}"
-                        : t.cell(0, c).trim()
-                  ),
-              ],
-              onChanged: (v) => _set(t.copyWith(picked: v))),
-          if (t.picked > 0) ...[
-            const StudioLabel("Its ribbon"),
-            _TextBox(
-                key: const ValueKey("tableRibbon"),
-                text: t.ribbon,
-                hint: "Most popular",
-                onChanged: (v) => _live(t.copyWith(ribbon: v))),
-          ],
-        ],
-        StudioPills<String>(
-            id: "tableColumns",
-            label: "Columns",
-            value: _columnSizing,
-            options: [
-              ("fit", "Fit to contents"),
-              ("even", "All the same"),
-              if (_columnSizing == "dragged") ("dragged", "As dragged"),
-            ],
-            onChanged: (v) {
-              if (v == _columnSizing || v == "dragged") return;
-              _set(t.copyWith(
-                  columnWidths: v == "fit"
-                      ? const []
-                      : List.filled(
-                          t.columnCount, 1 / math.max(1, t.columnCount))));
-            }),
-        _buttons([
-          StudioPill(
-              key: const ValueKey("tableDesignMatchCanvas"),
-              label: "Match the canvas",
-              icon: Icons.format_paint_outlined,
-              tooltip: "Colours taken from the canvas's background and "
-                  "what is on it",
-              onTap: () {
-                var d = c.document;
-                _set(tableInColours(
-                    t,
-                    canvasColours(d.background.spec.background, [
-                      for (var other in d.elements)
-                        if (other.id != t.id) other
-                    ])));
-              }),
-        ]),
-        ..._rowsShown(context),
-        const StudioLabel("Motion"),
-        StudioPills<String>(
-            id: "tableTurn",
-            label: "Arrives",
-            value: t.turn.name,
-            options: [for (var v in TableTurn.values) (v.name, v.label)],
-            onChanged: (v) => _set(t.copyWith(turn: TableTurn.fromName(v)))),
-        _hint(context,
-            "Whole, or a row or a column at a time, as it arrives on the canvas."),
+  Widget _swatches(
+          String id, String label, Color value, ValueChanged<Color> set,
+          {bool none = true}) =>
+      StudioColourField(
+          id: id,
+          label: label,
+          value: value,
+          styleColours: _styleColours,
+          palette: _palette,
+          asMade: none,
+          onPick: (c) => set(c.a == 0 ? _colour(null) : c));
+
+  Widget _slider(String label, double value, double min, double max,
+          double rest, void Function(double) live,
+          {bool percent = false,
+          int decimals = 0,
+          double? step,
+          String suffix = ""}) =>
+      studioStepper(
+          key: ValueKey("tableSlider-$label"),
+          label: label,
+          value: value.clamp(min, max).toDouble(),
+          min: min,
+          max: max,
+          rest: rest,
+          percent: percent,
+          decimals: decimals,
+          step: step,
+          suffix: suffix,
+          onChanged: live,
+          onCommit: _end);
+
+  /// _styleList is styles [indices], each a row: its name and reach, an eye
+  /// to switch it off, a mark when it does nothing. Hovered, everything it
+  /// reaches lights up on the table.
+  List<Widget> _styleList(BuildContext context, List<int> indices) => [
+        for (var i in indices)
+          StudioItem(
+            key: ValueKey("tableStyle-$i"),
+            mark: studioDot(t.rules[i].style.background.a > 0
+                ? t.rules[i].style.background
+                : t.rules[i].style.textColor.a > 0
+                    ? t.rules[i].style.textColor
+                    : const Color(0xFF59606B)),
+            title: styleName(t, i),
+            subtitle: styleReach(t, t.rules[i]),
+            off: t.rules[i].off,
+            tag: styleIdle(t, t.rules[i]) != null ? "does nothing" : null,
+            tagKey: ValueKey("tableStyleIdle-$i"),
+            lit: _hoverStyle == i,
+            onHover: (h) => setState(() => _hoverStyle = h ? i : null),
+            onEye: () => _setRule(i, t.rules[i].copyWith(off: !t.rules[i].off)),
+            eyeKey: ValueKey("tableStyleEye-$i"),
+            onTap: () => _pick(TablePart.style(i)),
+          ),
       ];
+
+  /// _typeface is a dropdown of the faces for [spec].
+  Widget _typeface(String id, TextSpec spec, ValueChanged<TextSpec> set) =>
+      studioDrop<String>(
+          key: ValueKey(id),
+          label: "Typeface",
+          value: spec.fontFamily,
+          options: [
+            if (!canvasFonts.contains(spec.fontFamily))
+              (spec.fontFamily, spec.fontFamily),
+            for (var f in canvasFonts) (f, f),
+          ],
+          onChanged: (f) => set(spec.copyWith(fontFamily: f)));
+
+  (List<Widget>, List<Widget>) _tablePanel(BuildContext context) {
+    var st = dataStyleNamed(t.style);
+    var link = linkOf(t);
+    var linked = link != null && c.sheetById(link.sheet) != null;
+    var padSaid = t.evenPadding
+        ? "padding ${t.cellPadding.round()}"
+        : "padding each side";
+    return (
+      [
+        studioRow([
+          studioDrop<String>(
+              key: const ValueKey("tableQuickStyle"),
+              label: "Style",
+              value: st?.name ?? "",
+              options: [
+                if (st == null) ("", "Its own"),
+                for (var s in dataStyles) (s.name, s.name),
+              ],
+              onChanged: (name) {
+                if (dataStyleNamed(name) case var s?) {
+                  _set(tableInStyle(t, s));
+                }
+              }),
+          studioButton("Canvas colours",
+              key: const ValueKey("tableDesignMatchCanvas"),
+              icon: Icons.format_paint_outlined,
+              tooltip:
+                  "Colours taken from the canvas's background and what is on it",
+              onPressed: () {
+            var d = c.document;
+            _set(tableInColours(
+                t,
+                canvasColours(d.background.spec.background, [
+                  for (var other in d.elements)
+                    if (other.id != t.id) other
+                ])));
+          }),
+        ], flex: [
+          3,
+          2
+        ]),
+        const SizedBox(height: 8),
+        studioRow([
+          _typeface("tableCellFont", t.cellSpec,
+              (spec) => _set(t.copyWith(cellSpec: spec))),
+          _slider(
+              "Size",
+              t.cellSpec.fontSize,
+              6,
+              72,
+              20,
+              (v) => _live(
+                  t.copyWith(cellSpec: t.cellSpec.copyWith(fontSize: v)))),
+          _swatches("tableCellInk", "Words", t.cellSpec.color,
+              (v) => _set(t.copyWith(cellSpec: t.cellSpec.copyWith(color: v))),
+              none: false),
+        ], flex: [
+          3,
+          2,
+          2
+        ]),
+      ],
+      [
+        studioSection(
+            remember: "table.style",
+            icon: Icons.palette_outlined,
+            title: "Style",
+            summary: st?.name ?? "Its own",
+            children: [
+              studioGroup(
+                  "",
+                  [
+                    DataStylePicker(
+                        key: const ValueKey("tableStyles"),
+                        element: t,
+                        onPick: (s) => _set(tableInStyle(t, s))),
+                    if (st != null)
+                      studioButton("The whole page in ${st.name}",
+                          key: const ValueKey("tableStylePage"),
+                          icon: Icons.auto_awesome,
+                          tooltip: "Every chart, table and word on this page, "
+                              "and its ground, as one step to undo",
+                          onPressed: () => c.stylePage(st)),
+                  ],
+                  help: "Its colours, typefaces, rules and corners at once; "
+                      "the cells and their styles stay."),
+            ]),
+        if (linked) _rowsShown(context, link),
+        studioSection(
+            remember: "table.styles",
+            icon: Icons.auto_fix_high,
+            title: "Styles on it",
+            count: t.rules.length,
+            summary: t.rules.isEmpty
+                ? "None yet"
+                : "${t.rules.where((r) => !r.off).length} on · hover one to see what it reaches",
+            open: true,
+            children: [
+              for (var (name, indices) in styleGroups(t))
+                studioGroup(
+                    "$name · ${indices.length}", _styleList(context, indices)),
+              studioGroup("", [
+                if (t.rules.isEmpty)
+                  const StudioNote(
+                      "None yet. Click a column, row or cell and add one there."),
+                studioChips([
+                  (
+                    "+ New style",
+                    const ValueKey("tableDesignNewStyle"),
+                    () => setState(() {
+                          _pointing = true;
+                          _options = null;
+                        })
+                  ),
+                ]),
+              ]),
+            ]),
+        // The cells' face, size and colour are in the strip at the top;
+        // the header row's here, beside them.
+        studioSection(
+            remember: "table.words",
+            icon: Icons.title,
+            title: "Header words",
+            summary: [
+              t.headerSpec.fontFamily,
+              "${t.headerSpec.fontSize.round()}px",
+              switch (t.headerSpec.weight) {
+                300 => "light",
+                700 => "bold",
+                _ => "regular",
+              },
+            ].join(" · "),
+            children: [
+              studioGroup("", [
+                studioRow([
+                  _typeface("tableHeaderFont", t.headerSpec,
+                      (spec) => _set(t.copyWith(headerSpec: spec))),
+                  _slider(
+                      "Header size",
+                      t.headerSpec.fontSize,
+                      6,
+                      72,
+                      20,
+                      (v) => _live(t.copyWith(
+                          headerSpec: t.headerSpec.copyWith(fontSize: v)))),
+                ], flex: [
+                  3,
+                  2
+                ]),
+                studioRow([
+                  studioSeg<int>(
+                      id: "tableHeaderWeight",
+                      label: "Weight",
+                      value: t.headerSpec.weight,
+                      options: const [
+                        (300, "Light"),
+                        (400, "Regular"),
+                        (700, "Bold")
+                      ],
+                      onChanged: (v) => _set(t.copyWith(
+                          headerSpec: t.headerSpec.copyWith(weight: v)))),
+                  _swatches(
+                      "tableHeaderInk",
+                      "Colour",
+                      t.headerSpec.color,
+                      (v) => _set(t.copyWith(
+                          headerSpec: t.headerSpec.copyWith(color: v))),
+                      none: false),
+                ], flex: [
+                  3,
+                  2
+                ]),
+                studioButton("All of the header row",
+                    key: const ValueKey("tableToHeader"),
+                    icon: Icons.chevron_right,
+                    onPressed: () => _pick(TablePart.header)),
+              ]),
+            ]),
+        studioSection(
+            remember: "table.cells",
+            icon: Icons.grid_on,
+            title: "Cells",
+            summary: [
+              t.cellFill.a > 0 ? "Filled" : "No fill",
+              t.zebra ? "striped" : "plain",
+              padSaid,
+            ].join(" · "),
+            children: [
+              studioGroup("", [
+                studioRow([
+                  _swatches("tableCellFill", "Fill", t.cellFill,
+                      (v) => _set(t.copyWith(cellFill: v))),
+                  if (t.zebra)
+                    _swatches(
+                        "tableZebraFill",
+                        "Stripe",
+                        t.zebraFill,
+                        (v) => _set(
+                            t.copyWith(zebraFill: v.withValues(alpha: 0.1))))
+                  else
+                    const SizedBox.shrink(),
+                ]),
+                StudioSwitchRow(
+                    key: const ValueKey("tableZebra"),
+                    label: "Stripes",
+                    note: "every other row",
+                    value: t.zebra,
+                    onChanged: (v) => _set(t.copyWith(zebra: v))),
+              ]),
+              studioGroup("Padding", [
+                // One figure until somebody wants four: a title row often
+                // wants more above and below.
+                studioSeg<bool>(
+                    id: "tablePadSides",
+                    value: t.evenPadding,
+                    options: const [
+                      (true, "All the same"),
+                      (false, "Each side")
+                    ],
+                    onChanged: (even) => _set(even
+                        ? t.copyWith(evenPadding: true)
+                        : t.copyWith(
+                            padTop: t.topPad,
+                            padRight: t.rightPad,
+                            padBottom: t.bottomPad,
+                            padLeft: t.leftPad))),
+                if (t.evenPadding)
+                  studioRow([
+                    _slider("Padding", t.cellPadding, 0, 40, 10,
+                        (v) => _live(t.copyWith(cellPadding: v))),
+                    _slider("Pictures", t.pictureScale, 0.2, 1.5, 1,
+                        (v) => _live(t.copyWith(pictureScale: v)),
+                        percent: true, step: 0.05),
+                  ])
+                else ...[
+                  studioRow([
+                    _slider("Top", t.topPad, 0, 40, t.cellPadding,
+                        (v) => _live(t.copyWith(padTop: v))),
+                    _slider("Bottom", t.bottomPad, 0, 40, t.cellPadding,
+                        (v) => _live(t.copyWith(padBottom: v))),
+                  ]),
+                  studioRow([
+                    _slider("Left", t.leftPad, 0, 40, t.cellPadding,
+                        (v) => _live(t.copyWith(padLeft: v))),
+                    _slider("Right", t.rightPad, 0, 40, t.cellPadding,
+                        (v) => _live(t.copyWith(padRight: v))),
+                  ]),
+                  studioRow([
+                    _slider("Pictures", t.pictureScale, 0.2, 1.5, 1,
+                        (v) => _live(t.copyWith(pictureScale: v)),
+                        percent: true, step: 0.05),
+                    const SizedBox.shrink(),
+                  ]),
+                ],
+              ]),
+            ]),
+        studioSection(
+            remember: "table.lines",
+            icon: Icons.border_all,
+            title: "Lines and corners",
+            summary: [
+              t.grid == TableGrid.none
+                  ? "No lines"
+                  : "${t.grid.label} · ${t.gridWidth.toStringAsFixed(t.gridWidth % 1 == 0 ? 0 : 1)}px",
+              "corners ${t.cornerRadius.round()}",
+            ].join(" · "),
+            children: [
+              studioGroup("", [
+                studioSeg<TableGrid>(
+                    id: "tableGrid",
+                    label: "Lines",
+                    value: t.grid,
+                    options: [
+                      for (var g in TableGrid.values)
+                        (g, g.label.replaceAll(" only", ""))
+                    ],
+                    onChanged: (v) => _set(t.copyWith(grid: v))),
+                if (t.grid != TableGrid.none)
+                  studioRow([
+                    _swatches("tableGridColour", "Colour", t.gridColor,
+                        (v) => _set(t.copyWith(gridColor: v)),
+                        none: false),
+                    _slider("Thickness", t.gridWidth, 0, 6, 1,
+                        (v) => _live(t.copyWith(gridWidth: v)),
+                        decimals: 1, step: 0.5),
+                  ]),
+                studioRow([
+                  _slider("Corners", t.cornerRadius, 0, 40, 6,
+                      (v) => _live(t.copyWith(cornerRadius: v))),
+                  const SizedBox.shrink(),
+                ]),
+                StudioSwitchRow(
+                    key: const ValueKey("tableOutline"),
+                    label: "Outline round it",
+                    value: t.showOutline,
+                    onChanged: (v) => _set(t.copyWith(showOutline: v))),
+              ]),
+            ]),
+        studioSection(
+            remember: "table.layout",
+            icon: Icons.view_quilt_outlined,
+            title: "Layout",
+            summary: [
+              t.headerRow ? "Header row" : "No header row",
+              if (t.headerColumn) "header column",
+              switch (_columnSizing) {
+                "fit" => "fit to contents",
+                "even" => "even columns",
+                _ => "columns as dragged",
+              },
+              if (t.cards) "cards apart",
+            ].join(" · "),
+            children: [
+              studioGroup("", [
+                StudioSwitchRow(
+                    key: const ValueKey("tableHeaderRow"),
+                    label: "Header row",
+                    value: t.headerRow,
+                    onChanged: (v) => _set(t.copyWith(headerRow: v))),
+                StudioSwitchRow(
+                    key: const ValueKey("tableHeaderColumn"),
+                    label: "Header column",
+                    note: "the first",
+                    value: t.headerColumn,
+                    onChanged: (v) => _set(t.copyWith(headerColumn: v))),
+                studioSeg<String>(
+                    id: "tableColumns",
+                    label: "Column widths",
+                    value: _columnSizing,
+                    options: [
+                      ("fit", "Fit to contents"),
+                      ("even", "All the same"),
+                      if (_columnSizing == "dragged") ("dragged", "As dragged"),
+                    ],
+                    onChanged: (v) {
+                      if (v == _columnSizing || v == "dragged") return;
+                      _set(t.copyWith(
+                          columnWidths: v == "fit"
+                              ? const []
+                              : List.filled(t.columnCount,
+                                  1 / math.max(1, t.columnCount))));
+                    }),
+                studioSeg<bool>(
+                    id: "tableGroupRows",
+                    label: "Rows with only a first cell",
+                    value: t.groupRows,
+                    options: const [
+                      (false, "Like the rest"),
+                      (true, "Headings across")
+                    ],
+                    onChanged: (v) => _set(t.copyWith(groupRows: v))),
+                studioSeg<bool>(
+                    id: "tableCards",
+                    label: "Columns after the first",
+                    value: t.cards,
+                    options: const [
+                      (false, "One table"),
+                      (true, "Cards apart")
+                    ],
+                    onChanged: (v) => _set(t.copyWith(cards: v))),
+                if (t.cards && t.columnCount > 1)
+                  studioRow([
+                    studioDrop<int>(
+                        key: const ValueKey("tablePicked"),
+                        label: "Raised card",
+                        value: t.picked > 0 && t.picked < t.columnCount
+                            ? t.picked
+                            : -1,
+                        options: [
+                          (-1, "None"),
+                          for (var col = 1; col < t.columnCount; col++)
+                            (
+                              col,
+                              t.cell(0, col).trim().isEmpty
+                                  ? "Column ${col + 1}"
+                                  : t.cell(0, col).trim()
+                            ),
+                        ],
+                        onChanged: (v) => _set(t.copyWith(picked: v))),
+                    if (t.picked > 0)
+                      studioText(
+                          key: const ValueKey("tableRibbon"),
+                          label: "Its ribbon",
+                          value: t.ribbon,
+                          hint: "Most popular",
+                          onChanged: (v) => _live(t.copyWith(ribbon: v)))
+                    else
+                      const SizedBox.shrink(),
+                  ]),
+              ]),
+            ]),
+        studioSection(
+            remember: "table.motion",
+            icon: Icons.animation,
+            title: "Motion",
+            summary: t.turn.label,
+            children: [
+              studioGroup(
+                  "",
+                  [
+                    studioSeg<String>(
+                        id: "tableTurn",
+                        label: "Arrives",
+                        value: t.turn.name,
+                        options: [
+                          for (var v in TableTurn.values) (v.name, v.label)
+                        ],
+                        onChanged: (v) =>
+                            _set(t.copyWith(turn: TableTurn.fromName(v)))),
+                  ],
+                  help: "Whole, or a row or a column at a time, as it "
+                      "arrives on the canvas."),
+            ]),
+      ]
+    );
+  }
 
   /// _columnSizing is which of three states its columns are in: sized by
   /// what is in them, all the same, or as they were dragged.
@@ -1223,184 +1366,271 @@ class _TableDesignState extends State<TableDesign> {
     return "even";
   }
 
-  /// _typeface is a dropdown of the faces for [spec].
-  Widget _typeface(String id, TextSpec spec, ValueChanged<TextSpec> set) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const StudioLabel("Typeface"),
-        _Dropdown<String>(
-            key: ValueKey(id),
-            value: spec.fontFamily,
-            options: [
-              if (!canvasFonts.contains(spec.fontFamily))
-                (spec.fontFamily, spec.fontFamily),
-              for (var f in canvasFonts) (f, f),
-            ],
-            onChanged: (f) => set(spec.copyWith(fontFamily: f))),
-      ]);
-
   /// _rowsShown is which of its sheet's rows the table shows, and in what
   /// order: its own, the sheet left as it is (moved here from the Sheet
   /// tab's side panel, Ken 2026-11-16).
-  List<Widget> _rowsShown(BuildContext context) {
-    var link = linkOf(t);
-    var sheet = link == null ? null : c.sheetById(link.sheet);
-    if (link == null || sheet == null) return const [];
+  Widget _rowsShown(BuildContext context, SheetLink link) {
+    var sheet = c.sheetById(link.sheet)!;
     void set(SheetLink next) => _set(withLink(t, next) as TableElement);
     var columns = [
       for (var col = 0; col < link.range.cols; col++)
         (col, sheetColumnName(sheet, link, col)),
     ];
-    return [
-      const StudioLabel("Rows shown"),
-      _hint(
-          context,
-          "Which of the sheet's rows this table shows, and in what order. "
-          "The sheet isn't changed: a table can show every club while a "
-          "chart of the same sheet shows the top five."),
-      const SizedBox(height: 6),
-      const StudioLabel("In order of"),
-      _Dropdown<int>(
-          key: const ValueKey("tableRowsSort"),
-          value: link.sortBy.clamp(-1, link.range.cols - 1),
-          options: [(-1, "The sheet's own order"), ...columns],
-          onChanged: (v) => set(link.copyWith(sortBy: v))),
-      if (link.sortBy >= 0)
-        StudioPills<bool>(
-            id: "tableRowsOrder",
-            label: "",
-            value: link.descending,
-            options: const [(true, "Largest first"), (false, "Smallest first")],
-            onChanged: (v) => set(link.copyWith(descending: v))),
-      // A league's positions stay 1, 2, 3 while the clubs move.
-      if (link.sortBy >= 0)
-        StudioPills<bool>(
-            id: "tableRowsNumbering",
-            label: "First column",
-            value: link.numbering,
-            options: const [
-              (true, "Keeps its place"),
-              (false, "Moves with its row")
-            ],
-            onChanged: (v) => set(link.copyWith(numbering: v))),
-      StudioPills<int>(
-          id: "tableRowsTop",
-          label: "Show",
-          value: const [0, 3, 5, 10, 20].contains(link.top) ? link.top : 0,
-          options: [
-            (0, "Every row"),
-            for (var n in const [3, 5, 10, 20])
-              (n, link.sortBy >= 0 ? "Top $n" : "First $n"),
-          ],
-          onChanged: (n) => set(link.copyWith(top: n))),
-      const StudioLabel("Only where"),
-      _Dropdown<int>(
-          key: const ValueKey("tableRowsWhere"),
-          value: link.whereColumn.clamp(-1, link.range.cols - 1),
-          options: [(-1, "Every row"), ...columns],
-          onChanged: (v) => set(link.copyWith(whereColumn: v))),
-      if (link.whereColumn >= 0) ...[
-        const SizedBox(height: 6),
-        _TextBox(
-            key: const ValueKey("tableRowsIs"),
-            text: link.where,
-            hint: "is: >5, Arsenal, <>0",
-            onChanged: (v) =>
-                _live(withLink(t, link.copyWith(where: v)) as TableElement)),
-      ],
-    ];
+    String name(int col) =>
+        columns.firstWhere((x) => x.$1 == col, orElse: () => (col, "?")).$2;
+    var sorted = link.sortBy >= 0;
+    return studioSection(
+        remember: "table.rows",
+        icon: Icons.format_list_numbered,
+        title: "Rows",
+        summary: [
+          link.top <= 0
+              ? "Every row"
+              : "${sorted ? "Top" : "First"} ${link.top}",
+          sorted
+              ? "by ${name(link.sortBy)}, ${link.descending ? "largest" : "smallest"} first"
+              : "the sheet's order",
+          if (link.whereColumn >= 0 && link.where.trim().isNotEmpty)
+            "${name(link.whereColumn)} ${link.where.trim()}",
+        ].join(" · "),
+        children: [
+          studioGroup(
+              "",
+              [
+                studioRow([
+                  studioSeg<int>(
+                      id: "tableRowsTop",
+                      label: "Show",
+                      value: link.top > 0 ? (link.top) : 0,
+                      options: [
+                        (0, "Every row"),
+                        (link.top > 0 ? link.top : 5, sorted ? "Top" : "First"),
+                      ],
+                      onChanged: (n) => set(link.copyWith(top: n))),
+                  if (link.top > 0)
+                    studioStepper(
+                        key: const ValueKey("tableRowsHowMany"),
+                        label: "How many",
+                        value: link.top.toDouble(),
+                        min: 1,
+                        max: 100,
+                        onChanged: (v) => set(link.copyWith(top: v.round())))
+                  else
+                    const SizedBox.shrink(),
+                ], flex: [
+                  3,
+                  2
+                ]),
+              ],
+              help: "Which of the sheet's rows this table shows, and in what "
+                  "order. The sheet isn't changed: a table can show every "
+                  "club while a chart of the same sheet shows the top five."),
+          studioGroup("In order of", [
+            studioRow([
+              studioDrop<int>(
+                  key: const ValueKey("tableRowsSort"),
+                  value: link.sortBy.clamp(-1, link.range.cols - 1),
+                  options: [(-1, "The sheet's own order"), ...columns],
+                  onChanged: (v) => set(link.copyWith(sortBy: v))),
+              if (sorted)
+                studioSeg<bool>(
+                    id: "tableRowsOrder",
+                    value: link.descending,
+                    options: const [(true, "Largest"), (false, "Smallest")],
+                    onChanged: (v) => set(link.copyWith(descending: v)))
+              else
+                const SizedBox.shrink(),
+            ]),
+            // A league's positions stay 1, 2, 3 while the clubs move.
+            if (sorted)
+              studioSeg<bool>(
+                  id: "tableRowsNumbering",
+                  label: "First column",
+                  value: link.numbering,
+                  options: const [
+                    (true, "Keeps its place"),
+                    (false, "Moves with its row")
+                  ],
+                  onChanged: (v) => set(link.copyWith(numbering: v))),
+          ]),
+          studioGroup("Only where", [
+            studioRow([
+              studioDrop<int>(
+                  key: const ValueKey("tableRowsWhere"),
+                  value: link.whereColumn.clamp(-1, link.range.cols - 1),
+                  options: [(-1, "Every row"), ...columns],
+                  onChanged: (v) => set(link.copyWith(whereColumn: v))),
+              if (link.whereColumn >= 0)
+                studioText(
+                    key: const ValueKey("tableRowsIs"),
+                    value: link.where,
+                    hint: "is: >5, Arsenal, <>0",
+                    onChanged: (v) => _live(
+                        withLink(t, link.copyWith(where: v)) as TableElement))
+              else
+                const SizedBox.shrink(),
+            ]),
+          ]),
+        ]);
   }
 
-  List<Widget> _headerPanel(BuildContext context) => [
-        _swatches("tableHeaderFill", "Fill", t.headerFill,
-            (v) => _set(t.copyWith(headerFill: v))),
-        _swatches(
-            "tableHeaderInk",
-            "Words",
-            t.headerSpec.color,
-            (v) =>
-                _set(t.copyWith(headerSpec: t.headerSpec.copyWith(color: v))),
-            none: false),
-        _slider(
-            "Size",
-            t.headerSpec.fontSize,
-            6,
-            72,
-            20,
-            (v) => _live(
-                t.copyWith(headerSpec: t.headerSpec.copyWith(fontSize: v)))),
-        StudioPills<int>(
-            id: "tableHeaderWeight",
-            label: "Weight",
-            value: t.headerSpec.weight,
-            options: const [(300, "Light"), (400, "Regular"), (700, "Bold")],
-            onChanged: (v) =>
-                _set(t.copyWith(headerSpec: t.headerSpec.copyWith(weight: v)))),
-        _typeface("tableHeaderFont", t.headerSpec,
-            (spec) => _set(t.copyWith(headerSpec: spec))),
-        _slider("Height", t.headerHeightRatio, 0.5, 3, 1.15,
-            (v) => _live(t.copyWith(headerHeightRatio: v)),
-            format: (v) => "${v.toStringAsFixed(2)}×"),
-        _hint(context, "Its height against a row's."),
-        const StudioLabel("Styles on it"),
-        ..._styleList(context, stylesOnRow(t, 0)),
-      ];
+  (List<Widget>, List<Widget>) _headerPanel(BuildContext context) => (
+        [
+          studioRow([
+            _typeface("tableHeaderFont", t.headerSpec,
+                (spec) => _set(t.copyWith(headerSpec: spec))),
+            _slider(
+                "Size",
+                t.headerSpec.fontSize,
+                6,
+                72,
+                20,
+                (v) => _live(t.copyWith(
+                    headerSpec: t.headerSpec.copyWith(fontSize: v)))),
+          ], flex: [
+            3,
+            2
+          ]),
+          const SizedBox(height: 8),
+          studioRow([
+            studioSeg<int>(
+                id: "tableHeaderWeight",
+                label: "Weight",
+                value: t.headerSpec.weight,
+                options: const [
+                  (300, "Light"),
+                  (400, "Regular"),
+                  (700, "Bold")
+                ],
+                onChanged: (v) => _set(
+                    t.copyWith(headerSpec: t.headerSpec.copyWith(weight: v)))),
+            _swatches(
+                "tableHeaderInk",
+                "Words",
+                t.headerSpec.color,
+                (v) => _set(
+                    t.copyWith(headerSpec: t.headerSpec.copyWith(color: v))),
+                none: false),
+          ], flex: [
+            3,
+            2
+          ]),
+        ],
+        [
+          studioSection(
+              remember: "table.headerLook",
+              icon: Icons.format_color_fill,
+              title: "Its look",
+              summary: [
+                t.headerFill.a > 0 ? "Filled" : "No fill",
+                "${t.headerHeightRatio.toStringAsFixed(2)}× a row",
+              ].join(" · "),
+              open: true,
+              children: [
+                studioGroup(
+                    "",
+                    [
+                      studioRow([
+                        _swatches("tableHeaderFill", "Fill", t.headerFill,
+                            (v) => _set(t.copyWith(headerFill: v))),
+                        _slider("Height", t.headerHeightRatio, 0.5, 3, 1.15,
+                            (v) => _live(t.copyWith(headerHeightRatio: v)),
+                            decimals: 2, step: 0.05, suffix: "×"),
+                      ]),
+                    ],
+                    help: "Its height against a row's."),
+              ]),
+          studioSection(
+              remember: "table.headerStyles",
+              icon: Icons.auto_fix_high,
+              title: "Styles on it",
+              count: stylesOnRow(t, 0).length,
+              summary: stylesOnRow(t, 0).isEmpty ? "None" : "",
+              children: [
+                studioGroup("", [
+                  if (stylesOnRow(t, 0).isEmpty) const StudioNote("None."),
+                  ..._styleList(context, stylesOnRow(t, 0)),
+                ]),
+              ]),
+        ]
+      );
 
-  List<Widget> _columnPanel(BuildContext context, int col) {
+  (List<Widget>, List<Widget>) _columnPanel(BuildContext context, int col) {
     var g = _Geom.of(t, 1000);
     var widths = g.w;
     var stylesHere = stylesOnColumn(t, col);
-    return [
-      _slider(
-          "Width", widths[col], 10, math.max(60, t.width * 0.7), widths[col],
-          (v) {
-        var next = [...widths];
-        next[col] = v;
-        _live(t.copyWith(columnWidths: next));
-      }, format: (v) => "${v.round()}"),
-      _hint(context,
-          "The others make room. Widths are kept as shares of the table's."),
-      // Drawn rather than written (TableElement.columnKinds).
-      const StudioLabel("Its cells show"),
-      _Dropdown<String>(
-          key: const ValueKey("tableColumnKind"),
-          value: t.columnKinds[col] ?? "",
-          options: [for (var (k, says) in tableCellKinds) (k, says)],
-          onChanged: (k) => _set(t.copyWith(columnKinds: {
-                for (var MapEntry(:key, :value) in t.columnKinds.entries)
-                  if (key != col) key: value,
-                if (k.isNotEmpty) col: k,
-              }))),
-      _hint(
-          context,
-          switch (t.columnKinds[col] ?? "") {
-            "spark" =>
-              "Each cell's numbers, like “3, 5, 4, 8”, as a small line ending on a dot.",
-            "ticks" =>
-              "Yes, true or 1 a tick; no, false or 0 a cross; blank a dash.",
-            "harvey" =>
-              "0 to 4, a share up to 1, or a percentage, as a part-filled circle.",
-            "change" => "Up green with ▲, down red with ▼, by the size of it.",
-            "merge" =>
-              "The same value in the rows below runs on as one tall cell.",
-            "heat" =>
-              "Shaded by its size among the column's numbers, the number written over it.",
-            _ => "Written as typed.",
+    var kind = t.columnKinds[col] ?? "";
+    return (
+      [
+        studioRow([
+          _slider("Width", widths[col], 10, math.max(60, t.width * 0.7),
+              widths[col], (v) {
+            var next = [...widths];
+            next[col] = v;
+            _live(t.copyWith(columnWidths: next));
           }),
-      StudioLabel("Styles on this column · ${stylesHere.length}"),
-      ..._styleList(context, stylesHere),
-      _buttons([
-        StudioPill(
-            key: const ValueKey("tableDesignStyleColumn"),
-            label: "+ New style from this",
-            onTap: () => _offer(reachOptions(t, TablePart.column(col)))),
-      ]),
-      ..._wordsGuide(context, col),
-    ];
+          // Drawn rather than written (TableElement.columnKinds).
+          studioDrop<String>(
+              key: const ValueKey("tableColumnKind"),
+              label: "Its cells show",
+              value: kind,
+              options: [for (var (k, says) in tableCellKinds) (k, says)],
+              onChanged: (k) => _set(t.copyWith(columnKinds: {
+                    for (var MapEntry(:key, :value) in t.columnKinds.entries)
+                      if (key != col) key: value,
+                    if (k.isNotEmpty) col: k,
+                  }))),
+        ], flex: [
+          2,
+          3
+        ]),
+        const SizedBox(height: 6),
+        _note(switch (kind) {
+          "spark" =>
+            "Each cell's numbers, like “3, 5, 4, 8”, as a small line ending on a dot.",
+          "ticks" =>
+            "Yes, true or 1 a tick; no, false or 0 a cross; blank a dash.",
+          "harvey" =>
+            "0 to 4, a share up to 1, or a percentage, as a part-filled circle.",
+          "change" => "Up green with ▲, down red with ▼, by the size of it.",
+          "merge" =>
+            "The same value in the rows below runs on as one tall cell.",
+          "heat" =>
+            "Shaded by its size among the column's numbers, the number written over it.",
+          _ => "Written as typed. The other columns make room for its width.",
+        }),
+      ],
+      [
+        studioSection(
+            remember: "table.columnStyles",
+            icon: Icons.auto_fix_high,
+            title: "Styles on this column",
+            count: stylesHere.length,
+            summary: stylesHere.isEmpty
+                ? "None"
+                : [for (var i in stylesHere) styleName(t, i)].join(", "),
+            open: true,
+            children: [
+              studioGroup("", [
+                ..._styleList(context, stylesHere),
+                studioChips([
+                  (
+                    "+ New style from this",
+                    const ValueKey("tableDesignStyleColumn"),
+                    () => _offer(reachOptions(t, TablePart.column(col)))
+                  ),
+                ]),
+              ]),
+            ]),
+        ..._wordsGuide(context, col),
+      ]
+    );
   }
 
   /// _wordsGuide gathers the styles about words in one column -- the Form
   /// column's W, D and L boxes (prototype v2's Form guide) -- so their
-  /// boxes are set side by side, and their size and corners together.
+  /// boxes are set side by side, a line a word, and their size and corners
+  /// together.
   List<Widget> _wordsGuide(BuildContext context, int col) {
     var words = [
       for (var i in stylesOnColumn(t, col))
@@ -1423,92 +1653,139 @@ class _TableDesignState extends State<TableDesign> {
     var size = boxed.isEmpty ? 0.0 : t.rules[boxed.first].style.minWidth;
     var corners = boxed.isEmpty ? 0.0 : t.rules[boxed.first].style.radius;
     return [
-      StudioLabel("Its words · ${words.length}"),
-      _hint(context, "Each word's box and colour, side by side."),
-      for (var i in words) ...[
-        _swatches(
-            "tableWordBox-$i",
-            "“${t.rules[i].match}” box",
-            t.rules[i].style.background,
-            (v) => _setRule(
-                i,
-                t.rules[i].copyWith(
-                    style: t.rules[i].style.copyWith(background: v)))),
-        _swatches(
-            "tableWordInk-$i",
-            "“${t.rules[i].match}” words",
-            t.rules[i].style.textColor,
-            (v) => _setRule(
-                i,
-                t.rules[i]
-                    .copyWith(style: t.rules[i].style.copyWith(textColor: v)))),
-      ],
-      if (boxed.isNotEmpty) ...[
-        _slider("Box size", size, 0, 60, 0,
-            (v) => all((s) => s.copyWith(minWidth: v, minHeight: v))),
-        _slider("Box corners", corners, 0, 20, 4,
-            (v) => all((s) => s.copyWith(radius: v))),
-      ],
+      studioSection(
+          remember: "table.words",
+          icon: Icons.text_fields,
+          title: "Its words",
+          count: words.length,
+          summary: [for (var i in words) t.rules[i].match].join(" · "),
+          open: true,
+          children: [
+            for (var i in words)
+              studioGroup("“${t.rules[i].match}”", [
+                studioRow([
+                  _swatches(
+                      "tableWordBox-$i",
+                      "Box",
+                      t.rules[i].style.background,
+                      (v) => _setRule(
+                          i,
+                          t.rules[i].copyWith(
+                              style:
+                                  t.rules[i].style.copyWith(background: v)))),
+                  _swatches(
+                      "tableWordInk-$i",
+                      "Words",
+                      t.rules[i].style.textColor,
+                      (v) => _setRule(
+                          i,
+                          t.rules[i].copyWith(
+                              style: t.rules[i].style.copyWith(textColor: v)))),
+                ]),
+              ]),
+            if (boxed.isNotEmpty)
+              studioGroup("Every box", [
+                studioRow([
+                  _slider("Box size", size, 0, 60, 0,
+                      (v) => all((s) => s.copyWith(minWidth: v, minHeight: v))),
+                  _slider("Box corners", corners, 0, 20, 4,
+                      (v) => all((s) => s.copyWith(radius: v))),
+                ]),
+              ]),
+          ]),
     ];
   }
 
-  List<Widget> _rowPanel(BuildContext context, int row) {
+  (List<Widget>, List<Widget>) _rowPanel(BuildContext context, int row) {
     var stylesHere = stylesOnRow(t, row);
-    return [
-      StudioLabel("Styles on this row · ${stylesHere.length}"),
-      ..._styleList(context, stylesHere),
-      _buttons([
-        StudioPill(
-            key: const ValueKey("tableDesignStyleRow"),
-            label: "+ New style from this",
-            onTap: () => _offer(reachOptions(t, TablePart.row(row)))),
-      ]),
-      _hint(context, "Shift-click other row tabs to style several rows."),
-    ];
+    return (
+      const <Widget>[],
+      [
+        studioSection(
+            remember: "table.rowStyles",
+            icon: Icons.auto_fix_high,
+            title: "Styles on this row",
+            count: stylesHere.length,
+            summary: "Shift-click other row tabs to style several",
+            open: true,
+            children: [
+              studioGroup("", [
+                ..._styleList(context, stylesHere),
+                studioChips([
+                  (
+                    "+ New style from this",
+                    const ValueKey("tableDesignStyleRow"),
+                    () => _offer(reachOptions(t, TablePart.row(row)))
+                  ),
+                ]),
+              ]),
+            ]),
+      ]
+    );
   }
 
-  List<Widget> _cellPanel(BuildContext context, int row, int col) {
+  (List<Widget>, List<Widget>) _cellPanel(
+      BuildContext context, int row, int col) {
     var on = stylesAt(t, row, col);
-    return [
-      StudioLabel("On this cell · ${on.length}"),
-      _hint(
-          context,
-          on.isEmpty
-              ? "No styles reach it: it has the table's look."
-              : "In the order they apply: where two say different things, the lower one wins."),
-      const SizedBox(height: 6),
-      ..._styleList(context, on),
-      _buttons([
-        StudioPill(
-            key: const ValueKey("tableDesignStyleCell"),
-            label: "+ New style from this",
-            onTap: () => _offer(reachOptions(t, TablePart.cell(row, col)))),
-        StudioPill(
-            key: const ValueKey("tableCellCopy"),
-            label: "Copy its look",
-            onTap: () => setState(() =>
-                _copied = t.lookAt(row, col).style ?? const TableCellStyle())),
-        if (t.lookAt(row, col).style != null)
-          StudioPill(
-              key: const ValueKey("tableCellMake"),
-              label: "Make a style from its look",
-              onTap: () {
-                var o = reachOptions(t, TablePart.cell(row, col)).firstOrNull;
-                if (o == null) return;
-                _newStyle(o.rule.copyWith(style: t.lookAt(row, col).style));
-              }),
-        StudioPill(
-            label: "Its column", onTap: () => _pick(TablePart.column(col))),
-        StudioPill(
-            label: row == 0 && t.headerRow ? "The header" : "Its row",
-            onTap: () => _pick(row == 0 && t.headerRow
-                ? TablePart.header
-                : TablePart.row(row))),
-      ]),
-    ];
+    return (
+      [
+        studioButtons([
+          studioButton("New style from this",
+              key: const ValueKey("tableDesignStyleCell"),
+              icon: Icons.add,
+              onPressed: () =>
+                  _offer(reachOptions(t, TablePart.cell(row, col)))),
+          studioButton("Copy its look",
+              key: const ValueKey("tableCellCopy"),
+              icon: Icons.content_copy,
+              onPressed: () => setState(() => _copied =
+                  t.lookAt(row, col).style ?? const TableCellStyle())),
+          if (t.lookAt(row, col).style != null)
+            studioButton("Make a style from its look",
+                key: const ValueKey("tableCellMake"), onPressed: () {
+              var o = reachOptions(t, TablePart.cell(row, col)).firstOrNull;
+              if (o == null) return;
+              _newStyle(o.rule.copyWith(style: t.lookAt(row, col).style));
+            }),
+          studioButton("Its column",
+              key: const ValueKey("tableCellColumn"),
+              onPressed: () => _pick(TablePart.column(col))),
+          studioButton(row == 0 && t.headerRow ? "The header" : "Its row",
+              key: const ValueKey("tableCellRow"),
+              onPressed: () => _pick(row == 0 && t.headerRow
+                  ? TablePart.header
+                  : TablePart.row(row))),
+        ]),
+      ],
+      [
+        studioSection(
+            remember: "table.cellStyles",
+            icon: Icons.auto_fix_high,
+            title: "Styles reaching it",
+            count: on.length,
+            summary: on.isEmpty
+                ? "None: it has the table's look"
+                : "In the order they apply",
+            open: true,
+            children: [
+              studioGroup(
+                  "",
+                  [
+                    if (on.isEmpty)
+                      const StudioNote(
+                          "No styles reach it: it has the table's look."),
+                    ..._styleList(context, on),
+                  ],
+                  help: on.isEmpty
+                      ? null
+                      : "In the order they apply: where two say different "
+                          "things, the lower one wins."),
+            ]),
+      ]
+    );
   }
 
-  List<Widget> _stylePanel(BuildContext context, int i) {
+  (List<Widget>, List<Widget>) _stylePanel(BuildContext context, int i) {
     var rule = t.rules[i];
     var s = rule.style;
     void look(TableCellStyle next, {bool live = false}) =>
@@ -1549,256 +1826,339 @@ class _TableDesignState extends State<TableDesign> {
             [false, true, false, true] => "sides",
             _ => "own",
           };
-    return [
-      if (_made) ...[
-        _hint(context,
-            "Step 2 of 2: its look. It names itself from what it reaches and looks like, until you type a name.",
-            color: ThemeNotifier.of(context).colors.primary),
-        _buttons([
-          StudioPill(
-              key: const ValueKey("tableNewDone"),
-              label: "Done",
-              filled: true,
-              onTap: () => _pick(TablePart.table)),
-        ]),
-      ],
-      if (idle != null)
-        _hint(context, "Does nothing: $idle.", color: const Color(0xFFF2B33D)),
-      const StudioLabel("Name"),
-      _TextBox(
-        key: ValueKey("tableStyleName-$i"),
-        text: rule.name,
-        hint: styleName(t.copyWith(rules: [rule.copyWith(name: "")]), 0),
-        onChanged: (v) => _setRule(i, rule.copyWith(name: v), live: true),
-      ),
-      const StudioLabel("What it reaches"),
-      _Dropdown<String>(
-        key: ValueKey("tableStyleColumn-$i"),
-        value: colValue,
-        options: columns,
-        onChanged: (v) => _setRule(i, rule.copyWith(column: v)),
-      ),
-      const SizedBox(height: 6),
-      if (rule.keys.isNotEmpty) ...[
-        const StudioLabel("Follows"),
-        _TextBox(
-          key: ValueKey("tableStyleKeys-$i"),
-          text: rule.keys.join(", "),
-          hint: "Names, with commas between",
-          onChanged: (v) => _setRule(
-              i,
-              rule.copyWith(keys: [
-                for (var k in v.split(","))
-                  if (k.trim().isNotEmpty) k.trim()
-              ]),
-              live: true),
-        ),
-        _hint(context,
-            "Found in the ${rule.keyColumn} column, wherever they are as the numbers change."),
-        _buttons([
-          StudioPill(
-              key: const ValueKey("tableStyleKeep"),
-              label: "Keep to their places now",
-              onTap: () => _setRule(i, _kept(rule))),
-        ]),
-      ] else
-        StudioPills<String>(
-            id: "tableStyleRows",
-            label: "Rows",
-            value: rowsKind,
-            options: [
-              ("", "Every row"),
-              if (t.headerRow) ("1", "The header"),
-              if (t.headerRow) (">1", "All but the header"),
-              ("some", "Some rows"),
-            ],
-            onChanged: (v) => _setRule(
-                i,
-                rule.copyWith(
-                    rows: v == "some" ? (t.headerRow ? "2" : "1") : v))),
-      if (rowsKind == "some") ...[
-        const SizedBox(height: 6),
-        _TextBox(
-          key: ValueKey("tableStyleRowsText-$i"),
-          text: rule.rows,
-          hint: "5, or 18:20, or >1",
-          onChanged: (v) => _setRule(i, rule.copyWith(rows: v), live: true),
-        ),
-        _hint(context,
-            "${spanWords(rule.rows, "row", header: t.headerRow)}. Counting the header as 1: “18:20” is three rows, “>1” every row after the first."),
-      ],
-      if (rule.keys.isEmpty &&
-          rowsKind == "some" &&
-          keyColumnOf(t) >= 0 &&
-          _followable(rule))
-        _buttons([
-          StudioPill(
-              key: const ValueKey("tableStyleFollow"),
-              label: "Follow who is there now",
-              onTap: () => _setRule(i, _followed(rule))),
-        ]),
-      ..._whenPart(context, i, rule),
-      const StudioLabel("Only where it says"),
-      _TextBox(
-        key: ValueKey("tableStyleMatch-$i"),
-        text: rule.match,
-        hint: "Words to look for (empty: every cell)",
-        onChanged: (v) => _setRule(i, rule.copyWith(match: v), live: true),
-      ),
-      if (rule.match.isNotEmpty)
-        StudioPills<TableMatch>(
-            id: "tableStyleHow",
-            label: "Found as",
-            value: rule.how,
-            options: [for (var m in TableMatch.values) (m, m.label)],
-            onChanged: (v) => _setRule(i, rule.copyWith(how: v))),
-      const StudioLabel("Its look"),
-      _swatches("tableStyleFill", "Fill", s.background,
-          (v) => look(s.copyWith(background: v))),
-      _swatches("tableStyleInk", "Words", s.textColor,
-          (v) => look(s.copyWith(textColor: v))),
-      _slider("Size", s.fontScale, 0.4, 2.5, 1,
-          (v) => look(s.copyWith(fontScale: v), live: true),
-          format: (v) => "${(v * 100).round()}%"),
-      StudioPills<int>(
-          id: "tableStyleWeight",
-          label: "Weight",
-          value: s.weight,
-          options: const [
-            (0, "Its own"),
-            (300, "Light"),
-            (400, "Regular"),
-            (700, "Bold")
-          ],
-          onChanged: (v) => look(s.copyWith(weight: v))),
-      StudioPills<String>(
-          id: "tableStyleAlign",
-          label: "Lined up",
-          value: s.align?.name ?? "",
-          options: const [
-            ("", "Its own"),
-            ("left", "Left"),
-            ("center", "Centre"),
-            ("right", "Right")
-          ],
-          onChanged: (v) => look(v.isEmpty
-              ? TableCellStyle.fromJson({...s.toJson()}..remove("align"))
-              : s.copyWith(align: TextAlignSpec.values.byName(v)))),
-      if (rule.match.isNotEmpty || s.background.a > 0)
-        StudioPills<bool>(
-            id: "tableStyleHug",
-            label: "Box",
-            value: s.hug,
-            options: const [
-              (true, "Round the words"),
-              (false, "Fills the cell")
-            ],
-            onChanged: (v) => look(s.copyWith(hug: v))),
-      if (s.background.a > 0) ...[
-        _slider("Corners", s.radius, 0, 24, 4,
-            (v) => look(s.copyWith(radius: v), live: true)),
-        _slider("Inset", s.inset, 0, 24, 6,
-            (v) => look(s.copyWith(inset: v), live: true)),
-      ],
-      const StudioLabel("Lines"),
-      _swatches("tableStyleLine", "Colour", s.borderColor, (v) {
-        look(s.copyWith(
-            borderColor: v,
-            borderWidth: v.a > 0 && s.borderWidth == 0 ? 2 : s.borderWidth));
-      }),
-      if (s.borderColor.a > 0) ...[
-        _slider("Thickness", s.borderWidth, 0, 8, 0,
-            (v) => look(s.copyWith(borderWidth: v), live: true)),
-        StudioPills<String>(
-            id: "tableStyleSides",
-            label: "Where",
-            value: sidesKey,
-            options: [
-              ("all", "All round"),
-              ("above", "Above"),
-              ("under", "Under"),
-              ("both", "Above and under"),
-              ("sides", "Either side"),
-              if (sidesKey == "own") ("own", "Its own"),
-            ],
-            onChanged: (v) {
-              if (v != "own") look(s.copyWith(sides: sidesOf(v)));
-            }),
-      ],
-      _buttons([
-        StudioPill(
-            key: const ValueKey("tableStyleFine"),
-            label: _fine ? "Fine placement ▴" : "Fine placement ▾",
-            onTap: () => setState(() => _fine = !_fine)),
-      ]),
-      if (_fine) ...[
-        _hint(context,
-            "For boxes round single letters, so a row of them lines up: a fixed width per letter, the gap, a least size, and nudges for a letter whose ink sits off-centre."),
-        _slider("Letter width", s.letterWidth, 0, 40, 0,
-            (v) => look(s.copyWith(letterWidth: v), live: true)),
-        _slider("Letter gap", s.letterSpacing, -5, 20, 0,
-            (v) => look(s.copyWith(letterSpacing: v), live: true)),
-        _slider("Margin", s.textPad, 0, 30, 0,
-            (v) => look(s.copyWith(textPad: v), live: true)),
-        _slider("Least width", s.minWidth, 0, 80, 0,
-            (v) => look(s.copyWith(minWidth: v), live: true)),
-        _slider("Least height", s.minHeight, 0, 80, 0,
-            (v) => look(s.copyWith(minHeight: v), live: true)),
-        _slider("Nudge across", s.nudgeX, -10, 10, 0,
-            (v) => look(s.copyWith(nudgeX: v), live: true)),
-        _slider("Nudge down", s.nudgeY, -10, 10, 0,
-            (v) => look(s.copyWith(nudgeY: v), live: true)),
-        StudioPills<bool>(
-            id: "tableStyleRedact",
-            label: "Words",
-            value: s.redact,
-            options: const [(false, "Shown"), (true, "Hidden")],
-            onChanged: (v) => look(s.copyWith(redact: v))),
-      ],
-      const StudioLabel("This style"),
-      _buttons([
-        StudioPill(
-            key: const ValueKey("tableStyleCopy"),
-            label: "Copy look",
-            onTap: () => setState(() => _copied = s)),
-        StudioPill(
-            key: const ValueKey("tableStylePaste"),
-            label: "Paste look",
-            onTap: _copied == null ? null : () => look(_copied!)),
-        StudioPill(
-            key: const ValueKey("tableStyleOff"),
-            label: rule.off ? "Switch on" : "Switch off",
-            onTap: () => _setRule(i, rule.copyWith(off: !rule.off))),
-        StudioPill(
-            key: const ValueKey("tableStyleDuplicate"),
-            label: "Duplicate",
-            onTap: () {
-              var rules = [...t.rules]..insert(
-                  i + 1,
-                  rule.copyWith(
-                      name: rule.name.isEmpty ? "" : "${rule.name} (copy)"));
-              _set(t.copyWith(rules: rules));
-              _pick(TablePart.style(i + 1));
-            }),
-        StudioPill(
-            key: const ValueKey("tableStyleEarlier"),
-            label: "Earlier",
-            tooltip: "Applied before the one above it",
-            onTap: i == 0 ? null : () => _move(i, -1)),
-        StudioPill(
-            key: const ValueKey("tableStyleLater"),
-            label: "Later",
-            tooltip: "Applied after the one below it, so it wins",
-            onTap: i == t.rules.length - 1 ? null : () => _move(i, 1)),
-        StudioPill(
-            key: const ValueKey("tableStyleDelete"),
-            label: "Delete",
-            onTap: () {
-              _set(t.copyWith(rules: [...t.rules]..removeAt(i)));
-              _pick(TablePart.table);
-            }),
-      ]),
+    var lookSaid = [
+      if (s.background.a > 0) "filled",
+      if (s.textColor.a > 0) "coloured words",
+      if (s.weight == 700) "bold",
+      if (s.weight == 300) "light",
+      if ((s.fontScale - 1).abs() > 0.01) "${(s.fontScale * 100).round()}%",
+      if (s.align != null) "lined up ${s.align!.name}",
     ];
+    var fineSaid = [
+      if (s.letterWidth > 0) "letters ${s.letterWidth.round()}",
+      if (s.minWidth > 0 || s.minHeight > 0) "least size",
+      if (s.nudgeX != 0 || s.nudgeY != 0) "nudged",
+      if (s.redact) "words hidden",
+    ];
+    return (
+      [
+        if (_made) ...[
+          _note(
+              "Step 2 of 2: its look. It names itself from what it reaches "
+              "and looks like, until you type a name.",
+              color: ThemeNotifier.of(context).colors.primary),
+          const SizedBox(height: 6),
+          studioButtons([
+            studioButton("Done",
+                key: const ValueKey("tableNewDone"),
+                primary: true,
+                onPressed: () => _pick(TablePart.table)),
+          ]),
+          const SizedBox(height: 8),
+        ],
+        if (idle != null) ...[
+          _note("Does nothing: $idle.", color: const Color(0xFFF2B33D)),
+          const SizedBox(height: 6),
+        ],
+        studioRow([
+          studioText(
+            key: ValueKey("tableStyleName-$i"),
+            label: "Name",
+            value: rule.name,
+            hint: styleName(t.copyWith(rules: [rule.copyWith(name: "")]), 0),
+            onChanged: (v) => _setRule(i, rule.copyWith(name: v), live: true),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        studioButtons([
+          studioButton(rule.off ? "Switch on" : "Switch off",
+              key: const ValueKey("tableStyleOff"),
+              icon: rule.off
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+              onPressed: () => _setRule(i, rule.copyWith(off: !rule.off))),
+          studioButton("Copy look",
+              key: const ValueKey("tableStyleCopy"),
+              onPressed: () => setState(() => _copied = s)),
+          studioButton("Paste look",
+              key: const ValueKey("tableStylePaste"),
+              onPressed: _copied == null ? null : () => look(_copied!)),
+          studioButton("Duplicate", key: const ValueKey("tableStyleDuplicate"),
+              onPressed: () {
+            var rules = [...t.rules]..insert(
+                i + 1,
+                rule.copyWith(
+                    name: rule.name.isEmpty ? "" : "${rule.name} (copy)"));
+            _set(t.copyWith(rules: rules));
+            _pick(TablePart.style(i + 1));
+          }),
+          studioButton("Earlier",
+              key: const ValueKey("tableStyleEarlier"),
+              icon: Icons.arrow_upward,
+              tooltip: "Applied before the one above it",
+              onPressed: i == 0 ? null : () => _move(i, -1)),
+          studioButton("Later",
+              key: const ValueKey("tableStyleLater"),
+              icon: Icons.arrow_downward,
+              tooltip: "Applied after the one below it, so it wins",
+              onPressed: i == t.rules.length - 1 ? null : () => _move(i, 1)),
+          studioButton("Delete",
+              key: const ValueKey("tableStyleDelete"),
+              icon: Icons.delete_outline, onPressed: () {
+            _set(t.copyWith(rules: [...t.rules]..removeAt(i)));
+            _pick(TablePart.table);
+          }),
+        ]),
+      ],
+      [
+        studioSection(
+            remember: "table.styleReach",
+            icon: Icons.place_outlined,
+            title: "What it reaches",
+            summary: styleReach(t, rule),
+            open: true,
+            children: [
+              studioGroup("", [
+                studioDrop<String>(
+                  key: ValueKey("tableStyleColumn-$i"),
+                  label: "Column",
+                  value: colValue,
+                  options: columns,
+                  onChanged: (v) => _setRule(i, rule.copyWith(column: v)),
+                ),
+                if (rule.keys.isNotEmpty) ...[
+                  studioText(
+                    key: ValueKey("tableStyleKeys-$i"),
+                    label: "Follows",
+                    value: rule.keys.join(", "),
+                    hint: "Names, with commas between",
+                    onChanged: (v) => _setRule(
+                        i,
+                        rule.copyWith(keys: [
+                          for (var k in v.split(","))
+                            if (k.trim().isNotEmpty) k.trim()
+                        ]),
+                        live: true),
+                  ),
+                  _note("Found in the ${rule.keyColumn} column, wherever "
+                      "they are as the numbers change."),
+                  studioButtons([
+                    studioButton("Keep to their places now",
+                        key: const ValueKey("tableStyleKeep"),
+                        onPressed: () => _setRule(i, _kept(rule))),
+                  ]),
+                ] else
+                  studioDrop<String>(
+                      key: const ValueKey("tableStyleRows"),
+                      label: "Rows",
+                      value: rowsKind,
+                      options: [
+                        ("", "Every row"),
+                        if (t.headerRow) ("1", "The header"),
+                        if (t.headerRow) (">1", "All but the header"),
+                        ("some", "Some rows"),
+                      ],
+                      onChanged: (v) => _setRule(
+                          i,
+                          rule.copyWith(
+                              rows: v == "some"
+                                  ? (t.headerRow ? "2" : "1")
+                                  : v))),
+                if (rowsKind == "some") ...[
+                  studioText(
+                    key: ValueKey("tableStyleRowsText-$i"),
+                    label: "Which rows",
+                    value: rule.rows,
+                    hint: "5, or 18:20, or >1",
+                    onChanged: (v) =>
+                        _setRule(i, rule.copyWith(rows: v), live: true),
+                  ),
+                  _note(
+                      "${spanWords(rule.rows, "row", header: t.headerRow)}. Counting the header as 1: “18:20” is three rows, “>1” every row after the first."),
+                ],
+                if (rule.keys.isEmpty &&
+                    rowsKind == "some" &&
+                    keyColumnOf(t) >= 0 &&
+                    _followable(rule))
+                  studioButtons([
+                    studioButton("Follow who is there now",
+                        key: const ValueKey("tableStyleFollow"),
+                        onPressed: () => _setRule(i, _followed(rule))),
+                  ]),
+              ]),
+              ..._whenPart(context, i, rule),
+              studioGroup("Only where it says", [
+                studioText(
+                  key: ValueKey("tableStyleMatch-$i"),
+                  value: rule.match,
+                  hint: "Words to look for (empty: every cell)",
+                  onChanged: (v) =>
+                      _setRule(i, rule.copyWith(match: v), live: true),
+                ),
+                if (rule.match.isNotEmpty)
+                  studioSeg<TableMatch>(
+                      id: "tableStyleHow",
+                      label: "Found as",
+                      value: rule.how,
+                      options: [for (var m in TableMatch.values) (m, m.label)],
+                      onChanged: (v) => _setRule(i, rule.copyWith(how: v))),
+              ]),
+            ]),
+        studioSection(
+            remember: "table.styleLook",
+            icon: Icons.palette_outlined,
+            title: "Its look",
+            summary: lookSaid.isEmpty ? "As the table" : lookSaid.join(" · "),
+            open: true,
+            children: [
+              studioGroup("", [
+                studioRow([
+                  _swatches("tableStyleFill", "Fill", s.background,
+                      (v) => look(s.copyWith(background: v))),
+                  _swatches("tableStyleInk", "Words", s.textColor,
+                      (v) => look(s.copyWith(textColor: v))),
+                ]),
+                studioRow([
+                  _slider("Size", s.fontScale, 0.4, 2.5, 1,
+                      (v) => look(s.copyWith(fontScale: v), live: true),
+                      percent: true, step: 0.1),
+                  const SizedBox.shrink(),
+                ]),
+                studioSeg<int>(
+                    id: "tableStyleWeight",
+                    label: "Weight",
+                    value: s.weight,
+                    options: const [
+                      (0, "Its own"),
+                      (300, "Light"),
+                      (400, "Regular"),
+                      (700, "Bold")
+                    ],
+                    onChanged: (v) => look(s.copyWith(weight: v))),
+                studioSeg<String>(
+                    id: "tableStyleAlign",
+                    label: "Lined up",
+                    value: s.align?.name ?? "",
+                    options: const [
+                      ("", "Its own"),
+                      ("left", "Left"),
+                      ("center", "Centre"),
+                      ("right", "Right")
+                    ],
+                    onChanged: (v) => look(v.isEmpty
+                        ? TableCellStyle.fromJson(
+                            {...s.toJson()}..remove("align"))
+                        : s.copyWith(align: TextAlignSpec.values.byName(v)))),
+                if (rule.match.isNotEmpty || s.background.a > 0)
+                  studioSeg<bool>(
+                      id: "tableStyleHug",
+                      label: "Box",
+                      value: s.hug,
+                      options: const [
+                        (true, "Round the words"),
+                        (false, "Fills the cell")
+                      ],
+                      onChanged: (v) => look(s.copyWith(hug: v))),
+                if (s.background.a > 0)
+                  studioRow([
+                    _slider("Corners", s.radius, 0, 24, 4,
+                        (v) => look(s.copyWith(radius: v), live: true)),
+                    _slider("Inset", s.inset, 0, 24, 6,
+                        (v) => look(s.copyWith(inset: v), live: true)),
+                  ]),
+              ]),
+            ]),
+        studioSection(
+            remember: "table.styleLines",
+            icon: Icons.border_style,
+            title: "Lines",
+            summary: s.borderColor.a > 0
+                ? "${s.borderWidth.round()}px · $sidesKey"
+                : "None",
+            children: [
+              studioGroup("", [
+                studioRow([
+                  _swatches("tableStyleLine", "Colour", s.borderColor, (v) {
+                    look(s.copyWith(
+                        borderColor: v,
+                        borderWidth:
+                            v.a > 0 && s.borderWidth == 0 ? 2 : s.borderWidth));
+                  }),
+                  if (s.borderColor.a > 0)
+                    _slider("Thickness", s.borderWidth, 0, 8, 0,
+                        (v) => look(s.copyWith(borderWidth: v), live: true))
+                  else
+                    const SizedBox.shrink(),
+                ]),
+                if (s.borderColor.a > 0)
+                  studioDrop<String>(
+                      key: const ValueKey("tableStyleSides"),
+                      label: "Where",
+                      value: sidesKey,
+                      options: [
+                        ("all", "All round"),
+                        ("above", "Above"),
+                        ("under", "Under"),
+                        ("both", "Above and under"),
+                        ("sides", "Either side"),
+                        if (sidesKey == "own") ("own", "Its own"),
+                      ],
+                      onChanged: (v) {
+                        if (v != "own") look(s.copyWith(sides: sidesOf(v)));
+                      }),
+              ]),
+            ]),
+        studioSection(
+            remember: "table.styleFine",
+            icon: Icons.straighten,
+            title: "Fine placement",
+            summary: fineSaid.isEmpty ? "As made" : fineSaid.join(" · "),
+            children: [
+              studioGroup(
+                  "",
+                  [
+                    studioRow([
+                      _slider("Letter width", s.letterWidth, 0, 40, 0,
+                          (v) => look(s.copyWith(letterWidth: v), live: true)),
+                      _slider(
+                          "Letter gap",
+                          s.letterSpacing,
+                          -5,
+                          20,
+                          0,
+                          (v) =>
+                              look(s.copyWith(letterSpacing: v), live: true)),
+                    ]),
+                    studioRow([
+                      _slider("Margin", s.textPad, 0, 30, 0,
+                          (v) => look(s.copyWith(textPad: v), live: true)),
+                      _slider("Least width", s.minWidth, 0, 80, 0,
+                          (v) => look(s.copyWith(minWidth: v), live: true)),
+                    ]),
+                    studioRow([
+                      _slider("Least height", s.minHeight, 0, 80, 0,
+                          (v) => look(s.copyWith(minHeight: v), live: true)),
+                      _slider("Nudge across", s.nudgeX, -10, 10, 0,
+                          (v) => look(s.copyWith(nudgeX: v), live: true)),
+                    ]),
+                    studioRow([
+                      _slider("Nudge down", s.nudgeY, -10, 10, 0,
+                          (v) => look(s.copyWith(nudgeY: v), live: true)),
+                      studioSeg<bool>(
+                          id: "tableStyleRedact",
+                          label: "Words",
+                          value: s.redact,
+                          options: const [(false, "Shown"), (true, "Hidden")],
+                          onChanged: (v) => look(s.copyWith(redact: v))),
+                    ]),
+                  ],
+                  help: "For boxes round single letters, so a row of them "
+                      "lines up: a fixed width per letter, the gap, a least "
+                      "size, and nudges for a letter whose ink sits "
+                      "off-centre."),
+            ]),
+      ]
+    );
   }
 
   /// _kept is [rule] keeping to where the teams it follows are now.
@@ -1856,62 +2216,66 @@ class _TableDesignState extends State<TableDesign> {
     if (w == null) {
       if (numeric.isEmpty) return const [];
       return [
-        _buttons([
-          StudioPill(
-              key: const ValueKey("tableStyleWhenAdd"),
-              label: "+ Only where a number is…",
-              onTap: () => _setRule(
-                  i, rule.copyWith(when: TableWhen(numeric.last, ">=", 0)))),
+        studioGroup("", [
+          studioChips([
+            (
+              "+ Only where a number is…",
+              const ValueKey("tableStyleWhenAdd"),
+              () => _setRule(
+                  i, rule.copyWith(when: TableWhen(numeric.last, ">=", 0)))
+            ),
+          ]),
         ]),
       ];
     }
     return [
-      const StudioLabel("Only where"),
-      _Dropdown<String>(
-        key: ValueKey("tableStyleWhenColumn-$i"),
-        value: numeric.contains(w.column)
-            ? w.column
-            : numeric.firstOrNull ?? w.column,
-        options: [
-          for (var n in {...numeric, w.column}) (n, n)
-        ],
-        onChanged: (v) =>
-            _setRule(i, rule.copyWith(when: w.copyWith(column: v))),
-      ),
-      const SizedBox(height: 6),
-      StudioPills<String>(
-          id: "tableStyleWhenOp",
-          label: "Is",
-          value: w.op,
-          options: const [
-            (">=", "or more"),
-            ("<=", "or less"),
-            (">", "over"),
-            ("<", "under"),
-            ("=", "exactly"),
-          ],
-          onChanged: (v) =>
-              _setRule(i, rule.copyWith(when: w.copyWith(op: v)))),
-      const SizedBox(height: 6),
-      _TextBox(
-        key: ValueKey("tableStyleWhenValue-$i"),
-        text: w.value == w.value.roundToDouble()
-            ? "${w.value.round()}"
-            : "${w.value}",
-        hint: "A number",
-        onChanged: (v) {
-          var n = double.tryParse(v.trim());
-          if (n != null) {
-            _setRule(i, rule.copyWith(when: w.copyWith(value: n)), live: true);
-          }
-        },
-      ),
-      _hint(context, "Changes as the numbers do: ${whenWords(w)}."),
-      _buttons([
-        StudioPill(
-            key: const ValueKey("tableStyleWhenRemove"),
-            label: "No number condition",
-            onTap: () => _setRule(i, rule.copyWith(noWhen: true))),
+      studioGroup("Only where a number is", [
+        studioRow([
+          studioDrop<String>(
+            key: ValueKey("tableStyleWhenColumn-$i"),
+            value: numeric.contains(w.column)
+                ? w.column
+                : numeric.firstOrNull ?? w.column,
+            options: [
+              for (var n in {...numeric, w.column}) (n, n)
+            ],
+            onChanged: (v) =>
+                _setRule(i, rule.copyWith(when: w.copyWith(column: v))),
+          ),
+          studioText(
+            key: ValueKey("tableStyleWhenValue-$i"),
+            value: w.value == w.value.roundToDouble()
+                ? "${w.value.round()}"
+                : "${w.value}",
+            hint: "A number",
+            onChanged: (v) {
+              var n = double.tryParse(v.trim());
+              if (n != null) {
+                _setRule(i, rule.copyWith(when: w.copyWith(value: n)),
+                    live: true);
+              }
+            },
+          ),
+        ]),
+        studioSeg<String>(
+            id: "tableStyleWhenOp",
+            label: "Is",
+            value: w.op,
+            options: const [
+              (">=", "or more"),
+              ("<=", "or less"),
+              (">", "over"),
+              ("<", "under"),
+              ("=", "exactly"),
+            ],
+            onChanged: (v) =>
+                _setRule(i, rule.copyWith(when: w.copyWith(op: v)))),
+        _note("Changes as the numbers do: ${whenWords(w)}."),
+        studioButtons([
+          studioButton("No number condition",
+              key: const ValueKey("tableStyleWhenRemove"),
+              onPressed: () => _setRule(i, rule.copyWith(noWhen: true))),
+        ]),
       ]),
     ];
   }
@@ -2149,102 +2513,6 @@ class _StagePainter extends CustomPainter {
       old.g.k != g.k ||
       old.ground != ground ||
       old.accent != accent;
-}
-
-/// _TextBox is a one-line field that keeps what is typed while the table
-/// changes under it.
-class _TextBox extends StatefulWidget {
-  final String text, hint;
-  final ValueChanged<String> onChanged;
-  const _TextBox(
-      {required this.text,
-      required this.hint,
-      required this.onChanged,
-      super.key});
-
-  @override
-  State<_TextBox> createState() => _TextBoxState();
-}
-
-class _TextBoxState extends State<_TextBox> {
-  late final TextEditingController _c =
-      TextEditingController(text: widget.text);
-  final FocusNode _f = FocusNode();
-
-  @override
-  void didUpdateWidget(_TextBox old) {
-    super.didUpdateWidget(old);
-    if (!_f.hasFocus && _c.text != widget.text) _c.text = widget.text;
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    _f.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = ThemeNotifier.of(context).colors;
-    return TextField(
-      controller: _c,
-      focusNode: _f,
-      onChanged: widget.onChanged,
-      style: TextStyle(fontSize: 13, color: colors.onSurface),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: widget.hint,
-        hintStyle: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
-        filled: true,
-        fillColor: colors.surfaceContainerHigh,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(7),
-            borderSide: BorderSide.none),
-      ),
-    );
-  }
-}
-
-/// _Dropdown is a choice among many, as a dropdown (Ken prefers them to
-/// pop-ups for long lists).
-class _Dropdown<T> extends StatelessWidget {
-  final T value;
-  final List<(T, String)> options;
-  final ValueChanged<T> onChanged;
-  const _Dropdown(
-      {required this.value,
-      required this.options,
-      required this.onChanged,
-      super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = ThemeNotifier.of(context).colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-          color: colors.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(7)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          isExpanded: true,
-          value: value,
-          style: TextStyle(fontSize: 13, color: colors.onSurface),
-          dropdownColor: colors.surfaceContainerHigh,
-          items: [
-            for (var (v, name) in options)
-              DropdownMenuItem(
-                  value: v, child: Text(name, overflow: TextOverflow.ellipsis)),
-          ],
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
-        ),
-      ),
-    );
-  }
 }
 
 /// _DesignThumb draws a table fitted on [ground], for the gallery.

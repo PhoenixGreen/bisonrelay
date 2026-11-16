@@ -3,12 +3,14 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_panel_helpers.dart';
 
 // canvas_charts_design_test.dart is the Data Studio's Charts tab (Ken,
 // 2026-11-15: chart design "very visual and flexible"; prototypes v5-v6):
@@ -42,6 +45,10 @@ CanvasDocument opened() => CanvasDocument.fromJson(CanvasDocument(elements: [
     ]).toJson());
 
 void main() {
+  // The sidebar's sections open, as these tests are of what each control
+  // does; where they are folded is the sidebar's own test.
+  setUp(() => CanvasSection.openAll = true);
+  tearDown(() => CanvasSection.openAll = false);
   late CanvasController c;
   ChartElement chart() => c.document.elementById("c1") as ChartElement;
 
@@ -71,6 +78,14 @@ void main() {
     ));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("dataStudioTab-charts")));
+    await tester.pumpAndSettle();
+  }
+
+  /// rows picks which rows the chart shows, in the slot bar.
+  Future<void> rows(WidgetTester tester, String which) async {
+    await tester.tap(find.byKey(const ValueKey("chartsRows")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(which).last);
     await tester.pumpAndSettle();
   }
 
@@ -151,15 +166,12 @@ void main() {
     expect(chart().data.series.length, 2);
 
     // Only the top two.
-    await tester.tap(find.byKey(const ValueKey("studioPill-chartsRows-top")));
-    await tester.pumpAndSettle();
+    await rows(tester, "Top");
     expect(chart().sheet!.top, 5);
     expect(chart().data.categories.length, 4);
 
     // The bottom places 3 and 4, the sheet left as it is.
-    await tester
-        .tap(find.byKey(const ValueKey("studioPill-chartsRows-places")));
-    await tester.pumpAndSettle();
+    await rows(tester, "Places");
     final places = find.descendant(
         of: find.byKey(const ValueKey("chartsPlaces")),
         matching: find.byType(TextField));
@@ -205,9 +217,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
-      await tester
-          .tap(find.byKey(const ValueKey("studioPill-chartsRows-places")));
-      await tester.pumpAndSettle();
+      await rows(tester, "Places");
       // The gallery too, and a kind's starting designs.
       final add = find.byKey(const ValueKey("chartsNew"));
       await tester.ensureVisible(add);
@@ -341,7 +351,7 @@ void main() {
     await tap("studioPill-chartsLogScale-true");
     expect(chart().logScale, isTrue);
     // How its marks are drawn: tracks behind the bars.
-    await tap("studioPill-chartsTrack-true");
+    await tap("chartsTrack");
     expect(chart().design.track, isTrue);
     await tap("studioPill-chartsDecimals-0");
     expect(chart().numbers.decimals, 0);
@@ -401,17 +411,20 @@ void main() {
     expect(chart().title, "The bottom one");
 
     // Moved on by the timeline's marks: no pace of its own then.
-    final marks = find.byKey(const ValueKey("studioPill-chartsFollow-marks"));
-    await tester.ensureVisible(marks);
-    await tester.tap(marks);
-    await tester.pumpAndSettle();
+    Future<void> follow(String label) async {
+      final menu = find.byKey(const ValueKey("chartsFollow"));
+      await tester.ensureVisible(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).last);
+      await tester.pumpAndSettle();
+    }
+
+    await follow(ChartStepsFollow.marks.label);
     expect(chart().follow, "marks");
     expect(find.byKey(const ValueKey("chartsSlider-Each")), findsNothing);
-    final own = find.byKey(const ValueKey("studioPill-chartsFollow-time"));
-    await tester.ensureVisible(own);
-    await tester.pumpAndSettle();
-    await tester.tap(own);
-    await tester.pumpAndSettle();
+    await follow(ChartStepsFollow.time.label);
     expect(chart().follow, "time");
 
     // Previewed: it plays, and stops.

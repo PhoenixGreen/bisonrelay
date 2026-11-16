@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -46,6 +47,10 @@ const source = DataSource(
 );
 
 void main() {
+  // The sidebars' sections open, as these tests are of what each control
+  // does; where they are folded is the sidebar's own test.
+  setUp(() => CanvasSection.openAll = true);
+  tearDown(() => CanvasSection.openAll = false);
   group("a refresh into a sheet", () {
     test("fills from A1; its own columns stay with their rows", () {
       var sheet = const DataSheet(id: "s", cells: [
@@ -312,6 +317,8 @@ void main() {
           find.textContaining(
               "· ${footballData.shortLabel.isEmpty ? footballData.label : footballData.shortLabel}"),
           findsWidgets);
+      await tester.ensureVisible(find.byKey(const ValueKey("sheetSourceEdit")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("sheetSourceEdit")));
       await tester.pumpAndSettle();
       expect(
@@ -319,6 +326,9 @@ void main() {
           "Edit connection");
       expect(step(tester), startsWith("Step 2 of 4"));
       await tester.tap(find.byKey(const ValueKey("connectCancel")));
+      await tester.pumpAndSettle();
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("sheetSourceDisconnect")));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("sheetSourceDisconnect")));
       await tester.pumpAndSettle();
