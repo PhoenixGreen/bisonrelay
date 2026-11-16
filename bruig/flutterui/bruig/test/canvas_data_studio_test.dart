@@ -168,8 +168,11 @@ void main() {
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
       await tester.pump();
       expect(
-          tester.widget<Text>(find.byKey(const ValueKey("dataStudioSum"))).data,
-          "84");
+          tester
+              .widget<Text>(find.byKey(const ValueKey("dataStudioSum")))
+              .textSpan!
+              .toPlainText(),
+          "Sum 84");
       // The formula bar writes the anchor.
       await tester.enterText(
           find.byKey(const ValueKey("dataStudioFormula")), "45");
@@ -207,6 +210,9 @@ void main() {
           const Offset(
               dataHeaderWidth + dataColumnWidth * 1.5, dataRowHeight / 2));
       await tester.pump();
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("dataStudioFormat")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("dataStudioFormat")));
       await tester.pumpAndSettle();
       await tester.tap(find.text(r"Money $").last);
@@ -403,35 +409,82 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Ken, 2026-11-16: the Sheet tab's side panel is about the sheet; what a
+    // table or chart looks like is the Table and Charts tabs'.
     testWidgets(
-        "the side: one scroll; + Table, + Chart and Remove above the views; "
-        "no table cells", (tester) async {
+        "the side is the sheet's: its data, itself, the selection, what is "
+        "made from it", (tester) async {
       await studio(tester);
-      // Nothing pinned: the preview scrolls away with the rest.
+      double top(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
+      // In that order, one scroll, no view's own settings.
+      expect(
+          top("dataStudioConnectData"), lessThan(top("dataStudioSheetName")));
+      expect(top("dataStudioSheetName"), lessThan(top("dataStudioSum")));
+      expect(top("dataStudioFormat"), lessThan(top("dataStudioAddTable")));
+      expect(top("dataStudioAddTable"), lessThan(top("dataStudioView-c1")));
+      expect(find.byKey(const ValueKey("dataView")), findsNothing);
       expect(
           find.descendant(
               of: find.byKey(const ValueKey("dataStudioSide")),
-              matching: find.byKey(const ValueKey("dataStudioPreview"))),
+              matching: find.byKey(const ValueKey("dataStudioRemoveView"))),
           findsOneWidget);
-      double top(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
-      expect(top("dataStudioAddTable"), lessThan(top("dataStudioView-c1")));
-      expect(top("dataStudioRemoveView"), lessThan(top("dataStudioView-c1")));
-      // Sort, Undo and Redo on the row below the bar, with the formula.
+      // Sort, Undo and Redo on the row below the bar, with the formula; the
+      // bar itself the tabs and Done.
       double middle(String key) =>
           tester.getCenter(find.byKey(ValueKey(key))).dy;
       expect(
           middle("dataStudioSortUp"), closeTo(middle("dataStudioFormula"), 4),
           reason: "same row");
       expect(top("dataStudioUndo"), greaterThan(top("dataStudioDone")));
-      // The table picked: its settings, but not its cells (the grid is
-      // them, bigger).
-      await tester.tap(find.byKey(const ValueKey("dataStudioView-t1")));
+      expect(middle("dataStudioConnectData"),
+          greaterThan(middle("dataStudioFormula")),
+          reason: "Connect data is in the side panel now");
+
+      Future<void> tap(String key) async {
+        var at = find.byKey(ValueKey(key));
+        await tester.ensureVisible(at);
+        await tester.pumpAndSettle();
+        await tester.tap(at);
+        await tester.pumpAndSettle();
+      }
+
+      // Renamed, and sized, from This sheet.
+      await tester.enterText(
+          find.byKey(const ValueKey("dataStudioSheetName")), "League");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("dataView")), findsOneWidget);
-      expect(find.byKey(const ValueKey("expander-tableCells")), findsNothing);
+      expect(sheet().name, "League");
+      await tester.enterText(
+          find.byKey(const ValueKey("dataStudioSheetRows")), "60");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(sheet().gridRows, 60);
+      // The table picked: pointed at the selection instead, then off to the
+      // Table tab to be designed.
+      await tap("dataStudioView-t1");
+      await tester.tapAt(cellAt(tester, 0, 0));
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shift);
+      for (var i = 0; i < 2; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
+      await tester.pump();
+      await tap("dataStudioUseSelection");
+      expect(table().sheet!.range, const CellRange(0, 0, 2, 1));
+      expect(table().rows, [
+        ["Club", "W"],
+        ["Arsenal", "14"],
+        ["Liverpool", "13"]
+      ]);
+      await tap("dataStudioDesign");
+      expect(
+          find.byKey(const ValueKey("dataStudioTableDesign")), findsOneWidget);
+      await tap("dataStudioTab-sheet");
       // Taken off the canvas, and undone.
-      await tester.tap(find.byKey(const ValueKey("dataStudioRemoveView")));
-      await tester.pumpAndSettle();
+      await tap("dataStudioView-t1");
+      await tap("dataStudioRemoveView");
       expect(c.document.elementById("t1"), isNull);
       expect(find.byKey(const ValueKey("dataStudioView-t1")), findsNothing);
       c.undo();
@@ -453,11 +506,8 @@ void main() {
       });
     }
 
-    testWidgets("sheets added and named; the picked view's own settings",
-        (tester) async {
+    testWidgets("sheets added, named and taken out again", (tester) async {
       await studio(tester);
-      expect(find.byKey(const ValueKey("dataView")), findsOneWidget,
-          reason: "the chart's settings, as on the canvas");
       expect(find.byKey(const ValueKey("dataStudioImport")), findsOneWidget);
       expect(find.byKey(const ValueKey("dataStudioExport")), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("dataStudioAddSheet")));

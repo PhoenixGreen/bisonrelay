@@ -30,6 +30,16 @@ extension CanvasDataViews on CanvasController {
     replaceElement(withLink(e, _linkFor(e, SheetLink(id, sheet.used))));
   }
 
+  /// showRange points Data element [e] at [range] of the sheet it shows,
+  /// as a new view of that range would be: which rows it shows and how
+  /// they are ordered start again, since its columns are no longer the
+  /// ones they named.
+  void showRange(CanvasElement e, CellRange range) {
+    var link = linkOf(e);
+    if (link == null || !isDataView(e)) return;
+    replaceElement(withLink(e, _linkFor(e, SheetLink(link.sheet, range))));
+  }
+
   /// _linkFor is [link] as [e] views it: for a chart, which columns label
   /// it and which it draws.
   SheetLink _linkFor(CanvasElement e, SheetLink link) {

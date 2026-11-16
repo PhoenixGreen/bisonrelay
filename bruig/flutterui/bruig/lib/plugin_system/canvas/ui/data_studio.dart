@@ -9,20 +9,16 @@ import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
-import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_grid.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_table_design.dart';
-import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/data_view_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // data_studio.dart is the Data Studio (Ken, 2026-11-15: Table and Chart made
 // one Data element, built in "a full screen studio mode ... more inline with
@@ -526,59 +522,24 @@ class _DataStudioState extends State<DataStudio> {
         gap(8),
         // The sheet's name is on its tab under the grid; on the other tabs,
         // here, since they have no tabs of sheets.
-        if (_tab != DataStudioTab.sheet)
-          Flexible(
-            child: Text(s.name,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
-          ),
+        // The rest of the bar is the sheet's name there, so Done is at the
+        // right.
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            reverse: true,
-            child: Row(children: [
-              // Undo and Redo are on the row below on the Sheet tab.
-              if (_tab != DataStudioTab.sheet) ..._undoRedo(),
-              if (_tab == DataStudioTab.sheet) ...[
-                StudioPill(
-                    key: const ValueKey("dataStudioConnectData"),
-                    label: "Connect data",
-                    tooltip: "Fill this sheet from a web address or a file, "
-                        "and refresh it",
-                    onTap: () => setState(() {
-                          _connecting = true;
-                          _editingSource = false;
-                        })),
-                gap(),
-                StudioPill(
-                    key: const ValueKey("dataStudioImport"),
-                    label: "Import",
-                    tooltip: "Sheets from a CSV, XLSX or ODS file: values and "
-                        "formulas",
-                    onTap: _import),
-                gap(),
-                StudioPill(
-                    key: const ValueKey("dataStudioExport"),
-                    label: "Export CSV",
-                    tooltip: "This sheet as a CSV file, as it shows",
-                    onTap: () => _export(s)),
-                gap(12),
-                StudioPill(
-                    key: const ValueKey("dataStudioPaper"),
-                    label: _paper ? "Sheet: Paper" : "Sheet: Theme",
-                    tooltip: "The sheet on paper, as in Calc, or in the app's "
-                        "colours",
-                    onTap: () => setState(() => _paper = !_paper)),
-              ],
-              gap(12),
-              StudioPill(
-                  key: const ValueKey("dataStudioDone"),
-                  label: "Done",
-                  filled: true,
-                  onTap: widget.onDone),
-            ]),
-          ),
+          child: _tab == DataStudioTab.sheet
+              ? const SizedBox.shrink()
+              : Text(s.name,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
         ),
+        // Undo and Redo are on the row below on the Sheet tab.
+        if (_tab != DataStudioTab.sheet) ..._undoRedo(),
+        gap(12),
+        StudioPill(
+            key: const ValueKey("dataStudioDone"),
+            label: "Done",
+            filled: true,
+            onTap: widget.onDone),
       ]),
     );
   }
@@ -613,7 +574,6 @@ class _DataStudioState extends State<DataStudio> {
               borderRadius: BorderRadius.circular(6),
               borderSide: BorderSide(color: colors.outlineVariant)),
         );
-    var format = s.formatAt(_sel.ar, _sel.ac);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       // The tools scroll sideways where the window is short of room (a big
@@ -643,68 +603,6 @@ class _DataStudioState extends State<DataStudio> {
                     icon: Icons.arrow_downward,
                     tooltip: "Largest first",
                     onTap: () => _sort(descending: true)),
-                const SizedBox(width: 12),
-                // How the selection's numbers are written (Calc's Number Format).
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    key: const ValueKey("dataStudioFormat"),
-                    value: _formatKey(format),
-                    isDense: true,
-                    style: TextStyle(fontSize: 13, color: colors.onSurface),
-                    dropdownColor: colors.surfaceContainerHigh,
-                    items: [
-                      for (var (k, label) in _formatChoices)
-                        DropdownMenuItem(value: k, child: Text(label)),
-                    ],
-                    onChanged: (k) {
-                      if (k != null) _setFormat(s, _formatFor(k, format));
-                    },
-                  ),
-                ),
-                const SizedBox(width: 6),
-                StudioPill(
-                    key: const ValueKey("dataStudioFewer"),
-                    label: ".0−",
-                    tooltip: "Fewer decimals",
-                    onTap: () => _setFormat(
-                        s,
-                        (format ?? const CellFormat(CellFormatKind.general))
-                            .copyWith(
-                                decimals:
-                                    math.max(0, (format?.places ?? 0) - 1)))),
-                const SizedBox(width: 4),
-                StudioPill(
-                    key: const ValueKey("dataStudioMore"),
-                    label: ".00+",
-                    tooltip: "More decimals",
-                    onTap: () => _setFormat(
-                        s,
-                        (format ?? const CellFormat(CellFormatKind.general))
-                            .copyWith(
-                                decimals:
-                                    math.min(10, (format?.places ?? 0) + 1)))),
-                const SizedBox(width: 12),
-                // Calc's conditional formatting: bars, scales and highlights over
-                // the selection, drawn by the tables showing it.
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    key: const ValueKey("dataStudioRules"),
-                    value: null,
-                    isDense: true,
-                    hint: Text("Colour rules",
-                        style:
-                            TextStyle(fontSize: 13, color: colors.onSurface)),
-                    style: TextStyle(fontSize: 13, color: colors.onSurface),
-                    dropdownColor: colors.surfaceContainerHigh,
-                    items: [
-                      for (var (k, label) in _ruleChoices)
-                        DropdownMenuItem(value: k, child: Text(label)),
-                    ],
-                    onChanged: (k) {
-                      if (k != null) _setRule(s, k);
-                    },
-                  ),
-                ),
               ]),
             ),
           ),
@@ -944,128 +842,150 @@ class _DataStudioState extends State<DataStudio> {
     );
   }
 
+  /// _side is the Sheet tab's side panel: all about the sheet (Ken,
+  /// 2026-11-16: what a table or chart looks like is the Table and Charts
+  /// tabs'). Where its cells come from; the sheet itself; the cells picked;
+  /// and what on the canvas is made from it. One scroll, nothing pinned.
   Widget _side(BuildContext context, DataSheet s, CanvasElement? picked) {
     final colors = ThemeNotifier.of(context).colors;
-    var views = _views;
-    String nameOf(CanvasElement v) => v.name.isEmpty ? v.kind.label : v.name;
-    // One scroll, nothing held at the top (Ken, 2026-11-16: the preview
-    // pinned there made the settings under it hard to get through).
+    Widget part(List<Widget> children) => Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: children),
+        );
+    Widget hint(String text) => Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(text,
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+        );
+    Widget rule() => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+        );
     return Container(
       color: colors.surfaceContainerLow,
       child: SingleChildScrollView(
         key: const ValueKey("dataStudioSide"),
-        padding: const EdgeInsets.only(bottom: 24),
+        padding: const EdgeInsets.only(top: 4, bottom: 24),
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (s.source.on)
-            SheetSourceCard(
-              controller: c,
-              sheet: s,
-              onEdit: () => setState(() {
-                _connecting = true;
-                _editingSource = true;
-              }),
-              onRefreshed: _flashCells,
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
-            child: const StudioLabel("What the canvas shows"),
-          ),
-          // Put down from the selection, or the picked one taken off.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-            child: Wrap(spacing: 4, runSpacing: 4, children: [
-              StudioPill(
-                  key: const ValueKey("dataStudioAddTable"),
-                  label: "Table",
-                  icon: Icons.add,
-                  tooltip: "A table of the selection on the canvas",
-                  onTap: () => _addView(ElementKind.table)),
-              StudioPill(
-                  key: const ValueKey("dataStudioAddChart"),
-                  label: "Chart",
-                  icon: Icons.add,
-                  tooltip: "A chart of the selection on the canvas",
-                  onTap: () => _addView(ElementKind.chart)),
-              StudioPill(
-                  key: const ValueKey("dataStudioRemoveView"),
-                  label: "Remove",
-                  icon: Icons.remove,
-                  tooltip: picked == null
-                      ? "Nothing to take off the canvas"
-                      : "Take ${nameOf(picked)} off the canvas",
-                  onTap: picked == null
-                      ? null
-                      : () {
-                          var name = nameOf(picked);
-                          c.removeDataView(picked.id);
-                          setState(() => _view = null);
-                          _say("$name is off the canvas.");
-                        }),
-            ]),
-          ),
-          if (views.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-              child: Wrap(spacing: 4, runSpacing: 4, children: [
-                for (var v in views)
-                  StudioPill(
-                    key: ValueKey("dataStudioView-${v.id}"),
-                    label: "${v is ChartElement ? "Chart" : "Table"} · "
-                        "${nameOf(v)} · ${linkOf(v)!.range.a1}",
-                    selected: v.id == picked?.id,
-                    onTap: () => setState(() => _view = v.id),
-                  ),
+          // Where its cells come from.
+          part([
+            const StudioLabel("Its data"),
+            if (s.source.on)
+              SheetSourceCard(
+                controller: c,
+                sheet: s,
+                onEdit: () => setState(() {
+                  _connecting = true;
+                  _editingSource = true;
+                }),
+                onRefreshed: _flashCells,
+              )
+            else ...[
+              Wrap(spacing: 4, runSpacing: 4, children: [
+                StudioPill(
+                    key: const ValueKey("dataStudioConnectData"),
+                    label: "Connect data",
+                    icon: Icons.link,
+                    tooltip: "Fill this sheet from a web address or a file, "
+                        "and refresh it",
+                    onTap: () => setState(() {
+                          _connecting = true;
+                          _editingSource = false;
+                        })),
+                StudioPill(
+                    key: const ValueKey("dataStudioImport"),
+                    label: "Import",
+                    icon: Icons.file_open_outlined,
+                    tooltip: "Sheets from a CSV, XLSX or ODS file: values "
+                        "and formulas",
+                    onTap: _import),
               ]),
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: SizedBox(
-              height: 190,
-              child: picked == null
-                  ? Center(
-                      child: Text(
-                          "Nothing on the canvas shows this sheet. Select "
-                          "cells and press + Table or + Chart.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: colors.onSurfaceVariant)))
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: CustomPaint(
-                        key: const ValueKey("dataStudioPreview"),
-                        painter: _ViewPreview(
-                            picked, c.document.background.spec.background),
-                        size: Size.infinite,
-                      ),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-          if (picked != null)
-            Padding(
-              key: ValueKey("dataStudioSettings-${picked.id}"),
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              // The sheet is the main area: its table's own cells aren't
-              // repeated here.
-              child: InDataStudio(
-                child: Builder(
-                  builder: (context) => CanvasControlScope(
-                    maxWidth: 340,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: elementSettings(context, c, picked),
-                    ),
+              hint("Typed in here. Connect it to a web address or a file "
+                  "and it can be refreshed."),
+            ],
+          ]),
+          rule(),
+          // The sheet itself.
+          part([
+            const StudioLabel("This sheet"),
+            _Box(
+                key: const ValueKey("dataStudioSheetName"),
+                text: s.name,
+                hint: "Its name",
+                onCommit: (v) {
+                  if (v.trim().isNotEmpty) c.renameSheet(s.id, v.trim());
+                }),
+            const SizedBox(height: 8),
+            // Wrapping onto a second line at a large text size.
+            Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 64,
+                    child: _Box(
+                        key: const ValueKey("dataStudioSheetRows"),
+                        text: "${s.shownRows}",
+                        digits: true,
+                        onCommit: (v) {
+                          var n = int.tryParse(v);
+                          if (n != null && n > 0 && n != s.shownRows) {
+                            _resize(n, s.shownColumns);
+                          }
+                        }),
                   ),
-                ),
-              ),
-            ),
+                  Text("rows by",
+                      style: TextStyle(
+                          fontSize: 12.5, color: colors.onSurfaceVariant)),
+                  SizedBox(
+                    width: 64,
+                    child: _Box(
+                        key: const ValueKey("dataStudioSheetColumns"),
+                        text: "${s.shownColumns}",
+                        digits: true,
+                        onCommit: (v) {
+                          var n = int.tryParse(v);
+                          if (n != null && n > 0 && n != s.shownColumns) {
+                            _resize(s.shownRows, n);
+                          }
+                        }),
+                  ),
+                  Text("columns",
+                      style: TextStyle(
+                          fontSize: 12.5, color: colors.onSurfaceVariant)),
+                ]),
+            StudioPills<bool>(
+                id: "dataStudioLook",
+                label: "Shown",
+                value: _paper,
+                options: const [(true, "On paper"), (false, "In the theme")],
+                onChanged: (v) => setState(() => _paper = v)),
+            const SizedBox(height: 8),
+            StudioPill(
+                key: const ValueKey("dataStudioExport"),
+                label: "Export CSV",
+                icon: Icons.download_outlined,
+                tooltip: "This sheet as a CSV file, as it shows",
+                onTap: () => _export(s)),
+          ]),
+          rule(),
+          // The cells picked.
+          part(_selection(context, s)),
+          rule(),
+          // What on the canvas is made from it.
+          part(_madeFrom(context, s, picked)),
         ]),
       ),
     );
   }
 
-  Widget _status(BuildContext context, DataSheet s) {
+  /// _selection is the Selection part of the side panel: what the cells
+  /// picked add up to, and how they are written -- their number format and
+  /// colour rules (Calc's Format Cells and Conditional Formatting).
+  List<Widget> _selection(BuildContext context, DataSheet s) {
     final colors = ThemeNotifier.of(context).colors;
     var g = _used(_sel.range);
     var numbers = <double>[];
@@ -1080,6 +1000,224 @@ class _DataStudioState extends State<DataStudio> {
     }
     var sum = numbers.fold(0.0, (a, b) => a + b);
     String n(double v) => numText(double.parse(v.toStringAsFixed(6)));
+    TextStyle st([bool strong = false]) => TextStyle(
+        fontSize: 12.5,
+        fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
+        color: strong ? colors.onSurface : colors.onSurfaceVariant,
+        fontFeatures: const [FontFeature.tabularFigures()]);
+    var format = s.formatAt(_sel.ar, _sel.ac);
+    CellFormat stepped(int by) =>
+        (format ?? const CellFormat(CellFormatKind.general))
+            .copyWith(decimals: ((format?.places ?? 0) + by).clamp(0, 10));
+    Widget menu<T>(Key key, T? value, List<(T, String)> options,
+            ValueChanged<T> onChanged,
+            {String? hint}) =>
+        Container(
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+              color: colors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(6)),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              key: key,
+              value: value,
+              isDense: true,
+              isExpanded: true,
+              hint: hint == null
+                  ? null
+                  : Text(hint,
+                      style:
+                          TextStyle(fontSize: 12.5, color: colors.onSurface)),
+              style: TextStyle(fontSize: 12.5, color: colors.onSurface),
+              dropdownColor: colors.surfaceContainerHigh,
+              items: [
+                for (var (v, label) in options)
+                  DropdownMenuItem(value: v, child: Text(label)),
+              ],
+              onChanged: (v) {
+                if (v != null) onChanged(v);
+              },
+            ),
+          ),
+        );
+    return [
+      StudioLabel("Selection · ${_sel.range.a1}"),
+      Wrap(spacing: 14, runSpacing: 2, children: [
+        Text.rich(
+            TextSpan(children: [
+              TextSpan(text: "Sum ", style: st()),
+              TextSpan(text: numbers.isEmpty ? "–" : n(sum), style: st(true)),
+            ]),
+            key: const ValueKey("dataStudioSum")),
+        Text.rich(TextSpan(children: [
+          TextSpan(text: "Average ", style: st()),
+          TextSpan(
+              text: numbers.isEmpty ? "–" : n(sum / numbers.length),
+              style: st(true)),
+        ])),
+        Text.rich(TextSpan(children: [
+          TextSpan(text: "Count ", style: st()),
+          TextSpan(text: "$count", style: st(true)),
+        ])),
+      ]),
+      const SizedBox(height: 8),
+      // How its numbers are written (Calc's Number Format).
+      Row(children: [
+        Expanded(
+          child: menu<String>(const ValueKey("dataStudioFormat"),
+              _formatKey(format), _formatChoices, (k) {
+            _setFormat(s, _formatFor(k, format));
+          }),
+        ),
+        const SizedBox(width: 6),
+        StudioPill(
+            key: const ValueKey("dataStudioFewer"),
+            label: ".0−",
+            tooltip: "Fewer decimals",
+            onTap: () => _setFormat(s, stepped(-1))),
+        const SizedBox(width: 4),
+        StudioPill(
+            key: const ValueKey("dataStudioMore"),
+            label: ".00+",
+            tooltip: "More decimals",
+            onTap: () => _setFormat(s, stepped(1))),
+      ]),
+      const SizedBox(height: 6),
+      // Bars, scales and highlights over it, drawn by the tables showing it.
+      menu<String>(const ValueKey("dataStudioRules"), null, _ruleChoices,
+          (k) => _setRule(s, k),
+          hint: "Colour rules…"),
+    ];
+  }
+
+  /// _madeFrom is the side panel's list of what on the canvas shows the
+  /// sheet: a table or chart put down from the selection, one taken off;
+  /// each with the range it reads, pointed at the selection instead, or
+  /// opened in its tab to be designed.
+  List<Widget> _madeFrom(
+      BuildContext context, DataSheet s, CanvasElement? picked) {
+    final colors = ThemeNotifier.of(context).colors;
+    var views = _views;
+    String nameOf(CanvasElement v) => v.name.isEmpty ? v.kind.label : v.name;
+    return [
+      const StudioLabel("Made from this sheet"),
+      Wrap(spacing: 4, runSpacing: 4, children: [
+        StudioPill(
+            key: const ValueKey("dataStudioAddTable"),
+            label: "Table",
+            icon: Icons.add,
+            tooltip: "A table of the selection on the canvas",
+            onTap: () => _addView(ElementKind.table)),
+        StudioPill(
+            key: const ValueKey("dataStudioAddChart"),
+            label: "Chart",
+            icon: Icons.add,
+            tooltip: "A chart of the selection on the canvas",
+            onTap: () => _addView(ElementKind.chart)),
+        StudioPill(
+            key: const ValueKey("dataStudioRemoveView"),
+            label: "Remove",
+            icon: Icons.remove,
+            tooltip: picked == null
+                ? "Nothing to take off the canvas"
+                : "Take ${nameOf(picked)} off the canvas",
+            onTap: picked == null
+                ? null
+                : () {
+                    var name = nameOf(picked);
+                    c.removeDataView(picked.id);
+                    setState(() => _view = null);
+                    _say("$name is off the canvas.");
+                  }),
+      ]),
+      if (views.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+              "Nothing on the canvas shows this sheet yet. Select cells and "
+              "press + Table or + Chart.",
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+        ),
+      for (var v in views)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Material(
+            color: v.id == picked?.id
+                ? colors.primary.withValues(alpha: 0.12)
+                : colors.surfaceContainerHigh,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(
+                    color: v.id == picked?.id
+                        ? colors.primary
+                        : colors.outlineVariant)),
+            child: InkWell(
+              key: ValueKey("dataStudioView-${v.id}"),
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => setState(() => _view = v.id),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Icon(
+                            v is ChartElement
+                                ? Icons.bar_chart
+                                : Icons.table_chart_outlined,
+                            size: 16,
+                            color: colors.onSurfaceVariant),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(nameOf(v),
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.onSurface)),
+                        ),
+                        Text(linkOf(v)!.range.a1,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: "monospace",
+                                color: colors.onSurfaceVariant)),
+                      ]),
+                      if (v.id == picked?.id) ...[
+                        const SizedBox(height: 6),
+                        Wrap(spacing: 4, runSpacing: 4, children: [
+                          StudioPill(
+                              key: const ValueKey("dataStudioUseSelection"),
+                              label: "Use the selection",
+                              tooltip: "Show ${_forView().a1} instead",
+                              onTap: () {
+                                var range = _forView();
+                                c.showRange(v, range);
+                                _say("${nameOf(v)} shows ${range.a1}.");
+                              }),
+                          StudioPill(
+                              key: const ValueKey("dataStudioDesign"),
+                              label: "Design it",
+                              icon: Icons.arrow_forward,
+                              tooltip: v is ChartElement
+                                  ? "In the Charts tab"
+                                  : "In the Table tab",
+                              onTap: () => setState(() => _tab =
+                                  v is ChartElement
+                                      ? DataStudioTab.charts
+                                      : DataStudioTab.table)),
+                        ]),
+                      ],
+                    ]),
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  Widget _status(BuildContext context, DataSheet s) {
+    final colors = ThemeNotifier.of(context).colors;
     var using = [
       for (var v in _views)
         if (linkOf(v)!.range.overlaps(_sel.range))
@@ -1094,16 +1232,6 @@ class _DataStudioState extends State<DataStudio> {
       height: 28,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(children: [
-        Text("Sum ", style: st()),
-        Text(numbers.isEmpty ? "–" : n(sum),
-            key: const ValueKey("dataStudioSum"), style: st(true)),
-        const SizedBox(width: 18),
-        Text("Average ", style: st()),
-        Text(numbers.isEmpty ? "–" : n(sum / numbers.length), style: st(true)),
-        const SizedBox(width: 18),
-        Text("Count ", style: st()),
-        Text("$count", style: st(true)),
-        const SizedBox(width: 18),
         Expanded(
           child: Text(_said,
               overflow: TextOverflow.ellipsis,
@@ -1119,33 +1247,76 @@ class _DataStudioState extends State<DataStudio> {
   }
 }
 
-/// _ViewPreview draws a Data element as the canvas does, fitted to the box
-/// on the canvas's own ground.
-class _ViewPreview extends CustomPainter {
-  final CanvasElement e;
-  final Color ground;
-  _ViewPreview(this.e, this.ground);
+/// _Box is a small text box that writes what was typed when Enter is
+/// pressed or it is left, showing [text] again otherwise.
+class _Box extends StatefulWidget {
+  final String text;
+  final String hint;
+  final bool digits;
+  final ValueChanged<String> onCommit;
+  const _Box(
+      {required this.text,
+      required this.onCommit,
+      this.hint = "",
+      this.digits = false,
+      super.key});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = ground);
-    var w = math.max(1.0, e.width), h = math.max(1.0, e.height);
-    var scale = math.min((size.width - 16) / w, (size.height - 16) / h);
-    canvas.save();
-    canvas.translate(
-        (size.width - w * scale) / 2, (size.height - h * scale) / 2);
-    canvas.scale(scale);
-    var rect = Rect.fromLTWH(0, 0, w, h);
-    switch (e) {
-      case TableElement t:
-        paintTable(canvas, rect, t);
-      case ChartElement ch:
-        paintChart(canvas, rect, ch);
-    }
-    canvas.restore();
+  State<_Box> createState() => _BoxState();
+}
+
+class _BoxState extends State<_Box> {
+  late final TextEditingController _c =
+      TextEditingController(text: widget.text);
+  final FocusNode _f = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _f.addListener(() {
+      if (!_f.hasFocus) _commit();
+    });
   }
 
   @override
-  bool shouldRepaint(_ViewPreview old) =>
-      !identical(old.e, e) || old.ground != ground;
+  void didUpdateWidget(_Box old) {
+    super.didUpdateWidget(old);
+    if (!_f.hasFocus && _c.text != widget.text) _c.text = widget.text;
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    _f.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    if (_c.text != widget.text) widget.onCommit(_c.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    var border = OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(color: colors.outlineVariant));
+    return TextField(
+      controller: _c,
+      focusNode: _f,
+      keyboardType: widget.digits ? TextInputType.number : null,
+      inputFormatters:
+          widget.digits ? [FilteringTextInputFormatter.digitsOnly] : null,
+      textAlign: widget.digits ? TextAlign.center : TextAlign.start,
+      style: TextStyle(fontSize: 13, color: colors.onSurface),
+      decoration: InputDecoration(
+          isDense: true,
+          hintText: widget.hint,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          border: border,
+          enabledBorder: border),
+      onSubmitted: (_) => _commit(),
+    );
+  }
 }

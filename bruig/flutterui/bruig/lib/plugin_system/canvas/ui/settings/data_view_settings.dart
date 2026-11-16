@@ -14,19 +14,6 @@ import 'package:flutter/material.dart';
 // made one Data element): whether it shows its data as a table or a chart,
 // and which of the canvas's sheets it shows.
 
-/// InDataStudio marks settings shown in the Data Studio's side panel, where
-/// the sheet is in the main area: what only repeats it there (a table's
-/// own cells) is left out.
-class InDataStudio extends InheritedWidget {
-  const InDataStudio({required super.child, super.key});
-
-  static bool of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<InDataStudio>() != null;
-
-  @override
-  bool updateShouldNotify(InDataStudio old) => false;
-}
-
 /// dataViewStrip is [e]'s View and Sheet.
 Widget dataViewStrip(CanvasController controller, CanvasElement e) {
   var link = linkOf(e);

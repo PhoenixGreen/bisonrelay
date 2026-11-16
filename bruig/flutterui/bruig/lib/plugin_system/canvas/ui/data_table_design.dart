@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
@@ -10,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart'
+    show sheetColumnName;
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -765,8 +768,34 @@ class _TableDesignState extends State<TableDesign> {
             20,
             (v) =>
                 _live(t.copyWith(cellSpec: t.cellSpec.copyWith(fontSize: v)))),
+        _typeface("tableCellFont", t.cellSpec,
+            (spec) => _set(t.copyWith(cellSpec: spec))),
         _slider("Padding", t.cellPadding, 0, 40, 10,
             (v) => _live(t.copyWith(cellPadding: v))),
+        // One figure until somebody wants four: a title row often wants
+        // more above and below.
+        StudioPills<bool>(
+            id: "tablePadSides",
+            label: "Padding sides",
+            value: t.evenPadding,
+            options: const [(true, "All the same"), (false, "Each side")],
+            onChanged: (even) => _set(even
+                ? t.copyWith(evenPadding: true)
+                : t.copyWith(
+                    padTop: t.topPad,
+                    padRight: t.rightPad,
+                    padBottom: t.bottomPad,
+                    padLeft: t.leftPad))),
+        if (!t.evenPadding) ...[
+          _slider("Top", t.topPad, 0, 40, t.cellPadding,
+              (v) => _live(t.copyWith(padTop: v))),
+          _slider("Right", t.rightPad, 0, 40, t.cellPadding,
+              (v) => _live(t.copyWith(padRight: v))),
+          _slider("Bottom", t.bottomPad, 0, 40, t.cellPadding,
+              (v) => _live(t.copyWith(padBottom: v))),
+          _slider("Left", t.leftPad, 0, 40, t.cellPadding,
+              (v) => _live(t.copyWith(padLeft: v))),
+        ],
         _slider("Pictures", t.pictureScale, 0.2, 1.5, 1,
             (v) => _live(t.copyWith(pictureScale: v)),
             format: (v) => "${(v * 100).round()}%"),
@@ -800,7 +829,150 @@ class _TableDesignState extends State<TableDesign> {
             value: t.headerRow,
             options: const [(true, "Shown"), (false, "None")],
             onChanged: (v) => _set(t.copyWith(headerRow: v))),
+        StudioPills<bool>(
+            id: "tableHeaderColumn",
+            label: "Header column",
+            value: t.headerColumn,
+            options: const [(true, "Shown"), (false, "None")],
+            onChanged: (v) => _set(t.copyWith(headerColumn: v))),
+        StudioPills<bool>(
+            id: "tableOutline",
+            label: "Outline",
+            value: t.showOutline,
+            options: const [(true, "On"), (false, "Off")],
+            onChanged: (v) => _set(t.copyWith(showOutline: v))),
+        StudioPills<String>(
+            id: "tableColumns",
+            label: "Columns",
+            value: _columnSizing,
+            options: [
+              ("fit", "Fit to contents"),
+              ("even", "All the same"),
+              if (_columnSizing == "dragged") ("dragged", "As dragged"),
+            ],
+            onChanged: (v) {
+              if (v == _columnSizing || v == "dragged") return;
+              _set(t.copyWith(
+                  columnWidths: v == "fit"
+                      ? const []
+                      : List.filled(
+                          t.columnCount, 1 / math.max(1, t.columnCount))));
+            }),
+        _buttons([
+          StudioPill(
+              key: const ValueKey("tableDesignMatchCanvas"),
+              label: "Match the canvas",
+              icon: Icons.format_paint_outlined,
+              tooltip: "Colours taken from the canvas's background and "
+                  "what is on it",
+              onTap: () {
+                var d = c.document;
+                _set(tableInColours(
+                    t,
+                    canvasColours(d.background.spec.background, [
+                      for (var other in d.elements)
+                        if (other.id != t.id) other
+                    ])));
+              }),
+        ]),
+        ..._rowsShown(context),
+        const StudioLabel("Motion"),
+        StudioPills<String>(
+            id: "tableTurn",
+            label: "Arrives",
+            value: t.turn.name,
+            options: [for (var v in TableTurn.values) (v.name, v.label)],
+            onChanged: (v) => _set(t.copyWith(turn: TableTurn.fromName(v)))),
+        _hint(context,
+            "Whole, or a row or a column at a time, as it arrives on the canvas."),
       ];
+
+  /// _columnSizing is which of three states its columns are in: sized by
+  /// what is in them, all the same, or as they were dragged.
+  String get _columnSizing {
+    if (t.evenColumns) return "fit";
+    var first = t.columnWidths.first;
+    for (var w in t.columnWidths) {
+      if ((w - first).abs() > 0.001) return "dragged";
+    }
+    return "even";
+  }
+
+  /// _typeface is a dropdown of the faces for [spec].
+  Widget _typeface(String id, TextSpec spec, ValueChanged<TextSpec> set) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const StudioLabel("Typeface"),
+        _Dropdown<String>(
+            key: ValueKey(id),
+            value: spec.fontFamily,
+            options: [
+              if (!canvasFonts.contains(spec.fontFamily))
+                (spec.fontFamily, spec.fontFamily),
+              for (var f in canvasFonts) (f, f),
+            ],
+            onChanged: (f) => set(spec.copyWith(fontFamily: f))),
+      ]);
+
+  /// _rowsShown is which of its sheet's rows the table shows, and in what
+  /// order: its own, the sheet left as it is (moved here from the Sheet
+  /// tab's side panel, Ken 2026-11-16).
+  List<Widget> _rowsShown(BuildContext context) {
+    var link = linkOf(t);
+    var sheet = link == null ? null : c.sheetById(link.sheet);
+    if (link == null || sheet == null) return const [];
+    void set(SheetLink next) => _set(withLink(t, next) as TableElement);
+    var columns = [
+      for (var col = 0; col < link.range.cols; col++)
+        (col, sheetColumnName(sheet, link, col)),
+    ];
+    return [
+      const StudioLabel("Rows shown"),
+      _hint(
+          context,
+          "Which of the sheet's rows this table shows, and in what order. "
+          "The sheet isn't changed: a table can show every club while a "
+          "chart of the same sheet shows the top five."),
+      const SizedBox(height: 6),
+      const StudioLabel("In order of"),
+      _Dropdown<int>(
+          key: const ValueKey("tableRowsSort"),
+          value: link.sortBy.clamp(-1, link.range.cols - 1),
+          options: [(-1, "The sheet's own order"), ...columns],
+          onChanged: (v) => set(link.copyWith(sortBy: v))),
+      if (link.sortBy >= 0)
+        StudioPills<bool>(
+            id: "tableRowsOrder",
+            label: "",
+            value: link.descending,
+            options: const [(true, "Largest first"), (false, "Smallest first")],
+            onChanged: (v) => set(link.copyWith(descending: v))),
+      StudioPills<int>(
+          id: "tableRowsTop",
+          label: "Show",
+          value: const [0, 3, 5, 10, 20].contains(link.top) ? link.top : 0,
+          options: [
+            (0, "Every row"),
+            for (var n in const [3, 5, 10, 20])
+              (n, link.sortBy >= 0 ? "Top $n" : "First $n"),
+          ],
+          onChanged: (n) => set(link.copyWith(top: n))),
+      const StudioLabel("Only where"),
+      _Dropdown<int>(
+          key: const ValueKey("tableRowsWhere"),
+          value: link.whereColumn.clamp(-1, link.range.cols - 1),
+          options: [(-1, "Every row"), ...columns],
+          onChanged: (v) => set(link.copyWith(whereColumn: v))),
+      if (link.whereColumn >= 0) ...[
+        const SizedBox(height: 6),
+        _TextBox(
+            key: const ValueKey("tableRowsIs"),
+            text: link.where,
+            hint: "is: >5, Arsenal, <>0",
+            onChanged: (v) =>
+                _live(withLink(t, link.copyWith(where: v)) as TableElement)),
+      ],
+    ];
+  }
 
   List<Widget> _headerPanel(BuildContext context) => [
         _swatches("tableHeaderFill", "Fill", t.headerFill,
@@ -827,6 +999,8 @@ class _TableDesignState extends State<TableDesign> {
             options: const [(300, "Light"), (400, "Regular"), (700, "Bold")],
             onChanged: (v) =>
                 _set(t.copyWith(headerSpec: t.headerSpec.copyWith(weight: v)))),
+        _typeface("tableHeaderFont", t.headerSpec,
+            (spec) => _set(t.copyWith(headerSpec: spec))),
         _slider("Height", t.headerHeightRatio, 0.5, 3, 1.15,
             (v) => _live(t.copyWith(headerHeightRatio: v)),
             format: (v) => "${v.toStringAsFixed(2)}×"),

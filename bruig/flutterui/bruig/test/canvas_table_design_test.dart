@@ -367,6 +367,75 @@ void main() {
       expect(table().cornerRadius, before);
     });
 
+    // Ken, 2026-11-16: everything about the table is in this tab, moved
+    // from the Sheet tab's side panel -- its rows and their order, its
+    // header column, outline, columns, typefaces, padding by side, its
+    // colours from the canvas, and how it arrives.
+    testWidgets("the table's settings moved here: each one does something",
+        (tester) async {
+      await studio(tester);
+      Future<void> tap(String key) async {
+        var f = find.byKey(ValueKey(key));
+        await tester.ensureVisible(f);
+        await tester.pumpAndSettle();
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> pick(String key, String choice) async {
+        await tap(key);
+        await tester.tap(find.text(choice).last);
+        await tester.pumpAndSettle();
+      }
+
+      // Its rows: by points, the top three, only where W is over 12.
+      await pick("tableRowsSort", "Pts (E)");
+      expect(table().sheet!.sortBy, 4);
+      await tap("studioPill-tableRowsOrder-false");
+      expect(table().sheet!.descending, isFalse);
+      await tap("studioPill-tableRowsTop-3");
+      expect(table().sheet!.top, 3);
+      expect(table().rows.skip(1).map((r) => r[0]),
+          ["Chelsea", "Liverpool", "Arsenal"]);
+      await pick("tableRowsWhere", "W (B)");
+      await tester.enterText(find.byKey(const ValueKey("tableRowsIs")), ">12");
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
+      expect(table().sheet!.where, ">12");
+      expect(table().rows.skip(1).map((r) => r[0]), ["Liverpool", "Arsenal"]);
+      expect(c.document.sheets.single.cells, hasLength(4),
+          reason: "the sheet isn't changed");
+      // The look.
+      await tap("studioPill-tableHeaderColumn-true");
+      expect(table().headerColumn, isTrue);
+      var outline = table().showOutline;
+      await tap("studioPill-tableOutline-${!outline}");
+      expect(table().showOutline, !outline);
+      await tap("studioPill-tableColumns-even");
+      expect(table().evenColumns, isFalse);
+      await tap("studioPill-tableColumns-fit");
+      expect(table().evenColumns, isTrue);
+      await pick("tableCellFont", "Georgia");
+      expect(table().cellSpec.fontFamily, "Georgia");
+      await tap("studioPill-tablePadSides-false");
+      expect(table().evenPadding, isFalse);
+      expect(find.byKey(const ValueKey("tableSlider-Top")), findsOneWidget);
+      await tap("studioPill-tablePadSides-true");
+      expect(table().evenPadding, isTrue);
+      var before = jsonEncode(table().toJson());
+      await tap("tableDesignMatchCanvas");
+      expect(jsonEncode(table().toJson()), isNot(before),
+          reason: "its colours taken from the canvas");
+      // How it arrives.
+      await tap("studioPill-tableTurn-rows");
+      expect(table().turn, TableTurn.rows);
+      // The header's typeface, from the header picked.
+      await tester.tapAt(at(tester, 0, -1));
+      await tester.pumpAndSettle();
+      await pick("tableHeaderFont", "Oswald");
+      expect(table().headerSpec.fontFamily, "Oswald");
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("New style by pointing: a team's row that goes with it",
         (tester) async {
       await studio(tester);
