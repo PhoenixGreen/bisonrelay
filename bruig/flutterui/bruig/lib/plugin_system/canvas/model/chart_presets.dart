@@ -818,7 +818,80 @@ final chartKinds = _withWays(<ChartKind>[
             (e, p) => _mode(e, "butterfly", values: true, grow: true)),
       ],
       isNew: true),
+  // The kinds analysis needs (Ken, 2026-11-17, the improvements report's
+  // ninth item): chart_analysis.dart.
+  ChartKind(
+      ChartType.boxPlot,
+      "Box plot",
+      "How each column's numbers spread: middle, middle half, the odd ones.",
+      [ChartQuestion.distribution],
+      _allNumbers,
+      "a column of numbers for each group",
+      [
+        ChartPreset(
+            "Box and whiskers",
+            "The middle half as a box, its median marked, odd ones as dots.",
+            [_a],
+            (e, p) => _mode(e, "box", values: true, grow: true)),
+        ChartPreset("Violin", "The spread's shape, mirrored.", [_a, _i],
+            (e, p) => _mode(e, "violin", grow: true)),
+        ChartPreset("Every value", "Each value a dot over a faint box.",
+            [_a, _i], (e, p) => _mode(e, "dots", pop: true)),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.bump,
+      "Bump chart",
+      "Who is where, period after period: places, not values.",
+      [ChartQuestion.ranking, ChartQuestion.time],
+      _bumpReads,
+      "a date column and a column of numbers for each one",
+      [
+        ChartPreset(
+            "Ranked by value",
+            "Each period's largest at the top, a line each through its places.",
+            [_a, _i],
+            (e, p) => _mode(e, "values")),
+        ChartPreset(
+            "Places as given",
+            "The numbers are already places, 1 the top.",
+            [_a],
+            (e, p) => _mode(e, "places")),
+        ChartPreset(
+            "Drawn on",
+            "The lines trace along the periods.",
+            [_v],
+            (e, p) => _mode(e, "values")
+                .copyWith(animation: _arrive(ChartAnimationPreset.drawOn)),
+            plays: true),
+      ],
+      isNew: true),
+  ChartKind(
+      ChartType.marimekko,
+      "Marimekko",
+      "Each row's parts, each row as wide as its total.",
+      [ChartQuestion.part, ChartQuestion.magnitude],
+      _allNumbers,
+      "two or more columns of numbers",
+      [
+        ChartPreset(
+            "Shares by size",
+            "Widths by total, heights by share, % inside.",
+            [_a, _i],
+            (e, p) => _mode(e, "", values: true, grow: true),
+            needs: _needsTwoNumbers),
+        ChartPreset("With a key", "The parts named in a key above.", [_a],
+            (e, p) => _mode(e, "", grow: true).copyWith(showLegend: true),
+            needs: _needsTwoNumbers),
+      ],
+      isNew: true),
 ]);
+
+/// _bumpReads is a bump chart's: the periods down a date column, a column
+/// of numbers for each one ranked.
+SheetLink? _bumpReads(Picks p) => p.dates.isEmpty || p.numbers.length < 2
+    ? null
+    : p.link(p.dates.first, p.numbers.take(10).toList());
 
 SheetLink? _twoNumbers(Picks p) =>
     p.numbers.length < 2 ? null : p.link(p.labels, p.numbers.take(2).toList());
@@ -1434,6 +1507,37 @@ ChartElement _way(ChartElement e, String m) =>
 /// _waysOf is the starting designs the older kinds gained with their other
 /// ways (Ken, 2026-11-17: "do the remaining designs"), after their own.
 final Map<ChartType, List<ChartPreset>> _waysOf = {
+  // The analysis ways (Ken, 2026-11-17, the improvements report's ninth
+  // item).
+  ChartType.area: [
+    ChartPreset(
+        "Shares of the whole",
+        "Each band its share, stacked to a hundred: how the mix changes.",
+        [_a],
+        (e, p) => _way(_plain(e), "share").copyWith(
+            showLegend: true, animation: _arrive(ChartAnimationPreset.wipe)),
+        needs: _needsTwoNumbers),
+  ],
+  ChartType.scatter: [
+    ChartPreset(
+        "Sized by a third number",
+        "A bubble each, as big as its third number: spend, points and crowd.",
+        [_a, _i],
+        (e, p) => _relink(_way(_scatterNamed(e, p), "sized"),
+            (l) => l.copyWith(series: [p.numbers[1], p.numbers[2]])),
+        needs: (p) =>
+            p.numbers.length < 3 ? "a third column of numbers" : null),
+    ChartPreset(
+        "Over time, joined",
+        "The points joined in date order, each named by its date.",
+        [_a, _v],
+        (e, p) => _relink(
+            _scatterNamed(e, p).copyWith(
+                design: const ChartDesign(connect: true),
+                animation: _arrive(ChartAnimationPreset.drawOn)),
+            (l) => l.copyWith(pointNames: p.dates.first)),
+        needs: (p) => p.dates.isEmpty ? "a date column" : null),
+  ],
   ChartType.bar: [
     ChartPreset(
         "Histogram",

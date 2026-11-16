@@ -39,6 +39,12 @@ const samples = {
   ChartType.parliament: "Cat\tSeats\nLeft\t202\nCentre\t72\nRight\t121",
   ChartType.tileMap: "Cat\tFans\nCA\t41\nTX\t58\nNY\t64\nFL\t30",
   ChartType.pyramid: "Cat\tHome\tAway\n65+\t6\t4\n45-64\t12\t10\n18-44\t16\t15",
+  // The analysis kinds (Ken, 2026-11-17), drawn in chart_analysis.dart.
+  ChartType.boxPlot:
+      "Cat\tHome\tAway\nA\t1\t3\nB\t2\t1\nC\t4\t2\nD\t3\t5\nE\t9\t2",
+  ChartType.bump:
+      "Cat\tArsenal\tSpurs\tChelsea\n2023\t89\t66\t63\n2024\t74\t38\t69\n2025\t79\t52\t66",
+  ChartType.marimekko: "Cat\tA\tB\nNorth\t10\t5\nSouth\t4\t8\nWest\t6\t6",
 };
 
 ChartElement chart(ChartType type, String tsv,

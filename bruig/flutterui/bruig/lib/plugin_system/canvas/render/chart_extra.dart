@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_analysis.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
@@ -40,7 +41,7 @@ void paintExtra(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     case ChartType.pyramid:
       _pyramid(canvas, area, e, reveal, mode);
     default:
-      break;
+      paintAnalysis(canvas, area, e, reveal);
   }
 }
 

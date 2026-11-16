@@ -1687,16 +1687,21 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           ..lineTo(tip.dx, plot.bottom)
           ..lineTo(drawn.first.dx, plot.bottom)
           ..close();
-        // The series' gradient, or a fade to nothing.
-        canvas.drawPath(
-            fill,
-            Paint()
-              ..shader = shader ??
-                  ui.Gradient.linear(
-                      Offset(0, plot.top), Offset(0, plot.bottom), [
-                    colour.withValues(alpha: 0.45 * alpha),
-                    colour.withValues(alpha: 0.02 * alpha),
-                  ]));
+        // Shares of the whole: solid bands, each over the next (chart_painter
+        // stacks them); else the series' gradient, or a fade to nothing.
+        if (modeOf(e.design, "area") == "share") {
+          canvas.drawPath(fill, Paint()..color = colour);
+        } else {
+          canvas.drawPath(
+              fill,
+              Paint()
+                ..shader = shader ??
+                    ui.Gradient.linear(
+                        Offset(0, plot.top), Offset(0, plot.bottom), [
+                      colour.withValues(alpha: 0.45 * alpha),
+                      colour.withValues(alpha: 0.02 * alpha),
+                    ]));
+        }
       }
       var stroke = Paint()
         ..style = PaintingStyle.stroke
@@ -1783,6 +1788,10 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             : kind == ChartType.scatter
                 ? math.max(4.5, weight * 2.4)
                 : weight * 1.4;
+        // Sized by a third number: from a small dot to six times one, a
+        // little see-through where they overlap.
+        var sized = kind == ChartType.scatter && i < data.sizes.length;
+        if (sized) radius = radius * (0.6 + 5.4 * data.sizes[i]);
         // The point colour, or the series'. Either takes the line's arrival
         // fade, so dot and line come on together.
         var dotPaint = e.data.markAt(i) ?? series.pointColorOn(e.pointColor);
@@ -1791,6 +1800,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                 alpha: dotPaint.a *
                     (colour.a / (series.color.a == 0 ? 1 : series.color.a)))
             : colour;
+        if (sized) dotColour = dotColour.withValues(alpha: dotColour.a * 0.75);
         canvas.drawCircle(
             points[i],
             radius * (swelling ? dot.clamp(0.0, 1.4) : 1),

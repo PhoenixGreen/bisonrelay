@@ -166,6 +166,14 @@ const Map<String, List<(String, String)>> chartModes = {
     ("circles", "Sized circles")
   ],
   "pyramid": [("pyramid", "Pyramid"), ("butterfly", "Butterfly")],
+  "scatter": [("dots", "Dots"), ("sized", "Sized by a third number")],
+  "area": [("filled", "Filled"), ("share", "Shares of the whole")],
+  "boxPlot": [
+    ("box", "Box and whiskers"),
+    ("violin", "Violin"),
+    ("dots", "Every value")
+  ],
+  "bump": [("values", "Ranked by value"), ("places", "Places as given")],
   // The older kinds' other ways (chart_variants.dart, and candles in
   // chart_cartesian.dart); each one's first is its own painter.
   "funnel": [

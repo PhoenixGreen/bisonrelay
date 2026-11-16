@@ -3154,7 +3154,7 @@ List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
   // A heading that is a date word itself ("Week", "Season 2025", "Year"),
   // not one that merely holds one ("Days injured").
   var dateHead = RegExp(
-      r"^\s*(date|week|wk|gameweek|matchday|month|year|yr|day|time|season|"
+      r"^\s*(date|week|wk|month|year|yr|day|time|season|"
       r"round|period|quarter|qtr)s?(\s*\d+|\s*\(.*\))?\s*$",
       caseSensitive: false);
   var monthOrDay = RegExp(
@@ -3178,7 +3178,10 @@ List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
           var whole = numbers.length == values.length &&
               numbers.every((v) => v == v.roundToDouble());
           var years = whole && numbers.every((v) => v >= 1800 && v <= 2200);
-          return whole && (dateHead.hasMatch(head) || years)
+          // A date word over years, or over small counts (weeks 1 to 38,
+          // rounds, months): not over a club's matchday income.
+          var counts = whole && numbers.every((v) => v >= 0 && v <= 60);
+          return whole && ((dateHead.hasMatch(head) && counts) || years)
               ? ColumnKind.dates
               : ColumnKind.numbers;
         }

@@ -215,7 +215,13 @@ enum ChartType {
   beeswarm("Dot spread", "Every value a dot, to show how they spread"),
   parliament("Parliament", "Seats by party in a half circle"),
   tileMap("Tile map", "A square per place, shaded by its value"),
-  pyramid("Pyramid", "Two sides mirrored, band by band");
+  pyramid("Pyramid", "Two sides mirrored, band by band"),
+
+  // The kinds analysis needs (Ken, 2026-11-17, the improvements report's
+  // ninth item). Drawn in chart_analysis.dart.
+  boxPlot("Box plot", "How each column's numbers spread"),
+  bump("Bump chart", "Places over many periods"),
+  marimekko("Marimekko", "Each row's parts, sized by its total");
 
   final String label;
   final String description;
@@ -593,6 +599,10 @@ class ChartData {
   /// (SheetLink.pointNames). Worked out, never saved.
   final List<String> pointNames;
 
+  /// sizes are each point's size, 0..1 by area, where a scatter is sized by
+  /// a third number (its "sized" way). Worked out, never saved.
+  final List<double> sizes;
+
   const ChartData({
     this.categories = const [],
     this.series = const [],
@@ -605,6 +615,7 @@ class ChartData {
     this.whole = const [],
     this.groups = const [],
     this.pointNames = const [],
+    this.sizes = const [],
   });
 
   /// pointNameAt is category [i]'s own name, or "".
@@ -634,6 +645,7 @@ class ChartData {
     List<bool>? whole,
     List<String>? groups,
     List<String>? pointNames,
+    List<double>? sizes,
   }) =>
       ChartData(
         categories: categories ?? this.categories,
@@ -647,6 +659,7 @@ class ChartData {
         whole: whole ?? this.whole,
         groups: groups ?? this.groups,
         pointNames: pointNames ?? this.pointNames,
+        sizes: sizes ?? this.sizes,
       );
 
   /// withRowRemoved takes a row out of the categories, every series and the

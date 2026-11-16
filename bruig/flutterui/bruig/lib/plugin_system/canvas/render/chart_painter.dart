@@ -33,6 +33,49 @@ import 'package:flutter/painting.dart';
 /// chartSeriesReveal) because the delay is in seconds.
 void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     {double reveal = 1, double close = 0, List<double>? seriesReveal}) {
+  // A scatter sized by a third number: its first series drawn, each point
+  // as big as the second says (by area); the second is no axis's.
+  if (e.type == ChartType.scatter &&
+      modeOf(e.design, "scatter") == "sized" &&
+      e.data.series.length > 1) {
+    var v = [
+      for (var i = 0; i < e.data.categories.length; i++)
+        e.data.valueAt(1, i).isNaN ? 0.0 : e.data.valueAt(1, i).abs()
+    ];
+    var most = v.fold(0.0, math.max);
+    e = e.copyWith(
+        data: e.data.copyWith(
+            series: [e.data.series.first],
+            sizes: [for (var x in v) most <= 0 ? 0.0 : math.sqrt(x / most)]));
+  }
+  // An area of shares of the whole: each band its running total of the
+  // shares, the largest drawn first so each smaller lies over it -- bands
+  // stacked to a hundred.
+  if (e.type == ChartType.area &&
+      modeOf(e.design, "area") == "share" &&
+      e.data.series.length > 1) {
+    var d = e.data, n = d.categories.length, k = d.series.length;
+    var totals = [
+      for (var i = 0; i < n; i++)
+        [for (var s = 0; s < k; s++) d.valueAt(s, i)]
+            .where((v) => !v.isNaN && v > 0)
+            .fold(0.0, (a, b) => a + b)
+    ];
+    var running = List.filled(n, 0.0);
+    var stacked = <ChartSeries>[];
+    for (var s = 0; s < k; s++) {
+      for (var i = 0; i < n; i++) {
+        var v = d.valueAt(s, i);
+        if (!v.isNaN && v > 0 && totals[i] > 0)
+          running[i] += v / totals[i] * 100;
+      }
+      stacked.add(d.series[s].copyWith(values: [...running]));
+    }
+    e = e.copyWith(
+        yMin: 0,
+        yMax: 100,
+        data: d.copyWith(series: stacked.reversed.toList(), named: const []));
+  }
   // A morph is the renderer's (chart_morph.dart); anywhere else -- a
   // thumbnail, the Studio -- it comes up as a fade.
   if (e.animation.preset == ChartAnimationPreset.morph) {
