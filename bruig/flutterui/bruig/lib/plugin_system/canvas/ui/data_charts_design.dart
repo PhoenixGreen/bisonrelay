@@ -1756,6 +1756,9 @@ class ChartsDesignState extends State<ChartsDesign>
             ChartNoteKind.line => "Line",
             ChartNoteKind.band => "Band",
             ChartNoteKind.label => "Label",
+            ChartNoteKind.callout => "Callout",
+            ChartNoteKind.arrow => "Arrow",
+            ChartNoteKind.bracket => "Bracket",
           },
           "A note on the chart."
         ),
@@ -2106,6 +2109,28 @@ class ChartsDesignState extends State<ChartsDesign>
                 to: math.min(3, math.max(1, e.data.categories.length)),
                 text: "Top",
                 colour: const Color(0xFF2FE08A)))),
+        // Bound to the data by name: on the largest, or between the first
+        // two by size (Ken, 2026-11-17: the report's fourth item).
+        StudioPill(
+            key: const ValueKey("chartsAddCallout"),
+            label: "+ Callout",
+            onTap: () => _addNote(ChartNote(
+                kind: ChartNoteKind.callout, who: _ranked(0), text: ""))),
+        StudioPill(
+            key: const ValueKey("chartsAddArrow"),
+            label: "+ Arrow",
+            onTap: () => _addNote(ChartNote(
+                kind: ChartNoteKind.arrow,
+                who: _ranked(0),
+                colour: const Color(0xFFFF7A59)))),
+        StudioPill(
+            key: const ValueKey("chartsAddBracket"),
+            label: "+ Bracket",
+            onTap: () => _addNote(ChartNote(
+                kind: ChartNoteKind.bracket,
+                who: _ranked(1),
+                whom: _ranked(0),
+                colour: const Color(0xFF6FA4F8)))),
       ]),
       if (l.charted)
         _hint(context,
@@ -2169,6 +2194,18 @@ class ChartsDesignState extends State<ChartsDesign>
         ],
       ];
 
+  /// _ranked is the name of the [n]th largest by the first numbers
+  /// ("" where there are not that many).
+  String _ranked(int n) {
+    var d = e.data;
+    if (d.series.isEmpty) return "";
+    var order = [
+      for (var i = 0; i < d.categories.length; i++)
+        if (d.hasValueAt(0, i)) i
+    ]..sort((a, b) => d.valueAt(0, b).compareTo(d.valueAt(0, a)));
+    return n < order.length ? d.categories[order[n]] : "";
+  }
+
   void _addNote(ChartNote note) {
     _set(e.copyWith(notes: [...e.notes, note]));
     _pick(ChartPick("note", index: e.notes.length));
@@ -2181,6 +2218,11 @@ class ChartsDesignState extends State<ChartsDesign>
           "${n.text.isEmpty ? "Band" : n.text} · places ${n.from}–${n.to}",
         ChartNoteKind.label =>
           "“${n.text.isEmpty ? n.who : n.text}” on ${n.who}",
+        ChartNoteKind.callout =>
+          "Callout on ${n.who}${n.text.isEmpty ? "" : ": “${n.text}”"}",
+        ChartNoteKind.arrow =>
+          "Arrow to ${n.who}${n.text.isEmpty ? "" : ": “${n.text}”"}",
+        ChartNoteKind.bracket => "Bracket, ${n.who} to ${n.whom}",
       };
 
   List<Widget> _notePanel(BuildContext context, int i) {
@@ -2201,6 +2243,28 @@ class ChartsDesignState extends State<ChartsDesign>
           words: wordChoices(e.data),
           reads: (t) => liveWords(e.data, t),
           onChanged: (v) => put(n.copyWith(text: v), live: true)),
+      // Which marks it is bound to, by name: it follows them.
+      if (n.kind == ChartNoteKind.callout ||
+          n.kind == ChartNoteKind.arrow ||
+          n.kind == ChartNoteKind.label ||
+          n.kind == ChartNoteKind.bracket) ...[
+        StudioLabel(n.kind == ChartNoteKind.bracket ? "From" : "On"),
+        _Menu<String>(
+            key: ValueKey("chartsNoteWho-$i"),
+            value: n.who,
+            options: [for (var c in e.data.categories) (c, c)],
+            onChanged: (v) => put(n.copyWith(who: v))),
+        if (n.kind == ChartNoteKind.bracket) ...[
+          const StudioLabel("To"),
+          _Menu<String>(
+              key: ValueKey("chartsNoteWhom-$i"),
+              value: n.whom,
+              options: [for (var c in e.data.categories) (c, c)],
+              onChanged: (v) => put(n.copyWith(whom: v))),
+          _hint(context,
+              "Says the gap between them unless it has its own words."),
+        ],
+      ],
       if (n.kind == ChartNoteKind.line) ...[
         StudioPills<bool>(
             id: "chartsNoteAt",

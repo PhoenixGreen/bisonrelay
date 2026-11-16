@@ -228,9 +228,13 @@ Set<int> _reached(ChartHighlight h, List<String> labels,
 }
 
 /// ChartNoteKind is what a note on a chart is: a line across it at a value
-/// (or the average), a band behind some places (a drop zone), or a word
-/// over one mark.
-enum ChartNoteKind { line, band, label }
+/// (or the average), a band behind some places (a drop zone), a word over
+/// one mark -- or, bound to the data by name (Ken, 2026-11-17, the
+/// improvements report's fourth item), a callout on a leader line, words
+/// with an arrow to a mark, or a bracket between two marks saying the gap.
+/// Each follows its mark when the data refreshes or re-sorts, and draws on
+/// once the chart has arrived.
+enum ChartNoteKind { line, band, label, callout, arrow, bracket }
 
 /// ChartNote is something written or drawn on a chart beside its data
 /// (prototype v5's notes): an average line, a band behind 18th to 20th, a
@@ -249,8 +253,10 @@ class ChartNote {
   /// the chart as it shows them.
   final int from, to;
 
-  /// who is the label of the mark a label is written over.
+  /// who is the label of the mark a label is written over (a callout's or
+  /// an arrow's mark; a bracket's first); [whom] a bracket's second.
   final String who;
+  final String whom;
 
   final Color colour;
   final bool off;
@@ -262,6 +268,7 @@ class ChartNote {
     this.from = 1,
     this.to = 1,
     this.who = "",
+    this.whom = "",
     this.colour = const Color(0xFFF2B33D),
     this.off = false,
   });
@@ -273,6 +280,7 @@ class ChartNote {
     int? from,
     int? to,
     String? who,
+    String? whom,
     Color? colour,
     bool? off,
   }) =>
@@ -283,6 +291,7 @@ class ChartNote {
         from: from ?? this.from,
         to: to ?? this.to,
         who: who ?? this.who,
+        whom: whom ?? this.whom,
         colour: colour ?? this.colour,
         off: off ?? this.off,
       );
@@ -294,6 +303,7 @@ class ChartNote {
         if (kind == ChartNoteKind.band) "from": from,
         if (kind == ChartNoteKind.band) "to": to,
         if (who.isNotEmpty) "who": who,
+        if (whom.isNotEmpty) "whom": whom,
         "colour": colour.toARGB32(),
         if (off) "off": true,
       };
@@ -310,6 +320,7 @@ class ChartNote {
       from: n("from", 1),
       to: n("to", 1),
       who: jsonString(j["who"], ""),
+      whom: jsonString(j["whom"], ""),
       colour: j["colour"] is int
           ? Color(j["colour"] as int)
           : const Color(0xFFF2B33D),
@@ -326,12 +337,13 @@ class ChartNote {
       other.from == from &&
       other.to == to &&
       other.who == who &&
+      other.whom == whom &&
       other.colour == colour &&
       other.off == off;
 
   @override
   int get hashCode => Object.hash(
-      kind, text, value.isNaN ? -1 : value, from, to, who, colour, off);
+      kind, text, value.isNaN ? -1 : value, from, to, who, whom, colour, off);
 }
 
 /// ChartStep is one step of a chart told in parts (prototype v6's steps):

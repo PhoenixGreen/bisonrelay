@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:flutter/painting.dart';
@@ -74,5 +75,41 @@ void main() {
     var rec = ui.PictureRecorder();
     paintChart(ui.Canvas(rec), const Rect.fromLTWH(0, 0, 300, 200), c);
     rec.endRecording().dispose();
+  });
+
+  test("notes bound by name: saved, follow a re-sort, draw on", () async {
+    const notes = [
+      ChartNote(kind: ChartNoteKind.callout, who: "B", text: "Top"),
+      ChartNote(kind: ChartNoteKind.bracket, who: "A", whom: "B"),
+    ];
+    for (var n in notes) {
+      expect(ChartNote.fromJson(n.toJson()), n);
+    }
+    ChartElement chart(String tsv, {double reveal = 1}) =>
+        ChartElement(const ElementBase(id: "c", width: 300, height: 200),
+            data: ChartData.parse(tsv), notes: notes);
+    Future<List<Rect>> parts(ChartElement c, {double reveal = 1}) async {
+      var rec = ui.PictureRecorder();
+      var found = chartParts = <ChartPart>[];
+      paintChart(ui.Canvas(rec), const Rect.fromLTWH(0, 0, 300, 200), c,
+          reveal: reveal);
+      chartParts = null;
+      rec.endRecording().dispose();
+      return [
+        for (var p in found)
+          if (p.kind == ChartPartKind.note) p.rect
+      ];
+    }
+
+    var first = await parts(chart("N\tV\nA\t3\nB\t9\nC\t5"));
+    var moved = await parts(chart("N\tV\nB\t9\nA\t3\nC\t5"));
+    expect(first, hasLength(2));
+    expect(moved.first.center.dx, lessThan(first.first.center.dx),
+        reason: "B moved to the first place; its callout with it");
+    // Arriving: the notes wait for the data, then draw on.
+    var arriving = chart("N\tV\nA\t3\nB\t9").copyWith(
+        animation: const ChartAnimation(preset: ChartAnimationPreset.grow));
+    expect(await parts(arriving, reveal: 0.3), isEmpty);
+    expect(await parts(arriving, reveal: 1), hasLength(2));
   });
 }

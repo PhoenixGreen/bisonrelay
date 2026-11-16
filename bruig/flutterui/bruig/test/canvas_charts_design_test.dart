@@ -483,6 +483,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Ken, 2026-11-17 (the improvements report's fourth item): notes bound
+  // to the data by name -- a callout, an arrow, a bracket saying the gap.
+  testWidgets("a callout, an arrow and a bracket bound to the clubs",
+      (tester) async {
+    await studio(tester);
+    for (var key in [
+      "chartsAddCallout",
+      "chartsAddArrow",
+      "chartsAddBracket"
+    ]) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      final add = find.byKey(ValueKey(key));
+      await tester.ensureVisible(add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+    }
+    var notes = chart().notes;
+    expect([for (var n in notes) n.kind],
+        [ChartNoteKind.callout, ChartNoteKind.arrow, ChartNoteKind.bracket]);
+    // On the largest by points; the bracket from the second to the first.
+    var d = chart().data;
+    var byPts = [...d.categories]..sort((a, b) => d
+        .valueAt(0, d.categories.indexOf(b))
+        .compareTo(d.valueAt(0, d.categories.indexOf(a))));
+    expect(notes[0].who, byPts.first);
+    expect((notes[2].who, notes[2].whom), (byPts[1], byPts.first));
+    expect(state(tester).parts.where((p) => p.kind == ChartPartKind.note),
+        hasLength(3),
+        reason: "each drawn, and found where it was drawn");
+    // The bracket picked: its two clubs chosen by name.
+    expect(find.byKey(const ValueKey("chartsNoteWhom-2")), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("notes added and changed; a club picked out everywhere",
       (tester) async {
     await studio(tester);

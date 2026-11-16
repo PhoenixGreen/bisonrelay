@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_infographic.dart'
+    show inkOn;
 import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
@@ -415,7 +417,10 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     _lines(canvas, plot, range, e, lines, reveal, seriesReveal);
   }
   _lineNames(canvas, plot, range, e);
-  _notes(canvas, plot, range, e, horizontal, behind: false);
+  // Notes bound to the data draw on once the data has arrived.
+  _notes(canvas, plot, range, e, horizontal,
+      behind: false,
+      arrived: e.animation.on ? ((reveal - 0.6) / 0.4).clamp(0.0, 1.0) : 1.0);
 }
 
 /// _lineNames writes the names of the lines picked to be named
@@ -468,7 +473,7 @@ void _lineNames(
 /// across the plot at a value or the average, and its words over a mark.
 void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     bool horizontal,
-    {required bool behind}) {
+    {required bool behind, double arrived = 1}) {
   var data = e.data;
   var n = data.categories.length;
   if (n == 0 || e.notes.isEmpty) return;
@@ -488,6 +493,34 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 
   String number(double v) =>
       v == v.roundToDouble() ? "${v.round()}" : v.toStringAsFixed(1);
+
+  // Where a named mark is: the end of its bar, its point -- found by name,
+  // so a note follows it through a re-sort, a refresh or a race.
+  Offset? anchorOf(String who) {
+    var i = data.categories.indexOf(who);
+    if (i < 0 || data.series.isEmpty || !data.hasValueAt(0, i)) return null;
+    var f = range.fraction(data.valueAt(0, i)).clamp(0.0, 1.0);
+    var mid = slot * (data.slotAt(i) + 0.5);
+    return horizontal
+        ? Offset(plot.left + plot.width * f, plot.top + mid)
+        : Offset(plot.left + mid, plot.bottom - plot.height * f);
+  }
+
+  // Notes bound to the data keep their words apart and off the marks (the
+  // shared rule): each bar, or each point.
+  var bars = e.type.isBar;
+  var placer = LabelPlacer(plot.inflate(size * 2), keepClear: [
+    if (!behind)
+      for (var c in data.categories)
+        if (anchorOf(c) case var at?)
+          bars
+              ? (horizontal
+                  ? Rect.fromLTRB(plot.left, at.dy - slot * 0.32, at.dx,
+                      at.dy + slot * 0.32)
+                  : Rect.fromLTRB(at.dx - slot * 0.32, at.dy,
+                      at.dx + slot * 0.32, plot.bottom))
+              : Rect.fromCircle(center: at, radius: 5),
+  ]);
 
   for (var (k, note) in e.notes.indexed) {
     if (note.off) continue;
@@ -580,6 +613,132 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         tp.paint(canvas, at);
         tp.dispose();
         notePart(ChartPartKind.note, pill, index: k);
+
+      case ChartNoteKind.callout || ChartNoteKind.arrow:
+        if (behind || arrived <= 0) continue;
+        var to = anchorOf(note.who);
+        if (to == null) continue;
+        var tp = words(
+            note.text.isEmpty ? note.who : liveWords(data, note.text),
+            inkOn(note.colour) ?? const Color(0xFF1D2127));
+        var box = Size(tp.width + 14, tp.height + 8);
+        var arrow = note.kind == ChartNoteKind.arrow;
+        // A callout close by; an arrow's words further off, so the arrow
+        // has room to show.
+        var reach = arrow ? size * 4 : size * 1.6;
+        // Past a sideways bar's end first; over an upright one's top.
+        var places = LabelPlacer.around(to, box, reach);
+        if (horizontal)
+          places = [places[1], ...places.where((r) => r != places[1])];
+        var at = placer.place(places) ??
+            Rect.fromCenter(
+                center: to.translate(0, -reach - box.height / 2),
+                width: box.width,
+                height: box.height);
+        // The line first, then the words: drawn on as the chart arrives.
+        var line = (arrived / 0.6).clamp(0.0, 1.0);
+        var shown = ((arrived - 0.4) / 0.6).clamp(0.0, 1.0);
+        // From the edge of the box nearest the mark.
+        var from = Offset(
+            to.dx.clamp(at.left, at.right), to.dy.clamp(at.top, at.bottom));
+        var end = to + (from - to) / math.max(1, (from - to).distance) * 4;
+        var path = Path()..moveTo(from.dx, from.dy);
+        if (arrow) {
+          var mid = (from + end) / 2;
+          var bend = Offset(-(end - from).dy, (end - from).dx) * 0.25;
+          path.quadraticBezierTo(
+              mid.dx + bend.dx, mid.dy + bend.dy, end.dx, end.dy);
+        } else {
+          path.lineTo(end.dx, end.dy);
+        }
+        var stroke = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = arrow ? 2.2 : 1.5
+          ..strokeCap = StrokeCap.round
+          ..color = note.colour;
+        for (var m in path.computeMetrics()) {
+          var drawn = m.extractPath(0, m.length * line);
+          canvas.drawPath(drawn, stroke);
+          if (arrow && line >= 1) {
+            var tip = m.getTangentForOffset(m.length);
+            if (tip != null) {
+              var a = tip.angle;
+              var head = size * 0.7;
+              for (var side in [-0.45, 0.45]) {
+                canvas.drawLine(
+                    tip.position,
+                    tip.position -
+                        Offset(math.cos(-a + side), math.sin(-a + side)) * head,
+                    stroke);
+              }
+            }
+          }
+        }
+        if (!arrow) {
+          canvas.drawCircle(to, 2.5, Paint()..color = note.colour);
+        }
+        if (shown > 0) {
+          canvas.saveLayer(
+              at.inflate(2), Paint()..color = Color.fromRGBO(0, 0, 0, shown));
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(at, const Radius.circular(5)),
+              Paint()..color = note.colour);
+          tp.paint(canvas, Offset(at.left + 7, at.top + 4));
+          canvas.restore();
+        }
+        tp.dispose();
+        notePart(ChartPartKind.note, at, index: k);
+
+      case ChartNoteKind.bracket:
+        if (behind || arrived <= 0) continue;
+        var a = anchorOf(note.who), b = anchorOf(note.whom);
+        if (a == null || b == null) continue;
+        var ia = data.categories.indexOf(note.who);
+        var ib = data.categories.indexOf(note.whom);
+        var gap = data.valueAt(0, ib) - data.valueAt(0, ia);
+        var said = note.text.isEmpty
+            ? "${gap > 0 ? "+" : ""}${number(gap)}"
+            : liveWords(data, note.text);
+        var stroke = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..color = note.colour;
+        // Beside the later of the two, spanning their two values; grown
+        // from its middle as the chart arrives.
+        var grow = (arrived / 0.7).clamp(0.0, 1.0);
+        Rect hit;
+        if (horizontal) {
+          var y = math.max(a.dy, b.dy) + slot * 0.42;
+          var x0 = math.min(a.dx, b.dx), x1 = math.max(a.dx, b.dx);
+          var mid = (x0 + x1) / 2, half = (x1 - x0) / 2 * grow;
+          var path = Path()
+            ..moveTo(mid - half, y - 5)
+            ..lineTo(mid - half, y)
+            ..lineTo(mid + half, y)
+            ..lineTo(mid + half, y - 5);
+          canvas.drawPath(path, stroke);
+          hit = Rect.fromLTRB(x0, y - 6, x1, y + size * 1.4);
+          if (grow >= 1) {
+            var tp = words(said, note.colour);
+            tp.paint(canvas, Offset(mid - tp.width / 2, y + 2));
+            tp.dispose();
+          }
+        } else {
+          var x = math.max(a.dx, b.dx) + slot * 0.42;
+          var y0 = math.min(a.dy, b.dy), y1 = math.max(a.dy, b.dy);
+          var mid = (y0 + y1) / 2, half = (y1 - y0) / 2 * grow;
+          var path = Path()
+            ..moveTo(x - 5, mid - half)
+            ..lineTo(x, mid - half)
+            ..lineTo(x, mid + half)
+            ..lineTo(x - 5, mid + half);
+          canvas.drawPath(path, stroke);
+          var tp = words(said, note.colour);
+          hit = Rect.fromLTWH(x - 6, y0, tp.width + 12, y1 - y0);
+          if (grow >= 1) tp.paint(canvas, Offset(x + 4, mid - tp.height / 2));
+          tp.dispose();
+        }
+        notePart(ChartPartKind.note, hit, index: k);
     }
   }
 }
