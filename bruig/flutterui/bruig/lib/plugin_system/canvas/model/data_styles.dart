@@ -204,7 +204,9 @@ ChartElement chartInStyle(ChartElement e, DataStyle s, {bool panel = true}) {
     riseColor: s.rise,
     fallColor: s.fall,
     pointColor: s.palette.first,
-    sliceColors: s.palette,
+    // A colour per part only where the parts are the chart (a pie, a
+    // waffle, a treemap); bars and lines keep one colour a series.
+    sliceColors: e.type.isCircular ? s.palette : const [],
     barRadius: s.round,
     highlights: [
       for (var h in e.highlights) h.copyWith(colour: s.accent),

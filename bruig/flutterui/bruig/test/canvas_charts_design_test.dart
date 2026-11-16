@@ -208,17 +208,26 @@ void main() {
       await tester
           .tap(find.byKey(const ValueKey("studioPill-chartsRows-places")));
       await tester.pumpAndSettle();
-      // The suggestions too.
+      // The gallery too, and a kind's starting designs.
       final add = find.byKey(const ValueKey("chartsNew"));
       await tester.ensureVisible(add);
       await tester.tap(add);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("chartsIdea-0")), findsOneWidget);
+      expect(find.byKey(const ValueKey("chartsKind-horizontalBar")),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("chartsKind-horizontalBar")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("chartsPreset-0")));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets("a new chart chosen from suggestions drawn with the numbers",
+  // Ken, 2026-11-17 (prototype v7): the gallery replaces the suggestions,
+  // built from the columns ticked: every kind drawn with them, the best
+  // fit first; a kind's starting designs; one picked, given a style and an
+  // extra, and started.
+  testWidgets("a new chart from the gallery: a kind, a design, a style",
       (tester) async {
     await studio(tester);
     var before = c.document.elements.length;
@@ -228,20 +237,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(title(tester), "New chart");
     // Club and Pts ticked to start: ranked bars first.
-    expect(find.text("Ranked bars · best fit"), findsOneWidget);
-    // GD ticked as well: a scatter is offered.
+    expect(find.text("Bars · best fit"), findsOneWidget);
+    // Kinds the columns can't feed say what they need.
+    expect(
+        find.textContaining("Needs four columns of numbers"), findsOneWidget);
+    // GD ticked as well: a scatter is the best fit.
     await tester.tap(find.byKey(const ValueKey("chartsColumn-2")));
     await tester.pumpAndSettle();
     expect(find.text("Scatter · best fit"), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey("chartsColumn-2")));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey("chartsIdea-0")));
+    // Asked by the question it answers, and by a word.
+    await tester.tap(find.byKey(const ValueKey("chartsGalleryAsk-part")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("chartsKind-pie")), findsOneWidget);
+    expect(find.byKey(const ValueKey("chartsKind-line")), findsNothing);
+    await tester.tap(find.byKey(const ValueKey("chartsGalleryAsk-all")));
+    await tester.pumpAndSettle();
+    // Bars: its designs; the race needs a date column.
+    await tester.tap(find.byKey(const ValueKey("chartsKind-horizontalBar")));
+    await tester.pumpAndSettle();
+    expect(find.text("Needs a date column"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("chartsPreset-1")));
+    await tester.pumpAndSettle();
+    expect(title(tester), "Bars · Highlight one");
+    expect(find.byKey(const ValueKey("chartsGalleryPreview")), findsOneWidget);
+    // An average line added; the Broadcast style.
+    await tester.tap(find.byKey(const ValueKey("chartsGalleryMod-average")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("chartsGalleryStyle")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Style: Broadcast").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("chartsGalleryStart")));
     await tester.pumpAndSettle();
     expect(c.document.elements.length, before + 1);
     var made = c.document.elements.last as ChartElement;
     expect(made.type, ChartType.horizontalBar);
     expect(made.sheet!.sortBy, 3);
     expect(made.data.categories.first, "Arsenal");
+    expect(made.highlights, hasLength(1));
+    expect(made.notes.single.kind, ChartNoteKind.line);
+    expect(made.style, "Broadcast");
     expect(title(tester), made.name.isEmpty ? "Chart" : made.name,
         reason: "the new chart is opened");
     // One step to undo.

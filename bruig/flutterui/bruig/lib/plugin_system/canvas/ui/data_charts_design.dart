@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
@@ -101,7 +102,7 @@ const _commonTypes = [
 ];
 
 class ChartsDesignState extends State<ChartsDesign>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// _preview plays the chart through its dates or steps on the stage, as
   /// the canvas will once it has arrived (chart_play.dart).
   late final AnimationController _preview = AnimationController(vsync: this)
@@ -118,6 +119,19 @@ class ChartsDesignState extends State<ChartsDesign>
   /// _gallery is the columns ticked for a new chart, while choosing one
   /// from the suggestions; null otherwise.
   List<int>? _gallery;
+
+  // The gallery (Ken, 2026-11-17; prototype v7): the kind opened, the
+  // starting design picked, and what the cards are filtered by.
+  ChartType? _galleryKind;
+  int? _galleryPreset;
+  ChartQuestion? _galleryQuestion;
+  ChartUse? _galleryUse;
+  String _galleryQuery = "";
+  String _galleryStyle = "";
+  Set<ChartModifier> _galleryMods = {};
+  late final AnimationController _galleryPlay = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600), value: 1)
+    ..addListener(() => setState(() {}));
 
   /// _boardOn shows every view of the sheet together (prototype v5's board).
   bool _boardOn = false;
@@ -153,6 +167,7 @@ class ChartsDesignState extends State<ChartsDesign>
     c.keysHeld.removeListener(_glideTick);
     _end();
     _preview.dispose();
+    _galleryPlay.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -407,7 +422,7 @@ class ChartsDesignState extends State<ChartsDesign>
             Divider(height: 1, thickness: 1, color: colors.outlineVariant),
             Expanded(
                 child: _gallery != null
-                    ? _ideas(context)
+                    ? _galleryView(context)
                     : _boardOn
                         ? _board(context)
                         : _stage(context)),
@@ -640,6 +655,10 @@ class ChartsDesignState extends State<ChartsDesign>
                       _gallery = _startingPicks();
                       _offering = null;
                       _boardOn = false;
+                      _galleryKind = null;
+                      _galleryPreset = null;
+                      _galleryMods = {};
+                      _galleryStyle = e.style;
                     })),
           ),
           const SizedBox(height: 6),
@@ -905,88 +924,477 @@ class ChartsDesignState extends State<ChartsDesign>
     ];
   }
 
-  Widget _ideas(BuildContext context) {
+  // ---- The gallery: every kind of chart, built from the ticked columns.
+
+  /// _picks is the ticked columns, sorted by what they hold.
+  Picks? get _picks {
+    var s = _sheet, g = _gallery;
+    if (s == null || g == null) return null;
+    var range = _link.range;
+    var kinds = columnKinds(s, range);
+    List<int> of(ColumnKind k) => [
+          for (var c = 0; c < kinds.length; c++)
+            if (kinds[c] == k) c
+        ];
+    return picksOf(s, range, g, of(ColumnKind.numbers), of(ColumnKind.dates),
+        of(ColumnKind.names));
+  }
+
+  DataStyle? get _gStyle => dataStyleNamed(_galleryStyle);
+
+  /// _galleryChart is [kind]'s [preset] made from the ticked columns, in
+  /// the gallery's style; null when it can't be.
+  ChartElement? _galleryChart(ChartKind kind, ChartPreset preset,
+      {Set<ChartModifier> mods = const {}}) {
+    var p = _picks;
+    if (p == null) return null;
+    var made = presetChart(kind, preset, p, e.copyWith(title: ""), mods: mods);
+    if (made == null) return null;
+    var st = _gStyle;
+    return st == null ? made : chartInStyle(made, st);
+  }
+
+  Color get _galleryGround =>
+      _gStyle?.ground ?? c.document.background.spec.background;
+
+  static const _synonyms = {
+    "spider": [ChartType.radar],
+    "race": [ChartType.horizontalBar],
+    "coxcomb": [ChartType.radialBar],
+    "kpi": [ChartType.gauge, ChartType.bullet],
+    "money": [ChartType.sankey],
+    "share": [
+      ChartType.pie,
+      ChartType.donut,
+      ChartType.waffle,
+      ChartType.shareBar
+    ],
+  };
+
+  bool _kindShown(ChartKind k) {
+    if (_galleryQuestion != null && !k.questions.contains(_galleryQuestion)) {
+      return false;
+    }
+    if (_galleryUse != null &&
+        !k.presets.any((pr) => pr.uses.contains(_galleryUse))) {
+      return false;
+    }
+    var q = _galleryQuery.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    var text = "${k.name} ${k.use} ${k.presets.map((pr) => pr.name).join(" ")}"
+        .toLowerCase();
+    if (text.contains(q)) return true;
+    return _synonyms.entries
+        .any((en) => en.key.startsWith(q) && en.value.contains(k.type));
+  }
+
+  Widget _galleryView(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
-    var s = _sheet;
-    if (s == null) return const SizedBox.shrink();
-    var ideas = chartIdeas(s, _link.range, _gallery!);
-    if (ideas.isEmpty) {
+    var p = _picks;
+    if (p == null || p.numbers.isEmpty) {
       return Center(
           child: Text("Tick at least one column of numbers on the left.",
               style: TextStyle(color: colors.onSurfaceVariant)));
     }
-    return GridView.extent(
-      key: const ValueKey("chartsGallery"),
-      padding: const EdgeInsets.all(14),
-      maxCrossAxisExtent: 300,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 0.95,
-      children: [
-        for (var (i, idea) in ideas.indexed)
-          Material(
-            color: colors.surfaceContainerHigh,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(
-                    color: i == 0 ? colors.primary : colors.outlineVariant)),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              key: ValueKey("chartsIdea-$i"),
-              onTap: () => _make(idea),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(7),
-                          child: CustomPaint(
-                            size: Size.infinite,
-                            painter: _Thumb(idea.preview(s, e),
-                                c.document.background.spec.background),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text("${idea.name}${i == 0 ? " · best fit" : ""}",
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: colors.onSurface)),
-                      Text(idea.why,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 11.5, color: colors.onSurfaceVariant)),
-                    ]),
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+        child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 190,
+                child: _Field(
+                    key: const ValueKey("chartsGallerySearch"),
+                    text: _galleryQuery,
+                    hint: "Search: race, spider, share…",
+                    onChanged: (v) => setState(() {
+                          _galleryQuery = v;
+                          _galleryKind = null;
+                          _galleryPreset = null;
+                        })),
               ),
+              for (var (u, name) in [
+                (null, "All"),
+                for (var x in ChartUse.values) (x, x.label),
+              ])
+                StudioPill(
+                    key: ValueKey("chartsGalleryUse-${u?.name ?? "all"}"),
+                    label: name,
+                    selected: _galleryUse == u,
+                    onTap: () => setState(() => _galleryUse = u)),
+              SizedBox(
+                width: 170,
+                child: _Menu<String>(
+                    key: const ValueKey("chartsGalleryStyle"),
+                    value: _galleryStyle,
+                    options: [
+                      ("", "Style: as it is"),
+                      for (var st in dataStyles) (st.name, "Style: ${st.name}"),
+                    ],
+                    onChanged: (v) => setState(() => _galleryStyle = v)),
+              ),
+            ]),
+      ),
+      if (_galleryKind == null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
+          child: Wrap(spacing: 4, runSpacing: 4, children: [
+            for (var (q, name) in [
+              (null, "All charts"),
+              for (var x in ChartQuestion.values) (x, x.label),
+            ])
+              StudioPill(
+                  key: ValueKey("chartsGalleryAsk-${q?.name ?? "all"}"),
+                  label: name,
+                  selected: _galleryQuestion == q,
+                  onTap: () => setState(() => _galleryQuestion = q)),
+          ]),
+        ),
+      Expanded(
+          child: _galleryKind == null
+              ? _kindGrid(context, p)
+              : _presetGrid(context, p)),
+    ]);
+  }
+
+  Widget _kindGrid(BuildContext context, Picks p) {
+    final colors = ThemeNotifier.of(context).colors;
+    var s = _sheet!;
+    var ideas = chartIdeas(s, _link.range, _gallery!);
+    var best = ideas.isEmpty ? null : ideas.first.type;
+    var shown = chartKinds.where(_kindShown).toList();
+    var fit = [
+      for (var k in shown)
+        if (k.reads(p) != null) k
+    ];
+    var unfit = [
+      for (var k in shown)
+        if (k.reads(p) == null) k
+    ];
+    // The best fit for the ticked columns first, as the suggestions had it.
+    fit.sort(
+        (a, b) => (a.type == best ? 0 : 1).compareTo(b.type == best ? 0 : 1));
+    Widget card(ChartKind k, bool fits) {
+      var preset = k.presets.firstWhere(
+          (pr) => _galleryUse == null || pr.uses.contains(_galleryUse),
+          orElse: () => k.presets.first);
+      var chart = fits ? _galleryChart(k, preset) : null;
+      return Opacity(
+        opacity: fits ? 1 : 0.45,
+        child: Material(
+          color: colors.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                  color: k.type == best && fits
+                      ? colors.primary
+                      : colors.outlineVariant)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: ValueKey("chartsKind-${k.type.name}"),
+            onTap: fits
+                ? () => setState(() {
+                      _galleryKind = k.type;
+                      _galleryPreset = null;
+                      _galleryMods = {};
+                    })
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(7),
+                        child: chart == null
+                            ? ColoredBox(
+                                color: colors.surfaceContainerHighest,
+                                child: Center(
+                                    child: Text(k.type.label,
+                                        style: TextStyle(
+                                            color: colors.onSurfaceVariant))))
+                            : CustomPaint(
+                                size: Size.infinite,
+                                painter: _Thumb(chart, _galleryGround)),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Expanded(
+                        child: Text(
+                            "${k.name}${k.type == best && fits ? " · best fit" : ""}",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: colors.onSurface)),
+                      ),
+                      if (k.isNew)
+                        _badge(context, "New", const Color(0xFFFF7A59)),
+                    ]),
+                    Text(fits ? k.use : "Needs ${k.needs}",
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: fits
+                                ? colors.onSurfaceVariant
+                                : colors.tertiary)),
+                  ]),
             ),
           ),
-      ],
-    );
+        ),
+      );
+    }
+
+    // Every card built (a few dozen thumbnails), so none waits for a scroll.
+    return SingleChildScrollView(
+        key: const ValueKey("chartsGallery"),
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 20),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (shown.isEmpty)
+            Text("Nothing matches “$_galleryQuery”.",
+                style: TextStyle(color: colors.onSurfaceVariant)),
+          _cardGrid([for (var k in fit) card(k, true)]),
+          if (unfit.isNotEmpty) ...[
+            const StudioLabel("Need other columns"),
+            Text("Tick columns like these on the left to use them.",
+                style:
+                    TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            _cardGrid([for (var k in unfit) card(k, false)]),
+          ],
+        ]));
+  }
+
+  Widget _cardGrid(List<Widget> cards) =>
+      LayoutBuilder(builder: (context, box) {
+        var n = math.max(1, (box.maxWidth / 250).floor());
+        var w = (box.maxWidth - 12 * (n - 1)) / n;
+        return Wrap(spacing: 12, runSpacing: 12, children: [
+          for (var c in cards) SizedBox(width: w, height: w * 0.82, child: c),
+        ]);
+      });
+
+  Widget _badge(BuildContext context, String text, Color colour) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+            color: colour.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(4)),
+        child: Text(text.toUpperCase(),
+            style: TextStyle(
+                fontSize: 9.5,
+                letterSpacing: 0.5,
+                fontWeight: FontWeight.w800,
+                color: colour)),
+      );
+
+  static const _useColours = {
+    ChartUse.infographic: Color(0xFF7FA8F5),
+    ChartUse.video: Color(0xFFE59BF0),
+    ChartUse.analysis: Color(0xFF6FD6B0),
+  };
+
+  ChartKind get _kind => chartKinds.firstWhere((k) => k.type == _galleryKind);
+
+  Widget _presetGrid(BuildContext context, Picks p) {
+    final colors = ThemeNotifier.of(context).colors;
+    var kind = _kind;
+    Widget card(int i, ChartPreset pr) {
+      var needs = pr.needs?.call(p);
+      var chart = needs == null ? _galleryChart(kind, pr) : null;
+      return Opacity(
+        opacity: needs == null ? 1 : 0.45,
+        child: Material(
+          color: colors.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                  color: _galleryPreset == i
+                      ? colors.primary
+                      : colors.outlineVariant,
+                  width: _galleryPreset == i ? 2 : 1)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: ValueKey("chartsPreset-$i"),
+            onTap: needs != null
+                ? null
+                : () {
+                    setState(() {
+                      _galleryPreset = i;
+                      _galleryMods = {};
+                    });
+                    _galleryPlay.forward(from: 0);
+                  },
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(7),
+                        child: chart == null
+                            ? ColoredBox(color: colors.surfaceContainerHighest)
+                            : CustomPaint(
+                                size: Size.infinite,
+                                painter: _Thumb(chart, _galleryGround)),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Expanded(
+                        child: Text(pr.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: colors.onSurface)),
+                      ),
+                      if (pr.plays)
+                        _badge(context, "Plays", const Color(0xFFF2B33D)),
+                    ]),
+                    Text(needs == null ? pr.says : "Needs $needs",
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11.5, color: colors.onSurfaceVariant)),
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 4, children: [
+                      for (var u in pr.uses)
+                        _badge(context, u.label, _useColours[u]!),
+                    ]),
+                  ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    var presets = [
+      for (var (i, pr) in kind.presets.indexed)
+        if (_galleryUse == null || pr.uses.contains(_galleryUse)) (i, pr)
+    ];
+    if (presets.isEmpty) presets = [...kind.presets.indexed];
+    // Every card built (a few dozen thumbnails), so none waits for a scroll.
+    return SingleChildScrollView(
+        key: const ValueKey("chartsGalleryPresets"),
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            StudioPill(
+                key: const ValueKey("chartsGalleryBack"),
+                label: "All charts",
+                icon: Icons.arrow_back,
+                onTap: () => setState(() {
+                      _galleryKind = null;
+                      _galleryPreset = null;
+                    })),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(kind.name,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: colors.onSurface)),
+            ),
+          ]),
+          _hint(context,
+              "${kind.use} Pick a starting design; every part can still be changed afterwards."),
+          if (kind.caveat.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(kind.caveat,
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFFF2B33D))),
+            ),
+          const SizedBox(height: 10),
+          _cardGrid([for (var (i, pr) in presets) card(i, pr)]),
+        ]));
   }
 
   Widget _galleryPanel(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
+    var p = _picks;
+    var preset = _galleryKind != null && _galleryPreset != null
+        ? _kind.presets[_galleryPreset!]
+        : null;
+    var chart = preset == null
+        ? null
+        : _galleryChart(_kind, preset, mods: _galleryMods);
     return Container(
       color: colors.surfaceContainerLow,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text("New chart",
+          Text(preset == null ? "New chart" : "${_kind.name} · ${preset.name}",
               key: const ValueKey("chartsTitle"),
               style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: colors.onSurface)),
-          _hint(context,
-              "Tick the columns to show on the left. The suggestions are drawn with your numbers, the best fit first: one number makes bars; two, a scatter; a date with names, a race or a line each."),
+          if (chart == null || p == null)
+            _hint(context,
+                "Tick the columns to show on the left. Every kind of chart is drawn with them; the best fit first. Open one to see its starting designs.")
+          else ...[
+            const SizedBox(height: 8),
+            AspectRatio(
+              aspectRatio: 1.45,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CustomPaint(
+                    key: const ValueKey("chartsGalleryPreview"),
+                    size: Size.infinite,
+                    painter: _PlayThumb(
+                        chart, _galleryGround, _galleryPlay.value, _sheet)),
+              ),
+            ),
+            _buttons([
+              StudioPill(
+                  key: const ValueKey("chartsGalleryReplay"),
+                  label: "Play its arrival",
+                  icon: Icons.play_arrow,
+                  onTap: () => _galleryPlay.forward(from: 0)),
+            ]),
+            _hint(context, preset!.says),
+            if ([
+              for (var m in ChartModifier.values)
+                if (m.fits(_kind.type, p)) m
+            ]
+                case var mods when mods.isNotEmpty) ...[
+              const StudioLabel("Add to it"),
+              Wrap(spacing: 4, runSpacing: 4, children: [
+                for (var m in mods)
+                  StudioPill(
+                      key: ValueKey("chartsGalleryMod-${m.name}"),
+                      label: m.label,
+                      icon: _galleryMods.contains(m) ? Icons.check : Icons.add,
+                      selected: _galleryMods.contains(m),
+                      tooltip: m.says,
+                      onTap: () => setState(() => _galleryMods.contains(m)
+                          ? _galleryMods.remove(m)
+                          : _galleryMods.add(m))),
+              ]),
+            ],
+            _hint(context,
+                "It sets the layout, labels, what's picked out, notes, grid and how it arrives. It keeps your data and words; the style sets the colours and typefaces."),
+          ],
           _buttons([
+            if (chart != null)
+              StudioPill(
+                  key: const ValueKey("chartsGalleryStart"),
+                  label: "Start with this",
+                  filled: true,
+                  onTap: () => _makePreset(chart)),
             StudioPill(
                 key: const ValueKey("chartsGalleryCancel"),
                 label: "Cancel",
@@ -997,20 +1405,16 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  /// _make puts the chosen idea on the canvas as a chart of this sheet, one
-  /// step to undo, and opens it.
-  void _make(ChartIdea idea) {
+  /// _makePreset puts [chart] -- a starting design made from the ticked
+  /// columns -- on the canvas as a chart of this sheet, one step to undo,
+  /// and opens it.
+  void _makePreset(ChartElement chart) {
     var s = _sheet;
     if (s == null) return;
     _end();
     c.beginInteraction();
     var made = c.addDataView(ElementKind.chart, s.id, _link.range);
-    if (made is ChartElement) {
-      c.replaceElement(withLink(
-          made.copyWith(
-              type: idea.type, title: idea.title, highlights: idea.highlights),
-          idea.link.copyWith(sheet: s.id, range: _link.range)));
-    }
+    c.replaceElement(chart.rebase(made.base));
     c.endInteraction();
     setState(() => _gallery = null);
     widget.onPickChart(made.id);
@@ -2729,6 +3133,36 @@ class _ViewThumb extends CustomPainter {
 }
 
 /// _Thumb draws a suggestion's chart fitted to its card.
+/// _PlayThumb is [e] fitted on [ground], [reveal] of the way arrived.
+class _PlayThumb extends CustomPainter {
+  final ChartElement e;
+  final Color ground;
+  final double reveal;
+  final DataSheet? sheet;
+  _PlayThumb(this.e, this.ground, this.reveal, this.sheet);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = ground);
+    var w = math.max(1.0, e.width), h = math.max(1.0, e.height);
+    var k = math.min((size.width - 8) / w, (size.height - 8) / h);
+    canvas.save();
+    canvas.translate((size.width - w * k) / 2, (size.height - h * k) / 2);
+    canvas.scale(k);
+    // One that plays (a race) plays through its dates; the rest arrive.
+    var sh = sheet;
+    var playing = e.play > 0 && sh != null;
+    var chart = playing ? chartPlaying(e, sh, reveal * playLength(e, sh)) : e;
+    paintChart(canvas, Rect.fromLTWH(0, 0, w, h), chart,
+        reveal: playing ? 1 : reveal);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_PlayThumb old) =>
+      !identical(old.e, e) || old.ground != ground || old.reveal != reveal;
+}
+
 class _Thumb extends CustomPainter {
   final ChartElement e;
   final Color ground;
