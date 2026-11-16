@@ -30,6 +30,10 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
 
   var cols = e.columnCount;
   if (cols == 0) return;
+  if (e.cards && cols > 1) {
+    _paintCards(canvas, rect, e, cols, images);
+    return;
+  }
 
   var widths = _columnWidths(e, rect, cols);
   var heights = _rowHeights(e, rect);
@@ -354,6 +358,118 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           ..style = PaintingStyle.stroke
           ..strokeWidth = e.gridWidth
           ..color = e.gridColor);
+  }
+}
+
+/// tableCardLayout is where a table drawn as cards (TableElement.cards)
+/// puts its columns: the table they are cut from, lowered to leave room
+/// over it for the raised card and its ribbon ([inner]); each column's
+/// place in it ([from]) and its card's ([to]). A column keeps its place
+/// across -- the gaps come out of the cards' own widths, so a click finds
+/// the same cell as in the table drawn plain. The first column, the rows'
+/// names, has no card.
+({Rect inner, List<Rect> from, List<Rect> to}) tableCardLayout(
+    TableElement e, Rect rect, int cols, TableElement inner) {
+  var gap = math.max(4.0, rect.width * 0.025);
+  var top = tableCardRoom(e, rect, cols);
+  var lift = e.picked > 0 && e.picked < cols ? top.lift : 0.0;
+  var innerRect =
+      Rect.fromLTRB(rect.left, rect.top + top.room, rect.right, rect.bottom);
+  var widths = _columnWidths(inner, innerRect, cols);
+  var from = <Rect>[], to = <Rect>[];
+  var x = innerRect.left;
+  for (var c = 0; c < cols; c++) {
+    var r = Rect.fromLTWH(x, innerRect.top, widths[c], innerRect.height);
+    from.add(r);
+    to.add(c == 0
+        ? r
+        : Rect.fromLTRB(r.left + gap / 2, r.top - (c == e.picked ? lift : 0),
+            r.right - (c < cols - 1 ? gap / 2 : 0), r.bottom));
+    x += widths[c];
+  }
+  return (inner: innerRect, from: from, to: to);
+}
+
+/// tableCardRoom is how much a table drawn as cards leaves over itself:
+/// the picked card's [lift] and half its ribbon. Nothing drawn plain.
+({double room, double lift}) tableCardRoom(
+    TableElement e, Rect rect, int cols) {
+  if (!e.cards || cols < 2 || e.picked <= 0 || e.picked >= cols) {
+    return (room: 0, lift: 0);
+  }
+  var lift = math.min(rect.height * 0.04, 10.0);
+  var ribbonH = e.ribbon.trim().isNotEmpty ? e.headerSpec.fontSize * 1.5 : 0.0;
+  return (room: lift + ribbonH / 2, lift: lift);
+}
+
+/// _paintCards draws [e] as cards: the table painted once a column, each
+/// time cut to that column and moved to its card, with no lines down it;
+/// then each card's edge, the picked one's in the style's accent and
+/// raised, under its ribbon.
+void _paintCards(ui.Canvas canvas, Rect rect, TableElement e, int cols,
+    CanvasImageSource? images) {
+  var inner = e.copyWith(
+      cards: false,
+      cornerRadius: 0,
+      showOutline: false,
+      grid: e.grid.drawsHorizontal ? TableGrid.horizontal : TableGrid.none);
+  var at = tableCardLayout(e, rect, cols, inner);
+  var round = Radius.circular(math.max(e.cornerRadius, 6));
+  var accent = dataStyleNamed(e.style)?.accent ?? const Color(0xFFF2B33D);
+  var edge = e.gridColor.a > 0
+      ? e.gridColor
+      : e.cellSpec.color.withValues(alpha: 0.25);
+  for (var c = 0; c < cols; c++) {
+    var card = at.to[c];
+    var raised = card.top < at.from[c].top;
+    canvas.save();
+    if (c == 0) {
+      canvas.clipRect(card);
+    } else {
+      canvas.clipRRect(RRect.fromRectAndRadius(card, round));
+    }
+    // Raised, its rows move up with it; the cells' fill behind covers the
+    // room left at its foot.
+    if (c > 0 && e.cellFill.a > 0) {
+      canvas.drawRect(card, Paint()..color = e.cellFill);
+    }
+    canvas.translate(0, card.top - at.from[c].top);
+    paintTable(canvas, at.inner, inner, images: images);
+    canvas.restore();
+    if (c == 0) continue;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(card.deflate(raised ? 1 : 0.5), round),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = raised ? 2 : 1
+          ..color = raised ? accent : edge);
+    if (raised && e.ribbon.trim().isNotEmpty) {
+      var h = e.headerSpec.fontSize * 1.5;
+      var words = e.ribbon.trim().toUpperCase();
+      var size = e.headerSpec.fontSize * 0.7;
+      var spec = e.headerSpec.copyWith(
+          fontSize: size,
+          weight: 800,
+          letterSpacing: 0.8,
+          align: TextAlignSpec.center,
+          verticalAlign: VerticalAlignSpec.middle,
+          color: accent.computeLuminance() > 0.45
+              ? const Color(0xFF1B1B1B)
+              : const Color(0xFFFFFFFF));
+      // On one line: the band as wide as its words, up to the card's
+      // width, and the words smaller where even that is too narrow.
+      var w = layoutText(words, spec, maxWidth: double.infinity).width;
+      var room = card.width - 4;
+      if (w + h > room) {
+        spec = spec.copyWith(fontSize: size * (room - h) / w);
+        w = room - h;
+      }
+      var band = Rect.fromCenter(
+          center: Offset(card.center.dx, card.top), width: w + h, height: h);
+      canvas.drawRRect(RRect.fromRectAndRadius(band, Radius.circular(h / 2)),
+          Paint()..color = accent);
+      paintTextInBox(canvas, words, spec, band.inflate(2), clip: true);
+    }
   }
 }
 
@@ -767,7 +883,16 @@ extension on Rect {
 
 /// tableRowHeights is where a table's rows fall, public for the stage's cell
 /// editor (see [tableColumnWidths]).
-List<double> tableRowHeights(TableElement e, Rect rect) => _rowHeights(e, rect);
+List<double> tableRowHeights(TableElement e, Rect rect) {
+  // Drawn as cards, the rows lie lower by the room over them, taken into
+  // the first row so a click on it still finds it.
+  var room = tableCardRoom(e, rect, e.columnCount).room;
+  if (room <= 0) return _rowHeights(e, rect);
+  var inner =
+      Rect.fromLTRB(rect.left, rect.top + room, rect.right, rect.bottom);
+  var h = _rowHeights(e, inner);
+  return h.isEmpty ? h : [h.first + room, ...h.skip(1)];
+}
 
 /// _rowHeights splits the height evenly, giving the header its extra share.
 List<double> _rowHeights(TableElement e, Rect rect) {

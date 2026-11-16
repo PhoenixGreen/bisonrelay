@@ -1128,6 +1128,37 @@ class _TableDesignState extends State<TableDesign> {
             value: t.showOutline,
             options: const [(true, "On"), (false, "Off")],
             onChanged: (v) => _set(t.copyWith(showOutline: v))),
+        StudioPills<bool>(
+            id: "tableCards",
+            label: "Columns after the first",
+            value: t.cards,
+            options: const [(false, "One table"), (true, "Cards apart")],
+            onChanged: (v) => _set(t.copyWith(cards: v))),
+        if (t.cards && t.columnCount > 1) ...[
+          const StudioLabel("Raised card"),
+          _Dropdown<int>(
+              key: const ValueKey("tablePicked"),
+              value: t.picked > 0 && t.picked < t.columnCount ? t.picked : -1,
+              options: [
+                (-1, "None"),
+                for (var c = 1; c < t.columnCount; c++)
+                  (
+                    c,
+                    t.cell(0, c).trim().isEmpty
+                        ? "Column ${c + 1}"
+                        : t.cell(0, c).trim()
+                  ),
+              ],
+              onChanged: (v) => _set(t.copyWith(picked: v))),
+          if (t.picked > 0) ...[
+            const StudioLabel("Its ribbon"),
+            _TextBox(
+                key: const ValueKey("tableRibbon"),
+                text: t.ribbon,
+                hint: "Most popular",
+                onChanged: (v) => _live(t.copyWith(ribbon: v))),
+          ],
+        ],
         StudioPills<String>(
             id: "tableColumns",
             label: "Columns",

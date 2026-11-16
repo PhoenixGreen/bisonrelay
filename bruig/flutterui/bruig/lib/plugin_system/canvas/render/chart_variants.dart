@@ -32,6 +32,8 @@ bool paintVariant(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       _funnelBars(canvas, area, e, reveal, ghost: mode == "ghost");
     case (ChartType.bubbles, "row"):
       _bubbleRow(canvas, area, e, reveal);
+    case (ChartType.bubbles, "clusters"):
+      _bubbleClusters(canvas, area, e, reveal);
     case (ChartType.timeline, "down"):
       _timelineDown(canvas, area, e, reveal);
     case (ChartType.gauge, "bands" || "dial"):
@@ -52,8 +54,8 @@ bool paintVariant(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       _slopeRank(canvas, area, e, reveal);
     case (ChartType.radialBar, "rings" || "bars" || "rose"):
       _radialWays(canvas, area, e, reveal, mode);
-    case (ChartType.radar, "dots"):
-      _radarDots(canvas, area, e, reveal);
+    case (ChartType.radar, "dots" || "compare"):
+      _radarDots(canvas, area, e, reveal, compare: mode == "compare");
     case (ChartType.waffle, "dots" || "rising"):
       _waffleWays(canvas, area, e, reveal, mode);
     default:
@@ -159,6 +161,160 @@ void _funnelBars(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
 }
 
 // ------------------------------------------------------------ bubbles
+
+/// bubblePack packs one circle a value, its radius the value's square root
+/// (so its area is the value), the largest in the middle and each next as
+/// near it as it goes without overlapping: centres (null for nothing) and
+/// radii, unscaled, about the origin.
+(List<Offset?>, List<double>) bubblePack(List<double> values) {
+  var order = [for (var i = 0; i < values.length; i++) i]
+    ..sort((a, b) => values[b].compareTo(values[a]));
+  var r = [for (var v in values) math.sqrt(math.max(0, v))];
+  var placed = <int, Offset>{};
+  for (var i in order) {
+    if (r[i] <= 0) continue;
+    if (placed.isEmpty) {
+      placed[i] = Offset.zero;
+      continue;
+    }
+    Offset? best;
+    for (var (j, c) in placed.entries.map((x) => (x.key, x.value))) {
+      for (var a = 0; a < 72; a++) {
+        var ang = a * math.pi / 36;
+        var p = c + Offset(math.cos(ang), math.sin(ang)) * (r[j] + r[i] + 0.5);
+        var clear = placed.entries
+            .every((o) => (o.value - p).distance >= r[o.key] + r[i] + 0.01);
+        if (clear && (best == null || p.distance < best.distance)) best = p;
+      }
+    }
+    placed[i] = best ?? Offset(placed.length * r[i] * 2, 0);
+  }
+  return ([for (var i = 0; i < values.length; i++) placed[i]], r);
+}
+
+/// bubbleBounds is the box round [placed]'s circles.
+Rect bubbleBounds(List<Offset?> placed, List<double> r) =>
+    [
+      for (var i = 0; i < placed.length; i++)
+        if (placed[i] != null) Rect.fromCircle(center: placed[i]!, radius: r[i])
+    ].fold<Rect?>(null, (a, b) => a == null ? b : a.expandToInclude(b)) ??
+    Rect.zero;
+
+/// _bubbleClusters is the circles packed in a cluster a group, each named
+/// above it, all on one scale so sizes compare across them. A group is the
+/// word in the column the chart is coloured by; with none, each series is a
+/// group (a club's bubble in "Top four" or "Chasing"); with neither, one.
+void _bubbleClusters(
+    ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
+  var d = e.data, n = d.categories.length;
+  // Each cluster: its name and its members as (category, series, value).
+  var clusters = <(String, List<(int, int, double)>)>[];
+  if (d.groups.any((g) => g.isNotEmpty)) {
+    var v = _vals(e);
+    var names = <String>[];
+    for (var i = 0; i < n; i++) {
+      if (!names.contains(d.groupAt(i))) names.add(d.groupAt(i));
+    }
+    for (var g in names) {
+      clusters.add((
+        g,
+        [
+          for (var i = 0; i < n; i++)
+            if (d.groupAt(i) == g && v[i] > 0) (i, 0, v[i])
+        ]
+      ));
+    }
+  } else if (d.series.length > 1) {
+    for (var s = 0; s < d.series.length; s++) {
+      var v = _vals(e, s);
+      clusters.add((
+        d.series[s].name,
+        [
+          for (var i = 0; i < n; i++)
+            if (v[i] > 0) (i, s, v[i])
+        ]
+      ));
+    }
+  } else {
+    var v = _vals(e);
+    clusters.add((
+      "",
+      [
+        for (var i = 0; i < n; i++)
+          if (v[i] > 0) (i, 0, v[i])
+      ]
+    ));
+  }
+  clusters.removeWhere((c) => c.$2.isEmpty);
+  if (clusters.isEmpty) return;
+  var packs = [
+    for (var c in clusters) bubblePack([for (var m in c.$2) m.$3])
+  ];
+  var bounds = [for (var p in packs) bubbleBounds(p.$1, p.$2)];
+  // Laid out in a row, or a grid past three; one scale for them all.
+  var cols = clusters.length <= 3
+      ? clusters.length
+      : math.sqrt(clusters.length).ceil();
+  var rows = (clusters.length / cols).ceil();
+  var titleH =
+      clusters.any((c) => c.$1.isNotEmpty) ? e.labelSpec.fontSize * 2 : 0.0;
+  var gap = area.width * 0.03;
+  var cellW = (area.width - gap * (cols - 1)) / cols;
+  var cellH = area.height / rows;
+  var k = double.infinity;
+  for (var b in bounds) {
+    if (b.width <= 0 || b.height <= 0) continue;
+    k = math.min(k, math.min(cellW / b.width, (cellH - titleH) / b.height));
+  }
+  if (!k.isFinite || k <= 0) return;
+  var total = clusters.fold(0, (a, c) => a + c.$2.length), at = 0;
+  for (var (ci, c) in clusters.indexed) {
+    var cell = Rect.fromLTWH(area.left + (ci % cols) * (cellW + gap),
+        area.top + (ci ~/ cols) * cellH, cellW, cellH);
+    var room =
+        Rect.fromLTRB(cell.left, cell.top + titleH, cell.right, cell.bottom);
+    var (placed, r) = packs[ci];
+    var b = bounds[ci];
+    if (c.$1.isNotEmpty && e.showXLabels) {
+      _say(canvas, c.$1, _lab(e, TextAlignSpec.center).copyWith(weight: 700),
+          Rect.fromLTWH(cell.left, cell.top, cell.width, titleH));
+    }
+    for (var (j, (i, s, v)) in c.$2.indexed) {
+      var p = sliceProgress(e, reveal, at++, total);
+      if (p.gone || placed[j] == null) continue;
+      var centre = room.center + (placed[j]! - b.center) * k;
+      var rad = r[j] * k;
+      // A colour a group: the colour-by's own, else the series', else
+      // the palette's in turn; alone, a colour each as packed bubbles.
+      var fill = d.markAt(i) ??
+          (d.series.length > 1
+              ? d.series[s].color
+              : clusters.length > 1
+                  ? (ci < e.sliceColors.length
+                      ? e.sliceColors[ci]
+                      : chartPalette[ci % chartPalette.length])
+                  : _item(e, i));
+      notePart(ChartPartKind.mark, Rect.fromCircle(center: centre, radius: rad),
+          series: s, index: i);
+      canvas.drawCircle(
+          centre, rad * p.size.clamp(0.0, 1.0), Paint()..color = p.tint(fill));
+      if (p.size < 0.9 || rad < e.labelSpec.fontSize * 1.4) continue;
+      // A name broken mid-word reads worse than none.
+      var spec = _lab(e, TextAlignSpec.center);
+      var fits = d.categories[i].split(RegExp(r"\s+")).every((w) =>
+          layoutText(w, spec, maxWidth: double.infinity).width <= rad * 1.6);
+      var lines = [
+        if (e.showXLabels && fits) d.categories[i],
+        if (e.showValues) _num(e, v, s),
+      ].join("\n");
+      _say(
+          canvas,
+          lines,
+          _lab(e, TextAlignSpec.center).copyWith(color: _ink(fill)),
+          Rect.fromCenter(center: centre, width: rad * 1.6, height: rad * 1.2));
+    }
+  }
+}
 
 /// _bubbleRow is the circles side by side on one floor, in order, so their
 /// sizes compare (the FT's ordered proportional symbol).
@@ -843,8 +999,11 @@ void _radialWays(
 // ------------------------------------------------------------ radar
 
 /// _radarDots is each series' values as dots on the spokes, joined by
-/// thin lines, with no filled area to exaggerate the differences.
-void _radarDots(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
+/// thin lines, with no filled area to exaggerate the differences -- or
+/// ([compare]) the first series filled and the others as grey outlines
+/// behind it: one club against another, or against the average.
+void _radarDots(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
+    {bool compare = false}) {
   var d = e.data, n = d.categories.length;
   if (n < 3) return;
   var c = area.center;
@@ -886,7 +1045,14 @@ void _radarDots(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     }
   }
   var p0 = e.animation.on ? reveal.clamp(0.0, 1.0) : 1.0;
-  for (var s = 0; s < d.series.length; s++) {
+  // Compared, the others first so the subject lies over them.
+  var order = [
+    for (var s = d.series.length - 1; s >= 0; s--)
+      if (compare) s,
+    for (var s = 0; s < d.series.length; s++)
+      if (!compare) s,
+  ];
+  for (var s in order) {
     var col = d.series[s].color;
     var vs = _vals(e, s);
     var pts = [for (var i = 0; i < n; i++) at(i, vs[i] / most * p0)];
@@ -895,6 +1061,25 @@ void _radarDots(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       path.lineTo(q.dx, q.dy);
     }
     path.close();
+    if (compare) {
+      var subject = s == 0;
+      var line = subject ? col : _quiet(e, 0.6);
+      if (subject) {
+        canvas.drawPath(path, Paint()..color = col.withValues(alpha: 0.25));
+      }
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeJoin = StrokeJoin.round
+            ..strokeWidth = subject ? 2.5 : 1.5
+            ..color = line);
+      for (var (i, q) in pts.indexed) {
+        notePart(ChartPartKind.mark, Rect.fromCircle(center: q, radius: 6),
+            series: s, index: i);
+      }
+      continue;
+    }
     canvas.drawPath(
         path,
         Paint()

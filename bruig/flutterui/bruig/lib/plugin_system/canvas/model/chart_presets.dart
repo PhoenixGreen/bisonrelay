@@ -1292,6 +1292,20 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
         "Circles side by side on one floor, so sizes compare.",
         [_i, _a],
         (e, p) => _way(_bubbles(e, p), "row")),
+    ChartPreset(
+        "In groups",
+        "A named cluster per group, from a second column of names.",
+        [_a, _i],
+        (e, p) => _way(
+            p.names.length > 1
+                ? _relink(
+                    _bubbles(e, p), (l) => l.copyWith(colourBy: p.names[1]))
+                : _relink(_bubbles(e, p),
+                    (l) => l.copyWith(series: p.numbers.take(4).toList())),
+            "clusters"),
+        needs: (p) => p.names.length < 2 && p.numbers.length < 2
+            ? "a second column of names to group by"
+            : null),
   ],
   ChartType.timeline: [
     ChartPreset(
@@ -1318,6 +1332,11 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
   ChartType.sankey: [
     ChartPreset("Follow the largest", "Every flow faded but the largest.",
         [_a, _v], (e, p) => _sankey(e, p).copyWith(highlights: [_top(1)])),
+    ChartPreset(
+        "Where the money goes",
+        "What comes in one colour, what goes out another, profit in the accent.",
+        [_i, _a],
+        (e, p) => _way(_sankey(e, p), "money")),
   ],
   ChartType.treemap: [
     ChartPreset(
@@ -1370,6 +1389,11 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
   ChartType.radar: [
     ChartPreset("Dots on spokes", "Values as dots, no filled area to mislead.",
         [_a], (e, p) => _way(_radar(e, p), "dots")),
+    ChartPreset(
+        "Against another",
+        "The first filled, the others as grey outlines behind it.",
+        [_a, _v],
+        (e, p) => _way(_radar(e, p), "compare")),
   ],
   ChartType.waffle: [
     ChartPreset("Dots", "Circles instead of squares, for a rounded look.", [_i],

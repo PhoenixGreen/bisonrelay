@@ -583,6 +583,11 @@ class ChartData {
   /// where a blend set off, so live words do not read 25.4 part-way.
   final List<bool> whole;
 
+  /// groups are the categories' words from the column they are coloured
+  /// by (SheetLink.colourBy), "" where there is none: what bubbles drawn
+  /// in groups gather by. Worked out, never saved.
+  final List<String> groups;
+
   const ChartData({
     this.categories = const [],
     this.series = const [],
@@ -593,7 +598,11 @@ class ChartData {
     this.at = "",
     this.slots = const [],
     this.whole = const [],
+    this.groups = const [],
   });
+
+  /// groupAt is category [i]'s group word, or "".
+  String groupAt(int i) => i >= 0 && i < groups.length ? groups[i] : "";
 
   /// slotAt is where category [i] is drawn, in slots from the first.
   double slotAt(int i) => i >= 0 && i < slots.length ? slots[i] : i.toDouble();
@@ -613,6 +622,7 @@ class ChartData {
     String? at,
     List<double>? slots,
     List<bool>? whole,
+    List<String>? groups,
   }) =>
       ChartData(
         categories: categories ?? this.categories,
@@ -624,6 +634,7 @@ class ChartData {
         at: at ?? this.at,
         slots: slots ?? this.slots,
         whole: whole ?? this.whole,
+        groups: groups ?? this.groups,
       );
 
   /// withRowRemoved takes a row out of the categories, every series and the

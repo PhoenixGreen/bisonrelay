@@ -535,6 +535,71 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Ken, 2026-11-17 ("do the Not done list"): plans as cards apart, one
+    // raised under a ribbon.
+    testWidgets("columns as cards: one raised, its ribbon's words",
+        (tester) async {
+      await studio(tester);
+      final cards = find.byKey(const ValueKey("studioPill-tableCards-true"));
+      await tester.ensureVisible(cards);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("tablePicked")), findsNothing);
+      await tester.tap(cards);
+      await tester.pumpAndSettle();
+      expect(table().cards, isTrue);
+      final picked = find.byKey(const ValueKey("tablePicked"));
+      await tester.ensureVisible(picked);
+      await tester.pumpAndSettle();
+      await tester.tap(picked);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(league.first[2]).last);
+      await tester.pumpAndSettle();
+      expect(table().picked, 2);
+      final ribbon = find.byKey(const ValueKey("tableRibbon"));
+      await tester.ensureVisible(ribbon);
+      await tester.enterText(
+          find.descendant(of: ribbon, matching: find.byType(TextField)),
+          "Best value");
+      await tester.pumpAndSettle();
+      expect(table().ribbon, "Best value");
+      expect(tester.takeException(), isNull);
+    });
+
+    test("cards are saved, laid out where a click finds them, and drawn", () {
+      var t = const TableElement(ElementBase(id: "t", width: 600, height: 300),
+          rows: [
+            ["", "Basic", "Plus", "Pro"],
+            ["Live", "yes", "yes", "yes"],
+            ["Replays", "no", "yes", "yes"],
+            ["Adverts", "yes", "no", "no"],
+          ]);
+      expect(t.toJson().containsKey("cards"), isFalse);
+      var plans = tableKinds.firstWhere((k) => k.id == "plans");
+      var made = presetTable(plans.presets.first, t);
+      expect((made.cards, made.picked, made.ribbon), (true, 2, "Most popular"));
+      expect(made.columnKinds, {1: "ticks", 2: "ticks", 3: "ticks"});
+      var back = TableElement.fromJson(
+          jsonDecode(jsonEncode(made.toJson())) as Map<String, dynamic>,
+          made.base);
+      expect((back.cards, back.picked, back.ribbon), (true, 2, "Most popular"));
+      // Another design takes the cards off.
+      expect(presetTable(plans.presets.last, made).cards, isFalse);
+
+      // The columns where the plain table has them; the first row takes in
+      // the room over the raised card, so the rows still fill the table.
+      const box = Rect.fromLTWH(0, 0, 600, 300);
+      expect(tableColumnWidths(made, box), tableColumnWidths(t, box));
+      var plain = tableRowHeights(t, box), carded = tableRowHeights(made, box);
+      expect(carded.fold(0.0, (a, b) => a + b), closeTo(300, 0.01));
+      expect(carded.first, greaterThan(plain.first));
+      expect(tableRowHeights(made.copyWith(picked: -1), box), plain);
+      for (var st in dataStyles) {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), box, tableInStyle(made, st));
+        recorder.endRecording().dispose();
+      }
+    });
+
     // Ken, 2026-11-17 (prototype v7): the Table tab's gallery of designs,
     // drawn with the table's own cells.
     testWidgets("a design from the gallery: a kind, a design, used",
@@ -544,8 +609,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("tableDesignGallery")));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("tableKind-league")), findsOneWidget);
-      // No yes-and-no column here: Comparison says what it needs.
+      // No yes-and-no column here: Plans' cards can still be drawn, its
+      // ticks say what they need.
+      await tester.tap(find.byKey(const ValueKey("tableKind-plans")));
+      await tester.pumpAndSettle();
       expect(find.textContaining("Needs a column of yes and no"), findsWidgets);
+      await tester.tap(find.byKey(const ValueKey("tableGalleryBack")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("tableKind-heat")));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("tablePreset-0")));

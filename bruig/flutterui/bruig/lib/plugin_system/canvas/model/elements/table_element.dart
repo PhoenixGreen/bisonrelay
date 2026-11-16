@@ -744,6 +744,14 @@ class TableElement extends CanvasElement {
   /// by section).
   final bool groupRows;
 
+  /// cards draws each column after the first as a card of its own, apart
+  /// from the others (plans side by side); [picked] is the column raised
+  /// above the rest, with [ribbon]'s words on a band across its top (Ken,
+  /// 2026-11-17: prototype v7's "Plans as cards"). -1, none raised.
+  final bool cards;
+  final int picked;
+  final String ribbon;
+
   /// sheet is the range of the canvas sheet this table shows (see
   /// data_sheet.dart): its rows are that range's, kept in step both ways
   /// (data_sync.dart). Null only until it is given a sheet of its own.
@@ -816,6 +824,9 @@ class TableElement extends CanvasElement {
     this.style = "",
     this.columnKinds = const {},
     this.groupRows = false,
+    this.cards = false,
+    this.picked = -1,
+    this.ribbon = "",
     this.sheet,
     this.sheetLooks = const [],
   });
@@ -1037,6 +1048,9 @@ class TableElement extends CanvasElement {
     String? style,
     Map<int, String>? columnKinds,
     bool? groupRows,
+    bool? cards,
+    int? picked,
+    String? ribbon,
     SheetLink? sheet,
     bool clearSheet = false,
     List<List<SheetCellLook?>>? sheetLooks,
@@ -1078,6 +1092,9 @@ class TableElement extends CanvasElement {
           style: style,
           columnKinds: columnKinds,
           groupRows: groupRows,
+          cards: cards,
+          picked: picked,
+          ribbon: ribbon,
           sheet: sheet,
           clearSheet: clearSheet,
           sheetLooks: sheetLooks);
@@ -1120,6 +1137,9 @@ class TableElement extends CanvasElement {
     String? style,
     Map<int, String>? columnKinds,
     bool? groupRows,
+    bool? cards,
+    int? picked,
+    String? ribbon,
     SheetLink? sheet,
     bool clearSheet = false,
     List<List<SheetCellLook?>>? sheetLooks,
@@ -1158,6 +1178,9 @@ class TableElement extends CanvasElement {
           style: style ?? this.style,
           columnKinds: columnKinds ?? this.columnKinds,
           groupRows: groupRows ?? this.groupRows,
+          cards: cards ?? this.cards,
+          picked: picked ?? this.picked,
+          ribbon: ribbon ?? this.ribbon,
           sheet: clearSheet ? null : sheet ?? this.sheet,
           sheetLooks: sheetLooks ?? this.sheetLooks);
 
@@ -1200,6 +1223,9 @@ class TableElement extends CanvasElement {
               "$key": value
           },
         if (groupRows) "groupRows": true,
+        if (cards) "cards": true,
+        if (picked >= 0) "picked": picked,
+        if (ribbon.isNotEmpty) "ribbon": ribbon,
         if (sheet != null) "sheet": sheet!.toJson(),
       };
 
@@ -1282,6 +1308,9 @@ class TableElement extends CanvasElement {
                 c: value,
         },
         groupRows: json["groupRows"] == true,
+        cards: json["cards"] == true,
+        picked: json["picked"] is int ? json["picked"] as int : -1,
+        ribbon: json["ribbon"] is String ? json["ribbon"] as String : "",
         sheet: SheetLink.fromJson(json["sheet"]));
   }
 

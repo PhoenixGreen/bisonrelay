@@ -254,4 +254,78 @@ void main() {
     expect(bins.categories, hasLength(3));
     expect(bins.series.single.values.fold(0.0, (a, b) => a + b), 6);
   });
+
+  // Ken, 2026-11-17: "do the Not done list" -- a flow as where the money
+  // goes, bubbles in groups, a radar against another.
+  test("the last designs: money, groups and against another", () async {
+    ChartPreset named(ChartType t, String n) => chartKinds
+        .firstWhere((k) => k.type == t)
+        .presets
+        .firstWhere((p) => p.name == n);
+    expect(
+        named(ChartType.sankey, "Where the money goes")
+            .apply(like, picks([2]))
+            .design
+            .mode,
+        "money");
+    expect(
+        named(ChartType.radar, "Against another")
+            .apply(like, picks([2]))
+            .design
+            .mode,
+        "compare");
+    var groups = named(ChartType.bubbles, "In groups");
+    // Grouped by a second column of names, else a cluster a column of
+    // numbers; with neither, it says what it needs.
+    var byName =
+        picksOf(sheet, range, [1, 0, 2], const [2], const [], const [1, 0]);
+    expect(groups.needs!(byName), isNull);
+    expect(
+        groups.needs!(
+            picksOf(sheet, range, [1, 2], const [2], const [], const [1])),
+        isNotNull);
+
+    // A colour-by column of words: each bubble's group.
+    var clubs = const DataSheet(id: "g", cells: [
+      ["Club", "Group", "Pts"],
+      ["Arsenal", "Top four", "74"],
+      ["City", "Top four", "71"],
+      ["Spurs", "Chasing", "52"],
+    ]);
+    var d = chartDataOf(
+        clubs,
+        const SheetLink("g", CellRange(0, 0, 3, 2),
+            labels: 0, series: [2], colourBy: 1),
+        const ChartData());
+    expect(d.groups, ["Top four", "Top four", "Chasing"]);
+    expect(d.marks.toSet(), hasLength(2), reason: "a colour a group");
+
+    Future<Set<int>> colours(ChartElement e) async {
+      var recorder = ui.PictureRecorder();
+      paintChart(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 480, 300), e);
+      var image = await recorder.endRecording().toImage(480, 300);
+      var b = (await image.toByteData())!;
+      return {
+        for (var i = 0; i < b.lengthInBytes; i += 4)
+          if (b.getUint8(i + 3) == 255) b.getUint32(i)
+      };
+    }
+
+    int rgba(Color c) =>
+        ((c.r * 255).round() << 24) |
+        ((c.g * 255).round() << 16) |
+        ((c.b * 255).round() << 8) |
+        255;
+    var flow = like.copyWith(
+        type: ChartType.sankey,
+        showXLabels: false,
+        data: ChartData.parse(
+            "Flow\tGBP\nTickets > Revenue\t110\nTV > Revenue\t260\nRevenue > Wages\t330\nRevenue > Profit\t40"));
+    // Profit's node in the accent; drawn a colour a node, nothing is.
+    const accent = Color(0xFFF2B33D);
+    await expectLater(
+        colours(flow.copyWith(design: const ChartDesign(mode: "money"))),
+        completion(contains(rgba(accent))));
+    await expectLater(colours(flow), completion(isNot(contains(rgba(accent)))));
+  });
 }

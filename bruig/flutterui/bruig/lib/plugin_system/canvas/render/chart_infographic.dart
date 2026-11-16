@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
+import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
@@ -23,7 +24,7 @@ import 'package:flutter/painting.dart';
 /// paintInfographic draws [e], one of the infographic types, in [area].
 void paintInfographic(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
-    if (e.data.series.isEmpty || e.data.categories.isEmpty) return;
+  if (e.data.series.isEmpty || e.data.categories.isEmpty) return;
   // Another of its ways (chart_variants.dart).
   if (paintVariant(canvas, area, e, reveal)) return;
   switch (e.type) {
@@ -47,7 +48,7 @@ void paintInfographic(
       _slope(canvas, area, e, reveal);
     case ChartType.shareBar:
       _shareBar(canvas, area, e, reveal);
-        case ChartType.lollipop:
+    case ChartType.lollipop:
       _lollipop(canvas, area, e, reveal);
     default:
       // The research's new kinds (chart_extra.dart).
@@ -376,6 +377,11 @@ List<SankeyFlow> sankeyFlows(ChartElement e) {
   ];
 }
 
+/// _kept is whether a node's name says it is what is left over: a profit,
+/// a surplus, savings (a sankey drawn as where the money goes).
+final _kept = RegExp(r"profit|surplus|sav(ed|ings?)|left|net\b|kept|reserve",
+    caseSensitive: false);
+
 void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var flows = sankeyFlows(e);
   if (flows.isEmpty) return;
@@ -384,6 +390,33 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     if (!names.contains(f.from)) names.add(f.from);
     if (!names.contains(f.to)) names.add(f.to);
   }
+  // Where the money goes (Ken, 2026-11-17, prototype v7): what comes in
+  // one colour, what goes out another, and what is left in the style's
+  // accent -- rather than a colour each node.
+  var money = modeOf(e.design, "sankey") == "money";
+  Color pal(int k) =>
+      k < e.sliceColors.length ? e.sliceColors[k] : chartPalette[k];
+  var accent = dataStyleNamed(e.style)?.accent ?? const Color(0xFFF2B33D);
+  bool sink(String n) => !flows.any((f) => f.from == n);
+  bool kept(String n) => sink(n) && _kept.hasMatch(n);
+  // What goes out: the first of the palette after the first that is not
+  // near the accent (Editorial's second is its red).
+  var out = pal(1);
+  for (var k = 1; k < chartPalette.length; k++) {
+    var c = pal(k);
+    var far = (c.r - accent.r).abs() +
+        (c.g - accent.g).abs() +
+        (c.b - accent.b).abs();
+    if (far > 0.45) {
+      out = c;
+      break;
+    }
+  }
+  Color moneyOf(String to) => kept(to)
+      ? accent
+      : sink(to)
+          ? out
+          : pal(0);
   // Each node's column: one after the furthest that flows into it.
   var column = {for (var n in names) n: 0};
   for (var pass = 0; pass < names.length; pass++) {
@@ -400,7 +433,7 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   // Labels need room on the right of all but the last column, and on its
   // left for the last.
   var labelW = e.showXLabels ? area.width * 0.22 : 0.0;
-  var nodeW = math.max(6.0, area.width * 0.025);
+  var nodeW = math.max(6.0, area.width * (money ? 0.04 : 0.025));
   var span = area.width - labelW - nodeW;
   double xOf(int col) =>
       area.left + (columns == 1 ? 0 : span * col / (columns - 1));
@@ -446,13 +479,23 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       ..lineTo(x1, y1 + t)
       ..cubicTo(mid, y1 + t, mid, y0 + t, x0, y0 + t)
       ..close();
-    var colour = itemColour(
-        e, names.indexOf(f.to) - 1 < 0 ? 0 : names.indexOf(f.to) - 1);
+    var colour = money
+        ? moneyOf(f.to)
+        : itemColour(
+            e, names.indexOf(f.to) - 1 < 0 ? 0 : names.indexOf(f.to) - 1);
     canvas.drawPath(path,
         Paint()..color = slice.tint(colour.withValues(alpha: colour.a * 0.55)));
   }
   for (var (i, n) in names.indexed) {
-    var colour = i == 0 ? e.axisColor : itemColour(e, i - 1);
+    var colour = money
+        ? (column[n] == 0
+            ? pal(0)
+            : sink(n)
+                ? moneyOf(n)
+                : e.axisColor)
+        : i == 0
+            ? e.axisColor
+            : itemColour(e, i - 1);
     canvas.drawRect(box[n]!, Paint()..color = colour);
   }
   if (!e.showXLabels) return;
@@ -478,6 +521,7 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       var r = box[n]!;
       var words = e.showValues ? "$n  ${_value(e, size[n]!)}" : n;
       var spec = _label(e, align: TextAlignSpec.left);
+      if (money && kept(n)) spec = spec.copyWith(color: accent, weight: 800);
       var at = Rect.fromLTWH(
           r.right + 6, math.max(area.top, tops[k]), labelW - 8, lineH);
       // A middle column's names lie over the ribbons leaving it: on a
@@ -721,32 +765,11 @@ void _funnel(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 /// largest in the middle and each next as near it as it goes without
 /// overlapping: centres and radii in [area], in the values' order.
 List<(Offset, double)> bubbleCircles(List<double> values, Rect area) {
-  var order = [for (var i = 0; i < values.length; i++) i]
-    ..sort((a, b) => values[b].compareTo(values[a]));
-  var r = [for (var v in values) math.sqrt(math.max(0, v))];
-  var placed = <int, Offset>{};
-  for (var i in order) {
-    if (r[i] <= 0) continue;
-    if (placed.isEmpty) {
-      placed[i] = Offset.zero;
-      continue;
-    }
-    Offset? best;
-    for (var (j, c) in placed.entries.map((x) => (x.key, x.value))) {
-      for (var a = 0; a < 72; a++) {
-        var ang = a * math.pi / 36;
-        var p = c + Offset(math.cos(ang), math.sin(ang)) * (r[j] + r[i] + 0.5);
-        var clear = placed.entries
-            .every((o) => (o.value - p).distance >= r[o.key] + r[i] + 0.01);
-        if (clear && (best == null || p.distance < best.distance)) best = p;
-      }
-    }
-    placed[i] = best ?? Offset(placed.length * r[i] * 2, 0);
+  var (placed, r) = bubblePack(values);
+  if (placed.every((c) => c == null)) {
+    return [for (var _ in values) (area.center, 0.0)];
   }
-  if (placed.isEmpty) return [for (var _ in values) (area.center, 0.0)];
-  var bounds = placed.entries
-      .map((x) => Rect.fromCircle(center: x.value, radius: r[x.key]))
-      .reduce((a, b) => a.expandToInclude(b));
+  var bounds = bubbleBounds(placed, r);
   var k = math.min(area.width / bounds.width, area.height / bounds.height);
   return [
     for (var i = 0; i < values.length; i++)

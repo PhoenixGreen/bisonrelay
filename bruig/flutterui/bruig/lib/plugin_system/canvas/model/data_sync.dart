@@ -1407,8 +1407,14 @@ Color scaleColour(double v, double lo, double hi) {
   // Coloured by a column: words a colour each (results as a form guide's),
   // numbers a scale.
   var marks = <Color?>[];
+  var groupWords = <String>[];
   if (colourBy >= 0) {
     if (words(colourBy)) {
+      groupWords = [
+        for (var it in shownItems)
+          it == null ? "" : shown(it.$2.last, colourBy).trim(),
+        if (rest.isNotEmpty) "",
+      ];
       var seen = <String>[];
       for (var r in rows) {
         var w = shown(r, colourBy);
@@ -1445,6 +1451,7 @@ Color scaleColour(double v, double lo, double hi) {
         ],
         series: series,
         marks: marks.isEmpty || rest.isEmpty ? marks : [...marks, null],
+        groups: groupWords,
         at: shownAt),
     columnValues
   );

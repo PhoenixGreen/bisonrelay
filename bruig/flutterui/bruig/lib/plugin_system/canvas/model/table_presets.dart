@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/chart_presets.dart'
@@ -105,6 +106,9 @@ TableElement _fresh(TableElement t) => t.copyWith(
       ],
       columnKinds: const {},
       groupRows: false,
+      cards: false,
+      picked: -1,
+      ribbon: "",
       headerRow: true,
       headerColumn: false,
       zebra: false,
@@ -393,6 +397,16 @@ final tableKinds = <TableKind>[
             .copyWith(grid: TableGrid.all, columnKinds: const {0: "merge"})),
   ]),
   TableKind("plans", "Plans", "Tiers side by side.", [
+    TablePreset(
+        "Cards",
+        "Each plan a card of its own, the middle one raised with a ribbon.",
+        [_i, _v],
+        (t, s) => _fresh(t).copyWith(
+            cards: true,
+            picked: t.columnCount > 1 ? math.max(1, t.columnCount ~/ 2) : -1,
+            ribbon: "Most popular",
+            cornerRadius: 10,
+            columnKinds: {for (var c in s.yesNo) c: "ticks"})),
     TablePreset(
         "Ticks, one lit",
         "Ticks for what each has; the first row bold.",

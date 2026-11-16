@@ -173,7 +173,11 @@ const Map<String, List<(String, String)>> chartModes = {
     ("bars", "Bars from one edge"),
     ("ghost", "What was lost")
   ],
-  "bubbles": [("packed", "Packed"), ("row", "In a row")],
+  "bubbles": [
+    ("packed", "Packed"),
+    ("row", "In a row"),
+    ("clusters", "In groups")
+  ],
   "timeline": [("line", "Along a line"), ("down", "Down the page")],
   "gauge": [("arc", "Arc"), ("bands", "Needle over bands"), ("dial", "Dial")],
   "pictogram": [
@@ -181,6 +185,7 @@ const Map<String, List<(String, String)>> chartModes = {
     ("rows", "A row each"),
     ("big", "One big icon")
   ],
+  "sankey": [("flows", "A colour each"), ("money", "Where the money goes")],
   "treemap": [("tiles", "Tiles"), ("market", "Up and down")],
   "shareBar": [
     ("bar", "One bar"),
@@ -199,7 +204,11 @@ const Map<String, List<(String, String)>> chartModes = {
     ("bars", "Bars round a circle"),
     ("rose", "Rose")
   ],
-  "radar": [("filled", "Filled"), ("dots", "Dots on spokes")],
+  "radar": [
+    ("filled", "Filled"),
+    ("dots", "Dots on spokes"),
+    ("compare", "Against another")
+  ],
   "waffle": [("squares", "Squares"), ("dots", "Dots"), ("rising", "Rising")],
   "candlestick": [
     ("candles", "Candles"),
