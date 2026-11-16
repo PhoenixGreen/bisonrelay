@@ -30,7 +30,20 @@ extension CanvasDataViews on CanvasController {
     var page = _document.size.size;
     var top = views.map((v) => v.base.y).reduce(math.min);
     var area = layoutArea(page, top);
-    var rects = pageLayoutRects(views.length, layout, area, page.width * 0.025);
+    var gap = page.width * 0.025;
+    var rects = layout == PageLayout.report
+        ? reportLayoutRects([
+            for (var v in views)
+              v is ChartElement && v.type == ChartType.bigNumber
+                  ? "figure"
+                  : v is TableElement
+                      ? "table"
+                      : "chart"
+          ], area, gap)
+        : pageLayoutRects(views.length, layout, area, gap);
+    // On a baseline grid, a sixtieth of the page's height: lined up.
+    var unit = page.height / 60;
+    rects = [for (var r in rects) snapToBaseline(r, unit)];
     var mine = _interaction == null;
     if (mine) beginInteraction();
     for (var (i, v) in views.indexed) {

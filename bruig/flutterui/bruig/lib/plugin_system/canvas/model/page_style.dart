@@ -51,7 +51,11 @@ enum PageLayout {
   rows2("Two a row"),
   rows1("One a row"),
   rows3("Three a row"),
-  main("One large, the rest beside it");
+  main("One large, the rest beside it"),
+
+  /// report puts key figures (big numbers) in a strip along the top, the
+  /// main charts below on the left and tables down the right.
+  report("Key figures, then charts and tables");
 
   final String label;
   const PageLayout(this.label);
@@ -80,6 +84,9 @@ List<Rect> pageLayoutRects(int n, PageLayout layout, Rect area, double gap) {
       return grid(2);
     case PageLayout.rows3:
       return grid(3);
+    case PageLayout.report:
+      // Without the views' kinds, as a grid; see reportLayoutRects.
+      return grid(2);
     case PageLayout.main:
       if (n == 1) return [area];
       var mainW = (area.width - gap) * 0.62;
@@ -92,6 +99,65 @@ List<Rect> pageLayoutRects(int n, PageLayout layout, Rect area, double gap) {
               area.width - mainW - gap, h),
       ];
   }
+}
+
+/// reportLayoutRects is where [kinds] go in a report: each view's kind, in
+/// order -- "figure" (a big number), "table", or a chart.
+List<Rect> reportLayoutRects(List<String> kinds, Rect area, double gap) {
+  var figures = [
+    for (var (i, k) in kinds.indexed)
+      if (k == "figure") i
+  ];
+  var tables = [
+    for (var (i, k) in kinds.indexed)
+      if (k == "table") i
+  ];
+  var charts = [
+    for (var (i, k) in kinds.indexed)
+      if (k != "figure" && k != "table") i
+  ];
+  var out = List<Rect>.filled(kinds.length, Rect.zero);
+  var top = area.top;
+  if (figures.isNotEmpty) {
+    var h = area.height * 0.22;
+    var w = (area.width - gap * (figures.length - 1)) / figures.length;
+    for (var (k, i) in figures.indexed) {
+      out[i] = Rect.fromLTWH(area.left + k * (w + gap), top, w, h);
+    }
+    top += h + gap;
+  }
+  var rest = Rect.fromLTRB(area.left, top, area.right, area.bottom);
+  var left = charts.isEmpty
+      ? Rect.zero
+      : tables.isEmpty
+          ? rest
+          : Rect.fromLTWH(
+              rest.left, rest.top, (rest.width - gap) * 0.62, rest.height);
+  var right = tables.isEmpty
+      ? Rect.zero
+      : charts.isEmpty
+          ? rest
+          : Rect.fromLTRB(left.right + gap, rest.top, rest.right, rest.bottom);
+  void stack(List<int> which, Rect r) {
+    if (which.isEmpty) return;
+    var h = (r.height - gap * (which.length - 1)) / which.length;
+    for (var (k, i) in which.indexed) {
+      out[i] = Rect.fromLTWH(r.left, r.top + k * (h + gap), r.width, h);
+    }
+  }
+
+  stack(charts, left);
+  stack(tables, right);
+  return out;
+}
+
+/// snapToBaseline is [r] with its edges on a baseline grid of [unit]: a
+/// page's parts line up, across and down.
+Rect snapToBaseline(Rect r, double unit) {
+  // Where it starts and how big it is, each snapped: views of the same
+  // size stay the same size.
+  double s(double v) => (v / unit).round() * unit;
+  return Rect.fromLTWH(s(r.left), s(r.top), s(r.width), s(r.height));
 }
 
 /// layoutArea is where a page's data goes: inside margins a twentieth of

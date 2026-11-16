@@ -88,4 +88,15 @@ void main() {
     c.undo();
     expect(c.document.elementById("a")!.base.width, 100);
   });
+
+  test("a report: key figures along the top, charts left, tables right", () {
+    const area = Rect.fromLTWH(0, 0, 1000, 600);
+    var r = reportLayoutRects(["figure", "chart", "table", "figure"], area, 20);
+    expect(r[0].top, 0);
+    expect(r[3].top, 0, reason: "both figures in the strip");
+    expect(r[1].top, greaterThan(r[0].bottom));
+    expect(r[1].right, lessThan(r[2].left), reason: "chart left of table");
+    var snapped = snapToBaseline(const Rect.fromLTWH(3, 17, 98, 186), 18);
+    expect(snapped, const Rect.fromLTWH(0, 18, 90, 180));
+  });
 }
