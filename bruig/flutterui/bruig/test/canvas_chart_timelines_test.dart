@@ -120,6 +120,34 @@ void main() {
     }
   });
 
+  test("evenly spaced: in order, equal steps, whatever the dates", () {
+    var e = timeline("").copyWith(design: const ChartDesign(even: true));
+    var xs = {for (var m in marksOf(e)) m.rect.center.dx.round()}.toList()
+      ..sort();
+    // 2016, 2017, 2018, 2019 and 2021 (two events): five places.
+    expect(xs, hasLength(5));
+    var steps = [for (var i = 1; i < xs.length; i++) xs[i] - xs[i - 1]];
+    for (var d in steps) {
+      expect(d, closeTo(steps.first, 2));
+    }
+    // By date instead, 2019 to 2021 is twice as far as 2016 to 2017.
+    var dated = {for (var m in marksOf(timeline(""))) m.rect.center.dx.round()}
+        .toList()
+      ..sort();
+    expect((dated[4] - dated[3]) / (dated[1] - dated[0]), closeTo(2, 0.1));
+    expect(ChartDesign.fromJson(const ChartDesign(even: true).toJson()).even,
+        isTrue);
+  });
+
+  test("the same start: each group measured from its own first", () {
+    var marks = {for (var m in marksOf(timeline("aligned"))) m.index: m.rect};
+    // Launch (chain, 2016) and Politeia (governance, 2017) both start their
+    // lanes: the same x.
+    expect(marks[0]!.left, closeTo(marks[1]!.left, 12));
+    // Treasury (governance, 2021) four years on from Politeia.
+    expect(marks[4]!.left, greaterThan(marks[1]!.left + 50));
+  });
+
   test("spans: events that overlap take separate rows, the rest share", () {
     var marks = {for (var m in marksOf(timeline("spans"))) m.index: m.rect};
     // Politeia (2017-18) and Launch (2016) fit one row; Treasury and

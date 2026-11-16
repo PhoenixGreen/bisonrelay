@@ -676,8 +676,17 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var lo = values.reduce(math.min), hi = values.reduce(math.max);
   if (hi <= lo) hi = lo + 1;
   var pad = area.width * 0.08;
-  double xOf(double v) =>
-      area.left + pad + (v - lo) / (hi - lo) * (area.width - pad * 2);
+  // Evenly spaced, in order (ChartDesign.even): the time between them
+  // written in the gaps below.
+  var knots = ({for (var v in values) v}.toList()..sort());
+  double xOf(double v) {
+    if (!e.design.even || knots.length < 2) {
+      return area.left + pad + (v - lo) / (hi - lo) * (area.width - pad * 2);
+    }
+    var i = knots.indexOf(v);
+    return area.left + pad + (area.width - pad * 2) * i / (knots.length - 1);
+  }
+
   var y = area.center.dy;
   var axis = Paint()
     ..color = e.axisColor
@@ -704,6 +713,21 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var labelSpec = _label(e, size: e.labelSpec.fontSize * fit);
   var figureSpec = _figure(e, size: e.valueSpec.fontSize * fit);
   var room = (area.width - pad * 2) / math.max(1, values.length - 1) * 1.8;
+  if (e.design.even && knots.length > 1) {
+    var years =
+        knots.every((v) => v == v.roundToDouble() && v > 1000 && v < 3000);
+    var gapSpec = _label(e, size: e.labelSpec.fontSize * 0.75).copyWith(
+        italic: true, color: e.labelSpec.color.withValues(alpha: 0.6));
+    for (var i = 0; i < knots.length - 1; i++) {
+      var a = xOf(knots[i]), b = xOf(knots[i + 1]);
+      var d = knots[i + 1] - knots[i];
+      var words = years
+          ? "${d.round()} yr${d.round() == 1 ? "" : "s"}"
+          : "+${_value(e, d)}";
+      _text(canvas, words, gapSpec,
+          Rect.fromLTWH(a, y + 3, b - a, gapSpec.fontSize * 1.4));
+    }
+  }
   for (var (k, i) in order.indexed) {
     var slice = sliceProgress(e, reveal, k, order.length);
     if (slice.gone) continue;

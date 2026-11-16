@@ -2048,6 +2048,18 @@ class ChartsDesignState extends State<ChartsDesign>
                 (m) => _set(e.copyWith(design: e.design.copyWith(mode: m)))),
           ]),
         ],
+        // A timeline's events by their dates, or evenly in order with the
+        // time between them written in the gaps.
+        if (e.type == ChartType.timeline) ...[
+          const SizedBox(height: 4),
+          StudioSwitchRow(
+              key: const ValueKey("chartsEven"),
+              label: "Evenly spaced",
+              note: "the time between written in",
+              value: e.design.even,
+              onChanged: (v) =>
+                  _set(e.copyWith(design: e.design.copyWith(even: v)))),
+        ],
         if (l.charted) ...[
           const SizedBox(height: 8),
           const StudioNote(
@@ -3258,8 +3270,9 @@ class ChartsDesignState extends State<ChartsDesign>
                               hint: "A number",
                               onChanged: (v) {
                                 var n = double.tryParse(v.trim());
-                                if (n != null)
+                                if (n != null) {
                                   put(h.copyWith(value: n), live: true);
+                                }
                               })),
                         _menu<int>(
                             const ValueKey("chartsBy"),

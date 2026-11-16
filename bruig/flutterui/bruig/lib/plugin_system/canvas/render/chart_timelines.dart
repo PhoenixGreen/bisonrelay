@@ -32,6 +32,11 @@ const timelineWays = {
   "bubbles",
   "serpentine",
   "progress",
+  "zoom",
+  "spiral",
+  "thenNow",
+  "strip",
+  "aligned",
 };
 
 /// paintTimelineWay draws timeline [e] its [mode] way, answering whether
@@ -57,6 +62,16 @@ bool paintTimelineWay(
       _serpentine(canvas, area, e, reveal, evs);
     case "progress":
       _progress(canvas, area, e, reveal, evs);
+    case "zoom":
+      _zoom(canvas, area, e, reveal, evs);
+    case "spiral":
+      _spiral(canvas, area, e, reveal, evs);
+    case "thenNow":
+      _thenNow(canvas, area, e, reveal, evs);
+    case "strip":
+      _strip(canvas, area, e, reveal, evs);
+    case "aligned":
+      _aligned(canvas, area, e, reveal, evs);
     default:
       return false;
   }
@@ -152,11 +167,61 @@ class _Scale {
       : lo = lo,
         hi = hi > lo ? hi : lo + 1;
   double x(double v) => left + (v - lo) / (hi - lo) * (right - left);
+
+  /// knots are the dates an even scale spaces evenly; empty for one by
+  /// date.
+  List<double> get knots => const [];
+}
+
+/// _EvenScale spaces [knots] -- the events' dates, in order -- evenly
+/// across, a date between two of them part-way between: the timeline
+/// research's Even, for events bunched in one stretch and scattered in
+/// another. The time between neighbours is written in the gaps instead of
+/// ticks (see _axis).
+class _EvenScale extends _Scale {
+  @override
+  final List<double> knots;
+  _EvenScale(this.knots, double left, double right)
+      : super(knots.first, knots.last, left, right);
+
+  double _at(int i) =>
+      left + (right - left) * (i + 0.5) / math.max(1, knots.length);
+
+  @override
+  double x(double v) {
+    var n = knots.length;
+    if (n == 1) return _at(0);
+    if (v <= knots.first) {
+      var w = knots[1] - knots[0];
+      return _at(0) - (knots.first - v) / (w <= 0 ? 1 : w) * (_at(1) - _at(0));
+    }
+    for (var i = 0; i < n - 1; i++) {
+      if (v <= knots[i + 1]) {
+        var w = knots[i + 1] - knots[i];
+        var t = w <= 0 ? 0.0 : (v - knots[i]) / w;
+        return _at(i) + t * (_at(i + 1) - _at(i));
+      }
+    }
+    var w = knots[n - 1] - knots[n - 2];
+    return _at(n - 1) +
+        (v - knots.last) / (w <= 0 ? 1 : w) * (_at(n - 1) - _at(n - 2));
+  }
 }
 
 /// _scaleOf is a scale over [evs] (and [also]) across [left] to [right],
 /// with a little room either end.
-_Scale _scaleOf(List<_Ev> evs, double left, double right, {double? also}) {
+_Scale _scaleOf(List<_Ev> evs, double left, double right,
+    {double? also, ChartElement? e}) {
+  if (e != null && e.design.even) {
+    var knots = {
+      for (var v in evs) v.start,
+      for (var v in evs)
+        if (v.end != null) v.end!,
+      if (also != null) also,
+    }.toList()
+      ..sort();
+    return _EvenScale(knots, left, right);
+  }
   var lo = evs.map((v) => v.start).reduce(math.min);
   var hi = evs.map((v) => v.last).reduce(math.max);
   if (also != null) {
@@ -197,6 +262,25 @@ void _axis(ui.Canvas canvas, ChartElement e, _Scale sc, double y, bool years,
   var spec = _lab(e, size: e.labelSpec.fontSize * 0.85)
       .copyWith(color: _quiet(e, 0.7));
   var room = e.labelSpec.fontSize * 4.5;
+  // Evenly spaced: the time between neighbours, in the gaps.
+  if (sc.knots.length > 1) {
+    var k = sc.knots;
+    for (var i = 0; i < k.length - 1; i++) {
+      var a = sc.x(k[i]), b = sc.x(k[i + 1]);
+      if (b > sc.left + (sc.right - sc.left) * drawn) break;
+      canvas.drawLine(Offset(a, y), Offset(a, y + 5), line);
+      _say(
+          canvas,
+          _gapWords(k[i + 1] - k[i], years, e),
+          spec.copyWith(italic: true),
+          Rect.fromCenter(
+              center: Offset((a + b) / 2, y + 5 + spec.fontSize * 0.75),
+              width: b - a - 4,
+              height: spec.fontSize * 1.5));
+    }
+    canvas.drawLine(Offset(sc.x(k.last), y), Offset(sc.x(k.last), y + 5), line);
+    return;
+  }
   var step = _step(
       sc.hi - sc.lo, ((sc.right - sc.left) / room).floor().clamp(2, 12),
       whole: years);
@@ -214,6 +298,16 @@ void _axis(ui.Canvas canvas, ChartElement e, _Scale sc, double y, bool years,
             width: room,
             height: spec.fontSize * 1.5));
   }
+}
+
+/// _gapWords is the time between two neighbours: "12 yrs", or the
+/// difference as its numbers are written.
+String _gapWords(double d, bool years, ChartElement e) {
+  if (years) {
+    var n = d.round();
+    return n == 0 ? "same year" : "$n yr${n == 1 ? "" : "s"}";
+  }
+  return "+${formatSeries(e, 0, d)}";
 }
 
 /// _pack puts each of [spans] (left and right, in order of left) on the
@@ -266,7 +360,7 @@ void _spans(
   var axisH = _axisHeight(e);
   var plot =
       Rect.fromLTRB(area.left, area.top, area.right, area.bottom - axisH);
-  var sc = _scaleOf(evs, plot.left, plot.right);
+  var sc = _scaleOf(evs, plot.left, plot.right, e: e);
   _spanRows(canvas, e, reveal, plot, sc, evs, 0, evs.length);
   _axis(canvas, e, sc, plot.bottom + 2, _years(evs), _drawn(e, reveal));
 }
@@ -366,7 +460,7 @@ void _lanes(
   var gutter = _gutter(e, groups, area.width * 0.28);
   var plot = Rect.fromLTRB(
       area.left + gutter, area.top, area.right, area.bottom - axisH);
-  var sc = _scaleOf(evs, plot.left + 4, plot.right);
+  var sc = _scaleOf(evs, plot.left + 4, plot.right, e: e);
   var laneH = plot.height / groups.length;
   var spec = _lab(e, align: TextAlignSpec.left).copyWith(weight: 700);
   var k0 = 0;
@@ -483,7 +577,7 @@ void _eras(
   var axisH = _axisHeight(e);
   var plot =
       Rect.fromLTRB(area.left, area.top, area.right, area.bottom - axisH);
-  var sc = _scaleOf(evs, plot.left, plot.right);
+  var sc = _scaleOf(evs, plot.left, plot.right, e: e);
   var spec =
       _lab(e, align: TextAlignSpec.left, size: fs * 0.9).copyWith(weight: 700);
   var nameH = fs * 1.5;
@@ -556,7 +650,7 @@ void _valueLine(
   var gutter = fs * 3.5;
   var plot = Rect.fromLTRB(area.left + gutter, area.top + fs, area.right - fs,
       area.bottom - keyH - axisH - fs * 0.6);
-  var sc = _scaleOf(evs, plot.left, plot.right);
+  var sc = _scaleOf(evs, plot.left, plot.right, e: e);
   var vals = evs.map(value).toList();
   var lo = math.min(0.0, vals.reduce(math.min)), hi = vals.reduce(math.max);
   if (hi <= lo) hi = lo + 1;
@@ -752,7 +846,7 @@ void _bubbles(
   var most = evs.map(value).fold(0.0, math.max);
   if (most <= 0) most = 1;
   var maxR = math.min(laneH * 0.46, plot.width * 0.07);
-  var sc = _scaleOf(evs, plot.left + maxR, plot.right - maxR);
+  var sc = _scaleOf(evs, plot.left + maxR, plot.right - maxR, e: e);
   var fs = e.labelSpec.fontSize;
   var laneSpec = _lab(e, align: TextAlignSpec.left).copyWith(weight: 700);
   var marks = <(int, Offset, double)>[];
@@ -932,7 +1026,7 @@ void _progress(
   var pillH = fs * 1.6;
   var plot = Rect.fromLTRB(
       area.left, area.top + pillH + 4, area.right, area.bottom - axisH);
-  var sc = _scaleOf(evs, plot.left, plot.right, also: now);
+  var sc = _scaleOf(evs, plot.left, plot.right, also: now, e: e);
   var y = plot.center.dy;
   var drawn = _drawn(e, reveal);
   var xNow = sc.x(now);
@@ -975,4 +1069,481 @@ void _progress(
     _say(canvas, said, spec.copyWith(color: _ink(accent)), pill);
   }
   _axis(canvas, e, sc, plot.bottom + 2, years, drawn);
+}
+
+// ------------------------------------------------------------ zoom
+
+/// _window is the busiest stretch of [evs]: the third of their span with
+/// the most events in it.
+(double, double) _window(List<_Ev> evs) {
+  var lo = evs.first.start, hi = evs.map((v) => v.last).reduce(math.max);
+  var span = hi - lo;
+  if (span <= 0) return (lo - 1, hi + 1);
+  var w = span / 3;
+  var best = (lo, lo + w), most = -1;
+  for (var v in evs) {
+    var a = v.start, b = v.start + w;
+    var n = evs.where((x) => x.start >= a && x.start <= b).length;
+    if (n > most) {
+      most = n;
+      best = (a, b);
+    }
+  }
+  // A little room either side of what is in it.
+  return (best.$1 - w * 0.08, best.$2 + w * 0.08);
+}
+
+/// _zoom is the whole story along a thin strip at the top, its busiest
+/// stretch lit, and that stretch drawn large under it with its events
+/// named: focus and context, so a crowded few years can be read without
+/// losing where they sit.
+void _zoom(
+    ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
+  var fs = e.labelSpec.fontSize;
+  var stripH = math.max(fs * 3.2, area.height * 0.2);
+  var strip = Rect.fromLTWH(area.left, area.top, area.width, stripH);
+  var whole = _scaleOf(evs, strip.left + 6, strip.right - 6);
+  var (w0, w1) = _window(evs);
+  var y0 = strip.top + stripH * 0.42;
+  var drawn = _drawn(e, reveal);
+  canvas.drawLine(
+      Offset(whole.left, y0),
+      Offset(whole.left + (whole.right - whole.left) * drawn, y0),
+      Paint()
+        ..color = _quiet(e, 0.5)
+        ..strokeWidth = 1.5);
+  var lit = Rect.fromLTRB(whole.x(w0), strip.top + 2, whole.x(w1), y0 + 8);
+  var accent = e.data.series.isEmpty ? e.axisColor : e.data.series.first.color;
+  canvas.drawRRect(RRect.fromRectAndRadius(lit, const Radius.circular(4)),
+      Paint()..color = accent.withValues(alpha: 0.16));
+  canvas.drawRRect(
+      RRect.fromRectAndRadius(lit, const Radius.circular(4)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = accent.withValues(alpha: 0.7));
+  for (var v in evs) {
+    var x = whole.x(v.start);
+    canvas.drawLine(
+        Offset(x, y0 - 6),
+        Offset(x, y0 + 6),
+        Paint()
+          ..color = _colour(e, v.i)
+          ..strokeWidth = 2);
+  }
+  var small = _lab(e, size: fs * 0.75).copyWith(color: _quiet(e, 0.7));
+  _say(canvas, _when(e, evs.first.start), small,
+      Rect.fromLTWH(whole.left, y0 + 8, fs * 4, fs * 1.2));
+  _say(canvas, _when(e, evs.map((v) => v.last).reduce(math.max)), small,
+      Rect.fromLTWH(whole.right - fs * 4, y0 + 8, fs * 4, fs * 1.2));
+  // The stretch, large.
+  var axisH = _axisHeight(e);
+  var detail = Rect.fromLTRB(
+      area.left, strip.bottom + fs * 1.6, area.right, area.bottom - axisH);
+  var inside = [
+    for (var v in evs)
+      if (v.start >= w0 && v.start <= w1) v
+  ];
+  var sc = _Scale(w0, w1, detail.left + 6, detail.right - 6);
+  // The lit stretch opening out onto it.
+  canvas.drawPath(
+      Path()
+        ..moveTo(lit.left, lit.bottom)
+        ..lineTo(detail.left, detail.top)
+        ..lineTo(detail.right, detail.top)
+        ..lineTo(lit.right, lit.bottom)
+        ..close(),
+      Paint()..color = accent.withValues(alpha: 0.06));
+  var y = detail.center.dy;
+  canvas.drawLine(
+      Offset(detail.left, y),
+      Offset(detail.left + detail.width * drawn, y),
+      Paint()
+        ..color = e.axisColor
+        ..strokeWidth = math.max(2, fs * 0.15));
+  _stemmed(canvas, e, reveal, detail, y, sc, inside);
+  // Those outside it still noted, as marks the Charts tab can find.
+  for (var v in evs) {
+    if (inside.contains(v)) continue;
+    notePart(ChartPartKind.mark,
+        Rect.fromCircle(center: Offset(whole.x(v.start), y0), radius: 6),
+        series: 0, index: v.i);
+  }
+  _axis(canvas, e, sc, detail.bottom + 2, _years(evs), drawn);
+}
+
+// ------------------------------------------------------------ spiral
+
+/// _spiral is time wound outwards from the middle, a turn every so many
+/// years: a long story in a square, its rhythm -- what comes round again --
+/// easier to see than its gaps (the research's caveat: it bends lengths,
+/// so it is for the look, not for comparing).
+void _spiral(
+    ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
+  var lo = evs.first.start, hi = evs.map((v) => v.last).reduce(math.max);
+  if (hi <= lo) hi = lo + 1;
+  var c = area.center;
+  var fs = e.labelSpec.fontSize;
+  var outer = area.shortestSide / 2 - fs * 2.2;
+  var inner = outer * 0.16;
+  var turns = (evs.length / 4).clamp(1.5, 3.0);
+  Offset at(double u) {
+    var a = -math.pi / 2 + u * turns * 2 * math.pi;
+    var r = inner + (outer - inner) * u;
+    return c + Offset(math.cos(a), math.sin(a)) * r;
+  }
+
+  double u(double v) => ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
+  var drawn = _drawn(e, reveal);
+  var path = Path();
+  const steps = 240;
+  for (var k = 0; k <= steps * drawn; k++) {
+    var p = at(k / steps);
+    k == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+  }
+  canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(2, fs * 0.18)
+        ..strokeCap = StrokeCap.round
+        ..color = _quiet(e, 0.45));
+  var dot = math.max(4.0, fs * 0.45);
+  var placer = LabelPlacer(area, keepClear: [
+    for (var v in evs) Rect.fromCircle(center: at(u(v.start)), radius: dot)
+  ]);
+  var labSpec = _lab(e, size: fs * 0.85);
+  var figSpec =
+      _fig(e, size: e.valueSpec.fontSize * 0.85).copyWith(weight: 800);
+  for (var (k, v) in evs.indexed) {
+    if (u(v.start) > drawn + 1e-6) continue;
+    var p = sliceProgress(e, reveal, k, evs.length);
+    if (p.gone) continue;
+    var colour = p.tint(_colour(e, v.i));
+    var o = at(u(v.start));
+    canvas.drawCircle(o, dot * p.size.clamp(0.0, 1.0), Paint()..color = colour);
+    notePart(ChartPartKind.mark, Rect.fromCircle(center: o, radius: dot * 1.6),
+        series: 0, index: v.i);
+    if (p.size < 1) continue;
+    var name = e.showXLabels ? e.data.categories[v.i] : "";
+    var when = _when(e, v.start);
+    var w = math.max(_widthOf(name, labSpec), _widthOf(when, figSpec)) + 6;
+    var h =
+        (name.isEmpty ? 0 : labSpec.fontSize * 1.3) + figSpec.fontSize * 1.3;
+    // Away from the middle first.
+    var out = o - c;
+    var d = out.distance < 1 ? const Offset(0, -1) : out / out.distance;
+    var reach = dot + 4;
+    var first = Rect.fromCenter(
+        center: o + d * (reach + math.max(w, h) / 2), width: w, height: h);
+    var got =
+        placer.place([first, ...LabelPlacer.around(o, Size(w, h), reach)]);
+    if (got == null) continue;
+    _say(canvas, when, figSpec.copyWith(color: colour),
+        Rect.fromLTWH(got.left, got.top, got.width, figSpec.fontSize * 1.3));
+    if (name.isNotEmpty) {
+      _say(
+          canvas,
+          name,
+          labSpec,
+          Rect.fromLTWH(got.left, got.top + figSpec.fontSize * 1.3, got.width,
+              labSpec.fontSize * 1.3));
+    }
+  }
+}
+
+// ------------------------------------------------------------ then and now
+
+/// _thenNow is the first event and the last side by side, large -- their
+/// dates, names, numbers and words -- with the time between them, and how
+/// much its number changed, on the line joining them; the events between
+/// as small marks on that line.
+void _thenNow(
+    ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
+  var d = e.data;
+  var first = evs.first, last = evs.last;
+  var s = d.series.length - 1;
+  double? value(_Ev v) =>
+      s <= 0 || d.valueAt(s, v.i).isNaN ? null : d.valueAt(s, v.i);
+  var fs = e.labelSpec.fontSize, vs = e.valueSpec.fontSize;
+  var cardW = area.width * 0.34;
+  var left = Rect.fromLTWH(area.left, area.top, cardW, area.height);
+  var right = Rect.fromLTWH(area.right - cardW, area.top, cardW, area.height);
+  var p = _drawn(e, reveal);
+  void card(Rect r, _Ev v, String said, int k) {
+    var sp = sliceProgress(e, reveal, k, 2);
+    if (sp.gone) return;
+    var colour = _colour(e, v.i);
+    canvas.saveLayer(
+        r.inflate(2),
+        Paint()
+          ..color = Color.fromRGBO(0, 0, 0, sp.alpha * sp.size.clamp(0, 1)));
+    canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(12)),
+        Paint()..color = colour.withValues(alpha: 0.12));
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(r.left, r.top, r.width, 5), const Radius.circular(3)),
+        Paint()..color = colour);
+    notePart(ChartPartKind.mark, r, series: 0, index: v.i);
+    var inner = r.deflate(math.min(fs, r.width * 0.08));
+    var lines = <(String, TextSpec, double)>[
+      (said, _lab(e, size: fs * 0.8).copyWith(color: _quiet(e, 0.7)), 1.3),
+      (
+        _when(e, v.start),
+        _fig(e, size: vs * 2.4).copyWith(weight: 800, color: colour),
+        1.15
+      ),
+      if (e.showXLabels)
+        (d.categories[v.i], _lab(e, size: fs * 1.1).copyWith(weight: 700), 1.4),
+      if (value(v) case var x?)
+        (
+          formatSeries(e, s, x),
+          _fig(e, size: vs * 1.3).copyWith(weight: 700),
+          1.4
+        ),
+      if (d.pointNameAt(v.i).isNotEmpty)
+        (
+          d.pointNameAt(v.i),
+          _lab(e, size: fs * 0.85)
+              .copyWith(color: _quiet(e, 0.75))
+              .copyWith(verticalAlign: VerticalAlignSpec.top),
+          3.6
+        ),
+    ];
+    var need = lines.fold(0.0, (t, l) => t + l.$2.fontSize * l.$3);
+    var fit = (inner.height / need).clamp(0.4, 1.0);
+    var y = inner.top + (inner.height - need * fit) / 2;
+    for (var (words, spec, h) in lines) {
+      var hh = spec.fontSize * h * fit;
+      _say(canvas, words, spec.copyWith(fontSize: spec.fontSize * fit),
+          Rect.fromLTWH(inner.left, y, inner.width, hh));
+      y += hh;
+    }
+    canvas.restore();
+  }
+
+  card(left, first, "Then", 0);
+  card(right, last, "Now", 1);
+  // Between: the line, the events on it, the years and the change.
+  var a = Offset(left.right + fs, area.center.dy),
+      b = Offset(right.left - fs, area.center.dy);
+  canvas.drawLine(
+      a,
+      Offset.lerp(a, b, p)!,
+      Paint()
+        ..color = _quiet(e, 0.5)
+        ..strokeWidth = 2);
+  var span = last.start - first.start;
+  for (var v in evs.skip(1).take(evs.length - 2)) {
+    var t = span <= 0 ? 0.5 : (v.start - first.start) / span;
+    if (t > p) continue;
+    var x = Offset.lerp(a, b, t)!;
+    canvas.drawCircle(x, 3.5, Paint()..color = _colour(e, v.i));
+    notePart(ChartPartKind.mark, Rect.fromCircle(center: x, radius: 6),
+        series: 0, index: v.i);
+  }
+  if (p < 1) return;
+  var mid = Rect.fromCenter(
+      center: (a + b) / 2 - Offset(0, fs * 1.4),
+      width: (b - a).distance,
+      height: fs * 1.6);
+  _say(canvas, _gapWords(span, _years(evs), e),
+      _lab(e, size: fs * 0.95).copyWith(weight: 700), mid);
+  if (value(first) case var x0?) {
+    if (value(last) case var x1?) {
+      var change = x1 - x0;
+      var by = x0 != 0 && x1 / x0 >= 2
+          ? "×${(x1 / x0).toStringAsFixed(x1 / x0 >= 10 ? 0 : 1)}"
+          : "${change >= 0 ? "+" : ""}${formatSeries(e, s, change)}";
+      _say(canvas, by, _fig(e, size: vs * 1.1).copyWith(weight: 800),
+          mid.shift(Offset(0, fs * 2.8)));
+    }
+  }
+}
+
+// ------------------------------------------------------------ strip
+
+/// _strip is every event a thin tick along one line, with how crowded each
+/// stretch is drawn as a soft hill over it: for many events, where the
+/// pattern is the story. Only a few are named -- the first, the last and
+/// the largest by their number -- where there is room.
+void _strip(
+    ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
+  var d = e.data;
+  var s = d.series.length - 1;
+  double value(_Ev v) =>
+      s <= 0 || d.valueAt(s, v.i).isNaN ? 0 : d.valueAt(s, v.i).abs();
+  var fs = e.labelSpec.fontSize;
+  var axisH = _axisHeight(e);
+  var plot = Rect.fromLTRB(
+      area.left, area.top + fs * 1.6, area.right, area.bottom - axisH);
+  var sc = _scaleOf(evs, plot.left, plot.right, e: e);
+  var base = plot.top + plot.height * 0.72;
+  var tick = plot.height * 0.16;
+  var drawn = _drawn(e, reveal);
+  var reach = plot.left + plot.width * drawn;
+  // How crowded: a gentle hill from the events near each place.
+  var accent = e.data.series.isEmpty ? e.axisColor : e.data.series.first.color;
+  var bw = (sc.hi - sc.lo) / 14;
+  double density(double v) {
+    var t = 0.0;
+    for (var x in evs) {
+      var z = (v - x.start) / bw;
+      t += math.exp(-z * z / 2);
+    }
+    return t;
+  }
+
+  var peak = 0.0;
+  const steps = 120;
+  var ds = [
+    for (var k = 0; k <= steps; k++)
+      density(sc.lo + (sc.hi - sc.lo) * k / steps)
+  ];
+  for (var v in ds) {
+    peak = math.max(peak, v);
+  }
+  if (peak > 0) {
+    var hillTop = plot.top + fs * 0.4;
+    var hill = Path()..moveTo(sc.left, base - tick);
+    for (var k = 0; k <= steps; k++) {
+      var x = sc.left + (sc.right - sc.left) * k / steps;
+      if (x > reach) break;
+      hill.lineTo(x, base - tick - (base - tick - hillTop) * ds[k] / peak);
+    }
+    hill.lineTo(math.min(reach, sc.right), base - tick);
+    hill.close();
+    canvas.drawPath(hill, Paint()..color = accent.withValues(alpha: 0.14));
+  }
+  canvas.drawLine(
+      Offset(plot.left, base),
+      Offset(reach, base),
+      Paint()
+        ..color = _quiet(e, 0.5)
+        ..strokeWidth = 1.2);
+  for (var (k, v) in evs.indexed) {
+    var x = sc.x(v.start);
+    if (x > reach + 0.5) continue;
+    var p = sliceProgress(e, reveal, k, evs.length);
+    if (p.gone) continue;
+    canvas.drawLine(
+        Offset(x, base - tick * p.size.clamp(0.0, 1.0)),
+        Offset(x, base),
+        Paint()
+          ..color = p.tint(_colour(e, v.i)).withValues(alpha: 0.85)
+          ..strokeWidth = math.max(1.5, fs * 0.14));
+    notePart(ChartPartKind.mark, Rect.fromLTRB(x - 3, base - tick, x + 3, base),
+        series: 0, index: v.i);
+  }
+  // A few named: the first, the last, then the largest.
+  var named = <_Ev>[evs.first, if (evs.length > 1) evs.last];
+  var byValue = [...evs]..sort((a, b) => value(b).compareTo(value(a)));
+  for (var v in byValue) {
+    if (named.length >= 5) break;
+    if (!named.contains(v) && value(v) > 0) named.add(v);
+  }
+  var placer = LabelPlacer(plot);
+  var spec = _lab(e, size: fs * 0.85);
+  if (drawn >= 1 && e.showXLabels) {
+    for (var v in named) {
+      var words = "${d.categories[v.i]} ${_when(e, v.start)}";
+      var size = labelSize(words, spec);
+      var x = sc.x(v.start);
+      var got = placer.place([
+        Rect.fromLTWH(x - size.width / 2, base + 4, size.width, size.height),
+        Rect.fromLTWH(x + 4, base + 4, size.width, size.height),
+        Rect.fromLTWH(x - size.width - 4, base + 4, size.width, size.height),
+      ]);
+      if (got == null) continue;
+      _say(canvas, words, spec, got);
+    }
+  }
+  _say(
+      canvas,
+      "${evs.length} events",
+      _lab(e, align: TextAlignSpec.left, size: fs * 0.85)
+          .copyWith(color: _quiet(e, 0.7)),
+      Rect.fromLTWH(area.left, area.top, area.width / 2, fs * 1.4));
+  _axis(canvas, e, sc, plot.bottom + 2, _years(evs), drawn);
+}
+
+// ------------------------------------------------------------ aligned
+
+/// _aligned is each group's events measured from that group's first, a
+/// lane a group, all starting together at nought: how long each took to
+/// get from its start to each step, not when (the research's "aligned at
+/// zero" -- careers, products, seasons compared).
+void _aligned(
+    ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
+  var groups = _groupsOf(e, evs);
+  var starts = <String, double>{};
+  for (var v in evs) {
+    var g = groups.length == 1 ? "" : e.data.groupAt(v.i);
+    starts[g] = math.min(starts[g] ?? double.infinity, v.start);
+  }
+  double from(_Ev v) =>
+      starts[groups.length == 1 ? "" : e.data.groupAt(v.i)] ?? v.start;
+  var moved = [
+    for (var v in evs)
+      _Ev(v.i, v.start - from(v), v.end == null ? null : v.end! - from(v))
+  ];
+  var axisH = _axisHeight(e);
+  var gutter = groups.length > 1 ? _gutter(e, groups, area.width * 0.26) : 0.0;
+  var plot = Rect.fromLTRB(
+      area.left + gutter, area.top, area.right, area.bottom - axisH);
+  var lo = 0.0, hi = moved.map((v) => v.last).reduce(math.max);
+  if (hi <= 0) hi = 1;
+  var sc = _Scale(lo - hi * 0.03, hi * 1.04, plot.left + 4, plot.right);
+  var laneH = plot.height / groups.length;
+  var spec = _lab(e, align: TextAlignSpec.left).copyWith(weight: 700);
+  var zero = sc.x(0);
+  canvas.drawLine(
+      Offset(zero, plot.top),
+      Offset(zero, plot.bottom),
+      Paint()
+        ..color = _quiet(e, 0.5)
+        ..strokeWidth = 1.5);
+  var k0 = 0;
+  for (var (g, name) in groups.indexed) {
+    var lane =
+        Rect.fromLTWH(plot.left, plot.top + laneH * g, plot.width, laneH);
+    if (g.isOdd) canvas.drawRect(lane, Paint()..color = _quiet(e, 0.06));
+    var mine = [
+      for (var v in moved)
+        if (groups.length == 1 || e.data.groupAt(v.i) == name) v
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    if (gutter > 0) {
+      _say(canvas, name, spec,
+          Rect.fromLTWH(area.left, lane.top, gutter - 6, lane.height));
+    }
+    _spanRows(canvas, e, reveal, lane.deflate(laneH * 0.08), sc, mine, k0,
+        evs.length);
+    k0 += mine.length;
+  }
+  // Its axis in time since the start: "+3 yrs".
+  var y = plot.bottom + 2;
+  var drawn = _drawn(e, reveal);
+  var line = Paint()
+    ..color = _quiet(e, 0.45)
+    ..strokeWidth = 1.2;
+  canvas.drawLine(Offset(sc.left, y),
+      Offset(sc.left + (sc.right - sc.left) * drawn, y), line);
+  var small = _lab(e, size: e.labelSpec.fontSize * 0.85)
+      .copyWith(color: _quiet(e, 0.7));
+  var room = e.labelSpec.fontSize * 4.5;
+  var years = _years(evs);
+  var step = _step(hi, ((sc.right - sc.left) / room).floor().clamp(2, 10),
+      whole: years);
+  for (var v = 0.0; v <= hi + 1e-9; v += step) {
+    var x = sc.x(v);
+    canvas.drawLine(Offset(x, y), Offset(x, y + 5), line);
+    _say(
+        canvas,
+        v == 0 ? "start" : "+${_gapWords(v, years, e).replaceAll("+", "")}",
+        small,
+        Rect.fromCenter(
+            center: Offset(x, y + 5 + small.fontSize * 0.75),
+            width: room,
+            height: small.fontSize * 1.5));
+  }
 }

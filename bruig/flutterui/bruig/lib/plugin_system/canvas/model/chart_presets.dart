@@ -250,6 +250,9 @@ ChartElement _timelineWay(ChartElement e, Picks p, String way,
   return out;
 }
 
+ChartElement _evenly(ChartElement e) =>
+    e.copyWith(design: e.design.copyWith(even: true));
+
 String? _needsEnds(Picks p) =>
     p.dates.length < 2 ? "a second column of dates: when each ends" : null;
 String? _needsNumber(Picks p) =>
@@ -1712,6 +1715,38 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
         plays: true),
     ChartPreset("We are here", "Solid up to today, dashed after it: a roadmap.",
         [_i, _a], (e, p) => _timelineWay(_timeline(e, p), p, "progress")),
+    // The research's next designs (Ken, 2026-11-17: "Build all four").
+    ChartPreset(
+        "Evenly spaced",
+        "In order, evenly apart, the years between them written in the gaps.",
+        [_i, _v],
+        (e, p) => _evenly(_timelineTurn(e, p))),
+    ChartPreset(
+        "A stretch zoomed in",
+        "The whole story along the top, its busiest years drawn large.",
+        [_i, _a],
+        (e, p) => _timelineWay(_timelineTurn(e, p), p, "zoom")),
+    ChartPreset("Spiral", "Time wound outwards from the middle.", [_i, _v],
+        (e, p) => _timelineWay(_timelineDraw(e, p), p, "spiral"),
+        plays: true),
+    ChartPreset(
+        "Then and now",
+        "The first and the last side by side, the time and change between.",
+        [_i, _v],
+        (e, p) =>
+            _timelineWay(_timelineTurn(e, p), p, "thenNow", number: true)),
+    ChartPreset(
+        "Event strip",
+        "A tick for every event, how crowded each stretch is as a hill.",
+        [_a, _i],
+        (e, p) => _timelineWay(_timelineDraw(e, p), p, "strip", number: true)),
+    ChartPreset(
+        "From the same start",
+        "Each group measured from its own first event: how long, not when.",
+        [_a, _i],
+        (e, p) => _timelineWay(_timelineGrow(e, p), p, "aligned",
+            ends: true, grouped: true),
+        needs: (p) => _groupOf(p) < 0 ? "a column of groups to line up" : null),
   ],
   ChartType.gauge: [
     ChartPreset("Needle over bands", "A needle over three graduated bands.",

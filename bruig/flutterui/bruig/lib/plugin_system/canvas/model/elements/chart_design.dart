@@ -41,6 +41,12 @@ class ChartDesign {
   /// chartModes). Empty, its first.
   final String mode;
 
+  /// even spaces a timeline's events evenly, in order, rather than by
+  /// their dates, writing the time between them in the gaps ("12 yrs"):
+  /// for events bunched in one stretch and scattered in another (the
+  /// timeline research's Proportional / Even switch).
+  final bool even;
+
   const ChartDesign({
     this.track = false,
     this.valuesInside = false,
@@ -52,6 +58,7 @@ class ChartDesign {
     this.half = false,
     this.gaps = false,
     this.mode = "",
+    this.even = false,
   });
 
   bool get any =>
@@ -64,6 +71,7 @@ class ChartDesign {
       connect ||
       half ||
       gaps ||
+      even ||
       mode.isNotEmpty;
 
   ChartDesign copyWith({
@@ -77,6 +85,7 @@ class ChartDesign {
     bool? half,
     bool? gaps,
     String? mode,
+    bool? even,
   }) =>
       ChartDesign(
         track: track ?? this.track,
@@ -89,6 +98,7 @@ class ChartDesign {
         half: half ?? this.half,
         gaps: gaps ?? this.gaps,
         mode: mode ?? this.mode,
+        even: even ?? this.even,
       );
 
   Map<String, dynamic> toJson() => {
@@ -102,6 +112,7 @@ class ChartDesign {
         if (half) "half": true,
         if (gaps) "gaps": true,
         if (mode.isNotEmpty) "mode": mode,
+        if (even) "even": true,
       };
 
   static ChartDesign fromJson(Object? j) {
@@ -118,6 +129,7 @@ class ChartDesign {
       half: b("half"),
       gaps: b("gaps"),
       mode: j["mode"] is String ? j["mode"] as String : "",
+      even: b("even"),
     );
   }
 
@@ -197,7 +209,12 @@ const Map<String, List<(String, String)>> chartModes = {
     ("cards", "Cards"),
     ("bubbles", "Bubbles in lanes"),
     ("serpentine", "Serpentine"),
-    ("progress", "We are here")
+    ("progress", "We are here"),
+    ("zoom", "A stretch zoomed in"),
+    ("spiral", "Spiral"),
+    ("thenNow", "Then and now"),
+    ("strip", "Event strip"),
+    ("aligned", "From the same start")
   ],
   "gauge": [("arc", "Arc"), ("bands", "Needle over bands"), ("dial", "Dial")],
   "pictogram": [
