@@ -1475,6 +1475,14 @@ class ChartsDesignState extends State<ChartsDesign>
       c.replaceElement(chart.rebase(made.base));
       id = made.id;
     }
+    // Its arrival laid on the timeline: a preset with no keyframes to time
+    // it draws nothing different (found building the report's morph: no
+    // gallery design arrived).
+    if (chart.animation.on) {
+      if (c.document.elementById(id) case ChartElement now) {
+        c.applyChartAnimation(now, chart.animation.preset);
+      }
+    }
     c.endInteraction();
     setState(() {
       _gallery = null;

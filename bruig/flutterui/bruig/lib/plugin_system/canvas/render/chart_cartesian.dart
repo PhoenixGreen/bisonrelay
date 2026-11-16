@@ -977,7 +977,7 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       var p = e.animation.progressAt(reveal, i, slots);
       if (p <= 0) continue;
       switch (e.animation.preset) {
-        case ChartAnimationPreset.fadeIn:
+        case ChartAnimationPreset.fadeIn || ChartAnimationPreset.morph:
           colour = colour.withValues(alpha: colour.a * p.clamp(0.0, 1.0));
         case ChartAnimationPreset.grow:
         case ChartAnimationPreset.popIn:
@@ -1275,7 +1275,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             .progressAt(_revealOf(seriesReveal, s, reveal), i, slots);
         if (p <= 0) continue;
         switch (e.animation.preset) {
-          case ChartAnimationPreset.fadeIn:
+          case ChartAnimationPreset.fadeIn || ChartAnimationPreset.morph:
             colour = colour.withValues(alpha: colour.a * p.clamp(0.0, 1.0));
           case ChartAnimationPreset.popIn:
           case ChartAnimationPreset.random:
@@ -1352,7 +1352,14 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           stackArrived = arrived.clamp(0.0, 1.0);
         } else if (e.design.valuesInside &&
             (horizontal ? bar.width : bar.height) >=
-                (horizontal ? fs * (label.length * 0.62 + 1.2) : fs * 1.8)) {
+                (horizontal ? fs * (label.length * 0.62 + 1.2) : fs * 1.8) &&
+            // Across too: a column too narrow for its number would write it
+            // a digit a line (seen as poster columns arrived).
+            (horizontal ||
+                bar.width >=
+                    layoutText(label, e.valueSpec, maxWidth: double.infinity)
+                            .width +
+                        fs * 0.3)) {
           // Inside its end, in an ink that reads on it (ChartDesign).
           var pad = fs * 0.45;
           var box = horizontal
@@ -1414,9 +1421,17 @@ Rect _pastEnd(Rect bar, bool horizontal, bool negative, double fs) => horizontal
             bar.left - fs * 0.3 - fs * 5, bar.center.dy - fs, fs * 5, fs * 2)
         : Rect.fromLTWH(
             bar.right + fs * 0.3, bar.center.dy - fs, fs * 5, fs * 2))
+    // Centred over a column, at least wide enough for a number: a column
+    // still narrow as it arrives would write it a digit a line.
     : (negative
-        ? Rect.fromLTWH(bar.left, bar.bottom + fs * 0.1, bar.width, fs * 1.4)
-        : Rect.fromLTWH(bar.left, bar.top - fs * 1.5, bar.width, fs * 1.4));
+        ? Rect.fromCenter(
+            center: Offset(bar.center.dx, bar.bottom + fs * 0.8),
+            width: math.max(bar.width, fs * 4),
+            height: fs * 1.4)
+        : Rect.fromCenter(
+            center: Offset(bar.center.dx, bar.top - fs * 0.8),
+            width: math.max(bar.width, fs * 4),
+            height: fs * 1.4));
 
 /// _alongEnd is how a value past a bar's end is set: away from the bar.
 TextAlignSpec _alongEnd(bool horizontal, bool negative) => horizontal
@@ -1484,7 +1499,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     var alpha = 1.0;
     if (animating) {
       switch (animation.preset) {
-        case ChartAnimationPreset.fadeIn:
+        case ChartAnimationPreset.fadeIn || ChartAnimationPreset.morph:
           alpha = progress.clamp(0.0, 1.0);
         case ChartAnimationPreset.grow:
         case ChartAnimationPreset.popIn:

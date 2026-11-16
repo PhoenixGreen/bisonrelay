@@ -33,6 +33,12 @@ import 'package:flutter/painting.dart';
 /// chartSeriesReveal) because the delay is in seconds.
 void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     {double reveal = 1, double close = 0, List<double>? seriesReveal}) {
+  // A morph is the renderer's (chart_morph.dart); anywhere else -- a
+  // thumbnail, the Studio -- it comes up as a fade.
+  if (e.animation.preset == ChartAnimationPreset.morph) {
+    e = e.copyWith(
+        animation: e.animation.copyWith(preset: ChartAnimationPreset.fadeIn));
+  }
   if (rect.width <= 8 || rect.height <= 8) return;
 
   // Leaving: the exit preset replaces the entrance one, so nothing below

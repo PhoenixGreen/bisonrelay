@@ -73,6 +73,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_morph.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
@@ -1163,8 +1164,19 @@ void paintElement(
         }
         // How much has arrived (all, with no animation), how much has left,
         // and how far each offset series has got.
+        // Arriving out of the chart before it (chart_morph.dart).
+        var arrived = pose.values[KeyframeChannel.reveal] ?? 1;
+        if (e.animation.preset == ChartAnimationPreset.morph &&
+            arrived < 1 &&
+            document != null) {
+          if (morphFrom(e, document) case var from?) {
+            paintMorph(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
+                from, from.bounds.deflate(from.bounds.shortestSide * 0.02), arrived);
+            break;
+          }
+        }
         paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
-            reveal: pose.values[KeyframeChannel.reveal] ?? 1,
+            reveal: arrived,
             close: pose.values[KeyframeChannel.close] ?? 0,
             seriesReveal: chartSeriesReveal(e, frame, frameRate,
                 poseAt: (f) =>

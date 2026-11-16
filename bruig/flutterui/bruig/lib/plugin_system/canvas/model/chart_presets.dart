@@ -166,6 +166,7 @@ ChartAnimation _arrive(ChartAnimationPreset p, {bool inTurn = false}) =>
           ChartAnimationPreset.grow => 0.3,
           ChartAnimationPreset.popIn || ChartAnimationPreset.random => 0.15,
           ChartAnimationPreset.fadeIn => 0.25,
+          ChartAnimationPreset.morph => 0,
           _ => 0.55,
         });
 

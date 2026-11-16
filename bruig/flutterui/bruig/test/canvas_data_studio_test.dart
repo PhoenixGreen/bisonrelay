@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -706,6 +708,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(charts(), hasLength(1), reason: "in the starter's place");
       expect(charts().single.type, ChartType.horizontalBar);
+      // Its arrival laid on the timeline: a preset with no keyframes to
+      // time it would draw nothing different.
+      expect(charts().single.animation.on, isTrue);
+      expect(ownSpan(charts().single, MotionKind.arrive, 24), isNotNull);
       // Later, + New chart adds one beside it.
       await tester.tap(find.byKey(const ValueKey("chartsNew")));
       await tester.pumpAndSettle();

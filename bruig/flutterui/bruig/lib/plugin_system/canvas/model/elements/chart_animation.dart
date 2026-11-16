@@ -36,7 +36,13 @@ enum ChartAnimationPreset {
   /// have no meaningful order.
   random("Random", "Each one appears on its own, in no particular order"),
 
-  fadeIn("Fade in", "Each one fades up, in turn");
+  fadeIn("Fade in", "Each one fades up, in turn"),
+
+  /// morph arrives out of the chart before it -- in the scene before,
+  /// reading the same sheet -- each item travelling from where that one
+  /// drew it (chart_morph.dart; Ken, 2026-11-17). With none before, it
+  /// fades in.
+  morph("Morph", "Each one travels from where the chart before had it");
 
   final String label;
   final String description;

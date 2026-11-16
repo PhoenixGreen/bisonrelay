@@ -26,7 +26,7 @@ SliceProgress sliceProgress(
   if (!e.animation.on || reveal >= 1) return const SliceProgress(1, 1);
   var p = e.animation.progressAt(reveal, index, count);
   switch (e.animation.preset) {
-    case ChartAnimationPreset.fadeIn:
+    case ChartAnimationPreset.fadeIn || ChartAnimationPreset.morph:
       return SliceProgress(1, p.clamp(0.0, 1.0));
     case ChartAnimationPreset.grow:
     case ChartAnimationPreset.popIn:
