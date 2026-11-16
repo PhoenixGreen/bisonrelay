@@ -67,3 +67,79 @@ Future<int?> askForFrameRate(BuildContext context, {required int initial}) {
     ),
   );
 }
+
+/// askForName puts up a one-field dialog for a name, [initial] filled in,
+/// and waits for it: null when cancelled or dismissed.
+///
+/// The field's controller belongs to the dialog and goes with it. Disposed
+/// by the caller as soon as the answer came back, it was used again while
+/// the dialog animated away ("A TextEditingController was used after being
+/// disposed", then a cascade of build assertions).
+Future<String?> askForName(
+  BuildContext context, {
+  required String title,
+  String label = "",
+  String initial = "",
+  String ok = "OK",
+  int? maxLength,
+  Key? fieldKey,
+}) =>
+    showDialog<String>(
+      context: context,
+      builder: (context) => _NameDialog(
+          title: title,
+          label: label,
+          initial: initial,
+          ok: ok,
+          maxLength: maxLength,
+          fieldKey: fieldKey),
+    );
+
+class _NameDialog extends StatefulWidget {
+  final String title, label, initial, ok;
+  final int? maxLength;
+  final Key? fieldKey;
+  const _NameDialog(
+      {required this.title,
+      required this.label,
+      required this.initial,
+      required this.ok,
+      this.maxLength,
+      this.fieldKey});
+
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends State<_NameDialog> {
+  late final TextEditingController _text =
+      TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.title),
+        content: TextField(
+          key: widget.fieldKey,
+          controller: _text,
+          autofocus: true,
+          maxLength: widget.maxLength,
+          decoration: InputDecoration(
+              labelText: widget.label.isEmpty ? null : widget.label),
+          onSubmitted: (v) => Navigator.of(context).pop(v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(_text.text),
+              child: Text(widget.ok)),
+        ],
+      );
+}

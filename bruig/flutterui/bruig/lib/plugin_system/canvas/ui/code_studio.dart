@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/code_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -382,26 +383,11 @@ class _CodeStudioState extends State<CodeStudio> {
   }
 
   Future<void> _rename(BuildContext context, CodeElement e, CodeFile f) async {
-    var text = TextEditingController(text: f.name);
-    var name = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-              title: const Text("Rename file"),
-              content: TextField(
-                  key: const ValueKey("codeStudioRenameField"),
-                  controller: text,
-                  autofocus: true,
-                  onSubmitted: (v) => Navigator.pop(context, v)),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("Cancel")),
-                TextButton(
-                    onPressed: () => Navigator.pop(context, text.text),
-                    child: const Text("Rename")),
-              ],
-            ));
-    text.dispose();
+    var name = await askForName(context,
+        title: "Rename file",
+        initial: f.name,
+        ok: "Rename",
+        fieldKey: const ValueKey("codeStudioRenameField"));
     var clean = name?.trim() ?? "";
     var now = code;
     if (now == null || clean.isEmpty || clean == f.name) return;

@@ -49,17 +49,17 @@ import '../test/canvas_transition_sound_test.dart' as t43;
 import '../test/canvas_vrm_convert_test.dart' as t44;
 import '../test/chat_image_size_test.dart' as t45;
 import '../test/countdown_test.dart' as t46;
-import '../test/display_path_test.dart' as t47;
-import '../test/feed_render_scope_test.dart' as t48;
-import '../test/form_help_test.dart' as t49;
-import '../test/markdown_columns_test.dart' as t50;
-import '../test/markdown_image_test.dart' as t51;
-import '../test/page_open_in_writing_test.dart' as t52;
-import '../test/page_size_test.dart' as t53;
-import '../test/pages_browser_bar_test.dart' as t54;
-import '../test/pages_row_ink_test.dart' as t55;
-import '../test/palette_contrast_test.dart' as t56;
-import '../test/post_library_test.dart' as t57;
+import '../test/feed_render_scope_test.dart' as t47;
+import '../test/form_help_test.dart' as t48;
+import '../test/markdown_columns_test.dart' as t49;
+import '../test/markdown_image_test.dart' as t50;
+import '../test/page_open_in_writing_test.dart' as t51;
+import '../test/page_size_test.dart' as t52;
+import '../test/pages_browser_bar_test.dart' as t53;
+import '../test/pages_row_ink_test.dart' as t54;
+import '../test/palette_contrast_test.dart' as t55;
+import '../test/post_library_test.dart' as t56;
+import '../test/refusal_text_test.dart' as t57;
 import '../test/section_tabs_test.dart' as t58;
 import '../test/writing_nav_test.dart' as t59;
 
@@ -252,47 +252,47 @@ void main() {
     setUpAll(betweenFiles);
     t46.main();
   });
-  group('display_path_test.dart', () {
+  group('feed_render_scope_test.dart', () {
     setUpAll(betweenFiles);
     t47.main();
   });
-  group('feed_render_scope_test.dart', () {
+  group('form_help_test.dart', () {
     setUpAll(betweenFiles);
     t48.main();
   });
-  group('form_help_test.dart', () {
+  group('markdown_columns_test.dart', () {
     setUpAll(betweenFiles);
     t49.main();
   });
-  group('markdown_columns_test.dart', () {
+  group('markdown_image_test.dart', () {
     setUpAll(betweenFiles);
     t50.main();
   });
-  group('markdown_image_test.dart', () {
+  group('page_open_in_writing_test.dart', () {
     setUpAll(betweenFiles);
     t51.main();
   });
-  group('page_open_in_writing_test.dart', () {
+  group('page_size_test.dart', () {
     setUpAll(betweenFiles);
     t52.main();
   });
-  group('page_size_test.dart', () {
+  group('pages_browser_bar_test.dart', () {
     setUpAll(betweenFiles);
     t53.main();
   });
-  group('pages_browser_bar_test.dart', () {
+  group('pages_row_ink_test.dart', () {
     setUpAll(betweenFiles);
     t54.main();
   });
-  group('pages_row_ink_test.dart', () {
+  group('palette_contrast_test.dart', () {
     setUpAll(betweenFiles);
     t55.main();
   });
-  group('palette_contrast_test.dart', () {
+  group('post_library_test.dart', () {
     setUpAll(betweenFiles);
     t56.main();
   });
-  group('post_library_test.dart', () {
+  group('refusal_text_test.dart', () {
     setUpAll(betweenFiles);
     t57.main();
   });

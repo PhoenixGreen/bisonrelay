@@ -25,29 +25,29 @@ import '../test/canvas_instances_test.dart' as t19;
 import '../test/canvas_layer_fade_test.dart' as t20;
 import '../test/canvas_mask_edge_test.dart' as t21;
 import '../test/canvas_mix_decode_test.dart' as t22;
-import '../test/canvas_nudge_test.dart' as t23;
-import '../test/canvas_panel_kit_test.dart' as t24;
-import '../test/canvas_panel_parts_test.dart' as t25;
-import '../test/canvas_phrasing_test.dart' as t26;
-import '../test/canvas_polyhaven_test.dart' as t27;
-import '../test/canvas_publish_scenes_test.dart' as t28;
-import '../test/canvas_removal_test.dart' as t29;
-import '../test/canvas_returns_test.dart' as t30;
-import '../test/canvas_reuse_test.dart' as t31;
-import '../test/canvas_rings_test.dart' as t32;
-import '../test/canvas_score_epub_test.dart' as t33;
-import '../test/canvas_settled_frame_test.dart' as t34;
-import '../test/canvas_sheet_formula_test.dart' as t35;
-import '../test/canvas_slot_cues_test.dart' as t36;
-import '../test/canvas_storage_test.dart' as t37;
-import '../test/canvas_structure_test.dart' as t38;
-import '../test/canvas_table_padding_test.dart' as t39;
-import '../test/canvas_text_items_test.dart' as t40;
-import '../test/canvas_text_layer_looks_test.dart' as t41;
-import '../test/canvas_tier1_defaults_test.dart' as t42;
-import '../test/canvas_tile_scene_test.dart' as t43;
-import '../test/canvas_tile_terrain_test.dart' as t44;
-import '../test/canvas_tiles_fold_narrow_test.dart' as t45;
+import '../test/canvas_name_dialog_test.dart' as t23;
+import '../test/canvas_nudge_test.dart' as t24;
+import '../test/canvas_panel_kit_test.dart' as t25;
+import '../test/canvas_panel_parts_test.dart' as t26;
+import '../test/canvas_phrasing_test.dart' as t27;
+import '../test/canvas_polyhaven_test.dart' as t28;
+import '../test/canvas_publish_scenes_test.dart' as t29;
+import '../test/canvas_removal_test.dart' as t30;
+import '../test/canvas_returns_test.dart' as t31;
+import '../test/canvas_reuse_test.dart' as t32;
+import '../test/canvas_rings_test.dart' as t33;
+import '../test/canvas_score_epub_test.dart' as t34;
+import '../test/canvas_settled_frame_test.dart' as t35;
+import '../test/canvas_sheet_formula_test.dart' as t36;
+import '../test/canvas_slot_cues_test.dart' as t37;
+import '../test/canvas_storage_test.dart' as t38;
+import '../test/canvas_structure_test.dart' as t39;
+import '../test/canvas_table_padding_test.dart' as t40;
+import '../test/canvas_text_items_test.dart' as t41;
+import '../test/canvas_text_layer_looks_test.dart' as t42;
+import '../test/canvas_tier1_defaults_test.dart' as t43;
+import '../test/canvas_tile_scene_test.dart' as t44;
+import '../test/canvas_tile_terrain_test.dart' as t45;
 import '../test/canvas_timeline_keys_test.dart' as t46;
 import '../test/canvas_track_curves_test.dart' as t47;
 import '../test/canvas_vector_cut_test.dart' as t48;
@@ -55,13 +55,13 @@ import '../test/canvas_video_element_test.dart' as t49;
 import '../test/canvas_video_ffmpeg_test.dart' as t50;
 import '../test/code_highlight_test.dart' as t51;
 import '../test/color_picker_test.dart' as t52;
-import '../test/element_specs_test.dart' as t53;
-import '../test/link_card_layout_test.dart' as t54;
-import '../test/nav_groups_test.dart' as t55;
-import '../test/page_browser_bar_test.dart' as t56;
-import '../test/picture_name_test.dart' as t57;
-import '../test/preview_nav_test.dart' as t58;
-import '../test/refusal_text_test.dart' as t59;
+import '../test/composer_rebuild_test.dart' as t53;
+import '../test/element_specs_test.dart' as t54;
+import '../test/link_card_layout_test.dart' as t55;
+import '../test/nav_groups_test.dart' as t56;
+import '../test/page_browser_bar_test.dart' as t57;
+import '../test/picture_name_test.dart' as t58;
+import '../test/preview_nav_test.dart' as t59;
 import '../test/spellcheck_capability_test.dart' as t60;
 
 void main() {
@@ -157,95 +157,95 @@ void main() {
     setUpAll(betweenFiles);
     t22.main();
   });
-  group('canvas_nudge_test.dart', () {
+  group('canvas_name_dialog_test.dart', () {
     setUpAll(betweenFiles);
     t23.main();
   });
-  group('canvas_panel_kit_test.dart', () {
+  group('canvas_nudge_test.dart', () {
     setUpAll(betweenFiles);
     t24.main();
   });
-  group('canvas_panel_parts_test.dart', () {
+  group('canvas_panel_kit_test.dart', () {
     setUpAll(betweenFiles);
     t25.main();
   });
-  group('canvas_phrasing_test.dart', () {
+  group('canvas_panel_parts_test.dart', () {
     setUpAll(betweenFiles);
     t26.main();
   });
-  group('canvas_polyhaven_test.dart', () {
+  group('canvas_phrasing_test.dart', () {
     setUpAll(betweenFiles);
     t27.main();
   });
-  group('canvas_publish_scenes_test.dart', () {
+  group('canvas_polyhaven_test.dart', () {
     setUpAll(betweenFiles);
     t28.main();
   });
-  group('canvas_removal_test.dart', () {
+  group('canvas_publish_scenes_test.dart', () {
     setUpAll(betweenFiles);
     t29.main();
   });
-  group('canvas_returns_test.dart', () {
+  group('canvas_removal_test.dart', () {
     setUpAll(betweenFiles);
     t30.main();
   });
-  group('canvas_reuse_test.dart', () {
+  group('canvas_returns_test.dart', () {
     setUpAll(betweenFiles);
     t31.main();
   });
-  group('canvas_rings_test.dart', () {
+  group('canvas_reuse_test.dart', () {
     setUpAll(betweenFiles);
     t32.main();
   });
-  group('canvas_score_epub_test.dart', () {
+  group('canvas_rings_test.dart', () {
     setUpAll(betweenFiles);
     t33.main();
   });
-  group('canvas_settled_frame_test.dart', () {
+  group('canvas_score_epub_test.dart', () {
     setUpAll(betweenFiles);
     t34.main();
   });
-  group('canvas_sheet_formula_test.dart', () {
+  group('canvas_settled_frame_test.dart', () {
     setUpAll(betweenFiles);
     t35.main();
   });
-  group('canvas_slot_cues_test.dart', () {
+  group('canvas_sheet_formula_test.dart', () {
     setUpAll(betweenFiles);
     t36.main();
   });
-  group('canvas_storage_test.dart', () {
+  group('canvas_slot_cues_test.dart', () {
     setUpAll(betweenFiles);
     t37.main();
   });
-  group('canvas_structure_test.dart', () {
+  group('canvas_storage_test.dart', () {
     setUpAll(betweenFiles);
     t38.main();
   });
-  group('canvas_table_padding_test.dart', () {
+  group('canvas_structure_test.dart', () {
     setUpAll(betweenFiles);
     t39.main();
   });
-  group('canvas_text_items_test.dart', () {
+  group('canvas_table_padding_test.dart', () {
     setUpAll(betweenFiles);
     t40.main();
   });
-  group('canvas_text_layer_looks_test.dart', () {
+  group('canvas_text_items_test.dart', () {
     setUpAll(betweenFiles);
     t41.main();
   });
-  group('canvas_tier1_defaults_test.dart', () {
+  group('canvas_text_layer_looks_test.dart', () {
     setUpAll(betweenFiles);
     t42.main();
   });
-  group('canvas_tile_scene_test.dart', () {
+  group('canvas_tier1_defaults_test.dart', () {
     setUpAll(betweenFiles);
     t43.main();
   });
-  group('canvas_tile_terrain_test.dart', () {
+  group('canvas_tile_scene_test.dart', () {
     setUpAll(betweenFiles);
     t44.main();
   });
-  group('canvas_tiles_fold_narrow_test.dart', () {
+  group('canvas_tile_terrain_test.dart', () {
     setUpAll(betweenFiles);
     t45.main();
   });
@@ -277,31 +277,31 @@ void main() {
     setUpAll(betweenFiles);
     t52.main();
   });
-  group('element_specs_test.dart', () {
+  group('composer_rebuild_test.dart', () {
     setUpAll(betweenFiles);
     t53.main();
   });
-  group('link_card_layout_test.dart', () {
+  group('element_specs_test.dart', () {
     setUpAll(betweenFiles);
     t54.main();
   });
-  group('nav_groups_test.dart', () {
+  group('link_card_layout_test.dart', () {
     setUpAll(betweenFiles);
     t55.main();
   });
-  group('page_browser_bar_test.dart', () {
+  group('nav_groups_test.dart', () {
     setUpAll(betweenFiles);
     t56.main();
   });
-  group('picture_name_test.dart', () {
+  group('page_browser_bar_test.dart', () {
     setUpAll(betweenFiles);
     t57.main();
   });
-  group('preview_nav_test.dart', () {
+  group('picture_name_test.dart', () {
     setUpAll(betweenFiles);
     t58.main();
   });
-  group('refusal_text_test.dart', () {
+  group('preview_nav_test.dart', () {
     setUpAll(betweenFiles);
     t59.main();
   });

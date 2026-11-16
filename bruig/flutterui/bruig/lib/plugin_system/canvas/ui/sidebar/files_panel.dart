@@ -129,33 +129,12 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
           _folder;
 
   /// _ask puts up a one-field dialog, for every name this panel asks for.
-  Future<String?> _ask(String title, String label,
-      {String initial = ""}) async {
-    var text = TextEditingController(text: initial);
-    var result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: text,
-          autofocus: true,
-          maxLength: maxNameLength,
-          decoration: InputDecoration(labelText: label),
-          onSubmitted: (v) => Navigator.of(context).pop(v),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("Cancel")),
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(text.text),
-              child: const Text("OK")),
-        ],
-      ),
-    );
-    text.dispose();
-    return result;
-  }
+  Future<String?> _ask(String title, String label, {String initial = ""}) =>
+      askForName(context,
+          title: title,
+          label: label,
+          initial: initial,
+          maxLength: maxNameLength);
 
   Future<bool> _confirm(String title, String message) =>
       askToConfirm(context, title: title, message: message, confirm: "Delete");

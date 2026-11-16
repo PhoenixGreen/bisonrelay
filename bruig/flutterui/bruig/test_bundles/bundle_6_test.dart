@@ -15,15 +15,15 @@ import '../test/canvas_chart_turns_waffle_test.dart' as t9;
 import '../test/canvas_clip_slices_test.dart' as t10;
 import '../test/canvas_cues_test.dart' as t11;
 import '../test/canvas_document_keeping_test.dart' as t12;
-import '../test/canvas_dropdown_menu_test.dart' as t13;
-import '../test/canvas_epub_layers_test.dart' as t14;
-import '../test/canvas_files_panel_test.dart' as t15;
-import '../test/canvas_freeze_test.dart' as t16;
-import '../test/canvas_fretting_test.dart' as t17;
-import '../test/canvas_gif_test.dart' as t18;
-import '../test/canvas_image_adjust_test.dart' as t19;
-import '../test/canvas_image_effects_test.dart' as t20;
-import '../test/canvas_image_frame_test.dart' as t21;
+import '../test/canvas_epub_layers_test.dart' as t13;
+import '../test/canvas_files_panel_test.dart' as t14;
+import '../test/canvas_freeze_test.dart' as t15;
+import '../test/canvas_fretting_test.dart' as t16;
+import '../test/canvas_gif_test.dart' as t17;
+import '../test/canvas_image_adjust_test.dart' as t18;
+import '../test/canvas_image_effects_test.dart' as t19;
+import '../test/canvas_image_frame_test.dart' as t20;
+import '../test/canvas_image_thumbnail_test.dart' as t21;
 import '../test/canvas_interactive_channels_test.dart' as t22;
 import '../test/canvas_layer_arrange_test.dart' as t23;
 import '../test/canvas_master_scene_test.dart' as t24;
@@ -50,16 +50,16 @@ import '../test/canvas_tile_snapshot_test.dart' as t44;
 import '../test/canvas_transport_test.dart' as t45;
 import '../test/canvas_vector_select_shapes_test.dart' as t46;
 import '../test/canvas_vocaliser_test.dart' as t47;
-import '../test/composer_rebuild_test.dart' as t48;
-import '../test/composer_sidebar_test.dart' as t49;
-import '../test/markdown_cards_test.dart' as t50;
-import '../test/markdown_checkbox_test.dart' as t51;
-import '../test/markdown_header_test.dart' as t52;
-import '../test/markdown_line_breaks_test.dart' as t53;
-import '../test/markdown_style_test.dart' as t54;
-import '../test/notes_settings_test.dart' as t55;
-import '../test/notes_storage_test.dart' as t56;
-import '../test/pages_tab_strip_test.dart' as t57;
+import '../test/composer_sidebar_test.dart' as t48;
+import '../test/markdown_cards_test.dart' as t49;
+import '../test/markdown_checkbox_test.dart' as t50;
+import '../test/markdown_header_test.dart' as t51;
+import '../test/markdown_line_breaks_test.dart' as t52;
+import '../test/markdown_style_test.dart' as t53;
+import '../test/notes_settings_test.dart' as t54;
+import '../test/notes_storage_test.dart' as t55;
+import '../test/pages_tab_strip_test.dart' as t56;
+import '../test/rtc_create_test.dart' as t57;
 import '../test/store_goods_test.dart' as t58;
 import '../test/store_setup_tap_test.dart' as t59;
 import '../test/writing_dates_test.dart' as t60;
@@ -117,39 +117,39 @@ void main() {
     setUpAll(betweenFiles);
     t12.main();
   });
-  group('canvas_dropdown_menu_test.dart', () {
+  group('canvas_epub_layers_test.dart', () {
     setUpAll(betweenFiles);
     t13.main();
   });
-  group('canvas_epub_layers_test.dart', () {
+  group('canvas_files_panel_test.dart', () {
     setUpAll(betweenFiles);
     t14.main();
   });
-  group('canvas_files_panel_test.dart', () {
+  group('canvas_freeze_test.dart', () {
     setUpAll(betweenFiles);
     t15.main();
   });
-  group('canvas_freeze_test.dart', () {
+  group('canvas_fretting_test.dart', () {
     setUpAll(betweenFiles);
     t16.main();
   });
-  group('canvas_fretting_test.dart', () {
+  group('canvas_gif_test.dart', () {
     setUpAll(betweenFiles);
     t17.main();
   });
-  group('canvas_gif_test.dart', () {
+  group('canvas_image_adjust_test.dart', () {
     setUpAll(betweenFiles);
     t18.main();
   });
-  group('canvas_image_adjust_test.dart', () {
+  group('canvas_image_effects_test.dart', () {
     setUpAll(betweenFiles);
     t19.main();
   });
-  group('canvas_image_effects_test.dart', () {
+  group('canvas_image_frame_test.dart', () {
     setUpAll(betweenFiles);
     t20.main();
   });
-  group('canvas_image_frame_test.dart', () {
+  group('canvas_image_thumbnail_test.dart', () {
     setUpAll(betweenFiles);
     t21.main();
   });
@@ -257,43 +257,43 @@ void main() {
     setUpAll(betweenFiles);
     t47.main();
   });
-  group('composer_rebuild_test.dart', () {
+  group('composer_sidebar_test.dart', () {
     setUpAll(betweenFiles);
     t48.main();
   });
-  group('composer_sidebar_test.dart', () {
+  group('markdown_cards_test.dart', () {
     setUpAll(betweenFiles);
     t49.main();
   });
-  group('markdown_cards_test.dart', () {
+  group('markdown_checkbox_test.dart', () {
     setUpAll(betweenFiles);
     t50.main();
   });
-  group('markdown_checkbox_test.dart', () {
+  group('markdown_header_test.dart', () {
     setUpAll(betweenFiles);
     t51.main();
   });
-  group('markdown_header_test.dart', () {
+  group('markdown_line_breaks_test.dart', () {
     setUpAll(betweenFiles);
     t52.main();
   });
-  group('markdown_line_breaks_test.dart', () {
+  group('markdown_style_test.dart', () {
     setUpAll(betweenFiles);
     t53.main();
   });
-  group('markdown_style_test.dart', () {
+  group('notes_settings_test.dart', () {
     setUpAll(betweenFiles);
     t54.main();
   });
-  group('notes_settings_test.dart', () {
+  group('notes_storage_test.dart', () {
     setUpAll(betweenFiles);
     t55.main();
   });
-  group('notes_storage_test.dart', () {
+  group('pages_tab_strip_test.dart', () {
     setUpAll(betweenFiles);
     t56.main();
   });
-  group('pages_tab_strip_test.dart', () {
+  group('rtc_create_test.dart', () {
     setUpAll(betweenFiles);
     t57.main();
   });
