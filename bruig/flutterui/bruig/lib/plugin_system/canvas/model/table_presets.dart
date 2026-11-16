@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/chart_presets.dart'
     show ChartUse;
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/table_design.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 // table_presets.dart is the Table tab's gallery (Ken, 2026-11-17; prototype
 // v7 and its research): ten kinds of table, each with starting designs. A
@@ -71,10 +72,19 @@ class TableShape {
           if (_most(c, (v) => RegExp(r"^[0-4]$").hasMatch(v))) c
       ];
 
-  /// lead is the first data row's key, for a design that lights one row.
-  String get lead => t.rows.length > (t.headerRow ? 1 : 0)
-      ? t.cell(t.headerRow ? 1 : 0, 0).trim()
-      : "";
+  /// lead is the first data row's key, for a design that lights one row:
+  /// one with figures in it, not a heading over a group of rows (found
+  /// making the Charts canvas: "Income" was lit).
+  String get lead {
+    for (var r = t.headerRow ? 1 : 0; r < t.rows.length; r++) {
+      var filled = false;
+      for (var c = 1; c < t.columnCount; c++) {
+        if (t.cell(r, c).trim().isNotEmpty) filled = true;
+      }
+      if (filled) return t.cell(r, 0).trim();
+    }
+    return "";
+  }
 }
 
 /// TablePreset is one starting design for a kind of table.
@@ -119,6 +129,18 @@ TableElement _fresh(TableElement t) => t.copyWith(
 
 TableRule _rule(String name, TableRule r) =>
     r.copyWith(name: "$designPrefix$name");
+
+/// _right is each column of numbers set on the right, its heading with it:
+/// a plain table's figures line up by their units (the kind's "numbers
+/// right", which its designs didn't do).
+List<TableRule> _right(TableElement t, TableShape s) => [
+      for (var c in {...s.numbers, ...s.changes})
+        _rule(
+            "${columnKey(t, c)} on the right",
+            TableRule(
+                column: columnKey(t, c),
+                style: const TableCellStyle(align: TextAlignSpec.right))),
+    ];
 
 TableElement _with(TableElement t, List<TableRule> rules,
         {Map<int, String> kinds = const {}}) =>
@@ -274,19 +296,24 @@ final tableKinds = <TableKind>[
         "Newsroom",
         "One rule under the header, hairlines, nothing else.",
         [_a],
-        (t, s) => _fresh(t).copyWith(gridWidth: 0.6)),
+        (t, s) => _with(_fresh(t).copyWith(gridWidth: 0.6), _right(t, s))),
     TablePreset(
         "Three rules",
         "No lines but under the header: the academic way.",
         [_a],
-        (t, s) => _fresh(t).copyWith(grid: TableGrid.none)),
-    TablePreset("One row lit", "The first row tinted and bold.", [_a, _v],
-        (t, s) => _with(_fresh(t).copyWith(gridWidth: 0.6), _lit(t, s, _tint))),
+        (t, s) =>
+            _with(_fresh(t).copyWith(grid: TableGrid.none), _right(t, s))),
+    TablePreset(
+        "One row lit",
+        "The first row tinted and bold.",
+        [_a, _v],
+        (t, s) => _with(_fresh(t).copyWith(gridWidth: 0.6),
+            [..._right(t, s), ..._lit(t, s, _tint)])),
     TablePreset(
         "In groups",
         "Rows with only a first cell become headings across.",
         [_a],
-        (t, s) => _fresh(t).copyWith(groupRows: true)),
+        (t, s) => _with(_fresh(t).copyWith(groupRows: true), _right(t, s))),
   ]),
   TableKind("heat", "Heatmap table", "Each number shaded by how high it is.", [
     TablePreset(

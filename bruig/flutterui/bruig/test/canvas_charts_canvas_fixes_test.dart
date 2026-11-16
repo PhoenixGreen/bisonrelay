@@ -9,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/table_presets.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
@@ -251,5 +253,19 @@ void main() {
     // floor of a quarter.
     expect(k, greaterThan(0.3));
     expect(k, lessThan(1));
+  });
+
+  test("a plain table's numbers on the right; the lit row has figures", () {
+    var t = TableElement(const ElementBase(id: "t"),
+        rows: cellsOf("Measure\t2024\t2025\nIncome\t\t\nMatchday\t98\t110"));
+    var plain = tableKinds.firstWhere((k) => k.id == "plain");
+    var lit = presetTable(
+        plain.presets.firstWhere((p) => p.name == "One row lit"), t);
+    var right = [
+      for (var r in lit.rules)
+        if (r.style.align == TextAlignSpec.right) r.column
+    ];
+    expect(right, ["2024", "2025"]);
+    expect(TableShape(t).lead, "Matchday", reason: "not the heading Income");
   });
 }
