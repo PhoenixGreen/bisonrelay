@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
@@ -104,6 +105,14 @@ Widget dataRowsGroup(CanvasController controller, CanvasElement e) {
               ),
               flex: 3),
       ]),
+      // A table's positions stay 1, 2, 3 while its rows are sorted.
+      if (e is TableElement && link.sortBy >= 0)
+        CanvasToggle(
+          key: const ValueKey("dataRowsNumbering"),
+          label: "First column keeps its place",
+          value: link.numbering,
+          onChanged: (v) => set(link.copyWith(numbering: v)),
+        ),
       CanvasDropdown<int>(
         key: const ValueKey("dataRowsTop"),
         label: "Show",

@@ -88,15 +88,20 @@ extension CanvasDataSheets on CanvasController {
   }
 
   /// removeSheet takes sheet [id] out -- only one nothing on the canvas
-  /// shows -- and answers whether it did.
-  bool removeSheet(String id) {
-    if (viewsOf(_document, id).isNotEmpty) return false;
-    apply(_document.copyWith(sheets: [
-      for (var s in _document.sheets)
-        if (s.id != id) s
-    ]));
+  /// shows, unless [withViews], when its tables and charts go with it --
+  /// and answers whether it did.
+  bool removeSheet(String id, {bool withViews = false}) {
+    if (!withViews && viewsOf(_document, id).isNotEmpty) return false;
+    apply(sheetsRemoved(_document, {id}));
     return true;
   }
+
+  /// removeSheets takes sheets [ids] out of the canvas, with whatever shows
+  /// them, in one undo.
+  void removeSheets(Set<String> ids) {
+    if (ids.isNotEmpty) apply(sheetsRemoved(_document, ids));
+  }
+
 
   void insertSheetRows(String id, int at, [int n = 1]) =>
       apply(rowsInserted(_document, id, at, n));

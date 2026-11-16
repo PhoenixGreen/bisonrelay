@@ -506,6 +506,55 @@ void main() {
       });
     }
 
+    // Ken, 2026-11-17: sheets left behind by deleted tables piled up, and a
+    // sheet something showed couldn't be removed at all.
+    testWidgets(
+        "a sheet removed with what shows it; sheets nothing shows tidied away",
+        (tester) async {
+      await studio(tester);
+      Future<void> tap(String key) async {
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pumpAndSettle();
+      }
+
+      // Two more sheets; nothing shows them, so they're offered to tidy.
+      await tap("dataStudioAddSheet");
+      await tap("dataStudioAddSheet");
+      expect(c.document.sheets, hasLength(3));
+      expect(find.text("Remove unused (2)"), findsOneWidget);
+      await tap("dataStudioTidySheets");
+      expect(find.byKey(const ValueKey("dataStudioAsking")), findsOneWidget);
+      await tap("dataStudioNotSure");
+      expect(c.document.sheets, hasLength(3), reason: "cancelled");
+      await tap("dataStudioTidySheets");
+      await tap("dataStudioSure");
+      expect(c.document.sheets, hasLength(1));
+      expect(find.byKey(const ValueKey("dataStudioTidySheets")), findsNothing);
+      // The league sheet, which the table and chart show: with another
+      // sheet to go to, it can go, and they with it -- once asked.
+      await tap("dataStudioAddSheet");
+      // A tab waits to see whether a tap is a double tap (which renames).
+      await tester.tap(
+          find.byKey(ValueKey("dataStudioTab-${c.document.sheets.first.id}")));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      await tap("dataStudioRemoveSheet");
+      expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey("dataStudioAsking")))
+              .data,
+          contains("2 tables or charts"));
+      await tap("dataStudioSure");
+      expect(c.document.sheets, hasLength(1));
+      expect(c.document.elementById("t1"), isNull);
+      expect(c.document.elementById("c1"), isNull);
+      c.undo();
+      await tester.pumpAndSettle();
+      expect(c.document.sheets, hasLength(2));
+      expect(c.document.elementById("c1"), isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("sheets added, named and taken out again", (tester) async {
       await studio(tester);
       expect(find.byKey(const ValueKey("dataStudioImport")), findsOneWidget);

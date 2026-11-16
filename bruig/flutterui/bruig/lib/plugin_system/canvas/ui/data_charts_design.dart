@@ -6,7 +6,9 @@ import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
@@ -1318,14 +1320,8 @@ class ChartsDesignState extends State<ChartsDesign>
                 children: switch (p.kind) {
                   "chart" => _chartPanel(context),
                   "title" => _titlePanel(context),
-                  "legend" => [
-                      StudioPills<bool>(
-                          id: "chartsLegend",
-                          label: "Shown",
-                          value: e.showLegend,
-                          options: const [(true, "Shown"), (false, "Hidden")],
-                          onChanged: (v) => _set(e.copyWith(showLegend: v))),
-                    ],
+                  "description" => _descriptionPanel(context),
+                  "legend" => _legendPanel(context),
                   "plot" => _plotPanel(context),
                   "xLabels" => _axisPanel(context, x: true),
                   "yLabels" => _axisPanel(context, x: false),
@@ -1669,8 +1665,38 @@ class ChartsDesignState extends State<ChartsDesign>
       if (l.charted)
         _hint(context,
             "Read as only a chart can (grouped, by places, one date at a time), its numbers are worked out from the sheet and not written back to it."),
+      ..._kindParts(context),
     ];
   }
+
+  /// _kindParts are the settings only some kinds of chart have: a
+  /// doughnut's hole and the words in it, a pictogram's icons.
+  List<Widget> _kindParts(BuildContext context) => [
+        if (e.type == ChartType.donut || e.type == ChartType.gauge) ...[
+          StudioLabel(e.type == ChartType.donut ? "Its middle" : "The dial"),
+          _slider("Hole", e.innerRadius, 0.2, 0.9, 0.55,
+              (v) => _live(e.copyWith(innerRadius: v))),
+          _Field(
+              key: const ValueKey("chartsCentreWords"),
+              text: e.centreLabel,
+              hint: "Words in the middle: {total of Points}",
+              words: wordChoices(e.data),
+              reads: (t) => liveWords(e.data, t),
+              onChanged: (v) => _live(e.copyWith(centreLabel: v))),
+        ],
+        if (e.type == ChartType.pictogram) ...[
+          const StudioLabel("Its icons"),
+          StudioPills<String>(
+              id: "chartsPictoShape",
+              label: "Shape",
+              value: e.pictoShape.name,
+              options: [for (var p in PictoShape.values) (p.name, p.label)],
+              onChanged: (v) =>
+                  _set(e.copyWith(pictoShape: PictoShape.fromName(v)))),
+          _slider("How many", e.pictoCount.toDouble(), 5, 100, 20,
+              (v) => _live(e.copyWith(pictoCount: v.round()))),
+        ],
+      ];
 
   void _addNote(ChartNote note) {
     _set(e.copyWith(notes: [...e.notes, note]));
@@ -1803,6 +1829,86 @@ class ChartsDesignState extends State<ChartsDesign>
                 e.copyWith(titleSpec: e.titleSpec.copyWith(fontSize: v)))),
         _swatches("chartsTitleInk", "Colour", e.titleSpec.color,
             (v) => _set(e.copyWith(titleSpec: e.titleSpec.copyWith(color: v)))),
+        ..._typeface("chartsTitleFont", e.titleSpec,
+            (spec) => _set(e.copyWith(titleSpec: spec))),
+      ];
+
+  /// _typeface is a face and a weight for [spec].
+  List<Widget> _typeface(
+          String id, TextSpec spec, ValueChanged<TextSpec> set) =>
+      [
+        const StudioLabel("Typeface"),
+        _Menu<String>(
+            key: ValueKey(id),
+            value: spec.fontFamily,
+            options: [
+              if (!canvasFonts.contains(spec.fontFamily))
+                (spec.fontFamily, spec.fontFamily),
+              for (var f in canvasFonts) (f, f),
+            ],
+            onChanged: (f) => set(spec.copyWith(fontFamily: f))),
+        StudioPills<int>(
+            id: "${id}Weight",
+            label: "Weight",
+            value: spec.weight,
+            options: const [(400, "Regular"), (600, "Semibold"), (800, "Bold")],
+            onChanged: (w) => set(spec.copyWith(weight: w))),
+      ];
+
+  List<Widget> _descriptionPanel(BuildContext context) {
+    var spec = e.descriptionText;
+    return [
+      const StudioLabel("Words"),
+      _Field(
+          key: const ValueKey("chartsDescriptionText"),
+          text: e.description,
+          hint: "A line under the title",
+          words: wordChoices(e.data),
+          reads: (t) => liveWords(e.data, t),
+          onChanged: (v) => _live(e.copyWith(description: v))),
+      _slider(
+          "Size",
+          spec.fontSize,
+          6,
+          48,
+          e.labelSpec.fontSize,
+          (v) =>
+              _live(e.copyWith(descriptionSpec: spec.copyWith(fontSize: v)))),
+      _swatches("chartsDescriptionInk", "Colour", spec.color,
+          (v) => _set(e.copyWith(descriptionSpec: spec.copyWith(color: v)))),
+      ..._typeface("chartsDescriptionFont", spec,
+          (next) => _set(e.copyWith(descriptionSpec: next))),
+    ];
+  }
+
+  List<Widget> _legendPanel(BuildContext context) => [
+        StudioPills<bool>(
+            id: "chartsLegend",
+            label: "Shown",
+            value: e.showLegend,
+            options: const [(true, "Shown"), (false, "Hidden")],
+            onChanged: (v) => _set(e.copyWith(showLegend: v))),
+        if (e.showLegend) ...[
+          StudioPills<String>(
+              id: "chartsLegendPlace",
+              label: "Where",
+              value: e.legend.placement.name,
+              options: [
+                for (var p in LegendPlacement.values) (p.name, p.label)
+              ],
+              onChanged: (v) => _set(e.copyWith(
+                  legend: e.legend
+                      .copyWith(placement: LegendPlacement.values.byName(v))))),
+          StudioPills<bool>(
+              id: "chartsLegendStack",
+              label: "Entries",
+              value: e.legend.vertical,
+              options: const [(false, "In a row"), (true, "One a line")],
+              onChanged: (v) =>
+                  _set(e.copyWith(legend: e.legend.copyWith(vertical: v)))),
+          _slider("Key size", e.legend.scale, 0.5, 2, 1,
+              (v) => _live(e.copyWith(legend: e.legend.copyWith(scale: v)))),
+        ],
       ];
 
   List<Widget> _plotPanel(BuildContext context) => [
@@ -1824,9 +1930,69 @@ class ChartsDesignState extends State<ChartsDesign>
             value: e.showValues,
             options: const [(true, "Shown"), (false, "Hidden")],
             onChanged: (v) => _set(e.copyWith(showValues: v))),
+        if (e.showGrid)
+          _swatches("chartsGridColour", "Grid colour", e.gridColor,
+              (v) => _set(e.copyWith(gridColor: v))),
         _slider("Corners", e.barRadius, 0, 24, 0,
             (v) => _live(e.copyWith(barRadius: v))),
+        if (e.type.isBar || e.type == ChartType.lollipop)
+          _slider("Gap between", e.barGap, 0, 0.9, 0.2,
+              (v) => _live(e.copyWith(barGap: v))),
+        if (e.type.isCartesian)
+          StudioPills<bool>(
+              id: "chartsLogScale",
+              label: "Scale",
+              value: e.logScale,
+              options: const [
+                (false, "Even steps"),
+                (true, "Log (×10 a step)")
+              ],
+              onChanged: (v) => _set(e.copyWith(logScale: v))),
+        ..._numbersParts(context),
       ];
+
+  /// _numbersParts is how the chart writes its numbers: shortened or in
+  /// full, decimals, and a sign or unit either side ("\$300", "40%").
+  List<Widget> _numbersParts(BuildContext context) {
+    var n = e.numbers;
+    void put(ChartNumbers next) => _set(e.copyWith(numbers: next));
+    return [
+      const StudioLabel("Numbers"),
+      _Menu<String>(
+          key: const ValueKey("chartsNumberStyle"),
+          value: n.style.name,
+          options: [
+            for (var st in NumberStyle.values) (st.name, st.label),
+          ],
+          onChanged: (v) =>
+              put(n.copyWith(style: NumberStyle.values.byName(v)))),
+      StudioPills<int>(
+          id: "chartsDecimals",
+          label: "Decimals",
+          value: n.decimals,
+          options: const [(0, "0"), (1, "1"), (2, "2"), (3, "3")],
+          onChanged: (v) => put(n.copyWith(decimals: v))),
+      Row(children: [
+        Expanded(
+          child: _Field(
+              key: const ValueKey("chartsNumberBefore"),
+              text: n.before,
+              hint: "Before: \$",
+              onChanged: (v) =>
+                  _live(e.copyWith(numbers: e.numbers.copyWith(before: v)))),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _Field(
+              key: const ValueKey("chartsNumberAfter"),
+              text: n.after,
+              hint: "After: %",
+              onChanged: (v) =>
+                  _live(e.copyWith(numbers: e.numbers.copyWith(after: v)))),
+        ),
+      ]),
+    ];
+  }
 
   List<Widget> _axisPanel(BuildContext context, {required bool x}) => [
         StudioPills<bool>(
@@ -1844,6 +2010,31 @@ class ChartsDesignState extends State<ChartsDesign>
             e.labelSpec.fontSize,
             (v) => _live(
                 x ? e.copyWith(xLabelSize: v) : e.copyWith(yLabelSize: v))),
+        _swatches(
+            x ? "chartsXInk" : "chartsYInk",
+            "Colour",
+            (x ? e.xLabelColor : e.yLabelColor) ?? e.labelSpec.color,
+            (v) => _set(
+                x ? e.copyWith(xLabelColor: v) : e.copyWith(yLabelColor: v))),
+        _slider(
+            "Distance",
+            x ? e.xLabelGap : e.yLabelGap,
+            0,
+            40,
+            0,
+            (v) =>
+                _live(x ? e.copyWith(xLabelGap: v) : e.copyWith(yLabelGap: v))),
+        if (!x)
+          _slider("Steps", e.axisSteps.toDouble(), 2, 12, 5,
+              (v) => _live(e.copyWith(axisSteps: v.round()))),
+        const StudioLabel("Its title"),
+        _Field(
+            key: ValueKey(x ? "chartsXTitle" : "chartsYTitle"),
+            text: x ? e.xAxisLabel : e.yAxisLabel,
+            hint: x ? "What runs along: Month" : "What goes up: Points",
+            onChanged: (v) => _live(x
+                ? e.copyWith(xAxisLabel: v, showXTitle: v.trim().isNotEmpty)
+                : e.copyWith(yAxisLabel: v, showYTitle: v.trim().isNotEmpty))),
       ];
 
   List<Widget> _seriesPanel(BuildContext context, int s) {
@@ -1857,6 +2048,32 @@ class ChartsDesignState extends State<ChartsDesign>
       }),
       _hint(context,
           "A highlight or colour-by colours its own marks over this one."),
+      if (e.type.isLinear || e.type.usesSmooth) ...[
+        _slider("Line", e.strokeWidth, 0.5, 12, 2.5,
+            (v) => _live(e.copyWith(strokeWidth: v))),
+        if (e.type.usesSmooth)
+          StudioPills<bool>(
+              id: "chartsSmooth",
+              label: "Between points",
+              value: e.smooth,
+              options: const [(false, "Straight"), (true, "Curved")],
+              onChanged: (v) => _set(e.copyWith(smooth: v))),
+        StudioPills<bool>(
+            id: "chartsPoints",
+            label: "Points",
+            value: e.showPoints,
+            options: const [(true, "Shown"), (false, "Hidden")],
+            onChanged: (v) => _set(e.copyWith(showPoints: v))),
+        if (e.showPoints)
+          _slider("Point size", e.pointSize, 1, 16, 4,
+              (v) => _live(e.copyWith(pointSize: v))),
+      ],
+      if (e.type.isCandles) ...[
+        _swatches("chartsRise", "Up", e.riseColor,
+            (v) => _set(e.copyWith(riseColor: v))),
+        _swatches("chartsFall", "Down", e.fallColor,
+            (v) => _set(e.copyWith(fallColor: v))),
+      ],
     ];
   }
 

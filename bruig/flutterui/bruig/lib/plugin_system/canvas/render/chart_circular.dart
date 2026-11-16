@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
@@ -298,8 +299,11 @@ void paintCentreLabel(ui.Canvas canvas, Offset centre, double radius,
     var slice = sliceProgress(e, reveal, i, values.length);
     if (!slice.gone) arrived += values[i].abs() * slice.size.clamp(0.0, 1.0);
   }
-  var words =
-      e.centreLabel.replaceAll("{total}", e.numbers.format(arrived)).trim();
+  // {total} counts up as the slices arrive; other words in braces are
+  // worked out from the numbers (chart_words.dart), as the title's are.
+  var words = liveWords(e.data,
+          e.centreLabel.replaceAll("{total}", e.numbers.format(arrived)))
+      .trim();
   var lines = words.split("\n");
   var longest = lines.fold<int>(1, (m, l) => math.max(m, l.length));
   var across = radius * 1.5;

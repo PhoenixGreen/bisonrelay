@@ -393,6 +393,14 @@ void main() {
       expect(table().sheet!.sortBy, 4);
       await tap("studioPill-tableRowsOrder-false");
       expect(table().sheet!.descending, isFalse);
+      // The first column can keep its place while the rows move.
+      await tap("studioPill-tableRowsNumbering-true");
+      expect(table().sheet!.numbering, isTrue);
+      expect(table().rows.skip(1).map((r) => r[0]),
+          ["Arsenal", "Liverpool", "Chelsea"],
+          reason: "the first column read down the sheet's own rows");
+      expect(table().rows[1][4], "40", reason: "Chelsea's points, first");
+      await tap("studioPill-tableRowsNumbering-false");
       await tap("studioPill-tableRowsTop-3");
       expect(table().sheet!.top, 3);
       expect(table().rows.skip(1).map((r) => r[0]),

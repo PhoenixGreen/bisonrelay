@@ -3029,7 +3029,7 @@ void main() {
           tester, find.byKey(const ValueKey("expander-tableSourceColumns")));
     });
 
-    testWidgets("a table is refreshed and reordered from the headings",
+    testWidgets("a table is refreshed from its heading; ordered by Rows shown",
         (tester) async {
       // Both without opening anything: pressing a button inside a section
       // means opening it, finding the button, and closing it again, every
@@ -3041,7 +3041,11 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip("Put the rows back in this order"), findsOneWidget);
+      // A table showing a sheet reads its rows from it at every change: the
+      // old Order section, which sorted the table's own rows, is gone, and
+      // Rows shown orders it (Ken, 2026-11-17).
+      expect(find.byTooltip("Put the rows back in this order"), findsNothing);
+      expect(find.byKey(const ValueKey("dataRowsSort")), findsOneWidget);
       // Where the numbers come from is the sheet's connection now (Connect
       // data, in the Data Studio): the table says so, with the way there.
       expect(find.byKey(const ValueKey("tableSheetSource")), findsOneWidget);

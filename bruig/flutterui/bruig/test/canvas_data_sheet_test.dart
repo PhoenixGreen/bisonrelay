@@ -49,6 +49,59 @@ Widget _app(Widget child) => MultiProvider(
     );
 
 void main() {
+  // Ken, 2026-11-17: a league's position stays 1, 2, 3 while the clubs are
+  // sorted by points (the old table Order's "Keep the numbering", for a
+  // table showing a sheet).
+  group("a numbered first column", () {
+    const table = [
+      ["Pos", "Club", "Pts"],
+      ["1", "Arsenal", "10"],
+      ["2", "Chelsea", "30"],
+      ["3", "Spurs", "20"],
+    ];
+    var link = const SheetLink("s", CellRange(0, 0, 3, 2), sortBy: 2);
+
+    test("keeps its place while the rows move; saved", () {
+      var sheet = const DataSheet(id: "s", cells: table);
+      var t = TableElement(const ElementBase(id: "t"),
+          sheet: link.copyWith(numbering: true));
+      var shown = viewFromSheet(t, sheet) as TableElement;
+      expect(shown.rows.skip(1).map((r) => "${r[0]} ${r[1]}"),
+          ["1 Chelsea", "2 Spurs", "3 Arsenal"]);
+      var plain = viewFromSheet(t.copyWith(sheet: link), sheet) as TableElement;
+      expect(plain.rows[1][0], "2", reason: "moving with its row");
+      expect(
+          SheetLink.fromJson(link.copyWith(numbering: true).toJson())!
+              .numbering,
+          isTrue);
+      expect(link.toJson().containsKey("numbering"), isFalse);
+    });
+
+    test("a cell typed in it isn't written back over another row's place", () {
+      var t = viewFromSheet(
+          TableElement(const ElementBase(id: "t"),
+              sheet: link.copyWith(numbering: true)),
+          const DataSheet(id: "s", cells: table));
+      var c = CanvasController(
+          const CanvasDocument(sheets: [DataSheet(id: "s", cells: table)])
+              .addElement(t),
+          audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      var now = c.document.elementById("t") as TableElement;
+      expect(now.rows[1][1], "Chelsea");
+      // Chelsea's points changed, in the table.
+      var rows = [
+        for (var r in now.rows) [...r]
+      ];
+      rows[1][2] = "31";
+      c.replaceElement(now.copyWith(rows: rows));
+      var sheet = c.document.sheets.single;
+      expect(sheet.raw(2, 2), "31", reason: "Chelsea's row");
+      expect([for (var r = 1; r <= 3; r++) sheet.raw(r, 0)], ["1", "2", "3"],
+          reason: "the positions stay where they were in the sheet");
+    });
+  });
+
   group("sheets", () {
     test("ranges read and written as a spreadsheet does", () {
       expect(columnName(0), "A");

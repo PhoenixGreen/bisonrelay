@@ -946,6 +946,17 @@ class _TableDesignState extends State<TableDesign> {
             value: link.descending,
             options: const [(true, "Largest first"), (false, "Smallest first")],
             onChanged: (v) => set(link.copyWith(descending: v))),
+      // A league's positions stay 1, 2, 3 while the clubs move.
+      if (link.sortBy >= 0)
+        StudioPills<bool>(
+            id: "tableRowsNumbering",
+            label: "First column",
+            value: link.numbering,
+            options: const [
+              (true, "Keeps its place"),
+              (false, "Moves with its row")
+            ],
+            onChanged: (v) => set(link.copyWith(numbering: v))),
       StudioPills<int>(
           id: "tableRowsTop",
           label: "Show",

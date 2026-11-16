@@ -70,6 +70,11 @@ class _DataStudioState extends State<DataStudio> {
   final TextEditingController _name = TextEditingController();
   final FocusNode _nameFocus = FocusNode();
   String? _renaming;
+
+  /// _asking is what the sheet tabs bar is asking to be sure of before it
+  /// does it: "remove" (this sheet, with what shows it) or "tidy" (every
+  /// sheet nothing on the canvas shows); null, nothing.
+  String? _asking;
   final TextEditingController _rename = TextEditingController();
   String _said = "";
   DataStudioTab _tab = DataStudioTab.sheet;
@@ -737,6 +742,13 @@ class _DataStudioState extends State<DataStudio> {
   Widget _sheetTabs(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
     var sheets = c.document.sheets;
+    // Sheets nothing on the canvas shows -- left behind when their tables
+    // and charts were deleted. One is always kept.
+    var unused = {
+      for (var x in sheets)
+        if (viewsOf(c.document, x.id).isEmpty) x.id
+    };
+    if (unused.length == sheets.length) unused.remove(_sheet);
     return Container(
       height: 36,
       decoration: BoxDecoration(
@@ -778,6 +790,7 @@ class _DataStudioState extends State<DataStudio> {
                           _sheet = sh.id;
                           _sel = const DataSel.at(0, 0);
                           _view = null;
+                          _asking = null;
                         }),
                         onDoubleTap: () => setState(() {
                           _renaming = sh.id;
@@ -804,40 +817,107 @@ class _DataStudioState extends State<DataStudio> {
                               style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
+                                  // Nothing on the canvas shows it: said
+                                  // by its look, and by Remove unused.
+                                  fontStyle: unused.contains(sh.id)
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
                                   color: sh.id == _sheet
                                       ? colors.onSurface
-                                      : colors.onSurfaceVariant)),
+                                      : colors.onSurfaceVariant.withValues(
+                                          alpha: unused.contains(sh.id)
+                                              ? 0.6
+                                              : 1))),
                         ),
                       ),
               ),
           ]),
         ),
-        StudioPill(
-            key: const ValueKey("dataStudioAddSheet"),
-            label: "+ Sheet",
-            onTap: () => setState(() {
-                  _sheet = c.addSheet();
-                  _sel = const DataSel.at(0, 0);
-                  _view = null;
-                })),
-        const SizedBox(width: 4),
-        StudioPill(
-            key: const ValueKey("dataStudioRemoveSheet"),
-            label: "Remove",
-            tooltip: _views.isEmpty
-                ? "Take this sheet out of the canvas"
-                : "Shown on the canvas: delete its tables and charts first",
-            onTap: _views.isEmpty && sheets.length > 1
-                ? () {
-                    var gone = _sheet;
-                    if (c.removeSheet(gone)) {
-                      setState(() {
-                        _sheet = c.document.sheets.first.id;
-                        _sel = const DataSel.at(0, 0);
-                      });
-                    }
+        if (_asking != null) ...[
+          Text(
+              _asking == "tidy"
+                  ? "Remove ${unused.length} sheet${unused.length == 1 ? "" : "s"} nothing shows?"
+                  : _views.isEmpty
+                      ? "Remove this sheet?"
+                      : "Remove this sheet and the ${_views.length} "
+                          "table${_views.length == 1 ? "" : "s"} or chart${_views.length == 1 ? "" : "s"} showing it?",
+              key: const ValueKey("dataStudioAsking"),
+              style: TextStyle(fontSize: 12.5, color: colors.onSurface)),
+          const SizedBox(width: 8),
+          StudioPill(
+              key: const ValueKey("dataStudioSure"),
+              label: "Remove",
+              filled: true,
+              onTap: () {
+                var tidy = _asking == "tidy";
+                var gone = tidy ? unused : {_sheet};
+                var left = [
+                  for (var x in sheets)
+                    if (!gone.contains(x.id)) x.id
+                ];
+                c.removeSheets(gone);
+                setState(() {
+                  _asking = null;
+                  if (gone.contains(_sheet)) {
+                    _sheet = left.first;
+                    _sel = const DataSel.at(0, 0);
+                    _view = null;
                   }
-                : null),
+                });
+                _say(tidy
+                    ? "Removed ${gone.length} sheet${gone.length == 1 ? "" : "s"} nothing showed."
+                    : "Sheet removed.");
+              }),
+          const SizedBox(width: 4),
+          StudioPill(
+              key: const ValueKey("dataStudioNotSure"),
+              label: "Cancel",
+              onTap: () => setState(() => _asking = null)),
+        ] else ...[
+          if (unused.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: StudioPill(
+                  key: const ValueKey("dataStudioTidySheets"),
+                  label: "Remove unused (${unused.length})",
+                  tooltip: "Sheets that no table or chart on the canvas "
+                      "shows (in italics)",
+                  onTap: () => setState(() => _asking = "tidy")),
+            ),
+          StudioPill(
+              key: const ValueKey("dataStudioAddSheet"),
+              label: "+ Sheet",
+              onTap: () => setState(() {
+                    _sheet = c.addSheet();
+                    _sel = const DataSel.at(0, 0);
+                    _view = null;
+                  })),
+          const SizedBox(width: 4),
+          StudioPill(
+              key: const ValueKey("dataStudioRemoveSheet"),
+              label: "Remove",
+              tooltip: _views.isEmpty
+                  ? "Take this sheet out of the canvas"
+                  : "Take this sheet out, with the tables and charts "
+                      "showing it",
+              onTap: sheets.length > 1
+                  ? () {
+                      // Nothing in it and nothing showing it: gone at once.
+                      var s = c.sheetById(_sheet);
+                      if (_views.isEmpty && (s == null || s.rowCount == 0)) {
+                        var left = sheets.firstWhere((x) => x.id != _sheet);
+                        c.removeSheets({_sheet});
+                        setState(() {
+                          _sheet = left.id;
+                          _sel = const DataSel.at(0, 0);
+                          _view = null;
+                        });
+                      } else {
+                        setState(() => _asking = "remove");
+                      }
+                    }
+                  : null),
+        ],
       ]),
     );
   }

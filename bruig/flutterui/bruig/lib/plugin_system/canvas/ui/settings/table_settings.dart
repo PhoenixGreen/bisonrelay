@@ -98,9 +98,12 @@ List<PanelBit> tableBits(
       // Which rows of its sheet it shows, and how ordered (Data element).
       PanelBit(PanelSection.content, children: [dataRowsGroup(controller, e)]),
       // Its own section, like the chart's numbers: the cells are long and seldom
-      // changed once right, and pushed everything else off the bottom.
+      // changed once right, and pushed everything else off the bottom. Each
+      // fold here is keyed: Order comes and goes with the sheet, and an
+      // unkeyed fold after it would take its neighbour's open or shut.
       PanelBit(PanelSection.content, children: [
         CanvasExpander(
+          key: const ValueKey("fold-tableCells"),
           label: "Table",
           remember: "tableCells",
           trailing: "${e.rows.length} rows, ${e.columnCount} columns",
@@ -137,6 +140,7 @@ List<PanelBit> tableBits(
       if (e.source.on || e.sheet == null)
         PanelBit(PanelSection.content, summary: e.source.kind.label, children: [
           CanvasExpander(
+            key: const ValueKey("fold-tableSource"),
             label: "Data source",
             remember: "tableSource",
             trailing: e.source.kind.label,
@@ -153,91 +157,96 @@ List<PanelBit> tableBits(
           _sheetSource(context, controller, e),
         ]),
       // Sorting is its own section beside the cells: it is about the data, not
-      // the look, and too much for a band.
-      PanelBit(PanelSection.content, children: [
-        CanvasExpander(
-          label: "Order",
-          remember: "tableSort",
-          trailing: _sortSummary(e),
-          // In the heading, so putting a table back in order is one press.
-          action: CanvasIconButton(
-            key: const ValueKey("tableSortApply"),
-            // On the section's heading, level with its arrow.
-            tight: true,
-            icon: Icons.refresh,
-            tooltip: e.sort.on
-                ? "Put the rows back in this order"
-                : "Choose a column to order by first",
-            onPressed: e.sort.on
-                ? () {
-                    begin();
-                    write(e.sorted());
-                    commit();
-                  }
-                : null,
-          ),
-          children: [
-            for (var level = 0; level < 3; level++)
-              CanvasControlGroup(
-                label: level == 0 ? "Order by" : "Then by",
-                // Beside the first heading rather than on the section's:
-                // it is about these three, not the numbering under them.
-                help: level == 0
-                    ? "Choose a column to order the rows by. The second and "
-                        "third only decide the rows the one before them left "
-                        "equal — for a league table that is points, then goal "
-                        "difference, then goals scored. The rows are put in "
-                        "order when you press the refresh button on this "
-                        "section's heading, not as you type."
-                    : null,
-                children: [
-                  CanvasDropdown<int>(
-                    label: "Column",
-                    value: e.sort.at(level).column,
-                    width: 132,
-                    options: [
-                      (-1, "—"),
-                      for (var c = 0; c < e.columnCount; c++)
-                        (c, e.columnName(c)),
-                    ],
-                    onChanged: (v) => _setLevel(e, write, begin, commit, level,
-                        e.sort.at(level).copyWith(column: v)),
-                  ),
-                  if (e.sort.at(level).on)
-                    CanvasDropdown<bool>(
-                      label: "Direction",
-                      value: e.sort.at(level).descending,
-                      width: 116,
-                      options: const [
-                        (true, "Highest first"),
-                        (false, "Lowest first"),
+      // the look, and too much for a band. Only for a table with no sheet: one
+      // showing a sheet reads its rows from it at every change, so its order
+      // is Rows shown's (with "First column keeps its place" for a league).
+      if (e.sheet == null)
+        PanelBit(PanelSection.content, children: [
+          CanvasExpander(
+            key: const ValueKey("fold-tableSort"),
+            label: "Order",
+            remember: "tableSort",
+            trailing: _sortSummary(e),
+            // In the heading, so putting a table back in order is one press.
+            action: CanvasIconButton(
+              key: const ValueKey("tableSortApply"),
+              // On the section's heading, level with its arrow.
+              tight: true,
+              icon: Icons.refresh,
+              tooltip: e.sort.on
+                  ? "Put the rows back in this order"
+                  : "Choose a column to order by first",
+              onPressed: e.sort.on
+                  ? () {
+                      begin();
+                      write(e.sorted());
+                      commit();
+                    }
+                  : null,
+            ),
+            children: [
+              for (var level = 0; level < 3; level++)
+                CanvasControlGroup(
+                  label: level == 0 ? "Order by" : "Then by",
+                  // Beside the first heading rather than on the section's:
+                  // it is about these three, not the numbering under them.
+                  help: level == 0
+                      ? "Choose a column to order the rows by. The second and "
+                          "third only decide the rows the one before them left "
+                          "equal — for a league table that is points, then goal "
+                          "difference, then goals scored. The rows are put in "
+                          "order when you press the refresh button on this "
+                          "section's heading, not as you type."
+                      : null,
+                  children: [
+                    CanvasDropdown<int>(
+                      label: "Column",
+                      value: e.sort.at(level).column,
+                      width: 132,
+                      options: [
+                        (-1, "—"),
+                        for (var c = 0; c < e.columnCount; c++)
+                          (c, e.columnName(c)),
                       ],
                       onChanged: (v) => _setLevel(e, write, begin, commit,
-                          level, e.sort.at(level).copyWith(descending: v)),
+                          level, e.sort.at(level).copyWith(column: v)),
                     ),
-                ],
-              ),
-            CanvasControlGroup(label: "First column", children: [
-              CanvasToggle(
-                label: "Keep the numbering",
-                value: e.sort.pinFirstColumn,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(sort: e.sort.copyWith(pinFirstColumn: v)));
-                  commit();
-                },
-              ),
-              CanvasHint("A league table's first column is the position, "
-                  "which belongs to the place rather than to the team in it — "
-                  "so it stays reading 1, 2, 3 while everything else moves."),
-            ]),
-          ],
-        )
-      ]),
+                    if (e.sort.at(level).on)
+                      CanvasDropdown<bool>(
+                        label: "Direction",
+                        value: e.sort.at(level).descending,
+                        width: 116,
+                        options: const [
+                          (true, "Highest first"),
+                          (false, "Lowest first"),
+                        ],
+                        onChanged: (v) => _setLevel(e, write, begin, commit,
+                            level, e.sort.at(level).copyWith(descending: v)),
+                      ),
+                  ],
+                ),
+              CanvasControlGroup(label: "First column", children: [
+                CanvasToggle(
+                  label: "Keep the numbering",
+                  value: e.sort.pinFirstColumn,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(sort: e.sort.copyWith(pinFirstColumn: v)));
+                    commit();
+                  },
+                ),
+                CanvasHint("A league table's first column is the position, "
+                    "which belongs to the place rather than to the team in it — "
+                    "so it stays reading 1, 2, 3 while everything else moves."),
+              ]),
+            ],
+          )
+        ]),
       // One mechanism for three asks: a chip where a column says W (a column and
       // a word), a highlighted row, a larger points column.
       PanelBit(PanelSection.content, children: [
         CanvasExpander(
+          key: const ValueKey("fold-tableRules"),
           label: "Special cells",
           remember: "tableRules",
           trailing: e.rules.isEmpty ? null : "${e.rules.length}",

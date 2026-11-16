@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
@@ -181,7 +182,7 @@ void _gauge(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   }
   var first = sliceProgress(e, reveal, 0, shown).size.clamp(0.0, 1.0);
   var middle = e.centreLabel.trim().isNotEmpty
-      ? e.centreLabel
+      ? liveWords(e.data, e.centreLabel)
       : several || !(e.yMax.isFinite && e.yMax > 0)
           ? "${(values.first / total * 100 * first).round()}%"
           : _value(e, values.first * first);

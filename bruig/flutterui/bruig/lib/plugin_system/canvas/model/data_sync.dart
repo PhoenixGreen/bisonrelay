@@ -57,9 +57,17 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
   if (e is TableElement) {
     var g = link.range;
     var order = [g.r0, ...viewRows(sheet, link)];
+    // Numbered: the first column read down the sheet's own rows, whichever
+    // rows are shown beside it (1, 2, 3 however the clubs are sorted).
+    var numbered = link.numbering && !link.plain;
     var block = [
-      for (var r in order)
-        [for (var c = g.c0; c <= g.c1; c++) sheetShown(sheet, r, c)],
+      for (var (i, r) in order.indexed)
+        [
+          for (var c = g.c0; c <= g.c1; c++)
+            numbered && c == g.c0 && i > 0
+                ? sheetShown(sheet, g.r0 + i, c)
+                : sheetShown(sheet, r, c)
+        ],
     ];
     var looks = <List<SheetCellLook?>>[];
     if (sheet.rules.isNotEmpty || sheet.spotlight.isNotEmpty) {
@@ -324,9 +332,12 @@ DataSheet _mappedBack(DataSheet sheet, CanvasElement e, SheetLink link) {
   }
 
   if (e is TableElement) {
+    // A numbered first column isn't the shown rows' own: it isn't written
+    // back onto them.
+    var from = link.numbering ? 1 : 0;
     for (var (i, r) in order.indexed) {
       if (i >= e.rows.length) break;
-      for (var c = 0; c < g.cols && c < e.rows[i].length; c++) {
+      for (var c = i == 0 ? 0 : from; c < g.cols && c < e.rows[i].length; c++) {
         put(r, g.c0 + c, e.rows[i][c]);
       }
     }
@@ -773,6 +784,21 @@ CanvasDocument sheetResized(
   return out.copyWith(sheets: [
     for (var x in out.sheets)
       x.id == id ? now.copyWith(gridRows: rows, gridColumns: columns) : x,
+  ]);
+}
+
+/// sheetsRemoved is [doc] without sheets [ids], and without every table
+/// and chart showing them.
+CanvasDocument sheetsRemoved(CanvasDocument doc, Set<String> ids) {
+  var out = doc;
+  for (var id in ids) {
+    for (var v in viewsOf(out, id)) {
+      out = viewRemoved(out, v.id);
+    }
+  }
+  return out.copyWith(sheets: [
+    for (var s in out.sheets)
+      if (!ids.contains(s.id)) s
   ]);
 }
 

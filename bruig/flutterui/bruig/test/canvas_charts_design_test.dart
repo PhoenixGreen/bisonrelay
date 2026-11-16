@@ -251,6 +251,84 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Ken, 2026-11-17: what the chart's canvas panel could change and the
+  // Charts tab couldn't, now in the part it belongs to.
+  testWidgets("each part's own settings, as on the canvas panel",
+      (tester) async {
+    await studio(tester);
+    c.replaceElement(chart().copyWith(
+        title: "The league", description: "This season", showLegend: true));
+    await tester.pumpAndSettle();
+    Future<void> pick(ChartPartKind kind) async {
+      var s = state(tester);
+      var part = s.parts.firstWhere((p) => p.kind == kind);
+      await tester.tapAt(
+          tester.getTopLeft(find.byKey(const ValueKey("chartsStage"))) +
+              s.stageOffsetOf(part));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> tap(String key) async {
+      var f = find.byKey(ValueKey(key));
+      await tester.ensureVisible(f);
+      await tester.pumpAndSettle();
+      await tester.tap(f);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> menu(String key, String choice) async {
+      await tap(key);
+      await tester.tap(find.text(choice).last);
+      await tester.pumpAndSettle();
+    }
+
+    // The title's typeface and weight.
+    await pick(ChartPartKind.title);
+    await menu("chartsTitleFont", "Georgia");
+    expect(chart().titleSpec.fontFamily, "Georgia");
+    await tap("studioPill-chartsTitleFontWeight-400");
+    expect(chart().titleSpec.weight, 400);
+    // The description had no panel at all.
+    await pick(ChartPartKind.description);
+    expect(find.byKey(const ValueKey("chartsDescriptionText")), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey("chartsDescriptionText")), "{count} clubs");
+    await tester.pumpAndSettle(const Duration(milliseconds: 500));
+    expect(chart().description, "{count} clubs");
+    // The key: where it goes.
+    await pick(ChartPartKind.legend);
+    await tap("studioPill-chartsLegendPlace-bottom");
+    expect(chart().legend.placement.name, "bottom");
+    // The plot: log scale, the numbers' unit.
+    await pick(ChartPartKind.plot);
+    await tap("studioPill-chartsLogScale-true");
+    expect(chart().logScale, isTrue);
+    await tap("studioPill-chartsDecimals-0");
+    expect(chart().numbers.decimals, 0);
+    await tester.enterText(
+        find.byKey(const ValueKey("chartsNumberAfter")), " pts");
+    await tester.pumpAndSettle(const Duration(milliseconds: 500));
+    expect(chart().numbers.after, " pts");
+    // The numbers up the side: a title of their own, and their steps.
+    await pick(ChartPartKind.yLabels);
+    await tester.enterText(
+        find.byKey(const ValueKey("chartsYTitle")), "Points");
+    await tester.pumpAndSettle(const Duration(milliseconds: 500));
+    expect(chart().yAxisLabel, "Points");
+    expect(chart().showYTitle, isTrue);
+    // A doughnut's middle, from the whole chart.
+    c.replaceElement(chart().copyWith(type: ChartType.donut));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("chartsSlider-Hole")), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey("chartsCentreWords")), "{leader by Pts}");
+    await tester.pumpAndSettle(const Duration(milliseconds: 500));
+    expect(chart().centreLabel, "{leader by Pts}");
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("steps: added, changed, switched between, previewed, deleted",
       (tester) async {
     await studio(tester);
