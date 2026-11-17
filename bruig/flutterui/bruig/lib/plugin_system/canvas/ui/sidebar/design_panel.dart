@@ -77,8 +77,9 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         // The headings only (two of them describe the document), and the
-        // settings' layout, which its heading's icon shows.
-        listenable: Listenable.merge([controller, settingsAsMenu]),
+        // settings' layout, which its heading's icon shows. Through chrome:
+        // no heading changes with a drag's steps or a frame of play.
+        listenable: Listenable.merge([controller.chrome, settingsAsMenu]),
         builder: (context, _) => _stack(context),
       );
 
@@ -136,17 +137,35 @@ class _SettingsBodyState extends State<SettingsPanelBody> {
   /// the right element when the selection changes.
   String? _showing;
 
+  /// _hold keeps the sections not being touched as they were while a
+  /// pointer is held in a gesture (a drag on the canvas, a scrubbed
+  /// number), so each step builds only what it changes: see PanelHold. Its
+  /// epoch moves with every change that is not a step, and the whole panel
+  /// is built again when the pointer lifts.
+  late final PanelHold _hold = PanelHold(
+    gesturing: () => controller.interacting,
+    onRelease: () {
+      _hold.epoch++;
+      if (mounted) setState(() {});
+    },
+  );
+
+  void _settled() => _hold.epoch++;
+
   @override
   void initState() {
     super.initState();
     _showing = controller.selected?.id;
     controller.addListener(_onSelectionChanged);
+    controller.chrome.addListener(_settled);
   }
 
   @override
   void dispose() {
     _remember();
     controller.removeListener(_onSelectionChanged);
+    controller.chrome.removeListener(_settled);
+    _hold.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -190,9 +209,12 @@ class _SettingsBodyState extends State<SettingsPanelBody> {
             // does not read as the header's second line.
             padding: EdgeInsets.fromLTRB(
                 8, (canvasGroupGap + canvasRowGap) / 2, 8, canvasGroupGap - 4),
-            child: CanvasControlScope(
-              maxWidth: 240,
-              child: elementSettingsBody(context, controller),
+            child: PanelHoldScope(
+              hold: _hold,
+              child: CanvasControlScope(
+                maxWidth: 240,
+                child: elementSettingsBody(context, controller),
+              ),
             ),
           ),
         ),

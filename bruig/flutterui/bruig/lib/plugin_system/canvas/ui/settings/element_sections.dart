@@ -94,6 +94,8 @@ Widget section(CanvasElement e, String name,
       remember: "${elementKindKey(e)}.$name",
       initiallyOpen: initiallyOpen,
       forceOpen: forceOpen,
+      // Where the element is: built on each step of a drag on the canvas.
+      followsStage: name == "layout",
       children: children,
     );
 

@@ -138,7 +138,17 @@ frames of play. A widget that shows neither listens to `controller.chrome`
 instead, which passes over both and hears the notification at the gesture's
 end or when play stops: the settings band, the page, the dock. A widget that
 shows only the playhead follows `playheadMoved` (the play bar's readout, the
-timeline's ruler and line). `test/canvas_rebuild_budget_test.dart` counts
+timeline's ruler and line).
+
+An element's settings panel goes one step further while a pointer is held
+in a gesture (a drag on the canvas, a number scrubbed): the section the
+pointer went down in is built as usual, and so, for a drag on the canvas,
+is any section that `followsStage` (Layout); the rest keep what they built
+(`PanelHold`, `ui/settings/panel_kit_hold.dart`). When the pointer lifts,
+or anything happens that is not a gesture's step, the whole panel is built
+again, so no control is left holding the element as it was.
+`test/canvas_panel_hold_test.dart` holds this to a budget.
+`test/canvas_rebuild_budget_test.dart` counts
 what the whole editor builds for each, and fails when something goes back to
 being rebuilt by them.
 

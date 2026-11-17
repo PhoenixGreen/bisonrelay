@@ -7,11 +7,13 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/gestures.dart' show GestureBinding, PointerRemovedEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 part 'panel_kit_steppers.dart';
 part 'panel_kit_tiles.dart';
+part 'panel_kit_hold.dart';
 
 // panel_kit.dart is the sectioned settings panel's parts: folding sections,
 // picture tiles, tools, the stepper. Element-agnostic; see
@@ -259,6 +261,16 @@ class _CanvasSectionsState extends State<CanvasSections> {
     return _items.first.remember;
   }
 
+  final _parts = _HeldBody(), _quick = _HeldBody();
+
+  /// _kept is the parts row or the quick strip, kept as a section is while
+  /// a pointer is held in a gesture elsewhere (see PanelHold).
+  Widget _kept(String key, _HeldBody held, Widget child) => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (e) => PanelHoldScope.of(context)?.claim(e.pointer, key),
+        child: held.of(context, key, () => child),
+      );
+
   void _choose(_MenuItem item) {
     _menuChosen = "${item.remember}|${item.title}";
     StorageManager.saveData("canvasSettingsMenuTab", _menuChosen);
@@ -274,8 +286,8 @@ class _CanvasSectionsState extends State<CanvasSections> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (widget.parts != null) widget.parts!,
-              if (widget.quick != null) widget.quick!,
+              if (widget.parts != null) _kept("parts", _parts, widget.parts!),
+              if (widget.quick != null) _kept("quick", _quick, widget.quick!),
               ...widget.children,
             ],
           );
@@ -291,8 +303,8 @@ class _CanvasSectionsState extends State<CanvasSections> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (widget.parts != null) widget.parts!,
-            if (widget.quick != null) widget.quick!,
+            if (widget.parts != null) _kept("parts", _parts, widget.parts!),
+            if (widget.quick != null) _kept("quick", _quick, widget.quick!),
             Stack(key: _under, children: [
               Padding(
                 padding: const EdgeInsets.only(top: _barRoom),
@@ -454,6 +466,11 @@ class CanvasSection extends StatefulWidget {
   /// glyph is drawn instead of [icon] (see SectionGlyph).
   final SectionGlyph? glyph;
 
+  /// followsStage marks a section that shows where the element is (its
+  /// place and size): built on every step of a drag on the canvas, where
+  /// the others are kept (see PanelHold).
+  final bool followsStage;
+
   const CanvasSection({
     required this.icon,
     this.glyph,
@@ -467,6 +484,7 @@ class CanvasSection extends StatefulWidget {
     this.action,
     this.initiallyOpen = false,
     this.forceOpen = false,
+    this.followsStage = false,
     super.key,
   });
 
@@ -489,6 +507,23 @@ class CanvasSection extends StatefulWidget {
 }
 
 class _CanvasSectionState extends State<CanvasSection> {
+  final _held = _HeldBody();
+
+  /// _body is the section's controls: kept as they were while a pointer is
+  /// held in a gesture elsewhere (see PanelHold).
+  Widget _body() => _held.of(
+      context,
+      widget.remember,
+      () => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var c in widget.children)
+                if (c is! CanvasHint) c
+            ],
+          ),
+      followsStage: widget.followsStage);
+
   late bool _open = CanvasSection.openAll ||
       (rememberedSection(widget.remember) ?? widget.initiallyOpen);
 
@@ -678,14 +713,7 @@ class _CanvasSectionState extends State<CanvasSection> {
             child: Padding(
               key: ValueKey("sectionBody-${widget.remember}"),
               padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var c in widget.children)
-                    if (c is! CanvasHint) c
-                ],
-              ),
+              child: _body(),
             ),
           ),
         ),
@@ -783,20 +811,24 @@ class _CanvasSectionState extends State<CanvasSection> {
             // Its own name for the cards inside, so the fold's is not repeated.
             : CanvasCards(
                 title: widget.title,
-                child: Column(
+                child: KeyedSubtree(
                   key: ValueKey("sectionBody-${widget.remember}"),
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var c in widget.children)
-                      if (c is! CanvasHint) c
-                  ],
+                  child: _body(),
                 ),
               ));
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Listener(
+        // A pointer going down here makes this section the live one while
+        // it is held: see PanelHold.
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (e) =>
+            PanelHoldScope.of(context)?.claim(e.pointer, widget.remember),
+        child: _section(context),
+      );
+
+  Widget _section(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     // Under a menu, only the section chosen is drawn, and drawn open.
     var menu = _MenuScope.of(context);
@@ -849,14 +881,7 @@ class _CanvasSectionState extends State<CanvasSection> {
               child: Padding(
                 key: ValueKey("sectionBody-${widget.remember}"),
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var c in widget.children)
-                      if (c is! CanvasHint) c
-                  ],
-                ),
+                child: _body(),
               ),
             ),
         ],
