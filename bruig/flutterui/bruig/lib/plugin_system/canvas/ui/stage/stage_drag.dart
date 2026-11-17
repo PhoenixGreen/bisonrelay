@@ -5,6 +5,17 @@ part of 'canvas_stage.dart';
 // fields, lifecycle and build are in canvas_stage.dart.
 
 extension StageDrag on CanvasStageState {
+  /// _selectedChartLabels are the lone selected chart's placed labels.
+  List<Rect> _selectedChartLabels() {
+    var element = controller.selected;
+    if (element is! ChartElement || !controller.showHelpers) return const [];
+    return chartLabelPlaces(element, element.movedBoundsAt(controller.frame, controller.document,
+            live: controller.liveMotion))
+        .values
+        .where((r) => !r.isEmpty)
+        .toList();
+  }
+
   /// _docSlop is the pointer's reach in document units: the slop is in
   /// screen pixels (how still a hand is), so divided by the zoom.
   double get _docSlop => handleHitSlop / _scale;

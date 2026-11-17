@@ -5,6 +5,13 @@ part of 'canvas_stage.dart';
 // canvas_stage.dart.
 
 extension StagePictureTools on CanvasStageState {
+  /// _selectedPicture is the one selected element if it is a picture with
+  /// something in it.
+  ImageElement? _selectedPicture() {
+    var selected = controller.selected;
+    return selected is ImageElement && selected.hasImage ? selected : null;
+  }
+
   /// _paintStrokeAt adds a point to the live stroke ([_commitStroke] commits
   /// it on pointer up). Points are stored in picture coordinates, so the
   /// stroke stays put when the element is resized, refitted or recropped;
@@ -794,14 +801,5 @@ extension StagePictureTools on CanvasStageState {
     if (element is! ImageElement) return null;
     var image = controller.images.original(element.assetId);
     return image == null ? null : (element, image);
-  }
-
-  /// _framingPlacement is where the picture is drawn, from what draws it.
-  ImagePlacement? _framingPlacement(ImageElement e, ui.Image image) {
-    var inner = _framingRect(e);
-    if (inner.width <= 0 || inner.height <= 0) return null;
-    return placeImage(
-        Size(image.width.toDouble(), image.height.toDouble()), inner, e.fit,
-        crop: e.crop, framing: e.framing);
   }
 }

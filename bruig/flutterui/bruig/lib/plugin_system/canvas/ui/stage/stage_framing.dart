@@ -5,6 +5,15 @@ part of 'canvas_stage.dart';
 // build are in canvas_stage.dart.
 
 extension StageFramingDrag on CanvasStageState {
+  /// _framingPlacement is where the picture is drawn, from what draws it.
+  ImagePlacement? _framingPlacement(ImageElement e, ui.Image image) {
+    var inner = _framingRect(e);
+    if (inner.width <= 0 || inner.height <= 0) return null;
+    return placeImage(
+        Size(image.width.toDouble(), image.height.toDouble()), inner, e.fit,
+        crop: e.crop, framing: e.framing);
+  }
+
   /// _framingRect is where the reframed picture is drawn: its frame, or,
   /// layered, its own place in the frame, which is less than the whole once
   /// the frame grows round a layer or stroke.
@@ -420,16 +429,5 @@ extension StageFramingDrag on CanvasStageState {
       for (var e in controller.selectedElements) e.id: e.rotation,
     };
     controller.beginInteraction();
-  }
-
-  /// _selectedChartLabels are the lone selected chart's placed labels.
-  List<Rect> _selectedChartLabels() {
-    var element = controller.selected;
-    if (element is! ChartElement || !controller.showHelpers) return const [];
-    return chartLabelPlaces(element, element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion))
-        .values
-        .where((r) => !r.isEmpty)
-        .toList();
   }
 }

@@ -1216,11 +1216,4 @@ extension StageVectorTools on CanvasStageState {
 
     controller.replaceElement(path.withNode(_nodeIndex, next), transient: true);
   }
-
-  /// _selectedPicture is the one selected element if it is a picture with
-  /// something in it.
-  ImageElement? _selectedPicture() {
-    var selected = controller.selected;
-    return selected is ImageElement && selected.hasImage ? selected : null;
-  }
 }
