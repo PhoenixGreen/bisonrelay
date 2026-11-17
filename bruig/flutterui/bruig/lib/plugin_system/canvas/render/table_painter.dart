@@ -796,11 +796,10 @@ void _placeholder(ui.Canvas canvas, Rect rect, TableElement e) {
       clip: true);
 }
 
-// The last text fit, for one element at one size: it lays out every word,
-// so it is not done per frame.
-TableElement? _fitOf;
-Size _fitSize = Size.zero;
-double _fitK = 1;
+// Each table's last text fit, at the size it was worked out for: it lays
+// out every word, so it is not done per frame. Per table, or two tables on
+// a page would each throw the other's away every frame.
+final _fits = Expando<(Size, double)>("tableTextFit");
 
 /// tableTextFit is how much smaller [e]'s words are drawn in [rect] so
 /// each fits its cell (see _textFit): 1 where they fit as they are.
@@ -815,7 +814,7 @@ double tableTextFit(TableElement e, Rect rect) => e.rows.isEmpty
 /// table has the whole width.
 double _textFit(
     TableElement e, Size size, List<double> widths, List<double> heights) {
-  if (identical(_fitOf, e) && _fitSize == size) return _fitK;
+  if (_fits[e] case (var at, var k) when at == size) return k;
   var drawn = _DrawnCells(e);
   var k = 1.0;
   for (var r = 0; r < e.rows.length && r < heights.length; r++) {
@@ -848,10 +847,9 @@ double _textFit(
       if (group) break;
     }
   }
-  _fitOf = e;
-  _fitSize = size;
-  _fitK = k.clamp(0.25, 1.0);
-  return _fitK;
+  var fit = k.clamp(0.25, 1.0);
+  _fits[e] = (size, fit);
+  return fit;
 }
 
 /// tableColumnWidths is where a table's columns fall. Public so the stage's
@@ -859,11 +857,10 @@ double _textFit(
 List<double> tableColumnWidths(TableElement e, Rect rect) =>
     _columnWidths(e, rect, e.columnCount);
 
-// The last content-sized answer, for one element at one width: measuring
-// lays out every cell, so it is not done per frame.
-TableElement? _measuredOf;
-double _measuredWidth = 0;
-List<double>? _measured;
+// Each table's last content-sized answer, at the width and column count it
+// was worked out for: measuring lays out every cell, so it is not done per
+// frame. Per table, as _fits is.
+final _measured = Expando<(double, int, List<double>)>("tableColumns");
 
 /// _columnWidths sizes the columns to their contents, or to the element's
 /// fractions when it has any.
@@ -875,10 +872,9 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
     }
   }
 
-  if (identical(_measuredOf, e) &&
-      _measuredWidth == rect.width &&
-      _measured?.length == cols) {
-    return _measured!;
+  if (_measured[e] case (var wide, var n, var hit)
+      when wide == rect.width && n == cols) {
+    return hit;
   }
 
   // Measured against a third of the table, so one long cell wraps.
@@ -902,9 +898,7 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
       ? List.filled(cols, rect.width / cols)
       : [for (var w in natural) rect.width * w / sum];
 
-  _measuredOf = e;
-  _measuredWidth = rect.width;
-  _measured = out;
+  _measured[e] = (rect.width, cols, out);
   return out;
 }
 
