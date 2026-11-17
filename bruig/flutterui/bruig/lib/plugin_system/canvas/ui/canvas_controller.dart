@@ -230,7 +230,13 @@ part 'controller/instruments.dart';
 part 'controller/session.dart';
 part 'controller/game.dart';
 part 'controller/speech.dart';
-part 'controller/tools.dart';
+part 'controller/text_styles.dart';
+part 'controller/channels.dart';
+part 'controller/panels.dart';
+part 'controller/chain_views.dart';
+part 'controller/clip_editing.dart';
+part 'controller/piano_roll.dart';
+part 'controller/lanes.dart';
 part 'controller/mixer.dart';
 part 'controller/keyframes.dart';
 part 'controller/timeline_clips.dart';
@@ -3430,9 +3436,8 @@ class CanvasController extends ChangeNotifier {
 
   Set<String> _selectedChannels = {};
 
-  bool _snapping = false;
-
-  TimelineTool _timelineTool = TimelineTool.select;
+  /// _panelState is the state panels.dart keeps: see _PanelState.
+  final _PanelState _panelState = _PanelState();
 
   /// laneHeights is each channel's dragged height: the reader's, kept per
   /// canvas by the screen (see canvasView).
@@ -3523,28 +3528,12 @@ class CanvasController extends ChangeNotifier {
 
   bool _editorWide = true;
 
-  /// _settingsShut is, by editor ("roll" a piano roll, "clip" a slot's
-  /// clip), whether its settings are folded to a strip. The roll starts
-  /// folded, so the notes come first.
-  final Map<String, bool> _settingsShut = {"roll": true};
-
-  /// _analysing are the devices, as "strip|device", whose displays show the
-  /// real sound: off until switched on, as keeping and drawing it costs.
-  final Set<String> _analysing = {};
-
   /// _mixerState is the state mixer.dart keeps: see _MixerState.
   final _MixerState _mixerState = _MixerState();
 
   Timer? _controlIdle;
 
-  /// _abOther are each compared device's other settings, by "strip|device",
-  /// and _abB those heard with their B: see toggleAB.
-  final Map<String, Map<String, double>> _abOther = {};
   final Set<String> _abB = {};
-
-  /// _abSets are the other A/B sets of cards whose settings are not knobs
-  /// (an EQ's bands, a compressor's, a limiter's): see toggleABOf.
-  final Map<String, Object> _abSets = {};
 
   bool _motionCurves = false;
 
@@ -3565,9 +3554,6 @@ class CanvasController extends ChangeNotifier {
   /// _placingCopies is the element whose copies a click on the canvas
   /// places, one a click: see placingCopies.
   String? _placingCopies;
-
-  /// _presetNames are the presets last put on devices, by "strip|device".
-  final Map<String, String> _presetNames = {};
 
 
   PianoRollTarget? _clipEditing;
@@ -3630,7 +3616,8 @@ class CanvasController extends ChangeNotifier {
 
   String? _effectsOf;
 
-  bool _cuesShown = true;
+  /// _laneState is the state lanes.dart keeps: see _LaneState.
+  final _LaneState _laneState = _LaneState();
 
   /// foldedDevices are the mixer's devices folded to their switch and a
   /// meter, by device id ("eq", "comp" ...), the same on every strip.
@@ -3669,10 +3656,6 @@ class CanvasController extends ChangeNotifier {
       _waveforms[assetId] = peaks;
 
   bool _disposedForWaveform = false;
-
-  CanvasDocument? _duckFor;
-  int _duckWaves = -1;
-  Map<String, List<GainPoint>> _ducks = const {};
 
   // ------------------------------------------------------------------------
   // The mixer
