@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SurroundPan, SpeakerLayout;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonStr;
+    show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonStr, jsonString;
 
 // mix.dart is the mix settings: each channel strip and the master strip.
 // media/mix/dsp.dart runs them, and an interactive EPUB plays them through
@@ -750,7 +750,7 @@ class ChannelMix {
             for (var o in list.take(maxChainDevices + 2))
               if (o is String) o,
         ],
-        output: json["output"] is String ? json["output"] as String : "",
+        output: jsonString(json["output"], ""),
       );
 }
 

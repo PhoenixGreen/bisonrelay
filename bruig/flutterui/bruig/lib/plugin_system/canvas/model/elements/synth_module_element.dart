@@ -177,7 +177,7 @@ class SynthModuleElement extends CanvasElement {
 
   static SynthModuleElement? fromJson(
       Map<String, dynamic> json, ElementBase b) {
-    var kind = SynthModuleKind.fromName(json["module"] as String?);
+    var kind = SynthModuleKind.fromName(jsonStr(json["module"]));
     if (kind == null) return null;
     var m = SynthModule.fromJson({...json, "id": b.id, "kind": kind.name})!;
     var s = json["start"] is Map
@@ -191,8 +191,8 @@ class SynthModuleElement extends CanvasElement {
         inputs: m.inputs,
         start: s,
         fixed: json["fixed"] == true,
-        look: SynthLook.fromName(json["look"] as String?),
-        channel: json["channel"] is String ? json["channel"] as String : "",
+        look: SynthLook.fromName(jsonStr(json["look"])),
+        channel: jsonString(json["channel"], ""),
         big: json["big"] == true);
   }
 }

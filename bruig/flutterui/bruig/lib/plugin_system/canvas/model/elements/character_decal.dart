@@ -3,6 +3,8 @@
 // patch. It lies on the surface itself, so it follows the body's shape and
 // moves with it; what is made of it is in render/vrm/vrm_decal.dart.
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+
 /// DecalArea is the part of the body a decal is placed on, and the line it
 /// is placed along: up the torso, down a limb.
 enum DecalArea {
@@ -127,8 +129,8 @@ class CharacterDecal {
     return CharacterDecal(
       id: id,
       source: source,
-      name: j["name"] is String ? j["name"] as String : "",
-      on: j["on"] is String ? j["on"] as String : "skin",
+      name: jsonString(j["name"], ""),
+      on: jsonString(j["on"], "skin"),
       area: DecalArea.values.where((a) => a.name == j["area"]).firstOrNull ??
           DecalArea.torso,
       along: n("along", 0.6, 0, 1),

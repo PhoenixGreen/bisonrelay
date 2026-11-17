@@ -510,7 +510,7 @@ class TextPart {
         scale: json["scale"] is num
             ? (json["scale"] as num).toDouble().clamp(0.05, 20.0)
             : null,
-        family: json["family"] is String ? json["family"] as String : null,
+        family: jsonStr(json["family"]),
         outlineWidth: json["outlineWidth"] is num
             ? (json["outlineWidth"] as num).toDouble().clamp(0.0, 80.0)
             : null,

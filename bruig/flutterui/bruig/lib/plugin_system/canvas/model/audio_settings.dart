@@ -1,7 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart' show SpeakerLayout;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonDouble, jsonInt, jsonStr;
+    show jsonDouble, jsonInt, jsonStr, jsonString;
 
 // audio_settings.dart is a document's sound as a production: its tempo and
 // time signature, and how its sound is written when it is published -- the
@@ -245,7 +245,7 @@ class SongSection {
   static SongSection? fromJson(Object? json) {
     if (json is! Map || json["id"] is! String) return null;
     return SongSection(json["id"] as String,
-        name: json["name"] is String ? json["name"] as String : "Section",
+        name: jsonString(json["name"], "Section"),
         bars: jsonInt(json["bars"], 8).clamp(1, 512),
         color: jsonInt(json["color"], 0) % sectionColors.length);
   }

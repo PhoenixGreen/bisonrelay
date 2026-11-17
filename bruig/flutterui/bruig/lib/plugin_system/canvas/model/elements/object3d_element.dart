@@ -66,7 +66,7 @@ class Object3dElement extends CanvasElement {
     double n(String key, double or) =>
         json[key] is num ? (json[key] as num).toDouble() : or;
     return Object3dElement(base,
-        assetId: json["asset"] is String ? json["asset"] as String : "",
+        assetId: jsonString(json["asset"], ""),
         animations: [
           if (json["anims"] case List anims)
             for (var a in anims)

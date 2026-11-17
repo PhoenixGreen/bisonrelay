@@ -81,7 +81,7 @@ int _i(dynamic v, int fallback) =>
     v is num && v.isFinite ? v.toInt() : fallback;
 
 /// jsonStr and jsonNum are a field as a string or finite number, or null.
-String? jsonStr(Object? v) => v is String ? v : null;
+String? jsonStr(Object? v) => v is String ? _cut(v, maxTextLength) : null;
 num? jsonNum(Object? v) => v is num && v.isFinite ? v : null;
 
 /// _far is the furthest out and biggest a received element may be: many
@@ -89,7 +89,13 @@ num? jsonNum(Object? v) => v is num && v.isFinite ? v : null;
 const double _far = 1e6;
 
 bool _b(dynamic v, bool fallback) => v is bool ? v : fallback;
-String _s(dynamic v, String fallback) => v is String ? v : fallback;
+
+/// _s is [v] as a string, cut to maxTextLength: no field a received canvas
+/// sends is kept at any length it likes.
+String _s(dynamic v, String fallback) =>
+    v is String ? _cut(v, maxTextLength) : fallback;
+
+String _cut(String s, int most) => s.length <= most ? s : s.substring(0, most);
 
 /// jsonDouble, jsonInt, jsonBool and jsonString are the readers above, for
 /// the subclasses. A saved document may be old or from someone else, so
@@ -105,10 +111,17 @@ String jsonString(dynamic v, String fallback) => _s(v, fallback);
 /// laid out every frame.
 const maxTextLength = 200000;
 
-String jsonText(dynamic v, String fallback) {
-  var s = _s(v, fallback);
-  return s.length <= maxTextLength ? s : s.substring(0, maxTextLength);
-}
+String jsonText(dynamic v, String fallback) => _s(v, fallback);
+
+/// maxIdLength and maxLabelLength bound an id, and a name, label, title or
+/// font, as read: far longer than any real one, while a received canvas's
+/// millions of characters would be compared, hashed and laid out wherever
+/// the field is used.
+const maxIdLength = 200, maxLabelLength = 1000;
+
+String jsonId(dynamic v, String fallback) => _cut(_s(v, fallback), maxIdLength);
+String jsonLabel(dynamic v, String fallback) =>
+    _cut(_s(v, fallback), maxLabelLength);
 
 /// fractionsFromJson reads a flat [x, y, ...] list of points as fractions of
 /// a picture: within a width either side, and at most 100,000, so a sent
@@ -339,8 +352,8 @@ class ElementBase {
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
     var trackJson = json["track"];
     return ElementBase(
-      id: _s(json["id"], newElementId()),
-      name: _s(json["name"], defaultName),
+      id: jsonId(json["id"], newElementId()),
+      name: jsonLabel(json["name"], defaultName),
       x: _d(json["x"], 0).clamp(-_far, _far),
       y: _d(json["y"], 0).clamp(-_far, _far),
       width: _d(json["w"], 200).clamp(0.0, _far),
@@ -547,7 +560,7 @@ class ElementLayout {
         height: _d(json["h"], 100).clamp(0.0, _far),
         visible: _b(json["visible"], true),
         typeScale: _d(json["typeScale"], 1),
-        text: json["text"] is String ? json["text"] as String : null,
+        text: jsonStr(json["text"]),
         ownText: _b(json["ownText"], false),
         own: json["own"] is Map<String, dynamic>
             ? json["own"] as Map<String, dynamic>

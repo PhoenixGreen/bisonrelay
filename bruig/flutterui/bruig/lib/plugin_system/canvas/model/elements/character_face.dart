@@ -3,6 +3,8 @@
 // the eyes' look, the head's tilt, a blush, and what it does by itself.
 // Every VRoid face has the same shapes, named after "Fcl_" ("EYE_Joy").
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+
 /// faceUnits are the face's shapes, region by region, with their names.
 const Map<String, List<(String, String)>> faceUnits = {
   "brows": [
@@ -257,7 +259,7 @@ class CharacterFace {
     if (json is! Map) return const CharacterFace();
     final kept = json["kept"];
     return CharacterFace(
-      name: json["name"] is String ? json["name"] as String : "Neutral",
+      name: jsonString(json["name"], "Neutral"),
       mix: FaceMix.fromJson(json["mix"]),
       kept: {
         if (kept is Map)

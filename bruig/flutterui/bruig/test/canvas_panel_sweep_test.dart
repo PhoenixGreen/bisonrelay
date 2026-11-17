@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'support/canvas_app.dart';
+import 'support/element_samples.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -54,6 +55,9 @@ void main() {
       ),
       // Each infographic chart, whose settings have controls of their own
       // (Ken, 2026-11-13): a pictogram's icons, a gauge's middle, a hint.
+      // Each synth module's own panel: its knobs and choices differ by kind.
+      for (var (name, e) in elementSamples())
+        if (name.startsWith("Synth module: ")) (name, e),
       for (var t in ChartType.values.where((t) => t.isInfographic))
         (
           "Chart: ${t.label}",

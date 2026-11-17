@@ -1,5 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonDouble, jsonStr;
+    show jsonDouble, jsonStr, jsonString;
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 
 // play.dart is a canvas played as a game: what each element does and the
@@ -198,20 +198,20 @@ class PlaySpec {
       zoomOut: jsonDouble(json["zoomOut"], 0),
       player: json["player"] is num ? (json["player"] as num).toInt() : 1,
       touched: GameEffect.fromJson(json["touched"]),
-      sound: json["sound"] is String ? json["sound"] as String : "",
+      sound: jsonString(json["sound"], ""),
       stays: json["stays"] == true,
       sendsBack: json["sendsBack"] != false,
       touchWhole: json["touchWhole"] == true,
       pressSound:
           json["pressSound"] is String ? json["pressSound"] as String : "",
-      pressedBy: json["pressedBy"] is String ? json["pressedBy"] as String : "",
+      pressedBy: jsonString(json["pressedBy"], ""),
       reach: jsonDouble(json["reach"], 0),
       press: json["press"] is Map<String, dynamic>
           ? ButtonAction.fromJson(json["press"] as Map<String, dynamic>)
           : null,
       hits: json["hits"] is num ? (json["hits"] as num).toInt() : 0,
       defeated: GameEffect.fromJson(json["defeated"]),
-      hitSound: json["hitSound"] is String ? json["hitSound"] as String : "",
+      hitSound: jsonString(json["hitSound"], ""),
       struck: GameEffect.fromJson(json["struck"]),
     );
   }
@@ -398,13 +398,13 @@ class GameEffect {
     if (json is! Map) return const GameEffect();
     return GameEffect(
         does: GameDoes.fromName(jsonStr(json["does"])),
-        count: json["count"] is String ? json["count"] as String : "",
+        count: jsonString(json["count"], ""),
         amount: json["amount"] is num
             ? (json["amount"] as num).toInt().clamp(1, 1000000)
             : 1,
-        scene: json["scene"] is String ? json["scene"] as String : "",
-        element: json["element"] is String ? json["element"] as String : "",
-        sound: json["sound"] is String ? json["sound"] as String : "");
+        scene: jsonString(json["scene"], ""),
+        element: jsonString(json["element"], ""),
+        sound: jsonString(json["sound"], ""));
   }
 
   @override

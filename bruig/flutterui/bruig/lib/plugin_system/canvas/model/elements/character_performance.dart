@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
 
 // character_performance.dart is what a 3D character does in one scene: how
@@ -187,10 +188,10 @@ class PoseKey {
     if (j is! Map) return null;
     return PoseKey(
       t: _num(j["t"], 0, 0, 3600),
-      stance: j["stance"] is String ? j["stance"] as String : "Relaxed",
+      stance: jsonString(j["stance"], "Relaxed"),
       lean: _num(j["lean"], 0, -1, 1),
       tilt: _num(j["tilt"], 0, -1, 1),
-      feeling: j["feeling"] is String ? j["feeling"] as String : "Neutral",
+      feeling: jsonString(j["feeling"], "Neutral"),
     );
   }
 
@@ -404,7 +405,7 @@ class CharacterPerformance {
       wearing: performanceWearing.contains(j["wearing"])
           ? j["wearing"] as String
           : "As designed",
-      stance: j["stance"] is String ? j["stance"] as String : null,
+      stance: jsonStr(j["stance"]),
       lean: _num(j["lean"], 0, -1, 1),
       tilt: _num(j["tilt"], 0, -1, 1),
       keys: [
@@ -415,8 +416,8 @@ class CharacterPerformance {
         for (final c in (j["clips"] is List ? j["clips"] as List : const []))
           if (MotionClip3d.fromJson(c) case final x?) x
       ],
-      feeling: j["feeling"] is String ? j["feeling"] as String : feeling,
-      mixTo: j["mixTo"] is String ? j["mixTo"] as String : "Happy",
+      feeling: jsonStr(j["feeling"]) ?? feeling,
+      mixTo: jsonString(j["mixTo"], "Happy"),
       mixAmount: _num(j["mixAmount"], 0, 0, 1),
       mouth: performanceMouths.any((m) => m.$1 == j["mouth"])
           ? j["mouth"] as String
@@ -427,7 +428,7 @@ class CharacterPerformance {
       shadow: performanceShadows.contains(j["shadow"])
           ? j["shadow"] as String
           : "Soft",
-      line: j["line"] is String ? j["line"] as String : "",
+      line: jsonString(j["line"], ""),
       lineAt: _num(j["lineAt"], 0, 0, 3600),
       mouths: [
         for (final m in (j["mouths"] is List ? j["mouths"] as List : const []))
@@ -437,7 +438,7 @@ class CharacterPerformance {
               shape: MouthShape.fromName(m[1] as String)
             )
       ]..sort((a, b) => a.t.compareTo(b.t)),
-      speaksFor: j["speaksFor"] is String ? j["speaksFor"] as String : "",
+      speaksFor: jsonString(j["speaksFor"], ""),
       startsAt: j["startsAt"] is int ? (j["startsAt"] as int).clamp(-1, 1) : 0,
     );
   }

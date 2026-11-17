@@ -858,7 +858,7 @@ class ChartElement extends CanvasElement {
       source: jsonSpec(json["source"], DataSource.fromJson, const DataSource()),
       fromSource: jsonSpec(
           json["fromSource"], ChartSourceMap.fromJson, const ChartSourceMap()),
-      title: jsonString(json["title"], ""),
+      title: jsonLabel(json["title"], ""),
       description: jsonString(json["desc"], ""),
       titleBox:
           jsonSpec(json["titleBox"], ChartLabel.fromJson, const ChartLabel()),
@@ -873,8 +873,8 @@ class ChartElement extends CanvasElement {
       descriptionSpec: json["descSpec"] is Map<String, dynamic>
           ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
           : null,
-      xAxisLabel: jsonString(json["xlabel"], ""),
-      yAxisLabel: jsonString(json["ylabel"], ""),
+      xAxisLabel: jsonLabel(json["xlabel"], ""),
+      yAxisLabel: jsonLabel(json["ylabel"], ""),
       showGrid: jsonBool(json["grid"], true),
       showAxes: jsonBool(json["axes"], true),
       showXLabels: !jsonBool(json["noAxisLabels"], false) &&
@@ -935,7 +935,7 @@ class ChartElement extends CanvasElement {
       barRadius: jsonDouble(json["barRadius"], 4),
       barFloor: jsonDouble(json["barFloor"], 0),
       innerRadius: jsonDouble(json["inner"], 0.55),
-      centreLabel: json["centre"] is String ? json["centre"] as String : "",
+      centreLabel: jsonString(json["centre"], ""),
       pictoShape: PictoShape.fromName(json["picto"]),
       pictoCount: json["pictoN"] is num
           ? (json["pictoN"] as num).toInt().clamp(1, 200)

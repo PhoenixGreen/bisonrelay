@@ -5,6 +5,8 @@
 // from. Files holds only files and presets; Game only the game's settings,
 // shown for a game. The files and the selection's settings are never hidden.
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+
 /// SidebarMode is the sidebar hidden, beside everything at full height, or
 /// over the panels under the canvas, which then have the whole width.
 enum SidebarMode {
@@ -429,7 +431,7 @@ class SidebarLayout {
       opened: SidebarMode.fromName(json["opened"]) == SidebarMode.hidden
           ? SidebarMode.full
           : SidebarMode.fromName(json["opened"]),
-      current: json["current"] is String ? json["current"] as String : "files",
+      current: jsonString(json["current"], "files"),
       sidebars: sidebars,
       hidden: hidden,
       hiddenFrom: hiddenFrom,

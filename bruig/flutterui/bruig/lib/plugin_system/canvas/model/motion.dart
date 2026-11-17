@@ -69,7 +69,7 @@ sealed class MotionValue {
       var kind = MotionPlaceKind.fromName(json["place"]);
       if (kind != null) {
         return MotionPlace(kind,
-            target: json["of"] is String ? json["of"] as String : "",
+            target: jsonString(json["of"], ""),
             by: jsonDouble(json["by"], 0).clamp(-4000.0, 4000.0));
       }
     }
@@ -538,7 +538,7 @@ class MotionClip {
       absolute: jsonBool(json["absolute"], false),
       keys: keys,
       launch: ClipLaunch.fromName(json["launch"]),
-      quantise: json["quantise"] is String ? json["quantise"] as String : null,
+      quantise: jsonStr(json["quantise"]),
       then: ClipThen.fromName(json["then"]),
       thenClip: jsonString(json["thenClip"], ""),
       triggers: [
@@ -671,7 +671,7 @@ class ClipPlacement {
       to: json["to"] is num ? (json["to"] as num).toDouble() : null,
       startPin: ClipPin.fromJson(json["startPin"]),
       endPin: ClipPin.fromJson(json["endPin"]),
-      link: json["link"] is String ? json["link"] as String : "",
+      link: jsonString(json["link"], ""),
     );
   }
 }

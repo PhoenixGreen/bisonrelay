@@ -126,7 +126,7 @@ class ChartHighlight {
     var op = j["op"];
     return ChartHighlight(
       name: jsonString(j["name"], ""),
-      reach: ChartReach.fromName(j["reach"] as String?),
+      reach: ChartReach.fromName(jsonStr(j["reach"])),
       who: jsonString(j["who"], ""),
       n: j["n"] is num ? (j["n"] as num).toInt().clamp(1, 1000) : 3,
       by: j["by"] is num ? (j["by"] as num).toInt() : -1,

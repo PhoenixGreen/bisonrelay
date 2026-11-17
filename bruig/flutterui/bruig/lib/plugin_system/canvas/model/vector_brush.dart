@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'dart:ui';
 
 // vector_brush.dart is how the pencil tool draws a line: its width, how pen
@@ -143,7 +144,7 @@ class VectorBrush {
         json[key] is num ? (json[key] as num).toDouble() : fallback;
     const d = VectorBrush(name: "");
     return VectorBrush(
-      name: json["name"] is String ? json["name"] as String : "Brush",
+      name: jsonString(json["name"], "Brush"),
       size: n("size", d.size),
       pressure: json["pressure"] is bool ? json["pressure"] as bool : true,
       thinnest: n("thinnest", d.thinnest),

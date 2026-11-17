@@ -197,8 +197,8 @@ class TextItem {
         id: json["id"] is String && (json["id"] as String).isNotEmpty
             ? json["id"] as String
             : newElementId(),
-        text: json["t"] is String ? json["t"] as String : "",
-        name: json["name"] is String ? json["name"] as String : "",
+        text: jsonString(json["t"], ""),
+        name: jsonString(json["name"], ""),
         slot: TextSlot.fromName(jsonStr(json["slot"])),
         gap: json["gap"] is num
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)

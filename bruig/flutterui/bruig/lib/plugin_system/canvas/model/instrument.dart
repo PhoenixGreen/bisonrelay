@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonInt, jsonDouble, jsonStr;
+    show jsonInt, jsonDouble, jsonStr, jsonString;
 import 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
@@ -495,17 +495,17 @@ class InstrumentPart {
               if (MidiEffect.fromJson(raw) case var e?) e,
         ],
         controls: controlsFromJson(json["controls"]),
-        input: json["input"] is String ? json["input"] as String : "",
+        input: jsonString(json["input"], ""),
         monitor: MidiMonitor.values
                 .where((m) => m.name == json["monitor"])
                 .firstOrNull ??
             MidiMonitor.auto,
-        rendered: json["rendered"] is String ? json["rendered"] as String : "",
+        rendered: jsonString(json["rendered"], ""),
         shape: InstrumentShape.fromJson(json["shape"]),
         slices: SliceKit.fromJson(json["slices"]),
         quantise: jsonDouble(json["quantise"], 0),
         swing: jsonDouble(json["swing"], 0),
-        score: json["score"] is String ? json["score"] as String : "",
+        score: jsonString(json["score"], ""),
         patch: SynthPatch.fromJson(json["patch"]),
       );
 }

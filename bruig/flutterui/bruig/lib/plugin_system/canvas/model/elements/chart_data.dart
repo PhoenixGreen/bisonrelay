@@ -464,7 +464,7 @@ class ChartSeries {
       // A null is a cell nobody filled in; anything else not a number is 0.
       values: raw is List
           ? [
-              for (var v in raw)
+              for (var v in raw.take(ChartData.maxChartPoints))
                 v == null
                     ? missingValue
                     : v is num
@@ -784,14 +784,21 @@ class ChartData {
         if (estimated.contains(true)) "est": estimated,
       };
 
+  /// maxChartPoints and maxChartSeries bound what a received chart is read
+  /// with: more than could be drawn each frame, and a sent list of millions
+  /// would be laid out on every one.
+  static const maxChartPoints = 100000, maxChartSeries = 1000;
+
   factory ChartData.fromJson(Map<String, dynamic> json) {
     var cats = json["categories"];
     var ser = json["series"];
     return ChartData(
-      categories: cats is List ? [for (var c in cats) "$c"] : const [],
+      categories: cats is List
+          ? [for (var c in cats.take(maxChartPoints)) jsonLabel("$c", "")]
+          : const [],
       series: ser is List
           ? [
-              for (var i = 0; i < ser.length; i++)
+              for (var i = 0; i < ser.length && i < maxChartSeries; i++)
                 if (ser[i] is Map<String, dynamic>)
                   ChartSeries.fromJson(ser[i] as Map<String, dynamic>, i),
             ]

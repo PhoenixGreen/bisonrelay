@@ -1316,7 +1316,7 @@ class CanvasDocument {
           : defaultReturns,
       session: SessionGrid.fromJson(json["session"]),
       game: json["game"] == true,
-      gameStart: json["gameStart"] is String ? json["gameStart"] as String : "",
+      gameStart: jsonString(json["gameStart"], ""),
       masterOver: json["masterOver"] == true,
       playerControls: {
         if (json["playerControls"] case Map raw)

@@ -1,5 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonStr;
+    show jsonBool, jsonDouble, jsonStr, jsonString;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
@@ -465,8 +465,8 @@ class MixDevice {
             for (var p in [...kind.params, ...deviceExtras])
               if (raw[p.id] is num) p.id: jsonDouble(raw[p.id], p.initial),
         },
-        source: json["source"] is String ? json["source"] as String : "",
-        id: json["id"] is String ? json["id"] as String : "",
+        source: jsonString(json["source"], ""),
+        id: jsonString(json["id"], ""),
         mods: readModTargets(json["mods"]),
         branches: [
           if (json["branches"] case List raw)
@@ -688,7 +688,7 @@ class ReturnChannel {
     var id = json["id"];
     if (id is! String || id.isEmpty) return null;
     return ReturnChannel(id,
-        name: json["name"] is String ? json["name"] as String : "",
+        name: jsonString(json["name"], ""),
         devices: withDeviceIds([
           if (json["devices"] case List list)
             for (var d in list.take(maxChainDevices))

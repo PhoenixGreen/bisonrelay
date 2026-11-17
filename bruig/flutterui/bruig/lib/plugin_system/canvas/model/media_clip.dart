@@ -367,7 +367,7 @@ class MediaClip {
       timed: jsonBool(json["timed"], false),
       at: math.max(0, jsonInt(json["at"], 0)),
       mix: jsonSpec(json["mix"], ChannelMix.fromJson, const ChannelMix()),
-      channel: json["channel"] is String ? json["channel"] as String : "",
+      channel: jsonString(json["channel"], ""),
       channelName:
           json["channelName"] is String ? json["channelName"] as String : "",
       place: json["place"] is Map<String, dynamic>

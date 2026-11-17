@@ -2,6 +2,8 @@
 // gallery designs' choices, kept apart so the chart's list stays readable.
 // Each is off unless a design or the Charts tab turns it on.
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+
 class ChartDesign {
   /// track draws a pale full-length bar behind each bar, so a bar reads as
   /// so much of the whole filled (a poster's "track bars").
@@ -122,7 +124,7 @@ class ChartDesign {
       connect: b("connect"),
       half: b("half"),
       gaps: b("gaps"),
-      mode: j["mode"] is String ? j["mode"] as String : "",
+      mode: jsonString(j["mode"], ""),
       even: b("even"),
     );
   }

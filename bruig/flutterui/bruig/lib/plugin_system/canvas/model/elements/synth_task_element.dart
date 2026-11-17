@@ -90,16 +90,16 @@ class SynthCheck {
     var module = j["module"];
     if (kind == null || module is! String) return null;
     var f = j["from"];
-    return SynthCheck(kind, j["label"] is String ? j["label"] as String : "",
+    return SynthCheck(kind, jsonString(j["label"], ""),
         module: module,
-        input: j["input"] is String ? j["input"] as String : "",
-        setting: j["setting"] is String ? j["setting"] as String : "",
+        input: jsonString(j["input"], ""),
+        setting: jsonString(j["setting"], ""),
         from: f is List && f.length == 2 && f.every((x) => x is String)
             ? (module: f[0] as String, port: f[1] as String)
             : null,
         min: j["min"] is num ? (j["min"] as num).toDouble() : 0,
         max: j["max"] is num ? (j["max"] as num).toDouble() : 0,
-        choice: j["choice"] is String ? j["choice"] as String : "");
+        choice: jsonString(j["choice"], ""));
   }
 }
 
@@ -160,10 +160,10 @@ class SynthTaskElement extends CanvasElement {
 
   factory SynthTaskElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       SynthTaskElement(b,
-          title: json["title"] is String ? json["title"] as String : "",
-          text: json["text"] is String ? json["text"] as String : "",
+          title: jsonLabel(json["title"], ""),
+          text: jsonText(json["text"], ""),
           target: SynthPatch.fromJson(json["target"]),
-          speaker: json["speaker"] is String ? json["speaker"] as String : "",
+          speaker: jsonString(json["speaker"], ""),
           checks: [
             if (json["checks"] case List l)
               for (var c in l)

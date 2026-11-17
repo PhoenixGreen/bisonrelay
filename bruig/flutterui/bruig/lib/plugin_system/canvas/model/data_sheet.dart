@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
@@ -285,14 +286,14 @@ class SheetLink {
         descending: j["ascending"] != true,
         top: n("top", 0),
         whereColumn: n("whereColumn", -1),
-        where: j["where"] is String ? j["where"] as String : "",
-        group: j["group"] is String ? j["group"] as String : "",
+        where: jsonString(j["where"], ""),
+        group: jsonString(j["group"], ""),
         bottom: j["bottom"] == true,
-        places: j["places"] is String ? j["places"] as String : "",
+        places: jsonString(j["places"], ""),
         gap: j["gap"] != false,
         colourBy: n("colourBy", -1),
         through: n("through", -1),
-        at: j["at"] is String ? j["at"] as String : "",
+        at: jsonString(j["at"], ""),
         split: n("split", -1),
         numbering: j["numbering"] == true,
         others: j["others"] == true,
@@ -551,7 +552,7 @@ class DataSheet {
     if (id is! String || id.isEmpty) return null;
     return DataSheet(
         id: id,
-        name: j["name"] is String ? j["name"] as String : "Sheet",
+        name: jsonString(j["name"], "Sheet"),
         cells: _cellsFromJson(j["cells"]),
         formats: {
           if (j["formats"] case Map f)
@@ -565,7 +566,7 @@ class DataSheet {
               if (int.tryParse("$key") case var c?)
                 if (CellFormat.fromJson(value) case var cf?) c: cf,
         },
-        spotlight: j["spotlight"] is String ? j["spotlight"] as String : "",
+        spotlight: jsonString(j["spotlight"], ""),
         spotlightColour: j["spotlightColour"] is int
             ? Color(j["spotlightColour"] as int)
             : const Color(0xFFF2B33D),
@@ -576,7 +577,7 @@ class DataSheet {
             ? (j["gridColumns"] as int).clamp(1, maxSheetColumns)
             : defaultGridColumns,
         made: SheetMade.fromJson(j["made"]),
-        folder: j["folder"] is String ? j["folder"] as String : "",
+        folder: jsonString(j["folder"], ""),
         source: j["source"] is Map<String, dynamic>
             ? DataSource.fromJson(j["source"] as Map<String, dynamic>)
             : const DataSource(),
@@ -679,7 +680,7 @@ class CellFormat {
     return CellFormat(kind,
         decimals: j["decimals"] is num ? (j["decimals"] as num).toInt() : null,
         symbol: j["symbol"] is String ? j["symbol"] as String : r"$",
-        date: j["date"] is String ? j["date"] as String : "dd/mm/yyyy");
+        date: jsonString(j["date"], "dd/mm/yyyy"));
   }
 
   @override
@@ -837,7 +838,7 @@ class SheetRule {
         colour: c("colour", plain.colour),
         low: c("low", plain.low),
         high: c("high", plain.high),
-        value: j["value"] is String ? j["value"] as String : "");
+        value: jsonString(j["value"], ""));
   }
 
   @override

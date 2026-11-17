@@ -181,8 +181,9 @@ class CodePane {
 
   static CodePane fromJson(dynamic j) => j is Map<String, dynamic>
       ? CodePane(tabs: [
-          for (var t in (j["tabs"] is List ? j["tabs"] as List : const []))
-            if (t is String) t
+          for (var t
+              in (j["tabs"] is List ? j["tabs"] as List : const []).take(256))
+            if (t is String) jsonId(t, "")
         ], active: jsonString(j["active"], ""))
       : const CodePane();
 }
@@ -699,7 +700,8 @@ class CodeElement extends CanvasElement {
         files: files,
         layout: layout,
         panes: [
-          for (var p in (json["panes"] is List ? json["panes"] as List : []))
+          for (var p
+              in (json["panes"] is List ? json["panes"] as List : []).take(64))
             CodePane.fromJson(p)
         ],
         columns: shares(json["columns"], layout.evenColumns),

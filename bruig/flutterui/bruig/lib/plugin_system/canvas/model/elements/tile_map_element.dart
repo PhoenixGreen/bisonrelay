@@ -573,6 +573,9 @@ class TileLayer {
   }
 }
 
+/// maxTileLayers is the most layers a received tile map is read with.
+const maxTileLayers = 256;
+
 class TileMapElement extends CanvasElement {
   final List<TileSource> sources;
 
@@ -751,7 +754,7 @@ class TileMapElement extends CanvasElement {
   factory TileMapElement.fromJson(Map<String, dynamic> json, ElementBase b) {
     var layers = [
       if (json["layers"] case List raw)
-        for (var l in raw) TileLayer.fromJson(l),
+        for (var l in raw.take(maxTileLayers)) TileLayer.fromJson(l),
     ];
     return TileMapElement(
       b,

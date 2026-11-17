@@ -78,8 +78,17 @@ A document can come from somebody else, so reading also bounds it: numbers
 must be finite (`finiteJson`); sizes, counts and lengths are clamped; a scene
 holds at most `maxSceneElements` elements, a document `maxScenes` scenes, an
 element's words `maxTextLength` characters, and a sheet `DataSheet.maxCells`
-cells. Add a limit like these to any new field a received file could make
-huge.
+cells. Strings are cut as they are read: any to `maxTextLength`, an id
+(`jsonId`) to 200 characters, a name, label, title or font (`jsonLabel`) to
+1,000; lists to a count of their own (a chart's points, a tile map's
+layers). Add a limit like these to any new field a received file could make
+huge, and read it through these helpers, never with a cast that throws.
+
+`test/canvas_element_reading_test.dart` holds every kind to this, from the
+samples in `test/support/element_samples.dart` (every kind, each synth
+module, each chart type): read back as written, a wrong type at any key
+never throws, a 2 MB string or 400,000-entry list at any key comes back
+bounded. A new kind, or a new sort of one, belongs in those samples.
 
 ### Motion
 

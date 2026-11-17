@@ -100,7 +100,13 @@ class CharacterDesign {
     if (json is! Map) return null;
     final j = json.cast<String, dynamic>();
     final id = j["id"], body = j["body"];
-    if (id is! String || id.isEmpty || body is! String || body.isEmpty) {
+    // An id or body longer than any real one is a file written to break it.
+    if (id is! String ||
+        id.isEmpty ||
+        id.length > 200 ||
+        body is! String ||
+        body.isEmpty ||
+        body.length > 200) {
       return null;
     }
     Map<String, dynamic> map(String k) =>
@@ -108,7 +114,10 @@ class CharacterDesign {
     final name = j["lookName"];
     return CharacterDesign(
       id: id,
-      name: j["name"] is String ? j["name"] as String : "",
+      name: j["name"] is String
+          ? (j["name"] as String)
+              .substring(0, (j["name"] as String).length.clamp(0, 1000))
+          : "",
       body: body,
       shape: CharacterShape.fromJson(map("shape")),
       outfit: CharacterOutfit.fromJson(map("outfit")),

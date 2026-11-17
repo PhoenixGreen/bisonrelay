@@ -193,7 +193,8 @@ class SynthModule {
 
   static SynthModule? fromJson(Object? j) {
     if (j is! Map) return null;
-    var kind = SynthModuleKind.fromName(j["kind"] as String?);
+    var kind = SynthModuleKind.fromName(
+        j["kind"] is String ? j["kind"] as String : null);
     var id = j["id"];
     if (kind == null || id is! String) return null;
     return SynthModule(id, kind, values: {

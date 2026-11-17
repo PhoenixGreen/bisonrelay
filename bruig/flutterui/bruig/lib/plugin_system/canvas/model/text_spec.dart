@@ -419,7 +419,7 @@ class TextSpec {
       };
 
   factory TextSpec.fromJson(Map<String, dynamic> json) => TextSpec(
-        fontFamily: jsonString(json["font"], "Inter"),
+        fontFamily: jsonLabel(json["font"], "Inter"),
         fontSize: jsonDouble(json["size"], 48).clamp(1.0, 4000.0),
         weight: jsonInt(json["weight"], 600),
         italic: jsonBool(json["italic"], false),

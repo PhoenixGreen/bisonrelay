@@ -1232,7 +1232,7 @@ class TableElement extends CanvasElement {
         groupRows: json["groupRows"] == true,
         cards: json["cards"] == true,
         picked: json["picked"] is int ? json["picked"] as int : -1,
-        ribbon: json["ribbon"] is String ? json["ribbon"] as String : "",
+        ribbon: jsonString(json["ribbon"], ""),
         sheet: SheetLink.fromJson(json["sheet"]));
   }
 

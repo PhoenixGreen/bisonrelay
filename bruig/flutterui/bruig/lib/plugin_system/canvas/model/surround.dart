@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonDouble, jsonStr;
+    show jsonDouble, jsonStr, jsonString;
 
 // surround.dart is the speaker layouts, a channel's place among them, and
 // pairwise constant-power panning (2D VBAP) between the speakers either side
@@ -324,11 +324,11 @@ class SoundPlacement {
       const SoundPlacement().copyWith(
         by: PlaceBy.fromName(jsonStr(json["by"])),
         arc: jsonDouble(json["arc"], 60),
-        stage: json["stage"] is String ? json["stage"] as String : "",
+        stage: jsonString(json["stage"], ""),
         x: jsonDouble(json["x"], 0),
         y: jsonDouble(json["y"], 1.2),
         z: jsonDouble(json["z"], 3),
-        follow: json["follow"] is String ? json["follow"] as String : "",
+        follow: jsonString(json["follow"], ""),
         near: jsonDouble(json["near"], 0),
         rolloff: jsonDouble(json["rolloff"], 1),
       );

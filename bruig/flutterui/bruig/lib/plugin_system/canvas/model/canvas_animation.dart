@@ -540,15 +540,15 @@ class TimelineAction {
       };
 
   factory TimelineAction.fromJson(Map<String, dynamic> json) => TimelineAction(
-        id: json["id"] is String ? json["id"] as String : "",
+        id: jsonString(json["id"], ""),
         frame: (jsonNum(json["f"]))?.toInt() ?? 0,
         kind: TimelineActionKind.fromName(jsonStr(json["kind"])),
         target: (jsonNum(json["target"]))?.toInt() ?? 0,
         repeats: (jsonNum(json["repeats"]))?.toInt() ?? 0,
         holdFrames: (jsonNum(json["hold"]))?.toInt() ?? 12,
-        label: json["label"] is String ? json["label"] as String : "",
+        label: jsonString(json["label"], ""),
         showLabel: json["hideLabel"] != true,
-        waitsFor: json["waitsFor"] is String ? json["waitsFor"] as String : "",
+        waitsFor: jsonString(json["waitsFor"], ""),
         noteAt: switch (json["noteAt"]) {
           [num x, num y] =>
             Offset(x.toDouble().clamp(0.0, 1.0), y.toDouble().clamp(0.0, 1.0)),

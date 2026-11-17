@@ -119,7 +119,7 @@ class MarkdownLook {
         weight: json["weight"] is num ? (json["weight"] as num).toInt() : null,
         italic: json["italic"] is bool ? json["italic"] as bool : null,
         underline: json["underline"] is bool ? json["underline"] as bool : null,
-        family: json["family"] is String ? json["family"] as String : null,
+        family: jsonStr(json["family"]),
       );
 }
 

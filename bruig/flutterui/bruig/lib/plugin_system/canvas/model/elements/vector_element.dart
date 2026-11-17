@@ -484,7 +484,7 @@ class VectorShape {
           : null,
       hidden: json["hid"] == true,
       locked: json["lock"] == true,
-      origin: json["from"] is String ? json["from"] as String : null,
+      origin: jsonStr(json["from"]),
       owns: json["animOwn"] is List
           ? {
               for (var n in json["animOwn"] as List)
@@ -838,7 +838,7 @@ class VectorElement extends CanvasElement {
     var vb = json["vb"];
     var raw = json["shapes"];
     return VectorElement(b,
-        assetId: json["asset"] is String ? json["asset"] as String : "",
+        assetId: jsonString(json["asset"], ""),
         viewBox: vb is List && vb.length == 4 && vb.every((v) => v is num)
             ? Rect.fromLTWH(
                 (vb[0] as num).toDouble(),
@@ -1002,8 +1002,8 @@ class VectorText {
         ? Offset(jsonDouble(v[0], 0), jsonDouble(v[1], 0))
         : Offset.zero;
     return VectorText(
-      text: json["t"] is String ? json["t"] as String : "",
-      family: json["font"] is String ? json["font"] as String : "Inter",
+      text: jsonText(json["t"], ""),
+      family: jsonLabel(json["font"], "Inter"),
       weight: json["weight"] is int ? json["weight"] as int : 400,
       italic: json["italic"] == true,
       size: jsonDouble(json["size"], 48),
