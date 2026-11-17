@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -8,10 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -33,25 +31,14 @@ void main() {
         ]),
         audioEngine: FakeEngine({"t": 8}));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(2000, 600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(2000, 600));
     c.openEffects(mixerMasterKey);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => ChainPanel(
-                          controller: c, height: 360, onResize: (_) {}))))),
-    ));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) =>
+                ChainPanel(controller: c, height: 360, onResize: (_) {})))));
     await tester.pump(const Duration(milliseconds: 300));
     ChannelMix mixOf(String key) =>
         c.timelineChannels.firstWhere((l) => l.key == key).mix;
@@ -82,29 +69,18 @@ void main() {
         ]),
         audioEngine: FakeEngine({"t": 8}));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1600, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) => Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            CanvasMixer(
-                                controller: c,
-                                height: 520,
-                                onResize: (_) {},
-                                onClose: () {}),
-                          ])))),
-    ));
+    setTestScreen(tester, const Size(1600, 900));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  CanvasMixer(
+                      controller: c,
+                      height: 520,
+                      onResize: (_) {},
+                      onClose: () {})
+                ]))));
     await tester.pump(const Duration(milliseconds: 300));
     var key = c.timelineChannels.single.key;
     double y(String k) => tester

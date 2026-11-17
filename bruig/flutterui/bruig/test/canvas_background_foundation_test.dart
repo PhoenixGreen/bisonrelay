@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_palettes.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -226,9 +227,7 @@ void main() {
         WidgetTester tester, ProceduralSpec start) async {
       var current = start;
       // Tall enough for the whole list of styles to be on screen at once.
-      tester.view.physicalSize = const Size(400, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 2400));
       await tester.pumpWidget(MaterialApp(
         home: ChangeNotifierProvider(
           create: (_) => ThemeNotifier(doLoad: false),

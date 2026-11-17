@@ -1,5 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -9,10 +8,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show DeviceFrame;
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'support/canvas_chain_helpers.dart';
 
 // canvas_returns_ui_test.dart is sends and returns on the mixer: a dial per
@@ -33,40 +30,8 @@ void main() {
 
   Future<void> show(WidgetTester tester, CanvasController c,
       {bool effects = false}) async {
-    tester.view.physicalSize = const Size(1400, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (effects)
-                            CanvasMixer.effects(
-                                controller: c,
-                                height: 340,
-                                onResize: (_) {},
-                                onClose: () {}),
-                          CanvasMixer(
-                              controller: c,
-                              height: 420,
-                              onResize: (_) {},
-                              onClose: () {}),
-                        ]),
-                  )))),
-    ));
+    setTestScreen(tester, const Size(1400, 900));
+    await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: ListenableBuilder(listenable: c, builder: (context, _) => Column(mainAxisSize: MainAxisSize.min, children: [if (effects) CanvasMixer.effects(controller: c, height: 340, onResize: (_) {}, onClose: () {}), CanvasMixer(controller: c, height: 420, onResize: (_) {}, onClose: () {})])))));
     await tester.pump(const Duration(milliseconds: 100));
   }
 

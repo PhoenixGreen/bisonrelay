@@ -1,6 +1,6 @@
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -9,10 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_skew_test.dart is an element slanted: kept, drawn where its box is
 // slanted to, clicked there, and slanted by a side handle with the opposite
@@ -79,22 +77,11 @@ void main() {
       var key = GlobalKey<CanvasStageState>();
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(900, 700);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 900,
-                    height: 700,
-                    child: CanvasStage(key: key, controller: c)))),
-      ));
+      setTestScreen(tester, const Size(900, 700));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 900,
+          height: 700,
+          child: CanvasStage(key: key, controller: c))));
       await tester.pumpAndSettle();
       c.selectOnly("s");
       await tester.pumpAndSettle();

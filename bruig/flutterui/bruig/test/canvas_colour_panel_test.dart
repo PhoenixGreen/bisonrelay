@@ -1,10 +1,9 @@
 import 'dart:ui' as ui;
+import 'support/canvas_app.dart';
 import 'package:bruig/components/color_picker.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/components/paint_spec.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -14,11 +13,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_colour_panel_test.dart is the Design sidebar's Colour section: the
@@ -36,25 +33,15 @@ VectorElement drawing() => VectorElement(
               fill: const Color(0xFF43A047)),
         ]);
 
-Widget host(CanvasController c, {bool stage = false}) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Row(children: [
-        SizedBox(
-            width: 320,
-            child: SingleChildScrollView(child: ColourPanel(controller: c))),
-        if (stage)
-          Expanded(
-              child: CanvasStage(key: const ValueKey("stage"), controller: c)),
-      ]))),
-    );
+Widget host(CanvasController c, {bool stage = false}) =>
+    canvasApp(Row(children: [
+      SizedBox(
+          width: 320,
+          child: SingleChildScrollView(child: ColourPanel(controller: c))),
+      if (stage)
+        Expanded(
+            child: CanvasStage(key: const ValueKey("stage"), controller: c))
+    ]));
 
 void main() {
   // What the controls do, not where they are folded: every section open.
@@ -125,9 +112,7 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     c.selectOnly("v");
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1600));
     await tester.pumpWidget(host(c));
     await tester.pumpAndSettle();
     VectorShape first() =>
@@ -173,9 +158,7 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     c.selectOnly("v");
-    tester.view.physicalSize = const Size(1600, 1200);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 1200));
     await tester.pumpWidget(host(c, stage: true));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("colourSlot-line")));
@@ -239,9 +222,7 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     c.selectOnly("v");
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1600));
     await tester.pumpWidget(host(c));
     await tester.pumpAndSettle();
     VectorShape first() =>
@@ -266,9 +247,7 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     c.selectOnly("v");
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1600));
     await tester.pumpWidget(host(c));
     await tester.pumpAndSettle();
     var menu = find.byKey(const ValueKey("colorModeMenu"));
@@ -296,26 +275,11 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(const CanvasDocument().addElement(drawing()));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(900, 1600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                        width: width,
-                        height: 800,
-                        child: ColourPanel(controller: c))))),
-      ));
+      setTestScreen(tester, const Size(900, 1600));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+              width: width, height: 800, child: ColourPanel(controller: c)))));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("colorFormat")));
       await tester.pumpAndSettle();
@@ -336,27 +300,12 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     c.selectOnly("v");
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1600));
     for (var width in [100.0, 150.0, 180.0, 200.0, 240.0]) {
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                        width: width,
-                        height: 800,
-                        child: ColourPanel(controller: c))))),
-      ));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+              width: width, height: 800, child: ColourPanel(controller: c)))));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: "at $width wide");
     }
@@ -387,9 +336,7 @@ void main() {
         const ElementBase(id: "n", x: 100, y: 100, width: 300, height: 300))));
     addTearDown(c.dispose);
     c.selectOnly("n");
-    tester.view.physicalSize = const Size(1600, 1200);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 1200));
     await tester.pumpWidget(host(c, stage: true));
     await tester.pumpAndSettle();
     colourSlotsFor(c)[1].setColour(const Color(0xFFFF6D00), transient: false);

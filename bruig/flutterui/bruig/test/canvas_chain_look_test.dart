@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -11,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:bruig/plugin_system/canvas/ui/phrasing_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
@@ -19,7 +18,6 @@ import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'support/canvas_chain_helpers.dart';
@@ -44,26 +42,13 @@ CanvasController make() => CanvasController(
 
 Future<void> show(WidgetTester tester, CanvasController c,
     {double height = 370, ValueChanged<double>? onResize}) async {
-  tester.view.physicalSize = const Size(1400, 600);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: Scaffold(
-            body: Align(
-                alignment: Alignment.bottomCenter,
-                child: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => ChainPanel(
-                        controller: c,
-                        height: height,
-                        onResize: onResize ?? (_) {}))))),
-  ));
+  setTestScreen(tester, const Size(1400, 600));
+  await tester.pumpWidget(canvasApp(Align(
+      alignment: Alignment.bottomCenter,
+      child: ListenableBuilder(
+          listenable: c,
+          builder: (context, _) => ChainPanel(
+              controller: c, height: height, onResize: onResize ?? (_) {})))));
   await tester.pump(const Duration(milliseconds: 300));
 }
 
@@ -141,9 +126,7 @@ void main() {
 
     Future<double Function()> howFar(WidgetTester tester) async {
       var value = 1.0;
-      tester.view.physicalSize = const Size(400, 200);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 200));
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: ChainPanelStyle(
@@ -856,8 +839,7 @@ void main() {
     for (var scale in [1.0, 1.5]) {
       testWidgets("every card folded fits its fold, text at ${scale}x",
           (tester) async {
-        tester.platformDispatcher.textScaleFactorTestValue = scale;
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        setTestTextScale(tester, scale);
         var c = CanvasController(
             CanvasDocument(frames: 100, elements: [
               AudioElement(const ElementBase(id: "m", name: "Music"),

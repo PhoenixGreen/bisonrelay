@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -6,10 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_chain_cards_test.dart is the Chain's cards in the settings
 // panel's style (Ken, 2026-11-12, the approved chain prototype): a look's
@@ -29,18 +27,9 @@ CanvasController make({List<MotionDevice> devices = const []}) {
 
 Future<CanvasController> show(WidgetTester tester, CanvasController c) async {
   addTearDown(c.dispose);
-  tester.view.physicalSize = const Size(2400, 600);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: Scaffold(body: AnimationPanel(controller: c, height: 520))),
-  ));
+  setTestScreen(tester, const Size(2400, 600));
+  await tester
+      .pumpWidget(canvasApp(AnimationPanel(controller: c, height: 520)));
   await tester.pumpAndSettle();
   return c;
 }

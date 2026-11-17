@@ -1,11 +1,10 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:io';
 import 'dart:ui';
 
 import 'package:bruig/components/paint_spec.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -29,7 +28,6 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Path;
 import 'package:flutter/services.dart';
@@ -37,7 +35,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_arrival_fixture.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_panel_helpers.dart';
@@ -310,20 +307,8 @@ void main() {
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
       c.selectOnly(e.id);
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child:
-            MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
-      ));
+      setTestScreen(tester, const Size(1400, 1600));
+      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
       await tester.pumpAndSettle();
       return c;
     }
@@ -545,19 +530,7 @@ void main() {
         (tester) async {
       var c = await show(tester, drawing(square));
       // A sidebar's width, where the line of tools runs past its end.
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 420, child: CanvasDesignPanel(controller: c)))),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await tester.pumpAndSettle();
       var add = find.byKey(const ValueKey("vectorLayersAdd"));
       await tester.ensureVisible(add);
@@ -751,25 +724,8 @@ void main() {
           const CanvasDocument().addElement(element ?? drawing(curve)));
       addTearDown(c.dispose);
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: viewport.width,
-              height: viewport.height,
-              child: CanvasStage(key: key, controller: c),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(width: viewport.width, height: viewport.height, child: CanvasStage(key: key, controller: c))));
       await tester.pumpAndSettle();
       return (c, key.currentState!);
     }
@@ -2286,23 +2242,7 @@ void main() {
 
     testWidgets("a slider's number can be typed", (tester) async {
       var value = 0.5;
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: StatefulBuilder(
-              builder: (context, set) => CanvasSlider(
-                label: "Soft",
-                value: value,
-                onChanged: (v) => set(() => value = v),
-              ),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(StatefulBuilder(builder: (context, set) => CanvasSlider(label: "Soft", value: value, onChanged: (v) => set(() => value = v)))));
       var field = find.byType(TextField);
       expect(tester.widget<TextField>(field).controller!.text, "0.50");
       await enterValue(tester, field, "0.73");
@@ -2991,9 +2931,7 @@ void main() {
       c.vectorLanes = VectorLanes.all;
       c.pickVectorShape(-1);
       expect(vectorLanesShown(c, vectorLanesFor(c)!), [0, 1]);
-      tester.view.physicalSize = const Size(1200, 300);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 300));
       const view = TimelineView(0, 100);
       await tester.pumpWidget(MaterialApp(
           home: Scaffold(
@@ -3049,22 +2987,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("v");
       c.pickVectorShape(1);
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: CanvasTimeline(
-                        controller: c, height: timelineHeight + 160)))),
-      ));
+      setTestScreen(tester, const Size(1400, 900));
+      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: CanvasTimeline(controller: c, height: timelineHeight + 160))));
       await tester.pumpAndSettle();
       var toggle = find.byKey(const ValueKey("vectorLanesToggle"));
       expect(toggle, findsOneWidget);

@@ -1,9 +1,8 @@
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_row_header_test.dart is a timeline channel's header (Ken,
 // 2026-11-10: "I'd like to be able to resize the timeline headers so I can
@@ -13,37 +12,29 @@ import 'package:provider/provider.dart';
 
 Future<void> header(WidgetTester tester, double width,
     {double scale = 1, double height = 40}) async {
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-    create: (_) => ThemeNotifier(doLoad: false),
-    child: MaterialApp(
-      home: MediaQuery(
-        data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-        child: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: width,
-              height: height,
-              child: RowHeader(
-                colour: Colors.blue,
-                width: width,
-                height: height,
-                name: const Text("Strings",
-                    key: ValueKey("name"),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false),
-                badges: const [Text("M", key: ValueKey("chip"))],
-                motion: const RowToggle(ValueKey("m"), on: false),
-                sound: const RowToggle(ValueKey("s"), on: true),
-                solo: const RowToggle(ValueKey("o"), on: false),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  ));
+  await tester.pumpWidget(canvasApp(
+      MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+          child: Scaffold(
+              body: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                      width: width,
+                      height: height,
+                      child: RowHeader(
+                          colour: Colors.blue,
+                          width: width,
+                          height: height,
+                          name: const Text("Strings",
+                              key: ValueKey("name"),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false),
+                          badges: const [Text("M", key: ValueKey("chip"))],
+                          motion: const RowToggle(ValueKey("m"), on: false),
+                          sound: const RowToggle(ValueKey("s"), on: true),
+                          solo: const RowToggle(ValueKey("o"), on: false)))))),
+      scaffold: false));
 }
 
 void main() {

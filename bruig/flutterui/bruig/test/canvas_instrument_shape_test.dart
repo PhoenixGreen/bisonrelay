@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
@@ -249,9 +250,7 @@ void main() {
         double width = 1600,
         ValueNotifier<double>? height}) async {
       height ??= ValueNotifier(420);
-      tester.view.physicalSize = Size(width, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, Size(width, 900));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(

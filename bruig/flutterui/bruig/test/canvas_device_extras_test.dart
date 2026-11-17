@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
@@ -176,24 +177,13 @@ void main() {
         audioEngine: FakeEngine({"t": 8}));
     addTearDown(c.dispose);
     c.openEffects("m");
-    tester.view.physicalSize = const Size(1800, 600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => ChainPanel(
-                          controller: c, height: 360, onResize: (_) {}))))),
-    ));
+    setTestScreen(tester, const Size(1800, 600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) =>
+                ChainPanel(controller: c, height: 360, onResize: (_) {})))));
     await tester.pump(const Duration(milliseconds: 300));
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey("devicePreset-1")), findsOneWidget,
@@ -253,24 +243,13 @@ void main() {
         audioEngine: FakeEngine({"t": 8}));
     addTearDown(c.dispose);
     c.openEffects("m");
-    tester.view.physicalSize = const Size(1800, 600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => ChainPanel(
-                          controller: c, height: 420, onResize: (_) {}))))),
-    ));
+    setTestScreen(tester, const Size(1800, 600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) =>
+                ChainPanel(controller: c, height: 420, onResize: (_) {})))));
     await tester.pump(const Duration(milliseconds: 300));
     Future<void> pick(String text) async {
       var drive = find.byKey(const ValueKey("device-0-drive"));
@@ -329,24 +308,13 @@ void main() {
         audioEngine: FakeEngine({"t": 8}));
     addTearDown(c.dispose);
     c.openEffects("m");
-    tester.view.physicalSize = const Size(1800, 600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => ChainPanel(
-                          controller: c, height: 420, onResize: (_) {}))))),
-    ));
+    setTestScreen(tester, const Size(1800, 600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) =>
+                ChainPanel(controller: c, height: 420, onResize: (_) {})))));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey("chainListening")), findsNothing);
     c.listenAt("m", 0);
@@ -412,9 +380,7 @@ void main() {
             ]),
             audioEngine: FakeEngine({"t": 8}));
         addTearDown(c.dispose);
-        tester.view.physicalSize = Size(width, 600);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, Size(width, 600));
         await tester.pumpWidget(MultiProvider(
           providers: [
             ChangeNotifierProvider<ThemeNotifier>(
@@ -494,24 +460,13 @@ void main() {
       var c = make(FakeEngine({}));
       addTearDown(c.dispose);
       c.openEffects("p");
-      tester.view.physicalSize = const Size(2000, 600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) => ChainPanel(
-                            controller: c, height: 420, onResize: (_) {}))))),
-      ));
+      setTestScreen(tester, const Size(2000, 600));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: ListenableBuilder(
+              listenable: c,
+              builder: (context, _) =>
+                  ChainPanel(controller: c, height: 420, onResize: (_) {})))));
       await tester.pump(const Duration(milliseconds: 300));
       var attack = find.byKey(const ValueKey("instrumentCardAttack"));
       await tester.ensureVisible(attack);

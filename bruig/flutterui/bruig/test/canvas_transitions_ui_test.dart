@@ -1,11 +1,9 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show DeviceKnob;
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
@@ -13,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
 import 'support/canvas_chain_helpers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_transitions_ui_test.dart is how a scene gives way to the next one,
@@ -32,38 +29,18 @@ void main() {
         ]));
     addTearDown(controller.dispose);
 
-    tester.view.physicalSize = const Size(1400, 400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1400, 400));
 
     controller.pickScene(controller.document.at);
     controller.showChain(motion: true);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: width,
-              // In the Chain, whose header names the scene and what it
-              // gives way to.
-              child: ListenableBuilder(
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+            width: width,
+            child: ListenableBuilder(
                 listenable: controller,
                 builder: (context, _) => ChainPanel(
-                    controller: controller, height: 390, onResize: (_) {}),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                    controller: controller, height: 390, onResize: (_) {}))))));
     await tester.pumpAndSettle();
     return controller;
   }
@@ -407,24 +384,10 @@ void main() {
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
 
-    tester.view.physicalSize = const Size(900, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1400));
 
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-            body: SizedBox(
-                width: 320, child: CanvasDesignPanel(controller: controller))),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 320, child: CanvasDesignPanel(controller: controller))));
     await tester.pumpAndSettle();
     expect(find.text("VOCAL CUES"), findsOneWidget);
     expect(find.text("TRANSITION"), findsNothing);

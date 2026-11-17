@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
@@ -8,10 +9,8 @@ import 'package:bruig/plugin_system/canvas/render/vrm/vrm_look.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_look_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // How a new 3D character is drawn: its look -- lines, shading, light,
 // colour and finish -- and the colours picked for its hair, skin and eyes,
@@ -165,14 +164,8 @@ void main() {
 
   group('the settings', () {
     Future<void> show(WidgetTester tester, Widget child) async {
-      tester.view.physicalSize = const Size(800, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-            home: Scaffold(body: SizedBox(width: 330, child: child))),
-      ));
+      setTestScreen(tester, const Size(800, 2400));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 330, child: child)));
       await tester.pumpAndSettle();
     }
 
@@ -253,26 +246,21 @@ void main() {
     testWidgets('at every text size, nothing overflows', (tester) async {
       for (final scale in const [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
         for (final l in const ['Watercolour', 'Comic']) {
-          await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-            create: (_) => ThemeNotifier(doLoad: false),
-            child: MaterialApp(
-              home: MediaQuery(
-                data: MediaQueryData(
-                    size: const Size(1000, 800),
-                    textScaler: TextScaler.linear(scale)),
-                child: Scaffold(
-                  body: Row(children: [
+          await tester.pumpWidget(canvasApp(
+              MediaQuery(
+                  data: MediaQueryData(
+                      size: const Size(1000, 800),
+                      textScaler: TextScaler.linear(scale)),
+                  child: Scaffold(
+                      body: Row(children: [
                     SizedBox(
                         width: 330,
                         child: CharacterLookControls(
                             look: characterLooks[l]!.withChoice('fill', 'flat'),
                             name: l,
-                            onChanged: (_, __) {})),
-                  ]),
-                ),
-              ),
-            ),
-          ));
+                            onChanged: (_, __) {}))
+                  ]))),
+              scaffold: false));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull, reason: '$l at ${scale}x');
         }

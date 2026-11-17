@@ -1,8 +1,7 @@
 import 'package:bruig/screens/pages/browser.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // pages_tab_strip_test.dart covers how open pages are presented: a single
 // page keeps the plain close button in the address bar and gains no chrome,
@@ -19,12 +18,7 @@ List<PageTab> _tabs(int n, {int current = 0, void Function(int)? onClose}) => [
     ];
 
 Widget _host(Widget child, {double width = 800}) =>
-    ChangeNotifierProvider<ThemeNotifier>(
-      create: (c) => ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-        home: Scaffold(body: SizedBox(width: width, child: child)),
-      ),
-    );
+    canvasApp(SizedBox(width: width, child: child));
 
 void main() {
   group('the strip', () {

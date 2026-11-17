@@ -1,7 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
@@ -30,7 +30,6 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart' show GameEvent;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,7 +37,6 @@ import 'package:bruig/plugin_system/canvas/media/push_surface.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 import 'support/temp_dirs.dart';
 import 'support/canvas_audio_fake.dart';
@@ -1315,25 +1313,8 @@ void main() {
                     ], timed: true)),
               ]),
           audioEngine: engine);
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: CanvasMixer(
-                        controller: c,
-                        height: 520,
-                        onResize: (_) {},
-                        onClose: () {})))),
-      ));
+      setTestScreen(tester, const Size(1400, 900));
+      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: CanvasMixer(controller: c, height: 520, onResize: (_) {}, onClose: () {}))));
       await tester.pump();
       return c;
     }

@@ -1,5 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
@@ -9,10 +8,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/publish_sheet.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_audio_document_test.dart is a document whose sound is the point: the
@@ -85,22 +82,10 @@ void main() {
 
   testWidgets("a destination sets the format and the loudness at once",
       (tester) async {
-    tester.view.physicalSize = const Size(3200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(3200, 900));
     var c = CanvasController(const CanvasDocument(kind: CanvasKind.audio));
     addTearDown(c.dispose);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(body: CanvasSettingsPanel(controller: c))),
-    ));
+    await tester.pumpWidget(canvasApp(CanvasSettingsPanel(controller: c)));
     await tester.pumpAndSettle();
     var preset = find.byKey(const ValueKey("audioPreset"));
     expect(preset, findsOneWidget);
@@ -136,23 +121,11 @@ void main() {
 
   testWidgets("Ratio None hides the size and the rate; a ratio brings them",
       (tester) async {
-    tester.view.physicalSize = const Size(3200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(3200, 900));
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);
     c.setKind(CanvasKind.audio);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(body: CanvasSettingsPanel(controller: c))),
-    ));
+    await tester.pumpWidget(canvasApp(CanvasSettingsPanel(controller: c)));
     await tester.pumpAndSettle();
     var ratio = find.byKey(const ValueKey("canvasRatio"));
     expect(tester.widget<CanvasDropdown<String>>(ratio).value, "");
@@ -174,22 +147,10 @@ void main() {
   });
 
   testWidgets("a scenes document has no tempo to set", (tester) async {
-    tester.view.physicalSize = const Size(3200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(3200, 900));
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(body: CanvasSettingsPanel(controller: c))),
-    ));
+    await tester.pumpWidget(canvasApp(CanvasSettingsPanel(controller: c)));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("audioPreset")), findsOneWidget);
     expect(find.byKey(const ValueKey("audioTempo")), findsNothing);
@@ -197,33 +158,8 @@ void main() {
 
   testWidgets("the publish sheet starts from the document's sound",
       (tester) async {
-    tester.view.physicalSize = const Size(1200, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showPublishSheet(context,
-                  document: const CanvasDocument(
-                      frames: 12,
-                      audio: AudioSettings(
-                          export: AudioOptions(format: AudioFormat.opus))),
-                  images: null,
-                  frame: 0,
-                  name: "Song"),
-              child: const Text("open"),
-            ),
-          ),
-        ),
-      ),
-    ));
+    setTestScreen(tester, const Size(1200, 1600));
+    await tester.pumpWidget(canvasApp(Builder(builder: (context) => TextButton(onPressed: () => showPublishSheet(context, document: const CanvasDocument(frames: 12, audio: AudioSettings(export: AudioOptions(format: AudioFormat.opus))), images: null, frame: 0, name: "Song"), child: const Text("open")))));
     await tester.tap(find.text("open"));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButton<PublishAs>));

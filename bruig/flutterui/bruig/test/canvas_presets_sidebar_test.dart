@@ -1,7 +1,6 @@
 import 'dart:io';
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -12,11 +11,9 @@ import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_presets_sidebar_test.dart is the three lists of saved things.
@@ -41,18 +38,6 @@ Future<void> idle(WidgetTester tester) async {
     await tester.pump();
   }
   await tester.pumpAndSettle();
-}
-
-/// until turns the real event loop and the fake one alternately until
-/// [done] -- what real file I/O has finished doing -- or five seconds have
-/// gone: a loaded machine takes longer than any fixed wait allows.
-Future<void> until(WidgetTester tester, bool Function() done) async {
-  for (var i = 0; i < 250 && !done(); i++) {
-    await tester
-        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-    await tester.pump();
-  }
-  await tester.pump();
 }
 
 void main() {
@@ -83,30 +68,14 @@ void main() {
     var controller = CanvasController(document ?? const CanvasDocument());
     addTearDown(controller.dispose);
 
-    tester.view.physicalSize = const Size(420, 1000);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(420, 1000));
 
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 320,
-            height: 900,
-            child: body?.call(controller) ??
-                CanvasPresetsLibrary(
-                    controller: controller, onChoose: (_, __) {}),
-          ),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 320,
+        height: 900,
+        child: body?.call(controller) ??
+            CanvasPresetsLibrary(
+                controller: controller, onChoose: (_, __) {}))));
     await idle(tester);
     return controller;
   }
@@ -214,7 +183,7 @@ void main() {
     await tester.enterText(rename, "Opening card");
     await tester.testTextInput.receiveAction(TextInputAction.done);
     // Saved to a real file: waited for, not given a fixed time.
-    await until(tester,
+    await pumpUntil(tester,
         () => SavedPresetStore.scenes.presets.single.name == "Opening card");
 
     expect(SavedPresetStore.scenes.presets.single.name, "Opening card");
@@ -228,7 +197,7 @@ void main() {
     await tester.tap(find.byTooltip("More"));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Delete"));
-    await until(tester, () => SavedPresetStore.scenes.presets.isEmpty);
+    await pumpUntil(tester, () => SavedPresetStore.scenes.presets.isEmpty);
     await tester.pumpAndSettle();
 
     expect(SavedPresetStore.scenes.presets, isEmpty);
@@ -269,29 +238,13 @@ void main() {
     CanvasDocument? started;
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
-    tester.view.physicalSize = const Size(420, 1000);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(420, 1000));
 
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 320,
-            height: 900,
-            child: SavedCanvasPresets(
-              controller: controller,
-              onOpen: (d) => started = d,
-            ),
-          ),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 320,
+        height: 900,
+        child: SavedCanvasPresets(
+            controller: controller, onOpen: (d) => started = d))));
     await idle(tester);
 
     // Its menu adds the scenes to what is already open.

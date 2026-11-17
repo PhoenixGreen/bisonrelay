@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -9,12 +9,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/curve_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/track_curves.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -34,16 +32,8 @@ ShapeElement logo() => ShapeElement(ElementBase(
       Keyframe(frame: 48, dx: 100, rotate: 90),
     ])));
 
-Widget host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(alignment: Alignment.topLeft, child: child))),
-    );
+Widget host(Widget child) =>
+    canvasApp(Align(alignment: Alignment.topLeft, child: child));
 
 void main() {
   group("an ease drawn with handles", () {
@@ -98,9 +88,7 @@ void main() {
           CanvasDocument(frames: 100, frameRate: 24, elements: [logo()]));
       c.selectOnly("logo");
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1000, 300);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1000, 300));
       c.showTrackCurves();
       await tester.pumpWidget(host(ListenableBuilder(
           listenable: c,
@@ -245,9 +233,7 @@ void main() {
 
     Future<void> show(WidgetTester tester, CanvasController c) async {
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1400, 600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 600));
       await tester.pumpWidget(host(SizedBox(
           width: 1400,
           height: 420,

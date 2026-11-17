@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/ui/data_editor_shell.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,9 +43,7 @@ void main() {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
     Future<double> show(WidgetTester tester, String scope) async {
-      tester.view.physicalSize = const Size(600, 1200);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(600, 1200));
       await tester.pumpWidget(MaterialApp(
         home: ChangeNotifierProvider(
           create: (_) => ThemeNotifier(doLoad: false),

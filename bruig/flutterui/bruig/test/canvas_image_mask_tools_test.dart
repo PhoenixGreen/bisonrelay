@@ -1,9 +1,8 @@
 import 'dart:async';
+import 'support/canvas_app.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -15,13 +14,11 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_masking.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_panel_helpers.dart';
@@ -60,25 +57,11 @@ void main() {
       var key = GlobalKey<CanvasStageState>();
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
-      tester.view.physicalSize = _viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: _viewport.width,
-              height: _viewport.height,
-              child: CanvasStage(key: key, controller: c),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, _viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: _viewport.width,
+          height: _viewport.height,
+          child: CanvasStage(key: key, controller: c))));
       await tester.runAsync(() async {
         c.images.putForTest(_asset, await _solid(40, 40));
       });
@@ -262,25 +245,11 @@ void main() {
       var key = GlobalKey<CanvasStageState>();
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
-      tester.view.physicalSize = _viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: _viewport.width,
-              height: _viewport.height,
-              child: CanvasStage(key: key, controller: c),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, _viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: _viewport.width,
+          height: _viewport.height,
+          child: CanvasStage(key: key, controller: c))));
       // A red disc on blue: a subject with an edge to find.
       await tester.runAsync(() async {
         var pixels = Uint8List(80 * 80 * 4);
@@ -383,22 +352,9 @@ void main() {
       c.selectOnly("i");
       c.editImage("i");
       c.imageTool = tool;
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 420, child: CanvasDesignPanel(controller: c)))),
-      ));
+      setTestScreen(tester, const Size(900, 4000));
+      await tester.pumpWidget(canvasApp(
+          SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await tester.pumpAndSettle();
       return c;
     }

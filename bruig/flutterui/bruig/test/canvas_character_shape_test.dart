@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -7,10 +8,8 @@ import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_shape.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 // A new 3D character shaped from its VRoid body: the settings and presets,
@@ -708,18 +707,14 @@ void main() {
   group('the side panels', () {
     Future<void> show(WidgetTester tester, Widget child,
         {double scale = 1}) async {
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: MediaQuery(
-            data: MediaQueryData(
-                size: const Size(1000, 800),
-                textScaler: TextScaler.linear(scale)),
-            child: Scaffold(
-                body: Row(children: [SizedBox(width: 180, child: child)])),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(
+          MediaQuery(
+              data: MediaQueryData(
+                  size: const Size(1000, 800),
+                  textScaler: TextScaler.linear(scale)),
+              child: Scaffold(
+                  body: Row(children: [SizedBox(width: 180, child: child)]))),
+          scaffold: false));
       await tester.pumpAndSettle();
     }
 
@@ -744,21 +739,13 @@ void main() {
     testWidgets('a part\'s numbers, presets and way back each change the shape',
         (tester) async {
       var s = const CharacterShape();
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 300,
-              child: StatefulBuilder(
-                  builder: (context, set) => CharacterShapeControls(
-                      part: _part('nose'),
-                      shape: s,
-                      onChanged: (n) => set(() => s = n))),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 300,
+          child: StatefulBuilder(
+              builder: (context, set) => CharacterShapeControls(
+                  part: _part('nose'),
+                  shape: s,
+                  onChanged: (n) => set(() => s = n))))));
       expect(find.byKey(const ValueKey('studioPartReset')), findsNothing);
       // Dragged to the right of the middle is wider.
       await tester.drag(
@@ -784,24 +771,15 @@ void main() {
     });
 
     testWidgets('the hairstyles are there to start from', (tester) async {
-      tester.view.physicalSize = const Size(800, 1400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(800, 1400));
       var s = const CharacterShape();
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-                width: 330,
-                child: StatefulBuilder(
-                    builder: (context, set) => CharacterShapeControls(
-                        part: _part('hair'),
-                        shape: s,
-                        onChanged: (n) => set(() => s = n)))),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 330,
+          child: StatefulBuilder(
+              builder: (context, set) => CharacterShapeControls(
+                  part: _part('hair'),
+                  shape: s,
+                  onChanged: (n) => set(() => s = n))))));
       Future<void> tap(String key) async {
         final f = find.byKey(ValueKey(key));
         await tester.scrollUntilVisible(f, 80);
@@ -821,20 +799,13 @@ void main() {
     testWidgets('the dot beside a changed setting puts it back',
         (tester) async {
       var s = const CharacterShape().withValue('nose.width', 0.5);
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-                width: 330,
-                child: StatefulBuilder(
-                    builder: (context, set) => CharacterShapeControls(
-                        part: _part('nose'),
-                        shape: s,
-                        onChanged: (n) => set(() => s = n)))),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 330,
+          child: StatefulBuilder(
+              builder: (context, set) => CharacterShapeControls(
+                  part: _part('nose'),
+                  shape: s,
+                  onChanged: (n) => set(() => s = n))))));
       expect(find.byKey(const ValueKey('studioSliderReset')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('studioSliderReset')));
       await tester.pumpAndSettle();
@@ -844,17 +815,10 @@ void main() {
 
     testWidgets('age is counted in whole years', (tester) async {
       var s = const CharacterShape();
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-                width: 300,
-                child: CharacterShapeControls(
-                    part: _part('age'), shape: s, onChanged: (n) => s = n)),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 300,
+          child: CharacterShapeControls(
+              part: _part('age'), shape: s, onChanged: (n) => s = n))));
       tester
           .widget<StudioSlider>(find.byKey(const ValueKey('shape-age')))
           .onChanged(61.6);
@@ -872,27 +836,22 @@ void main() {
             scale: scale);
         expect(tester.takeException(), isNull, reason: 'the list at ${scale}x');
         for (final id in const ['muscles', 'age', 'navel']) {
-          await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-            create: (_) => ThemeNotifier(doLoad: false),
-            child: MaterialApp(
-              home: MediaQuery(
-                data: MediaQueryData(
-                    size: const Size(1000, 800),
-                    textScaler: TextScaler.linear(scale)),
-                child: Scaffold(
-                  body: Row(children: [
+          await tester.pumpWidget(canvasApp(
+              MediaQuery(
+                  data: MediaQueryData(
+                      size: const Size(1000, 800),
+                      textScaler: TextScaler.linear(scale)),
+                  child: Scaffold(
+                      body: Row(children: [
                     SizedBox(
                         width: 300,
                         child: CharacterShapeControls(
                             part: _part(id),
                             shape: const CharacterShape()
                                 .withValue('muscle.fat', 0.2),
-                            onChanged: (_) {})),
-                  ]),
-                ),
-              ),
-            ),
-          ));
+                            onChanged: (_) {}))
+                  ]))),
+              scaffold: false));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull, reason: '$id at ${scale}x');
         }

@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
@@ -15,10 +14,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/tile_map_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/tile_painting.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_tile_terrain_test.dart is terrains on a Tile map: tiles told apart
@@ -205,17 +202,8 @@ void main() {
       c.selectOnly("m");
       c.paintTiles("m");
       c.tilePaint!.set(brush: TileRef.of(0, 5));
-      tester.view.physicalSize = const ui.Size(420, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
-      ));
+      setTestScreen(tester, const ui.Size(420, 4000));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 30)));
       await tester.pumpAndSettle();
       TerrainSet set() => (c.document.elementById("m") as TileMapElement).sources.single.terrains.single;

@@ -1,10 +1,10 @@
 import 'package:bruig/plugin_system/writing_tools/ui/composer_sidebar_shell.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/formatting_sidebar.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/feed_posts.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -14,37 +14,27 @@ import 'package:provider/provider.dart';
 
 Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
     {List<ComposerPanel>? panels}) async {
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<ComposerSidebarController>.value(
-          value: controller),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: ListenableBuilder(
+  await tester.pumpWidget(canvasApp(
+      ListenableBuilder(
           listenable: controller,
           builder: (context, _) => controller.minimized
               ? Row(children: [
                   ComposerSidebarRestoreButton(controller: controller),
-                  const Expanded(child: Text("EDITOR")),
+                  const Expanded(child: Text("EDITOR"))
                 ])
               : Row(children: [
                   SizedBox(
-                    width: 260,
-                    child: ComposerSidebarShell(
-                      controller: controller,
-                      panels: panels ?? ComposerPanel.values,
-                      child: Text("PANEL: ${controller.panel.name}"),
-                    ),
-                  ),
-                  const Expanded(child: Text("EDITOR")),
-                ]),
-        ),
-      ),
-    ),
-  ));
+                      width: 260,
+                      child: ComposerSidebarShell(
+                          controller: controller,
+                          panels: panels ?? ComposerPanel.values,
+                          child: Text("PANEL: ${controller.panel.name}"))),
+                  const Expanded(child: Text("EDITOR"))
+                ])),
+      extra: [
+        ChangeNotifierProvider<ComposerSidebarController>.value(
+            value: controller)
+      ]));
   await tester.pumpAndSettle();
 }
 
@@ -234,21 +224,9 @@ void main() {
       // it are never laid out at all -- a finder then reports nothing,
       // which reads as the button having been removed rather than as being
       // off the bottom of a 600-pixel window.
-      tester.view.physicalSize = const Size(400, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 300,
-                  child: FormattingSidebar(controller: controller))),
-        ),
-      ));
+      setTestScreen(tester, const Size(400, 2400));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 300, child: FormattingSidebar(controller: controller))));
       await tester.pumpAndSettle();
     }
 
@@ -500,38 +478,26 @@ void _feedPanelFlagTests() {
       {required bool framed, required bool showSearch}) async {
     var search = TextEditingController();
     addTearDown(search.dispose);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 260,
-            child: FeedSidePanel(
-              view: FeedView.all,
-              sort: FeedSort.newest,
-              unreadOnly: false,
-              searchController: search,
-              showSearch: showSearch,
-              framed: framed,
-              showBookmarks: false,
-              showHidden: false,
-              showDrafts: false,
-              currentTabIndex: 3,
-              onView: (_) {},
-              onSort: (_) {},
-              onUnreadOnly: (_) {},
-              onSearch: (_) {},
-              onYourPosts: () {},
-              onSubscriptions: () {},
-              onNewPost: () {},
-            ),
-          ),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 260,
+        child: FeedSidePanel(
+            view: FeedView.all,
+            sort: FeedSort.newest,
+            unreadOnly: false,
+            searchController: search,
+            showSearch: showSearch,
+            framed: framed,
+            showBookmarks: false,
+            showHidden: false,
+            showDrafts: false,
+            currentTabIndex: 3,
+            onView: (_) {},
+            onSort: (_) {},
+            onUnreadOnly: (_) {},
+            onSearch: (_) {},
+            onYourPosts: () {},
+            onSubscriptions: () {},
+            onNewPost: () {}))));
     await tester.pumpAndSettle();
   }
 
@@ -564,29 +530,15 @@ void _feedPanelFlagTests() {
 void _collapsedDrawerTests() {
   Future<void> pumpInDrawer(
       WidgetTester tester, ComposerSidebarController controller) async {
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: CollapsedSidebarScope(
-            child: ListenableBuilder(
-              listenable: controller,
-              builder: (context, _) => SizedBox(
+    await tester.pumpWidget(canvasApp(CollapsedSidebarScope(
+        child: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => SizedBox(
                 width: 260,
                 child: ComposerSidebarShell(
-                  controller: controller,
-                  panels: ComposerPanel.values,
-                  child: Text("PANEL: ${controller.panel.name}"),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                    controller: controller,
+                    panels: ComposerPanel.values,
+                    child: Text("PANEL: ${controller.panel.name}")))))));
     await tester.pumpAndSettle();
   }
 

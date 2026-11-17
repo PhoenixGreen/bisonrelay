@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -6,10 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -109,28 +108,17 @@ void main() {
       addTearDown(c.dispose);
       // Ken's bands: the mixer minimised, the others hidden.
       c.restoreMixer(["hidden", "hidden", "minimised", "hidden"], false);
-      tester.view.physicalSize = const Size(1300, 400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1300, 400));
       Future<void> show() => tester.pumpWidget(
-            ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false),
-              child: MaterialApp(
-                home: Scaffold(
-                  body: Align(
-                    alignment: Alignment.topLeft,
-                    child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => CanvasMixer(
-                          controller: c,
-                          height: mixerLeastHeight(c),
-                          onResize: (_) {},
-                          onClose: () {}),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            canvasApp(Align(
+                alignment: Alignment.topLeft,
+                child: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) => CanvasMixer(
+                        controller: c,
+                        height: mixerLeastHeight(c),
+                        onResize: (_) {},
+                        onClose: () {})))),
           );
       c.mixerMinimised = true;
       await show();

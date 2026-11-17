@@ -1,4 +1,5 @@
 import 'package:bruig/components/feed/markdown_blocks.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/feed/markdown_button.dart';
 import 'package:bruig/components/feed/markdown_listing.dart';
 import 'package:bruig/components/feed/markdown_qr.dart';
@@ -12,7 +13,6 @@ import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/theming_system/model/button_style.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -40,17 +40,14 @@ class _Pages extends PagesModel {
   Uint8List? localAssetBytes(String path) => Uint8List.fromList([1, 2, 3, 4]);
 }
 
-Widget wrap(Widget child) => MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (_) => ThemeNotifier(doLoad: false)),
+Widget wrap(Widget child) => canvasApp(child, extra: [
       ChangeNotifierProvider<PaymentsModel>(create: (_) => PaymentsModel()),
-      ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
       ChangeNotifierProvider<ResourcesModel>(
           create: (_) => ResourcesModel(runStream: false)),
       ChangeNotifierProvider<PagesModel>(create: (_) => _Pages()),
       ChangeNotifierProvider<MarkdownAreaModel>(
-          create: (_) => MarkdownAreaModel("")),
-    ], child: MaterialApp(home: Scaffold(body: child)));
+          create: (_) => MarkdownAreaModel(""))
+    ]);
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -174,9 +171,7 @@ void main() {
       // How far apart a gallery of photographs should be is a decision about
       // reading, and the reader's guide makes it. How far apart a row of
       // cards should be is a decision about the page they are on.
-      tester.view.physicalSize = const Size(1200, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 900));
 
       await tester.pumpWidget(wrap(MarkdownArea(
           "--grid[2, gap=40]--\n--cell--\nOne\n--cell--\nTwo\n--/grid--\n",
@@ -277,9 +272,7 @@ void main() {
       // The reason this is a block of its own. A paragraph wraps to whatever
       // width it is given, so on a card a third of a page wide the
       // description ran to four lines and pushed the price out of sight.
-      tester.view.physicalSize = const Size(360, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(360, 900));
 
       await tester.pumpWidget(
           wrap(SizedBox(width: 200, child: MarkdownArea(rows, false))));
@@ -295,9 +288,7 @@ void main() {
       // They were a run of columns, which stacks below a width the reader's
       // guide sets -- so on a card three across they stacked every time, and
       // the divider a run of columns draws put a rule between them.
-      tester.view.physicalSize = const Size(360, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(360, 900));
 
       await tester.pumpWidget(
           wrap(SizedBox(width: 220, child: MarkdownArea(rows, false))));
@@ -532,9 +523,7 @@ void main() {
 
     testWidgets('the fullest card the settings can ask for draws',
         (tester) async {
-      tester.view.physicalSize = const Size(1400, 1200);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 1200));
 
       await tester.pumpWidget(wrap(MarkdownArea(dressed, false)));
       await tester.pump();
@@ -551,9 +540,7 @@ void main() {
 
     testWidgets('every product is one card, and every card is a link',
         (tester) async {
-      tester.view.physicalSize = const Size(1200, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 900));
 
       await tester.pumpWidget(wrap(MarkdownArea(front, false)));
       await tester.pump();

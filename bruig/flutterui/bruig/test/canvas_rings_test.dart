@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -11,9 +12,7 @@ import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_rings_test.dart is the Rings background: where a ring is at a given
@@ -554,29 +553,15 @@ void main() {
     // The controls exist only for this style, and each of them reaches the
     // ring settings rather than the handful every generator shares.
     var spec = _spec(rings: const RingSpec());
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => CanvasControlScope(
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
+        child: StatefulBuilder(
+            builder: (context, setState) => CanvasControlScope(
                 maxWidth: 240,
                 child: ProceduralSettings(
-                  spec: spec,
-                  onBegin: () {},
-                  onCommit: () {},
-                  onChanged: (next) => setState(() => spec = next),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                    spec: spec,
+                    onBegin: () {},
+                    onCommit: () {},
+                    onChanged: (next) => setState(() => spec = next)))))));
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.byKey(const ValueKey("ringCount")));
@@ -659,27 +644,14 @@ void main() {
 
     // And they are not offered for a style that has no rings in it.
     spec = spec.copyWith(style: ProceduralStyle.bokeh);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: CanvasControlScope(
-              maxWidth: 240,
-              child: ProceduralSettings(
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
+        child: CanvasControlScope(
+            maxWidth: 240,
+            child: ProceduralSettings(
                 spec: spec,
                 onBegin: () {},
                 onCommit: () {},
-                onChanged: (_) {},
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                onChanged: (_) {})))));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("ringCount")), findsNothing);
   });
@@ -1014,30 +986,16 @@ void main() {
     // The settings say the same: Speed while it goes round, Frames once it
     // is counted.
     var spec = _spec(rings: const RingSpec());
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => CanvasControlScope(
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
+        child: StatefulBuilder(
+            builder: (context, setState) => CanvasControlScope(
                 maxWidth: 240,
                 child: ProceduralSettings(
-                  spec: spec,
-                  canvasFrames: 250,
-                  onBegin: () {},
-                  onCommit: () {},
-                  onChanged: (next) => setState(() => spec = next),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                    spec: spec,
+                    canvasFrames: 250,
+                    onBegin: () {},
+                    onCommit: () {},
+                    onChanged: (next) => setState(() => spec = next)))))));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey("speed")), findsOneWidget);
@@ -1120,29 +1078,15 @@ void main() {
   testWidgets("the width drags at a thousandth, and shrink says which end",
       (tester) async {
     var spec = _spec(rings: const RingSpec(width: 0.05));
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => CanvasControlScope(
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
+        child: StatefulBuilder(
+            builder: (context, setState) => CanvasControlScope(
                 maxWidth: 240,
                 child: ProceduralSettings(
-                  spec: spec,
-                  onBegin: () {},
-                  onCommit: () {},
-                  onChanged: (next) => setState(() => spec = next),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                    spec: spec,
+                    onBegin: () {},
+                    onCommit: () {},
+                    onChanged: (next) => setState(() => spec = next)))))));
     await tester.pumpAndSettle();
 
     // A width is shown in ten-thousandths, but it runs to a fifth of the
@@ -1196,29 +1140,15 @@ void main() {
       RingIcon(asset: "badge", ring: 1),
       RingIcon(asset: "crest", ring: 2, place: RingIconPlace.around),
     ]));
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => CanvasControlScope(
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
+        child: StatefulBuilder(
+            builder: (context, setState) => CanvasControlScope(
                 maxWidth: 240,
                 child: ProceduralSettings(
-                  spec: spec,
-                  onBegin: () {},
-                  onCommit: () {},
-                  onChanged: (next) => setState(() => spec = next),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                    spec: spec,
+                    onBegin: () {},
+                    onCommit: () {},
+                    onChanged: (next) => setState(() => spec = next)))))));
     await tester.pumpAndSettle();
     if (find.byKey(const ValueKey("ringIconRing-middle")).evaluate().isEmpty) {
       await tester.ensureVisible(find.text("ICONS"));

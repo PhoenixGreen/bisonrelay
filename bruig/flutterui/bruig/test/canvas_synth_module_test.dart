@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'support/canvas_app.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -19,16 +20,12 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -75,25 +72,14 @@ Offset on(SynthModuleElement e, Offset q) {
   return at + q * s;
 }
 
-Widget providers(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget providers(Widget child) => canvasApp(child);
 
 /// staged is [c] on a stage in [tester]: answers where a document point
 /// is on the screen.
 Future<Offset Function(Offset)> staged(
     WidgetTester tester, CanvasController c) async {
   var key = GlobalKey<CanvasStageState>();
-  tester.view.physicalSize = const Size(1600, 1000);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(1600, 1000));
   await tester.pumpWidget(providers(SizedBox(
       width: 1600, height: 1000, child: CanvasStage(key: key, controller: c))));
   await tester.pumpAndSettle();
@@ -511,9 +497,7 @@ void main() {
     addTearDown(c.dispose);
     c.addSynthRack();
     c.selectOnly(of(c, SynthModuleKind.filter).id);
-    tester.view.physicalSize = const Size(1200, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1200, 2400));
     await tester.pumpWidget(providers(ListenableBuilder(
       listenable: c,
       builder: (context, _) => SingleChildScrollView(

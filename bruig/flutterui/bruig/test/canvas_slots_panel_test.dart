@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -13,11 +13,9 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -61,25 +59,11 @@ Future<CanvasController> pump(WidgetTester tester,
       audioEngine: FakeEngine(const {"x": 4}));
   addTearDown(c.dispose);
   if (doc == null) c.ensureElementSound("coin");
-  tester.view.physicalSize = Size(width, height + 100);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: Align(
-          alignment: Alignment.bottomCenter,
-          child:
-              CanvasSlotsPanel(controller: c, height: height, onResize: (_) {}),
-        ),
-      ),
-    ),
-  ));
+  setTestScreen(tester, Size(width, height + 100));
+  await tester.pumpWidget(canvasApp(Align(
+      alignment: Alignment.bottomCenter,
+      child:
+          CanvasSlotsPanel(controller: c, height: height, onResize: (_) {}))));
   await tester.pump();
   return c;
 }
@@ -351,26 +335,13 @@ void main() {
         "transition clicked", (tester) async {
       var c = await pump(tester);
       if (mixer) {
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: Align(
-                alignment: Alignment.bottomCenter,
-                child: CanvasMixer(
-                    controller: c,
-                    height: 420,
-                    onResize: (_) {},
-                    onClose: () {}),
-              ),
-            ),
-          ),
-        ));
+        await tester.pumpWidget(canvasApp(Align(
+            alignment: Alignment.bottomCenter,
+            child: CanvasMixer(
+                controller: c,
+                height: 420,
+                onResize: (_) {},
+                onClose: () {}))));
         await tester.pump();
       }
       // As a hand clicks: pressed, the panel built again under it, then let

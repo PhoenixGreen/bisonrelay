@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -18,12 +18,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_gizmo.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_nav_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // The controls for a scene showing a 3D stage: the bar's 3D tools, Snap and
 // the page lock; the stage camera's pan, framing and reset; the gizmo on an
@@ -54,14 +52,7 @@ void near(Offset a, Offset b, [double within = 0.01]) =>
 
 StageCamera cameraOf(CanvasController c) => c.steeredStage!.cameraAt(c.frame);
 
-Widget host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget host(Widget child) => canvasApp(child);
 
 Widget bar(CanvasController c, {VoidCallback? onGuides}) => host(Column(
       children: [
@@ -429,9 +420,7 @@ void main() {
       for (final scale in [0.65, 1.0, 1.5]) {
         final c = CanvasController(onStage());
         addTearDown(c.dispose);
-        tester.view.physicalSize = const Size(1400, 400);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, const Size(1400, 400));
         await tester.pumpWidget(MediaQuery(
             data: MediaQueryData(textScaler: TextScaler.linear(scale)),
             child: bar(c)));
@@ -454,9 +443,7 @@ void main() {
     Future<CanvasStageState> pumpStage(
         WidgetTester tester, CanvasController c) async {
       final key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = const Size(1280, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1280, 800));
       await tester.pumpWidget(host(SizedBox(
           width: 1280,
           height: 800,

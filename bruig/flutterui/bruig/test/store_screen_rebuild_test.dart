@@ -1,16 +1,14 @@
 import 'dart:async';
+import 'support/canvas_app.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/screens/pages/store.dart';
 import 'package:bruig/screens/pages/store/store_orders.dart';
 import 'package:bruig/screens/pages/store/product_editor.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/screens/pages/store/store_tabs.dart';
 import 'package:bruig/screens/pages/store/shop_frame_fields.dart';
@@ -51,18 +49,12 @@ void main() {
 
   testWidgets('the screen follows the shop, not only the hosting',
       (tester) async {
-    tester.view.physicalSize = const Size(900, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1400));
 
     var pages = _Pages();
     var shop = _Store(pages);
 
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(home: Scaffold(body: StoreTab(pages, shop, "me")))));
+    await tester.pumpWidget(canvasApp(StoreTab(pages, shop, "me")));
     await tester.pumpAndSettle();
 
     expect(find.byType(ProductEditor), findsNothing);
@@ -82,21 +74,12 @@ void main() {
     // a remote user -- so the button is offered greyed, with the reason,
     // rather than left to fail with "user not found": a sentence about
     // somebody who is standing right there.
-    await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: OrderThread(
-          order: ManagedOrder(1, "me", "", SSCart(const [], DateTime.now()),
-              "placed", DateTime.now(), 0, 0, "ln", const []),
-          onReply: (_) async {},
-          onSendGoods: () async {},
-          isOwn: true,
-        )))));
+    await tester.pumpWidget(canvasApp(OrderThread(
+        order: ManagedOrder(1, "me", "", SSCart(const [], DateTime.now()),
+            "placed", DateTime.now(), 0, 0, "ln", const []),
+        onReply: (_) async {},
+        onSendGoods: () async {},
+        isOwn: true)));
     await tester.pumpAndSettle();
 
     expect(
@@ -141,18 +124,12 @@ void main() {
     // The tabs are a view of one screen rather than four screens. Opening
     // Orders to answer somebody must not throw away a product that is half
     // typed -- which is what four screens would have done.
-    tester.view.physicalSize = const Size(900, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1400));
 
     var pages = _Pages();
     var shop = _Store(pages);
 
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(home: Scaffold(body: StoreTab(pages, shop, "me")))));
+    await tester.pumpWidget(canvasApp(StoreTab(pages, shop, "me")));
     await tester.pumpAndSettle();
 
     shop.startProductDraft(ManagedProduct.empty());
@@ -171,18 +148,12 @@ void main() {
     // written, the parameters were wired, everything compiled, and the
     // switch that draws them never reached the file -- so the shop went on
     // being one long page and nothing said otherwise.
-    tester.view.physicalSize = const Size(1000, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1000, 1600));
 
     var pages = _Pages();
     var shop = _Store(pages);
 
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(home: Scaffold(body: StoreTab(pages, shop, "me")))));
+    await tester.pumpWidget(canvasApp(StoreTab(pages, shop, "me")));
     await tester.pumpAndSettle();
 
     expect(find.byType(StoreTabs), findsOneWidget,
@@ -200,18 +171,12 @@ void _mainSetupTab() {
     // looking for what their shop is called looked at the shop, so that is
     // where they are now -- and this pumps the tab rather than trusting the
     // switch to have been wired.
-    tester.view.physicalSize = const Size(1000, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1000, 1600));
 
     var pages = _Pages();
     var shop = _Store(pages);
 
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(home: Scaffold(body: StoreTab(pages, shop, "me")))));
+    await tester.pumpWidget(canvasApp(StoreTab(pages, shop, "me")));
     await tester.pumpAndSettle();
 
     expect(find.text("What the shop is called"), findsNothing,

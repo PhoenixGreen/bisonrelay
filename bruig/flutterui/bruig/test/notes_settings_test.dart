@@ -1,5 +1,5 @@
 import 'package:bruig/plugin_system/writing_tools/notes/notes.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -17,18 +17,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 Future<NotesPreferences> _pumpSection(WidgetTester tester,
     {NotesPreferences? prefs}) async {
   var p = prefs ?? NotesPreferences();
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<NotesPreferences>.value(value: p),
-    ],
-    child: const MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(child: NotesSettingsSection()),
-      ),
-    ),
-  ));
+  await tester.pumpWidget(canvasApp(
+      SingleChildScrollView(child: NotesSettingsSection()),
+      extra: [ChangeNotifierProvider<NotesPreferences>.value(value: p)]));
   await tester.pumpAndSettle();
   return p;
 }

@@ -1,6 +1,6 @@
 import 'package:bruig/components/md_elements.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -22,16 +22,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 // nothing about either.
 
 Future<void> _pump(WidgetTester tester, String data) =>
-    tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (c) => MarkdownAreaModel("/tmp")),
-      ],
-      child: MaterialApp(home: Scaffold(body: MarkdownArea(data, false))),
-    ));
+    tester.pumpWidget(canvasApp(MarkdownArea(data, false), extra: [
+      ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+      ChangeNotifierProvider<MarkdownAreaModel>(
+          create: (c) => MarkdownAreaModel("/tmp"))
+    ]));
 
 /// _markers is every list marker drawn, in order.
 List<String> _markers(WidgetTester tester) => tester

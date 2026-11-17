@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
@@ -203,9 +204,7 @@ void main() {
       c.openPianoRoll("p", row: row);
       // Tall enough that the keys the tests press are in view, in the
       // editor in the effects strip.
-      tester.view.physicalSize = const Size(1600, 1100);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 1100));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
@@ -457,23 +456,12 @@ void main() {
       // As short as Ken's log had it: 117 high, the lanes folded away.
       await open(tester, row: 0);
       for (var (h, lanes) in [(117.0, false), (400.0, true)]) {
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-          ],
-          child: MaterialApp(
-              home: Scaffold(
-                  body: Align(
-                      alignment: Alignment.topLeft,
-                      child: SizedBox(
-                          width: 574,
-                          height: h,
-                          child:
-                              PianoRoll(controller: c, inClipEditor: true))))),
-        ));
+        await tester.pumpWidget(canvasApp(Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+                width: 574,
+                height: h,
+                child: PianoRoll(controller: c, inClipEditor: true)))));
         await tester.pump();
         expect(tester.takeException(), isNull, reason: "$h high");
         // Tall enough, the folded bar opens them (they start folded).

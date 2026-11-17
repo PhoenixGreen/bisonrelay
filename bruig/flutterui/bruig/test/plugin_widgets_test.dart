@@ -1,11 +1,10 @@
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/screens/widget_renderer.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:provider/provider.dart';
 
 import 'support/plugin_test_support.dart';
 
@@ -51,27 +50,12 @@ Future<List<(String, Map<String, dynamic>)>> _pumpTree(
   var state = PluginUiState();
   addTearDown(state.dispose);
 
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => ListView(
-            children: buildPluginWidgets(
-              context,
-              widgets,
+  await tester.pumpWidget(canvasApp(Builder(
+      builder: (context) => ListView(
+          children: buildPluginWidgets(context, widgets,
               root: widgets,
               state: state,
-              onEvent: (event, payload) => fired.add((event, payload)),
-            ),
-          ),
-        ),
-      ),
-    ),
-  ));
+              onEvent: (event, payload) => fired.add((event, payload)))))));
   await tester.pumpAndSettle();
   return fired;
 }

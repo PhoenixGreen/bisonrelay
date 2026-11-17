@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -25,11 +25,9 @@ import 'package:bruig/plugin_system/canvas/ui/marker_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -73,25 +71,15 @@ CanvasController make() {
   return c;
 }
 
-Widget host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(alignment: Alignment.bottomCenter, child: child))),
-    );
+Widget host(Widget child) =>
+    canvasApp(Align(alignment: Alignment.bottomCenter, child: child));
 
 void main() {
   Future<CanvasController> mixer(WidgetTester tester,
       {double height = 720}) async {
     var c = make();
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1600, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 900));
     await tester.pumpWidget(host(CanvasMixer(
         controller: c, height: height, onResize: (_) {}, onClose: () {})));
     await tester.pump();
@@ -240,9 +228,7 @@ void main() {
     c.placeClip("a", spin, seconds: 0);
     c.placeClip("a", bob, seconds: 1);
     c.pinLayer("a", 1, true);
-    tester.view.physicalSize = const Size(1400, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1400, 800));
     await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
     await tester.pumpAndSettle();
     expect(c.laneSize, 1);
@@ -276,9 +262,7 @@ void main() {
         audioEngine: FakeEngine({"t": 10}));
     addTearDown(c.dispose);
     // Wide enough for the bar to show its tempo.
-    tester.view.physicalSize = const Size(2200, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(2200, 900));
     await tester
         .pumpWidget(host(Column(mainAxisSize: MainAxisSize.min, children: [
       CanvasPlayBar(controller: c),
@@ -434,9 +418,7 @@ void main() {
           audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
       c.ensureElementSound("a");
-      tester.view.physicalSize = const Size(1400, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 800));
       await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("motionRow-a")),
@@ -530,9 +512,7 @@ void main() {
     testWidgets("linked from a slot's menu, and drawn so", (tester) async {
       var c = linked();
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 900));
       await tester.pumpWidget(host(CanvasMixer(
           controller: c, height: 720, onResize: (_) {}, onClose: () {})));
       await tester.pump();
@@ -567,9 +547,7 @@ void main() {
       addTearDown(c.dispose);
       var clip = c.newClip("a", kind: MotionKind.action);
       var placed = c.placeClip("a", clip, seconds: 1);
-      tester.view.physicalSize = const Size(1400, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 800));
       await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
       await tester.pumpAndSettle();
       return (c, placed);
@@ -659,21 +637,10 @@ void main() {
       var c = make();
       addTearDown(c.dispose);
       c.dock = c.dock.copyWith(places: DockPlaces.three);
-      tester.view.physicalSize = const Size(900, 600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: align,
-                    child: DockPanelButton(
-                        controller: c, panel: DockPanel.slots)))),
-      ));
+      setTestScreen(tester, const Size(900, 600));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: align,
+          child: DockPanelButton(controller: c, panel: DockPanel.slots))));
       var button = find.byKey(ValueKey(DockPanel.slots.key));
       var g = await tester.startGesture(tester.getCenter(button));
       await tester.pump();
@@ -694,9 +661,7 @@ void main() {
   testWidgets("no scroll bars on the Slots panel", (tester) async {
     var c = make();
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1400, 500);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1400, 500));
     await tester.pumpWidget(host(SizedBox(
         height: 320,
         child:
@@ -735,9 +700,7 @@ void main() {
           audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
       c.ensureElementSound("a");
-      tester.view.physicalSize = const Size(1400, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 800));
       await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
       await tester.pumpAndSettle();
       double rowOf(String key) =>

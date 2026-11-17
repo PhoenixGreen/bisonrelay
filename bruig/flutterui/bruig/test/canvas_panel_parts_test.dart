@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -9,10 +9,8 @@ import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_panel_parts_test.dart is the parts every element's settings are
 // built from since the panel was rebuilt round tasks (Ken, 2026-11-11): its
@@ -34,28 +32,13 @@ CanvasController controllerWith(List<MotionDevice> looks) {
 
 Future<void> pump(WidgetTester tester, Widget child,
     {CanvasController? chainOf}) async {
-  tester.view.physicalSize = const Size(1600, 1200);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: Column(children: [
-          SizedBox(
-              width: 360,
-              height: 760,
-              child: SingleChildScrollView(child: child)),
-          if (chainOf != null)
-            Expanded(child: AnimationPanel(controller: chainOf, height: 380)),
-        ]),
-      ),
-    ),
-  ));
+  setTestScreen(tester, const Size(1600, 1200));
+  await tester.pumpWidget(canvasApp(Column(children: [
+    SizedBox(
+        width: 360, height: 760, child: SingleChildScrollView(child: child)),
+    if (chainOf != null)
+      Expanded(child: AnimationPanel(controller: chainOf, height: 380))
+  ])));
   await tester.pumpAndSettle();
 }
 

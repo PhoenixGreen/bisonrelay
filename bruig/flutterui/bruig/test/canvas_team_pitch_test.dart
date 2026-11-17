@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -12,8 +13,6 @@ import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_photo_editor.dart';
@@ -383,23 +382,12 @@ void main() {
     Future<CanvasController> panel(
         WidgetTester tester, CanvasDocument doc, String id) async {
       SharedPreferences.setMockInitialValues({});
-      tester.view.physicalSize = const Size(1400, 3000);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 3000));
       var controller = CanvasController(doc);
       addTearDown(controller.dispose);
       controller.selectOnly(id);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(body: CanvasDesignPanel(controller: controller))),
-      ));
+      await tester
+          .pumpWidget(canvasApp(CanvasDesignPanel(controller: controller)));
       await tester.pumpAndSettle();
       return controller;
     }
@@ -538,9 +526,7 @@ void _photoEditorTests() {
     var team = _teams(footballCanvas())
         .first
         .copyWith(teamPhoto: "squad", tokenStyle: TokenStyle.portrait);
-    tester.view.physicalSize = const Size(400, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 800));
     await tester.pumpWidget(MaterialApp(
       home: ChangeNotifierProvider(
         create: (_) => ThemeNotifier(doLoad: false),
@@ -610,9 +596,7 @@ void _photoEditorTests() {
         .first
         .copyWith(teamPhoto: "squad", tokenStyle: TokenStyle.portrait);
     var commits = 0;
-    tester.view.physicalSize = const Size(400, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 800));
     await tester.pumpWidget(MaterialApp(
       home: ChangeNotifierProvider(
         create: (_) => ThemeNotifier(doLoad: false),

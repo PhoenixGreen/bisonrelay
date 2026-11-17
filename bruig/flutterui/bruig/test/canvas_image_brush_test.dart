@@ -1,9 +1,8 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -22,11 +21,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_image_brush_test.dart is brushwork: paint on a paint layer, and the
@@ -690,24 +687,11 @@ void main() {
           assetId: asset,
           fit: ImageFit.stretch)));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(800, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-                width: 800,
-                height: 600,
-                child: CanvasStage(key: key, controller: c)),
-          ),
-        ),
-      ));
+      setTestScreen(tester, const Size(800, 600));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 800,
+          height: 600,
+          child: CanvasStage(key: key, controller: c))));
       await tester.runAsync(() async {
         c.images.putForTest(
             asset, await _picture(40, 40, (x, y) => [200, 200, 200, 255]));
@@ -932,22 +916,9 @@ void main() {
     addTearDown(c.dispose);
     c.selectOnly("i");
     c.editImage("i", layer: "paint");
-    tester.view.physicalSize = const Size(900, 4000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 420, child: CanvasDesignPanel(controller: c)))),
-    ));
+    setTestScreen(tester, const Size(900, 4000));
+    await tester.pumpWidget(canvasApp(
+        SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
     await tester.pumpAndSettle();
     var undo = find.byKey(const ValueKey("strokesUndo-Paint"));
     await tester.ensureVisible(undo);

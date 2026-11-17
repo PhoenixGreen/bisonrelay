@@ -1,10 +1,9 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
@@ -14,10 +13,8 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_builder_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_sprite_builder_test.dart is a figure built from Kenney's modular
@@ -174,21 +171,8 @@ void main() {
     var c = CanvasController(CanvasDocument(frames: 24)
         .addElement(const SpriteElement(ElementBase(id: "s", x: 10, y: 10, width: 100, height: 100))));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const ui.Size(420, 3000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SingleChildScrollView(
-                  child: SpriteBuilderGroup(
-                      controller: c, sprite: c.document.elementById("s") as SpriteElement)))),
-    ));
+    setTestScreen(tester, const ui.Size(420, 3000));
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(child: SpriteBuilderGroup(controller: c, sprite: c.document.elementById("s") as SpriteElement))));
     await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("spriteBuilderOpen")));
@@ -220,20 +204,7 @@ void main() {
     // both are kept.
     var walk = e.actionNamed("Walk")!;
     c.replaceElement(e.withAction(walk.copyWith(fps: 3, loop: false)));
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SingleChildScrollView(
-                  child: SpriteBuilderGroup(
-                      key: const ValueKey("again"),
-                      controller: c,
-                      sprite: c.document.elementById("s") as SpriteElement)))),
-    ));
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(child: SpriteBuilderGroup(key: const ValueKey("again"), controller: c, sprite: c.document.elementById("s") as SpriteElement))));
     for (var i = 0; i < 20; i++) {
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 20)));
       await tester.pump();

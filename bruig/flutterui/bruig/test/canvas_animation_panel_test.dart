@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -9,7 +9,6 @@ import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_clip_display.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show boxOf, motionSceneOf;
@@ -23,7 +22,6 @@ import 'package:bruig/plugin_system/canvas/ui/curve_view.dart';
 import 'package:flutter/services.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // The Animation panel: the picked clip as a row of devices. A ready-made
 // motion picked writes its keys; a click on a Keys row adds one, a drag
@@ -31,9 +29,7 @@ import 'package:provider/provider.dart';
 
 Future<(CanvasController, String)> pump(WidgetTester tester,
     {double scale = 1, double height = 360}) async {
-  tester.view.physicalSize = const Size(2400, 900);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(2400, 900));
   var c =
       CanvasController(CanvasDocument(frames: 240, frameRate: 24, elements: [
     ShapeElement(const ElementBase(
@@ -44,22 +40,16 @@ Future<(CanvasController, String)> pump(WidgetTester tester,
   addTearDown(c.dispose);
   var clip = c.newClip("a", preset: presetNamed("Pop"), slot: 0);
   c.pickMotion("a", clip);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: MediaQuery(
-      data: MediaQueryData(
-          size: const Size(1600, 900), textScaler: TextScaler.linear(scale)),
-      child: Scaffold(
-          body: Align(
-              alignment: Alignment.bottomCenter,
-              child: AnimationPanel(controller: c, height: height))),
-    )),
-  ));
+  await tester.pumpWidget(canvasApp(
+      MediaQuery(
+          data: MediaQueryData(
+              size: const Size(1600, 900),
+              textScaler: TextScaler.linear(scale)),
+          child: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: AnimationPanel(controller: c, height: height)))),
+      scaffold: false));
   await tester.pumpAndSettle();
   return (c, clip);
 }

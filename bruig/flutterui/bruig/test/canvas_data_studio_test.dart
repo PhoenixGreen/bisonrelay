@@ -1,5 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
@@ -16,14 +15,12 @@ import 'package:bruig/plugin_system/canvas/ui/data_sheet_find.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -105,29 +102,15 @@ void main() {
     late CanvasController c;
 
     Future<void> studio(WidgetTester tester) async {
-      tester.platformDispatcher.textScaleFactorTestValue = 1.25;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestTextScale(tester, 1.25);
+      setTestScreen(tester, const Size(1600, 1000));
       c = CanvasController(opened(), audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
       c.openDataStudio(c.document.sheets.single.id, view: "c1");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (_) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (_) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: DataStudio(
-                    controller: c,
-                    sheetId: c.dataStudio.value!,
-                    onDone: c.closeDataStudio))),
-      ));
+      await tester.pumpWidget(canvasApp(DataStudio(
+          controller: c,
+          sheetId: c.dataStudio.value!,
+          onDone: c.closeDataStudio)));
       await tester.pumpAndSettle();
     }
 
@@ -595,36 +578,19 @@ void main() {
 
     testWidgets("the quick settings' Data Studio button opens it",
         (tester) async {
-      tester.view.physicalSize = const Size(600, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(600, 2400));
       var ctl = CanvasController(opened(), audioEngine: FakeEngine({}));
       addTearDown(ctl.dispose);
       ctl.selectOnly("t1");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (_) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (_) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-          body: SingleChildScrollView(
-            child: SizedBox(
+      await tester.pumpWidget(canvasApp(SingleChildScrollView(
+          child: SizedBox(
               width: 340,
               child: Builder(
-                builder: (context) => CanvasControlScope(
-                  maxWidth: 300,
-                  child: Column(
-                      children: elementSettings(context, ctl, ctl.selected!)),
-                ),
-              ),
-            ),
-          ),
-        )),
-      ));
+                  builder: (context) => CanvasControlScope(
+                      maxWidth: 300,
+                      child: Column(
+                          children: elementSettings(
+                              context, ctl, ctl.selected!))))))));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("dataOpenStudio")));
       await tester.pumpAndSettle();
@@ -677,9 +643,7 @@ void main() {
     testWidgets(
         "the first chart is chosen from the gallery, and takes its own place",
         (tester) async {
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 1000));
       var c =
           CanvasController(const CanvasDocument(), audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
@@ -687,21 +651,10 @@ void main() {
       var t = c.document.elements.last as TableElement;
       c.pasteSheetCells(t.sheet!.sheet, 0, 0, form);
       c.openDataStudio(t.sheet!.sheet, view: t.id);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (_) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (_) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: DataStudio(
-                    controller: c,
-                    sheetId: c.dataStudio.value!,
-                    onDone: c.closeDataStudio))),
-      ));
+      await tester.pumpWidget(canvasApp(DataStudio(
+          controller: c,
+          sheetId: c.dataStudio.value!,
+          onDone: c.closeDataStudio)));
       await tester.pumpAndSettle();
       await tester.tap(find.text("Charts").first);
       await tester.pumpAndSettle();
@@ -773,27 +726,14 @@ void main() {
     });
 
     testWidgets("found by its name, and opened", (tester) async {
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 1000));
       var c = many();
       addTearDown(c.dispose);
       c.openDataStudio(c.document.sheets.first.id);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (_) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (_) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: DataStudio(
-                    controller: c,
-                    sheetId: c.dataStudio.value!,
-                    onDone: c.closeDataStudio))),
-      ));
+      await tester.pumpWidget(canvasApp(DataStudio(
+          controller: c,
+          sheetId: c.dataStudio.value!,
+          onDone: c.closeDataStudio)));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("dataStudioSheets")));
       await tester.pumpAndSettle();

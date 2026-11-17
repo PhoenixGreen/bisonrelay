@@ -1,9 +1,8 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
@@ -13,11 +12,9 @@ import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'canvas_score_sheet_test.dart' as sheet;
@@ -107,24 +104,11 @@ void main() {
       var m = newElement(ElementKind.metronome, c.document) as MetronomeElement;
       c.addElement(m, select: false);
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 1600,
-                    height: 1000,
-                    child: CanvasStage(key: key, controller: c)))),
-      ));
+      setTestScreen(tester, const Size(1600, 1000));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 1600,
+          height: 1000,
+          child: CanvasStage(key: key, controller: c))));
       await tester.pumpAndSettle();
       var page = key.currentState!.pageRect;
       var scale = page.width / c.document.size.width;

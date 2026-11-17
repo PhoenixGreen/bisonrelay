@@ -1,9 +1,8 @@
 import 'dart:async';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/paint_spec.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -13,11 +12,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_panel_helpers.dart';
@@ -58,25 +55,11 @@ void main() {
     Future<CanvasStageState> pump(
         WidgetTester tester, CanvasController controller) async {
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = _viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: _viewport.width,
-              height: _viewport.height,
-              child: CanvasStage(key: key, controller: controller),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, _viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: _viewport.width,
+          height: _viewport.height,
+          child: CanvasStage(key: key, controller: controller))));
       await _seed(tester, controller);
       await tester.pumpAndSettle();
       return key.currentState!;
@@ -213,29 +196,15 @@ void main() {
   });
 
   group("in the panel", () {
-    Widget panel(CanvasController c) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(
-              home: Scaffold(
-                  body: SizedBox(
-                      width: 420, child: CanvasDesignPanel(controller: c)))),
-        );
+    Widget panel(CanvasController c) => canvasApp(
+        SizedBox(width: 420, child: CanvasDesignPanel(controller: c)));
 
     Future<CanvasController> pumpPanel(WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(const CanvasDocument().addElement(_element()));
       addTearDown(c.dispose);
       c.selectOnly("i");
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 4000));
       await tester.pumpWidget(panel(c));
       await _seed(tester, c);
       await tester.pumpAndSettle();
@@ -438,9 +407,7 @@ void main() {
               assetId: "basebasebasebase")));
       addTearDown(c.dispose);
       c.selectOnly("i");
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 4000));
       await tester.pumpWidget(panel(c));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("imageLayers")), findsOneWidget);

@@ -1,7 +1,6 @@
 import 'package:bruig/components/app_frame.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,10 +18,7 @@ const _marker = Key("framed");
 /// setting from.
 Future<void> _pump(WidgetTester tester, Widget? child) async {
   SharedPreferences.setMockInitialValues({});
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-    create: (c) => ThemeNotifier(doLoad: false),
-    child: MaterialApp(home: appFrame(child)),
-  ));
+  await tester.pumpWidget(canvasApp(appFrame(child), scaffold: false));
   await tester.pumpAndSettle();
 }
 

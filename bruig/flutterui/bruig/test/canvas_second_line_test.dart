@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,9 +20,7 @@ void main() {
   /// then the canvas taking what is left.
   Future<void> show(WidgetTester tester,
       {Widget? settings, Widget? guides}) async {
-    tester.view.physicalSize = const Size(800, 600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(800, 600));
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: Column(children: [

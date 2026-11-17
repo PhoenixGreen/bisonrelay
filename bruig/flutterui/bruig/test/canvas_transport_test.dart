@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
@@ -89,13 +90,8 @@ void main() {
     testWidgets("the TAP button sets it", (tester) async {
       var now = 0.0;
       double? tempo;
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (c) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-            home: Scaffold(
-                body: TapTempoButton(
-                    clock: () => now, onTempo: (t) => tempo = t))),
-      ));
+      await tester.pumpWidget(canvasApp(
+          TapTempoButton(clock: () => now, onTempo: (t) => tempo = t)));
       for (var i = 0; i < 4; i++) {
         now = i * 0.4;
         await tester.tap(find.byKey(const ValueKey("tapTempo")));
@@ -255,23 +251,10 @@ void main() {
   group("the bar", () {
     Future<void> show(WidgetTester tester, CanvasController c,
         {double width = 2200}) async {
-      tester.view.physicalSize = Size(width, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: CanvasTimeline(controller: c)))),
-      ));
+      setTestScreen(tester, Size(width, 600));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: CanvasTimeline(controller: c))));
       await tester.pumpAndSettle();
     }
 

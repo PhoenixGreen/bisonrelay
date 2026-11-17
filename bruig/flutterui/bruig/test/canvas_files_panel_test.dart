@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -8,11 +8,9 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/files_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart';
 
 // Every one of these pumps a widget over real files, which needs the
 // runAsync/pump cycle in [idle] rather than pumpAndSettle: testWidgets runs in
@@ -31,18 +29,6 @@ import 'package:provider/provider.dart';
 // moves, and the sidebar is replaced by a red error box -- a crash the post
 // library has already been through once. There is a test here that nothing in
 // a row owns one.
-
-/// until turns the real event loop and the fake one alternately until
-/// [done] -- what real file I/O has finished doing -- or five seconds have
-/// gone: a loaded machine takes longer than any fixed wait allows.
-Future<void> until(WidgetTester tester, bool Function() done) async {
-  for (var i = 0; i < 250 && !done(); i++) {
-    await tester
-        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-    await tester.pump();
-  }
-  await tester.pump();
-}
 
 void main() {
   late Directory root;
@@ -91,32 +77,17 @@ void main() {
     var it = controller ?? CanvasController(const CanvasDocument());
     addTearDown(it.dispose);
 
-    tester.view.physicalSize = const Size(420, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(420, 900));
 
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>.value(
-            value: prefs ?? CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
+    await tester.pumpWidget(canvasApp(
+        SizedBox(
             width: 300,
             child: CanvasFilesPanel(
-              controller: it,
-              onOpen: (f, n) async {},
-              onPublish: (f, n) {},
-              onNew: (f, n) async => onNew?.call(f, n),
-            ),
-          ),
-        ),
-      ),
-    ));
+                controller: it,
+                onOpen: (f, n) async {},
+                onPublish: (f, n) {},
+                onNew: (f, n) async => onNew?.call(f, n))),
+        prefs: prefs ?? CanvasPreferences()));
     await idle(tester);
     return it;
   }
@@ -136,12 +107,12 @@ void main() {
     expect(find.byTooltip("Save now"), findsNothing);
 
     controller.apply(const CanvasDocument(title: "Plan", frames: 40));
-    await until(tester, () => find.byTooltip("Save now").evaluate().isNotEmpty);
+    await pumpUntil(tester, () => find.byTooltip("Save now").evaluate().isNotEmpty);
     expect(find.byTooltip("Save now"), findsOneWidget);
 
     await tester.tap(find.byTooltip("Save now"));
-    await until(tester, () => !controller.dirty);
-    await until(tester, () => find.byTooltip("Saved").evaluate().isNotEmpty);
+    await pumpUntil(tester, () => !controller.dirty);
+    await pumpUntil(tester, () => find.byTooltip("Saved").evaluate().isNotEmpty);
     expect(controller.dirty, isFalse);
     expect(find.byTooltip("Saved"), findsOneWidget);
   });

@@ -1,10 +1,9 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -21,10 +20,8 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/tile_map_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/tile_painting.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_tile_map_test.dart is the Tile map element: tiles as Tiled and
@@ -490,17 +487,8 @@ void main() {
       addTearDown(c.dispose);
       c.images.hold("sheet", sheet!);
       c.selectOnly("m");
-      tester.view.physicalSize = const ui.Size(420, 3000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
-      ));
+      setTestScreen(tester, const ui.Size(420, 3000));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 30)));
       await tester.pumpAndSettle();
       TileMapElement get() => c.document.elementById("m") as TileMapElement;

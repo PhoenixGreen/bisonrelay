@@ -1,10 +1,10 @@
 import 'package:bruig/models/menus.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/screens/address_book_screen.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/screens/ln_management.dart';
 import 'package:bruig/screens/manage_content_screen.dart';
 import 'package:bruig/screens/viewpage_screen.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -27,14 +27,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 // a ClientModel to hand its sidebar to the collapsed drawer -- so the file
 // preview's collapseSidebar is checked in the app rather than here.
 
-Widget _host(Widget title, MainMenuModel menu) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<MainMenuModel>.value(value: menu),
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(home: Scaffold(body: title)),
-    );
+Widget _host(Widget title, MainMenuModel menu) => canvasApp(title,
+    extra: [ChangeNotifierProvider<MainMenuModel>.value(value: menu)]);
 
 /// _titles are the headings that can be built without a running client, each
 /// with the route it belongs to and the name it shows when untouched.

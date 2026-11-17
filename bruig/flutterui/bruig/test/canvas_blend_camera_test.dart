@@ -1,6 +1,6 @@
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -18,12 +18,10 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show DeviceKnob;
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
     show StudioDrop;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_blend_camera_test.dart is a video laid on as light, and a scene
 // with a slow camera move over it.
@@ -168,22 +166,9 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("box");
       c.cameraView = true;
-      tester.view.physicalSize = const Size(1000, 700);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 1000,
-                    height: 700,
-                    child: CanvasStage(controller: c)))),
-      ));
+      setTestScreen(tester, const Size(1000, 700));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 1000, height: 700, child: CanvasStage(controller: c))));
       await tester.pumpAndSettle();
       var paint = find.byWidgetPredicate(
           (w) => w is CustomPaint && w.painter is StagePainter);
@@ -230,21 +215,10 @@ void main() {
       var c = CanvasController(scene(null));
       addTearDown(c.dispose);
       c.pickScene(0);
-      tester.view.physicalSize = const Size(1600, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.topLeft,
-                    child: AnimationPanel(controller: c, height: 360)))),
-      ));
+      setTestScreen(tester, const Size(1600, 600));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.topLeft,
+          child: AnimationPanel(controller: c, height: 360))));
       await tester.pumpAndSettle();
       // The Camera card's Move, as the prototype's scene chain has it.
       expect(find.byKey(const ValueKey("sceneCameraCard")), findsOneWidget);
@@ -291,24 +265,13 @@ void main() {
       var c = CanvasController(scene(null));
       addTearDown(c.dispose);
       c.pickScene(0);
-      tester.view.physicalSize = const Size(1600, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.topLeft,
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) =>
-                            AnimationPanel(controller: c, height: 360))))),
-      ));
+      setTestScreen(tester, const Size(1600, 600));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.topLeft,
+          child: ListenableBuilder(
+              listenable: c,
+              builder: (context, _) =>
+                  AnimationPanel(controller: c, height: 360)))));
       await tester.pumpAndSettle();
       tester
           .widget<DeviceKnob>(find.byKey(const ValueKey("cameraShake")))

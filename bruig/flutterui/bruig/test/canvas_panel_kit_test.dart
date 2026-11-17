@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -17,10 +16,8 @@ import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_panel_helpers.dart';
@@ -29,16 +26,7 @@ import 'support/canvas_panel_helpers.dart';
 // and pressed: the stepper, the sections, the search and fold-all over them,
 // the tiles that try a choice on the canvas, and the hint over the canvas.
 
-Widget _host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget _host(Widget child) => canvasApp(child);
 
 /// _Stepped holds a stepper's value the way a panel does: written on every
 /// change, with each commit counted.
@@ -230,9 +218,7 @@ void main() {
           const CanvasDocument().addElement(picture ?? _picture()));
       addTearDown(c.dispose);
       c.selectOnly("i");
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 4000));
       await tester.pumpWidget(
           _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await tester.pumpAndSettle();
@@ -762,9 +748,7 @@ void main() {
       c.selectOnly("i");
       c.editImage("i", layer: "paint");
       c.imageTool = ImageTool.paint;
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 4000));
       await tester.pumpWidget(
           _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await idle(tester);

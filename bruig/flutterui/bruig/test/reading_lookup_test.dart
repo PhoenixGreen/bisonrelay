@@ -1,10 +1,9 @@
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/plugin_test_support.dart';
@@ -28,23 +27,11 @@ Future<void> _openSheet(WidgetTester tester,
       FakePlugins({PluginCapability.thesaurus}),
       fetch: (w) async => _entry());
 
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showThesaurusSheet(context,
-                capability: capability, word: "happy", onReplace: onReplace),
-            child: const Text("open"),
-          ),
-        ),
-      ),
-    ),
-  ));
+  await tester.pumpWidget(canvasApp(Builder(
+      builder: (context) => TextButton(
+          onPressed: () => showThesaurusSheet(context,
+              capability: capability, word: "happy", onReplace: onReplace),
+          child: const Text("open")))));
   await tester.tap(find.text("open"));
   await tester.pumpAndSettle();
 }

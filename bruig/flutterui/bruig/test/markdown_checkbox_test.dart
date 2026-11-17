@@ -1,6 +1,6 @@
 import 'package:bruig/components/md_elements.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,18 +19,12 @@ const _tasks = "- [x] done\n- [ ] not done\n";
 
 Future<void> _pump(WidgetTester tester, String data,
         {MarkdownStyleGuide? guide}) =>
-    tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (c) => MarkdownAreaModel("/tmp")),
-      ],
-      child: MaterialApp(
-        home: Scaffold(body: MarkdownArea(data, false, guide: guide)),
-      ),
-    ));
+    tester
+        .pumpWidget(canvasApp(MarkdownArea(data, false, guide: guide), extra: [
+      ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+      ChangeNotifierProvider<MarkdownAreaModel>(
+          create: (c) => MarkdownAreaModel("/tmp"))
+    ]));
 
 /// _icons is every icon drawn.
 Set<IconData> _icons(WidgetTester tester) => {

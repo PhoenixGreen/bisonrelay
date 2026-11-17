@@ -1,4 +1,5 @@
 import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/media/speech.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
@@ -128,9 +129,7 @@ void main() {
     var own = ownClipOf(price, MotionKind.arrive)!;
     c.selectOnly("price");
     c.pickMotion("price", own.$1.id, placement: own.$2.id);
-    tester.view.physicalSize = const Size(3000, 420);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(3000, 420));
     await tester.pumpWidget(MultiProvider(
       providers: [
         ChangeNotifierProvider<ThemeNotifier>(

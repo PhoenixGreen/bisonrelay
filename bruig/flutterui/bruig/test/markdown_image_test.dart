@@ -1,9 +1,8 @@
 import 'package:bruig/components/md_elements.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/png_fixture.dart';
@@ -27,25 +26,12 @@ final _picture = pngOf(200, 100);
 
 Future<double> _widthAt(WidgetTester tester, double percent,
     {MarkdownAlign align = MarkdownAlign.left}) async {
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: SizedBox(
-            width: _column,
-            child: MarkdownGuideScope(
+  await tester.pumpWidget(canvasApp(Center(
+      child: SizedBox(
+          width: _column,
+          child: MarkdownGuideScope(
               image: ImageRule(widthPercent: percent, align: align),
-              child: ImageMd("", _picture, "image/png"),
-            ),
-          ),
-        ),
-      ),
-    ),
-  ));
+              child: ImageMd("", _picture, "image/png"))))));
   // The picture has to be decoded before it has a size to report.
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
@@ -95,23 +81,11 @@ void main() {
   // the chat image size setting and otherwise drawn as it always was.
   group("a picture in chat", () {
     testWidgets("is left at its natural size", (tester) async {
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: _column),
-                child: ImageMd("", _picture, "image/png"),
-              ),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _column),
+              child: ImageMd("", _picture, "image/png")))));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       expect(tester.getSize(find.byType(Image)).width, 200,

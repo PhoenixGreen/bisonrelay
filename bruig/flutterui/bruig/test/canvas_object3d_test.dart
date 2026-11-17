@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -19,12 +20,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Animation;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:path/path.dart' as path;
 
 // A 3D object: a .glb from the library's 3D objects, its own animations
@@ -122,9 +120,7 @@ void main() {
         await file.writeAsBytes(glb(robot));
         await addCanvasModel(file.path, "Robot");
       });
-      tester.view.physicalSize = const Size(900, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 2400));
       CanvasSection.openAll = true;
       addTearDown(() => CanvasSection.openAll = false);
       var c = CanvasController(CanvasDocument(elements: [
@@ -132,21 +128,12 @@ void main() {
             ElementBase(id: "r", name: "3D object", width: 100, height: 100)),
       ]));
       addTearDown(c.dispose);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SingleChildScrollView(
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) => Column(
-                            children: elementSettings(
-                                context, c, c.document.elementById("r")!)))))),
-      ));
+      await tester.pumpWidget(canvasApp(SingleChildScrollView(
+          child: ListenableBuilder(
+              listenable: c,
+              builder: (context, _) => Column(
+                  children: elementSettings(
+                      context, c, c.document.elementById("r")!))))));
       // The library is read from disk: let it finish.
       for (var i = 0; i < 10; i++) {
         await tester.runAsync(
@@ -221,9 +208,7 @@ void main() {
 
   testWidgets("its clip chooses which of the model's animations it plays",
       (tester) async {
-    tester.view.physicalSize = const Size(1600, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 900));
     var anims = const [("Walk", 1.5), ("Wave", 3.0)];
     var c = CanvasController(CanvasDocument(elements: [
       Object3dElement(
@@ -234,18 +219,9 @@ void main() {
     ]));
     addTearDown(c.dispose);
     c.pickMotion("r", "r-m0");
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: AnimationPanel(controller: c, height: 360)))),
-    ));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: AnimationPanel(controller: c, height: 360))));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("animModelAnimation")));
     await tester.pumpAndSettle();

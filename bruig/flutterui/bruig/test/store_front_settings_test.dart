@@ -1,10 +1,9 @@
 import 'package:bruig/models/pages.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/screens/pages/store/store_front_fields.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -154,24 +153,15 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   Future<_Store> pump(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1600));
 
     var shop = _Store(_Pages());
-    await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<StoreModel>.value(value: shop),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SingleChildScrollView(
-                    child: Consumer<StoreModel>(
-                        builder: (context, store, _) =>
-                            StoreFrontFields(store: store)))))));
+    await tester.pumpWidget(canvasApp(
+        SingleChildScrollView(
+            child: Consumer<StoreModel>(
+                builder: (context, store, _) =>
+                    StoreFrontFields(store: store))),
+        extra: [ChangeNotifierProvider<StoreModel>.value(value: shop)]));
     await tester.pumpAndSettle();
     return shop;
   }
@@ -535,24 +525,15 @@ void main() {
     // it always drew: the setting saves, shows what it saved, and changes
     // nothing on the page. Told apart from a broken setting only by being
     // said out loud -- it was reported as a broken setting three times.
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1600));
 
     var shop = _Store(_Pages(), template: "--grid[3]--\n{{ productCard . }}\n");
-    await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<StoreModel>.value(value: shop),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SingleChildScrollView(
-                    child: Consumer<StoreModel>(
-                        builder: (context, store, _) =>
-                            StoreFrontFields(store: store)))))));
+    await tester.pumpWidget(canvasApp(
+        SingleChildScrollView(
+            child: Consumer<StoreModel>(
+                builder: (context, store, _) =>
+                    StoreFrontFields(store: store))),
+        extra: [ChangeNotifierProvider<StoreModel>.value(value: shop)]));
     await tester.pumpAndSettle();
 
     // Named by what the seller would look for, not by the call.

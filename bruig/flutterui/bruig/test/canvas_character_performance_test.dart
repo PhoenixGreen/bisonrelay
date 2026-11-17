@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_character.dart';
@@ -15,10 +16,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // What a new 3D character does in one scene of the canvas: its pose and
 // keys, the motions it plays and when, the walks that carry it across, its
@@ -228,28 +227,10 @@ void main() {
 
   Future<CanvasController> show(WidgetTester tester,
       {CharacterPerformance? p, double scale = 1}) async {
-    tester.view.physicalSize = const Size(800, 3000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(800, 3000));
     final c =
         CanvasController(CanvasDocument(frames: 96).addElement(_element(p: p)));
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-      create: (_) => ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-          home: MediaQuery(
-        data: MediaQueryData(
-            size: const Size(800, 3000), textScaler: TextScaler.linear(scale)),
-        child: Scaffold(
-            body: SizedBox(
-                width: 340,
-                child: SingleChildScrollView(
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) => Column(
-                            children: elementSettings(
-                                context, c, c.document.elements.single)))))),
-      )),
-    ));
+    await tester.pumpWidget(canvasApp(MediaQuery(data: MediaQueryData(size: const Size(800, 3000), textScaler: TextScaler.linear(scale)), child: Scaffold(body: SizedBox(width: 340, child: SingleChildScrollView(child: ListenableBuilder(listenable: c, builder: (context, _) => Column(children: elementSettings(context, c, c.document.elements.single))))))), scaffold: false));
     await tester.pumpAndSettle();
     return c;
   }

@@ -1,10 +1,9 @@
 import 'dart:typed_data';
+import 'support/canvas_app.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -24,13 +23,11 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/button_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'support/canvas_store_age.dart';
@@ -555,19 +552,8 @@ void main() {
 
   group("in the editor", () {
     Future<void> show(WidgetTester tester, Widget child) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: child)),
-      ));
+      setTestScreen(tester, const Size(1400, 900));
+      await tester.pumpWidget(canvasApp(child));
       await tester.pumpAndSettle();
     }
 
@@ -719,25 +705,11 @@ void main() {
     Future<CanvasStageState> stage(
         WidgetTester tester, CanvasController controller) async {
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: viewport.width,
-              height: viewport.height,
-              child: CanvasStage(key: key, controller: controller),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: viewport.width,
+          height: viewport.height,
+          child: CanvasStage(key: key, controller: controller))));
       await tester.pumpAndSettle();
       return key.currentState!;
     }

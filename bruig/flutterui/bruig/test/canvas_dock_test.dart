@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -247,29 +248,13 @@ void main() {
         {double width = 1600,
         void Function(CanvasController)? set,
         CanvasDocument document = const CanvasDocument(frames: 48)}) async {
-      tester.view.physicalSize = Size(width, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, Size(width, 1000));
       var c = CanvasController(document, audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       set?.call(c);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomCenter,
-              child: CanvasDock(controller: c, room: 700),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: CanvasDock(controller: c, room: 700))));
       await tester.pump();
       return c;
     }
@@ -286,9 +271,7 @@ void main() {
       testWidgets(
           "the panels' buttons have their names where they fit: "
           "$width wide at $scale", (tester) async {
-        tester.view.physicalSize = Size(width, 1000);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, Size(width, 1000));
         var c = CanvasController(const CanvasDocument(frames: 48),
             audioEngine: FakeEngine(const {}));
         addTearDown(c.dispose);
@@ -540,9 +523,7 @@ void main() {
 
     testWidgets("a timeline squeezed below its rows is cut off, not spilled",
         (tester) async {
-      tester.view.physicalSize = const Size(1600, 600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 600));
       // Half a pixel short of its rows, it is still drawn rather than
       // folded to its bar: the height that spilled. And with two scenes
       // run together, the scenes' strip over the rows too.
@@ -564,25 +545,10 @@ void main() {
         (one, 60.0, false),
         (one, 90.0, true)
       ]) {
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: Align(
-                alignment: Alignment.bottomCenter,
-                child: CanvasTimeline(
-                    controller: c, height: h, onResize: (_) {}, showBar: bar),
-              ),
-            ),
-          ),
-        ));
+        await tester.pumpWidget(canvasApp(Align(
+            alignment: Alignment.bottomCenter,
+            child: CanvasTimeline(
+                controller: c, height: h, onResize: (_) {}, showBar: bar))));
         await tester.pump();
         expect(tester.takeException(), isNull, reason: "at $h");
       }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -16,11 +17,9 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/speech_device.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -673,40 +672,30 @@ cp "${dir.path}/line.wav" "\$out"
 
     Future<void> show(WidgetTester tester, CanvasController c,
             {double scale = 1}) =>
-        tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false),
-          child: MaterialApp(
-            home: Builder(
-              builder: (context) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: Scaffold(
-                  body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Align(
-                      alignment: Alignment.topLeft,
-                      child: SpeechDevice(
-                          controller: c,
-                          channel: "a",
-                          folded: false,
-                          onFold: () {},
-                          height: 260),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ));
+        tester.pumpWidget(canvasApp(
+            Builder(
+                builder: (context) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: Scaffold(
+                        body: ListenableBuilder(
+                            listenable: c,
+                            builder: (context, _) => Align(
+                                alignment: Alignment.topLeft,
+                                child: SpeechDevice(
+                                    controller: c,
+                                    channel: "a",
+                                    folded: false,
+                                    onFold: () {},
+                                    height: 260)))))),
+            scaffold: false));
 
     testWidgets("its sections: picked, said, cued, joined and split",
         (tester) async {
       var c = make();
       addTearDown(c.dispose);
       // Tall enough for the directions' whole menu.
-      tester.view.physicalSize = const Size(1000, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1000, 900));
       c.setSpeech("a",
           const SpeechSpec(script: "Hello there, my friend.\nGood night."));
       await show(tester, c);
@@ -794,9 +783,7 @@ cp "${dir.path}/line.wav" "\$out"
         (tester) async {
       var c = make();
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1000, 400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1000, 400));
       QwenDownload.instance.ready = true;
       var spec = const SpeechSpec(script: "One. Two.").withScript("One. Two.");
       for (var engine in SpeechEngineKind.values) {
@@ -852,9 +839,7 @@ cp "${dir.path}/line.wav" "\$out"
         (tester) async {
       var c = make();
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1000, 400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1000, 400));
       for (var (engine, here) in [
         (SpeechEngineKind.local, true),
         (SpeechEngineKind.expressive, false),

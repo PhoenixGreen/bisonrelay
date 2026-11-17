@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -10,20 +10,16 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // The elements' rows on the timeline: a placed clip opened by a click,
 // moved by a drag, stretched by its end, cut with the knife -- and a clip
 // made by a double-click on an empty stretch.
 
 Future<CanvasController> pump(WidgetTester tester) async {
-  tester.view.physicalSize = const Size(1200, 800);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(1200, 800));
   var c =
       CanvasController(CanvasDocument(frames: 240, frameRate: 24, elements: [
     ShapeElement(const ElementBase(
@@ -32,18 +28,9 @@ Future<CanvasController> pump(WidgetTester tester) async {
   addTearDown(c.dispose);
   var clip = c.newClip("a", preset: presetNamed("Jump")); // 0.7 s
   c.placeClip("a", clip, seconds: 2);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: Scaffold(
-            body: Align(
-                alignment: Alignment.bottomCenter,
-                child: CanvasTimeline(controller: c, height: 400)))),
-  ));
+  await tester.pumpWidget(canvasApp(Align(
+      alignment: Alignment.bottomCenter,
+      child: CanvasTimeline(controller: c, height: 400))));
   await tester.pumpAndSettle();
   return c;
 }
@@ -183,9 +170,7 @@ void main() {
   // select multiple audio/motion clips and then be able to move them".
   testWidgets("a box picks clips on several rows; moved and deleted together",
       (tester) async {
-    tester.view.physicalSize = const Size(1200, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1200, 800));
     var c =
         CanvasController(CanvasDocument(frames: 240, frameRate: 24, elements: [
       ShapeElement(
@@ -204,18 +189,9 @@ void main() {
     for (var id in ["a", "b"]) {
       c.placeClip(id, c.newClip(id, preset: presetNamed("Jump")), seconds: 2);
     }
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: CanvasTimeline(controller: c, height: 500)))),
-    ));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: CanvasTimeline(controller: c, height: 500))));
     await tester.pumpAndSettle();
     Offset on(String row, double seconds) {
       var box = tester.getRect(find.byKey(ValueKey("motionLanesPaint-$row")));

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/export/audio_export.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
@@ -9,11 +9,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/publish_sheet.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 // canvas_audio_export_test.dart is publishing the sound alone, and how the
 // sound of everything that has some is written: format, bitrate, rate and
@@ -109,30 +107,8 @@ void main() {
 
   group("the sheet", () {
     Future<void> open(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1200, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => showPublishSheet(context,
-                    document: const CanvasDocument(frames: 12),
-                    images: null,
-                    frame: 0,
-                    name: "Plan"),
-                child: const Text("open"),
-              ),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, const Size(1200, 1600));
+      await tester.pumpWidget(canvasApp(Builder(builder: (context) => TextButton(onPressed: () => showPublishSheet(context, document: const CanvasDocument(frames: 12), images: null, frame: 0, name: "Plan"), child: const Text("open")))));
       await tester.tap(find.text("open"));
       await tester.pumpAndSettle();
     }

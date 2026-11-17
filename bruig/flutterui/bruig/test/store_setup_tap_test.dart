@@ -1,14 +1,12 @@
 import 'package:bruig/models/pages.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/screens/pages/store/shop_frame_fields.dart';
 import 'package:bruig/screens/pages/store/store_front_fields.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // store_setup_tap_test.dart is about a control on a page with a text box on
@@ -75,32 +73,20 @@ void main() {
 
   testWidgets('a switch beside the shop-name boxes still switches',
       (tester) async {
-    tester.view.physicalSize = const Size(900, 2000);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 2000));
 
     var pages = _Pages();
     var shop = _Store(pages);
 
     // The setup tab as the screen builds it: both halves, and the whole thing
     // rebuilt whenever either model says something changed.
-    await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-          listenable: Listenable.merge([pages, shop]),
-          builder: (context, _) => SingleChildScrollView(
-            child: Column(children: [
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: Listenable.merge([pages, shop]),
+        builder: (context, _) => SingleChildScrollView(
+                child: Column(children: [
               ShopFrameFields(pages: pages),
-              StoreFrontFields(store: shop),
-            ]),
-          ),
-        )))));
+              StoreFrontFields(store: shop)
+            ])))));
     await tester.pumpAndSettle();
 
     // Put the cursor in one of the text boxes, which is what a seller does
@@ -136,22 +122,12 @@ void main() {
     // never saving.
     // Room for the whole panel: it has grown a payment setting since, and a
     // Column taller than the window overflows rather than scrolling.
-    tester.view.physicalSize = const Size(900, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 1600));
 
     var pages = _Pages();
 
-    await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SingleChildScrollView(
-                    child: ShopFrameFields(pages: pages))))));
+    await tester.pumpWidget(
+        canvasApp(SingleChildScrollView(child: ShopFrameFields(pages: pages))));
     await tester.pumpAndSettle();
 
     await tester.enterText(

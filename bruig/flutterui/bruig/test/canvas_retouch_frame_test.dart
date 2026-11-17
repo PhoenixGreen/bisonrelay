@@ -2,9 +2,9 @@
 // clone from a picture layer over the base picture, painted out past the
 // base picture, copies what is seen and lands on top of it.
 
+import 'support/canvas_app.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -15,11 +15,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 Future<ui.Image> _pic(int w, int h, List<int> Function(int, int) f) {
   var px = Uint8List(w * h * 4);
@@ -52,21 +50,9 @@ void main() {
             size: CanvasSize(width: 400, ratio: CanvasRatio.square))
         .addElement(e));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(800, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 800,
-                    height: 800,
-                    child: CanvasStage(key: key, controller: c))))));
+    setTestScreen(tester, const Size(800, 800));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 800, height: 800, child: CanvasStage(key: key, controller: c))));
     await tester.runAsync(() async {
       c.images.putForTest("red", await _pic(8, 8, (x, y) => [255, 0, 0, 255]));
       c.images.putForTest("blue", await _pic(8, 8, (x, y) => [0, 0, 255, 255]));

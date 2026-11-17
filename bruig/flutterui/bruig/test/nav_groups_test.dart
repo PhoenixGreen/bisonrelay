@@ -1,10 +1,9 @@
 import 'package:bruig/components/feed/markdown_nav.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -17,19 +16,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 // standing in for its words, and the second group folding into a menu when
 // there is no room for it -- are each a thing a bar could not say before.
 
-Widget wrap(Widget child, {Size size = const Size(1200, 800)}) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (_) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (_) => PaymentsModel()),
-        ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
-        ChangeNotifierProvider<ResourcesModel>(
-            create: (_) => ResourcesModel(runStream: false)),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (_) => MarkdownAreaModel("")),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget wrap(Widget child, {Size size = const Size(1200, 800)}) =>
+    canvasApp(child, extra: [
+      ChangeNotifierProvider<PaymentsModel>(create: (_) => PaymentsModel()),
+      ChangeNotifierProvider<ResourcesModel>(
+          create: (_) => ResourcesModel(runStream: false)),
+      ChangeNotifierProvider<MarkdownAreaModel>(
+          create: (_) => MarkdownAreaModel(""))
+    ]);
 
 const bar = "--nav[pills]--\n"
     "[Home](index.md)\n"
@@ -73,9 +67,7 @@ void main() {
 
   group('drawn', () {
     testWidgets('the second group sits at the other end', (tester) async {
-      tester.view.physicalSize = const Size(1200, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 800));
 
       await tester.pumpWidget(wrap(MarkdownArea(bar, false)));
       await tester.pump();
@@ -95,9 +87,7 @@ void main() {
       // the links are laid out, and a bar that returned early skipped every
       // one of them. On screen the strip ended where the first group did,
       // which reads as the links having lost their background.
-      tester.view.physicalSize = const Size(1200, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 800));
 
       await tester.pumpWidget(wrap(MarkdownArea(
           bar.replaceFirst("--nav[pills]--",
@@ -119,9 +109,7 @@ void main() {
     });
 
     testWidgets('what is in the cart is drawn over it', (tester) async {
-      tester.view.physicalSize = const Size(1200, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 800));
 
       await tester.pumpWidget(wrap(MarkdownArea(bar, false)));
       await tester.pump();
@@ -151,9 +139,7 @@ void main() {
       // the first whatever was left, so on a middling window the site's own
       // links were squeezed to empty boxes while the shop's icons sat there
       // at full size. The group added to a bar is the group that folds.
-      tester.view.physicalSize = const Size(900, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 800));
 
       // Wide enough for the site's links and nothing like enough for both.
       await tester.pumpWidget(wrap(SizedBox(
@@ -186,9 +172,7 @@ void main() {
       // one, the second line is cut off, which is a bar showing whichever
       // links happened to land on the first line and no way to reach the
       // rest. A menu holds all of them at any width.
-      tester.view.physicalSize = const Size(900, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 800));
 
       await tester.pumpWidget(wrap(SizedBox(
           width: 300,
@@ -220,9 +204,7 @@ void main() {
     testWidgets('a folded group is drawn in the bar\'s own ink',
         (tester) async {
       // The same links, the same bar: folding must not change their colour.
-      tester.view.physicalSize = const Size(400, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 800));
 
       await tester.pumpWidget(wrap(SizedBox(
           width: 360,
@@ -240,9 +222,7 @@ void main() {
 
     testWidgets('the second group can be sized and moved in from the edge',
         (tester) async {
-      tester.view.physicalSize = const Size(1200, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 800));
 
       await tester.pumpWidget(wrap(MarkdownArea(
           "--nav[pills]--\n[Home](index.md)\n--right[size=28, inset=24]--\n"
@@ -279,9 +259,7 @@ void main() {
       // Three dots say only that there is a menu. The shop's own storefront
       // says which menu it is -- and the count has to be inside the bar
       // rather than hung off the end of it, where it was cut in half.
-      tester.view.physicalSize = const Size(400, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 800));
 
       await tester.pumpWidget(wrap(SizedBox(
           width: 360,
@@ -322,9 +300,7 @@ void main() {
     });
 
     testWidgets('the second group can sit closer together', (tester) async {
-      tester.view.physicalSize = const Size(1200, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 800));
 
       Future<double> spacingWith(String marker) async {
         await tester.pumpWidget(wrap(MarkdownArea(
@@ -348,9 +324,7 @@ void main() {
       // The fold lived on the divided path, so it happened on a shop's pages
       // and nowhere else: the same bar, on the site's own pages, still
       // wrapped and was still cut off by the row it sits in.
-      tester.view.physicalSize = const Size(900, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 800));
 
       const plain = "--nav[pills]--\n"
           "[Documentation](docs.md)\n"
@@ -375,9 +349,7 @@ void main() {
         (tester) async {
       // The banner it sits in has a height, and a bar that grew a second row
       // -- or shrank to a bare icon -- changed it with the window.
-      tester.view.physicalSize = const Size(900, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 800));
 
       const plain = "--nav[pills]--\n"
           "[Documentation](docs.md)\n"
@@ -404,9 +376,7 @@ void main() {
       // folded icon needed room, and room at the end of a row is what there
       // is least of. Given it above, the bar grew when it folded; given it at
       // the side, the icon sat further in than the links it replaced.
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 900));
 
       const withCart = "--nav[pills]--\n"
           "[Home](index.md)\n[About](about.md)\n"
@@ -450,9 +420,7 @@ void main() {
       // half its height: what is left is a strip through the middle of some
       // words. Neither side is wrong on its own, and neither can see the
       // other, so the banner tells the cell how much room it has.
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 900));
 
       const banner = "--header--\n"
           "\n"
@@ -496,9 +464,7 @@ void main() {
       // fallback, so a fully folded bar sat four pixels further in on one
       // side than the other -- which on a bar that is two icons and a gap is
       // most of what there is to look at.
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 900));
 
       await tester.pumpWidget(wrap(SizedBox(
           width: 300,
@@ -523,9 +489,7 @@ void main() {
         (tester) async {
       // A row of six links on a phone is not a bar, it is three rows of two
       // -- and the group that can be given up is the shop's, not the site's.
-      tester.view.physicalSize = const Size(400, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 800));
 
       await tester.pumpWidget(
           wrap(SizedBox(width: 380, child: MarkdownArea(bar, false))));

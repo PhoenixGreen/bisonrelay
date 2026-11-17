@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/cast.dart';
@@ -11,10 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/cast_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_cast_test.dart is the Cast (Ken, 2026-11-10): a game's hero kept
 // once, with linked copies in its scenes. Each copy's own: its place and
@@ -183,12 +182,8 @@ void main() {
   testWidgets("the Cast panel adds, places and unlinks", (tester) async {
     var c = CanvasController(game());
     addTearDown(c.dispose);
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-      create: (_) => ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(width: 320, child: CastPanel(controller: c)))),
-    ));
+    await tester.pumpWidget(
+        canvasApp(SizedBox(width: 320, child: CastPanel(controller: c))));
     expect(find.byKey(const ValueKey("castEmpty")), findsOneWidget);
     c.selectOnly("vivi");
     await tester.pump();

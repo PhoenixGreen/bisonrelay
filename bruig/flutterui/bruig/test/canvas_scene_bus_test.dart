@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -317,9 +318,7 @@ void main() {
       var c = CanvasController(doc(), audioEngine: FakeEngine({"t": 2}));
       addTearDown(c.dispose);
       if (effects) c.openEffects(sceneBusKey);
-      tester.view.physicalSize = const Size(1800, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1800, 900));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
@@ -384,24 +383,13 @@ void main() {
       var c = CanvasController(doc(), audioEngine: FakeEngine({"t": 2}));
       addTearDown(c.dispose);
       c.openEffects(c.timelineChannels.first.key);
-      tester.view.physicalSize = const Size(1800, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) => ChainPanel(
-                            controller: c, height: 360, onResize: (_) {}))))),
-      ));
+      setTestScreen(tester, const Size(1800, 900));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: ListenableBuilder(
+              listenable: c,
+              builder: (context, _) =>
+                  ChainPanel(controller: c, height: 360, onResize: (_) {})))));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(find.byKey(const ValueKey("chainWho")));
       await tester.pump(const Duration(milliseconds: 300));
@@ -552,25 +540,11 @@ void main() {
           ]),
           audioEngine: FakeEngine({"t": 2}));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: CanvasMixer(
-                        controller: c,
-                        height: 560,
-                        onResize: (_) {},
-                        onClose: () {})))),
-      ));
+      setTestScreen(tester, const Size(1400, 900));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: CanvasMixer(
+              controller: c, height: 560, onResize: (_) {}, onClose: () {}))));
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.byKey(const ValueKey("strip-scene")), findsNothing);
       await tester.pumpWidget(const SizedBox());

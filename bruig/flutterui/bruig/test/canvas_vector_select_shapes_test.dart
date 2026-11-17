@@ -1,7 +1,7 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:ui';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -12,11 +12,9 @@ import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Color, Offset, Rect;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_vector_select_shapes_test.dart is the select shapes tool: whole
 // shapes, and pieces of cut ones, picked and moved, sized and turned by a
@@ -65,22 +63,11 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 1200,
-                  height: 900,
-                  child: CanvasStage(key: key, controller: c)))),
-    ));
+    setTestScreen(tester, const Size(1200, 900));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 1200,
+        height: 900,
+        child: CanvasStage(key: key, controller: c))));
     await tester.pumpAndSettle();
     var page = key.currentState!.pageRect;
     var scale = page.width / c.document.size.size.width;
@@ -166,22 +153,11 @@ void main() {
         const CanvasDocument().addElement(drawing(shapes: [cut])));
     addTearDown(c.dispose);
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 1200,
-                  height: 900,
-                  child: CanvasStage(key: key, controller: c)))),
-    ));
+    setTestScreen(tester, const Size(1200, 900));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 1200,
+        height: 900,
+        child: CanvasStage(key: key, controller: c))));
     await tester.pumpAndSettle();
     var page = key.currentState!.pageRect;
     var scale = page.width / c.document.size.size.width;
@@ -210,22 +186,11 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 1200,
-                  height: 900,
-                  child: CanvasStage(key: key, controller: c)))),
-    ));
+    setTestScreen(tester, const Size(1200, 900));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 1200,
+        height: 900,
+        child: CanvasStage(key: key, controller: c))));
     await tester.pumpAndSettle();
     var page = key.currentState!.pageRect;
     var scale = page.width / c.document.size.size.width;

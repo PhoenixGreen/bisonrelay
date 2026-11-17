@@ -1,13 +1,11 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // Ken, 2026-11-11: six elements picked in Layers, then dragged on the canvas
 // -- and the first drag picked the element lying over them instead. What is
@@ -26,22 +24,9 @@ Future<(CanvasController, CanvasStageState)> show(WidgetTester tester) async {
       .addElement(box("beside", 500))
       .addElement(box("over", 100)));
   addTearDown(c.dispose);
-  tester.view.physicalSize = const Size(1000, 800);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: Scaffold(
-            body: SizedBox(
-                width: 1000,
-                height: 800,
-                child: CanvasStage(key: key, controller: c)))),
-  ));
+  setTestScreen(tester, const Size(1000, 800));
+  await tester.pumpWidget(canvasApp(SizedBox(
+      width: 1000, height: 800, child: CanvasStage(key: key, controller: c))));
   await tester.pumpAndSettle();
   return (c, key.currentState!);
 }

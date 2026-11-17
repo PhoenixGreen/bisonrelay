@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
@@ -7,15 +8,11 @@ import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -36,16 +33,7 @@ TableElement table(String id, {List<List<String>> rows = league}) =>
     TableElement(ElementBase(id: id, name: "League", width: 400, height: 200),
         rows: rows);
 
-Widget _app(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget _app(Widget child) => canvasApp(child);
 
 void main() {
   // Ken, 2026-11-17: a league's position stays 1, 2, 3 while the clubs are
@@ -288,11 +276,8 @@ void main() {
   group("in its settings", () {
     Future<CanvasController> panel(WidgetTester tester) async {
       // At Ken's larger text size: View and Sheet share a row.
-      tester.platformDispatcher.textScaleFactorTestValue = 1.25;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      tester.view.physicalSize = const Size(600, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestTextScale(tester, 1.25);
+      setTestScreen(tester, const Size(600, 2400));
       var c =
           CanvasController(const CanvasDocument(), audioEngine: FakeEngine({}));
       addTearDown(c.dispose);

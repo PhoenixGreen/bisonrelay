@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'support/canvas_app.dart';
 import 'dart:ui';
 
 import 'package:bruig/models/snackbar.dart';
@@ -306,9 +307,7 @@ void main() {
           audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       c.selectOnly("a");
-      tester.view.physicalSize = Size(2400, height);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, Size(2400, height));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
@@ -448,22 +447,11 @@ void main() {
           audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       c.selectOnly("a");
-      tester.view.physicalSize = const Size(2000, 300);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) =>
-                        AnimationPanel(controller: c, height: 300)))),
-      ));
+      setTestScreen(tester, const Size(2000, 300));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              AnimationPanel(controller: c, height: 300))));
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.byKey(const ValueKey("motionJoin-0")), findsOneWidget);
       expect(find.byKey(const ValueKey("motionJoin-1")), findsOneWidget);
@@ -485,22 +473,11 @@ void main() {
       var c = CanvasController(d, audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       c.selectOnly(pick);
-      tester.view.physicalSize = const Size(2400, 300);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) =>
-                        AnimationPanel(controller: c, height: 300)))),
-      ));
+      setTestScreen(tester, const Size(2400, 300));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              AnimationPanel(controller: c, height: 300))));
       await tester.pump(const Duration(milliseconds: 200));
       return c;
     }
@@ -647,22 +624,11 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("a");
       c.pickMotion("a", "go");
-      tester.view.physicalSize = const Size(2600, 420);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) =>
-                        AnimationPanel(controller: c, height: 420)))),
-      ));
+      setTestScreen(tester, const Size(2600, 420));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              AnimationPanel(controller: c, height: 420))));
       await tester.pump(const Duration(milliseconds: 200));
       MotionClip clip() => c.document.elementById("a")!.base.motion.clip("go")!;
       expect(find.byKey(const ValueKey("motionClipsCard")), findsOneWidget);

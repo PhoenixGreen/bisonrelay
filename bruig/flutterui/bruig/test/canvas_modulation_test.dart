@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
@@ -170,9 +171,7 @@ void main() {
           const MixDevice(DeviceKind.lfo),
         ]);
         c.openEffects("a");
-        tester.view.physicalSize = const Size(2000, 900);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, const Size(2000, 900));
         await tester.pumpWidget(MultiProvider(
           providers: [
             ChangeNotifierProvider<ThemeNotifier>(
@@ -386,29 +385,14 @@ void main() {
       const MixDevice(DeviceKind.lfo),
     ]);
     c.openEffects("a");
-    tester.view.physicalSize = const Size(2000, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) => Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            CanvasMixer.effects(
-                                controller: c,
-                                height: 420,
-                                onResize: (_) {},
-                                onClose: () {}),
-                          ])))),
-    ));
+    setTestScreen(tester, const Size(2000, 900));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) =>
+            Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+              CanvasMixer.effects(
+                  controller: c, height: 420, onResize: (_) {}, onClose: () {})
+            ]))));
     await tester.pump(const Duration(milliseconds: 300));
     var knob = find.byKey(const ValueKey("device-0-freq"));
     await tester.ensureVisible(knob);
@@ -546,33 +530,19 @@ void main() {
   // Ken's log, 2026-11-09: a macro's eight knobs ran 278 pixels past a card
   // 170 wide. Narrower than all of them, they go onto more rows.
   testWidgets("a macro's knobs fit a narrow card", (tester) async {
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: 170,
-              child: SingleChildScrollView(
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+            width: 170,
+            child: SingleChildScrollView(
                 child: MacroPanel(
-                  index: 0,
-                  device: const MixDevice(DeviceKind.macro),
-                  knobs: const [],
-                  accent: Colors.amber,
-                  ink: Colors.white,
-                  onChanged: (_, {transient = false}) {},
-                  onCommit: () {},
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+                    index: 0,
+                    device: const MixDevice(DeviceKind.macro),
+                    knobs: const [],
+                    accent: Colors.amber,
+                    ink: Colors.white,
+                    onChanged: (_, {transient = false}) {},
+                    onCommit: () {}))))));
     await tester.pump();
     expect(tester.takeException(), isNull);
   });

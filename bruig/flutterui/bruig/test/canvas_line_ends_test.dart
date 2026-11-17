@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -6,10 +6,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_line_ends_test.dart is a line handled by its two ends.
 //
@@ -83,25 +81,11 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly(line.id);
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: viewport.width,
-              height: viewport.height,
-              child: CanvasStage(key: key, controller: controller),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: viewport.width,
+          height: viewport.height,
+          child: CanvasStage(key: key, controller: controller))));
       await tester.pumpAndSettle();
       return (key.currentState!, controller);
     }

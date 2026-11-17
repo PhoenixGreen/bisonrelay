@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -20,12 +19,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'canvas_video_element_test.dart' show FakeFrames, solid;
@@ -270,31 +267,16 @@ void main() {
 
   group("the panel", () {
     Future<void> show(WidgetTester tester, CanvasController c) async {
-      tester.view.physicalSize = const Size(1200, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SingleChildScrollView(
+      setTestScreen(tester, const Size(1200, 2400));
+      await tester.pumpWidget(canvasApp(SingleChildScrollView(
           child: SizedBox(
-            width: 280,
-            child: CanvasControlScope(
-              maxWidth: 240,
-              child: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) => elementSettingsBody(context, c)),
-            ),
-          ),
-        ))),
-      ));
+              width: 280,
+              child: CanvasControlScope(
+                  maxWidth: 240,
+                  child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) =>
+                          elementSettingsBody(context, c)))))));
       await tester.pumpAndSettle();
     }
 

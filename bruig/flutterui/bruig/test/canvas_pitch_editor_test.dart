@@ -1,7 +1,7 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/media/pitch_retune.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -13,11 +13,9 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -375,30 +373,18 @@ void main() {
 
     testWidgets("its Pitch tab, the notes found, and one dragged up a tone",
         (tester) async {
-      tester.view.physicalSize = const Size(1800, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1800, 900));
       c.showPitch("v");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              CanvasMixer.effects(
-                                  controller: c,
-                                  height: 420,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                            ])))),
-      ));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CanvasMixer.effects(
+                    controller: c,
+                    height: 420,
+                    onResize: (_) {},
+                    onClose: () {})
+              ]))));
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
       await tester.tap(find.byKey(const ValueKey("pitchFind")));
@@ -522,30 +508,18 @@ void main() {
     // edge fade it.
     testWidgets("a note's edge dragged stretches it; its handle fades it",
         (tester) async {
-      tester.view.physicalSize = const Size(1800, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1800, 900));
       c.showPitch("v");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              CanvasMixer.effects(
-                                  controller: c,
-                                  height: 420,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                            ])))),
-      ));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CanvasMixer.effects(
+                    controller: c,
+                    height: 420,
+                    onResize: (_) {},
+                    onClose: () {})
+              ]))));
       await tester.pump(const Duration(milliseconds: 300));
       expect(c.findPitchNotes("v"), isTrue);
       await tester.pump();

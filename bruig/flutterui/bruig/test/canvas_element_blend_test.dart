@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -61,9 +62,7 @@ void main() {
 
   for (var scale in [1.0, 1.5]) {
     testWidgets("the Output card sets the blend, at $scale", (tester) async {
-      tester.view.physicalSize = const Size(3000, 420);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(3000, 420));
       var c = CanvasController(_page([_box("r", const Color(0xFFFF0000))]));
       addTearDown(c.dispose);
       var id = c.newClip("r", kind: MotionKind.arrive, slot: 0);

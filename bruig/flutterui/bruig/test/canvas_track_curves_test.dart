@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -6,11 +6,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/track_curves.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_track_curves_test.dart is the Curves of an element's own keyframes
 // (Ken, 2026-11-09: the approved keyframes prototype, v2): opened from the
@@ -42,24 +40,14 @@ List<int> framesOf(CanvasController c) =>
 
 Keyframe keyAt(CanvasController c, int f) => c.keyframeTarget!.track.keyAt(f)!;
 
-Widget host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(alignment: Alignment.topLeft, child: child))),
-    );
+Widget host(Widget child) =>
+    canvasApp(Align(alignment: Alignment.topLeft, child: child));
 
 void main() {
   Future<CanvasController> show(WidgetTester tester, {int? frame}) async {
     var c = make();
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1000, 300);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1000, 300));
     c.showTrackCurves(frame: frame);
     await tester.pumpWidget(host(ListenableBuilder(
         listenable: c,
@@ -202,9 +190,7 @@ void main() {
     addTearDown(c.dispose);
     c.keysShown = true;
     addTearDown(() => c.keysShown = false);
-    tester.view.physicalSize = const Size(1600, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 900));
     await tester.pumpWidget(host(AnimationPanel(controller: c, height: 360)));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("keysStrip")), findsOneWidget);

@@ -1,11 +1,10 @@
 import 'dart:async';
+import 'support/canvas_app.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/paint_spec.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -23,12 +22,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_panel_helpers.dart';
@@ -66,18 +63,6 @@ Future<ui.Image> _solid(List<int> c) {
 
 ImageLayer _picture(String asset) =>
     ImageLayer.picture(asset, const Rect.fromLTWH(0, 0, 1000, 1000));
-
-/// until turns the real event loop and the fake one alternately until
-/// [done] -- what real file I/O has finished doing -- or five seconds have
-/// gone: a loaded machine takes longer than any fixed wait allows.
-Future<void> until(WidgetTester tester, bool Function() done) async {
-  for (var i = 0; i < 250 && !done(); i++) {
-    await tester
-        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-    await tester.pump();
-  }
-  await tester.pump();
-}
 
 void main() {
   group("timing", () {
@@ -249,22 +234,9 @@ void main() {
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
       c.selectOnly(e.id);
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 420, child: CanvasDesignPanel(controller: c)))),
-      ));
+      setTestScreen(tester, const Size(900, 4000));
+      await tester.pumpWidget(canvasApp(
+          SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -305,7 +277,7 @@ void main() {
       // Kept in Colour, with the picture's other saved things.
       await openSection(tester, "image.picture.colour");
       await tapKey(tester, "imageLookSave");
-      await until(tester, () => SavedPresetStore.looks.presets.length == 1);
+      await pumpUntil(tester, () => SavedPresetStore.looks.presets.length == 1);
       await tester.pumpAndSettle();
       expect(SavedPresetStore.looks.presets, hasLength(1));
 

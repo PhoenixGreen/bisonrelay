@@ -1,4 +1,5 @@
 import 'package:bruig/components/paint_spec.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -31,9 +32,7 @@ void main() {
       ChartStyleDefaults style = const ChartStyleDefaults(),
       bool animated = false,
       double width = 240}) async {
-    tester.view.physicalSize = Size(width * 3, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, Size(width * 3, 1400));
     await tester.pumpWidget(MaterialApp(
       home: ChangeNotifierProvider(
         create: (_) => ThemeNotifier(doLoad: false),

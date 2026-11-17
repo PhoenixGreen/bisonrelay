@@ -1,10 +1,9 @@
 import 'package:bruig/components/feed/feed_render_scope.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/link_previews/link_card.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // feed_render_scope_test.dart covers the Feed area's settings reaching the
@@ -36,10 +35,7 @@ const _imageEmbed = "--embed[type=image/png,data=aGk=]--";
 
 /// _pump builds one widget with the theme a link card needs to set itself.
 Future<void> _pump(WidgetTester tester, Widget child) async {
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-    create: (c) => ThemeNotifier(doLoad: false),
-    child: MaterialApp(home: Scaffold(body: child)),
-  ));
+  await tester.pumpWidget(canvasApp(child));
   await tester.pump();
 }
 

@@ -1,11 +1,11 @@
 import 'package:bruig/components/containers.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:provider/provider.dart';
 
 // byTooltip finds the Tooltip an IconButton builds, not the button itself,
 // so the button is reached through it.
@@ -24,26 +24,22 @@ void main() {
     void Function(int)? onSection,
   }) async {
     var session = withPage ? PagesSession(1) : null;
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
-      value: ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-          home: Scaffold(
-              body: PageBrowserBar(
-        session: session,
-        sectionLabel: "Site Settings",
-        section: section,
-        onSection: onSection,
-        nick: "alice",
-        path: "index.md",
-        loading: false,
-        sidebarOpen: sidebarOpen,
-        onToggleSidebar: toggleable ? (onToggle ?? () {}) : null,
-        onBack: () {},
-        onForward: () {},
-        onReload: () {},
-        onHome: () {},
-      ))),
-    ));
+    await tester.pumpWidget(canvasApp(
+        PageBrowserBar(
+            session: session,
+            sectionLabel: "Site Settings",
+            section: section,
+            onSection: onSection,
+            nick: "alice",
+            path: "index.md",
+            loading: false,
+            sidebarOpen: sidebarOpen,
+            onToggleSidebar: toggleable ? (onToggle ?? () {}) : null,
+            onBack: () {},
+            onForward: () {},
+            onReload: () {},
+            onHome: () {}),
+        theme: ThemeNotifier(doLoad: false)));
     await tester.pumpAndSettle();
   }
 
@@ -128,14 +124,11 @@ void main() {
   testWidgets('sidebarIsInDrawer agrees with the width the layout uses',
       (tester) async {
     late bool narrow, wide;
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
-      value: ThemeNotifier(doLoad: false),
-      child: MaterialApp(home: Builder(builder: (context) {
-        narrow = sidebarIsInDrawer(context, kSidebarCollapseWidth - 1);
-        wide = sidebarIsInDrawer(context, kSidebarCollapseWidth);
-        return const SizedBox();
-      })),
-    ));
+    await tester.pumpWidget(canvasApp(Builder(builder: (context) {
+      narrow = sidebarIsInDrawer(context, kSidebarCollapseWidth - 1);
+      wide = sidebarIsInDrawer(context, kSidebarCollapseWidth);
+      return const SizedBox();
+    }), theme: ThemeNotifier(doLoad: false), scaffold: false));
 
     // The layout branches on "< kSidebarCollapseWidth", so the boundary
     // itself is still wide enough for a column. Getting this off by one

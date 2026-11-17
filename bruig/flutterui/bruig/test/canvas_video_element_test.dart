@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/media/video_runtime.dart';
@@ -23,13 +22,11 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -570,17 +567,7 @@ void main() {
       }
     }
 
-    Widget wrap(Widget child) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(home: Scaffold(body: child)),
-        );
+    Widget wrap(Widget child) => canvasApp(child);
 
     Widget settingsOf(CanvasController c) => ListenableBuilder(
           listenable: c,
@@ -599,9 +586,7 @@ void main() {
         );
 
     Future<void> show(WidgetTester tester, Widget child) async {
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 1600));
       await tester.pumpWidget(wrap(child));
       await tester.pumpAndSettle();
     }
@@ -618,9 +603,7 @@ void main() {
           frameSource: frames);
       c.selectOnly("v");
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, viewport);
       String? opened;
       await tester.pumpWidget(wrap(SizedBox(
           width: viewport.width,
@@ -662,9 +645,7 @@ void main() {
           frameSource: frames);
       addTearDown(c.dispose);
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, viewport);
       await tester.pumpWidget(wrap(SizedBox(
           width: viewport.width,
           height: viewport.height,

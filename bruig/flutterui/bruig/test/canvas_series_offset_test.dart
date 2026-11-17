@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -129,9 +130,7 @@ void main() {
   group("the control", () {
     Future<void> show(WidgetTester tester,
         {required bool animated, double width = 300}) async {
-      tester.view.physicalSize = const Size(800, 1400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(800, 1400));
       var data = ChartData.parse("Cat\tOne\tTwo\nx\t10\t4");
       await tester.pumpWidget(MaterialApp(
         home: ChangeNotifierProvider(

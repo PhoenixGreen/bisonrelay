@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -12,10 +12,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_look_keys_test.dart is a look's settings animated by keys (Ken,
 // 2026-11-11: the settings panel sets how a look rests, and the Chain
@@ -125,29 +123,14 @@ void main() {
     var c = controllerWith(rising());
     addTearDown(c.dispose);
     c.frame = 36;
-    tester.view.physicalSize = const Size(800, 1200);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 360,
-            child: SingleChildScrollView(
-              child: LooksGroup(
-                  controller: c,
-                  element: c.document.elementById("s")!,
-                  title: "Looks"),
-            ),
-          ),
-        ),
-      ),
-    ));
+    setTestScreen(tester, const Size(800, 1200));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+            child: LooksGroup(
+                controller: c,
+                element: c.document.elementById("s")!,
+                title: "Looks")))));
     await tester.pumpAndSettle();
     var main =
         tester.widget<CanvasStepper>(find.byKey(const ValueKey("lookMain-m0")));
@@ -161,19 +144,9 @@ void main() {
   testWidgets("its Motion says so, and opens the Chain at it", (tester) async {
     var c = controllerWith(rising());
     addTearDown(c.dispose);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-              child: MotionSummary(
-                  controller: c, element: c.document.elementById("s")!)),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
+        child: MotionSummary(
+            controller: c, element: c.document.elementById("s")!))));
     await tester.pumpAndSettle();
     var line = find.byKey(const ValueKey("motionLine-keys-m0-strength"));
     expect(line, findsOneWidget);
@@ -188,21 +161,10 @@ void main() {
     var c = controllerWith(glow);
     addTearDown(c.dispose);
     c.frame = 24;
-    tester.view.physicalSize = const Size(2400, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: AnimationPanel(controller: c, height: 360)))),
-    ));
+    setTestScreen(tester, const Size(2400, 900));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: AnimationPanel(controller: c, height: 360))));
     await tester.pumpAndSettle();
     var diamond = find.byKey(const ValueKey("mdevKey-m0-strength"));
     expect(diamond, findsOneWidget);
@@ -215,26 +177,13 @@ void main() {
       (tester) async {
     var c = controllerWith(rising());
     addTearDown(c.dispose);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          // Narrow: its setting goes under its name rather than squeezing it.
-          body: SizedBox(
-            width: 220,
-            child: SingleChildScrollView(
-              child: LooksGroup(
-                  controller: c,
-                  element: c.document.elementById("s")!,
-                  title: "Looks"),
-            ),
-          ),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 220,
+        child: SingleChildScrollView(
+            child: LooksGroup(
+                controller: c,
+                element: c.document.elementById("s")!,
+                title: "Looks")))));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: "nothing overflows");
     expect(find.byKey(const ValueKey("lookAnimated-m0")), findsOneWidget);

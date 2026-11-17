@@ -1,4 +1,5 @@
 import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -90,9 +91,7 @@ void main() {
   for (var scale in [1.0, 1.5]) {
     testWidgets("the Place card sets From, Of and Offset, at $scale",
         (tester) async {
-      tester.view.physicalSize = const Size(3000, 420);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(3000, 420));
       var c =
           CanvasController(CanvasDocument(frames: 96, frameRate: 24, elements: [
         ShapeElement(

@@ -1,11 +1,11 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 
 import 'package:bruig/components/feed/markdown_flow.dart';
 import 'package:bruig/components/feed/markdown_blocks.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,23 +38,15 @@ Right text.
 --/columns--
 """;
 
-Widget _host(Widget child, {double width = 800}) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (c) => MarkdownAreaModel("/tmp")),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Align(
+Widget _host(Widget child, {double width = 800}) => canvasApp(
+        Align(
             alignment: Alignment.topLeft,
-            child: SizedBox(width: width, child: child),
-          ),
-        ),
-      ),
-    );
+            child: SizedBox(width: width, child: child)),
+        extra: [
+          ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+          ChangeNotifierProvider<MarkdownAreaModel>(
+              create: (c) => MarkdownAreaModel("/tmp"))
+        ]);
 
 Future<void> _pump(WidgetTester tester, String markdown,
     {double width = 800}) async {
@@ -730,9 +722,7 @@ void main() {
       // Room for what it draws: the test surface is 600 tall by default and
       // a picture with ten paragraphs beside it is more than that, which is
       // a complaint about the surface rather than about the balance.
-      tester.view.physicalSize = const Size(800, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(800, 2400));
 
       var picture =
           "--embed[type=image/png,data=${base64Encode(pngOf(400, 300))}]--";
@@ -769,9 +759,7 @@ void main() {
     testWidgets("a deeply nested run does not recurse forever", (tester) async {
       // Room for whatever it draws, so a layout complaint about the test's
       // own 800x600 surface cannot be mistaken for the thing being measured.
-      tester.view.physicalSize = const Size(2400, 24000);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(2400, 24000));
 
       var markdown = "innermost";
       for (var i = 0; i < 40; i++) {

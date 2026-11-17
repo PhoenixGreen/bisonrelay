@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -18,14 +18,12 @@ import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -106,25 +104,10 @@ void main() {
               CanvasDocument(frames: 100, frameRate: 10, elements: elements),
           audioEngine: FakeEngine(const {song: 10}));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1200, 700);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomCenter,
-              child:
-                  CanvasTimeline(controller: c, height: timelineHeight + 120),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, const Size(1200, 700));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: CanvasTimeline(controller: c, height: timelineHeight + 120))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -894,28 +877,13 @@ void main() {
     Future<CanvasController> show(
         WidgetTester tester, List<CanvasElement> elements) async {
       var c = made(elements);
-      tester.view.physicalSize = const Size(1200, 700);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: CanvasSpaceBar(
-              controller: c,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child:
-                    CanvasTimeline(controller: c, height: timelineHeight + 160),
-              ),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, const Size(1200, 700));
+      await tester.pumpWidget(canvasApp(CanvasSpaceBar(
+          controller: c,
+          child: Align(
+              alignment: Alignment.bottomCenter,
+              child: CanvasTimeline(
+                  controller: c, height: timelineHeight + 160)))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -993,19 +961,8 @@ void main() {
         (tester) async {
       var c = made([onChannel("a", "1")]);
       c.selectOnly("a");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 800,
-                    height: 600,
-                    child: CanvasStage(controller: c)))),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 800, height: 600, child: CanvasStage(controller: c))));
       await tester.pump();
       var painter = tester
           .widgetList<CustomPaint>(find.byType(CustomPaint))
@@ -1025,19 +982,8 @@ void main() {
             clip: const MediaClip(
                 playlist: [MediaSource(assetId: song, length: 4)])),
       ]);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 300,
-                    height: 500,
-                    child: CanvasLayersPanel(controller: c)))),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 300, height: 500, child: CanvasLayersPanel(controller: c))));
       await tester.pump();
       expect(find.byKey(const ValueKey("speaker")), findsOneWidget);
       expect(find.byKey(const ValueKey("a")), findsNothing);
@@ -1047,24 +993,11 @@ void main() {
         (tester) async {
       var c = made([onChannel("a", "1")]);
       c.selectOnly("a");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => SingleChildScrollView(
-                child: Column(
-                    children: elementSettings(
-                        context, c, c.document.elementById("a")!)),
-              ),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(Builder(
+          builder: (context) => SingleChildScrollView(
+              child: Column(
+                  children: elementSettings(
+                      context, c, c.document.elementById("a")!))))));
       await tester.pump();
       expect(find.text("Reader's controls"), findsNothing);
       expect(find.text("Icon"), findsNothing);
@@ -1269,28 +1202,13 @@ void main() {
           CanvasDocument(frames: 200, frameRate: 10, elements: elements),
           audioEngine: FakeEngine(const {song: 10}));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1200, 700);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: CanvasSpaceBar(
-              controller: c,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child:
-                    CanvasTimeline(controller: c, height: timelineHeight + 160),
-              ),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, const Size(1200, 700));
+      await tester.pumpWidget(canvasApp(CanvasSpaceBar(
+          controller: c,
+          child: Align(
+              alignment: Alignment.bottomCenter,
+              child: CanvasTimeline(
+                  controller: c, height: timelineHeight + 160)))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -1422,22 +1340,10 @@ void main() {
       var c = CanvasController(const CanvasDocument(frames: 100),
           audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomCenter,
-              child: CanvasTimeline(
-                  controller: c, height: timelineCollapsedHeight),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child:
+              CanvasTimeline(controller: c, height: timelineCollapsedHeight))));
       await tester.pumpAndSettle();
       expect(tester.getSize(find.byType(CanvasTimeline)).height,
           closeTo(timelineCollapsedHeight, 0.5));

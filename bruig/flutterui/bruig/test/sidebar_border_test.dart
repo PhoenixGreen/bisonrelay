@@ -1,9 +1,9 @@
 import 'package:bruig/components/containers.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // sidebar_border_test.dart covers how the Sidebar area's Border setting is
@@ -30,14 +30,9 @@ Future<ThemeNotifier> _pump(WidgetTester tester, AreaStyle sidebar) async {
   var theme = ThemeNotifier(doLoad: false);
   theme.previewPreset(ThemePreset.seedFromDark()
       .copyWith(areas: {ThemeArea.subMenuTabBar: sidebar}));
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
-    value: theme,
-    child: const MaterialApp(
-      home: Scaffold(
-        body: SecondarySideMenu(width: 200, child: SizedBox(key: _marker)),
-      ),
-    ),
-  ));
+  await tester.pumpWidget(canvasApp(
+      SecondarySideMenu(width: 200, child: SizedBox(key: _marker)),
+      theme: theme));
   return theme;
 }
 

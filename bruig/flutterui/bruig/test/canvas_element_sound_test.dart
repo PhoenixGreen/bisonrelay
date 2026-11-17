@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -14,12 +14,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -44,26 +42,15 @@ CanvasController make() {
 }
 
 Future<CanvasController> pumpBoth(WidgetTester tester) async {
-  tester.view.physicalSize = const Size(1400, 900);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(1400, 900));
   var c = make();
   addTearDown(c.dispose);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: Scaffold(
-            body: Column(children: [
-      Expanded(
-          child: CanvasMixer(
-              controller: c, height: 420, onResize: (_) {}, onClose: () {})),
-      CanvasTimeline(controller: c, height: 360),
-    ]))),
-  ));
+  await tester.pumpWidget(canvasApp(Column(children: [
+    Expanded(
+        child: CanvasMixer(
+            controller: c, height: 420, onResize: (_) {}, onClose: () {})),
+    CanvasTimeline(controller: c, height: 360)
+  ])));
   await tester.pump();
   return c;
 }

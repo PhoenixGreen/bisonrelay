@@ -1,4 +1,5 @@
 import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -34,9 +35,7 @@ import 'package:provider/provider.dart';
 
 Future<CanvasController> pump(WidgetTester tester, CanvasElement e,
     {MotionKind kind = MotionKind.arrive, double scale = 1}) async {
-  tester.view.physicalSize = const Size(3000, 420);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(3000, 420));
   var c = CanvasController(
       CanvasDocument(frames: 96, frameRate: 24, elements: [e]));
   addTearDown(c.dispose);

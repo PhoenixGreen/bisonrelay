@@ -1,4 +1,5 @@
 import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -97,9 +98,7 @@ void main() {
     var c = CanvasController(const CanvasDocument().addElement(text));
     addTearDown(c.dispose);
     c.selectOnly(text.id);
-    tester.view.physicalSize = const Size(400, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 2400));
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: MultiProvider(

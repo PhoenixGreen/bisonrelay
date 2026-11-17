@@ -1,4 +1,5 @@
 import 'package:bruig/components/chat/input.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,9 +32,7 @@ void main() {
     // the cap, on a row. Without the cap this lays out taller than the
     // window it is in, which is the overflow.
     const window = Size(600, 800);
-    tester.view.physicalSize = window;
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, window);
 
     var controller = TextEditingController(
         text: List.generate(80, (i) => "Line $i of a pasted essay").join("\n"));

@@ -1,9 +1,8 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
@@ -15,11 +14,9 @@ import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'support/canvas_panel_helpers.dart';
@@ -208,29 +205,15 @@ void main() {
     TableElement table() => c.document.elementById("t1") as TableElement;
 
     Future<void> studio(WidgetTester tester, {double scale = 1.25}) async {
-      tester.platformDispatcher.textScaleFactorTestValue = scale;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestTextScale(tester, scale);
+      setTestScreen(tester, const Size(1600, 1000));
       c = CanvasController(opened(), audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
       c.openDataStudio(c.document.sheets.single.id, view: "t1");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (_) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (_) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: DataStudio(
-                    controller: c,
-                    sheetId: c.dataStudio.value!,
-                    onDone: c.closeDataStudio))),
-      ));
+      await tester.pumpWidget(canvasApp(DataStudio(
+          controller: c,
+          sheetId: c.dataStudio.value!,
+          onDone: c.closeDataStudio)));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("dataStudioTab-table")));
       await tester.pumpAndSettle();

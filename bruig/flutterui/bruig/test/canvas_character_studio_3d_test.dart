@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
@@ -18,10 +19,8 @@ import 'package:bruig/plugin_system/canvas/ui/character_studio_3d.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // The new Character Studio: its steps, parts and settings, which are there
 // before a character can be drawn, and the page before it can draw one -- no
@@ -47,22 +46,18 @@ Future<void> _show(WidgetTester tester,
     CharacterPerformance? performance,
     CharacterDesign? design,
     double scale = 1}) async {
-  tester.view.physicalSize = const Size(1280, 800);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-    create: (_) => ThemeNotifier(doLoad: false),
-    child: MaterialApp(
-        home: MediaQuery(
-      data: MediaQueryData(
-          size: const Size(1280, 800), textScaler: TextScaler.linear(scale)),
-      child: CharacterStudio3D(
-          onDone: onDone ?? (_, __) {},
-          design: design,
-          performance: performance,
-          gpuReady: Future.value(gpu)),
-    )),
-  ));
+  setTestScreen(tester, const Size(1280, 800));
+  await tester.pumpWidget(canvasApp(
+      MediaQuery(
+          data: MediaQueryData(
+              size: const Size(1280, 800),
+              textScaler: TextScaler.linear(scale)),
+          child: CharacterStudio3D(
+              onDone: onDone ?? (_, __) {},
+              design: design,
+              performance: performance,
+              gpuReady: Future.value(gpu))),
+      scaffold: false));
   await _settle(tester);
 }
 

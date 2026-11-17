@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -22,10 +21,8 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_sprite_test.dart is the Sprite element: a sheet sliced into frames
@@ -258,18 +255,8 @@ void main() {
       var c = CanvasController(CanvasDocument(frames: 48).addElement(start));
       addTearDown(c.dispose);
       c.selectOnly("s");
-      tester.view.physicalSize = const ui.Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
-      ));
+      setTestScreen(tester, const ui.Size(900, 4000));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await tester.pumpAndSettle();
       SpriteElement get() => c.document.elementById("s") as SpriteElement;
       expect(find.byKey(const ValueKey("spriteSheetView")), findsOneWidget);

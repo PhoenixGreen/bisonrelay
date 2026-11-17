@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
@@ -82,9 +83,7 @@ void main() {
     }) async {
       wroteData = null;
       wroteStyle = null;
-      tester.view.physicalSize = const Size(1200, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 1800));
       await tester.pumpWidget(MaterialApp(
         home: ChangeNotifierProvider(
           create: (_) => ThemeNotifier(doLoad: false),

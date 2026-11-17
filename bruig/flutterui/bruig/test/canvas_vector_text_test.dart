@@ -1,10 +1,9 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -14,12 +13,10 @@ import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Color, Offset, Rect;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_panel_helpers.dart';
 
@@ -83,22 +80,11 @@ void main() {
         shapes: const [])));
     addTearDown(c.dispose);
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 1200,
-                  height: 900,
-                  child: CanvasStage(key: key, controller: c)))),
-    ));
+    setTestScreen(tester, const Size(1200, 900));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 1200,
+        height: 900,
+        child: CanvasStage(key: key, controller: c))));
     await tester.pumpAndSettle();
     c.selectOnly("v");
     c.editVector("v");
@@ -142,24 +128,11 @@ void main() {
         shapes: const [])));
     addTearDown(c.dispose);
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1600, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Row(children: [
-        SizedBox(width: 420, child: CanvasDesignPanel(controller: c)),
-        Expanded(child: CanvasStage(key: key, controller: c)),
-      ]))),
-    ));
+    setTestScreen(tester, const Size(1600, 1400));
+    await tester.pumpWidget(canvasApp(Row(children: [
+      SizedBox(width: 420, child: CanvasDesignPanel(controller: c)),
+      Expanded(child: CanvasStage(key: key, controller: c))
+    ])));
     await tester.pumpAndSettle();
     c.selectOnly("v");
     c.editVector("v");

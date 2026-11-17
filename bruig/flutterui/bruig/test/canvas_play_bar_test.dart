@@ -1,15 +1,12 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dock.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -29,23 +26,10 @@ CanvasController make() => CanvasController(
 
 Future<void> pumpBar(WidgetTester tester, CanvasController c,
     {double width = 2400}) async {
-  tester.view.physicalSize = Size(width, 1000);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ChangeNotifierProvider<CanvasPreferences>(
-          create: (c) => CanvasPreferences()),
-    ],
-    child: MaterialApp(
-        home: Scaffold(
-            body: Align(
-                alignment: Alignment.bottomCenter,
-                child: CanvasDock(controller: c, room: 700)))),
-  ));
+  setTestScreen(tester, Size(width, 1000));
+  await tester.pumpWidget(canvasApp(Align(
+      alignment: Alignment.bottomCenter,
+      child: CanvasDock(controller: c, room: 700))));
   await tester.pump();
   await tester.pump();
 }

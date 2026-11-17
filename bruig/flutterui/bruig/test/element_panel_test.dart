@@ -1,9 +1,8 @@
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_panel.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_specs.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // element_panel_test.dart covers the two steps down: a block, then what it
 // can be told, then what that will take.
@@ -15,13 +14,8 @@ void main() {
   tearDown(() => editor.dispose());
 
   Future<void> pump(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(500, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-    ], child: MaterialApp(home: Scaffold(body: ElementPanel(editor: editor)))));
+    setTestScreen(tester, const Size(500, 2400));
+    await tester.pumpWidget(canvasApp(ElementPanel(editor: editor)));
     await tester.pumpAndSettle();
   }
 
@@ -271,9 +265,7 @@ void main() {
       // Through the app's own picker now, rather than two swatches and a
       // hand-drawn band built here: a gradient is the colours against each
       // other, and the picker draws the real thing full size.
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 1600));
 
       String? got;
       await tester.pumpWidget(MaterialApp(
@@ -300,9 +292,7 @@ void main() {
         (tester) async {
       // HeaderTextStyle has always held a list. Two swatches side by side
       // could only ever fill two of it.
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 1600));
 
       String? got;
       await tester.pumpWidget(MaterialApp(
@@ -329,9 +319,7 @@ void main() {
         (tester) async {
       // A LinearGradient of one colour is one Flutter refuses to build, and
       // the banner builds one out of whatever it is given.
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 1600));
 
       String? got;
       await tester.pumpWidget(MaterialApp(
@@ -360,9 +348,7 @@ void main() {
     });
 
     testWidgets('cancelling changes nothing', (tester) async {
-      tester.view.physicalSize = const Size(900, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 1600));
 
       String? got = "untouched";
       await tester.pumpWidget(MaterialApp(

@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -8,10 +8,8 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // The layer cross-fader of the approved design (Ken, 2026-11-08), in the
 // model: one fader blending an element's free layers, pinned layers played
@@ -147,24 +145,10 @@ void main() {
               ElementMotion(clips: [across("go", 100)], slots: const ["go"]))),
     ]));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1400, 600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            child: CanvasTimeline(controller: c, height: 400),
-          ),
-        ),
-      ),
-    ));
+    setTestScreen(tester, const Size(1400, 600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: CanvasTimeline(controller: c, height: 400))));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("rowMotion-a")));
     await tester.pumpAndSettle();

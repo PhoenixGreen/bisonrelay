@@ -1,9 +1,9 @@
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
 import 'dart:math' as math;
 import 'dart:io';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
@@ -20,11 +20,9 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'canvas_video_element_test.dart' show FakeFrames;
@@ -297,25 +295,14 @@ void main() {
     });
 
     Future<void> showStrip(WidgetTester tester, CanvasController c) async {
-      tester.view.physicalSize = const Size(1000, 300);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: SizedBox(
-                        height: 120,
-                        child: CanvasChannels(
-                            controller: c,
-                            view: TimelineView.whole(c.document.frames)))))),
-      ));
+      setTestScreen(tester, const Size(1000, 300));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(
+              height: 120,
+              child: CanvasChannels(
+                  controller: c,
+                  view: TimelineView.whole(c.document.frames))))));
       await tester.pumpAndSettle();
     }
 

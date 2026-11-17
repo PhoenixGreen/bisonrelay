@@ -1,8 +1,7 @@
 import 'dart:typed_data';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -22,14 +21,12 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -245,24 +242,11 @@ void main() {
     var c = lesson();
     addTearDown(c.dispose);
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1600, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 1600,
-                  height: 1000,
-                  child: CanvasStage(key: key, controller: c)))),
-    ));
+    setTestScreen(tester, const Size(1600, 1000));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 1600,
+        height: 1000,
+        child: CanvasStage(key: key, controller: c))));
     await tester.pumpAndSettle();
     var page = key.currentState!.pageRect;
     var scale = page.width / 1280;
@@ -278,34 +262,18 @@ void main() {
       (tester) async {
     var c = lesson();
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1200, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
+    setTestScreen(tester, const Size(1200, 2400));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
         listenable: c,
         builder: (context, _) => SingleChildScrollView(
-          child: SizedBox(
-            width: 320,
-            child: CanvasControlScope(
-              maxWidth: 280,
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: elementSettings(context, c, c.selected!)),
-            ),
-          ),
-        ),
-      ))),
-    ));
+            child: SizedBox(
+                width: 320,
+                child: CanvasControlScope(
+                    maxWidth: 280,
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children:
+                            elementSettings(context, c, c.selected!))))))));
     await tester.pump();
     Future<void> press(String key) async {
       var f = find.byKey(ValueKey(key));
@@ -523,24 +491,11 @@ void main() {
       addTearDown(c.dispose);
       c.clearSelection();
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 1600,
-                    height: 1000,
-                    child: CanvasStage(key: key, controller: c)))),
-      ));
+      setTestScreen(tester, const Size(1600, 1000));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 1600,
+          height: 1000,
+          child: CanvasStage(key: key, controller: c))));
       await tester.pumpAndSettle();
       var page = key.currentState!.pageRect;
       var scale = page.width / 1280;
@@ -701,34 +656,18 @@ void main() {
       (tester) async {
     var c = lesson();
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1200, 3000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
+    setTestScreen(tester, const Size(1200, 3000));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
         listenable: c,
         builder: (context, _) => SingleChildScrollView(
-          child: SizedBox(
-            width: 320,
-            child: CanvasControlScope(
-              maxWidth: 280,
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: elementSettings(context, c, c.selected!)),
-            ),
-          ),
-        ),
-      ))),
-    ));
+            child: SizedBox(
+                width: 320,
+                child: CanvasControlScope(
+                    maxWidth: 280,
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children:
+                            elementSettings(context, c, c.selected!))))))));
     await tester.pump();
     var look = find.byKey(const ValueKey("sheetInstrumentLook"));
     await tester.ensureVisible(look);

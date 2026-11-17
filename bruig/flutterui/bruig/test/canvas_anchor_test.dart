@@ -1,8 +1,7 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:ui';
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -11,12 +10,10 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_panel_helpers.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_anchor_test.dart is an element's anchor point: what its animation
@@ -122,25 +119,13 @@ void main() {
   });
 
   group("the controls", () {
-    Widget host(CanvasController c, {bool stage = false}) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(
-              home: Scaffold(
-                  body: Row(children: [
-            SizedBox(width: 420, child: CanvasDesignPanel(controller: c)),
-            if (stage)
-              Expanded(
-                  child:
-                      CanvasStage(key: const ValueKey("stage"), controller: c)),
-          ]))),
-        );
+    Widget host(CanvasController c, {bool stage = false}) =>
+        canvasApp(Row(children: [
+          SizedBox(width: 420, child: CanvasDesignPanel(controller: c)),
+          if (stage)
+            Expanded(
+                child: CanvasStage(key: const ValueKey("stage"), controller: c))
+        ]));
 
     testWidgets("shown, it can be locked and put back in the middle",
         (tester) async {
@@ -149,9 +134,7 @@ void main() {
           const CanvasDocument().addElement(square(ax: 0.1, ay: 0.2)));
       addTearDown(c.dispose);
       c.selectOnly("s");
-      tester.view.physicalSize = const Size(900, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 2400));
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
       // In its Layout (a shape's panel rebuilt: batch 2).
@@ -192,9 +175,7 @@ void main() {
       var c = CanvasController(const CanvasDocument().addElement(square()));
       addTearDown(c.dispose);
       c.selectOnly("s");
-      tester.view.physicalSize = const Size(1600, 1200);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 1200));
       await tester.pumpWidget(host(c, stage: true));
       await tester.pumpAndSettle();
       CanvasElement now() => c.document.elementById("s")!;

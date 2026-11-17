@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'support/canvas_app.dart';
 import 'dart:ui';
 
 import 'package:bruig/models/snackbar.dart';
@@ -355,9 +356,7 @@ void main() {
             audioEngine: FakeEngine(const {}));
         addTearDown(c.dispose);
         c.selectOnly("a");
-        tester.view.physicalSize = const Size(2400, 300);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, const Size(2400, 300));
         await tester.pumpWidget(MultiProvider(
           providers: [
             ChangeNotifierProvider<ThemeNotifier>(
@@ -469,22 +468,11 @@ void main() {
           audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = const Size(900, 700);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 900,
-                    height: 700,
-                    child: CanvasStage(key: key, controller: c)))),
-      ));
+      setTestScreen(tester, const Size(900, 700));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 900,
+          height: 700,
+          child: CanvasStage(key: key, controller: c))));
       await tester.pumpAndSettle();
       return (c, key.currentState!);
     }

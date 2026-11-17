@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -657,43 +658,30 @@ void main() {
           ]));
       // Widened, every column showing -- see "narrow" below for one.
       if (wide != c.editorWide) c.toggleEditorWide();
-      tester.view.physicalSize = Size(width, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Builder(
-            builder: (context) => MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: TextScaler.linear(scale)),
-              child: Scaffold(
-                body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) => Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        CanvasMixer.effects(
-                            controller: c,
-                            height: 360,
-                            onResize: (_) {},
-                            onClose: () {}),
-                        CanvasMixer(
-                            controller: c,
-                            height: 420,
-                            onResize: (_) {},
-                            onClose: () {}),
-                      ]),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, Size(width, 900));
+      await tester.pumpWidget(canvasApp(
+          Builder(
+              builder: (context) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(scale)),
+                  child: Scaffold(
+                      body: ListenableBuilder(
+                          listenable: c,
+                          builder: (context, _) => Column(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    CanvasMixer.effects(
+                                        controller: c,
+                                        height: 360,
+                                        onResize: (_) {},
+                                        onClose: () {}),
+                                    CanvasMixer(
+                                        controller: c,
+                                        height: 420,
+                                        onResize: (_) {},
+                                        onClose: () {})
+                                  ]))))),
+          scaffold: false));
       await tester.pump();
       return c;
     }
@@ -1075,38 +1063,21 @@ void main() {
               sound: MediaSource(assetId: id, name: "Loop", length: 8),
               bars: 2));
       c.pickStrip("a");
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: LayoutBuilder(
-              builder: (context, box) => Navigator(
-                onGenerateRoute: (_) => MaterialPageRoute(
+      setTestScreen(tester, const Size(1400, 900));
+      await tester.pumpWidget(canvasApp(LayoutBuilder(
+          builder: (context, box) => Navigator(
+              onGenerateRoute: (_) => MaterialPageRoute(
                   builder: (context) => ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          CanvasMixer.effects(
-                              controller: c,
-                              height: 360,
-                              onResize: (_) {},
-                              onClose: () {}),
-                        ]),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+                      listenable: c,
+                      builder: (context, _) => Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                CanvasMixer.effects(
+                                    controller: c,
+                                    height: 360,
+                                    onResize: (_) {},
+                                    onClose: () {})
+                              ])))))));
       await tester.pump();
       var chain = find.byKey(const ValueKey("effectsChain"));
       // The EQ's fold arrow: a device's own tooltip, not a meter's.
@@ -1148,9 +1119,7 @@ void main() {
           audioEngine: engine);
       c.pickStrip("a");
       var height = ValueNotifier(360.0);
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 900));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(

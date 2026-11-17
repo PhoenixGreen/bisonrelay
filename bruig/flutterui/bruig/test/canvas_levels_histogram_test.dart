@@ -1,9 +1,8 @@
 import 'dart:async';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
@@ -14,10 +13,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_levels_histogram_test.dart is a levels adjustment's histogram:
@@ -88,22 +85,9 @@ void main() {
     });
     c.selectOnly("i");
     c.editImage("i", layer: levels.id);
-    tester.view.physicalSize = const Size(900, 4000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 420, child: CanvasDesignPanel(controller: c)))),
-    ));
+    setTestScreen(tester, const Size(900, 4000));
+    await tester.pumpWidget(canvasApp(
+        SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
     await tester.pumpAndSettle();
     var plot = find.byKey(const ValueKey("levelsHistogram"));
     await tester.ensureVisible(plot);

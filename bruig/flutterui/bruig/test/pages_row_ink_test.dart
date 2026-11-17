@@ -1,9 +1,8 @@
 import 'package:bruig/plugin_system/writing_tools/post_library/page_documents.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/screens/pages/site_rows.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // pages_row_ink_test.dart is about a row being able to paint itself.
@@ -25,35 +24,20 @@ void main() {
 
   testWidgets("a page row inside a coloured area paints its own ink",
       (tester) async {
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          // The content area of a themed screen: a plain coloured box with
-          // no Material of its own. Container with a colour and no
-          // decoration is a ColoredBox, which is what the report named.
-          body: ColoredBox(
-            color: const Color(0xFF1E1E1E),
-            child: Column(children: [
-              SiteRow(
-                item: const PageDocument(
-                    name: "About",
-                    file: "about.md",
-                    state: PagePublishState.published),
-                onEdit: () {},
-                onDelete: () {},
-                onPublish: () {},
-                onUnpublish: () {},
-                onPreview: () {},
-              ),
-            ]),
-          ),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(ColoredBox(
+        color: const Color(0xFF1E1E1E),
+        child: Column(children: [
+          SiteRow(
+              item: const PageDocument(
+                  name: "About",
+                  file: "about.md",
+                  state: PagePublishState.published),
+              onEdit: () {},
+              onDelete: () {},
+              onPublish: () {},
+              onUnpublish: () {},
+              onPreview: () {})
+        ]))));
     await tester.pumpAndSettle();
 
     // Asked of the tree rather than of the framework's complaint: the

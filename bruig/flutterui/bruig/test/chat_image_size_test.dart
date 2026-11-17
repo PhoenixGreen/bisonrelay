@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -29,34 +30,22 @@ Future<double> _imageWidth(WidgetTester tester, String size,
   var embed = "--embed[type=image/png,data=${base64Encode(pngOf(800, 450))}]--";
   var theme = ThemeNotifier(doLoad: false);
   theme.setChatImageSize(size);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>.value(value: theme),
-      ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-      ChangeNotifierProvider<MarkdownAreaModel>(
-          create: (c) => MarkdownAreaModel("/tmp")),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        // As components/chat/events.dart lays a message out: the bubble
-        // offers its content width rather than forcing it, and hands it down
-        // through ChatImageWidth.
-        body: Align(
+  await tester.pumpWidget(canvasApp(
+      Align(
           alignment: Alignment.topLeft,
           child: SizedBox(
-            width: _contentWidth,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: ChatImageWidth(
-                width: _contentWidth,
-                child: MarkdownArea(embed, false, guide: guide),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  ));
+              width: _contentWidth,
+              child: Align(
+                  alignment: Alignment.topLeft,
+                  child: ChatImageWidth(
+                      width: _contentWidth,
+                      child: MarkdownArea(embed, false, guide: guide))))),
+      theme: theme,
+      extra: [
+        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+        ChangeNotifierProvider<MarkdownAreaModel>(
+            create: (c) => MarkdownAreaModel("/tmp"))
+      ]));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
   return tester.getSize(find.byType(Image).first).width;

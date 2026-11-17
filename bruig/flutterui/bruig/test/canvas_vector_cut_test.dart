@@ -1,15 +1,13 @@
 import 'dart:ui';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Color, Offset, Rect;
-import 'package:provider/provider.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_cut.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -161,22 +159,11 @@ void main() {
         shapes: [square()])));
     addTearDown(c.dispose);
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 1200,
-                  height: 900,
-                  child: CanvasStage(key: key, controller: c)))),
-    ));
+    setTestScreen(tester, const Size(1200, 900));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 1200,
+        height: 900,
+        child: CanvasStage(key: key, controller: c))));
     await tester.pumpAndSettle();
     var view = key.currentState!;
     Offset onScreen(Offset at) {

@@ -1,11 +1,11 @@
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
+import 'support/canvas_app.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/espeak.dart';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
@@ -21,14 +21,12 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/speech_device.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -727,34 +725,22 @@ esac
       var c = make();
       // Speech makes clips: it is the Chain's Speech view, not a device.
       c.showSpeech("a");
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              CanvasMixer.effects(
-                                  controller: c,
-                                  height: 380,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                              CanvasMixer(
-                                  controller: c,
-                                  height: 420,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                            ])))),
-      ));
+      setTestScreen(tester, const Size(1600, 900));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CanvasMixer.effects(
+                    controller: c,
+                    height: 380,
+                    onResize: (_) {},
+                    onClose: () {}),
+                CanvasMixer(
+                    controller: c,
+                    height: 420,
+                    onResize: (_) {},
+                    onClose: () {})
+              ]))));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey("speechStartButton")));
       await tester.pump(const Duration(milliseconds: 400));
@@ -815,29 +801,17 @@ esac
       c.showSpeech("a");
       c.setSpeech("a",
           const SpeechSpec(voice: "v1", script: "Hello there.\nGood night."));
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              CanvasMixer.effects(
-                                  controller: c,
-                                  height: 380,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                            ])))),
-      ));
+      setTestScreen(tester, const Size(1600, 900));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CanvasMixer.effects(
+                    controller: c,
+                    height: 380,
+                    onResize: (_) {},
+                    onClose: () {})
+              ]))));
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
@@ -903,36 +877,25 @@ esac
           const SpeechSpec(
               script: "From the page",
               document: TextDocumentRef(name: "Lines", wasText: "Typed")));
-      tester.view.physicalSize = const Size(900, 400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 400));
       for (var scale in [1.0, 1.5]) {
-        await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false),
-          child: MaterialApp(
-            home: Builder(
-              builder: (context) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: Scaffold(
-                  // Rebuilt as the effects chain rebuilds it.
-                  body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Align(
-                      alignment: Alignment.topLeft,
-                      child: SpeechDevice(
-                          controller: c,
-                          channel: "a",
-                          folded: false,
-                          onFold: () {},
-                          height: 260),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ));
+        await tester.pumpWidget(canvasApp(
+            Builder(
+                builder: (context) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: Scaffold(
+                        body: ListenableBuilder(
+                            listenable: c,
+                            builder: (context, _) => Align(
+                                alignment: Alignment.topLeft,
+                                child: SpeechDevice(
+                                    controller: c,
+                                    channel: "a",
+                                    folded: false,
+                                    onFold: () {},
+                                    height: 260)))))),
+            scaffold: false));
         await tester.pump();
         expect(tester.takeException(), isNull, reason: "at ${scale}x");
       }
@@ -974,9 +937,7 @@ esac
       addTearDown(c.dispose);
       // Side by side: the Vocaliser is a card of the chain's now, as wide
       // as its knobs and its tune.
-      tester.view.physicalSize = const Size(1700, 400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1700, 400));
       // Our own voices downloaded and not, and the expressive voices.
       for (var (engine, here) in [
         (SpeechEngineKind.local, true),
@@ -988,35 +949,29 @@ esac
         c.setSpeech("a", SpeechSpec(script: "Hello", engine: engine));
         c.setVocaliser("a", const VocaliserSpec());
         for (var scale in [1.0, 1.15, 1.25, 1.5]) {
-          await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false),
-            child: MaterialApp(
-              home: Builder(
-                builder: (context) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: Scaffold(
-                    body: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SpeechDevice(
-                              controller: c,
-                              channel: "a",
-                              folded: false,
-                              onFold: () {},
-                              height: 260),
-                          VocaliserDevice(
-                              controller: c,
-                              channel: "a",
-                              folded: false,
-                              onFold: () {},
-                              height: 260),
-                        ]),
-                  ),
-                ),
-              ),
-            ),
-          ));
+          await tester.pumpWidget(canvasApp(
+              Builder(
+                  builder: (context) => MediaQuery(
+                      data: MediaQuery.of(context)
+                          .copyWith(textScaler: TextScaler.linear(scale)),
+                      child: Scaffold(
+                          body: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            SpeechDevice(
+                                controller: c,
+                                channel: "a",
+                                folded: false,
+                                onFold: () {},
+                                height: 260),
+                            VocaliserDevice(
+                                controller: c,
+                                channel: "a",
+                                folded: false,
+                                onFold: () {},
+                                height: 260)
+                          ])))),
+              scaffold: false));
           await tester.pump();
           expect(tester.takeException(), isNull,
               reason: "$engine, voices here $here, at ${scale}x");

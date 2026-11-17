@@ -1,15 +1,12 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/customise_sidebars.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_sidebar_test.dart is the sidebar set out by the reader: a sidebar
@@ -24,9 +21,7 @@ void main() {
   Future<ValueNotifier<SidebarLayout>> shown(WidgetTester tester,
       {SidebarLayout layout = const SidebarLayout(current: "design"),
       bool canSitAbove = true}) async {
-    tester.view.physicalSize = const Size(1200, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1200, 1000));
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);
     var laid = ValueNotifier(layout);
@@ -37,39 +32,23 @@ void main() {
       onNew: (_, __) async {},
       onChoosePreset: (_, __) {},
     );
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: ValueListenableBuilder<SidebarLayout>(
-            valueListenable: laid,
-            builder: (context, l, _) => Row(children: [
+    await tester.pumpWidget(canvasApp(ValueListenableBuilder<SidebarLayout>(
+        valueListenable: laid,
+        builder: (context, l, _) => Row(children: [
               SizedBox(
-                width: 320,
-                child: CanvasSidebar(
-                  controller: c,
-                  layout: l,
-                  onLayout: (next) => laid.value = next,
-                  bodies: bodies,
-                  canSitAbove: canSitAbove,
-                  onCustomise: () => showCustomiseSidebars(context,
+                  width: 320,
+                  child: CanvasSidebar(
                       controller: c,
-                      read: () => laid.value,
-                      write: (next) => laid.value = next),
-                ),
-              ),
-              const Expanded(child: SizedBox()),
-            ]),
-          ),
-        ),
-      ),
-    ));
+                      layout: l,
+                      onLayout: (next) => laid.value = next,
+                      bodies: bodies,
+                      canSitAbove: canSitAbove,
+                      onCustomise: () => showCustomiseSidebars(context,
+                          controller: c,
+                          read: () => laid.value,
+                          write: (next) => laid.value = next))),
+              const Expanded(child: SizedBox())
+            ]))));
     await tester.pump();
     return laid;
   }

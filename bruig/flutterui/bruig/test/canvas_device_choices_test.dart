@@ -1,4 +1,5 @@
 import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -44,9 +45,7 @@ void main() {
           MixDevice(DeviceKind.saturator),
         ]);
         c.openEffects("m");
-        tester.view.physicalSize = const Size(2400, 600);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, const Size(2400, 600));
         await tester.pumpWidget(MultiProvider(
           providers: [
             ChangeNotifierProvider<ThemeNotifier>(

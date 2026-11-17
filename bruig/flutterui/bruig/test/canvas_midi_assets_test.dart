@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -16,10 +15,8 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -119,32 +116,20 @@ void main() {
   });
 
   Future<CanvasController> showBoth(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1600, 980);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 980));
     var c = make();
     addTearDown(c.dispose);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Row(children: [
-        SizedBox(width: 280, child: CanvasAssetsPanel(controller: c)),
-        Expanded(
+    await tester.pumpWidget(canvasApp(Row(children: [
+      SizedBox(width: 280, child: CanvasAssetsPanel(controller: c)),
+      Expanded(
           child: Align(
-            alignment: Alignment.bottomCenter,
-            child: CanvasMixer(
-                controller: c, height: 460, onResize: (_) {}, onClose: () {}),
-          ),
-        ),
-      ]))),
-    ));
+              alignment: Alignment.bottomCenter,
+              child: CanvasMixer(
+                  controller: c,
+                  height: 460,
+                  onResize: (_) {},
+                  onClose: () {})))
+    ])));
     await idle(tester);
     return c;
   }

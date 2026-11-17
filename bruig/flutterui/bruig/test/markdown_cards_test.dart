@@ -1,8 +1,7 @@
 import 'package:bruig/components/feed/markdown_blocks.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,26 +25,16 @@ text: What it says.
 --/card--
 """;
 
-Widget _host(Widget child, {double width = 900}) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (c) => MarkdownAreaModel("/tmp")),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
+Widget _host(Widget child, {double width = 900}) => canvasApp(
+        SingleChildScrollView(
             child: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(width: width, child: child),
-            ),
-          ),
-        ),
-      ),
-    );
+                alignment: Alignment.topLeft,
+                child: SizedBox(width: width, child: child))),
+        extra: [
+          ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+          ChangeNotifierProvider<MarkdownAreaModel>(
+              create: (c) => MarkdownAreaModel("/tmp"))
+        ]);
 
 Future<void> _pump(WidgetTester tester, String markdown,
     {double width = 900, MarkdownStyleGuide? guide}) async {

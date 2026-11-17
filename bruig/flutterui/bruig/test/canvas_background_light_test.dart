@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
@@ -210,9 +211,7 @@ void main() {
     Future<ProceduralSpec> show(WidgetTester tester, ProceduralSpec spec,
         {ValueChanged<ProceduralSpec>? onChanged}) async {
       var current = spec;
-      tester.view.physicalSize = const Size(1000, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1000, 2400));
       await tester.pumpWidget(MaterialApp(
         home: ChangeNotifierProvider(
           create: (_) => ThemeNotifier(doLoad: false),

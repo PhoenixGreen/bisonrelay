@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -15,10 +14,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -193,19 +190,8 @@ void main() {
       var c = CanvasController(_doc(), audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       c.pickClip("music");
-      tester.view.physicalSize = const Size(1400, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: _screen(c, width))),
-      ));
+      setTestScreen(tester, const Size(1400, 2400));
+      await tester.pumpWidget(canvasApp(_screen(c, width)));
       await tester.pump(const Duration(milliseconds: 100));
       return c;
     }
@@ -227,19 +213,8 @@ void main() {
       var c = CanvasController(_doc(), audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       c.pickClip("vo");
-      tester.view.physicalSize = const Size(1400, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: _screen(c, 1400))),
-      ));
+      setTestScreen(tester, const Size(1400, 2400));
+      await tester.pumpWidget(canvasApp(_screen(c, 1400)));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.ensureVisible(find.byKey(const ValueKey("duckSlot")));
       await tester.pump();

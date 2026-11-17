@@ -1,8 +1,7 @@
 import 'dart:async';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
@@ -14,11 +13,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_panel_helpers.dart';
@@ -58,16 +55,7 @@ Future<void> _seed(WidgetTester tester, CanvasController c) async {
   });
 }
 
-Widget _host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget _host(Widget child) => canvasApp(child);
 
 void main() {
   group("a locked layer", () {
@@ -195,9 +183,7 @@ void main() {
     Future<Offset Function(Offset)> pump(
         WidgetTester tester, CanvasController c) async {
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = viewport;
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, viewport);
       await tester.pumpWidget(_host(SizedBox(
           width: viewport.width,
           height: viewport.height,
@@ -363,9 +349,7 @@ void main() {
       var c = CanvasController(const CanvasDocument().addElement(_element()));
       addTearDown(c.dispose);
       c.selectOnly("i");
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 4000));
       await tester.pumpWidget(
           _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await _seed(tester, c);
@@ -389,9 +373,7 @@ void main() {
     testWidgets("with layers round it, is dragged about its frame",
         (tester) async {
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = const Size(800, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(800, 600));
       var c = CanvasController(const CanvasDocument().addElement(_element()));
       addTearDown(c.dispose);
       c.selectOnly("i");
@@ -435,9 +417,7 @@ void main() {
       var c = CanvasController(const CanvasDocument().addElement(_element()));
       addTearDown(c.dispose);
       c.selectOnly("i");
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 4000));
       await tester.pumpWidget(
           _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
       await _seed(tester, c);

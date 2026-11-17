@@ -1,10 +1,10 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/media/vocaliser.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -13,10 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'support/canvas_chain_helpers.dart';
@@ -209,27 +207,16 @@ void main() {
       c.setVocaliser(
           "a", c.vocaliserOf("a")!.copyWith(vibrato: 0.3, glide: 0.06));
       c.openEffects("a");
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) => CanvasMixer.effects(
-                            controller: c,
-                            height: 380,
-                            onResize: (_) {},
-                            onClose: () {}))))),
-      ));
+      setTestScreen(tester, const Size(1600, 900));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.bottomCenter,
+          child: ListenableBuilder(
+              listenable: c,
+              builder: (context, _) => CanvasMixer.effects(
+                  controller: c,
+                  height: 380,
+                  onResize: (_) {},
+                  onClose: () {})))));
       await tester.pump();
       var tune = c.vocaliserOf("a")!.melody;
       var ab = find.byKey(const ValueKey("deviceAB-vocaliser"));
@@ -263,34 +250,22 @@ void main() {
       var c = make();
       c.setVocaliser("a", null);
       c.openEffects("a");
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              CanvasMixer.effects(
-                                  controller: c,
-                                  height: 380,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                              CanvasMixer(
-                                  controller: c,
-                                  height: 420,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                            ])))),
-      ));
+      setTestScreen(tester, const Size(1600, 900));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CanvasMixer.effects(
+                    controller: c,
+                    height: 380,
+                    onResize: (_) {},
+                    onClose: () {}),
+                CanvasMixer(
+                    controller: c,
+                    height: 420,
+                    onResize: (_) {},
+                    onClose: () {})
+              ]))));
       await tester.pump();
       expect(find.byKey(const ValueKey("device-vocaliser")), findsNothing);
       await openAdd(tester, find.byKey(const ValueKey("addDeviceOpen")).first);

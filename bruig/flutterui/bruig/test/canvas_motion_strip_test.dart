@@ -1,4 +1,5 @@
 import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -46,9 +47,7 @@ CanvasController make() => CanvasController(
 
 Future<CanvasController> pumpBoth(WidgetTester tester,
     {double scale = 1}) async {
-  tester.view.physicalSize = const Size(1400, 900);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(1400, 900));
   var c = make();
   addTearDown(c.dispose);
   await tester.pumpWidget(MultiProvider(

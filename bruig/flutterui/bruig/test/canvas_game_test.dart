@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
@@ -710,24 +711,9 @@ void main() {
             CanvasScene(id: "one", name: "Level 1"),
           ]));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(400, 2000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 300,
-                    height: 2000,
-                    child: CanvasGamePanel(controller: c)))),
-      ));
+      setTestScreen(tester, const Size(400, 2000));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 300, height: 2000, child: CanvasGamePanel(controller: c))));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("gameStart")));
       await tester.pumpAndSettle();
@@ -1215,24 +1201,9 @@ void main() {
           layers: [TileLayer(name: "Ground"), TileLayer(name: "Sky")]),
     ]));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(400, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 300,
-                  height: 1400,
-                  child: CanvasGamePanel(controller: c)))),
-    ));
+    setTestScreen(tester, const Size(400, 1400));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 300, height: 1400, child: CanvasGamePanel(controller: c))));
     await tester.pumpAndSettle();
     // Nothing picked: the game's own settings.
     expect(find.text("A game · 1 scene · 1 player"), findsOneWidget);
@@ -1306,24 +1277,9 @@ void main() {
       box("slime", 100, 100, 20, 20),
     ]));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(400, 2000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 300,
-                  height: 2000,
-                  child: CanvasGamePanel(controller: c)))),
-    ));
+    setTestScreen(tester, const Size(400, 2000));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 300, height: 2000, child: CanvasGamePanel(controller: c))));
     c.selectOnly("slime");
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("playAs-hazard")));
@@ -1349,24 +1305,9 @@ void main() {
       box("coin", 100, 100, 20, 20),
     ]));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(400, 2000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 300,
-                  height: 2000,
-                  child: CanvasGamePanel(controller: c)))),
-    ));
+    setTestScreen(tester, const Size(400, 2000));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 300, height: 2000, child: CanvasGamePanel(controller: c))));
     c.selectOnly("coin");
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("playAs-pickup")));
@@ -1419,34 +1360,18 @@ void main() {
     ]));
     addTearDown(c.dispose);
     c.selectOnly("n");
-    tester.view.physicalSize = const Size(1200, 3000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SingleChildScrollView(
+    setTestScreen(tester, const Size(1200, 3000));
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
         child: SizedBox(
-          width: 320,
-          child: ListenableBuilder(
-            listenable: c,
-            builder: (context, _) => CanvasControlScope(
-              maxWidth: 280,
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: elementSettings(context, c, c.selected!)),
-            ),
-          ),
-        ),
-      ))),
-    ));
+            width: 320,
+            child: ListenableBuilder(
+                listenable: c,
+                builder: (context, _) => CanvasControlScope(
+                    maxWidth: 280,
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children:
+                            elementSettings(context, c, c.selected!))))))));
     await tester.pumpAndSettle();
     var shows = find.byKey(const ValueKey("counterSource"));
     if (shows.evaluate().isEmpty) {
@@ -1476,24 +1401,9 @@ void main() {
       ButtonElement(const ElementBase(id: "b")),
     ]));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(400, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 300,
-                  height: 1600,
-                  child: CanvasGamePanel(controller: c)))),
-    ));
+    setTestScreen(tester, const Size(400, 1600));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 300, height: 1600, child: CanvasGamePanel(controller: c))));
     c.selectOnly("lever");
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("playReach")), findsNothing);
@@ -1550,9 +1460,7 @@ void main() {
           ]),
           const CanvasScene(id: "two", name: "Level 2"),
         ]);
-    tester.view.physicalSize = const Size(400, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 2400));
     for (var scale in [1.0, 1.25, 1.5]) {
       for (var pick in [null, "hero", "coin", "spikes"]) {
         var c = CanvasController(doc);
@@ -1593,32 +1501,17 @@ void main() {
         page.copyWith(elements: [box("hero", 100, 100, 40, 60)]));
     addTearDown(c.dispose);
     c.selectOnly("hero");
-    tester.view.physicalSize = const Size(1200, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SingleChildScrollView(
+    setTestScreen(tester, const Size(1200, 1600));
+    await tester.pumpWidget(canvasApp(SingleChildScrollView(
         child: SizedBox(
-          width: 320,
-          child: CanvasControlScope(
-            maxWidth: 280,
-            child: Builder(
-                builder: (context) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: elementSettings(context, c, c.selected!))),
-          ),
-        ),
-      ))),
-    ));
+            width: 320,
+            child: CanvasControlScope(
+                maxWidth: 280,
+                child: Builder(
+                    builder: (context) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children:
+                            elementSettings(context, c, c.selected!))))))));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("elementSection-play")), findsNothing,
         reason: "it is in the Game panel now");
@@ -1629,9 +1522,7 @@ void main() {
   group("the polished Game panel", () {
     Future<void> panel(WidgetTester tester, CanvasController c,
         {double scale = 1}) async {
-      tester.view.physicalSize = const Size(400, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 2400));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(

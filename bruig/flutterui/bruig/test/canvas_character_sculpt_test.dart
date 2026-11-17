@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
@@ -10,10 +11,8 @@ import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_touchup_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // A new 3D character shaped by hand: strokes of a brush, kept with the
 // character, raising, lowering or flattening the surface under them. Picking
@@ -194,14 +193,8 @@ void main() {
 
   group('the panel', () {
     Future<void> show(WidgetTester tester, Widget child) async {
-      tester.view.physicalSize = const Size(800, 1600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-            home: Scaffold(body: SizedBox(width: 330, child: child))),
-      ));
+      setTestScreen(tester, const Size(800, 1600));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 330, child: child)));
       await tester.pumpAndSettle();
     }
 
@@ -260,25 +253,20 @@ void main() {
 
     testWidgets('at every text size, nothing overflows', (tester) async {
       for (final scale in const [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
-        await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-          create: (_) => ThemeNotifier(doLoad: false),
-          child: MaterialApp(
-            home: MediaQuery(
-              data: MediaQueryData(
-                  size: const Size(1000, 800),
-                  textScaler: TextScaler.linear(scale)),
-              child: Scaffold(
-                body: SizedBox(
-                    width: 330,
-                    child: CharacterTouchUpControls(
-                        brush: const TouchBrush(),
-                        strokes: [_stroke(SculptTool.raise)],
-                        onBrush: (_) {},
-                        onStrokes: (_) {})),
-              ),
-            ),
-          ),
-        ));
+        await tester.pumpWidget(canvasApp(
+            MediaQuery(
+                data: MediaQueryData(
+                    size: const Size(1000, 800),
+                    textScaler: TextScaler.linear(scale)),
+                child: Scaffold(
+                    body: SizedBox(
+                        width: 330,
+                        child: CharacterTouchUpControls(
+                            brush: const TouchBrush(),
+                            strokes: [_stroke(SculptTool.raise)],
+                            onBrush: (_) {},
+                            onStrokes: (_) {})))),
+            scaffold: false));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '${scale}x');
       }
@@ -403,26 +391,19 @@ void main() {
 
     testWidgets('the panel paints: its colours, opacity, softness',
         (tester) async {
-      tester.view.physicalSize = const Size(800, 1600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(800, 1600));
       var brush = const TouchBrush();
       var painted = [stroke(), stroke()];
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 330,
-                    child: StatefulBuilder(
-                        builder: (context, set) => CharacterTouchUpControls(
-                            brush: brush,
-                            strokes: const [],
-                            paint: painted,
-                            onBrush: (b) => set(() => brush = b),
-                            onStrokes: (_) {},
-                            onPaint: (p) => set(() => painted = p)))))),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 330,
+          child: StatefulBuilder(
+              builder: (context, set) => CharacterTouchUpControls(
+                  brush: brush,
+                  strokes: const [],
+                  paint: painted,
+                  onBrush: (b) => set(() => brush = b),
+                  onStrokes: (_) {},
+                  onPaint: (p) => set(() => painted = p))))));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('paint-opacity')), findsNothing);
       await tester.tap(

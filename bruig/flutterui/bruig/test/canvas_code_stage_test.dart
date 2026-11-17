@@ -1,8 +1,7 @@
 import 'package:flutter/gestures.dart';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -27,11 +26,9 @@ import 'package:bruig/plugin_system/canvas/ui/code_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -42,16 +39,7 @@ import 'support/canvas_audio_fake.dart';
 // code opened for typing with a second press; Run pressed. And the Add
 // panel's Code chip, putting the two down from an example.
 
-Widget _app(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget _app(Widget child) => canvasApp(child);
 
 /// _FakeHost runs nothing: it prints what it was given and makes a
 /// picture, as a browser would.
@@ -110,9 +98,7 @@ void main() {
     c.addCodeLesson(starter: codeStarters.firstWhere((s) => s.key == starter));
     c.clearSelection();
     key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = const Size(1600, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 1000));
     await tester.pumpWidget(_app(SizedBox(
         width: 1600,
         height: 1000,
@@ -151,9 +137,7 @@ void main() {
       "examples are its presets", (tester) async {
     var ctl = CanvasController(const CanvasDocument());
     addTearDown(ctl.dispose);
-    tester.view.physicalSize = const Size(600, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(600, 1400));
     await tester.pumpWidget(_app(
         SizedBox(width: 400, child: CanvasElementsPanel(controller: ctl))));
     await tester.tap(find.byKey(const ValueKey("addCode")));
@@ -271,8 +255,7 @@ void main() {
       CanvasController.saveCodePicture = save;
     });
     // Ken runs a larger text size: the live app grew when pressed.
-    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
-    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    setTestTextScale(tester, 1.4);
     await stage(tester, "flutter");
     c.replaceElement(run().copyWith(appWidth: 360));
     var boxes = codeRunBoxes(run(), run().bounds, runner: CodeRunner.flutter);
@@ -494,9 +477,7 @@ void main() {
       c.addCodeLesson(
           starter: codeStarters.firstWhere((s) => s.key == starter));
       c.openCodeStudio(code().id);
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 1000));
       await tester.pumpWidget(_app(CodeStudio(
           controller: c, codeId: code().id, onDone: c.closeCodeStudio)));
       await tester.pumpAndSettle();
@@ -608,8 +589,7 @@ void main() {
         "a check set in its settings: The code changes, Before and After, "
         "and how many times", (tester) async {
       // At Ken's larger text size: the file and the count share a row.
-      tester.platformDispatcher.textScaleFactorTestValue = 1.25;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      setTestTextScale(tester, 1.25);
       await stage(tester, "flutter");
       c.addCodeTask(code());
       var card = c.document.elements.whereType<CodeTaskElement>().single;
@@ -849,9 +829,7 @@ void main() {
       var e = ctl.document.elements.whereType<CodeElement>().single;
       expect(motionRowsOf(ctl).map((r) => r.id), contains(e.id),
           reason: "a row of its own, picked or not");
-      tester.view.physicalSize = const Size(1400, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 800));
       await tester.pumpWidget(_app(Align(
           alignment: Alignment.bottomCenter,
           child: CanvasTimeline(controller: ctl, height: 400))));
@@ -934,8 +912,7 @@ void main() {
         (tester) async {
       // At Ken's larger text size the field outgrew the scroll view and
       // scrolled inside it: the top couldn't be reached.
-      tester.platformDispatcher.textScaleFactorTestValue = 1.4;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      setTestTextScale(tester, 1.4);
       await stage(tester, "flutter");
       var e = code();
       var pane = codeBoxes(e, e.bounds).panes[0].code;

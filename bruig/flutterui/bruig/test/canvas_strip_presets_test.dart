@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -12,10 +12,8 @@ import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_strip_presets_test.dart is the Presets ▾ of a strip's own cards --
 // its EQ, compressor, the master's limiter, a Ducker -- as every device has
@@ -78,27 +76,16 @@ void main() {
     var c = _make();
     addTearDown(c.dispose);
     c.openEffects(c.timelineChannels.single.key);
-    tester.view.physicalSize = const Size(1800, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => CanvasMixer.effects(
-                          controller: c,
-                          height: 380,
-                          onResize: (_) {},
-                          onClose: () {}))))),
-    ));
+    setTestScreen(tester, const Size(1800, 900));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) => CanvasMixer.effects(
+                controller: c,
+                height: 380,
+                onResize: (_) {},
+                onClose: () {})))));
     await tester.pump(const Duration(milliseconds: 300));
     Future<void> open(String id) async {
       await tester.tap(find.byKey(ValueKey("$id-open")));

@@ -1,13 +1,12 @@
 import 'dart:convert';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_move_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // The Character Studio's Move step: how the character stands -- a stance,
 // its hands, its feet, its body turned by hand. Standing it is solved on
@@ -89,19 +88,14 @@ void main() {
   group('the panel', () {
     Future<void> show(WidgetTester tester, Widget child,
         {double scale = 1}) async {
-      tester.view.physicalSize = const Size(900, 1800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-            home: MediaQuery(
-          data: MediaQueryData(
-              size: const Size(900, 1800),
-              textScaler: TextScaler.linear(scale)),
-          child: Scaffold(body: child),
-        )),
-      ));
+      setTestScreen(tester, const Size(900, 1800));
+      await tester.pumpWidget(canvasApp(
+          MediaQuery(
+              data: MediaQueryData(
+                  size: const Size(900, 1800),
+                  textScaler: TextScaler.linear(scale)),
+              child: Scaffold(body: child)),
+          scaffold: false));
       await tester.pumpAndSettle();
     }
 

@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -9,10 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_return_chain_test.dart is a return's chain laid out and run as a
 // channel's (the chain prototype, Ken's comparison 8, 2026-11-08): its EQ
@@ -136,24 +134,13 @@ void main() {
     ]));
     addTearDown(c.dispose);
     c.openEffects("fx");
-    tester.view.physicalSize = const Size(2400, 700);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => ChainPanel(
-                          controller: c, height: 420, onResize: (_) {}))))),
-    ));
+    setTestScreen(tester, const Size(2400, 700));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) =>
+                ChainPanel(controller: c, height: 420, onResize: (_) {})))));
     await tester.pump(const Duration(milliseconds: 300));
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey("chainZone-Effects")), findsOneWidget);

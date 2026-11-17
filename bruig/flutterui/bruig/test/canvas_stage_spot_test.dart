@@ -1,8 +1,7 @@
 import 'dart:typed_data';
+import 'support/canvas_app.dart';
 import 'dart:ui';
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -26,10 +25,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Any element standing on a 3D stage: kept with it, seen where the stage's
@@ -307,20 +304,8 @@ void main() {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
 
-    Widget host(CanvasController c) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(
-              home: Scaffold(
-                  body: SizedBox(
-                      width: 420, child: CanvasDesignPanel(controller: c)))),
-        );
+    Widget host(CanvasController c) => canvasApp(
+        SizedBox(width: 420, child: CanvasDesignPanel(controller: c)));
 
     testWidgets("put on a stage, moved and turned, and taken off it",
         (tester) async {
@@ -329,9 +314,7 @@ void main() {
           const CanvasDocument().addElement(stage()).addElement(flat("a")));
       addTearDown(c.dispose);
       c.selectOnly("a");
-      tester.view.physicalSize = const Size(900, 5000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 5000));
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
       StageSpot? spot() => c.document.elementById("a")!.base.spot;
@@ -369,9 +352,7 @@ void main() {
               const ElementBase(id: "p", width: 200, height: 100))));
       addTearDown(c.dispose);
       c.selectOnly("p");
-      tester.view.physicalSize = const Size(900, 5000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 5000));
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("stageSpotOn")), findsOneWidget);

@@ -1,18 +1,16 @@
 import 'dart:convert';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/score_roll.dart';
 import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -211,27 +209,16 @@ void main() {
     var ch = c.document.elementById(c.scoreById("ode")!.parts.single.channel)
         as AudioElement;
     c.openPianoRoll(ch.clip.channel.isEmpty ? ch.id : ch.clip.channel);
-    tester.view.physicalSize = const Size(1600, 1100);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => CanvasMixer.effects(
-                          controller: c,
-                          height: 760,
-                          onResize: (_) {},
-                          onClose: () {}))))),
-    ));
+    setTestScreen(tester, const Size(1600, 1100));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) => CanvasMixer.effects(
+                controller: c,
+                height: 760,
+                onResize: (_) {},
+                onClose: () {})))));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 450));
     // A beat is 48 wide, a key 12 high, the top row key 127.

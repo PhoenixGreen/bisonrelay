@@ -1,6 +1,5 @@
 import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -93,25 +92,11 @@ void main() {
 
   testWidgets("a piece of sound has Structure where scenes would be",
       (tester) async {
-    tester.view.physicalSize = const Size(500, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(500, 1400));
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);
     c.setKind(CanvasKind.audio);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 420, child: CanvasDesignPanel(controller: c)))),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
     await tester.pumpAndSettle();
     // Panel headings are drawn in capitals.
     expect(find.text("STRUCTURE"), findsWidgets);
@@ -148,20 +133,7 @@ void main() {
     addTearDown(c.dispose);
     c.setKind(CanvasKind.audio);
     Future<void> show() async {
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                        width: 344,
-                        height: 106,
-                        child: CanvasStructurePanel(controller: c))))),
-      ));
+      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.topLeft, child: SizedBox(width: 344, height: 106, child: CanvasStructurePanel(controller: c)))));
       await tester.pumpAndSettle();
     }
 
@@ -235,25 +207,8 @@ void main() {
                   timed: true)),
         ]));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(1000, 300);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: SizedBox(
-                      height: 120,
-                      child: CanvasChannels(
-                          controller: c,
-                          view: TimelineView.whole(c.document.frames)))))),
-    ));
+    setTestScreen(tester, const Size(1000, 300));
+    await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: SizedBox(height: 120, child: CanvasChannels(controller: c, view: TimelineView.whole(c.document.frames))))));
     await tester.pumpAndSettle();
     var lane = find.byKey(const ValueKey("lane-a"));
     var box = tester.getRect(lane);

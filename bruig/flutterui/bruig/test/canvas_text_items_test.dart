@@ -1,6 +1,6 @@
 import 'dart:ui' as ui;
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -377,9 +377,7 @@ void main() {
     // 300 is about the narrowest anybody leaves the panel. A piece picked in
     // the Layers has the element's own type controls -- face, size, weight
     // -- and none of them may run off the side.
-    tester.view.physicalSize = const Size(700, 1200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(700, 1200));
 
     var controller = CanvasController(const CanvasDocument().addElement(_card(
         items: const [TextItem(id: "n", text: "01", slot: TextSlot.topLeft)])));
@@ -436,25 +434,11 @@ void main() {
     Future<CanvasStageState> pump(
         WidgetTester tester, CanvasController controller) async {
       var key = GlobalKey<CanvasStageState>();
-      tester.view.physicalSize = const Size(900, 700);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 900,
-              height: 700,
-              child: CanvasStage(key: key, controller: controller),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, const Size(900, 700));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 900,
+          height: 700,
+          child: CanvasStage(key: key, controller: controller))));
       await tester.pumpAndSettle();
       return key.currentState!;
     }

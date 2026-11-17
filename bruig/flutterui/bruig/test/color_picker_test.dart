@@ -1,4 +1,5 @@
 import 'package:bruig/components/color_picker.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/saved_colors.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,9 +27,7 @@ Future<_Answer> pump(WidgetTester tester,
   // -- which is taller than the eight hundred pixels a test view has by
   // default, and a menu that opens off the bottom of the screen cannot be
   // tapped.
-  tester.view.physicalSize = const Size(1400, 1400);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(1400, 1400));
   // No provider around it: the picker takes its colours from Material's own
   // scheme, so it works wherever there is a Theme -- which is every panel,
   // every dialog and every test that pumps one.
@@ -298,9 +297,7 @@ void main() {
 
   testWidgets("a wide picker puts the numbers beside the colour",
       (tester) async {
-    tester.view.physicalSize = const Size(1400, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1400, 900));
 
     await pump(tester, start: const Color(0xFF3366CC), width: 620);
     var square = tester.getRect(find.byKey(const ValueKey("colorShade")));

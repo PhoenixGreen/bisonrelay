@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -10,10 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // The elements' slots through the controller, on its clock: a slot pressed
 // with nothing playing plays the slots alone; a cue launches its row of
@@ -103,24 +101,10 @@ void main() {
     at(c, 2);
     c.pause();
     expect([for (var i in c.offTimelineItems) i.key], ["a"]);
-    tester.view.physicalSize = const Size(1400, 700);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            child: CanvasTimeline(controller: c, height: 400),
-          ),
-        ),
-      ),
-    ));
+    setTestScreen(tester, const Size(1400, 700));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: CanvasTimeline(controller: c, height: 400))));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("rowFromSlots-a")), findsOneWidget);
     expect(find.text("playing from slots"), findsOneWidget);

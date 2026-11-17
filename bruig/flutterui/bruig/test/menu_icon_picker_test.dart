@@ -1,6 +1,6 @@
 import 'package:bruig/models/menus.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -16,16 +16,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 // so the picker never opened at all. Nothing that only calls setItemIcon can
 // catch that; it takes a tap.
 
-Widget _app() => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<MainMenuModel>(create: (c) => MainMenuModel()),
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: const MaterialApp(
-        home: Scaffold(body: SingleChildScrollView(child: MenuSection())),
-      ),
-    );
+Widget _app() => canvasApp(SingleChildScrollView(child: MenuSection()), extra: [
+      ChangeNotifierProvider<MainMenuModel>(create: (c) => MainMenuModel())
+    ]);
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));

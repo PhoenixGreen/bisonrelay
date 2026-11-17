@@ -1,5 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
@@ -11,10 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_batch2_panels_test.dart is batch 2 of the settings panel rebuild
@@ -44,20 +41,8 @@ void main() {
       var c = CanvasController(document.addElement(element));
       addTearDown(c.dispose);
       c.selectOnly(element.id);
-      tester.view.physicalSize = const Size(420, 6000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child:
-            MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
-      ));
+      setTestScreen(tester, const Size(420, 6000));
+      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("quickStrip")), findsOneWidget);
       expect(find.byKey(ValueKey("${kind.name}Looks")), findsOneWidget);

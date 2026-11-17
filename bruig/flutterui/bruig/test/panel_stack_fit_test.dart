@@ -1,8 +1,7 @@
 import 'package:bruig/components/panel_stack.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // panel_stack_fit_test.dart is a sidebar holding what has been opened in it.
@@ -13,37 +12,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 // sidebar with three panels open: the bottom one was pushed off the screen
 // and Flutter drew its overflow stripe across it.
 
-Widget _stack(List<String> ids, {double bodyHeight = 400}) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: PanelStack(
-            storageKey: "fitTest",
-            panels: [
-              for (var id in ids)
-                StackPanel(
-                  id: id,
-                  label: id,
-                  icon: Icons.layers,
-                  body: SizedBox(height: bodyHeight, child: Text("body $id")),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+Widget _stack(List<String> ids, {double bodyHeight = 400}) =>
+    canvasApp(PanelStack(storageKey: "fitTest", panels: [
+      for (var id in ids)
+        StackPanel(
+            id: id,
+            label: id,
+            icon: Icons.layers,
+            body: SizedBox(height: bodyHeight, child: Text("body $id")))
+    ]));
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets("three open panels fit the sidebar they are in", (tester) async {
-    tester.view.physicalSize = const Size(400, 700);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 700));
 
     await tester.pumpWidget(_stack(["scenes", "layers", "settings"]));
     await tester.pumpAndSettle();
@@ -60,9 +44,7 @@ void main() {
     // The reported case: the boundaries had been dragged, so two panels
     // between them asked for more than the whole sidebar and the third was
     // pushed off the bottom.
-    tester.view.physicalSize = const Size(400, 700);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 700));
 
     await tester.pumpWidget(_stack(["scenes", "layers", "settings"]));
     await tester.pumpAndSettle();
@@ -86,9 +68,7 @@ void main() {
     // Six panels at eighty pixels each is more than a short sidebar holds.
     // Shrinking them further would make all six useless to save the last, so
     // they keep a usable height and the column scrolls.
-    tester.view.physicalSize = const Size(400, 360);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 360));
 
     await tester
         .pumpWidget(_stack(["a", "b", "c", "d", "e", "f"], bodyHeight: 200));

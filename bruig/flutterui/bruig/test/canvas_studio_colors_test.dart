@@ -1,11 +1,9 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_studio_colors_test.dart is the palette the mixer and effects are
@@ -46,20 +44,10 @@ void main() {
   testWidgets("chosen in Settings > Plugins > Canvas", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var prefs = CanvasPreferences()..enabled = true;
-    tester.view.physicalSize = const Size(900, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>.value(value: prefs),
-      ],
-      child: const MaterialApp(
-          home: Scaffold(
-              body: SingleChildScrollView(child: CanvasSettingsSection()))),
-    ));
+    setTestScreen(tester, const Size(900, 1400));
+    await tester.pumpWidget(canvasApp(
+        SingleChildScrollView(child: CanvasSettingsSection()),
+        prefs: prefs));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("studioColour-on")), findsOneWidget);
     await tester.tap(find.text("Follow my theme"));

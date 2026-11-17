@@ -1,9 +1,9 @@
 import 'dart:async';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/paint_spec.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -17,10 +17,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_image_frame_mask_test.dart is a mask on a layer that is not a
 // picture -- an adjustment, a texture, a colour -- painted over the frame.
@@ -138,22 +136,9 @@ void main() {
         fit: ImageFit.stretch,
         layers: [ImageLayer.base, adjust])));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(800, 600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 800,
-                  height: 600,
-                  child: CanvasStage(key: key, controller: c)))),
-    ));
+    setTestScreen(tester, const Size(800, 600));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 800, height: 600, child: CanvasStage(key: key, controller: c))));
     await tester.runAsync(() async {
       c.images.putForTest("red", await _solid([255, 0, 0, 255]));
     });

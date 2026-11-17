@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -63,9 +64,7 @@ void main() {
     expect(imageLanesShown(c, imageLanesFor(c)!), [0, 1]);
     expect(imageLanesLabel(VectorLanes.picked), "Layer picked");
 
-    tester.view.physicalSize = const Size(1200, 300);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1200, 300));
     const view = TimelineView(0, 100);
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(

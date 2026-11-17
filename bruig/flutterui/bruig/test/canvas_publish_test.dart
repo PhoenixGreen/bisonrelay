@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -28,9 +29,7 @@ void main() {
   Future<void> open(WidgetTester tester,
       {CanvasDocument document = const CanvasDocument(frames: 12),
       CanvasPreferences? prefs}) async {
-    tester.view.physicalSize = const Size(1200, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1200, 1400));
 
     await tester.pumpWidget(MultiProvider(
       providers: [

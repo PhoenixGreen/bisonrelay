@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -8,13 +9,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart' hide Canvas, Paint;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_chain_helpers.dart';
 
@@ -103,22 +101,10 @@ void main() {
     addTearDown(c.dispose);
     c.selectOnly("a");
     c.pickMotion("a", "go", placement: "p");
-    tester.view.physicalSize = const Size(3000, 420);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) =>
-                      AnimationPanel(controller: c, height: 400)))),
-    ));
+    setTestScreen(tester, const Size(3000, 420));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => AnimationPanel(controller: c, height: 400))));
     await tester.pumpAndSettle();
     var id = c.motionDevicesOf("a").single.id;
     await revealInMenu(tester, "mdevBake-$id");
@@ -134,22 +120,10 @@ void main() {
     addTearDown(c.dispose);
     c.selectOnly("a");
     c.pickMotion("a", "go", placement: "p");
-    tester.view.physicalSize = const Size(3000, 420);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) =>
-                      AnimationPanel(controller: c, height: 400)))),
-    ));
+    setTestScreen(tester, const Size(3000, 420));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => AnimationPanel(controller: c, height: 400))));
     await tester.pumpAndSettle();
     var id = c.motionDevicesOf("a").single.id;
     double amount() => c.motionDevicesOf("a").single.value("amount");
@@ -175,22 +149,10 @@ void main() {
     c.selectOnly("a");
     c.pickMotion("a", "go", placement: "p");
     c.motionTrail = false;
-    tester.view.physicalSize = const Size(3000, 420);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) =>
-                      AnimationPanel(controller: c, height: 400)))),
-    ));
+    setTestScreen(tester, const Size(3000, 420));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => AnimationPanel(controller: c, height: 400))));
     await tester.pumpAndSettle();
     var join = find.byKey(const ValueKey("motionJoin-1"));
     expect(join, findsOneWidget);
@@ -212,22 +174,10 @@ void main() {
     addTearDown(c.dispose);
     c.selectOnly("a");
     c.pickMotion("a", "go", placement: "p");
-    tester.view.physicalSize = const Size(3000, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) =>
-                      AnimationPanel(controller: c, height: 400)))),
-    ));
+    setTestScreen(tester, const Size(3000, 1000));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => AnimationPanel(controller: c, height: 400))));
     await tester.pumpAndSettle();
     var id = c.motionDevicesOf("a").single.id;
     Future<void> pick(String text) async {
@@ -281,24 +231,13 @@ void main() {
     addTearDown(c.dispose);
     c.selectOnly("a");
     c.animationOpen = true;
-    tester.view.physicalSize = const Size(1800, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => ChainPanel(
-                          controller: c, height: 400, onResize: (_) {}))))),
-    ));
+    setTestScreen(tester, const Size(1800, 900));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) =>
+                ChainPanel(controller: c, height: 400, onResize: (_) {})))));
     await tester.pumpAndSettle();
     Future<void> menu(String key) async {
       await tester.tap(find.byKey(const ValueKey("chainMore")));

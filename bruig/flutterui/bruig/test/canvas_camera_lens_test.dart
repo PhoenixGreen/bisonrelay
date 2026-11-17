@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
@@ -12,10 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_panel_helpers.dart';
 
@@ -248,22 +247,15 @@ void main() {
     ]));
     addTearDown(c.dispose);
     c.selectOnly("c");
-    tester.view.physicalSize = const Size(800, 3000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-      create: (_) => ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 340,
-                  child: SingleChildScrollView(
-                      child: ListenableBuilder(
-                          listenable: c,
-                          builder: (context, _) => Column(
-                              children: elementSettings(context, c,
-                                  c.document.elementById("c")!))))))),
-    ));
+    setTestScreen(tester, const Size(800, 3000));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 340,
+        child: SingleChildScrollView(
+            child: ListenableBuilder(
+                listenable: c,
+                builder: (context, _) => Column(
+                    children: elementSettings(
+                        context, c, c.document.elementById("c")!)))))));
     await tester.pumpAndSettle();
     // Its settings are there: framing, depth of field, parallax, lens.
     for (var k in [

@@ -1,15 +1,14 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:bruig/screens/pages/visit.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // pages_browser_test.dart drives the Pages browser's chrome and the session
@@ -46,13 +45,7 @@ FetchedResource _page(String uid, List<String> path, String body,
   );
 }
 
-Widget _host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-      ],
-      child: MaterialApp(home: Scaffold(body: child)),
-    );
+Widget _host(Widget child) => canvasApp(child);
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));

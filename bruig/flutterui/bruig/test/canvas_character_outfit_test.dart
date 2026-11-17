@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -14,10 +15,8 @@ import 'package:bruig/plugin_system/canvas/render/vrm/vrm_wear.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_outfit_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 // A new 3D character's clothes: what is worn, what each garment covers, the
@@ -429,30 +428,24 @@ void main() {
         Set<WearSlot> own = const {WearSlot.top, WearSlot.shoes},
         double scale = 1}) async {
       var o = start;
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: MediaQuery(
-            data: MediaQueryData(
-                size: const Size(1000, 800),
-                textScaler: TextScaler.linear(scale)),
-            child: Scaffold(
-              body: Row(children: [
+      await tester.pumpWidget(canvasApp(
+          MediaQuery(
+              data: MediaQueryData(
+                  size: const Size(1000, 800),
+                  textScaler: TextScaler.linear(scale)),
+              child: Scaffold(
+                  body: Row(children: [
                 SizedBox(
-                  width: 300,
-                  child: StatefulBuilder(
-                      builder: (context, set) => CharacterOutfitControls(
-                          part: part,
-                          outfit: o,
-                          bodyName: 'Vivi',
-                          own: own,
-                          onChanged: (n) => set(() => o = n))),
-                ),
-              ]),
-            ),
-          ),
-        ),
-      ));
+                    width: 300,
+                    child: StatefulBuilder(
+                        builder: (context, set) => CharacterOutfitControls(
+                            part: part,
+                            outfit: o,
+                            bodyName: 'Vivi',
+                            own: own,
+                            onChanged: (n) => set(() => o = n))))
+              ]))),
+          scaffold: false));
       await tester.pumpAndSettle();
       return () => o;
     }
@@ -538,21 +531,13 @@ void main() {
     testWidgets('the list has the clothes, the changed ones marked',
         (tester) async {
       String? picked;
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 180,
-              child: CharacterShapeList(
-                  shape: const CharacterShape(),
-                  outfit: CharacterOutfit.asDesigned.swimwear(male: false),
-                  selected: 'age',
-                  onSelect: (id) => picked = id),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 180,
+          child: CharacterShapeList(
+              shape: const CharacterShape(),
+              outfit: CharacterOutfit.asDesigned.swimwear(male: false),
+              selected: 'age',
+              onSelect: (id) => picked = id))));
       await tester.scrollUntilVisible(
           find.byKey(ValueKey('shapePart-${wearPartId(WearSlot.shoes)}')), 60);
       expect(find.byKey(const ValueKey('shapeChanged-outfit')), findsOneWidget);
@@ -703,35 +688,22 @@ void main() {
 
     testWidgets('a long library is kept to a few rows, scrolled',
         (tester) async {
-      tester.view.physicalSize = const Size(800, 1600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 330,
-              child: CharacterDecalControls(
-                decals: const [
-                  CharacterDecal(id: 'a', source: 'picture:p0.png')
-                ],
-                open: 'a',
-                outfit: CharacterOutfit.asDesigned,
-                library: () async => [
-                  for (var i = 0; i < 80; i++)
-                    LibraryAsset(
-                        id: 'p$i.png',
-                        kind: AssetKind.picture,
-                        name: 'Picture $i',
-                        added: DateTime(2026)),
-                ],
-                onChanged: (_, __) {},
-              ),
-            ),
-          ),
-        ),
-      ));
+      setTestScreen(tester, const Size(800, 1600));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 330,
+          child: CharacterDecalControls(
+              decals: const [CharacterDecal(id: 'a', source: 'picture:p0.png')],
+              open: 'a',
+              outfit: CharacterOutfit.asDesigned,
+              library: () async => [
+                    for (var i = 0; i < 80; i++)
+                      LibraryAsset(
+                          id: 'p$i.png',
+                          kind: AssetKind.picture,
+                          name: 'Picture $i',
+                          added: DateTime(2026))
+                  ],
+              onChanged: (_, __) {}))));
       await tester.pumpAndSettle();
       final box = tester.getSize(find.byKey(const ValueKey('decalLibrary')));
       expect(box.height, lessThanOrEqualTo(6.5 * 58));
@@ -756,39 +728,27 @@ void main() {
 
     testWidgets('a picture from the library is added, placed and taken off',
         (tester) async {
-      tester.view.physicalSize = const Size(800, 1600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(800, 1600));
       var decals = <CharacterDecal>[];
       String? open;
-      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-        create: (_) => ThemeNotifier(doLoad: false),
-        child: MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 330,
-              child: StatefulBuilder(
-                builder: (context, set) => CharacterDecalControls(
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 330,
+          child: StatefulBuilder(
+              builder: (context, set) => CharacterDecalControls(
                   decals: decals,
                   open: open,
                   outfit: CharacterOutfit.asDesigned,
                   library: () async => [
-                    LibraryAsset(
-                        id: 'rose.png',
-                        kind: AssetKind.picture,
-                        name: 'Rose',
-                        added: DateTime(2026)),
-                  ],
+                        LibraryAsset(
+                            id: 'rose.png',
+                            kind: AssetKind.picture,
+                            name: 'Rose',
+                            added: DateTime(2026))
+                      ],
                   onChanged: (d, o) => set(() {
-                    decals = d;
-                    open = o;
-                  }),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+                        decals = d;
+                        open = o;
+                      }))))));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('decalAdd-rose.png')));
       await tester.pumpAndSettle();

@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
@@ -16,10 +16,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
     show StudioDrop;
 import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
 import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_own_tabs_test.dart is the Motion clips card's Arrive, Loop and
 // Leave (Ken, 2026-11-12: "you should probably be able to toggle between
@@ -40,22 +38,10 @@ TextElement text(CanvasController c) =>
 
 Future<CanvasController> show(WidgetTester tester, CanvasController c) async {
   addTearDown(c.dispose);
-  tester.view.physicalSize = const Size(3200, 600);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: Scaffold(
-            body: ListenableBuilder(
-                listenable: c,
-                builder: (context, _) =>
-                    AnimationPanel(controller: c, height: 520)))),
-  ));
+  setTestScreen(tester, const Size(3200, 600));
+  await tester.pumpWidget(canvasApp(ListenableBuilder(
+      listenable: c,
+      builder: (context, _) => AnimationPanel(controller: c, height: 520))));
   await tester.pumpAndSettle();
   return c;
 }

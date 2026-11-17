@@ -1,5 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -10,10 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_panel_helpers.dart';
@@ -37,24 +34,10 @@ void main() {
     ));
     addTearDown(controller.dispose);
 
-    tester.view.physicalSize = const Size(1600, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 900));
 
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: CanvasSettingsPanel(controller: controller),
-        ),
-      ),
-    ));
+    await tester
+        .pumpWidget(canvasApp(CanvasSettingsPanel(controller: controller)));
     await tester.pumpAndSettle();
     return controller;
   }
@@ -141,23 +124,11 @@ void main() {
     addTearDown(controller.dispose);
     controller.selectOnly("t");
 
-    tester.view.physicalSize = const Size(600, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(600, 1400));
 
     Future<void> show() async {
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-          home: Scaffold(body: CanvasDesignPanel(controller: controller)),
-        ),
-      ));
+      await tester
+          .pumpWidget(canvasApp(CanvasDesignPanel(controller: controller)));
       await tester.pumpAndSettle();
     }
 
@@ -224,22 +195,10 @@ void main() {
     controller.selectOnly("i");
     controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
 
-    tester.view.physicalSize = const Size(600, 1400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(600, 1400));
 
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(body: CanvasDesignPanel(controller: controller)),
-      ),
-    ));
+    await tester
+        .pumpWidget(canvasApp(CanvasDesignPanel(controller: controller)));
     await tester.pumpAndSettle();
     // In its Layout's Position, since batch 4 of the rebuild.
     await openSection(tester, "image.picture.position");

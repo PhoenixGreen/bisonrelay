@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -11,13 +12,10 @@ import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart' show StudioDrop;
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_text_layer_looks_test.dart is a look laid on one layer of a text
@@ -218,9 +216,7 @@ void main() {
 
   testWidgets("in the Chain, a text's look says what of it it is on",
       (tester) async {
-    tester.view.physicalSize = const Size(2400, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(2400, 900));
     var t = text(
         items: const [TextItem(id: "kicker", text: "LEDGER")],
         looks: const [MotionDevice(MotionDeviceKind.glow, layer: "body")]);
@@ -235,18 +231,7 @@ void main() {
     addTearDown(c.dispose);
     Future<void> show(String id) async {
       c.selectOnly(id);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: AnimationPanel(controller: c, height: 360)))),
-      ));
+      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: AnimationPanel(controller: c, height: 360))));
       await tester.pumpAndSettle();
     }
 

@@ -1,9 +1,9 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -14,10 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -300,25 +298,11 @@ void main() {
     // The engine started, as playing does, and hearing 445Hz: A, sharp.
     await c.audio.ready();
     engine.heardPitch = (hz: 445.0, clarity: 0.95);
-    tester.view.physicalSize = const Size(1600, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: CanvasMixer.effects(
-                      controller: c,
-                      height: 380,
-                      onResize: (_) {},
-                      onClose: () {})))),
-    ));
+    setTestScreen(tester, const Size(1600, 900));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: CanvasMixer.effects(
+            controller: c, height: 380, onResize: (_) {}, onClose: () {}))));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text("A4"), findsOneWidget);
     expect(find.textContaining("+20 cents"), findsOneWidget);

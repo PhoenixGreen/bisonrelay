@@ -1,9 +1,9 @@
 import 'package:bruig/components/chat/rtc_colors.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // rtc_theming_test.dart covers the Realtime Chat screen following the theme.
@@ -23,15 +23,10 @@ Future<RtcColors> _colors(WidgetTester tester, {AreaStyle? style}) async {
         .copyWith(areas: {ThemeArea.realtimeChat: style}));
   }
   late RtcColors out;
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
-    value: theme,
-    child: MaterialApp(
-      home: Builder(builder: (context) {
-        out = RtcColors.of(context);
-        return const SizedBox.shrink();
-      }),
-    ),
-  ));
+  await tester.pumpWidget(canvasApp(Builder(builder: (context) {
+    out = RtcColors.of(context);
+    return const SizedBox.shrink();
+  }), theme: theme, scaffold: false));
   await tester.pump();
   return out;
 }
@@ -57,16 +52,11 @@ void main() {
     var theme = ThemeNotifier(doLoad: false);
     late RtcColors c;
     late Color error;
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
-      value: theme,
-      child: MaterialApp(
-        home: Builder(builder: (context) {
-          c = RtcColors.of(context);
-          error = ThemeNotifier.of(context).colors.error;
-          return const SizedBox.shrink();
-        }),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(Builder(builder: (context) {
+      c = RtcColors.of(context);
+      error = ThemeNotifier.of(context).colors.error;
+      return const SizedBox.shrink();
+    }), theme: theme, scaffold: false));
     await tester.pump();
     expect(c.muted, error);
   });

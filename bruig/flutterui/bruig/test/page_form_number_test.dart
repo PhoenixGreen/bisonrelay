@@ -1,11 +1,9 @@
 import 'dart:convert';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/components/pages/forms.dart' as pf;
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // page_form_number_test.dart covers what a number field puts on the wire.
 //
@@ -20,11 +18,7 @@ import 'package:provider/provider.dart';
 
 void main() {
   Future<void> pump(WidgetTester tester, pf.FormElement form) async {
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(home: Scaffold(body: pf.CustomForm(form)))));
+    await tester.pumpWidget(canvasApp(pf.CustomForm(form)));
     await tester.pumpAndSettle();
   }
 

@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -103,9 +104,7 @@ void main() {
   testWidgets("is set from the movement, and fits the canvas in one press",
       (tester) async {
     var current = _moving;
-    tester.view.physicalSize = const Size(400, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(400, 2400));
     await tester.pumpWidget(MaterialApp(
       home: ChangeNotifierProvider(
         create: (_) => ThemeNotifier(doLoad: false),

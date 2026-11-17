@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -81,9 +82,7 @@ void main() {
 
   Future<void> pump(WidgetTester tester, Widget child,
       {CanvasPreferences? prefs}) async {
-    tester.view.physicalSize = const Size(1400, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1400, 900));
 
     await tester.pumpWidget(MultiProvider(
       providers: [

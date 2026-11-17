@@ -1,9 +1,8 @@
 import 'package:bruig/screens/pages/my_site/site_tabs.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/screens/pages/store/store_tabs.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // section_tabs_test.dart covers the two tab rows: the shop's and the site's.
 //
@@ -12,10 +11,7 @@ import 'package:provider/provider.dart';
 // The count on a tab is the part worth testing: it is what lets somebody
 // look at the catalogue and still see that a buyer is waiting.
 
-Widget host(Widget child) => MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-    ], child: MaterialApp(home: Scaffold(body: child)));
+Widget host(Widget child) => canvasApp(child);
 
 void main() {
   group("the shop's tabs", () {

@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -17,11 +17,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -95,20 +93,8 @@ void main() {
     var c = CanvasController(const CanvasDocument(frames: 240),
         audioEngine: FakeEngine({}));
     addTearDown(c.dispose);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: CanvasMixer(
-                  controller: c,
-                  height: 400,
-                  onResize: (_) {},
-                  onClose: () {}))),
-    ));
+    await tester.pumpWidget(canvasApp(CanvasMixer(
+        controller: c, height: 400, onResize: (_) {}, onClose: () {})));
     // A moment for the peaks to fall, and it asks for no more frames.
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -179,29 +165,17 @@ void main() {
       addTearDown(c.dispose);
       await tester.runAsync(() => c.audio.ready());
       c.openEffects(chain);
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              CanvasMixer.effects(
-                                  controller: c,
-                                  height: 360,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                            ])))),
-      ));
+      setTestScreen(tester, const Size(1600, 900));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CanvasMixer.effects(
+                    controller: c,
+                    height: 360,
+                    onResize: (_) {},
+                    onClose: () {})
+              ]))));
       return (c, engine);
     }
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/canvas_app.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -22,10 +23,8 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/character_assets.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // A character made in the new Character Studio, on the canvas: kept in the
 // canvas whole, placed from Assets, changed in the Studio with every copy
@@ -196,16 +195,9 @@ void main() {
   });
 
   Future<void> show(WidgetTester tester, Widget child) async {
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-      create: (_) => ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 340, child: SingleChildScrollView(child: child)))),
-    ));
+    setTestScreen(tester, const Size(800, 1600));
+    await tester.pumpWidget(canvasApp(
+        SizedBox(width: 340, child: SingleChildScrollView(child: child))));
     await tester.pumpAndSettle();
   }
 
@@ -282,20 +274,14 @@ void main() {
   testWidgets('the Characters section scrolls in a short panel',
       (tester) async {
     final c = CanvasController(CanvasDocument());
-    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-      create: (_) => ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 284,
-                  height: 265,
-                  child: CharacterAssetSection(
-                      controller: c,
-                      designs: () async => [
-                            for (var i = 0; i < 9; i++)
-                              _design("d$i", "Character $i")
-                          ])))),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: 284,
+        height: 265,
+        child: CharacterAssetSection(
+            controller: c,
+            designs: () async => [
+                  for (var i = 0; i < 9; i++) _design("d$i", "Character $i")
+                ]))));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('characterAssetsScroll')), findsOneWidget);
@@ -352,17 +338,15 @@ void main() {
         CanvasDocument().addElement(_element("c", _design("d1", "Jess"))));
     for (final scale in const [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
       for (final high in const [60.0, 140.0, 265.0]) {
-        await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-          create: (_) => ThemeNotifier(doLoad: false),
-          child: MaterialApp(
-            home: MediaQuery(
-              data: MediaQueryData(
-                  size: const Size(1000, 800),
-                  textScaler: TextScaler.linear(scale)),
-              child: Scaffold(
-                body: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+        await tester.pumpWidget(canvasApp(
+            MediaQuery(
+                data: MediaQueryData(
+                    size: const Size(1000, 800),
+                    textScaler: TextScaler.linear(scale)),
+                child: Scaffold(
+                    body: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                       SizedBox(
                           width: 284,
                           height: high,
@@ -378,12 +362,9 @@ void main() {
                               child: Builder(
                                   builder: (context) => Column(
                                       children: elementSettings(context, c,
-                                          c.document.elements.single))))),
-                    ]),
-              ),
-            ),
-          ),
-        ));
+                                          c.document.elements.single)))))
+                    ]))),
+            scaffold: false));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '${scale}x, $high high');
       }

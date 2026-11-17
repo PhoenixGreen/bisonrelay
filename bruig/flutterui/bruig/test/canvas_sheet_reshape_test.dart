@@ -1,7 +1,6 @@
 import 'dart:convert';
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
@@ -9,11 +8,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_reshape.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -138,26 +135,13 @@ void main() {
 
   testWidgets("made in the Studio: a long sheet from a wide one, opened",
       (tester) async {
-    tester.view.physicalSize = const Size(1600, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(1600, 1400));
     var c = CanvasController(CanvasDocument(sheets: [source]),
         audioEngine: FakeEngine({}));
     addTearDown(c.dispose);
     c.openDataStudio("w");
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (_) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (_) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: DataStudio(
-                  controller: c, sheetId: "w", onDone: c.closeDataStudio))),
-    ));
+    await tester.pumpWidget(canvasApp(
+        DataStudio(controller: c, sheetId: "w", onDone: c.closeDataStudio)));
     await tester.pumpAndSettle();
     final make = find.byKey(const ValueKey("dataStudioReshapeMake"));
     await tester.ensureVisible(make);

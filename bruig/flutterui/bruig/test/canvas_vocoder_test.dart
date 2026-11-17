@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
@@ -208,9 +209,7 @@ void main() {
             audioEngine: FakeEngine({"t": 2}));
         c.setDevicesOf("a", [const MixDevice(DeviceKind.vocoder)]);
         c.openEffects("a", device: "dev:d0");
-        tester.view.physicalSize = const Size(1600, 900);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, const Size(1600, 900));
         await tester.pumpWidget(MultiProvider(
           providers: [
             ChangeNotifierProvider<ThemeNotifier>(

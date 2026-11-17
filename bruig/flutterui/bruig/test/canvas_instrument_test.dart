@@ -1,9 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -15,13 +14,11 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -329,28 +326,8 @@ void main() {
     Future<CanvasController> lanes(WidgetTester tester, CanvasDocument doc) async {
       var c = CanvasController(doc, audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1000, 400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Align(
-                        alignment: Alignment.topCenter,
-                        child: SizedBox(
-                            height: 300,
-                            child: CanvasChannels(
-                                controller: c,
-                                view: TimelineView.whole(
-                                    c.document.frames))))))),
-      ));
+      setTestScreen(tester, const Size(1000, 400));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(listenable: c, builder: (context, _) => Align(alignment: Alignment.topCenter, child: SizedBox(height: 300, child: CanvasChannels(controller: c, view: TimelineView.whole(c.document.frames)))))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -388,19 +365,8 @@ void main() {
   group("in the editor", () {
     Future<void> show(WidgetTester tester, Widget child,
         {bool settle = true}) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: child)),
-      ));
+      setTestScreen(tester, const Size(1400, 900));
+      await tester.pumpWidget(canvasApp(child));
       settle
           ? await tester.pumpAndSettle()
           : await tester.pump(const Duration(milliseconds: 100));

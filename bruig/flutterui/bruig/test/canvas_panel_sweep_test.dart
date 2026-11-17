@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -69,9 +70,7 @@ void main() {
       Widget Function(CanvasController) body,
       {required Size size, required double scale}) async {
     SharedPreferences.setMockInitialValues({});
-    tester.view.physicalSize = size;
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, size);
     var c = CanvasController(
         const CanvasDocument(frames: 96, frameRate: 24).addElement(e));
     addTearDown(c.dispose);

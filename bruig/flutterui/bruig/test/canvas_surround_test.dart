@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -16,16 +17,12 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
@@ -438,19 +435,8 @@ void main() {
     /// settle, pumps a frame rather than waiting for them to.
     Future<void> show(WidgetTester tester, Widget child,
         {bool settle = true}) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: child)),
-      ));
+      setTestScreen(tester, const Size(1400, 900));
+      await tester.pumpWidget(canvasApp(child));
       if (settle) {
         await tester.pumpAndSettle();
       } else {
@@ -600,9 +586,7 @@ void main() {
   group("the Panner", () {
     Future<CanvasController> open(WidgetTester tester, SpeakerLayout layout,
         {SoundPlacement place = const SoundPlacement()}) async {
-      tester.view.physicalSize = const Size(1800, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1800, 600));
       var c = CanvasController(
           CanvasDocument(
               frames: 50,
@@ -621,24 +605,7 @@ void main() {
       for (var d in ["eq", "comp", "duck"]) {
         c.foldDevice(d, true);
       }
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => CanvasMixer.effects(
-                        controller: c,
-                        height: 400,
-                        onResize: (_) {},
-                        onClose: () {})))),
-      ));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(listenable: c, builder: (context, _) => CanvasMixer.effects(controller: c, height: 400, onResize: (_) {}, onClose: () {}))));
       await tester.pump(const Duration(milliseconds: 100));
       return c;
     }

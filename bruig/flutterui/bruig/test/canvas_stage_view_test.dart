@@ -1,7 +1,7 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 import 'dart:async';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
@@ -28,13 +28,11 @@ import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_parts.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_stage_view_test.dart is about the view, not the document: where the
 // canvas is drawn and how far it can be moved.
@@ -61,28 +59,9 @@ void main() {
   Future<CanvasStageState> pump(
       WidgetTester tester, CanvasController controller) async {
     var key = GlobalKey<CanvasStageState>();
-    tester.view.physicalSize = viewport;
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, viewport);
 
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        // The stage reaches for it when a cell asks for a picture: adding one
-        // is how a picker reports that a file could not be read.
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: viewport.width,
-            height: viewport.height,
-            child: CanvasStage(key: key, controller: controller),
-          ),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(SizedBox(width: viewport.width, height: viewport.height, child: CanvasStage(key: key, controller: controller))));
     await tester.pumpAndSettle();
     return key.currentState!;
   }
@@ -1195,29 +1174,7 @@ void main() {
       // be cancelled with it. The file dialog itself has no implementation in
       // a widget test, so the last step is not reachable from here.
       var pressed = 0;
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: 160,
-                height: 30,
-                child: CanvasCellEditor(
-                  value: "6",
-                  fontSize: 14,
-                  onChanged: (_) {},
-                  onDone: () {},
-                  onPickPicture: () async => pressed++,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(Center(child: SizedBox(width: 160, height: 30, child: CanvasCellEditor(value: "6", fontSize: 14, onChanged: (_) {}, onDone: () {}, onPickPicture: () async => pressed++)))));
       await tester.pumpAndSettle();
 
       var button = find.byTooltip("Put a picture in this cell");
@@ -1239,29 +1196,7 @@ void main() {
       // cancelled with the widget before it ever finished.
       var pressed = 0;
       var closed = 0;
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: 160,
-                height: 30,
-                child: CanvasCellEditor(
-                  value: "6",
-                  fontSize: 14,
-                  onChanged: (_) {},
-                  onDone: () => closed++,
-                  onPickPicture: () async => pressed++,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(Center(child: SizedBox(width: 160, height: 30, child: CanvasCellEditor(value: "6", fontSize: 14, onChanged: (_) {}, onDone: () => closed++, onPickPicture: () async => pressed++)))));
       await tester.pumpAndSettle();
 
       // Pressed and released as a pointer, with the focus taken away in
@@ -1284,29 +1219,7 @@ void main() {
       // an exception inside the callback became an unhandled Future error,
       // which in a release build goes nowhere -- so a picker that threw on
       // its first line looked exactly like a button that was not connected.
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: 160,
-                height: 30,
-                child: CanvasCellEditor(
-                  value: "6",
-                  fontSize: 14,
-                  onChanged: (_) {},
-                  onDone: () {},
-                  onPickPicture: () async => throw StateError("no picker"),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(canvasApp(Center(child: SizedBox(width: 160, height: 30, child: CanvasCellEditor(value: "6", fontSize: 14, onChanged: (_) {}, onDone: () {}, onPickPicture: () async => throw StateError("no picker"))))));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip("Put a picture in this cell"));

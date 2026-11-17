@@ -1,7 +1,7 @@
 import 'dart:math' as math;
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -10,10 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/phrasing_editor.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -72,32 +70,25 @@ CanvasController _make() {
 
 Future<void> _show(WidgetTester tester, CanvasController c,
     {double scale = 1, double height = 420}) async {
-  tester.view.physicalSize = const Size(1400, 720);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ],
-    child: MaterialApp(
-        home: MediaQuery(
-      data: MediaQueryData(
-          size: const Size(1400, 720), textScaler: TextScaler.linear(scale)),
-      child: Scaffold(
-          body: ListenableBuilder(
-              listenable: c,
-              builder: (context, _) =>
-                  Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    CanvasMixer.effects(
-                        controller: c,
-                        height: height,
-                        onResize: (_) {},
-                        onClose: () {}),
-                  ]))),
-    )),
-  ));
+  setTestScreen(tester, const Size(1400, 720));
+  await tester.pumpWidget(canvasApp(
+      MediaQuery(
+          data: MediaQueryData(
+              size: const Size(1400, 720),
+              textScaler: TextScaler.linear(scale)),
+          child: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) => Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            CanvasMixer.effects(
+                                controller: c,
+                                height: height,
+                                onResize: (_) {},
+                                onClose: () {})
+                          ])))),
+      scaffold: false));
   for (var i = 0; i < 5; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }

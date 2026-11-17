@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
@@ -48,9 +49,7 @@ const _pitch = ProceduralSpec(
 
 Future<void> _pumpSettings(WidgetTester tester, ProceduralSpec Function() get,
     void Function(ProceduralSpec) set) async {
-  tester.view.physicalSize = const Size(400, 3200);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
+  setTestScreen(tester, const Size(400, 3200));
   await tester.pumpWidget(const SizedBox());
   await tester.pumpWidget(MaterialApp(
     home: ChangeNotifierProvider(
@@ -200,9 +199,7 @@ void main() {
     testWidgets("choosing a view puts the camera settings in place",
         (tester) async {
       var current = _pitch;
-      tester.view.physicalSize = const Size(400, 2600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 2600));
       await tester.pumpWidget(MaterialApp(
         home: ChangeNotifierProvider(
           create: (_) => ThemeNotifier(doLoad: false),

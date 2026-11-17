@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -420,9 +421,7 @@ void main() {
       // tall enough for the A on its second line (see row_header.dart).
       c.headerWidth = 150;
       c.setLaneHeight("a", 60);
-      tester.view.physicalSize = const Size(1000, 500);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1000, 500));
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(

@@ -1,4 +1,5 @@
 import 'package:bruig/components/feed/markdown_copy.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
 import 'package:bruig/components/feed/markdown_paynow.dart';
 import 'package:bruig/components/feed/markdown_qr.dart';
@@ -8,7 +9,6 @@ import 'package:bruig/components/feed/markdown_steps.dart';
 import 'package:bruig/components/feed/markdown_wallet.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,27 +31,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 // a pay area with one half under the other is taller than that. It overflows
 // the harness, not the app.
 Widget _host(Widget child, {double width = 800, bool tall = false}) =>
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (c) => MarkdownAreaModel("/tmp")),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Align(
+    canvasApp(
+        Align(
             alignment: Alignment.topLeft,
             child: tall
                 ? SingleChildScrollView(
                     child: SizedBox(width: width, child: child))
-                : SizedBox(width: width, child: child),
-          ),
-        ),
-      ),
-    );
+                : SizedBox(width: width, child: child)),
+        extra: [
+          ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+          ChangeNotifierProvider<MarkdownAreaModel>(
+              create: (c) => MarkdownAreaModel("/tmp"))
+        ]);
 
 Future<void> _pump(WidgetTester tester, String markdown,
     {double width = 800, bool tall = false}) async {

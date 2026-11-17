@@ -1,8 +1,7 @@
 import 'package:bruig/components/feed/markdown_purchase.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -38,23 +37,15 @@ List<({String diskPath, dynamic metadata})> _received(
         ),
     ];
 
-Widget _host(Widget child) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (c) => MarkdownAreaModel("/tmp")),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(width: 700, child: child)),
-        ),
-      ),
-    );
+Widget _host(Widget child) => canvasApp(
+        Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(width: 700, child: child)),
+        extra: [
+          ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+          ChangeNotifierProvider<MarkdownAreaModel>(
+              create: (c) => MarkdownAreaModel("/tmp"))
+        ]);
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));

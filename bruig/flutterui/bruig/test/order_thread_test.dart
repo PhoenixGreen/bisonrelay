@@ -1,9 +1,8 @@
 import 'package:bruig/screens/pages/store/store_orders.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
+import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:provider/provider.dart';
 
 // order_thread_test.dart covers the seller's half of an order's messages.
 //
@@ -32,20 +31,11 @@ void main() {
   Future<void> pump(WidgetTester tester, ManagedOrder order,
       Future<void> Function(String) onReply,
       {Future<void> Function()? onSendGoods}) async {
-    tester.view.physicalSize = const Size(800, 1200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: OrderThread(
-                    order: order,
-                    onReply: onReply,
-                    onSendGoods: onSendGoods ?? () async {})))));
+    setTestScreen(tester, const Size(800, 1200));
+    await tester.pumpWidget(canvasApp(OrderThread(
+        order: order,
+        onReply: onReply,
+        onSendGoods: onSendGoods ?? () async {})));
     await tester.pumpAndSettle();
   }
 

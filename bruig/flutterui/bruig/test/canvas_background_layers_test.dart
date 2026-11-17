@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/background_looks.dart';
@@ -147,9 +148,7 @@ void main() {
     Future<ProceduralSpec Function()> pump(
         WidgetTester tester, ProceduralSpec start) async {
       var current = start;
-      tester.view.physicalSize = const Size(400, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(400, 2400));
       await tester.pumpWidget(MaterialApp(
         home: ChangeNotifierProvider(
           create: (_) => ThemeNotifier(doLoad: false),

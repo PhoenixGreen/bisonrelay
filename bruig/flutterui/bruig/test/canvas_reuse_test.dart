@@ -1,5 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -10,12 +9,10 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_panel_helpers.dart';
-import 'package:provider/provider.dart';
 
 // canvas_reuse_test.dart is one design used in many places: a named text
 // style, linked copies of an element, and several elements arriving in turn.
@@ -49,19 +46,8 @@ TextElement _find(CanvasController c, String id) {
 }
 
 Future<void> _panel(WidgetTester tester, CanvasController c) async {
-  tester.view.physicalSize = const Size(1400, 1800);
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ChangeNotifierProvider<CanvasPreferences>(
-          create: (c) => CanvasPreferences()),
-    ],
-    child: MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
-  ));
+  setTestScreen(tester, const Size(1400, 1800));
+  await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
   await tester.pumpAndSettle();
 }
 

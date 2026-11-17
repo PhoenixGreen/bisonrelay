@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -7,7 +8,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show elementPhaseSpans;
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
@@ -15,12 +15,10 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_keys_strip_test.dart is the Chain's Keys strip (Ken, 2026-11-12,
 // the approved chain prototype), which took the Keyframes card's place: the
@@ -144,33 +142,18 @@ void main() {
       var c = (making ?? make)();
       addTearDown(c.dispose);
       addTearDown(() => KeysStrip.clipsHeight = KeysStrip.clipsStart);
-      tester.view.physicalSize = const Size(1000, 500);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: 1000,
-                child: ListenableBuilder(
+      setTestScreen(tester, const Size(1000, 500));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+              width: 1000,
+              child: ListenableBuilder(
                   listenable: c,
                   builder: (context, _) => KeysStrip(
                       controller: c,
                       element: c.selected!,
                       height: KeysStrip.heightFor(
-                          KeysStrip.rowsFor(c, c.selected!), 300)),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+                          KeysStrip.rowsFor(c, c.selected!), 300)))))));
       await tester.pump();
       return c;
     }
@@ -520,21 +503,10 @@ void main() {
       addTearDown(c.dispose);
       c.keysShown = true;
       addTearDown(() => c.keysShown = false);
-      tester.view.physicalSize = const Size(1600, 520);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.topLeft,
-                    child: AnimationPanel(controller: c, height: 480)))),
-      ));
+      setTestScreen(tester, const Size(1600, 520));
+      await tester.pumpWidget(canvasApp(Align(
+          alignment: Alignment.topLeft,
+          child: AnimationPanel(controller: c, height: 480))));
       await tester.pump();
       expect(find.byKey(const ValueKey("keysStrip-logo")), findsOneWidget);
       c.selectOnly("badge");
@@ -562,29 +534,18 @@ void main() {
             }
             c.keysShown = true;
             addTearDown(() => c.keysShown = false);
-            tester.view.physicalSize = Size(1600, height + 40);
-            tester.view.devicePixelRatio = 1.0;
-            addTearDown(tester.view.reset);
-            await tester.pumpWidget(MultiProvider(
-              providers: [
-                ChangeNotifierProvider<ThemeNotifier>(
-                    create: (c) => ThemeNotifier(doLoad: false)),
-                ChangeNotifierProvider<SnackBarModel>(
-                    create: (c) => SnackBarModel()),
-              ],
-              child: MaterialApp(
-                home: MediaQuery(
-                  data: MediaQueryData(
-                      size: Size(1600, height + 40),
-                      textScaler: TextScaler.linear(scale)),
-                  child: Scaffold(
-                      body: Align(
-                          alignment: Alignment.topLeft,
-                          child:
-                              AnimationPanel(controller: c, height: height))),
-                ),
-              ),
-            ));
+            setTestScreen(tester, Size(1600, height + 40));
+            await tester.pumpWidget(canvasApp(
+                MediaQuery(
+                    data: MediaQueryData(
+                        size: Size(1600, height + 40),
+                        textScaler: TextScaler.linear(scale)),
+                    child: Scaffold(
+                        body: Align(
+                            alignment: Alignment.topLeft,
+                            child: AnimationPanel(
+                                controller: c, height: height)))),
+                scaffold: false));
             await tester.pump();
             expect(tester.takeException(), isNull);
             expect(find.byKey(const ValueKey("keysStrip")), findsOneWidget);
@@ -619,21 +580,10 @@ void main() {
       c.keysShown = false;
       c.keysHeight = null;
     });
-    tester.view.physicalSize = const Size(1600, 540);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.topLeft,
-                  child: AnimationPanel(controller: c, height: 500)))),
-    ));
+    setTestScreen(tester, const Size(1600, 540));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: AnimationPanel(controller: c, height: 500))));
     await tester.pump();
     double strip() =>
         tester.getSize(find.byKey(const ValueKey("keysStrip"))).height;
@@ -669,21 +619,10 @@ void main() {
       c.keysShown = false;
       c.keysHeight = null;
     });
-    tester.view.physicalSize = const Size(1600, 540);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.topLeft,
-                  child: AnimationPanel(controller: c, height: height)))),
-    ));
+    setTestScreen(tester, const Size(1600, 540));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: AnimationPanel(controller: c, height: height))));
     await tester.pump();
     for (var by in [20.0, -20.0, 200.0]) {
       await tester.drag(find.byKey(const ValueKey("keysGrip")), Offset(0, by));
@@ -704,21 +643,10 @@ void main() {
     ]);
     c.keysShown = true;
     addTearDown(() => c.keysShown = false);
-    tester.view.physicalSize = const Size(1600, 600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.topLeft,
-                  child: AnimationPanel(controller: c, height: 560)))),
-    ));
+    setTestScreen(tester, const Size(1600, 600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: AnimationPanel(controller: c, height: 560))));
     await tester.pump();
     c.frame = 24;
     await tester.pump();

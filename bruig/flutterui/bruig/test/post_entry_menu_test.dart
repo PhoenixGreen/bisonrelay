@@ -1,7 +1,7 @@
 import 'dart:io';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_library.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -44,19 +44,12 @@ void main() {
   });
 
   Future<void> mount(WidgetTester tester) async {
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PostLibraryModel>.value(value: library),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-              width: 320, height: 620, child: PostSidebar(controller: editor)),
-        ),
-      ),
-    ));
+    await tester.pumpWidget(canvasApp(
+        SizedBox(
+            width: 320, height: 620, child: PostSidebar(controller: editor)),
+        extra: [
+          ChangeNotifierProvider<PostLibraryModel>.value(value: library)
+        ]));
     await tester.pumpAndSettle();
   }
 

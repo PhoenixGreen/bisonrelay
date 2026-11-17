@@ -1,7 +1,6 @@
 import 'dart:ui';
 
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -20,10 +19,8 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_stage3d_test.dart is the 3D stage: its camera, characters standing
@@ -188,18 +185,7 @@ void main() {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
 
-    Widget host(CanvasController c) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(
-              home: Scaffold(
-                  body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
-        );
+    Widget host(CanvasController c) => canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c)));
 
     Future<void> tap(WidgetTester tester, String key) async {
       var f = find.byKey(ValueKey(key));
@@ -214,9 +200,7 @@ void main() {
       var c = CanvasController(CanvasDocument(frames: 48).addElement(stage()));
       addTearDown(c.dispose);
       c.selectOnly("st");
-      tester.view.physicalSize = const Size(900, 3000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 3000));
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
       StageElement get() => stageIn(c);
@@ -244,9 +228,7 @@ void main() {
       var c = CanvasController(CanvasDocument(frames: 48).addElement(stage()));
       addTearDown(c.dispose);
       c.selectOnly("st");
-      tester.view.physicalSize = const Size(900, 3000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 3000));
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
       var pad = find.byKey(const ValueKey("stageOrbitPad"));
@@ -345,17 +327,7 @@ void main() {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
 
-    Widget host(Widget child) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(
-              home: Scaffold(body: SizedBox(width: 420, child: child))),
-        );
+    Widget host(Widget child) => canvasApp(SizedBox(width: 420, child: child));
 
     Future<void> tap(WidgetTester tester, String key) async {
       var f = find.byKey(ValueKey(key));
@@ -366,9 +338,7 @@ void main() {
     }
 
     void tall(WidgetTester tester) {
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(900, 4000));
     }
 
     testWidgets("the canvas background turns into a stage and back",

@@ -1,9 +1,9 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -16,10 +16,8 @@ import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_kenney_test.dart is Kenney's free sprite packs: what is found in a
@@ -142,17 +140,8 @@ void main() {
     prefs.allowFetching = true;
     var c = CanvasController(CanvasDocument(frames: 24));
     addTearDown(c.dispose);
-    tester.view.physicalSize = const ui.Size(400, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>.value(value: prefs),
-      ],
-      child: MaterialApp(home: Scaffold(body: SizedBox(width: 300, child: StockPanel(controller: c)))),
-    ));
+    setTestScreen(tester, const ui.Size(400, 1400));
+    await tester.pumpWidget(canvasApp(SizedBox(width: 300, child: StockPanel(controller: c)), prefs: prefs));
     await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
     var library = tester.widget<CanvasDropdown<String>>(find.byKey(const ValueKey("stockSource")));

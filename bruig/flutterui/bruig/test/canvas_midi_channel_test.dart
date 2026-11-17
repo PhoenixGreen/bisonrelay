@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'support/canvas_app.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
@@ -466,26 +467,9 @@ void main() {
       var c = CanvasController(
           CanvasDocument(frames: 100, elements: [keys("p")]),
           audioEngine: FakeEngine({}));
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 900));
       c.openEffects("p");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: CanvasMixer.effects(
-                        controller: c,
-                        height: 380,
-                        onResize: (_) {},
-                        onClose: () {})))),
-      ));
+      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: CanvasMixer.effects(controller: c, height: 380, onResize: (_) {}, onClose: () {}))));
       await tester.pump();
       expect(find.byKey(const ValueKey("device-midiIn")), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("midiMonitor-input")));
@@ -519,37 +503,10 @@ void main() {
         ),
         audioEngine: FakeEngine({}),
       );
-      tester.view.physicalSize = const Size(1600, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 900));
       c.openEffects("p");
       await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false),
-            ),
-            ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel(),
-            ),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: Align(
-                alignment: Alignment.bottomCenter,
-                child: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) => CanvasMixer.effects(
-                    controller: c,
-                    height: 380,
-                    onResize: (_) {},
-                    onClose: () {},
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        canvasApp(Align(alignment: Alignment.bottomCenter, child: ListenableBuilder(listenable: c, builder: (context, _) => CanvasMixer.effects(controller: c, height: 380, onResize: (_) {}, onClose: () {})))),
       );
       await tester.pump();
       InstrumentPart part() =>
@@ -594,28 +551,9 @@ void main() {
                 notes: const [MidiNote(60, 0, 2)])
           ]),
           audioEngine: FakeEngine({}));
-      tester.view.physicalSize = const Size(1800, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1800, 900));
       c.openEffects("p");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) => CanvasMixer.effects(
-                            controller: c,
-                            height: 380,
-                            onResize: (_) {},
-                            onClose: () {}))))),
-      ));
+      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: ListenableBuilder(listenable: c, builder: (context, _) => CanvasMixer.effects(controller: c, height: 380, onResize: (_) {}, onClose: () {})))));
       await tester.pump();
       String says(int upto) => tester
           .widget<Tooltip>(find
@@ -643,9 +581,7 @@ void main() {
                   effects: const [MidiEffect(MidiEffectKind.arpeggiator)])
             ]),
             audioEngine: FakeEngine({}));
-        tester.view.physicalSize = const Size(1600, 900);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+        setTestScreen(tester, const Size(1600, 900));
         c.openEffects("p");
         await tester.pumpWidget(MultiProvider(
           providers: [

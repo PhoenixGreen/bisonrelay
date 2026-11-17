@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'support/canvas_app.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -10,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/model/score_edit.dart';
 import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/score_studio.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -18,7 +18,6 @@ import 'package:bruig/plugin_system/canvas/model/fretting.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart'
     show guitarStrings;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -46,18 +45,13 @@ Future<CanvasController> studio(WidgetTester tester,
   addTearDown(c.dispose);
   c.addScore(score ?? odeToJoy());
   c.openScoreStudio("ode");
-  tester.view.physicalSize = const Size(1600, 1000);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
-    create: (_) => ThemeNotifier(doLoad: false),
-    child: MaterialApp(
-        home: RepaintBoundary(
-      key: const ValueKey("studioShot"),
-      child: ScoreStudio(
-          controller: c, scoreId: "ode", onDone: c.closeScoreStudio),
-    )),
-  ));
+  setTestScreen(tester, const Size(1600, 1000));
+  await tester.pumpWidget(canvasApp(
+      RepaintBoundary(
+          key: const ValueKey("studioShot"),
+          child: ScoreStudio(
+              controller: c, scoreId: "ode", onDone: c.closeScoreStudio)),
+      scaffold: false));
   await tester.pump();
   return c;
 }

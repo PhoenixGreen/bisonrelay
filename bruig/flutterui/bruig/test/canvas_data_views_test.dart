@@ -1,5 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
@@ -12,10 +11,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
@@ -142,24 +139,11 @@ void main() {
   });
 
   group("in the settings and the studio", () {
-    Widget app(Widget child) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (_) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (_) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (_) => CanvasPreferences()),
-          ],
-          child: MaterialApp(home: Scaffold(body: child)),
-        );
+    Widget app(Widget child) => canvasApp(child);
 
     testWidgets("Rows shown: sorted by Pts, the top 3", (tester) async {
-      tester.platformDispatcher.textScaleFactorTestValue = 1.25;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      tester.view.physicalSize = const Size(600, 3000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestTextScale(tester, 1.25);
+      setTestScreen(tester, const Size(600, 3000));
       var c = CanvasController(docOf(), audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
       c.selectOnly("t");
@@ -195,9 +179,7 @@ void main() {
 
     testWidgets("the studio's colour rules: data bars on the selection",
         (tester) async {
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1600, 1000));
       var c = CanvasController(docOf(), audioEngine: FakeEngine({}));
       addTearDown(c.dispose);
       c.openDataStudio("s", view: "t");

@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -20,9 +21,7 @@ import 'package:provider/provider.dart';
 void main() {
   Future<CanvasController> show(WidgetTester tester,
       {bool selected = true}) async {
-    tester.view.physicalSize = const Size(900, 700);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, const Size(900, 700));
 
     var controller = CanvasController(const CanvasDocument(
       frames: 40,

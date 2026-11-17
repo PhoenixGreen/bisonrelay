@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'dart:io';
 import 'dart:math' as math;
@@ -652,37 +653,25 @@ void main() {
           ]),
           audioEngine: engine,
           frameSource: FakeFrames(4));
-      tester.view.physicalSize = const Size(1200, 760);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 760));
       // As the screen has them: the effects panel, when it is open, over
       // the mixer.
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (c.effectsOpen)
-                                CanvasMixer.effects(
-                                    controller: c,
-                                    height: 360,
-                                    onResize: (_) {},
-                                    onClose: () => c.effectsOpen = false),
-                              CanvasMixer(
-                                  controller: c,
-                                  height: 380,
-                                  onResize: (_) {},
-                                  onClose: () {}),
-                            ])))),
-      ));
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                if (c.effectsOpen)
+                  CanvasMixer.effects(
+                      controller: c,
+                      height: 360,
+                      onResize: (_) {},
+                      onClose: () => c.effectsOpen = false),
+                CanvasMixer(
+                    controller: c,
+                    height: 380,
+                    onResize: (_) {},
+                    onClose: () {})
+              ]))));
       await tester.pump();
       return c;
     }
@@ -857,33 +846,21 @@ void main() {
           ]),
           audioEngine: engine,
           frameSource: FakeFrames(4));
-      tester.view.physicalSize = const Size(1200, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1200, 800));
       Future<void> at(double h, {bool effects = false}) =>
-          tester.pumpWidget(MultiProvider(
-            providers: [
-              ChangeNotifierProvider<ThemeNotifier>(
-                  create: (c) => ThemeNotifier(doLoad: false)),
-              ChangeNotifierProvider<SnackBarModel>(
-                  create: (c) => SnackBarModel()),
-            ],
-            child: MaterialApp(
-                home: Scaffold(
-                    body: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: effects
-                            ? CanvasMixer.effects(
-                                controller: c,
-                                height: h,
-                                onResize: (_) {},
-                                onClose: () {})
-                            : CanvasMixer(
-                                controller: c,
-                                height: h,
-                                onResize: (_) {},
-                                onClose: () {})))),
-          ));
+          tester.pumpWidget(canvasApp(Align(
+              alignment: Alignment.bottomCenter,
+              child: effects
+                  ? CanvasMixer.effects(
+                      controller: c,
+                      height: h,
+                      onResize: (_) {},
+                      onClose: () {})
+                  : CanvasMixer(
+                      controller: c,
+                      height: h,
+                      onResize: (_) {},
+                      onClose: () {}))));
       // Down to its least, as the screen gives it -- and past it, scrolled.
       for (var h = 400.0; h >= mixerMinHeight; h -= 3) {
         await at(h);
@@ -1492,9 +1469,7 @@ void main() {
     testWidgets(
         "the line between the effects and the mixer follows a drag "
         "(${scale}x)", (tester) async {
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setTestScreen(tester, const Size(1400, 900));
       var c = CanvasController(
           CanvasDocument(frames: 50, elements: [
             VideoElement(const ElementBase(id: "v", name: "v"),

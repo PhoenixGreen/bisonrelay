@@ -1,4 +1,4 @@
-import 'package:bruig/models/snackbar.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -8,10 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_dim_others_test.dart is one point of an argument taking the light
 // as it arrives, and the points before it stepping back to let it.
@@ -89,22 +87,10 @@ void main() {
     var own = ownClipOf(c.document.elementById("second")!, MotionKind.arrive)!;
     c.selectOnly("second");
     c.pickMotion("second", own.$1.id, placement: own.$2.id);
-    tester.view.physicalSize = const Size(3000, 420);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) =>
-                      AnimationPanel(controller: c, height: 400)))),
-    ));
+    setTestScreen(tester, const Size(3000, 420));
+    await tester.pumpWidget(canvasApp(ListenableBuilder(
+        listenable: c,
+        builder: (context, _) => AnimationPanel(controller: c, height: 400))));
     await tester.pumpAndSettle();
     var button = find.byKey(const ValueKey("animDimOthers"));
     await tester.ensureVisible(button);

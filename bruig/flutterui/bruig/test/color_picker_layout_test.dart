@@ -1,4 +1,5 @@
 import 'package:bruig/components/color_picker.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,9 +25,7 @@ void main() {
   /// openOn puts the real dialog on a screen of [screen] logical pixels wide
   /// and settles it.
   Future<void> openOn(WidgetTester tester, double screen) async {
-    tester.view.physicalSize = Size(screen, 1200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    setTestScreen(tester, Size(screen, 1200));
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: Builder(

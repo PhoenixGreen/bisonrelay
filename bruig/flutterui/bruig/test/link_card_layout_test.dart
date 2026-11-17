@@ -1,4 +1,5 @@
 import 'package:bruig/components/md_elements.dart';
+import 'support/canvas_app.dart';
 import 'package:bruig/components/feed/feed_render_scope.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/plugin_system/link_previews/link_previews.dart';
@@ -40,25 +41,12 @@ Future<void> _pump(WidgetTester tester, Widget child,
           base64Encode(pngOf(64, 36)), ""));
   var theme = ThemeNotifier(doLoad: false);
   if (chatImageSize != "default") theme.setChatImageSize(chatImageSize);
-  await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
-    value: theme,
-    child: MaterialApp(
-      home: Scaffold(
-        // Align inside the fixed width, so the card is offered the width
-        // rather than forced to it -- which is how a real message and a real
-        // post lay their content out. A bare SizedBox hands its child a
-        // *tight* width, and under one of those nothing inside can be
-        // narrower than the column: the Chat area's Image size would appear
-        // to do nothing here while working perfectly in the app.
-        body: Center(
+  await tester.pumpWidget(canvasApp(
+      Center(
           child: SizedBox(
-            width: _width,
-            child: Align(alignment: Alignment.topLeft, child: child),
-          ),
-        ),
-      ),
-    ),
-  ));
+              width: _width,
+              child: Align(alignment: Alignment.topLeft, child: child))),
+      theme: theme));
   await tester.pump();
 }
 
@@ -223,30 +211,21 @@ void main() {
       var theme = ThemeNotifier(doLoad: false);
       theme.setChatImageSize(chatImageSize);
 
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>.value(value: theme),
-          ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-          ChangeNotifierProvider<MarkdownAreaModel>.value(value: mk),
-        ],
-        child: MaterialApp(
-          home: Scaffold(
-            body: Align(
+      await tester.pumpWidget(canvasApp(
+          Align(
               alignment: Alignment.topLeft,
               child: SizedBox(
-                width: _width,
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: ChatImageWidth(
-                    width: _width,
-                    child: MarkdownArea(src, false),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ));
+                  width: _width,
+                  child: Align(
+                      alignment: Alignment.topLeft,
+                      child: ChatImageWidth(
+                          width: _width, child: MarkdownArea(src, false))))),
+          theme: theme,
+          extra: [
+            ChangeNotifierProvider<PaymentsModel>(
+                create: (c) => PaymentsModel()),
+            ChangeNotifierProvider<MarkdownAreaModel>.value(value: mk)
+          ]));
       await tester.pump();
     }
 
