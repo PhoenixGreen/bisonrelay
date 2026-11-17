@@ -1527,7 +1527,6 @@ class _TimelinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TimelinePainter old) =>
-      old.bars?.toJson().toString() != bars?.toJson().toString() ||
       old.frames != frames ||
       old.scene != scene ||
       old.origin != origin ||
@@ -1538,7 +1537,11 @@ class _TimelinePainter extends CustomPainter {
       old.actions != actions ||
       !listEquals(old.cues, cues) ||
       old.brace != brace ||
-      old.looping != looping;
+      old.looping != looping ||
+      // Last, and only when it is another object: written out, it was the
+      // dearest test here, and it was asked first on every rebuild.
+      !identical(old.bars, bars) &&
+          old.bars?.toJson().toString() != bars?.toJson().toString();
 }
 
 /// _TimelineScrollbar shows which stretch of the timeline is on screen, and
