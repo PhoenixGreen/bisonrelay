@@ -100,6 +100,9 @@ void _paintLayer(
   if (layer.kind == SceneryKind.picture && picture == null) return;
   var tile = tileSize(layer, box, picture);
   if (tile.width < 1 || tile.height < 1) return;
+  // The look as set: the copy below is new every frame, and the scenery
+  // kept for a look does not depend on its drift.
+  var look = layer;
   // A whole number of tiles per timeline loop, on the axes it repeats on.
   if (layer.loopDrift && loopFrames != null) {
     layer = layer.copyWith(
@@ -153,7 +156,7 @@ void _paintLayer(
   canvas.scale(zoom);
   canvas.translate(-c.dx, -c.dy);
 
-  var drawn = layer.kind.drawn ? _sceneryOf(layer, tile) : null;
+  var drawn = layer.kind.drawn ? _sceneryOf(look, tile) : null;
   for (var j = y0; j <= y1; j++) {
     for (var i = x0; i <= x1; i++) {
       var at = origin + Offset(i * tile.width, j * tile.height);
@@ -183,7 +186,7 @@ void _paintLayer(
 
 /// _patterns are still patterns drawn once per tile size: a generator is
 /// expensive and a repeating layer asks for the same tile many times.
-final Map<String, ui.Image> _patterns = {};
+final Map<(String, int, int), ui.Image> _patterns = {};
 
 /// clearParallaxPatterns lets go of the layers' patterns kept: see
 /// clearRenderCaches.
@@ -203,8 +206,7 @@ void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
   }
   var w = rect.width.round().clamp(1, 4096),
       h = rect.height.round().clamp(1, 4096);
-  var key = "${_specKeys[layer.spec] ??= jsonEncode(layer.spec.toJson())}"
-      "|$w|$h";
+  var key = (_specKeys[layer.spec] ??= jsonEncode(layer.spec.toJson()), w, h);
   var image = _patterns[key];
   if (image == null) {
     var rec = ui.PictureRecorder();
@@ -226,7 +228,7 @@ void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
 
 /// _drawn are drawn scenery tiles, by layer and size; only the camera's
 /// move changes from frame to frame, so the paths are kept.
-final Map<String, List<(Path, Paint)>> _drawn = {};
+final Map<(String, int, int), List<(Path, Paint)>> _drawn = {};
 
 /// _specKeys and _shapeKeys are a layer's look written out once per look
 /// rather than for every tile of every frame (looks are immutable).
@@ -242,7 +244,7 @@ List<(Path, Paint)> _sceneryOf(ParallaxLayer layer, Size tile) {
           offset: Offset.zero,
           opacity: 1)
       .toJson());
-  var key = "$shape|${tile.width.round()}|${tile.height.round()}";
+  var key = (shape, tile.width.round(), tile.height.round());
   var hit = _drawn[key];
   if (hit != null) return hit;
   var made = scenery(layer, tile);
