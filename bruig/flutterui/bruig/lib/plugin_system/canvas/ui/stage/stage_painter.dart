@@ -25,6 +25,7 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
@@ -827,13 +828,10 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
     var zero = origin;
 
     void number(double at, Offset where, {required bool vertical}) {
-      var painter = TextPainter(
-        text: TextSpan(
-          text: "${at.round()}",
-          style: const TextStyle(fontSize: 8, color: Color(0xAAFFFFFF)),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      // Shared and kept (see labelPainter): the same few numbers come round
+      // on every repaint of the stage.
+      var painter = labelPainter("${at.round()}",
+          size: 8, colour: const Color(0xAAFFFFFF));
       if (vertical) {
         // Turned on its side, so the numbers read up the strip.
         canvas.save();
@@ -844,7 +842,6 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
       } else {
         painter.paint(canvas, where);
       }
-      painter.dispose();
     }
 
     for (var top in [true, false]) {
