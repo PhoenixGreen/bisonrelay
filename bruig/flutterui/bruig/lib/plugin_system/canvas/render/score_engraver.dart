@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart' show keyAlter;
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
 // score_engraver.dart engraves a MusicScore (model/music_score.dart) in
@@ -718,45 +719,38 @@ class ScorePaintState {
 const _playingColour = Color(0xFFE2622B);
 const _pickedColour = Color(0xFF6B5CE7);
 
-final _glyphs = <(int, double, int), TextPainter>{};
+// The music font's glyphs and the score's words come from labelPainter's
+// shared cache: laid out once, bounded, and never disposed or laid out
+// again here. A glyph kept per size before had no bound, so zooming a
+// score grew it for good.
 
 void _glyph(
     ui.Canvas canvas, int code, double x, double y, double size, Color colour) {
-  var p = _glyphs[(code, size, colour.toARGB32())] ??= TextPainter(
-    text: TextSpan(
-        text: String.fromCharCode(code),
-        style: TextStyle(
-            fontFamily: "Bravura", fontSize: size, height: 1, color: colour)),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  var p = labelPainter(String.fromCharCode(code),
+      size: size, colour: colour, family: "Bravura", height: 1);
   var base = p.computeDistanceToActualBaseline(TextBaseline.alphabetic);
   p.paint(canvas, Offset(x, y - base));
 }
 
-double _glyphW(int code, double size) => (TextPainter(
-      text: TextSpan(
-          text: String.fromCharCode(code),
-          style: TextStyle(fontFamily: "Bravura", fontSize: size, height: 1)),
-      textDirection: TextDirection.ltr,
-    )..layout())
-        .width;
+/// _glyphW is a glyph's width, which its colour does not change.
+double _glyphW(int code, double size) => labelPainter(String.fromCharCode(code),
+        size: size,
+        colour: const Color(0xFF000000),
+        family: "Bravura",
+        height: 1)
+    .width;
 
 TextPainter _text(String s, double size, Color colour,
         {String family = "Inter",
         FontWeight weight = FontWeight.w400,
         FontStyle style = FontStyle.normal}) =>
-    TextPainter(
-      text: TextSpan(
-          text: s,
-          style: TextStyle(
-              fontFamily: family,
-              fontSize: size,
-              fontWeight: weight,
-              fontStyle: style,
-              color: colour,
-              height: 1.1)),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    labelPainter(s,
+        size: size,
+        colour: colour,
+        family: family,
+        weight: weight,
+        italic: style == FontStyle.italic,
+        height: 1.1);
 
 void paintScore(ui.Canvas canvas, EngravedScore es,
     {Offset origin = Offset.zero,
