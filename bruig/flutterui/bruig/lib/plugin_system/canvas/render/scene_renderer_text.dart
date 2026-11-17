@@ -102,7 +102,7 @@ void _paintTextBody(
   // theirs: see MotionDevice.layer.
   void drawWords(ui.Canvas canvas) {
     // Set line by line round whatever is in the way (text_wrap.dart).
-    var blocked = wrapObstacles(e, doc, frame, inner, images: images);
+    var blocked = flow.blocked;
     if (e.wrap.on &&
         blocked.isNotEmpty &&
         wrapFits(words, spec, inner, blocked, e.wrap)) {

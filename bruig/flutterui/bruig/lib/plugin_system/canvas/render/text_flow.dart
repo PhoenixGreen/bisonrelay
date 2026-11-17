@@ -42,7 +42,12 @@ class TextFlow {
   /// chain, so all its columns are tidied alike.
   final bool tidyStart;
 
+  /// blocked is what the words go round in this box (wrapObstacles), as
+  /// worked out for the flow, so the painter need not work it out again.
+  final List<WrapShape> blocked;
+
   const TextFlow({
+    this.blocked = const [],
     required this.text,
     this.overflows = false,
     this.receiving = false,
@@ -69,6 +74,7 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
       head: e.id,
       tidyStart: e.columns.noBlankStart,
       parts: e.documentParts,
+      blocked: blocked,
     );
   }
 
@@ -107,6 +113,7 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     receiving: receiving,
     head: head.id,
     tidyStart: tidy,
+    blocked: blocked,
     // The head's styled runs, counted from this box's own first word.
     parts: receiving
         ? partsFrom(head.documentParts, wordsIn(text.substring(0, at)))
@@ -132,11 +139,25 @@ bool wouldLoop(TextElement from, String to, CanvasDocument doc) {
 /// flowSourceOf is the element whose words land in [e], if any.
 TextElement? flowSourceOf(TextElement e, CanvasDocument? doc) {
   if (doc == null) return null;
-  for (var other in doc.elements) {
-    if (other is TextElement && other.flowTo == e.id) return other;
-  }
-  return null;
+  var list = doc.elements;
+  var sources = _sources[list] ??= () {
+    var out = <String, TextElement>{};
+    for (var other in list) {
+      if (other is TextElement && other.flowTo.isNotEmpty) {
+        out.putIfAbsent(other.flowTo, () => other);
+      }
+    }
+    return out;
+  }();
+  return sources[e.id];
 }
+
+/// _sources is, per list of elements, each text box by the box its words
+/// go on to. Every text box drawn asks whether it is a target, and walking
+/// the elements for each made a page of text boxes cost the square of
+/// their number. Lists of elements are replaced, never changed, so one per
+/// list holds (as elementById's index does).
+final _sources = Expando<Map<String, TextElement>>("flowSources");
 
 bool _isTarget(TextElement e, CanvasDocument doc) =>
     flowSourceOf(e, doc) != null;
