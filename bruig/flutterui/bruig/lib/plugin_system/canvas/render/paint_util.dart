@@ -57,6 +57,92 @@ void clearTextLayouts() {
     painter.dispose();
   }
   _layouts.clear();
+  for (var painter in _labels.values) {
+    painter.dispose();
+  }
+  _labels.clear();
+}
+
+// _labels memoises short labels drawn in one style -- a knob's name, a line
+// number, a button's word -- which the element painters used to lay out
+// afresh every frame, at about a hundred times the cost of finding them
+// here. Keyed on plain values (a colour as its ARGB, a weight as its number),
+// never on a TextStyle, whose hash is dearer than the lookup.
+typedef _LabelKey = (
+  String,
+  double,
+  int,
+  String?,
+  int,
+  bool,
+  double?,
+  double?,
+  int?,
+  String?,
+  int,
+  double,
+);
+
+final _labels = <_LabelKey, TextPainter>{};
+
+/// _labelCap is the number of labels kept: a synth rack and a few code
+/// panels draw a few hundred.
+const _labelCap = 2048;
+
+/// labelPainter is [text] laid out in one style, as a painter draws a label:
+/// [size] and [colour], in [family] (the app's default where null) at
+/// [weight], with [spacing] and [height] where given, [maxLines] and
+/// [ellipsis], aligned by [align] within [maxWidth]. The painter is shared:
+/// paint and measure it, never dispose it or lay it out again.
+TextPainter labelPainter(
+  String text, {
+  required double size,
+  required Color colour,
+  String? family,
+  FontWeight weight = FontWeight.normal,
+  bool italic = false,
+  double? spacing,
+  double? height,
+  int? maxLines,
+  String? ellipsis,
+  TextAlign align = TextAlign.start,
+  double maxWidth = double.infinity,
+}) {
+  var key = (
+    text,
+    size,
+    colour.toARGB32(),
+    family,
+    weight.value,
+    italic,
+    spacing,
+    height,
+    maxLines,
+    ellipsis,
+    align.index,
+    maxWidth,
+  );
+  var hit = _labels[key];
+  if (hit != null) return hit;
+  var painter = TextPainter(
+    text: TextSpan(
+        text: text,
+        style: TextStyle(
+            fontFamily: family,
+            fontSize: size,
+            fontWeight: weight,
+            fontStyle: italic ? FontStyle.italic : null,
+            letterSpacing: spacing,
+            height: height,
+            color: colour)),
+    textDirection: TextDirection.ltr,
+    textAlign: align,
+    maxLines: maxLines,
+    ellipsis: ellipsis,
+  )..layout(maxWidth: maxWidth);
+  if (_labels.length >= _labelCap) _labels.remove(_labels.keys.first);
+  _labels[key] = painter;
+  return painter;
 }
 
 /// _layoutCap is the number of paragraphs kept (a busy table is a few

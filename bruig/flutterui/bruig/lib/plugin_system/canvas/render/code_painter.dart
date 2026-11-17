@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/code_highlight.dart';
@@ -408,14 +409,10 @@ double _tabHeight(CodeElement e) => e.fontSize * 2.3;
 double codeTextPad(CodeElement e) => e.fontSize * 0.7;
 
 double _nameWidth(String name, double size) {
-  var tp = TextPainter(
-      text: TextSpan(
-          text: name, style: TextStyle(fontFamily: _uiFont, fontSize: size)),
-      textDirection: TextDirection.ltr)
-    ..layout();
-  var w = tp.width;
-  tp.dispose();
-  return w;
+  // Measured, never drawn: any colour keys it.
+  return labelPainter(name,
+          size: size, colour: const Color(0xFF000000), family: _uiFont)
+      .width;
 }
 
 /// paneRects is [e]'s panes laid in [area] by its shares, and lines between.
@@ -564,21 +561,16 @@ void _text(Canvas canvas, String t, Offset at, double size, Color colour,
     double? maxWidth,
     bool centreY = true,
     double spacing = 0}) {
-  var tp = TextPainter(
-      text: TextSpan(
-          text: t,
-          style: TextStyle(
-              fontFamily: _uiFont,
-              fontSize: size,
-              fontWeight: weight,
-              letterSpacing: spacing,
-              color: colour)),
-      textDirection: TextDirection.ltr,
+  var tp = labelPainter(t,
+      size: size,
+      colour: colour,
+      family: _uiFont,
+      weight: weight,
+      spacing: spacing,
       maxLines: 1,
-      ellipsis: maxWidth == null ? null : "…")
-    ..layout(maxWidth: maxWidth ?? double.infinity);
+      ellipsis: maxWidth == null ? null : "…",
+      maxWidth: maxWidth ?? double.infinity);
   tp.paint(canvas, centreY ? at - Offset(0, tp.height / 2) : at);
-  tp.dispose();
 }
 
 void paintCode(Canvas canvas, Rect box, CodeElement e,
@@ -801,24 +793,12 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
     var last = math.min(lines, ((pane.code.bottom - top) / lh).ceil() + 1);
     if (last > first) {
       var width = textLeft - fs * 0.8 - pane.code.left;
-      var n = TextPainter(
-          text: TextSpan(
-              text: [for (var i = first; i < last; i++) "${i + 1}"].join("\n"),
-              style: codeStyle(fs, c.gutter)),
-          strutStyle: codeStrut(fs),
-          textAlign: TextAlign.right,
-          textDirection: TextDirection.ltr)
-        ..layout(minWidth: width, maxWidth: width);
-      n.paint(canvas, Offset(pane.code.left, top + first * lh));
-      n.dispose();
+      _gutter(first, last, fs, c.gutter, width)
+          .paint(canvas, Offset(pane.code.left, top + first * lh));
     }
   }
 
-  var tp = TextPainter(
-      text: codeSpan(e, f, f.text, typed, c),
-      strutStyle: codeStrut(fs),
-      textDirection: TextDirection.ltr)
-    ..layout();
+  var tp = _body(e, f, typed, fs, c);
   tp.paint(canvas, Offset(textLeft, top));
   if (typing && e.typing.caret) {
     var at =
@@ -828,7 +808,6 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
             math.max(1.5, fs * 0.12), lh * 0.64),
         Paint()..color = c.caret);
   }
-  tp.dispose();
 
   if (here.isNotEmpty && e.dim && !show.full) {
     var s = here.first;
@@ -863,6 +842,47 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
   canvas.restore();
 }
 
+// _bodies keeps each Code panel's laid-out file text, by the element it was
+// laid out for -- elements never change, so an edited panel is a new one and
+// misses -- then by the file, how much of it is typed, its size and its
+// colours (a theme's const set). Laid out afresh every frame, a long file was
+// most of a panel's drawing. A few are kept for each, as a panel typing out
+// makes a new one a frame; the rest go with the element.
+final _bodies =
+    Expando<Map<(CodeFile, int, double, CodeColours), TextPainter>>();
+
+TextPainter _body(
+    CodeElement e, CodeFile f, int typed, double fs, CodeColours c) {
+  var kept = _bodies[e] ??= {};
+  var key = (f, typed, fs, c);
+  if (kept[key] case var hit?) return hit;
+  if (kept.length >= 8) kept.remove(kept.keys.first);
+  return kept[key] = TextPainter(
+      text: codeSpan(e, f, f.text, typed, c),
+      strutStyle: codeStrut(fs),
+      textDirection: TextDirection.ltr)
+    ..layout();
+}
+
+// _gutters keeps the line numbers' blocks: which lines, their size, colour
+// and the width they are set right in.
+final _gutters = <(int, int, double, int, double), TextPainter>{};
+
+TextPainter _gutter(
+    int first, int last, double fs, Color colour, double width) {
+  var key = (first, last, fs, colour.toARGB32(), width);
+  if (_gutters[key] case var hit?) return hit;
+  if (_gutters.length >= 64) _gutters.remove(_gutters.keys.first);
+  return _gutters[key] = TextPainter(
+      text: TextSpan(
+          text: [for (var i = first; i < last; i++) "${i + 1}"].join("\n"),
+          style: codeStyle(fs, colour)),
+      strutStyle: codeStrut(fs),
+      textAlign: TextAlign.right,
+      textDirection: TextDirection.ltr)
+    ..layout(minWidth: width, maxWidth: width);
+}
+
 int _shownLength(TextPainter tp) => tp.text?.toPlainText().length ?? 0;
 
 /// _paintNote draws a lit line's note: a marker-yellow label beside the
@@ -870,18 +890,14 @@ int _shownLength(TextPainter tp) => tp.text?.toPlainText().length ?? 0;
 /// ([below]) at the pane's right, pointing up.
 void _paintNote(Canvas canvas, String note, double x, double y, double below,
     Rect pane, double fs) {
-  var tp = TextPainter(
-      text: TextSpan(
-          text: note,
-          style: TextStyle(
-              fontFamily: _uiFont,
-              fontSize: fs * 0.8,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF1D1606))),
-      textDirection: TextDirection.ltr,
+  var tp = labelPainter(note,
+      size: fs * 0.8,
+      colour: const Color(0xFF1D1606),
+      family: _uiFont,
+      weight: FontWeight.w600,
       maxLines: 1,
-      ellipsis: "…")
-    ..layout(maxWidth: math.max(fs * 4, pane.width - fs * 2));
+      ellipsis: "…",
+      maxWidth: math.max(fs * 4, pane.width - fs * 2));
   var w = tp.width + fs * 1.1, h = tp.height + fs * 0.6;
   var paint = Paint()..color = codeMark;
   var beside = x + w <= pane.right - fs * 0.4;
@@ -906,7 +922,6 @@ void _paintNote(Canvas canvas, String note, double x, double y, double below,
             ..close()),
       paint);
   tp.paint(canvas, Offset(r.left + fs * 0.55, r.top + fs * 0.3));
-  tp.dispose();
 }
 
 sealed class CodeHit {

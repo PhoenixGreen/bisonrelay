@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -1373,19 +1374,16 @@ class _Panel {
           bool mono = false,
           double spacing = 0,
           double? maxWidth}) =>
-      TextPainter(
-        text: TextSpan(
-            text: t,
-            style: TextStyle(
-                fontSize: size,
-                fontWeight: weight,
-                fontFamily: mono ? "RobotoMono" : "Inter",
-                letterSpacing: spacing,
-                height: 1.2,
-                color: col)),
-        textDirection: TextDirection.ltr,
-        maxLines: maxWidth == null ? 1 : 2,
-      )..layout(maxWidth: maxWidth ?? double.infinity);
+      // Kept across frames: a rack's labels are the same every frame.
+      labelPainter(t,
+          size: size,
+          colour: col,
+          family: mono ? "RobotoMono" : "Inter",
+          weight: weight,
+          spacing: spacing,
+          height: 1.2,
+          maxLines: maxWidth == null ? 1 : 2,
+          maxWidth: maxWidth ?? double.infinity);
 
   /// _text draws [t] from [o]: its top left, or its left middle with
   /// [middle], or its middle with [centre].

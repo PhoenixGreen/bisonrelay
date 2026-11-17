@@ -178,8 +178,20 @@ double counterFitScale(CounterElement e, Rect room, double value) {
   return math.min(1.0, math.min(room.width / widest, room.height / tallest));
 }
 
+/// _measured keeps each counter's measured lines by the value shown: the
+/// fit is measured three times a frame, for numbers that mostly repeat.
+/// Counters never change, so an edited one is a new one and misses.
+final _measured = Expando<Map<double, Size>>();
+
 /// _measure is how big one line of this counter is at its own type sizes.
 Size _measure(CounterElement e, double value) {
+  var kept = _measured[e] ??= {};
+  if (kept[value] case var size?) return size;
+  if (kept.length >= 64) kept.remove(kept.keys.first);
+  return kept[value] = _measureNow(e, value);
+}
+
+Size _measureNow(CounterElement e, double value) {
   var painter = TextPainter(
     text: TextSpan(
       style: textStyleOf(e.numberSpec),

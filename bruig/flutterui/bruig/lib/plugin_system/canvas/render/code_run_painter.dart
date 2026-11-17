@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -81,24 +82,19 @@ void _text(Canvas canvas, String t, Offset at, double size, Color colour,
     double? maxWidth,
     String family = _ui,
     bool centre = false}) {
-  var tp = TextPainter(
-      text: TextSpan(
-          text: t,
-          style: TextStyle(
-              fontFamily: family,
-              fontSize: size,
-              fontWeight: weight,
-              color: colour)),
-      textDirection: TextDirection.ltr,
+  var tp = labelPainter(t,
+      size: size,
+      colour: colour,
+      family: family,
+      weight: weight,
       maxLines: 1,
-      ellipsis: maxWidth == null ? null : "…")
-    ..layout(maxWidth: maxWidth ?? double.infinity);
+      ellipsis: maxWidth == null ? null : "…",
+      maxWidth: maxWidth ?? double.infinity);
   tp.paint(
       canvas,
       centre
           ? at - Offset(tp.width / 2, tp.height / 2)
           : at - Offset(0, tp.height / 2));
-  tp.dispose();
 }
 
 /// waitingSaid is what a Run panel says before it runs at [seconds], or null.
@@ -130,14 +126,14 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
   _text(canvas, "Run", Offset(b.bar.left + fs * 1.1, b.bar.center.dy),
       fs * 1.05, const Color(0xFFB7BEC7));
   var label = runner.online ? "${runner.label} · online" : runner.label;
-  var lp = TextPainter(
-      text: TextSpan(
-          text: label,
-          style: TextStyle(fontFamily: _ui, fontSize: fs * 0.78, color: _dim)),
-      textDirection: TextDirection.ltr,
+  var lp = labelPainter(label,
+      size: fs * 0.78,
+      colour: _dim,
+      family: _ui,
       maxLines: 1,
-      ellipsis: "…")
-    ..layout(maxWidth: math.max(0, b.runButton.left - b.bar.left - fs * 5.5));
+      ellipsis: "…",
+      maxWidth:
+          math.max(0, b.runButton.left - b.bar.left - fs * 5.5).toDouble());
   var pill = Rect.fromLTWH(b.bar.left + fs * 3.6, b.bar.center.dy - fs * 0.75,
       lp.width + fs * 1.2, fs * 1.5);
   canvas.drawRRect(
@@ -148,7 +144,6 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
         ..color = runner.online ? _warn : const Color(0xFF363D47));
   lp.paint(
       canvas, Offset(pill.left + fs * 0.6, pill.center.dy - lp.height / 2));
-  lp.dispose();
   var button = RRect.fromRectAndRadius(b.runButton, Radius.circular(fs * 0.5));
   canvas.drawRRect(button,
       Paint()..color = show.running ? _go.withValues(alpha: 0.55) : _go);

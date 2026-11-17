@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -254,16 +255,11 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
 
 void _text(ui.Canvas canvas, String t, Offset c, double size, Color colour,
     {FontWeight weight = FontWeight.w600, bool mono = false}) {
-  var tp = TextPainter(
-    text: TextSpan(
-        text: t,
-        style: TextStyle(
-            fontFamily: mono ? "RobotoMono" : "Inter",
-            fontSize: size,
-            fontWeight: weight,
-            height: 1.1,
-            color: colour)),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  var tp = labelPainter(t,
+      size: size,
+      colour: colour,
+      family: mono ? "RobotoMono" : "Inter",
+      weight: weight,
+      height: 1.1);
   tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
 }

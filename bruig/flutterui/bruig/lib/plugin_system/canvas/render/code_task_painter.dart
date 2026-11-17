@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -42,18 +43,15 @@ class CodeTaskLayout {
 
 TextPainter _words(String t, double size, Color c, double width,
     {FontWeight weight = FontWeight.w400, double line = 1.4}) {
-  var tp = TextPainter(
-      text: TextSpan(
-          text: t,
-          style: TextStyle(
-              fontFamily: _ui,
-              fontSize: size,
-              fontWeight: weight,
-              height: line,
-              color: c)),
-      textDirection: TextDirection.ltr)
-    ..layout(maxWidth: math.max(1, width));
-  return tp;
+  // Kept across frames (labelPainter): laid out twice a frame, in the
+  // layout and again in the painting, for words that do not change.
+  return labelPainter(t,
+      size: size,
+      colour: c,
+      family: _ui,
+      weight: weight,
+      height: line,
+      maxWidth: math.max(1, width).toDouble());
 }
 
 /// codeTaskLayout lays [e] out [width] wide; [banner] is the result's words.
@@ -63,18 +61,15 @@ CodeTaskLayout codeTaskLayout(CodeTaskElement e, double width,
   var y = pad;
   var title = _words(e.title, ts * 1.3, _ink, inner, weight: FontWeight.w800);
   y += title.height + ts * 0.5 + 3 + ts * 0.7;
-  title.dispose();
   if (e.text.isNotEmpty) {
     var t = _words(e.text, ts, _soft, inner);
     y += t.height + ts * 0.9;
-    t.dispose();
   }
   var rows = <double>[];
   for (var c in e.checks) {
     rows.add(y);
     var t = _words(c.label, ts, _ink, inner - ts * 1.8);
     y += math.max(t.height, ts * 1.3) + ts * 0.5;
-    t.dispose();
   }
   y += ts * 0.5;
   var button = Rect.fromLTWH(pad, y, math.min(inner, ts * 10), ts * 2.5);
@@ -82,7 +77,6 @@ CodeTaskLayout codeTaskLayout(CodeTaskElement e, double width,
   if (banner != null) {
     var t = _words(banner, ts, _ink, inner - ts * 1.6, weight: FontWeight.w600);
     y += ts * 0.9 + t.height + ts * 1.2;
-    t.dispose();
   }
   return CodeTaskLayout(y + pad, button, rows);
 }
@@ -143,11 +137,9 @@ void paintCodeTask(
           const Radius.circular(1.5)),
       Paint()..color = e.accent);
   y += 3 + ts * 0.7;
-  title.dispose();
   if (e.text.isNotEmpty) {
     var t = _words(e.text, ts, _soft, inner);
     t.paint(canvas, Offset(pad, y));
-    t.dispose();
   }
 
   // The checks, each ticked as it is met.
@@ -186,7 +178,6 @@ void paintCodeTask(
         canvas,
         Offset(
             pad + ts * 1.6, top + ts * 0.7 - math.min(t.height, ts * 1.4) / 2));
-    t.dispose();
   }
 
   var b = RRect.fromRectAndRadius(l.button, Radius.circular(ts * 0.6));
@@ -199,7 +190,6 @@ void paintCodeTask(
       weight: FontWeight.w700, line: 1.1);
   label.paint(
       canvas, l.button.center - Offset(label.width / 2, label.height / 2));
-  label.dispose();
 
   if (result case (var words, var passed)) {
     var top = l.button.bottom + ts * 0.9;
@@ -214,7 +204,6 @@ void paintCodeTask(
             Radius.circular(ts * 0.12)),
         Paint()..color = colour);
     t.paint(canvas, Offset(pad + ts * 0.9, top + ts * 0.6));
-    t.dispose();
   }
   canvas.restore();
 }

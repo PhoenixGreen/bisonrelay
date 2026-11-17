@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -32,17 +33,14 @@ class SynthTaskLayout {
 
 TextPainter _lay(String t, double size, Color c,
         {FontWeight weight = FontWeight.w500, double height = 1.45}) =>
-    TextPainter(
-      text: TextSpan(
-          text: t,
-          style: TextStyle(
-              fontFamily: "Inter",
-              fontSize: size,
-              fontWeight: weight,
-              height: height,
-              color: c)),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: synthTaskWidth - 2 * _pad - 16);
+    // Kept across frames: see labelPainter.
+    labelPainter(t,
+        size: size,
+        colour: c,
+        family: "Inter",
+        weight: weight,
+        height: height,
+        maxWidth: synthTaskWidth - 2 * _pad - 16);
 
 /// synthTaskLayout lays [e] out, its checks as [doc]'s patch meets them
 /// (or all unmet, with no document).
@@ -138,16 +136,11 @@ void _button(ui.Canvas canvas, Rect r, String label, bool on) {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
         ..color = const Color(0xFFE3CF96));
-  var tp = TextPainter(
-    text: TextSpan(
-        text: label,
-        style: TextStyle(
-            fontFamily: "Inter",
-            fontSize: 11.5,
-            fontWeight: FontWeight.w700,
-            color: on ? _ink : _ink.withValues(alpha: 0.4))),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  var tp = labelPainter(label,
+      size: 11.5,
+      colour: on ? _ink : _ink.withValues(alpha: 0.4),
+      family: "Inter",
+      weight: FontWeight.w700);
   tp.paint(canvas, r.center - Offset(tp.width / 2, tp.height / 2));
 }
 

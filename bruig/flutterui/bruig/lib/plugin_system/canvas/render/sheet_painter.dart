@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -103,18 +104,14 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
   var width = right - left;
 
   if (look.title.isNotEmpty) {
-    var t = TextPainter(
-      text: TextSpan(
-          text: look.title,
-          style: TextStyle(
-              fontSize: titleHeight * 0.6,
-              fontWeight: FontWeight.w600,
-              fontFamily: "PTSerif",
-              color: look.ink)),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: "…",
-    )..layout(maxWidth: width);
+    var t = labelPainter(look.title,
+        size: titleHeight * 0.6,
+        colour: look.ink,
+        family: "PTSerif",
+        weight: FontWeight.w600,
+        maxLines: 1,
+        ellipsis: "…",
+        maxWidth: width);
     t.paint(
         canvas,
         Offset(bounds.center.dx - t.width / 2,
@@ -194,16 +191,10 @@ List<int?> pageLines(int playing, int lines, int count) {
 void _glyph(
     ui.Canvas canvas, int code, double x, double y, double space, Color colour,
     {double scale = 1}) {
-  var p = TextPainter(
-    text: TextSpan(
-        text: String.fromCharCode(code),
-        style: TextStyle(
-            fontFamily: "Bravura",
-            fontSize: space * 4 * scale,
-            height: 1,
-            color: colour)),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  // Kept across frames (labelPainter): a page of notes is the same few
+  // glyphs drawn many times over, every frame.
+  var p = labelPainter(String.fromCharCode(code),
+      size: space * 4 * scale, colour: colour, family: "Bravura", height: 1);
   var baseline = p.computeDistanceToActualBaseline(TextBaseline.alphabetic);
   p.paint(canvas, Offset(x, y - baseline));
 }
@@ -281,16 +272,11 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
       for (var (t, px) in _xs(bar, space)) t: x + px * stretch,
     };
     if (k == 0) {
-      var n = TextPainter(
-        text: TextSpan(
-            text: "${bar.number}",
-            style: TextStyle(
-                fontSize: space * 1.2,
-                fontFamily: "PTSerif",
-                fontStyle: FontStyle.italic,
-                color: ink.withValues(alpha: 0.6))),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      var n = labelPainter("${bar.number}",
+          size: space * 1.2,
+          colour: ink.withValues(alpha: 0.6),
+          family: "PTSerif",
+          italic: true);
       n.paint(canvas, Offset(x, systemTop - space * 2.2));
     }
     for (var staff in score.staves) {
@@ -568,14 +554,14 @@ void _paintTuplet(ui.Canvas canvas, List<(Written, double)> group,
       pen);
 }
 
-double _glyphWidth(int code, double space) => (TextPainter(
-      text: TextSpan(
-          text: String.fromCharCode(code),
-          style:
-              TextStyle(fontFamily: "Bravura", fontSize: space * 4, height: 1)),
-      textDirection: TextDirection.ltr,
-    )..layout())
-        .width;
+// Measured, never drawn: any colour keys it.
+double _glyphWidth(int code, double space) => labelPainter(
+        String.fromCharCode(code),
+        size: space * 4,
+        colour: const Color(0xFF000000),
+        family: "Bravura",
+        height: 1)
+    .width;
 
 void _digits(
     ui.Canvas canvas, int n, double x, double y, double space, Color ink) {
@@ -785,17 +771,13 @@ void paintSheetElement(ui.Canvas canvas, Rect bounds, SheetElement e,
   if (document == null || followed is! AudioElement || part == null) {
     canvas.drawRRect(RRect.fromRectAndRadius(bounds, const Radius.circular(6)),
         Paint()..color = e.paper);
-    var t = TextPainter(
-      text: TextSpan(
-          text: "Sheet music: choose the instrument it shows",
-          style: TextStyle(
-              fontSize: math.max(10, bounds.height * 0.06),
-              fontFamily: "PTSerif",
-              fontStyle: FontStyle.italic,
-              color: e.ink.withValues(alpha: 0.6))),
-      textDirection: TextDirection.ltr,
-      textAlign: TextAlign.center,
-    )..layout(maxWidth: bounds.width * 0.9);
+    var t = labelPainter("Sheet music: choose the instrument it shows",
+        size: math.max(10, bounds.height * 0.06).toDouble(),
+        colour: e.ink.withValues(alpha: 0.6),
+        family: "PTSerif",
+        italic: true,
+        align: TextAlign.center,
+        maxWidth: bounds.width * 0.9);
     t.paint(canvas, bounds.center - Offset(t.width / 2, t.height / 2));
     // An empty staff under it, so it reads as what it is.
     paintSheet(
