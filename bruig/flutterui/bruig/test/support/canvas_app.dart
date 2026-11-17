@@ -81,3 +81,26 @@ Future<bool> pumpUntil(WidgetTester tester, bool Function() done,
   await tester.pump();
   return done();
 }
+
+/// sweepSizes lays out what is already pumped again at each text size in
+/// [scales] and each screen size in [sizes] in turn, [settle] frames each,
+/// and fails naming the size where something threw or overran. One tree
+/// laid out many times costs a fraction of building one for each size; what
+/// it does not check is a widget that reads its size only when first built.
+Future<void> sweepSizes(WidgetTester tester,
+    {required List<Size> sizes,
+    List<double> scales = const [1.0, 1.4],
+    int settle = 4}) async {
+  for (var scale in scales) {
+    setTestTextScale(tester, scale);
+    for (var size in sizes) {
+      tester.view.physicalSize = size;
+      for (var i = 0; i < settle; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(tester.takeException(), isNull,
+          reason: "at ${size.width.round()} by ${size.height.round()}, "
+              "${scale}x text");
+    }
+  }
+}

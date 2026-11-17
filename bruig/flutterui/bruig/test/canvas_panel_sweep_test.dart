@@ -1,8 +1,6 @@
 import 'dart:io';
 
 import 'support/canvas_app.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -15,11 +13,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_panel_sweep_test.dart is every element's settings and its Chain,
@@ -68,7 +64,7 @@ void main() {
 
   Future<CanvasController> pump(WidgetTester tester, CanvasElement e,
       Widget Function(CanvasController) body,
-      {required Size size, required double scale}) async {
+      {required Size size}) async {
     SharedPreferences.setMockInitialValues({});
     setTestScreen(tester, size);
     var c = CanvasController(
@@ -80,50 +76,22 @@ void main() {
       c.applyElementExit(
           c.document.elementById(e.id)!, ElementAnimationPreset.fadeUp);
     }
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: TextScaler.linear(scale)),
-              child: child!),
-          home: Scaffold(body: body(c))),
-    ));
-    for (var i = 0; i < 4; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await tester.pumpWidget(canvasApp(body(c)));
     return c;
   }
 
   for (var (name, e) in elements()) {
-    for (var scale in [1.0, 1.4]) {
-      for (var width in [300.0, 420.0]) {
-        testWidgets("$name's settings at ${width}px, ${scale}x",
-            (tester) async {
-          await pump(
-              tester,
-              e,
-              (c) => SizedBox(
-                  width: width, child: CanvasDesignPanel(controller: c)),
-              size: Size(width, 9000),
-              scale: scale);
-          expect(tester.takeException(), isNull);
-        });
-      }
-      for (var width in [900.0, 1600.0]) {
-        testWidgets("$name's Chain at ${width}px, ${scale}x", (tester) async {
-          await pump(
-              tester, e, (c) => AnimationPanel(controller: c, height: 420),
-              size: Size(width, 600), scale: scale);
-          expect(tester.takeException(), isNull);
-        });
-      }
-    }
+    testWidgets("$name's settings, narrow to wide, both text sizes",
+        (tester) async {
+      await pump(tester, e, (c) => CanvasDesignPanel(controller: c),
+          size: const Size(300, 9000));
+      await sweepSizes(tester, sizes: const [Size(300, 9000), Size(420, 9000)]);
+    });
+    testWidgets("$name's Chain, narrow to wide, both text sizes",
+        (tester) async {
+      await pump(tester, e, (c) => AnimationPanel(controller: c, height: 420),
+          size: const Size(900, 600));
+      await sweepSizes(tester, sizes: const [Size(900, 600), Size(1600, 600)]);
+    });
   }
 }

@@ -35,7 +35,7 @@ Material icons on its alignment enum.
 |---|---|
 | (top) | `canvas_controller.dart` and what every part uses: `controls.dart`, `canvas_dialogs.dart`, `element_factory.dart`, `element_settings.dart`, presets, studio colours. |
 | `controller/` | The controller's own parts, as `extension` files (see below). |
-| `stage/` | The canvas being edited: drawing, gestures, hit testing, the 3D gizmo, typing on it. |
+| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle, keys and build; what it does is in parts by concern: `stage_coordinates`, `stage_hit_testing`, `stage_press`, `stage_drag`, `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing`, `stage_3d_view`. Drawing is `stage_painter.dart` and its parts. |
 | `screen/` | The editor around the stage: settings bar, dock, play bar, publishing, the file player. |
 | `timeline/` | Rows, channels, scenes, markers, keys, automation. |
 | `mixer/` | The mixer, its strips and devices, the clip slots. |
@@ -102,6 +102,15 @@ its part, in a small class the controller holds one of (`_VectorState` in
 keeps what several parts share, its statics and its overrides. A change goes
 through `apply` or one of the helpers built on it (`replaceElement`,
 `addElement`...), which records undo and notifies.
+
+**Big widgets in parts.** A `State` class that outgrew one file keeps its
+fields, lifecycle and `build` in its own file and puts its behaviour in
+`part` files beside it, each an `extension` on the class: the stage, the
+charts and table designers (`data/charts_*`, `data/table_*`), the mixer's
+desk and device chain, the piano roll, the clip editor, the channels. The
+class overrides `setState` so its parts may call it, and keeps any method
+used as a listener: an extension's tear-off is a new closure each time, so
+`removeListener` would not find it.
 
 **Listening.** Most widgets listen to the controller. Two things notify it
 many times a second: the steps of a gesture (a drag, typing on the canvas:
@@ -229,9 +238,14 @@ somebody hostile. The rules below and where they are kept:
     loaded) are listed in `generate.dart` to run alone.
   - Each file in a bundle starts from `betweenFiles` (`test_bundles/reset.dart`).
     Anything a file can leave behind for the next belongs there.
+- **While working**, `sh test_bundles/quick.sh` runs the model tests alone
+  (every file with no widget test, one compile) in about half a minute.
+  The whole suite is still the check before committing.
 - **Text sizes.** Panels are checked across text sizes (0.65× to 1.5×; the
   author runs a larger one than the default), so a layout that only fits at
-  one size fails a test.
+  one size fails a test. `sweepSizes` (`test/support/canvas_app.dart`) lays
+  one pumped tree out at each size in turn, far cheaper than a test for
+  each.
 
 ## Writing the code
 

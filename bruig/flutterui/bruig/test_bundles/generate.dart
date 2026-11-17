@@ -113,6 +113,38 @@ void main(List<String> args) {
   stdout.writeln("${files.length} files in $bundles bundles "
       "(${[for (var w in weights) w.round()].join(", ")} s); "
       "${alone.length} run alone.");
+  _writeQuick(files);
+}
+
+/// _writeQuick writes quick.dart: every file with no widget test in it, in
+/// one compile, for a check in about half a minute while working (quick.sh).
+/// Not named _test.dart, so run.sh, which runs this folder, does not run it
+/// twice.
+void _writeQuick(List<File> files) {
+  var quick = [
+    for (var f in files)
+      if (!f.readAsStringSync().contains("testWidgets(")) f,
+  ]..sort((a, b) => a.path.compareTo(b.path));
+  var lines = [
+    "// Written by test_bundles/generate.dart: do not edit. The model tests",
+    "// alone, no widgets: sh test_bundles/quick.sh",
+    "import 'package:flutter_test/flutter_test.dart';",
+    "",
+    "import 'reset.dart';",
+    for (var (k, f) in quick.indexed)
+      "import '../test/${f.uri.pathSegments.last}' as t$k;",
+    "",
+    "void main() {",
+    for (var (k, f) in quick.indexed) ...[
+      "  group('${f.uri.pathSegments.last}', () {",
+      "    setUpAll(betweenFiles);",
+      "    t$k.main();",
+      "  });",
+    ],
+    "}",
+  ];
+  File("test_bundles/quick.dart").writeAsStringSync("${lines.join("\n")}\n");
+  stdout.writeln("${quick.length} model-only files in quick.dart.");
 }
 
 String _name(File f) => f.uri.pathSegments.last;
