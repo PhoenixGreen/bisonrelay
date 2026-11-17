@@ -59,6 +59,29 @@ final _partsKeys = Expando<String>();
 String _partsKey(List<TextPart> parts) =>
     [for (var p in parts) p.toJson()].toString();
 
+/// _dashed is outlines already cut into dashes, by what they outline and
+/// where: cutting one is dozens of path extractions, and an empty element's
+/// placeholder was drawn a dash at a time every frame.
+final _dashed = <(String, Rect, double, double), ui.Path>{};
+const _dashedCap = 64;
+
+/// dashedOutline is [outline] cut into dashes [on] long, one starting every
+/// [every], as one path. [shape] names what [outline] draws round [box]:
+/// two outlines with the same name and box must be the same.
+ui.Path dashedOutline(String shape, Rect box, double on, double every,
+    ui.Path Function() outline) {
+  var key = (shape, box, on, every);
+  if (_dashed[key] case var hit?) return hit;
+  if (_dashed.length >= _dashedCap) _dashed.remove(_dashed.keys.first);
+  var dashes = ui.Path();
+  for (var m in outline().computeMetrics()) {
+    for (var d = 0.0; d < m.length; d += every) {
+      dashes.addPath(m.extractPath(d, d + on), Offset.zero);
+    }
+  }
+  return _dashed[key] = dashes;
+}
+
 /// clearTextLayouts lets go of every text laid out and kept.
 void clearTextLayouts() {
   for (var painter in _layouts.values) {

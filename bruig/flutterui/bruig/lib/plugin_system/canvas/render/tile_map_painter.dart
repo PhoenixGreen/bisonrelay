@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 
 // tile_map_painter.dart draws a Tile map element (tile_map_element.dart):
@@ -284,13 +285,11 @@ void _paintEmpty(Canvas canvas, Rect box) {
     ..style = PaintingStyle.stroke
     ..strokeWidth = math.max(1.0, box.shortestSide * 0.008)
     ..color = colour;
-  var path = Path()..addRect(box.deflate(2));
-  for (var m in path.computeMetrics()) {
-    var dash = math.max(4.0, box.shortestSide * 0.03);
-    for (var d = 0.0; d < m.length; d += dash * 2) {
-      canvas.drawPath(m.extractPath(d, d + dash), line);
-    }
-  }
+  var dash = math.max(4.0, box.shortestSide * 0.03);
+  canvas.drawPath(
+      dashedOutline("tileMapEmpty", box, dash, dash * 2,
+          () => Path()..addRect(box.deflate(2))),
+      line);
   var u = box.shortestSide * 0.06;
   var fill = Paint()..color = colour;
   for (var (x, y) in const [(-1, 0), (0, 0), (1, 0), (0, -1), (1, -1), (1, -2)]) {

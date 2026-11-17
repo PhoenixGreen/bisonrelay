@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
@@ -629,13 +630,10 @@ void _placeholder(ui.Canvas canvas, Rect box) {
     ..strokeWidth = 1.5;
   var r = RRect.fromRectAndRadius(box.deflate(1), const Radius.circular(6));
   canvas.drawRRect(r, Paint()..color = const Color(0x22888888));
-  // Dashed by hand: a path drawn in short pieces round the box.
-  var metric = (Path()..addRRect(r)).computeMetrics();
-  for (var m in metric) {
-    for (var d = 0.0; d < m.length; d += 10) {
-      canvas.drawPath(m.extractPath(d, d + 5), ink);
-    }
-  }
+  // Dashed by hand: short pieces round the box.
+  canvas.drawPath(
+      dashedOutline("vectorPlaceholder", box, 5, 10, () => Path()..addRRect(r)),
+      ink);
   // A curve and its two handles: what a drawing is made of.
   var c = box.center;
   var s = box.shortestSide * 0.18;
