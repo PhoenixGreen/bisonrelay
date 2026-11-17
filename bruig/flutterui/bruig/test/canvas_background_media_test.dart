@@ -325,7 +325,7 @@ void main() {
       expect(c.document.editedBackground.video!.key.on, isFalse,
           reason: "an edit to the backdrop is one undo step");
 
-      var off = find.byTooltip("Take the video off the background");
+      var off = byTip("Take the video off the background");
       await tester.ensureVisible(off);
       await tester.pumpAndSettle();
       await tester.tap(off);

@@ -570,6 +570,8 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
 bool _sameLayers(List<ParallaxLayer> a, List<ParallaxLayer> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
+    // The same layer, as it nearly always is, without writing it out.
+    if (identical(a[i], b[i])) continue;
     if (a[i].toJson().toString() != b[i].toJson().toString()) return false;
   }
   return true;
@@ -595,5 +597,6 @@ class _LayerThumb extends CustomPainter {
 
   @override
   bool shouldRepaint(_LayerThumb old) =>
+      !identical(old.layer, layer) &&
       old.layer.toJson().toString() != layer.toJson().toString();
 }

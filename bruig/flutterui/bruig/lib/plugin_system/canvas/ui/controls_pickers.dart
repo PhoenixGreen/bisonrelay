@@ -229,26 +229,26 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
             : card
                 ? const SizedBox.shrink()
                 : null,
-        // The closed button shows the name alone, not a marked option's
-        // background and cross. Always its own where options are tried:
-        // built from the items, resting the pointer on the closed button
-        // would start a preview nothing ends.
-        selectedItemBuilder: marked.isEmpty &&
-                leading == null &&
-                groupOf == null &&
-                onPreview == null
-            ? null
-            : (context) => [
-                  for (var (v, text, heading) in _rows())
-                    heading
-                        ? const SizedBox.shrink()
-                        : Align(
-                            alignment: Alignment.centerLeft,
-                            child: marked.isEmpty
-                                ? _named(v as T, text)
-                                : Text(text, overflow: TextOverflow.ellipsis),
-                          ),
-                ],
+        // The closed button shows the chosen option's name alone, not a
+        // marked option's background and cross, nor the preview a resting
+        // pointer would start. Only the chosen one is built: the button
+        // keeps one child for every option to show whichever is chosen, and
+        // a list of fifty fonts built on every build is fifty widgets for
+        // one shown.
+        selectedItemBuilder: (context) {
+          var chosen = options.any((o) => o.$1 == value) ? value : null;
+          return [
+            for (var (v, text, heading) in _rows())
+              heading || v != chosen
+                  ? const SizedBox.shrink()
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: marked.isEmpty
+                          ? _named(v as T, text)
+                          : Text(text, overflow: TextOverflow.ellipsis),
+                    ),
+          ];
+        },
         items: [
           for (var (v, text, heading) in _rows())
             if (heading)
@@ -509,7 +509,7 @@ class _CanvasColorButtonState extends State<CanvasColorButton> {
       theme,
       label,
       cap: labelWidth,
-      Tooltip(
+      CanvasTip(
         message: widget.onGradientChanged == null
             ? "Choose a colour"
             : "Choose a colour, or two to fade between",
@@ -627,7 +627,7 @@ extension _MarkedOptions<T> on CanvasDropdown<T> {
                 Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
                 if (onRemove case var remove?) ...[
                   const SizedBox(width: 4),
-                  Tooltip(
+                  CanvasTip(
                     message: removeTip?.call(value) ?? "Remove",
                     child: InkWell(
                       borderRadius: BorderRadius.circular(10),

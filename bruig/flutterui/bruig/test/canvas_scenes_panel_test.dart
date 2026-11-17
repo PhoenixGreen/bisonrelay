@@ -55,7 +55,7 @@ void main() {
 
   testWidgets("New scene makes one and goes to it", (tester) async {
     var controller = await panel(tester);
-    await tester.tap(find.byTooltip("New scene"));
+    await tester.tap(byTip("New scene"));
     await tester.pumpAndSettle();
 
     expect(controller.document.allScenes.length, 2);
@@ -65,7 +65,7 @@ void main() {
 
   testWidgets("pressing a scene is how you get to it", (tester) async {
     var controller = await panel(tester, document: const CanvasDocument());
-    await tester.tap(find.byTooltip("New scene"));
+    await tester.tap(byTip("New scene"));
     await tester.pumpAndSettle();
     expect(controller.document.at, 1);
 
@@ -99,7 +99,7 @@ void main() {
     // And it does so at once: a double-click recognizer would hold every
     // press on this row back until its window had passed.
     var controller = await panel(tester, document: const CanvasDocument());
-    await tester.tap(find.byTooltip("New scene"));
+    await tester.tap(byTip("New scene"));
     await tester.pumpAndSettle();
     expect(controller.document.at, 1);
 
@@ -118,7 +118,7 @@ void main() {
         ShapeElement(const ElementBase(id: "s", width: 10, height: 10)));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip("More").first);
+    await tester.tap(byTip("More").first);
     await tester.pumpAndSettle();
     await tester.tap(find.text("Copy"));
     await tester.pumpAndSettle();
@@ -128,7 +128,7 @@ void main() {
     // A different document, the way opening another canvas is.
     var other = await panel(tester, document: const CanvasDocument());
     expect(other.document.allScenes.length, 1);
-    await tester.tap(find.byTooltip("Paste the copied scene"));
+    await tester.tap(byTip("Paste the copied scene"));
     await tester.pumpAndSettle();
 
     expect(other.document.allScenes.length, 2);
@@ -141,14 +141,14 @@ void main() {
   testWidgets("with nothing copied there is nothing to paste", (tester) async {
     CanvasController.forgetCopiedScene();
     await panel(tester);
-    expect(find.byTooltip("Paste the copied scene"), findsNothing);
+    expect(byTip("Paste the copied scene"), findsNothing);
   });
 
   testWidgets("an edit lands on the scene being shown", (tester) async {
     // Which is the whole point of the list: the canvas you are on is the one
     // the rest of the editor is editing.
     var controller = await panel(tester);
-    await tester.tap(find.byTooltip("New scene"));
+    await tester.tap(byTip("New scene"));
     await tester.pumpAndSettle();
 
     controller.addElement(
@@ -195,16 +195,16 @@ void main() {
 
   testWidgets("the list can show a picture of each scene", (tester) async {
     var controller = await panel(tester, document: const CanvasDocument());
-    await tester.tap(find.byTooltip("New scene"));
+    await tester.tap(byTip("New scene"));
     await tester.pumpAndSettle();
     expect(controller.document.allScenes.length, 2);
 
     // Drawn by the renderer rather than kept as pictures, so a preview cannot
     // be out of date.
     expect(find.byType(CustomPaint).evaluate().length, greaterThan(0));
-    await tester.tap(find.byTooltip("Scene preview"));
+    await tester.tap(byTip("Scene preview"));
     await tester.pumpAndSettle();
-    expect(find.byTooltip("Scene preview: off"), findsOneWidget);
+    expect(byTip("Scene preview: off"), findsOneWidget);
   });
 
   // A preview is as wide as the column -- until that would make it taller
@@ -217,7 +217,7 @@ void main() {
             kind: CanvasKind.pages,
             size: CanvasSize(ratio: CanvasRatio.a4, width: a4PageWidth),
             scenes: [CanvasScene(id: "a")]));
-    await tester.tap(find.byTooltip("Page preview"));
+    await tester.tap(byTip("Page preview"));
     await tester.pumpAndSettle();
     var box = tester.getSize(find.byKey(const ValueKey("scenePreview.0")));
     expect(box.height, lessThanOrEqualTo(220.5));
@@ -230,7 +230,7 @@ void main() {
   // replaced: the preview had no store to ask.
   testWidgets("a preview draws with the editor's pictures", (tester) async {
     var controller = await panel(tester);
-    await tester.tap(find.byTooltip("Scene preview"));
+    await tester.tap(byTip("Scene preview"));
     await tester.pumpAndSettle();
     var painters = tester
         .widgetList<CustomPaint>(find.descendant(
@@ -258,7 +258,7 @@ void main() {
               CanvasScene(id: "c"),
               CanvasScene(id: "d"),
             ]));
-    await tester.tap(find.byTooltip("Page preview"));
+    await tester.tap(byTip("Page preview"));
     await tester.pumpAndSettle();
     Rect at(int i) => tester.getRect(find.byKey(ValueKey("scenePreview.$i")));
     var doc = const CanvasDocument(
@@ -302,7 +302,7 @@ void main() {
           fill: const Color(0xFFFF0000)),
     ]);
     await panel(tester, document: doc.withScenes(scenes));
-    await tester.tap(find.byTooltip("Page preview"));
+    await tester.tap(byTip("Page preview"));
     await tester.pumpAndSettle();
 
     var preview = find.byKey(ValueKey("scenePreview.${right!}"));
@@ -333,7 +333,7 @@ void main() {
   testWidgets("the preview is remembered when the section is come back to",
       (tester) async {
     await panel(tester);
-    await tester.tap(find.byTooltip("Scene preview"));
+    await tester.tap(byTip("Scene preview"));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("scenePreview.0")), findsOneWidget);
 
@@ -379,7 +379,7 @@ void main() {
         ]));
     expect(controller.document.allScenes.length, 8);
 
-    var buttons = find.byTooltip("More");
+    var buttons = byTip("More");
     expect(buttons, findsNWidgets(8));
 
     // The first row's button, which is a long way from the middle of the
@@ -448,7 +448,7 @@ void main() {
         ]));
 
     // On the same line as the master header, and above the list.
-    var newScene = tester.getRect(find.byTooltip("New scene"));
+    var newScene = tester.getRect(byTip("New scene"));
     var master = tester.getRect(find.text("Master scene"));
     var firstRow = tester.getRect(find.text("Scene 1"));
     expect(newScene.top, lessThan(firstRow.top));
@@ -460,7 +460,7 @@ void main() {
     // And Duplicate is not offered twice: every row's menu has it, and a
     // button that copies whichever scene you happen to be on is a button
     // whose meaning depends on something else in the panel.
-    expect(find.byTooltip("Duplicate this scene"), findsNothing);
+    expect(byTip("Duplicate this scene"), findsNothing);
   });
 
   testWidgets("a scene that holds says so in the list", (tester) async {
@@ -470,8 +470,7 @@ void main() {
           const CanvasScene(id: "b"),
         ]));
     expect(controller.document.allScenes.first.holds, isTrue);
-    expect(find.byTooltip("Playback stops at the end of this scene"),
-        findsOneWidget);
+    expect(byTip("Playback stops at the end of this scene"), findsOneWidget);
   });
 
   testWidgets("the bar counts the scenes, and only when there are some",
@@ -502,7 +501,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text("3/3"), findsOneWidget);
 
-    await tester.tap(find.byTooltip("The scene before this one"));
+    await tester.tap(byTip("The scene before this one"));
     await tester.pumpAndSettle();
     expect(controller.document.at, 1);
     expect(find.text("2/3"), findsOneWidget);
@@ -536,14 +535,14 @@ void main() {
     await tester.pumpAndSettle();
 
     var bar = tester.getRect(find.byType(CanvasSettingsBar));
-    var publish = tester.getRect(find.byTooltip("Publish this canvas"));
+    var publish = tester.getRect(byTip("Publish this canvas"));
     expect(bar.right - publish.right, lessThan(14),
         reason: "hard right with one scene: ${bar.right - publish.right}");
 
     // And the percentage stays with the tools it belongs to rather than
     // drifting across to the buttons on the right.
     var zoom = tester.getRect(find.byKey(const ValueKey("zoomScrub")));
-    var before0 = tester.getRect(find.byTooltip(
+    var before0 = tester.getRect(byTip(
         "Show a margin outside the canvas, for animating things on and off"));
     expect(zoom.left - before0.right, lessThan(18),
         reason: "the reading sits against the view buttons");
@@ -552,7 +551,7 @@ void main() {
 
     // The margin button is the last of the tools, and it is still there once
     // the scene section has appeared in front of them.
-    var margin = find.byTooltip("Show a margin outside the canvas, for "
+    var margin = byTip("Show a margin outside the canvas, for "
         "animating things on and off");
     expect(margin, findsOneWidget);
     var before = tester.getRect(margin);
@@ -565,7 +564,7 @@ void main() {
     expect(find.text("3/3"), findsOneWidget);
     expect(margin, findsOneWidget, reason: "not scrolled out of the row");
     expect(tester.getRect(margin).right, lessThan(bar.right));
-    var after = tester.getRect(find.byTooltip("Publish this canvas"));
+    var after = tester.getRect(byTip("Publish this canvas"));
     expect(bar.right - after.right, lessThan(14),
         reason: "and the right-hand end has not moved");
   });
@@ -744,7 +743,7 @@ void main() {
           const CanvasScene(id: "b"),
         ]));
 
-    await tester.tap(find.byTooltip("More").first);
+    await tester.tap(byTip("More").first);
     await tester.pumpAndSettle();
     await tester.tap(find.text("Stop at the end of this scene"));
     await tester.pumpAndSettle();
@@ -765,6 +764,6 @@ void main() {
               transition: SceneTransition(kind: SceneTransitionKind.fade)),
           const CanvasScene(id: "b"),
         ]));
-    expect(find.byTooltip("Cross fade, set on this scene"), findsOneWidget);
+    expect(byTip("Cross fade, set on this scene"), findsOneWidget);
   });
 }

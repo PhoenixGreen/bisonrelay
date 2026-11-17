@@ -499,8 +499,11 @@ class _ColourPanelState extends State<ColourPanel> {
       colourSlotsFor(controller).where((s) => s.id == id).firstOrNull;
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => CanvasWatch<int>(
+        // Every change but the view's and frames of play (revision): neither
+        // changes what this shows.
         listenable: controller,
+        select: () => controller.revision,
         builder: (context, _) {
           var slots = colourSlotsFor(controller);
           if (slots.isEmpty) {

@@ -199,7 +199,7 @@ void main() {
       await tester.tap(find
           .descendant(
               of: find.byKey(const ValueKey("savedSwatches")),
-              matching: find.byTooltip("#ff2ed6a1"))
+              matching: byTip("#ff2ed6a1"))
           .first);
       await tester.pumpAndSettle();
       expect(asked, (_teal, _pink));

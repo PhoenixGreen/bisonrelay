@@ -67,12 +67,11 @@ void main() {
 
     // Each marked shape carries a cross: one list, which is both the choice
     // and the set of layouts.
-    expect(find.byTooltip("Stop laying out for 4:5 · Feed ad"), findsOneWidget);
-    expect(find.byTooltip("Stop laying out for 1:1"), findsNothing,
+    expect(byTip("Stop laying out for 4:5 · Feed ad"), findsOneWidget);
+    expect(byTip("Stop laying out for 1:1"), findsNothing,
         reason: "nothing is being laid out for that one");
     // The shape being looked at cannot be dropped; its cross starts it again.
-    expect(find.byTooltip("Lay 16:9 out again from another shape"),
-        findsOneWidget);
+    expect(byTip("Lay 16:9 out again from another shape"), findsOneWidget);
   });
 
   testWidgets("and giving one up takes its layouts with it", (tester) async {
@@ -84,7 +83,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey("canvasRatio")));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip("Stop laying out for 4:5 · Feed ad"));
+    await tester.tap(byTip("Stop laying out for 4:5 · Feed ad"));
     await tester.pumpAndSettle();
 
     expect(controller.document.targets, isEmpty,
@@ -104,7 +103,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey("canvasRatio")));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip("Lay 16:9 out again from another shape"));
+    await tester.tap(byTip("Lay 16:9 out again from another shape"));
     await tester.pumpAndSettle();
 
     expect(controller.document.elements.single.x, isNot(900));

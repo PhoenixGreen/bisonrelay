@@ -102,19 +102,19 @@ void main() {
     controller.name = "Plan";
 
     await pump(tester, canvases: ["Plan"], controller: controller);
-    expect(find.byTooltip("Saved"), findsOneWidget,
+    expect(byTip("Saved"), findsOneWidget,
         reason: "nothing to write yet, and it says so");
-    expect(find.byTooltip("Save now"), findsNothing);
+    expect(byTip("Save now"), findsNothing);
 
     controller.apply(const CanvasDocument(title: "Plan", frames: 40));
-    await pumpUntil(tester, () => find.byTooltip("Save now").evaluate().isNotEmpty);
-    expect(find.byTooltip("Save now"), findsOneWidget);
+    await pumpUntil(tester, () => byTip("Save now").evaluate().isNotEmpty);
+    expect(byTip("Save now"), findsOneWidget);
 
-    await tester.tap(find.byTooltip("Save now"));
+    await tester.tap(byTip("Save now"));
     await pumpUntil(tester, () => !controller.dirty);
-    await pumpUntil(tester, () => find.byTooltip("Saved").evaluate().isNotEmpty);
+    await pumpUntil(tester, () => byTip("Saved").evaluate().isNotEmpty);
     expect(controller.dirty, isFalse);
-    expect(find.byTooltip("Saved"), findsOneWidget);
+    expect(byTip("Saved"), findsOneWidget);
   });
 
   testWidgets("and a canvas with no file of its own offers Save canvas",
@@ -123,8 +123,8 @@ void main() {
     // question to ask before it can do anything.
     await pump(tester);
     expect(find.text("Save canvas"), findsOneWidget);
-    expect(find.byTooltip("Save now"), findsNothing);
-    expect(find.byTooltip("Saved"), findsNothing);
+    expect(byTip("Save now"), findsNothing);
+    expect(byTip("Saved"), findsNothing);
   });
 
   testWidgets("the folder you were in is where you come back to",
@@ -184,8 +184,8 @@ void main() {
     expect(find.text("New canvas"), findsOneWidget);
     // Icons only, so they are found by what they say on hover rather than by
     // a label they do not carry.
-    expect(find.byTooltip("New folder"), findsOneWidget);
-    expect(find.byTooltip("Open a canvas from a file"), findsOneWidget);
+    expect(byTip("New folder"), findsOneWidget);
+    expect(byTip("Open a canvas from a file"), findsOneWidget);
 
     // They are below the list, which is the thing somebody came here to read.
     var list = tester.getBottomLeft(find.text("Match plan")).dy;
@@ -198,11 +198,11 @@ void main() {
     // shown has nothing to refresh from.
     await pump(tester, canvases: ["Match plan"]);
     expect(find.text("Save"), findsNothing);
-    expect(find.byTooltip("Save as a new canvas"), findsNothing);
-    expect(find.byTooltip("Refresh the list"), findsNothing);
+    expect(byTip("Save as a new canvas"), findsNothing);
+    expect(byTip("Refresh the list"), findsNothing);
     // New folder is still here, but at the bottom with the rest of the
     // things that make something: the toolbar it used to sit on is gone.
-    expect(tester.getTopLeft(find.byTooltip("New folder")).dy,
+    expect(tester.getTopLeft(byTip("New folder")).dy,
         greaterThan(tester.getBottomLeft(find.text("Match plan")).dy));
   });
 

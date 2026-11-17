@@ -194,7 +194,7 @@ void main() {
         .save("Title card", const CanvasScene(id: "s").toJson()));
     await sidebar(tester, body: (c) => ScenePresetsPanel(controller: c));
 
-    await tester.tap(find.byTooltip("More"));
+    await tester.tap(byTip("More"));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Delete"));
     await pumpUntil(tester, () => SavedPresetStore.scenes.presets.isEmpty);
@@ -248,7 +248,7 @@ void main() {
     await idle(tester);
 
     // Its menu adds the scenes to what is already open.
-    await tester.tap(find.byTooltip("More"));
+    await tester.tap(byTip("More"));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Add its scenes to this canvas"));
     await tester.pumpAndSettle();

@@ -1,5 +1,6 @@
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart' show CanvasTip;
 import 'package:bruig/theming_system/runtime/theme_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,3 +112,21 @@ Future<void> sweepSizes(WidgetTester tester,
     }
   }
 }
+
+/// byTip finds a control by its hover text: a CanvasTip, which builds no
+/// Tooltip where hover text is off (an element's settings), or a Tooltip
+/// that is not one a CanvasTip built.
+Finder byTip(String message, {bool skipOffstage = true}) =>
+    find.byElementPredicate((e) {
+      var w = e.widget;
+      if (w is CanvasTip) return w.message == message;
+      if (w is! Tooltip || w.message != message) return false;
+      Widget? parent;
+      e.visitAncestorElements((a) {
+        parent = a.widget;
+        return false;
+      });
+      return parent is! CanvasTip;
+    },
+        description: 'control with hover text "$message"',
+        skipOffstage: skipOffstage);

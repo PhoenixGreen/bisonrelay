@@ -46,7 +46,7 @@ class CanvasTextButton extends StatelessWidget implements CanvasGrowable {
             ? theme.colors.onPrimary
             : theme.colors.onSurface;
     Widget button(Widget child) =>
-        tooltip.isEmpty ? child : Tooltip(message: tooltip, child: child);
+        tooltip.isEmpty ? child : CanvasTip(message: tooltip, child: child);
     return Padding(
       padding: EdgeInsets.only(
           right: card ? cardGapIn(context) : canvasControlGap),
@@ -153,7 +153,7 @@ class CanvasSegmented<T> extends StatelessWidget {
                         ? theme.colors.onSurface.withValues(alpha: 0.12)
                         : null,
                     child: iconOf != null
-                        ? Tooltip(
+                        ? CanvasTip(
                             message: words,
                             child: Icon(iconOf!(option),
                                 size: 16,
@@ -225,7 +225,7 @@ class CanvasSegmented<T> extends StatelessWidget {
                     border: option == value ? Border.all(color: accent) : null,
                   ),
                   child: iconOf != null
-                      ? Tooltip(
+                      ? CanvasTip(
                           message: words,
                           child: Icon(iconOf!(option),
                               size: 16, color: theme.colors.onSurface))
@@ -304,7 +304,7 @@ class CanvasChip extends StatelessWidget {
               style: const TextStyle(fontSize: 11)),
         ),
         if (onRemove case var remove?)
-          Tooltip(
+          CanvasTip(
             message: "Stop laying out for $label",
             child: Material(
               // Its own Material: see CanvasControlGroup.
@@ -570,7 +570,7 @@ class CanvasIconButton extends StatelessWidget {
 
 /// _maybeTooltip is [child] with [message] as hover text, if not empty.
 Widget _maybeTooltip(String message, Widget child) =>
-    message.isEmpty ? child : Tooltip(message: message, child: child);
+    message.isEmpty ? child : CanvasTip(message: message, child: child);
 
 /// CanvasKeyframeDot is the diamond beside an animatable setting: lit where
 /// a keyframe sits on the current frame, pressed to add or remove one. What
@@ -599,7 +599,7 @@ class CanvasKeyframeDot extends StatelessWidget {
     return Padding(
       // The nudge: see CanvasIconButton.
       padding: EdgeInsets.only(right: canvasControlGap, top: nudgeIn(context)),
-      child: Tooltip(
+      child: CanvasTip(
         message: tooltip,
         child: Material(
           // Its own Material: see CanvasControlGroup.

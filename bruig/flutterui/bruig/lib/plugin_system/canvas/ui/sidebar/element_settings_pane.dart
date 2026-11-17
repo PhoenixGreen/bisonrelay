@@ -33,7 +33,12 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) =>
         data: TooltipTheme.of(context).copyWith(
             waitDuration: const Duration(days: 1),
             triggerMode: TooltipTriggerMode.manual),
-        child: CanvasNoHover(child: _elementSettingsBody(context, controller)));
+        // Not shown here, so not built: a control's hover text is only its
+        // name for a screen reader (CanvasTip).
+        child: TooltipVisibility(
+            visible: false,
+            child: CanvasNoHover(
+                child: _elementSettingsBody(context, controller))));
 
 Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
   var selected = controller.selected;

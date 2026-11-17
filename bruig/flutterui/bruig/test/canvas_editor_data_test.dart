@@ -160,8 +160,7 @@ void main() {
       var controller = await panel(tester);
       // Nothing to read yet, so no button: a heading does not carry one that
       // could never do anything.
-      expect(find.byTooltip("Read the data and put it in the table"),
-          findsNothing);
+      expect(byTip("Read the data and put it in the table"), findsNothing);
 
       controller.replaceElement(tableIn(controller).copyWith(
           source: const DataSource(kind: DataKind.file)
@@ -170,8 +169,7 @@ void main() {
 
       // One on the Table section and one on the Data section, both saying
       // the same thing.
-      expect(find.byTooltip("Read the data and put it in the table"),
-          findsNWidgets(2));
+      expect(byTip("Read the data and put it in the table"), findsNWidgets(2));
     });
 
     testWidgets("typing a coin offers the coins", (tester) async {
@@ -190,7 +188,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      var toGrid = find.byTooltip("Edit the cells in a grid");
+      var toGrid = byTip("Edit the cells in a grid");
       if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
 
       // The empty cell under the Coin heading.
@@ -210,7 +208,7 @@ void main() {
     testWidgets("and a table of typed numbers offers none", (tester) async {
       var controller = await panel(tester);
       await tester.pumpAndSettle();
-      var toGrid = find.byTooltip("Edit the cells in a grid");
+      var toGrid = byTip("Edit the cells in a grid");
       if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
       for (var cell
           in tester.widgetList<CanvasGridCell>(find.byType(CanvasGridCell))) {
@@ -224,22 +222,22 @@ void main() {
       // second is one press away either way, and a drag inside a grid of text
       // fields has to be told apart from selecting text in one of them.
       var controller = await panel(tester);
-      var toGrid = find.byTooltip("Edit the cells in a grid");
+      var toGrid = byTip("Edit the cells in a grid");
       if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
 
       expect(tableIn(controller).rows.first.first, "Team");
-      await press(tester, find.byTooltip("Move this row down").first);
+      await press(tester, byTip("Move this row down").first);
       expect(tableIn(controller).rows.first.first, "Hull City",
           reason: "the header has gone under the row that was below it");
 
-      await press(tester, find.byTooltip("Move this column right").first);
+      await press(tester, byTip("Move this column right").first);
       expect(tableIn(controller).rows.first, ["6", "Hull City"]);
     });
 
     testWidgets("the ends of the table have nowhere further to go",
         (tester) async {
       var controller = await panel(tester);
-      var toGrid = find.byTooltip("Edit the cells in a grid");
+      var toGrid = byTip("Edit the cells in a grid");
       if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
 
       // The first row's "up" and the last row's "down" are there and do
@@ -247,7 +245,7 @@ void main() {
       // along by one on every row.
       var up = tester.widget<CanvasIconButton>(find
           .ancestor(
-              of: find.byTooltip("Move this row up").first,
+              of: byTip("Move this row up").first,
               matching: find.byType(CanvasIconButton))
           .first);
       expect(up.onPressed, isNull);
@@ -260,20 +258,19 @@ void main() {
       // at the foot of a section that has to be opened first.
       var controller = await panel(tester);
       // In the Special cells fold of its Content (batch 3).
-      await openFold(tester, "tableRules", shows: find.byTooltip("Add a rule"));
-      expect(find.byTooltip("Add a rule"), findsOneWidget);
+      await openFold(tester, "tableRules", shows: byTip("Add a rule"));
+      expect(byTip("Add a rule"), findsOneWidget);
 
-      await press(tester, find.byTooltip("Add a rule"));
+      await press(tester, byTip("Add a rule"));
       expect(tableIn(controller).rules.length, 1);
 
       // At the foot of the rule it removes rather than beside Add: one button
       // per rule on one line is fine for two rules and is twenty buttons for
       // twenty.
-      expect(find.byTooltip("Remove this rule"), findsNothing,
+      expect(byTip("Remove this rule"), findsNothing,
           reason: "the rule is closed");
-      await openFold(tester, "tableRule0",
-          shows: find.byTooltip("Remove this rule"));
-      await press(tester, find.byTooltip("Remove this rule"));
+      await openFold(tester, "tableRule0", shows: byTip("Remove this rule"));
+      await press(tester, byTip("Remove this rule"));
       expect(tableIn(controller).rules, isEmpty);
     });
 
@@ -424,7 +421,7 @@ void main() {
       // A table showing a sheet reads its rows from it at every change: the
       // old Order section, which sorted the table's own rows, is gone, and
       // Rows shown orders it (Ken, 2026-11-17).
-      expect(find.byTooltip("Put the rows back in this order"), findsNothing);
+      expect(byTip("Put the rows back in this order"), findsNothing);
       expect(find.byKey(const ValueKey("dataRowsSort")), findsOneWidget);
       // Where the numbers come from is the sheet's connection now (Connect
       // data, in the Data Studio): the table says so, with the way there.
@@ -434,21 +431,21 @@ void main() {
     testWidgets("a row and a column can be added and taken away",
         (tester) async {
       var controller = await panel(tester);
-      var toGrid = find.byTooltip("Edit the cells in a grid");
+      var toGrid = byTip("Edit the cells in a grid");
       if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
 
-      await press(tester, find.byTooltip("Add a row"));
+      await press(tester, byTip("Add a row"));
       expect(tableIn(controller).rows.length, 3);
 
-      await press(tester, find.byTooltip("Add a column"));
+      await press(tester, byTip("Add a column"));
       expect(tableIn(controller).columnCount, 3);
       expect(tableIn(controller).rows.every((r) => r.length == 3), isTrue,
           reason: "every row gains the column, or the grid goes ragged");
 
-      await press(tester, find.byTooltip("Remove this column").first);
+      await press(tester, byTip("Remove this column").first);
       expect(tableIn(controller).columnCount, 2);
 
-      await press(tester, find.byTooltip("Remove this row").first);
+      await press(tester, byTip("Remove this row").first);
       expect(tableIn(controller).rows.length, 2);
     });
   });
@@ -665,7 +662,7 @@ void main() {
       // and the switch that shows the X axis' title.
       expect(find.text("X"), findsNWidgets(2));
       expect(find.text("H"), findsOneWidget);
-      expect(find.byTooltip("Place it yourself — then drag it on the canvas"),
+      expect(byTip("Place it yourself — then drag it on the canvas"),
           findsNothing);
 
       await press(tester, find.text("Over the chart"));
@@ -980,7 +977,7 @@ void main() {
 
       await press(
           tester,
-          find.byTooltip("Add a series — give it its own type below to lay "
+          byTip("Add a series — give it its own type below to lay "
               "one kind of chart over another"));
 
       var data = chartIn(controller).data;
@@ -1156,7 +1153,7 @@ void main() {
     /// -- somebody who works in the grid works in the grid, whatever chart
     /// they open next -- so a test cannot assume it starts in the text one.
     Future<void> grid(WidgetTester tester) async {
-      var toTable = find.byTooltip("Edit the numbers in a table");
+      var toTable = byTip("Edit the numbers in a table");
       if (toTable.evaluate().isNotEmpty) await press(tester, toTable);
     }
 
@@ -1182,13 +1179,13 @@ void main() {
       // Two of them: the numbers in the Table section, and the series list
       // under it, which is the same widget showing only its series rows.
       expect(find.byType(ChartDataEditor), findsNWidgets(2));
-      expect(find.byTooltip("Add a row"), findsOneWidget,
+      expect(byTip("Add a row"), findsOneWidget,
           reason: "rows and series are added the same way in either view");
 
       await grid(tester);
       // "Raw table", not "Edit the numbers as pasted text": the button sits
       // on a line of three and the sentence was longer than the row.
-      expect(find.byTooltip("Raw table"), findsOneWidget);
+      expect(byTip("Raw table"), findsOneWidget);
 
       // The first row's category, then its value.
       await enterValue(
@@ -1207,10 +1204,10 @@ void main() {
       var controller = await panel(tester);
       await grid(tester);
 
-      await press(tester, find.byTooltip("Add a row"));
+      await press(tester, byTip("Add a row"));
       expect(dataIn(controller).categories.length, 3);
 
-      await press(tester, find.byTooltip("Remove this row").first);
+      await press(tester, byTip("Remove this row").first);
       expect(dataIn(controller).categories.length, 2);
       expect(dataIn(controller).series.single.values.length, 2,
           reason: "the series loses the row too, or the data goes ragged");
@@ -1368,7 +1365,7 @@ void main() {
       await open(tester, "COLUMNS", "Path to the list");
       await openColumn(tester, "Coin supply (DCR)");
 
-      var earlier = find.byTooltip("Move this column earlier");
+      var earlier = byTip("Move this column earlier");
       await tester.ensureVisible(earlier.last);
       await tester.pumpAndSettle();
       await tester.tap(earlier.last);
@@ -1520,8 +1517,7 @@ void main() {
 
       // Two of them now: the Data source section's and the one on the Table
       // section, which is where somebody looking at the numbers is standing.
-      var refresh =
-          find.byTooltip("Read the data and put it in the chart").first;
+      var refresh = byTip("Read the data and put it in the chart").first;
       await tester.ensureVisible(refresh);
       await tester.pumpAndSettle();
       await tester.tap(refresh);
@@ -1571,8 +1567,7 @@ void main() {
       // This presses the Table section's, which is the one that is *not*
       // inside the data panel -- so what follows also pins that a refresh
       // from there leaves the mapping controls able to redraw.
-      var refresh =
-          find.byTooltip("Read the data and put it in the chart").first;
+      var refresh = byTip("Read the data and put it in the chart").first;
       await tester.ensureVisible(refresh);
       await tester.pumpAndSettle();
       await tester.tap(refresh);

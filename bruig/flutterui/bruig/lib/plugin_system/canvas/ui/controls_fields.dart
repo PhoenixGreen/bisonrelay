@@ -501,7 +501,7 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
     if (CanvasControlScope.hovers(context)) {
       return Padding(
         padding: const EdgeInsets.only(right: canvasControlGap),
-        child: label.isEmpty ? child : Tooltip(message: label, child: child),
+        child: label.isEmpty ? child : CanvasTip(message: label, child: child),
       );
     }
     var inline = CanvasControlScope.isInline(context);

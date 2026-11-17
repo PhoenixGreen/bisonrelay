@@ -185,7 +185,7 @@ void main() {
 
       var toggled = 0;
       await pump(tester, bar(controller, toggle: () => toggled++));
-      await tester.tap(find.byTooltip("Canvas settings"));
+      await tester.tap(byTip("Canvas settings"));
       await tester.pumpAndSettle();
       expect(toggled, 1);
     });
@@ -207,7 +207,7 @@ void main() {
       controller.selectOnly(element.id);
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip("Try the next variation"), findsNothing);
+      expect(byTip("Try the next variation"), findsNothing);
       expect(tester.getSize(find.byType(CanvasSettingsBar)).height, oneLine,
           reason: "selecting something does not open the second line");
     });
@@ -238,8 +238,8 @@ void main() {
       await pump(tester, bar(controller));
 
       expect(controller.fit, CanvasFit.whole);
-      await tester.tap(find.byTooltip(
-          "Showing the whole canvas — press to fit to width instead"));
+      await tester.tap(
+          byTip("Showing the whole canvas — press to fit to width instead"));
       await tester.pumpAndSettle();
       expect(controller.fit, CanvasFit.width);
 
@@ -256,11 +256,11 @@ void main() {
       await pump(tester, bar(controller));
 
       expect(controller.showHelpers, isTrue, reason: "on by default");
-      await tester.tap(find.byTooltip("Hide the selection box and handles"));
+      await tester.tap(byTip("Hide the selection box and handles"));
       await tester.pumpAndSettle();
       expect(controller.showHelpers, isFalse);
 
-      await tester.tap(find.byTooltip("Show the selection box and handles"));
+      await tester.tap(byTip("Show the selection box and handles"));
       await tester.pumpAndSettle();
       expect(controller.showHelpers, isTrue);
     });
@@ -270,12 +270,12 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, bar(controller));
 
-      await tester.tap(find.byTooltip(
-          "${CanvasTool.pan.label} — ${CanvasTool.pan.description}"));
+      await tester.tap(
+          byTip("${CanvasTool.pan.label} — ${CanvasTool.pan.description}"));
       await tester.pumpAndSettle();
       expect(controller.tool, CanvasTool.pan);
 
-      await tester.tap(find.byTooltip(
+      await tester.tap(byTip(
           "${CanvasTool.select.label} — ${CanvasTool.select.description}"));
       await tester.pumpAndSettle();
       expect(controller.tool, CanvasTool.select);
@@ -304,17 +304,17 @@ void main() {
             ),
             onCustomise: () {},
           ));
-      await tester.tap(find.byTooltip("Hide the sidebar"));
+      await tester.tap(byTip("Hide the sidebar"));
       await tester.pumpAndSettle();
       expect(laid?.mode, SidebarMode.hidden);
 
       // While it is showing, the band carries no restore control.
       await pump(tester, bar(controller));
-      expect(find.byTooltip("Show the sidebar"), findsNothing);
+      expect(byTip("Show the sidebar"), findsNothing);
 
       var shown = 0;
       await pump(tester, bar(controller, showSidebar: () => shown++));
-      await tester.tap(find.byTooltip("Show the sidebar"));
+      await tester.tap(byTip("Show the sidebar"));
       await tester.pumpAndSettle();
       expect(shown, 1);
     });
@@ -327,10 +327,10 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, bar(controller));
 
-      expect(find.byTooltip("Undo"), findsOneWidget);
-      expect(find.byTooltip("Redo"), findsOneWidget);
+      expect(byTip("Undo"), findsOneWidget);
+      expect(byTip("Redo"), findsOneWidget);
 
-      await tester.tap(find.byTooltip("Publish this canvas"));
+      await tester.tap(byTip("Publish this canvas"));
       await tester.pumpAndSettle();
       expect(published, 1);
     });
@@ -885,11 +885,10 @@ void main() {
             onToggleTimeline: () {},
           ));
 
-      expect(find.byTooltip("Show the grid"), findsNothing);
-      expect(find.byTooltip("Show the guides"), findsNothing);
-      expect(find.byTooltip("Show the rulers"), findsNothing);
-      expect(
-          find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget,
+      expect(byTip("Show the grid"), findsNothing);
+      expect(byTip("Show the guides"), findsNothing);
+      expect(byTip("Show the rulers"), findsNothing);
+      expect(byTip("Grid, guides, rulers and snapping"), findsOneWidget,
           reason: "the panel that sets them up is still one button");
     });
 
@@ -911,7 +910,7 @@ void main() {
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
-      expect(find.byTooltip("Lock the joins between text boxes"), findsNothing);
+      expect(byTip("Lock the joins between text boxes"), findsNothing);
 
       controller.apply(controller.document
           .addElement(TextElement(
@@ -921,8 +920,7 @@ void main() {
           .addElement(TextElement(
               const ElementBase(id: "b", y: 100, width: 200, height: 60))));
       await tester.pumpAndSettle();
-      expect(
-          find.byTooltip("Lock the joins between text boxes"), findsOneWidget);
+      expect(byTip("Lock the joins between text boxes"), findsOneWidget);
     });
 
     testWidgets("is off by default and toggles from the band", (tester) async {
@@ -943,12 +941,12 @@ void main() {
 
       expect(controller.showOverspill, isFalse,
           reason: "what the canvas shows is what gets published");
-      await tester.tap(find.byTooltip("Show a margin outside the canvas, "
+      await tester.tap(byTip("Show a margin outside the canvas, "
           "for animating things on and off"));
       await tester.pumpAndSettle();
       expect(controller.showOverspill, isTrue);
 
-      await tester.tap(find.byTooltip("Hide the area outside the canvas"));
+      await tester.tap(byTip("Hide the area outside the canvas"));
       await tester.pumpAndSettle();
       expect(controller.showOverspill, isFalse);
     });
@@ -1046,8 +1044,8 @@ void main() {
             onToggleTimeline: () {},
           ));
 
-      var grid = find.byTooltip("Grid, guides, rulers and snapping");
-      var canvas = find.byTooltip("Canvas settings");
+      var grid = byTip("Grid, guides, rulers and snapping");
+      var canvas = byTip("Canvas settings");
       expect(grid, findsOneWidget);
       expect(canvas, findsOneWidget);
       expect(tester.getCenter(grid).dx, lessThan(tester.getCenter(canvas).dx),
@@ -1074,8 +1072,7 @@ void main() {
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
-      expect(
-          find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget);
+      expect(byTip("Grid, guides, rulers and snapping"), findsOneWidget);
     });
 
     testWidgets("the line itself carries the settings", (tester) async {
@@ -1111,13 +1108,13 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasGuidesPanel(controller: controller));
 
-      await tester.tap(find.byTooltip("Add a vertical guide down the middle"));
+      await tester.tap(byTip("Add a vertical guide down the middle"));
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides.single.axis, GuideAxis.vertical);
       expect(controller.document.guides.guides.single.at,
           controller.document.size.size.width / 2);
 
-      await tester.tap(find.byTooltip("Remove every guide"));
+      await tester.tap(byTip("Remove every guide"));
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides, isEmpty);
     });
@@ -1366,7 +1363,7 @@ void main() {
       double gapNow() =>
           tester.getRect(reading).left -
           tester
-              .getRect(find.byTooltip("Show a margin outside the canvas, for "
+              .getRect(byTip("Show a margin outside the canvas, for "
                   "animating things on and off"))
               .right;
 
@@ -1509,10 +1506,10 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byTooltip("Hide the timeline"));
+      await tester.tap(byTip("Hide the timeline"));
       await tester.pumpAndSettle();
       expect(open, isFalse);
-      expect(find.byTooltip("Show the timeline"), findsOneWidget,
+      expect(byTip("Show the timeline"), findsOneWidget,
           reason: "and it says how to get it back");
     });
   });

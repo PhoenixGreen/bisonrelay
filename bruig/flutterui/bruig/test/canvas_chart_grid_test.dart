@@ -37,7 +37,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // The numbers open as pasted text; the grid is the other view.
-    var toGrid = find.byTooltip("Edit the numbers in a table");
+    var toGrid = byTip("Edit the numbers in a table");
     if (toGrid.evaluate().isNotEmpty) {
       await tester.ensureVisible(toGrid);
       await tester.pumpAndSettle();

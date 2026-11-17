@@ -27,6 +27,27 @@ part 'controls_pickers.dart';
 // are laid out), controls_groups (what they are gathered in),
 // controls_fields, controls_buttons and controls_pickers.
 
+/// CanvasTip is [child] with [message] as its hover text -- or, where hover
+/// text is turned off (TooltipVisibility, as in an element's settings), as
+/// its name for a screen reader only. A Tooltip built where it can never
+/// show costs several widgets on every build of every control.
+class CanvasTip extends StatelessWidget {
+  final String message;
+  final Duration? waitDuration;
+  final Widget child;
+  const CanvasTip(
+      {required this.message, this.waitDuration, required this.child, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (message.isEmpty) return child;
+    if (!TooltipVisibility.of(context)) {
+      return Semantics(tooltip: message, child: child);
+    }
+    return Tooltip(message: message, waitDuration: waitDuration, child: child);
+  }
+}
+
 /// controlHeight is every control's height: a comfortable click target.
 const double controlHeight = 27;
 

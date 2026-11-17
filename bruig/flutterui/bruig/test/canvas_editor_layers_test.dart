@@ -133,18 +133,18 @@ void main() {
 
       var first = controller.document.elements.first;
 
-      await tester.tap(find.byTooltip("Hide").first);
+      await tester.tap(byTip("Hide").first);
       await tester.pumpAndSettle();
       expect(controller.document.elements.any((e) => !e.visible), isTrue);
 
-      await tester.tap(find.byTooltip("Lock").first);
+      await tester.tap(byTip("Lock").first);
       await tester.pumpAndSettle();
       expect(controller.document.elements.any((e) => e.locked), isTrue);
 
       // The list is drawn front-to-back, so its first row is the last element.
       // "Move back" on it must actually change the paint order.
       var before = controller.document.elements.last.id;
-      await tester.tap(find.byTooltip("Move back").first);
+      await tester.tap(byTip("Move back").first);
       await tester.pumpAndSettle();
       expect(controller.document.elements.last.id, isNot(before));
       expect(controller.document.elements.first.id, first.id);
@@ -191,11 +191,11 @@ void main() {
           reason: "selecting the background deselects elements");
 
       // Its settings are what the panel now shows.
-      expect(find.byTooltip("Try the next variation"), findsOneWidget);
+      expect(byTip("Try the next variation"), findsOneWidget);
       var seed = controller.document.background.spec.seed;
-      await tester.ensureVisible(find.byTooltip("Try the next variation"));
+      await tester.ensureVisible(byTip("Try the next variation"));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip("Try the next variation"));
+      await tester.tap(byTip("Try the next variation"));
       await tester.pumpAndSettle();
       expect(controller.document.background.spec.seed, isNot(seed));
     });
@@ -543,8 +543,8 @@ void main() {
       var controller = await panel(tester);
       var original = controller.document.elements.single;
 
-      expect(find.byTooltip("Copy"), findsNothing);
-      await tester.tap(find.byTooltip("Duplicate"));
+      expect(byTip("Copy"), findsNothing);
+      await tester.tap(byTip("Duplicate"));
       await tester.pumpAndSettle();
 
       var elements = controller.document.elements;
@@ -564,7 +564,7 @@ void main() {
       controller.copySelected();
       var copied = controller.document.elements.single.id;
 
-      await tester.tap(find.byTooltip("Duplicate"));
+      await tester.tap(byTip("Duplicate"));
       await tester.pumpAndSettle();
       controller.paste();
 
@@ -581,7 +581,7 @@ void main() {
       var controller = await panel(tester);
 
       expect(find.byIcon(Icons.lock_open_outlined), findsOneWidget);
-      await tester.tap(find.byTooltip("Lock"));
+      await tester.tap(byTip("Lock"));
       await tester.pumpAndSettle();
 
       expect(controller.document.elements.single.locked, isTrue);
@@ -589,7 +589,7 @@ void main() {
           reason: "filled, not another outline");
       expect(find.byIcon(Icons.lock_open_outlined), findsNothing);
 
-      await tester.tap(find.byTooltip("Unlock"));
+      await tester.tap(byTip("Unlock"));
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.lock_open_outlined), findsOneWidget);
     });

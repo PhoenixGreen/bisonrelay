@@ -30,7 +30,12 @@ List<Widget> stageSettings(
   var camera = e.cameraAt(controller.frame);
   var animated = controller.document.isAnimated;
   var keyed = controller.hasCameraKey(e);
-  var drawn = e.toJson().toString();
+  // What the tiles draw from: the stage as drawn, not where it sits on the
+  // page, so moving it does not render every shot, preset and light again.
+  var drawn = (e.toJson()
+        ..remove("x")
+        ..remove("y"))
+      .toString();
   void film(StageCamera next, {bool live = false}) {
     var filmed = controller.stageFilmed(e, next);
     if (live) {

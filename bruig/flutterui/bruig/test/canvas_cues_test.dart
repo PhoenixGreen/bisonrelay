@@ -156,7 +156,7 @@ void main() {
     await tester.tap(shown);
     await tester.pumpAndSettle();
     expect(c.cuesShown, isFalse);
-    expect(find.byTooltip("Show the word cues on the timeline"), findsOneWidget);
+    expect(byTip("Show the word cues on the timeline"), findsOneWidget);
     await tester.tap(shown);
     await tester.pumpAndSettle();
     expect(c.cuesShown, isTrue);

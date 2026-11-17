@@ -128,7 +128,7 @@ void main() {
 
       // The numbers open as pasted text, and the marks live on the rows of
       // the grid -- there is nowhere to put a switch in a block of text.
-      var toGrid = find.byTooltip("Edit the numbers in a table");
+      var toGrid = byTip("Edit the numbers in a table");
       if (toGrid.evaluate().isNotEmpty) {
         await tester.ensureVisible(toGrid);
         await tester.pumpAndSettle();

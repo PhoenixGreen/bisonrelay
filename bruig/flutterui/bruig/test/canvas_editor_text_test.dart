@@ -138,7 +138,7 @@ void main() {
       // The words' outline, shadow and glow are looks in the Chain now, kept
       // in one place (text_looks.dart): not in the type card as well.
       expect(find.text("Outline"), findsNothing);
-      expect(find.byTooltip("Spacing, alignment and case"), findsNothing);
+      expect(byTip("Spacing, alignment and case"), findsNothing);
       expect(find.byType(CanvasColorButton), findsWidgets);
     });
 
@@ -328,7 +328,7 @@ void main() {
 
       var where = find.byKey(const ValueKey("textBodySlot"));
       if (where.evaluate().isEmpty) {
-        var button = find.byTooltip("Spacing, alignment and case");
+        var button = byTip("Spacing, alignment and case");
         await tester.ensureVisible(button.first);
         await tester.pumpAndSettle();
         await tester.tap(button.first);

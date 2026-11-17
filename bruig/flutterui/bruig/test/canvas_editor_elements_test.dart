@@ -158,7 +158,7 @@ void main() {
       Future<void> press(int index, String tooltip) async {
         var finder = find.descendant(
           of: find.byKey(ValueKey("player-$index-${teamIn(controller).id}")),
-          matching: find.byTooltip(tooltip),
+          matching: byTip(tooltip),
         );
         await tester.ensureVisible(finder);
         await tester.pumpAndSettle();
@@ -195,7 +195,7 @@ void main() {
 
       // Scrolled to first: a team has more settings than fit in the panel,
       // and a tap on something below the fold lands on whatever is there.
-      var lock = find.byTooltip("Width and height move together");
+      var lock = byTip("Width and height move together");
       await tester.ensureVisible(lock);
       await tester.pumpAndSettle();
       await tester.tap(lock);
@@ -233,13 +233,13 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
 
       // The layer row has them.
-      expect(find.byTooltip("Lock"), findsOneWidget);
-      expect(find.byTooltip("Hide"), findsOneWidget);
-      expect(find.byTooltip("Move forward"), findsOneWidget);
+      expect(byTip("Lock"), findsOneWidget);
+      expect(byTip("Hide"), findsOneWidget);
+      expect(byTip("Move forward"), findsOneWidget);
       // The settings below it do not.
-      expect(find.byTooltip("Lock in place"), findsNothing);
-      expect(find.byTooltip("Bring to front"), findsNothing);
-      expect(find.byTooltip("Send to back"), findsNothing);
+      expect(byTip("Lock in place"), findsNothing);
+      expect(byTip("Bring to front"), findsNothing);
+      expect(byTip("Send to back"), findsNothing);
     });
 
     testWidgets("a player row keeps its own, since the layer list has none",
@@ -255,14 +255,14 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
-      if (find.byTooltip("Lock in place").evaluate().isEmpty) {
+      if (byTip("Lock in place").evaluate().isEmpty) {
         await tester.ensureVisible(find.text("PLAYERS"));
         await tester.pumpAndSettle();
         await tester.tap(find.text("PLAYERS"));
         await tester.pumpAndSettle();
       }
 
-      expect(find.byTooltip("Lock in place"), findsWidgets,
+      expect(byTip("Lock in place"), findsWidgets,
           reason: "a player is not a layer and has nowhere else to be locked");
     });
   });
@@ -891,16 +891,16 @@ void main() {
       // The control the element did not have, and without which it does
       // nothing at all.
       await panel(tester, empty());
-      expect(find.byTooltip("Add a picture"), findsOneWidget);
+      expect(byTip("Add a picture"), findsOneWidget);
     });
 
     testWidgets("a filled one offers to replace or remove it", (tester) async {
       var controller = await panel(tester, filled());
-      expect(find.byTooltip("Replace this picture"), findsOneWidget);
+      expect(byTip("Replace this picture"), findsOneWidget);
 
-      await tester.ensureVisible(find.byTooltip("Take the picture out"));
+      await tester.ensureVisible(byTip("Take the picture out"));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip("Take the picture out"));
+      await tester.tap(byTip("Take the picture out"));
       await tester.pumpAndSettle();
       expect((controller.document.elements.single as ImageElement).hasImage,
           isFalse);
@@ -1474,10 +1474,10 @@ void main() {
       // -- had nowhere to go.
       const tooltip = "Change this picture's size and quality";
       await panel(tester);
-      expect(find.byTooltip(tooltip), findsOneWidget);
+      expect(byTip(tooltip), findsOneWidget);
 
       await panel(tester, assetId: "");
-      expect(find.byTooltip(tooltip), findsNothing,
+      expect(byTip(tooltip), findsNothing,
           reason: "nothing to resize until there is a picture");
     });
 
@@ -1519,9 +1519,8 @@ void main() {
       // photograph. The mask tools replace them, on every layer, a pick of a
       // layer away.
       var controller = await panel(tester);
-      expect(find.byTooltip("Rub the background out by hand"), findsNothing);
-      expect(
-          find.byTooltip("Put back what was taken by mistake"), findsNothing);
+      expect(byTip("Rub the background out by hand"), findsNothing);
+      expect(byTip("Put back what was taken by mistake"), findsNothing);
 
       controller.editImage("i");
       await tester.pumpAndSettle();
@@ -1552,22 +1551,22 @@ void main() {
       const inward = "Taking what is inside the line — press to take what "
           "is outside";
 
-      expect(find.byTooltip(outward), findsNothing,
+      expect(byTip(outward), findsNothing,
           reason: "only the cut has two sides to choose between");
 
       controller.retouch = RetouchBrush.cutAround;
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip(outward), findsOneWidget);
-      expect(find.byTooltip("Cling"), findsNothing);
+      expect(byTip(outward), findsOneWidget);
+      expect(byTip("Cling"), findsNothing);
 
-      await tester.ensureVisible(find.byTooltip(outward));
+      await tester.ensureVisible(byTip(outward));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip(outward));
+      await tester.tap(byTip(outward));
       await tester.pumpAndSettle();
 
       expect(controller.cutInside, isTrue);
-      expect(find.byTooltip(inward), findsOneWidget);
+      expect(byTip(inward), findsOneWidget);
     });
 
     testWidgets("a marking brush offers neither hardness nor cling",
@@ -1588,18 +1587,18 @@ void main() {
         (tester) async {
       await panel(tester);
       expect(
-          find.byTooltip("Mark some background — draw over a few parts "
+          byTip("Mark some background — draw over a few parts "
               "that should go"),
           findsNothing);
 
       await panel(tester,
           removal: const BackgroundRemoval(mode: RemovalMode.learn));
       expect(
-          find.byTooltip("Mark some background — draw over a few parts "
+          byTip("Mark some background — draw over a few parts "
               "that should go"),
           findsOneWidget);
       expect(
-          find.byTooltip("Mark the subject — draw over a few parts that "
+          byTip("Mark the subject — draw over a few parts that "
               "should stay"),
           findsOneWidget);
     });
@@ -1607,14 +1606,14 @@ void main() {
     testWidgets("undo and clear appear once something has been painted",
         (tester) async {
       await panel(tester);
-      expect(find.byTooltip("Undo the last brush stroke"), findsNothing);
+      expect(byTip("Undo the last brush stroke"), findsNothing);
 
       await panel(tester,
           removal: const BackgroundRemoval(strokes: [
             RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
           ]));
-      expect(find.byTooltip("Undo the last brush stroke"), findsOneWidget);
-      expect(find.byTooltip("Clear every brush stroke"), findsOneWidget);
+      expect(byTip("Undo the last brush stroke"), findsOneWidget);
+      expect(byTip("Clear every brush stroke"), findsOneWidget);
     });
 
     testWidgets("a picture worked on by hand is offered no method settings",
@@ -1632,7 +1631,7 @@ void main() {
       expect(text("Spread"), findsNothing);
       expect(text("Invert"), findsNothing);
       // The brush's own are still there.
-      expect(find.byTooltip("Undo the last brush stroke"), findsOneWidget);
+      expect(byTip("Undo the last brush stroke"), findsOneWidget);
     });
 
     testWidgets("the brightness method is offered no tolerance",

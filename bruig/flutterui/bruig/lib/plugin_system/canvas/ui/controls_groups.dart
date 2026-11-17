@@ -512,7 +512,7 @@ class _RenamableCaptionState extends State<_RenamableCaption> {
         cursor: SystemMouseCursors.text,
         child: GestureDetector(
           onDoubleTap: _start,
-          child: Tooltip(
+          child: CanvasTip(
             message: "Double-click to rename",
             waitDuration: CanvasNoHover.on(context)
                 ? const Duration(days: 1)

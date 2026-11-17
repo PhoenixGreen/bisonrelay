@@ -1177,7 +1177,7 @@ void main() {
       await tester.pumpWidget(canvasApp(Center(child: SizedBox(width: 160, height: 30, child: CanvasCellEditor(value: "6", fontSize: 14, onChanged: (_) {}, onDone: () {}, onPickPicture: () async => pressed++)))));
       await tester.pumpAndSettle();
 
-      var button = find.byTooltip("Put a picture in this cell");
+      var button = byTip("Put a picture in this cell");
       expect(button, findsOneWidget);
 
       await tester.tap(button);
@@ -1201,7 +1201,7 @@ void main() {
 
       // Pressed and released as a pointer, with the focus taken away in
       // between -- which is what a real mouse does.
-      var button = find.byTooltip("Put a picture in this cell");
+      var button = byTip("Put a picture in this cell");
       var gesture = await tester.startGesture(tester.getCenter(button));
       await tester.pump();
       FocusManager.instance.primaryFocus?.unfocus();
@@ -1222,7 +1222,7 @@ void main() {
       await tester.pumpWidget(canvasApp(Center(child: SizedBox(width: 160, height: 30, child: CanvasCellEditor(value: "6", fontSize: 14, onChanged: (_) {}, onDone: () {}, onPickPicture: () async => throw StateError("no picker"))))));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip("Put a picture in this cell"));
+      await tester.tap(byTip("Put a picture in this cell"));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull,

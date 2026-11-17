@@ -13,8 +13,11 @@ class CanvasVocalCuesPanel extends StatelessWidget {
 
   // Rebuilt with the canvas: the section shows the cues as they are now.
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => CanvasWatch<int>(
+        // Every change but the view's and frames of play (revision): neither
+        // changes what this shows.
         listenable: controller,
+        select: () => controller.revision,
         builder: (context, _) => SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
           child: CanvasControlScope(

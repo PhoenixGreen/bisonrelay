@@ -1079,7 +1079,7 @@ void main() {
           lessThanOrEqualTo(
               tester.getRect(find.byKey(const ValueKey("strip-v"))).top));
       // Shut from the timeline's button: the panel has no bar of its own.
-      expect(find.byTooltip("Close the effects"), findsNothing);
+      expect(byTip("Close the effects"), findsNothing);
       c.effectsOpen = false;
       await tester.pump();
       expect(find.byKey(const ValueKey("effectsChain")), findsNothing);
