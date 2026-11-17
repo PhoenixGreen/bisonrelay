@@ -772,6 +772,10 @@ class CanvasController extends ChangeNotifier {
 
   void _patternCounted() => notifyListeners();
 
+  /// _synthSeen is the document synthSynced last returned: what it compares
+  /// the next with, so an edit touching no synth part skips it.
+  CanvasDocument? _synthSeen;
+
   /// apply replaces the document, pushing the old one onto the undo history.
   /// [transient] skips the history, for the many small changes inside one
   /// gesture; [beginInteraction] already remembered where it started.
@@ -783,8 +787,9 @@ class CanvasController extends ChangeNotifier {
     next = castSynced(_document, next);
     // Each synth speaker's channel plays the patch its modules make.
     var designing = next;
-    next = synthSynced(next,
-        designedAt: (e, f) => designedNow(e, f, designing));
+    next = _synthSeen = synthSynced(next,
+        designedAt: (e, f) => designedNow(e, f, designing),
+        since: _synthSeen);
     // Each Data element shows its sheet, and its own data changes go into
     // the sheet (data_sync.dart); a sheet made from another follows it
     // first (sheet_reshape.dart).
@@ -1482,6 +1487,11 @@ class CanvasController extends ChangeNotifier {
 
   ((CanvasDocument, int, bool, int?, List<String>), List<TimelineChannel>)?
       _channels;
+
+  /// _lanesKept and _pressedKept are timedLanes and interactiveLanes as last
+  /// worked out, with what they were worked out from.
+  ((CanvasDocument, int, bool, int?), List<TimedLane>)? _lanesKept;
+  (CanvasDocument, List<TimedLane>)? _pressedKept;
 
   static bool _sameChannelKey((CanvasDocument, int, bool, int?, List<String>) a,
           (CanvasDocument, int, bool, int?, List<String>) b) =>

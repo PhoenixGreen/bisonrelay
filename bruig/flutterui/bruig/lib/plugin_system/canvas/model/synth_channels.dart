@@ -38,7 +38,19 @@ typedef SynthDesigned = CanvasElement Function(CanvasElement e, int frame);
 /// hears; with [designedAt], its knobs keyed in the Chain's Design turn as
 /// it plays (see SynthPatch.lanes). A channel already so, and a document
 /// with no modules, is left as it is.
-CanvasDocument synthSynced(CanvasDocument doc, {SynthDesigned? designedAt}) {
+///
+/// [since] is the last document this returned, if any: where the modules,
+/// the channels, the length and the rate are all as they were then, so is
+/// every patch, and the work (a patch built and written out per speaker)
+/// is skipped. Most edits, a drag step among them, touch none of them.
+CanvasDocument synthSynced(CanvasDocument doc,
+    {SynthDesigned? designedAt, CanvasDocument? since}) {
+  if (since != null &&
+      since.frames == doc.frames &&
+      since.frameRate == doc.frameRate &&
+      _sameSynthParts(since, doc)) {
+    return doc;
+  }
   List<SynthModuleElement>? speakers;
   for (var e in doc.elements) {
     if (e is SynthModuleElement &&
@@ -75,6 +87,22 @@ CanvasDocument synthSynced(CanvasDocument doc, {SynthDesigned? designedAt}) {
         instrument: part.copyWith(sound: InstrumentSound.patch, patch: patch)));
   }
   return next;
+}
+
+/// _sameSynthParts is whether [a] and [b] have the very same synth modules
+/// and sound channels: each of [b]'s found unchanged in [a], and as many.
+bool _sameSynthParts(CanvasDocument a, CanvasDocument b) {
+  if (identical(a.elements, b.elements)) return true;
+  var count = 0;
+  for (var e in b.elements) {
+    if (e is! SynthModuleElement && e is! AudioElement) continue;
+    if (!identical(a.elementById(e.id), e)) return false;
+    count++;
+  }
+  for (var e in a.elements) {
+    if (e is SynthModuleElement || e is AudioElement) count--;
+  }
+  return count == 0;
 }
 
 /// synthSpeakersHearing are the speakers module [id]'s sound reaches: the
