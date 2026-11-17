@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart'
@@ -1382,18 +1383,15 @@ class _LanesPainter extends CustomPainter {
           Paint()..color = codeMark);
     }
     var lit = e.steps.length;
-    var tp = TextPainter(
-      text: TextSpan(
-          text: [
-            if (e.typing.on) "Typing",
-            if (lit > 0) "$lit lit",
-          ].join(" · "),
-          style: const TextStyle(
-              fontSize: 10.5, color: slotInk, fontWeight: FontWeight.w600)),
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
+    var tp = labelPainter(
+        [
+          if (e.typing.on) "Typing",
+          if (lit > 0) "$lit lit",
+        ].join(" · "),
+        size: textScaler.scale(10.5),
+        colour: slotInk,
+        weight: FontWeight.w600,
+        maxLines: 1);
     tp.paint(canvas, Offset(rect.left + 6, rect.center.dy - tp.height / 2 - 1));
     canvas.restore();
   }
@@ -1451,15 +1449,13 @@ class _LanesPainter extends CustomPainter {
     var pace = !c.loop && !c.isSound && (s.speed - c.speed).abs() > 0.02
         ? "  ${s.speed.toStringAsFixed(2)}×"
         : "";
-    var tp = TextPainter(
-      text: TextSpan(
-          text: "$name$pace",
-          style: const TextStyle(
-              fontSize: 10.5, color: slotInk, fontWeight: FontWeight.w600)),
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
+    // Shared and kept (labelPainter), at the reader's text size: drawn
+    // afresh for every clip on every paint, it was most of the lanes' time.
+    var tp = labelPainter("$name$pace",
+        size: textScaler.scale(10.5),
+        colour: slotInk,
+        weight: FontWeight.w600,
+        maxLines: 1);
     var left = rect.left + (p.startPin != null ? 12 : 6);
     tp.paint(canvas, Offset(left, rect.center.dy - tp.height / 2));
     canvas.restore();

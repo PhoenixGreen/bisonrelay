@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:async';
@@ -89,13 +90,16 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
   /// editor notifies at every frame of play and every step of a drag, and
   /// this panel is built even while another tab shows.
   void _onControllerChanged() {
-    var now = (controller.folder, controller.name, controller.dirty);
+    // Not whether it is saved: that flips with every autosave while knobs
+    // turn or things are dragged, and rebuilt the whole list each time.
+    // The Save button watches it on its own (see _actions).
+    var now = (controller.folder, controller.name);
     if (now == _marks) return;
     _marks = now;
     if (mounted) setState(() {});
   }
 
-  (String?, String?, bool)? _marks;
+  (String?, String?)? _marks;
 
   Future<void> _reload() async {
     var entries = await CanvasStorage.list(_folder);
@@ -457,8 +461,14 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
           // writes itself out: the autosave is invisible, and a button that
           // says the work is on disk is still worth having.
           if (controller.name != null)
-            _iconAction(theme, Icons.save_outlined,
-                controller.dirty ? "Save now" : "Saved", _saveNow),
+            CanvasWatch<bool>(
+                listenable: controller,
+                select: () => controller.dirty,
+                builder: (context, dirty) => _iconAction(
+                    theme,
+                    Icons.save_outlined,
+                    dirty ? "Save now" : "Saved",
+                    _saveNow)),
           if (_folder.isEmpty)
             _iconAction(theme, Icons.create_new_folder_outlined, "New folder",
                 _newFolder),

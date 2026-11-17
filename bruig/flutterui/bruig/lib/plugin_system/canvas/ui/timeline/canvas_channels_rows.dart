@@ -563,10 +563,11 @@ extension _ChannelRows on _CanvasChannelsState {
               size: Size(box.maxWidth, box.maxHeight),
               foregroundPainter: slotsOnly
                   ? _InteractiveLanePainter(
+                      repaint: controller.playheadMoved,
                       label: "Sample slots in use",
                       colors: theme.colors,
                       chosen: controller.selectedChannels.contains(channel.key),
-                      frame: controller.frame,
+                      frameNow: () => controller.frame,
                       view: _view)
                   : null,
               painter: _LanePainter(
@@ -617,6 +618,7 @@ extension _ChannelRows on _CanvasChannelsState {
         child: CustomPaint(
           size: Size.infinite,
           painter: _InteractiveLanePainter(
+            repaint: controller.playheadMoved,
             label: _slotsOnly(channel)
                 ? "Sample slots in use"
                 : channel.lanes.length > 1
@@ -626,7 +628,7 @@ extension _ChannelRows on _CanvasChannelsState {
                         : "Plays when pressed on the canvas",
             colors: theme.colors,
             chosen: controller.selectedChannels.contains(channel.key),
-            frame: controller.frame,
+            frameNow: () => controller.frame,
             view: _view,
           ),
         ),

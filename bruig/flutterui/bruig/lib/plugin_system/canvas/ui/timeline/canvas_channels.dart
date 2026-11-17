@@ -131,6 +131,28 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   @override
   void setState(VoidCallback fn) => super.setState(fn);
 
+  /// _heard is the controller less its frames of play: nothing here moves
+  /// with the playhead but the line through a slots-only lane, which repaints
+  /// on its own (_InteractiveLanePainter), and the view, which the timeline
+  /// hands down, building this again when it moves. Heard whole, every lane
+  /// was built and painted again every frame of play.
+  late _NotPlayhead _heard = _NotPlayhead(widget.controller);
+
+  @override
+  void didUpdateWidget(CanvasChannels old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.controller, widget.controller)) {
+      _heard.dispose();
+      _heard = _NotPlayhead(widget.controller);
+    }
+  }
+
+  @override
+  void dispose() {
+    _heard.dispose();
+    super.dispose();
+  }
+
   // What a press took hold of, and the clip as it was when it did.
   TimedLane? _held;
   _Grip _grip = _Grip.move;
@@ -189,7 +211,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     return ListenableBuilder(
-      listenable: controller,
+      listenable: _heard,
       builder: (context, _) {
         var show = controller.timelineShow;
         // The rows every panel shows (see canvas_rows.dart): each element
@@ -684,18 +706,14 @@ class _LanePainter extends CustomPainter {
             ..color = const Color(0xCCFFFFFF)
             ..strokeWidth = 1.2);
       if (showVolume && held == lane.element.id) {
-        var reading = TextPainter(
-          text: TextSpan(
-              text: clip.volume <= 0
-                  ? "−∞ dB"
-                  : "${clip.volume > 1.0001 ? "+" : ""}"
-                      "${gainToDb(clip.volume).toStringAsFixed(1)} dB",
-              style: const TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFFFFFFFF),
-                  fontWeight: FontWeight.w600)),
-          textDirection: TextDirection.ltr,
-        )..layout();
+        var reading = labelPainter(
+            clip.volume <= 0
+                ? "−∞ dB"
+                : "${clip.volume > 1.0001 ? "+" : ""}"
+                    "${gainToDb(clip.volume).toStringAsFixed(1)} dB",
+            size: 10,
+            colour: const Color(0xFFFFFFFF),
+            weight: FontWeight.w600);
         reading.paint(
             canvas,
             Offset(math.max(from, 0) + 6,
@@ -712,15 +730,13 @@ class _LanePainter extends CustomPainter {
       var name = lane.scene < 0 && !onMaster
           ? "${lane.element.name} (master)"
           : lane.element.name;
-      var text = TextPainter(
-        text: TextSpan(
-            text: name,
-            style: TextStyle(
-                fontSize: 10.5, color: ink, fontWeight: FontWeight.w500)),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: "…",
-      )..layout(maxWidth: room);
+      var text = labelPainter(name,
+          size: 10.5,
+          colour: ink,
+          weight: FontWeight.w500,
+          maxLines: 1,
+          ellipsis: "…",
+          maxWidth: room);
       // Along the bottom of a tall lane, so the waveform and the volume line
       // have the rest; in the middle of a short one.
       var y = size.height >= _waveformFrom
@@ -773,14 +789,18 @@ class _InteractiveLanePainter extends CustomPainter {
   final String label;
   final ColorScheme colors;
   final bool chosen;
-  final int frame;
+
+  /// frameNow is where the playhead is as it is painted: this repaints on
+  /// its own as it moves (see _CanvasChannelsState._heard).
+  final int Function() frameNow;
   final TimelineView view;
 
   _InteractiveLanePainter({
+    super.repaint,
     required this.label,
     required this.colors,
     required this.chosen,
-    required this.frame,
+    required this.frameNow,
     required this.view,
   });
 
@@ -799,21 +819,17 @@ class _InteractiveLanePainter extends CustomPainter {
       canvas.drawLine(
           Offset(x, body.bottom), Offset(x + body.height, body.top), hatch);
     }
-    var text = TextPainter(
-      text: TextSpan(
-          text: label,
-          style: TextStyle(
-              fontSize: 11,
-              height: 1.2,
-              color: colors.onSurfaceVariant.withValues(alpha: 0.9))),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: "…",
-    )..layout(maxWidth: math.max(0, size.width - 16));
+    var text = labelPainter(label,
+        size: 11,
+        height: 1.2,
+        colour: colors.onSurfaceVariant.withValues(alpha: 0.9),
+        maxLines: 1,
+        ellipsis: "…",
+        maxWidth: math.max(0, size.width - 16));
     if (size.height >= text.height + 4) {
       text.paint(canvas, Offset(8, (size.height - text.height) / 2));
     }
-    var head = view.centreOf(frame, size.width);
+    var head = view.centreOf(frameNow(), size.width);
     canvas.drawLine(Offset(head, 0), Offset(head, size.height),
         Paint()..color = colors.primary.withValues(alpha: 0.5));
   }
@@ -822,7 +838,7 @@ class _InteractiveLanePainter extends CustomPainter {
   bool shouldRepaint(_InteractiveLanePainter old) =>
       old.label != label ||
       old.chosen != chosen ||
-      old.frame != frame ||
+      old.view != view ||
       old.colors != colors;
 }
 
@@ -1482,5 +1498,25 @@ class SessionRowSlots extends StatelessWidget {
       ),
       child: cell,
     );
+  }
+}
+
+/// _NotPlayhead tells its listeners of [controller]'s changes but not of
+/// its frames of play (CanvasController.notifyingPlayhead).
+class _NotPlayhead extends ChangeNotifier {
+  final CanvasController controller;
+
+  _NotPlayhead(this.controller) {
+    controller.addListener(_told);
+  }
+
+  void _told() {
+    if (!controller.notifyingPlayhead) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_told);
+    super.dispose();
   }
 }
