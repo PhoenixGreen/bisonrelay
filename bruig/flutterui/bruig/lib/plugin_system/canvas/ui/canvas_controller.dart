@@ -368,7 +368,11 @@ class FetchedRows {
 /// mixerMasterKey is the master strip where a channel's key is wanted.
 const mixerMasterKey = "\u0000master";
 
-/// CanvasController is the editing session.
+/// CanvasController is the editing session. What it does is in the
+/// extension parts under controller/, one a feature; a feature's own state is
+/// in a class at the end of its part (_VectorState, _PlaybackState...), and
+/// what several share is here. Widgets listen to it, or to [chrome] where
+/// they show nothing that moves with a drag or a frame of play.
 class CanvasController extends ChangeNotifier {
   CanvasController(CanvasDocument document,
       {AudioEngine? audioEngine, FrameSource? frameSource})
@@ -474,8 +478,8 @@ class CanvasController extends ChangeNotifier {
   /// _viewOnly is set only while [_notifyView] is running.
   bool _viewOnly = false;
 
-  /// _playheadOnly is set only while notifyingPlayhead runs.
-  bool _playheadOnly = false;
+  /// _playbackState is the state playback.dart keeps: see _PlaybackState.
+  final _PlaybackState _playbackState = _PlaybackState();
 
   /// chrome tells of every change but the two that come many times a
   /// second: the playhead stepping on in play, and a gesture's edits as it
@@ -1590,12 +1594,6 @@ class CanvasController extends ChangeNotifier {
 
   Timer? _playback;
   bool get playing => _playback != null;
-
-  /// _loopCounts is how often each loop marker has fired, for repeat limits.
-  final Map<int, int> _loopCounts = {};
-
-  /// _stoppedAt is the frame a stop marker last stopped playback on.
-  int? _stoppedAt;
 
   bool _opened = false;
 
@@ -2865,176 +2863,26 @@ class CanvasController extends ChangeNotifier {
   // ---- picture layers ----------------------------------------------------
 
   String? _imageEditing;
-  String _imageLayerId = baseLayerId;
+
+  /// _pictures is the state pictures.dart keeps: see _PictureState.
+  final _PictureState _pictures = _PictureState();
 
   /// _alsoPicked are the layers picked with [imageLayer], in pick order, for
   /// the align tools and a drag; the settings are the first one's.
   final List<String> _alsoPicked = [];
 
-  FrameTool? _frameTool = FrameTool.image;
-
-  /// _textLayers is the piece picked in each text element's Layers, by
-  /// element id; one not here has its own words picked.
-  final Map<String, String> _textLayers = {};
-
-  PositionTool? _positionTool = PositionTool.place;
-
-  String? _warpLayer;
-
-  Set<int> _warpPicks = const {};
-
-  bool _skewHandles = false;
-
   bool _imageSolo = false;
-
-  ImageTool _imageTool = ImageTool.move;
-
-  // ---- picture masks -----------------------------------------------------
-
-  bool _maskHide = true;
-
-  double _maskBrushSize = 0.03;
-
-  double _maskHardness = 0.6;
-
-  double _maskStrength = 1;
-
-  bool _maskRadial = false;
-
-  MaskView _maskView = MaskView.result;
-
-  String? _maskBusy;
-  String? _maskNote;
 
   // ---- brushwork ----------------------------------------------------------
 
-  Color _paintColour = const Color(0xFFF2B33D);
-
-  double _paintSize = 0.02;
-
-  double _paintHardness = 0.6;
-
-  double _paintStrength = 1;
-
-  BrushTip _paintTip = const BrushTip();
-
-  String _paintBrush = "round";
-
-  bool _burning = false;
-
-  Offset? _cloneFrom;
   Offset? cloneOffset;
-
-  bool _retouchWholeFrame = false;
 
   // ---- vector editing ----------------------------------------------------
 
   String? _vectorEditing;
-  int _vectorShape = -1;
-  Set<VectorPick> _vectorPicks = const {};
 
-  bool _vectorSolo = false;
-
-  VectorTool _vectorTool = VectorTool.select;
-
-  VectorPick? _vectorPenFrom;
-
-  bool _vectorCornerRound = true;
-
-  double _vectorCornerSize = 20;
-
-  /// _corner is the corner the corner tool last made: the drawing before,
-  /// the point, the drawing after and its two new points. Still in the
-  /// making while those points alone are picked and the drawing unchanged.
-  ({
-    VectorElement before,
-    VectorPick at,
-    VectorElement after,
-    Set<VectorPick> picks
-  })? _corner;
-
-  VectorHandleDrag _vectorHandleDrag = VectorHandleDrag.any;
-
-  bool _vectorHandleSnap = false;
-
-  /// _copiedShapes is the last points copied, and _pastes how many times
-  /// they have been pasted since: each paste lands a step further off.
-  List<VectorShape> _copiedShapes = const [];
-  int _pastes = 0;
-
-  VectorBrush _vectorBrush = builtInBrushes.first;
-
-  bool _vectorPencilPoints = false;
-
-  VectorLanes _vectorLanes = VectorLanes.none;
-
-  int _vectorShapeMade = -1;
-
-  VectorShapeKind _vectorShapeKind = VectorShapeKind.box;
-
-  int _vectorShapeSides = 5;
-
-  double _vectorStarInner = 0.45;
-
-  double _vectorShapeCorner = 0.2;
-
-  Color? _vectorShapeFill = const Color(0xFF8AB4F8);
-
-  Color? _vectorShapeLine = const Color(0xFF202124);
-
-  double _vectorShapeWidth = 3;
-
-  bool _vectorEraseWhole = false;
-
-  double _vectorEraseSize = 20;
-
-  double _vectorEraseSoft = 0;
-
-  bool _vectorEraseLine = true;
-
-  bool _vectorEraseFill = true;
-
-  bool _vectorMirrorAcross = false;
-
-  bool _vectorMirrorDown = false;
-
-  bool _vectorQuickFill = false;
-
-  VectorText _vectorTextStyle = const VectorText();
-  Color _vectorTextColour = const Color(0xFF000000);
-
-  int _vectorTyping = -1;
-
-  ValueChanged<Color>? _onSampled;
-  Color? _sampled;
-
-  double _vectorKnifeGap = 1;
-
-  double _vectorFillGap = 3;
-
-  Color _vectorPencilFill = const Color(0xFF8AB4F8);
-
-  Color _vectorPencilColour = const Color(0xFF202124);
-
-  List<StylusAction> _stylusButtons = const [
-    StylusAction.pickColour,
-    StylusAction.pan,
-    StylusAction.undo,
-  ];
-
-  StylusAction _stylusEraser = StylusAction.erase;
-
-  Set<int> _vectorCombining = const {};
-
-  PaintSpec _vectorTint = const PaintSpec(Color(0xFFE5484D));
-
-  double _vectorBrushSize = 24;
-
-  double _vectorBrushSoft = 0.5;
-
-  bool _vectorTintLine = true;
-
-  bool _vectorTintFill = true;
+  /// _vectors is the state vectors.dart keeps: see _VectorState.
+  final _VectorState _vectors = _VectorState();
 
   SpritePaintSession? _spritePaint;
 
@@ -3063,10 +2911,6 @@ class CanvasController extends ChangeNotifier {
 
   /// studio3dElement is the 3D character the Studio was opened for, if any.
   String? studio3dElement;
-
-  Set<VectorItem> _vectorItems = const {};
-
-  VectorTool _lastSelect = VectorTool.select;
 
   Set<String> _offCanvas = const {};
 
@@ -3147,30 +2991,9 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _clockFrames is how many frames the playhead has moved since playback
-  /// started. It keeps time by the clock, not by counting ticks, which come
-  /// late when the app is busy and would leave it behind the sound.
-  int _clockFrames = 0;
-
-  /// _playWatch is the time since Play, read between ticks (betweenFrames).
-  Stopwatch _playWatch = Stopwatch();
-
-  /// _clockShift is how far, in seconds, the playhead's clock has been moved
-  /// to keep with the sound -- see _followSound.
-  double _clockShift = 0;
-
-  /// _playedFrom is the scene and frame the last Play started from.
-  (int, int)? _playedFrom;
-
   // ------------------------------------------------------------------------
   // The control bar's switches
   // ------------------------------------------------------------------------
-
-  bool _metronome = false;
-
-  final Map<MixerSection, BandState> _bandStates = {
-    for (var s in MixerSection.values) s: BandState.shown,
-  };
 
   /// _mainBands are the bands one of which always shows: a mixer of send
   /// dials alone, or of nothing, is only its names.
@@ -3182,17 +3005,6 @@ class CanvasController extends ChangeNotifier {
 
   final Set<String> _narrowStrips = {};
 
-  final Set<String> _flippedRows = {};
-  Object? _flippedRowsAt;
-
-  bool _returnsShown = true;
-
-  bool _followPlayhead = true;
-
-  bool _looping = false;
-
-  (int, int)? _loop;
-
   /// clockForTest stands in for the playback clock, in microseconds since
   /// Play, and tickClockForTest is a tick of the timer against it -- so a
   /// test can make a tick late without waiting for one to be.
@@ -3203,19 +3015,9 @@ class CanvasController extends ChangeNotifier {
   // Live counters
   // ------------------------------------------------------------------------
 
-  /// _counters is what each live counter shows, by element id. Not on the
-  /// element: writing each tick into the document would make a clock an
-  /// unsaved change every second and flood the undo history.
-  final Map<String, double> _counters = {};
-
-  /// _countersRunning is which of them are counting, and _countersSince when
-  /// each was last read, so a tick advances by the time actually passed.
-  final Set<String> _countersRunning = {};
   final Map<String, DateTime> _countersSince = {};
 
   Timer? _counterTimer;
-
-  int _counterTicks = 0;
 
   // ------------------------------------------------------------------------
   // Sound
@@ -3231,12 +3033,8 @@ class CanvasController extends ChangeNotifier {
   // Instruments
   // ------------------------------------------------------------------------
 
-  /// _held is each instrument's keys held down live, by element id.
-  final Map<String, Set<int>> _held = {};
-
-  /// _heldPlaces are where on a neck each instrument's keys held were
-  /// pressed, by element id and key.
-  final Map<String, Map<int, FretPlace>> _heldPlaces = {};
+  /// _instruments is the state instruments.dart keeps: see _InstrumentState.
+  final _InstrumentState _instruments = _InstrumentState();
 
   /// _metroStarted is when each running metronome started on _metroClock,
   /// by id; _metroTick redraws them; _metroTaps are each one's last taps.
@@ -3310,22 +3108,11 @@ class CanvasController extends ChangeNotifier {
   /// _synthSeconds is how long the screens have been ticking.
   double _synthSeconds = 0;
 
-  /// _pressedOn is each instrument with keys held, as it was when pressed,
-  /// so they are let go through it after any change and none rings on.
-  final Map<String, AudioElement> _pressedOn = {};
-
   static String _channelOf(AudioElement e) =>
       e.clip.channel.isEmpty ? e.id : e.clip.channel;
 
   final Set<String> _armed = {};
 
-  /// _controlTake is each instrument's controllers moved while recording.
-  final Map<String, Map<MidiControl, List<ControlPoint>>> _controlTake = {};
-
-  /// _sounded is what each key held sounds as, through the channel's MIDI
-  /// effects -- a chord's keys, kept to a scale -- and _soundCount how many
-  /// held keys sound each, so one let go does not stop another's.
-  final Map<String, Map<int, List<int>>> _sounded = {};
   final Map<String, Map<int, int>> _soundCount = {};
 
   /// _arps are the arpeggiators playing live, by element id.
@@ -3333,9 +3120,6 @@ class CanvasController extends ChangeNotifier {
 
   bool _recording = false;
 
-  /// _take is each instrument's notes being held while recording, as when
-  /// each started and how hard; _taken the notes finished.
-  final Map<String, Map<int, (double, int)>> _take = {};
   final Map<String, List<MidiNote>> _taken = {};
 
   // ------------------------------------------------------------------------
@@ -3345,23 +3129,17 @@ class CanvasController extends ChangeNotifier {
   /// motionPlayer is what the elements' slots are playing.
   final MotionPlayer motionPlayer = MotionPlayer();
 
-  /// _motionPainted is the last slot-clock frame painted, slots alone playing.
-  int _motionPainted = -1;
-
   /// _triggeredOff are the elements a trigger (scene start, click, key) took
   /// off their timelines this Play. Stop puts them back so the next Play
   /// starts as the canvas does; slot launches stay off until Back.
   final Set<String> _triggeredOff = {};
 
-  /// _slotPressed is the slot being pressed, whose sound the press sees to
-  /// (see _soundsWithTheirMotion).
-  (String, String)? _slotPressed;
+  /// _sessionState is the state session.dart keeps: see _SessionState.
+  final _SessionState _sessionState = _SessionState();
 
   // ------------------------------------------------------------------------
   // The session view: clips launched live
   // ------------------------------------------------------------------------
-
-  final Quantise _launchQuantise = Quantise.bar;
 
   /// _clipChannels is what each channel plays from its slots, and will next.
   final Map<String, _ClipChannel> _clipChannels = {};
@@ -3400,52 +3178,17 @@ class CanvasController extends ChangeNotifier {
   static double launchLevel(SessionClip clip, int velocity) =>
       1 - clip.velocity * (1 - velocity.clamp(0, 127) / 127);
 
-  /// _repeats are the Repeat clips held down, by channel.
-  final Map<String, _Repeat> _repeats = {};
-
-  int? _sceneLaunched;
-
-  /// _cueLaunchedMaster is whether the cue last launched was the master's,
-  /// on a scene with cues of its own (see CanvasSession.cuesApart).
-  bool _cueLaunchedMaster = false;
-
-  final math.Random _followDice = math.Random();
-
   // ------------------------------------------------------------------------
   // Played as a game
   // ------------------------------------------------------------------------
 
   GameRun? _game;
-  CanvasDocument? _gameView;
 
-  /// _stagePointer and the two after it: see stagePointer.
-  Offset? _stagePointer;
-  CanvasDocument? _facesPointerOf;
-  bool _facesPointerWas = false;
+  /// _gameState is the state game.dart keeps: see _GameState.
+  final _GameState _gameState = _GameState();
 
-  /// _gameLeft is the scene a game has just left, as last seen, with its
-  /// transition and when it began on the game's clock: drawn giving way to
-  /// the next. See gameChange.
-  (CanvasDocument, int, SceneTransition, double, LiveMotion)? _gameLeft;
   Timer? _gameTimer;
-  final Stopwatch _gameWatch = Stopwatch();
-
-  bool _gameTabOpen = false;
-
   bool _gamePaused = false;
-
-  String? _waitingFor;
-  StreamSubscription<NormalizedGamepadEvent>? _waitPads;
-
-  /// _sceneBeforeGame is the scene shown when the game began, to return to.
-  int? _sceneBeforeGame;
-
-  /// _mouthsOfSlots are each slot's mouths once worked out (_slotMouths).
-  final Map<String, List<MouthKey>?> _mouthsOfSlots = {};
-
-  /// _gameSounded are the sounds on the canvas a game has played, stopped
-  /// when it ends -- one still opening its file would be heard after.
-  final Set<String> _gameSounded = {};
 
   /// escStopsGame is whether Escape ends the game, as in the editor, or is
   /// left to a published game's player, where Escape leaves.
@@ -3458,16 +3201,7 @@ class CanvasController extends ChangeNotifier {
   /// _practice is the Sheet music being practised, by id, while a take is
   /// going; the rest is how the take is going.
   String? _practice;
-  final Map<int, NoteMark> _marks = {};
-  final Map<int, int> _wrongKeys = {};
   final Set<int> _waiting = {};
-
-  /// _found are the notes Wait for me has had played, this time round: it
-  /// goes on past them, whatever they were marked.
-  final Set<int> _found = {};
-
-  /// _accompanying is the keys the hand not practised has sounding.
-  final Set<int> _accompanying = {};
 
   /// _mine is whether [n] is the player's to play: of the hand practised
   /// (the right from middle C up), and not in Listen.
@@ -3503,7 +3237,10 @@ class CanvasController extends ChangeNotifier {
   }
 
   Timer? _partTimer;
-  final Set<String> _rendering = {};
+
+  /// _speechState is the state speech.dart keeps: see _SpeechState.
+  final _SpeechState _speechState = _SpeechState();
+
   bool _disposed = false;
 
   // ---- The Speech device
@@ -3524,19 +3261,6 @@ class CanvasController extends ChangeNotifier {
   /// and how it is said, which a join, a split or an edit change.
   static String speechLineKey(SpeechLine l) =>
       "${l.direction.name}|${l.own}|${l.text}";
-
-  /// _speakingNow is the lines each channel's engine is speaking now: the
-  /// first waiting, or every one, where it speaks them together.
-  final Map<String, Set<String>> _speakingNow = {};
-
-  /// _speechStops is Stop, for each channel speaking now.
-  final Map<String, SpeechStop> _speechStops = {};
-
-  /// _speechInto is the slot each waiting line replaces, by channel and
-  /// line, where it is not the line's first free slot.
-  final Map<String, Map<String, int>> _speechInto = {};
-
-  final _seeds = math.Random();
 
   static String _firstWords(String text) {
     var words = text.split(RegExp(r"\s+"));
@@ -3580,21 +3304,11 @@ class CanvasController extends ChangeNotifier {
 
   // ---- Phrasing: a take's words shaped after it is spoken
 
-  ({String channel, int line, int slot})? _phrasing;
-
   /// phrasingPicked are the words picked, by place in the take as spoken,
   /// for a drag or a setting to change; the settings show the first.
   Set<int> phrasingPicked = const {0};
 
-  final Map<String, TakeReading> _readings = {};
-
-  /// _readingTakes are the takes being read now, and _unreadTakes those
-  /// whose sound could not be read, so they say so rather than "Reading…".
-  final Set<String> _readingTakes = {}, _unreadTakes = {};
-
   Timer? _shapeTimer;
-
-  final Map<String, Future<SpeechTake?>> _shaping = {};
 
   /// speechSplitAt is where section [text] splits: at the sentence end
   /// nearest its middle, else the comma, or null for none.
@@ -3641,10 +3355,7 @@ class CanvasController extends ChangeNotifier {
 
   // ---- Hearing a take, or a voice, on its own
 
-  String? _speechHeard;
   String? speechPreviewing;
-  AudioTrack? _heardTrack;
-  AudioVoice? _heardVoice;
   Timer? _heardWatch;
 
   /// takePath is where a stored take's file is: a stand-in for tests.
@@ -3664,9 +3375,6 @@ class CanvasController extends ChangeNotifier {
   /// speechSample is what a voice says for its preview.
   static const speechSample = "Good evening, everyone. I have some news for you.";
 
-  /// _previews are the voices previewed, by everything that changes how they
-  /// sound, each its file: heard again at once.
-  final Map<String, String> _previews = {};
   Directory? _previewDir;
 
   // ---- MIDI files from the library
@@ -3716,10 +3424,6 @@ class CanvasController extends ChangeNotifier {
       a.$3 == b.$3 &&
       a.$4 == b.$4 &&
       identical(a.$5, b.$5);
-
-  /// _channelOrder is the order channels have been dragged into, by key.
-  /// Where somebody is working, not what they made, so it is not saved.
-  List<String> _channelOrder = const [];
 
   // ------------------------------------------------------------------------
   // Sound tools -- see audio_tools.dart.
@@ -3808,16 +3512,9 @@ class CanvasController extends ChangeNotifier {
   /// _hear is which surround speakers the editor plays: see hearSpeakers.
   SpeakerGroup _hear = SpeakerGroup.all;
 
-  /// _motionPreview is the element whose motion chain the stage shows as it
-  /// stands at one join, and that join: see previewMotionFrom.
-  (String, int)? _motionPreview;
-
   /// _soundFrom is where a game last set a channel's sound off -- the
   /// instance of an element reused it touched -- by channel: see gameSound.
   final Map<String, Heard> _soundFrom = {};
-
-  /// _previewTicks counts the previews changed, for the stage to repaint.
-  int _previewTicks = 0;
 
   String? _effectsFocus;
   int _effectsFocusCount = 0;
@@ -3835,13 +3532,10 @@ class CanvasController extends ChangeNotifier {
   /// real sound: off until switched on, as keeping and drawing it costs.
   final Set<String> _analysing = {};
 
-  /// _learning is the setting waiting for a controller's knob, and
-  /// _controlIdle ends a run of turning one as an undo step.
-  (String, String)? _learning;
-  Timer? _controlIdle;
+  /// _mixerState is the state mixer.dart keeps: see _MixerState.
+  final _MixerState _mixerState = _MixerState();
 
-  /// _listening is the chain heard from a point: see listenAt.
-  (String, int)? _listening;
+  Timer? _controlIdle;
 
   /// _abOther are each compared device's other settings, by "strip|device",
   /// and _abB those heard with their B: see toggleAB.
@@ -3898,8 +3592,6 @@ class CanvasController extends ChangeNotifier {
   /// draws only the playhead (the piano roll's line) need not rebuild.
   final ValueNotifier<int> playheadMoved = ValueNotifier(0);
 
-  /// _freezing are the channels being frozen now: see freezeChain.
-  final Set<String> _freezing = {};
   double _rollStepGrid = 0.25;
   double? _stepAt;
   final Set<int> _stepHeld = {};
@@ -3951,21 +3643,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _allFolded = false;
 
-  /// _keyClipboard is the keyframes copied in the Chain's Keyframes card,
-  /// each relative to the first: see copyTargetKeys.
-  List<(int, Keyframe)> _keyClipboard = const [];
-
-  BandState _motionSlots = BandState.shown;
-  bool _mixerRailFolded = false;
-  double _cueColumnWidth = 96;
-  double _slotsCueWidth = 120;
-
-  /// The master's cue columns on a scene with cues of its own, each sized
-  /// apart from the scene's.
-  double _masterCueColumnWidth = 96;
-  double _slotsMasterCueWidth = 120;
-  int _slotsPanelSize = 1;
-  bool _slotsPanelNarrow = false;
+  /// _keyframes is the state keyframes.dart keeps: see _KeyframeState.
+  final _KeyframeState _keyframes = _KeyframeState();
 
   /// cueColumnLeast and cueColumnMost bound the mixer's cue column width.
   static const double cueColumnLeast = 40;
@@ -3999,17 +3678,9 @@ class CanvasController extends ChangeNotifier {
   // The mixer
   // ------------------------------------------------------------------------
 
-  final Set<String> _solo = {};
-
   // ---- Automation: see automation.dart
 
   final Map<String, Set<String>> _overridden = {};
-
-  bool _automationArmed = false;
-
-  final Set<String> _automationShown = {};
-
-  final Map<String, List<String>> _automationRows = {};
 
   // ------------------------------------------------------------------------
   // Keyframes
@@ -4087,8 +3758,6 @@ class CanvasController extends ChangeNotifier {
         Character3dElement e => e.copyWith(animation: animation),
         _ => element,
       };
-
-  final Set<String> _anchorsShown = {};
 
   ({String id, int frame})? _previewing;
   int _previewingEnd = 0;

@@ -1,14 +1,15 @@
 part of '../canvas_controller.dart';
 
-// The mixer and automation. Part of CanvasController.
+// The mixer and automation. Part of CanvasController. Its state is _MixerState,
+// at the end of this file.
 
 extension CanvasMixing on CanvasController {
   /// solo is which channels are soloed. Session state, not the document's:
   /// an export plays every channel that is not muted.
-  Set<String> get solo => _solo;
+  Set<String> get solo => _mixerState.solo;
 
   void toggleSolo(String id) {
-    if (!_solo.remove(id)) _solo.add(id);
+    if (!_mixerState.solo.remove(id)) _mixerState.solo.add(id);
     _applyMix();
     notifyListeners();
   }
@@ -47,20 +48,22 @@ extension CanvasMixing on CanvasController {
   /// automationArmed is the control bar's Arm automation: while on and the
   /// timeline plays, a setting moved by hand writes its lane (starting one
   /// if needed) rather than being held.
-  bool get automationArmed => _automationArmed;
+  bool get automationArmed => _mixerState.automationArmed;
 
   set automationArmed(bool on) {
-    if (on == _automationArmed) return;
-    _automationArmed = on;
+    if (on == _mixerState.automationArmed) return;
+    _mixerState.automationArmed = on;
     notifyListeners();
   }
 
   /// automationShown is the channels whose lanes are open on the timeline,
   /// by key: the reader's view, not the document's.
-  Set<String> get automationShown => _automationShown;
+  Set<String> get automationShown => _mixerState.automationShown;
 
   void toggleAutomation(String channel) {
-    if (!_automationShown.remove(channel)) _automationShown.add(channel);
+    if (!_mixerState.automationShown.remove(channel)) {
+      _mixerState.automationShown.add(channel);
+    }
     notifyListeners();
   }
 
@@ -69,7 +72,7 @@ extension CanvasMixing on CanvasController {
   /// its points and one switched to another setting shows that one's. At
   /// first, every setting with points, or the volume if none.
   List<String> automationRows(TimelineChannel channel) =>
-      _automationRows[channel.key] ??= () {
+      _mixerState.automationRows[channel.key] ??= () {
         var laned = [
           for (var l in channel.mix.automation)
             if (l.points.isNotEmpty) l.target
@@ -110,8 +113,8 @@ extension CanvasMixing on CanvasController {
     if (index < 0 || index >= rows.length) return;
     rows.removeAt(index);
     if (rows.isEmpty) {
-      _automationRows.remove(channel.key);
-      _automationShown.remove(channel.key);
+      _mixerState.automationRows.remove(channel.key);
+      _mixerState.automationShown.remove(channel.key);
     }
     notifyListeners();
   }
@@ -123,18 +126,18 @@ extension CanvasMixing on CanvasController {
     if (lane == null) return;
     var rows = automationRows(lane);
     if (!rows.contains(target)) rows.add(target);
-    _automationShown.add(channel);
+    _mixerState.automationShown.add(channel);
     notifyListeners();
   }
 
   /// learning is the (channel, target) the next turned controller knob is
   /// learnt for, or null.
-  (String, String)? get learning => _learning;
+  (String, String)? get learning => _mixerState.learning;
 
   /// learnControl waits for a controller's knob to be turned, to turn
   /// [target] of [channel] from then on.
   void learnControl(String channel, String target) {
-    _learning = (channel, target);
+    _mixerState.learning = (channel, target);
     notifyListeners();
   }
 
@@ -156,8 +159,8 @@ extension CanvasMixing on CanvasController {
   /// what is waiting, or turning what it was learnt for. Each run of
   /// turning is one undo step.
   void midiCc(int cc, double value) {
-    if (_learning case (var channel, var target)) {
-      _learning = null;
+    if (_mixerState.learning case (var channel, var target)) {
+      _mixerState.learning = null;
       setAudio(_document.audio.copyWith(controls: [
         for (var l in _document.audio.controls)
           if (l.cc != cc && (l.channel != channel || l.target != target)) l,
@@ -252,7 +255,7 @@ extension CanvasMixing on CanvasController {
     var own = automation == null
         ? channel.mix
         : channel.mix.copyWith(automation: automation);
-    var writing = _automationArmed && playing;
+    var writing = _mixerState.automationArmed && playing;
     var launched = _clipChannels[channel.key]?.now;
     var clip = launched == null ? null : session.at(channel.key, launched.row);
     var clipLanes = clip?.automation ?? const <ClipAutomation>[];
@@ -602,7 +605,7 @@ extension CanvasMixing on CanvasController {
 
   /// listening is the chain heard from a point, and where (see listenAt),
   /// or null.
-  (String, int)? get listening => _listening;
+  (String, int)? get listening => _mixerState.listening;
 
   /// listenAt hears channel [channel] from step [step] of its chain ("Listen
   /// from here"); null hears all of it again.
@@ -610,10 +613,10 @@ extension CanvasMixing on CanvasController {
     // The master is heard at its taps' key ("", masterTapKey), as its
     // levels are read.
     String engineKey(String k) => k == mixerMasterKey ? "" : k;
-    if (_listening case (var was, _) when was != channel) {
+    if (_mixerState.listening case (var was, _) when was != channel) {
       _audio?.listenAt(engineKey(was), null);
     }
-    _listening = step == null ? null : (channel, step);
+    _mixerState.listening = step == null ? null : (channel, step);
     _audio?.listenAt(engineKey(channel), step);
     notifyListeners();
   }
@@ -711,7 +714,7 @@ extension CanvasMixing on CanvasController {
     audio.setMix(strips,
         routes: {for (var lane in lanes) lane.element.id: lane.channelKey},
         solo: {
-          for (var key in _solo)
+          for (var key in _mixerState.solo)
             if (strips.containsKey(key)) key,
         },
         master: _document.syncedMaster,
@@ -812,7 +815,7 @@ extension CanvasMixing on CanvasController {
           ?.steps ??
       const {};
 
-  bool freezing(String channel) => _freezing.contains(channel);
+  bool freezing(String channel) => _mixerState.freezing.contains(channel);
 
   /// canFreeze is why [channel] cannot be frozen, or null where it can: a
   /// recording's channel, with one or more sounds, not already frozen.
@@ -838,7 +841,7 @@ extension CanvasMixing on CanvasController {
   /// not, or null.
   Future<String?> freezeChain(String channel, String upTo) async {
     if (canFreeze(channel) case var why?) return why;
-    if (!_freezing.add(channel)) return "It is being frozen.";
+    if (!_mixerState.freezing.add(channel)) return "It is being frozen.";
     notifyListeners();
     try {
       var lane = timelineChannels.firstWhere((l) => l.key == channel);
@@ -929,7 +932,7 @@ extension CanvasMixing on CanvasController {
       debugPrint("Unable to freeze $channel: $exception");
       return "It could not be frozen.";
     } finally {
-      _freezing.remove(channel);
+      _mixerState.freezing.remove(channel);
       notifyListeners();
     }
   }
@@ -1080,4 +1083,27 @@ extension CanvasMixing on CanvasController {
         ));
     endInteraction();
   }
+}
+
+/// _MixerState is what CanvasMixing keeps between calls, here beside the code that
+/// uses it. The controller holds one, as _mixerState; most fields are read and
+/// set through CanvasMixing's getters and setters above, which say what each is.
+class _MixerState {
+  /// learning is the setting waiting for a controller's knob, and
+  /// _controlIdle ends a run of turning one as an undo step.
+  (String, String)? learning;
+
+  /// listening is the chain heard from a point: see listenAt.
+  (String, int)? listening;
+
+  /// freezing are the channels being frozen now: see freezeChain.
+  final Set<String> freezing = {};
+
+  final Set<String> solo = {};
+
+  bool automationArmed = false;
+
+  final Set<String> automationShown = {};
+
+  final Map<String, List<String>> automationRows = {};
 }

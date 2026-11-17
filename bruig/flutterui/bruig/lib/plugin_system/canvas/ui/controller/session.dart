@@ -1,7 +1,7 @@
 part of '../canvas_controller.dart';
 
-// Part of CanvasController (state in canvas_controller.dart): clips launched
-// live, from the elements' slots and the session view.
+// Part of CanvasController: clips launched live, from the elements' slots and
+// the session view. Its state is _SessionState, at the end of this file.
 
 /// OffTimelineItem is one thing Back to the timeline lists: a row playing
 /// from its slots ([held] 0), or a channel with [held] settings held by hand
@@ -19,26 +19,26 @@ extension CanvasSession on CanvasController {
   /// liveMotion is what the renderer draws off-timeline elements from, or null.
   LiveMotion? get liveMotion {
     LiveMotion? playing = motionPlayer.offTimeline ? motionPlayer : null;
-    if (_motionPreview case (var e, var upto)) {
-      return MotionPreview(playing, e, upto, pointerAt: _stagePointer);
+    if (_sessionState.motionPreview case (var e, var upto)) {
+      return MotionPreview(playing, e, upto, pointerAt: _sessionState.stagePointer);
     }
     // Nothing off its timeline, but something facing the pointer or a game
     // going (whose time drives what moves for ever): only the pointer and
     // the game's time, the rest playing from the timeline.
     var running = motionPlayer.running;
-    var pointing = _stagePointer != null && _facesPointer;
+    var pointing = _sessionState.stagePointer != null && _facesPointer;
     if (playing == null && (pointing || running != null)) {
-      return PointerLive(pointing ? _stagePointer : null, running: running);
+      return PointerLive(pointing ? _sessionState.stagePointer : null, running: running);
     }
     return playing;
   }
 
   /// stagePointer is the pointer over the page, in its coordinates, or null
   /// off it, for a Look at; the stage redraws for it only where one faces it.
-  Offset? get stagePointer => _stagePointer;
+  Offset? get stagePointer => _sessionState.stagePointer;
   set stagePointer(Offset? at) {
-    if (at == _stagePointer) return;
-    _stagePointer = at;
+    if (at == _sessionState.stagePointer) return;
+    _sessionState.stagePointer = at;
     motionPlayer.pointer = at;
     if (_facesPointer) _notifyView();
   }
@@ -46,27 +46,27 @@ extension CanvasSession on CanvasController {
   /// _facesPointer is facesPointer of the document, worked out once for
   /// each version of it: the pointer moves far more often than it changes.
   bool get _facesPointer {
-    if (!identical(_facesPointerOf, _document)) {
-      _facesPointerOf = _document;
-      _facesPointerWas = facesPointer(_document);
+    if (!identical(_sessionState.facesPointerOf, _document)) {
+      _sessionState.facesPointerOf = _document;
+      _sessionState.facesPointerWas = facesPointer(_document);
     }
-    return _facesPointerWas;
+    return _sessionState.facesPointerWas;
   }
 
   /// motionPreview is the element and join the stage previews its motion
   /// chain from, or null.
-  (String, int)? get motionPreview => _motionPreview;
+  (String, int)? get motionPreview => _sessionState.motionPreview;
 
   /// previewMotionFrom shows [element] as its motion chain stands after its
   /// first [upto] pose devices, or whole with null. Nothing is changed.
   void previewMotionFrom(String element, int? upto) {
-    _motionPreview = upto == null ? null : (element, upto);
-    _previewTicks++;
+    _sessionState.motionPreview = upto == null ? null : (element, upto);
+    _sessionState.previewTicks++;
     notifyListeners();
   }
 
   /// motionTick goes up as the slots play on, for the stage to paint.
-  int get motionTick => motionPlayer.revision + _previewTicks;
+  int get motionTick => motionPlayer.revision + _sessionState.previewTicks;
 
   /// pressMotionSlot launches [element]'s slot [slot] as its clip says (on
   /// the next bar, or what it waits for), or, empty, stops its clips.
@@ -79,11 +79,11 @@ extension CanvasSession on CanvasController {
     }
     // Its sound launched here, as the press says -- a toggle stops it too
     // -- not again as the clip it launches starts (_soundsWithTheirMotion).
-    _slotPressed = (element, clip.id);
+    _sessionState.slotPressed = (element, clip.id);
     try {
       pressMotionClip(element, clip.id);
     } finally {
-      _slotPressed = null;
+      _sessionState.slotPressed = null;
     }
     // Linked: its own sound launches in the same row with it.
     var own = ownChannelOf(_document, element);
@@ -98,7 +98,7 @@ extension CanvasSession on CanvasController {
   /// a stopped sound: one already going or waiting is left be.
   void _soundsWithTheirMotion() {
     for (var (element, clip) in motionPlayer.takeLaunched()) {
-      if ((element, clip) == _slotPressed) continue;
+      if ((element, clip) == _sessionState.slotPressed) continue;
       var id = element.split("#").first;
       var m = (_document.elementById(id) ?? _masterHeardElement(id))
           ?.base
@@ -367,7 +367,7 @@ extension CanvasSession on CanvasController {
   /// _nextLaunch is the next moment a launch at [now] waits for: on
   /// [quantise] -- a clip's own -- or the song's.
   double _nextLaunch(double now, [Quantise? quantise]) {
-    var g = _document.audio.gridSeconds(quantise ?? _launchQuantise);
+    var g = _document.audio.gridSeconds(quantise ?? _sessionState.launchQuantise);
     if (g == null || g <= 0) return now;
     // A hair past a boundary is on it, not a whole bar from it.
     return ((now - 0.005) / g).ceil() * g;
@@ -483,9 +483,9 @@ extension CanvasSession on CanvasController {
     // Repeat: again on every launch step while held (see _sessionStep).
     if (clip.launch == LaunchMode.repeat) {
       var a = _document.audio;
-      var step = a.gridSeconds(clip.quantise ?? _launchQuantise) ?? 0;
+      var step = a.gridSeconds(clip.quantise ?? _sessionState.launchQuantise) ?? 0;
       if (step <= 0) step = a.secondsPerBeat;
-      _repeats[channel] =
+      _sessionState.repeats[channel] =
           _Repeat(row, _launchTime(clip.quantise) + step, step, level);
     }
   }
@@ -523,7 +523,7 @@ extension CanvasSession on CanvasController {
         (clip.launch != LaunchMode.gate && clip.launch != LaunchMode.repeat)) {
       return;
     }
-    if (_repeats[channel]?.row == row) _repeats.remove(channel);
+    if (_sessionState.repeats[channel]?.row == row) _sessionState.repeats.remove(channel);
     var ch = _clipChannels[channel];
     if (ch == null) return;
     if (ch.next?.row == row) _cancelNext(ch, restore: true);
@@ -628,8 +628,8 @@ extension CanvasSession on CanvasController {
       }
     }
     _motionStep();
-    _sceneLaunched = row;
-    _cueLaunchedMaster = master && cuesApart;
+    _sessionState.sceneLaunched = row;
+    _sessionState.cueLaunchedMaster = master && cuesApart;
     notifyListeners();
   }
 
@@ -639,12 +639,12 @@ extension CanvasSession on CanvasController {
   /// cueLaunched is the cue last launched of the canvas shown, or [master]'s.
   int? cueLaunched({bool master = false}) {
     if (!anyClipPlaying && !motionPlayer.playing) return null;
-    return _cueLaunchedMaster == (master && cuesApart) ? _sceneLaunched : null;
+    return _sessionState.cueLaunchedMaster == (master && cuesApart) ? _sessionState.sceneLaunched : null;
   }
 
   /// stopChannelClips stops [channel]'s slots at the next launch time.
   void stopChannelClips(String channel, {bool now = false}) {
-    _repeats.remove(channel);
+    _sessionState.repeats.remove(channel);
     if (!clipPlaying(channel)) return;
     _stopChannelAt(
         channel, playing && !now ? _nextLaunch(_sessionNow) : _sessionNow);
@@ -658,7 +658,7 @@ extension CanvasSession on CanvasController {
       _stopChannelAt(key, at);
     }
     // A Repeat pad still held repeats nothing more.
-    _repeats.clear();
+    _sessionState.repeats.clear();
     motionPlayer.stopAll(at);
     _motionStep();
     if (_clipRecord != null) _endClipRecord();
@@ -873,11 +873,11 @@ extension CanvasSession on CanvasController {
       case FollowAction.last:
         row = rows.last;
       case FollowAction.any:
-        row = rows[_followDice.nextInt(rows.length)];
+        row = rows[_sessionState.followDice.nextInt(rows.length)];
       case FollowAction.other:
         if (rows.length < 2) return;
         var others = [...rows]..remove(play.row);
-        row = others[_followDice.nextInt(others.length)];
+        row = others[_sessionState.followDice.nextInt(others.length)];
     }
     var next = session.at(ch.channel, row)!;
     unawaited(_startClip(ch.channel, row, next, due));
@@ -890,13 +890,13 @@ extension CanvasSession on CanvasController {
     var moved = false;
     // The Repeat clips held: launched again a moment before each step, so
     // they are heard on it.
-    for (var MapEntry(key: channel, value: r) in [..._repeats.entries]) {
+    for (var MapEntry(key: channel, value: r) in [..._sessionState.repeats.entries]) {
       // Never so early that it takes the place of the one before, still
       // waiting to be heard: at most half a step ahead.
       if (now + math.min(0.25, r.step / 2) < r.nextAt) continue;
       var clip = session.at(channel, r.row);
       if (clip == null) {
-        _repeats.remove(channel);
+        _sessionState.repeats.remove(channel);
         continue;
       }
       unawaited(_startClip(channel, r.row, clip, r.nextAt, level: r.level));
@@ -982,7 +982,7 @@ extension CanvasSession on CanvasController {
     }
     _clipChannels.clear();
     // Held Repeat pads too: their next repeat was on the clock now stopped.
-    _repeats.clear();
+    _sessionState.repeats.clear();
     if (_clipRecord case var rec?) {
       if (rec.started) {
         _finishClipRecord(rec, now, launch: false);
@@ -1490,4 +1490,40 @@ extension CanvasSession on CanvasController {
     _clipLog.clear();
     return next;
   }
+}
+
+/// _SessionState is what CanvasSession keeps between calls, here beside the code that
+/// uses it. The controller holds one, as _sessionState; most fields are read and
+/// set through CanvasSession's getters and setters above, which say what each is.
+class _SessionState {
+  /// slotPressed is the slot being pressed, whose sound the press sees to
+  /// (see _soundsWithTheirMotion).
+  (String, String)? slotPressed;
+
+  final Quantise launchQuantise = Quantise.bar;
+
+  /// repeats are the Repeat clips held down, by channel.
+  final Map<String, _Repeat> repeats = {};
+
+  int? sceneLaunched;
+
+  /// cueLaunchedMaster is whether the cue last launched was the master's,
+  /// on a scene with cues of its own (see CanvasSession.cuesApart).
+  bool cueLaunchedMaster = false;
+
+  final math.Random followDice = math.Random();
+
+  /// stagePointer and the two after it: see stagePointer.
+  Offset? stagePointer;
+
+  CanvasDocument? facesPointerOf;
+
+  bool facesPointerWas = false;
+
+  /// motionPreview is the element whose motion chain the stage shows as it
+  /// stands at one join, and that join: see previewMotionFrom.
+  (String, int)? motionPreview;
+
+  /// previewTicks counts the previews changed, for the stage to repaint.
+  int previewTicks = 0;
 }

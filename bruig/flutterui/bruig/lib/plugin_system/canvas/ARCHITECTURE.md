@@ -94,11 +94,25 @@ arrival and exit are its own clips (`model/own_motion.dart`).
 
 `CanvasController` (`ui/canvas_controller.dart`) is the editing session. One
 lives for the app's lifetime (`main.dart` provides it), so leaving the page
-must stop anything it set running. It is a `ChangeNotifier`: fields, statics
-and overrides are in the class, and its behaviour is in `extension` parts
-under `ui/controller/` (scenes, keyframes, mixer, session, game, code runs and
-so on). A change goes through `apply` or one of the helpers built on it
-(`replaceElement`, `addElement`...), which records undo and notifies.
+must stop anything it set running. It is a `ChangeNotifier`. Its behaviour is
+in `extension` parts under `ui/controller/` (scenes, keyframes, mixer,
+session, game, code runs and so on). A feature's own state sits at the end of
+its part, in a small class the controller holds one of (`_VectorState` in
+`vectors.dart`, `_PlaybackState` in `playback.dart`...); the class itself
+keeps what several parts share, its statics and its overrides. A change goes
+through `apply` or one of the helpers built on it (`replaceElement`,
+`addElement`...), which records undo and notifies.
+
+**Listening.** Most widgets listen to the controller. Two things notify it
+many times a second: the steps of a gesture (a drag, typing on the canvas:
+`apply(transient: true)` between `beginInteraction` and `endInteraction`) and
+frames of play. A widget that shows neither listens to `controller.chrome`
+instead, which passes over both and hears the notification at the gesture's
+end or when play stops: the settings band, the page, the dock. A widget that
+shows only the playhead follows `playheadMoved` (the play bar's readout, the
+timeline's ruler and line). `test/canvas_rebuild_budget_test.dart` counts
+what the whole editor builds for each, and fails when something goes back to
+being rebuilt by them.
 
 Widgets read the controller and call it; they do not change the document
 themselves. Settings panels are built from `ui/settings/panel_kit.dart` and

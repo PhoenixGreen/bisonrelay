@@ -1,6 +1,7 @@
 part of '../canvas_controller.dart';
 
-// Pictures: their layers, masks and brushwork. Part of CanvasController.
+// Pictures: their layers, masks and brushwork. Part of CanvasController. Its
+// state is _PictureState, at the end of this file.
 
 extension CanvasPictures on CanvasController {
   /// imageEditing is the id of the picture whose layers are open, or null;
@@ -10,17 +11,17 @@ extension CanvasPictures on CanvasController {
 
   String get imageLayer => _imageLayer;
 
-  String get _imageLayer => _imageLayerId;
+  String get _imageLayer => _pictures.layerId;
 
   /// _imageLayer picks one layer, letting go of any others (see
   /// pickImageLayer for several).
   set _imageLayer(String id) {
-    _imageLayerId = id;
+    _pictures.layerId = id;
     _alsoPicked.clear();
   }
 
   /// imageLayers is every layer picked, the first one first.
-  List<String> get imageLayers => [_imageLayerId, ..._alsoPicked];
+  List<String> get imageLayers => [_pictures.layerId, ..._alsoPicked];
 
   List<ImageLayer> get pickedLayers {
     var e = editingImage;
@@ -41,17 +42,17 @@ extension CanvasPictures on CanvasController {
 
   /// frameTool is the Frame section's tool open on its shelf (Image until
   /// another is picked), or null with all shut.
-  FrameTool? get frameTool => _frameTool;
+  FrameTool? get frameTool => _pictures.frameTool;
 
   set frameTool(FrameTool? v) {
-    _frameTool = v;
+    _pictures.frameTool = v;
     notifyListeners();
   }
 
   /// textLayer is the piece of [e] picked in its Layers, or null for its
   /// own words (also returned for a piece since removed).
   TextItem? textLayer(TextElement e) {
-    var id = _textLayers[e.id];
+    var id = _pictures.textLayers[e.id];
     if (id == null) return null;
     for (var item in e.items) {
       if (item.id == id) return item;
@@ -62,11 +63,11 @@ extension CanvasPictures on CanvasController {
   /// pickTextLayer picks piece [itemId] of text element [elementId] in its
   /// Layers, or its own words with null.
   void pickTextLayer(String elementId, String? itemId) {
-    if (_textLayers[elementId] == itemId) return;
+    if (_pictures.textLayers[elementId] == itemId) return;
     if (itemId == null) {
-      _textLayers.remove(elementId);
+      _pictures.textLayers.remove(elementId);
     } else {
-      _textLayers[elementId] = itemId;
+      _pictures.textLayers[elementId] = itemId;
     }
     notifyListeners();
   }
@@ -74,10 +75,10 @@ extension CanvasPictures on CanvasController {
   /// positionTool is the Position section's tool open on its shelf (Place
   /// until another is picked), or null with all shut. The Warp tool shows
   /// the picked picture's grid on the canvas while open.
-  PositionTool? get positionTool => _positionTool;
+  PositionTool? get positionTool => _pictures.positionTool;
 
   set positionTool(PositionTool? v) {
-    _positionTool = v;
+    _pictures.positionTool = v;
     notifyListeners();
   }
 
@@ -85,16 +86,16 @@ extension CanvasPictures on CanvasController {
   /// shown (see ImageWarp), or null. Only while that layer is picked:
   /// picking another puts the grid away.
   String? get warpLayer {
-    var e = editingImage, id = _warpLayer;
-    if (e == null || id == null || id != _imageLayerId) return null;
+    var e = editingImage, id = _pictures.warpLayer;
+    if (e == null || id == null || id != _pictures.layerId) return null;
     return e.layerById(id) == null ? null : id;
   }
 
   /// warpPicks is the picked warp grid points, by index.
-  Set<int> get warpPicks => _warpPicks;
+  Set<int> get warpPicks => _pictures.warpPicks;
 
   set warpPicks(Set<int> v) {
-    _warpPicks = Set.unmodifiable(v);
+    _pictures.warpPicks = Set.unmodifiable(v);
     notifyListeners();
   }
 
@@ -106,21 +107,21 @@ extension CanvasPictures on CanvasController {
   /// layers on [layerId] if not open, or with [on] false puts it away.
   void editWarp(String elementId, String layerId, {bool on = true}) {
     if (!on) {
-      _warpLayer = null;
-      _warpPicks = const {};
+      _pictures.warpLayer = null;
+      _pictures.warpPicks = const {};
       // The Warp tool has nothing to show without its grid.
-      if (_positionTool == PositionTool.warp) {
-        _positionTool = PositionTool.place;
+      if (_pictures.positionTool == PositionTool.warp) {
+        _pictures.positionTool = PositionTool.place;
       }
       notifyListeners();
       return;
     }
-    if (imageEditing != elementId || _imageLayerId != layerId) {
+    if (imageEditing != elementId || _pictures.layerId != layerId) {
       editImage(elementId, layer: layerId);
     }
-    _warpLayer = layerId;
-    _warpPicks = const {};
-    _positionTool = PositionTool.warp;
+    _pictures.warpLayer = layerId;
+    _pictures.warpPicks = const {};
+    _pictures.positionTool = PositionTool.warp;
     imageTool = ImageTool.move;
     notifyListeners();
   }
@@ -139,11 +140,11 @@ extension CanvasPictures on CanvasController {
   /// skewHandles is whether an element's side handles slant rather than
   /// size it without a key held, for a touch screen or pen. A way of
   /// working: not saved.
-  bool get skewHandles => _skewHandles;
+  bool get skewHandles => _pictures.skewHandles;
 
   set skewHandles(bool v) {
-    if (v == _skewHandles) return;
-    _skewHandles = v;
+    if (v == _pictures.skewHandles) return;
+    _pictures.skewHandles = v;
     notifyListeners();
   }
 
@@ -161,18 +162,18 @@ extension CanvasPictures on CanvasController {
   /// layerLocked is whether [layer] of the picture being edited is held in
   /// place: locked, or not the soloed one.
   bool layerLocked(ImageLayer layer) =>
-      layer.locked || (_imageSolo && layer.id != _imageLayerId);
+      layer.locked || (_imageSolo && layer.id != _pictures.layerId);
 
   /// aligning is how many things the align tools would line up: picked
   /// layers while a picture is open, elements otherwise.
   int get aligning =>
       editingImage != null ? alignableLayers.length : selection.length;
 
-  ImageTool get imageTool => _imageTool;
+  ImageTool get imageTool => _pictures.tool;
 
   set imageTool(ImageTool tool) {
-    if (_imageTool == tool) return;
-    _imageTool = tool;
+    if (_pictures.tool == tool) return;
+    _pictures.tool = tool;
     // The removal brushes and the mask tools both paint on a press; only
     // one of them can have it.
     if (tool.masks) _retouch = RetouchBrush.off;
@@ -208,9 +209,9 @@ extension CanvasPictures on CanvasController {
   /// with [add] (Shift or Command held) toggled among those already picked.
   void pickImageLayer(String id, {bool add = false}) {
     if (add) {
-      if (id == _imageLayerId) {
+      if (id == _pictures.layerId) {
         if (_alsoPicked.isEmpty) return;
-        _imageLayerId = _alsoPicked.removeAt(0);
+        _pictures.layerId = _alsoPicked.removeAt(0);
       } else if (!_alsoPicked.remove(id)) {
         _alsoPicked.add(id);
       }
@@ -262,59 +263,59 @@ extension CanvasPictures on CanvasController {
 
   /// maskHide is whether the mask tools hide the picture (true) or reveal
   /// it. X flips it; Option held flips it for one stroke.
-  bool get maskHide => _maskHide;
+  bool get maskHide => _pictures.maskHide;
 
   set maskHide(bool v) {
-    if (_maskHide == v) return;
-    _maskHide = v;
+    if (_pictures.maskHide == v) return;
+    _pictures.maskHide = v;
     notifyListeners();
   }
 
   /// maskBrushSize is the mask brush's radius, as a fraction of the
   /// picture's shorter side; maskHardness and maskStrength as a MaskMark's.
-  double get maskBrushSize => _maskBrushSize;
+  double get maskBrushSize => _pictures.maskBrushSize;
 
   set maskBrushSize(double v) {
-    _maskBrushSize = v.clamp(0.001, 0.5);
+    _pictures.maskBrushSize = v.clamp(0.001, 0.5);
     notifyListeners();
   }
 
-  double get maskHardness => _maskHardness;
+  double get maskHardness => _pictures.maskHardness;
 
   set maskHardness(double v) {
-    _maskHardness = v.clamp(0.0, 1.0);
+    _pictures.maskHardness = v.clamp(0.0, 1.0);
     notifyListeners();
   }
 
-  double get maskStrength => _maskStrength;
+  double get maskStrength => _pictures.maskStrength;
 
   set maskStrength(double v) {
-    _maskStrength = v.clamp(0.01, 1.0);
+    _pictures.maskStrength = v.clamp(0.01, 1.0);
     notifyListeners();
   }
 
   /// maskRadial makes the gradient tool's fades spread from a middle.
-  bool get maskRadial => _maskRadial;
+  bool get maskRadial => _pictures.maskRadial;
 
   set maskRadial(bool v) {
-    _maskRadial = v;
+    _pictures.maskRadial = v;
     notifyListeners();
   }
 
   /// maskView is how the mask is shown while a mask tool is in hand.
-  MaskView get maskView => _maskView;
+  MaskView get maskView => _pictures.maskView;
 
   set maskView(MaskView v) {
-    _maskView = v;
+    _pictures.maskView = v;
     notifyListeners();
   }
 
   /// maskBusy says what is being worked out while finding a subject takes
   /// its moment; maskNote is what the last attempt said, where it found
   /// nothing or failed.
-  String? get maskBusy => _maskBusy;
+  String? get maskBusy => _pictures.maskBusy;
 
-  String? get maskNote => _maskNote;
+  String? get maskNote => _pictures.maskNote;
 
   /// changeMask changes the picked layer's mask by [edit], as one undo step
   /// unless [transient].
@@ -344,11 +345,14 @@ extension CanvasPictures on CanvasController {
     var e = editingImage;
     var layerId = _imageLayer;
     var look = e == null ? null : lookOf(e, layerId);
-    if (e == null || look == null || !look.hasImage || _maskBusy != null) {
+    if (e == null ||
+        look == null ||
+        !look.hasImage ||
+        _pictures.maskBusy != null) {
       return;
     }
-    _maskBusy = "Finding the subject…";
-    _maskNote = null;
+    _pictures.maskBusy = "Finding the subject…";
+    _pictures.maskNote = null;
     notifyListeners();
     try {
       // Without the operating system's own finder, a rougher guess from
@@ -359,11 +363,12 @@ extension CanvasPictures on CanvasController {
       } else {
         var picture = images.original(look.assetId);
         if (picture != null) png = await guessSubjectMask(picture, at: at);
-        _maskNote = "Found by colour and edge — finish it with Quick select "
+        _pictures.maskNote =
+            "Found by colour and edge — finish it with Quick select "
             "or the brush";
       }
       if (png == null) {
-        _maskNote = at == null
+        _pictures.maskNote = at == null
             ? "No subject could be found in this picture"
             : "No subject there — try a click on the person or thing itself";
         return;
@@ -385,7 +390,7 @@ extension CanvasPictures on CanvasController {
       }
       var id = await CanvasAssets.saveMask(bytes);
       if (id == null) {
-        _maskNote = "The subject could not be kept";
+        _pictures.maskNote = "The subject could not be kept";
         return;
       }
       // Whatever has happened meanwhile, the mask goes on the picture as it
@@ -401,9 +406,9 @@ extension CanvasPictures on CanvasController {
           on: true);
       replaceElement(withLook(now, layerId, nowLook.copyWith(mask: mask)));
     } catch (message) {
-      _maskNote = "$message";
+      _pictures.maskNote = "$message";
     } finally {
-      _maskBusy = null;
+      _pictures.maskBusy = null;
       notifyListeners();
     }
   }
@@ -417,22 +422,25 @@ extension CanvasPictures on CanvasController {
     var layerId = _imageLayer;
     var look = e == null ? null : lookOf(e, layerId);
     var picture = look == null ? null : images.original(look.assetId);
-    if (e == null || look == null || picture == null || _maskBusy != null) {
+    if (e == null ||
+        look == null ||
+        picture == null ||
+        _pictures.maskBusy != null) {
       return;
     }
-    _maskBusy = "Selecting…";
-    _maskNote = null;
+    _pictures.maskBusy = "Selecting…";
+    _pictures.maskNote = null;
     notifyListeners();
     try {
       var subject = look.mask.subject.isEmpty
           ? null
           : await _maskImageOf(look.mask.subject);
       var png = await quickSelectMask(
-          picture, look.mask, subject, stroke, _maskBrushSize,
+          picture, look.mask, subject, stroke, _pictures.maskBrushSize,
           subtract: subtract);
       var id = png == null ? null : await CanvasAssets.saveMask(png);
       if (id == null) {
-        _maskNote = "Nothing could be selected there";
+        _pictures.maskNote = "Nothing could be selected there";
         return;
       }
       var now = _document.elementById(e.id);
@@ -445,9 +453,9 @@ extension CanvasPictures on CanvasController {
               mask: nowLook.mask.copyWith(
                   subject: id, marks: const [], invert: false, on: true))));
     } catch (message) {
-      _maskNote = "$message";
+      _pictures.maskNote = "$message";
     } finally {
-      _maskBusy = null;
+      _pictures.maskBusy = null;
       notifyListeners();
     }
   }
@@ -459,23 +467,27 @@ extension CanvasPictures on CanvasController {
     var layerId = _imageLayer;
     var look = e == null ? null : lookOf(e, layerId);
     var picture = look == null ? null : images.original(look.assetId);
-    if (e == null || look == null || picture == null || _maskBusy != null) {
+    if (e == null ||
+        look == null ||
+        picture == null ||
+        _pictures.maskBusy != null) {
       return;
     }
     if (look.mask.empty) {
-      _maskNote = "There is no edge to refine yet: find the subject first";
+      _pictures.maskNote =
+          "There is no edge to refine yet: find the subject first";
       notifyListeners();
       return;
     }
-    _maskBusy = "Refining the edge…";
-    _maskNote = null;
+    _pictures.maskBusy = "Refining the edge…";
+    _pictures.maskNote = null;
     notifyListeners();
     try {
       var subject = look.mask.subject.isEmpty
           ? null
           : await _maskImageOf(look.mask.subject);
       var png = await refineEdgeMask(
-          picture, look.mask, subject, stroke, _maskBrushSize);
+          picture, look.mask, subject, stroke, _pictures.maskBrushSize);
       var id = png == null ? null : await CanvasAssets.saveMask(png);
       if (id == null) return;
       var now = _document.elementById(e.id);
@@ -488,9 +500,9 @@ extension CanvasPictures on CanvasController {
               mask: nowLook.mask.copyWith(
                   subject: id, marks: const [], invert: false, on: true))));
     } catch (message) {
-      _maskNote = "$message";
+      _pictures.maskNote = "$message";
     } finally {
-      _maskBusy = null;
+      _pictures.maskBusy = null;
       notifyListeners();
     }
   }
@@ -514,69 +526,69 @@ extension CanvasPictures on CanvasController {
   /// paintColour, paintSize (a fraction of the frame's or picture's shorter
   /// side), paintHardness and paintStrength are the paint and retouching
   /// brushes' shared settings.
-  Color get paintColour => _paintColour;
+  Color get paintColour => _pictures.paintColour;
 
   set paintColour(Color c) {
-    _paintColour = c;
+    _pictures.paintColour = c;
     notifyListeners();
   }
 
-  double get paintSize => _paintSize;
+  double get paintSize => _pictures.paintSize;
 
   set paintSize(double v) {
-    _paintSize = v.clamp(0.001, 0.5);
+    _pictures.paintSize = v.clamp(0.001, 0.5);
     notifyListeners();
   }
 
-  double get paintHardness => _paintHardness;
+  double get paintHardness => _pictures.paintHardness;
 
   set paintHardness(double v) {
-    _paintHardness = v.clamp(0.0, 1.0);
+    _pictures.paintHardness = v.clamp(0.0, 1.0);
     notifyListeners();
   }
 
-  double get paintStrength => _paintStrength;
+  double get paintStrength => _pictures.paintStrength;
 
   set paintStrength(double v) {
-    _paintStrength = v.clamp(0.01, 1.0);
+    _pictures.paintStrength = v.clamp(0.01, 1.0);
     notifyListeners();
   }
 
   /// paintTip is the paint brush's shape and how the pen drives it (see
   /// BrushTip); paintBrush is the id of the brush it was last taken from,
   /// or "" once anything has been changed by hand.
-  BrushTip get paintTip => _paintTip;
+  BrushTip get paintTip => _pictures.paintTip;
 
   set paintTip(BrushTip v) {
-    _paintTip = v;
-    _paintBrush = "";
+    _pictures.paintTip = v;
+    _pictures.paintBrush = "";
     notifyListeners();
   }
 
-  String get paintBrush => _paintBrush;
+  String get paintBrush => _pictures.paintBrush;
 
   void useBrush(BrushPreset brush) {
-    _paintSize = brush.size;
-    _paintHardness = brush.hardness;
-    _paintStrength = brush.strength;
-    _paintTip = brush.tip;
-    _paintBrush = brush.id;
+    _pictures.paintSize = brush.size;
+    _pictures.paintHardness = brush.hardness;
+    _pictures.paintStrength = brush.strength;
+    _pictures.paintTip = brush.tip;
+    _pictures.paintBrush = brush.id;
     notifyListeners();
   }
 
   /// currentBrush is the paint brush as set now, as a preset to keep under
   /// [name].
   BrushPreset currentBrush(String name) => BrushPreset("", name,
-      size: _paintSize,
-      hardness: _paintHardness,
-      strength: _paintStrength,
-      tip: _paintTip);
+      size: _pictures.paintSize,
+      hardness: _pictures.paintHardness,
+      strength: _pictures.paintStrength,
+      tip: _pictures.paintTip);
 
   /// burning makes the dodge tool burn, as Option held does for a stroke.
-  bool get burning => _burning;
+  bool get burning => _pictures.burning;
 
   set burning(bool v) {
-    _burning = v;
+    _pictures.burning = v;
     notifyListeners();
   }
 
@@ -584,12 +596,12 @@ extension CanvasPictures on CanvasController {
   /// picture, chosen with Option-click; cloneOffset is its distance from the
   /// start of the first stroke after it, so later strokes copy from the same
   /// relative place.
-  Offset? get cloneFrom => _cloneFrom;
+  Offset? get cloneFrom => _pictures.cloneFrom;
 
   set cloneFrom(Offset? at) {
-    _cloneFrom = at;
+    _pictures.cloneFrom = at;
     cloneOffset = null;
-    _maskNote = null;
+    _pictures.maskNote = null;
     notifyListeners();
   }
 
@@ -597,11 +609,11 @@ extension CanvasPictures on CanvasController {
   /// frame (every layer, as one picture) rather than the picked picture.
   /// Such strokes go on a paint layer of their own over the picked layer:
   /// see retouchesFrame.
-  bool get retouchWholeFrame => _retouchWholeFrame;
+  bool get retouchWholeFrame => _pictures.retouchWholeFrame;
 
   set retouchWholeFrame(bool v) {
-    if (v == _retouchWholeFrame) return;
-    _retouchWholeFrame = v;
+    if (v == _pictures.retouchWholeFrame) return;
+    _pictures.retouchWholeFrame = v;
     // Where to copy from is a fraction of one picture or of the frame.
     cloneFrom = null;
   }
@@ -626,7 +638,7 @@ extension CanvasPictures on CanvasController {
   /// asked to, or with a picked layer that has no picture of its own (a
   /// paint layer, an adjustment, a colour).
   bool get retouchesFrame =>
-      _retouchWholeFrame || (pickedLayer?.framed ?? false);
+      _pictures.retouchWholeFrame || (pickedLayer?.framed ?? false);
 
   /// _cloneFollowsFrame keeps a whole-frame clone's source on the same part
   /// of the picture when the frame it is measured in changes from [was]'s
@@ -635,8 +647,8 @@ extension CanvasPictures on CanvasController {
     if (!retouchesFrame) return;
     var a = was.box.inner(was.bounds), b = now.box.inner(now.bounds);
     if (b.isEmpty) return;
-    if (_cloneFrom case var f?) {
-      _cloneFrom = Offset((a.left + f.dx * a.width - b.left) / b.width,
+    if (_pictures.cloneFrom case var f?) {
+      _pictures.cloneFrom = Offset((a.left + f.dx * a.width - b.left) / b.width,
           (a.top + f.dy * a.height - b.top) / b.height);
     }
     if (cloneOffset case var o?) {
@@ -647,7 +659,7 @@ extension CanvasPictures on CanvasController {
 
   /// noteForBrush says something about the brush in its settings row.
   void noteForBrush(String? note) {
-    _maskNote = note;
+    _pictures.maskNote = note;
     notifyListeners();
   }
 
@@ -675,4 +687,61 @@ extension CanvasPictures on CanvasController {
         withLook(e, _imageLayer, look.copyWith(retouch: edit(look.retouch))),
         transient: transient);
   }
+}
+
+/// _PictureState is what CanvasPictures keeps between calls, here beside the code that
+/// uses it. The controller holds one, as _pictures; most fields are read and
+/// set through CanvasPictures's getters and setters above, which say what each is.
+class _PictureState {
+  String layerId = baseLayerId;
+
+  FrameTool? frameTool = FrameTool.image;
+
+  /// textLayers is the piece picked in each text element's Layers, by
+  /// element id; one not here has its own words picked.
+  final Map<String, String> textLayers = {};
+
+  PositionTool? positionTool = PositionTool.place;
+
+  String? warpLayer;
+
+  Set<int> warpPicks = const {};
+
+  bool skewHandles = false;
+
+  ImageTool tool = ImageTool.move;
+
+  bool maskHide = true;
+
+  double maskBrushSize = 0.03;
+
+  double maskHardness = 0.6;
+
+  double maskStrength = 1;
+
+  bool maskRadial = false;
+
+  MaskView maskView = MaskView.result;
+
+  String? maskBusy;
+
+  String? maskNote;
+
+  Color paintColour = const Color(0xFFF2B33D);
+
+  double paintSize = 0.02;
+
+  double paintHardness = 0.6;
+
+  double paintStrength = 1;
+
+  BrushTip paintTip = const BrushTip();
+
+  String paintBrush = "round";
+
+  bool burning = false;
+
+  Offset? cloneFrom;
+
+  bool retouchWholeFrame = false;
 }

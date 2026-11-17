@@ -1,7 +1,7 @@
 part of '../canvas_controller.dart';
 
 // Sound on the timeline, and the instruments played into it. Part of
-// CanvasController.
+// CanvasController. Its state is _InstrumentState, at the end of this file.
 
 extension CanvasInstruments on CanvasController {
   /// audio is what is playing. Made the first time anything asks, so a
@@ -105,7 +105,7 @@ extension CanvasInstruments on CanvasController {
       }
     }
     _arps.clear();
-    for (var MapEntry(key: id, value: held) in _sounded.entries) {
+    for (var MapEntry(key: id, value: held) in _instruments.sounded.entries) {
       if (_instrumentHeld(id) case var e?) {
         var channel = CanvasController._channelOf(e);
         for (var k in held.values.expand((keys) => keys)) {
@@ -113,13 +113,13 @@ extension CanvasInstruments on CanvasController {
         }
       }
     }
-    _sounded.clear();
+    _instruments.sounded.clear();
     _soundCount.clear();
     // Nothing is held on a page left: a later key-up releases nothing, and
     // the pedal is up when it comes back.
-    _held.clear();
-    _pressedOn.clear();
-    _take.clear();
+    _instruments.held.clear();
+    _instruments.pressedOn.clear();
+    _instruments.take.clear();
     // The pedal let up on every instrument, or a page left with it down
     // would come back holding every released key.
     for (var e in _document.elements) {
@@ -140,8 +140,11 @@ extension CanvasInstruments on CanvasController {
       var practised = _practised;
       return AudioState(
           playing: playing,
-          keys: {...part.sounding(seconds), ...?_held[e.id]},
-          places: {...placesAt(part, seconds), ...?_heldPlaces[e.id]},
+          keys: {...part.sounding(seconds), ...?_instruments.held[e.id]},
+          places: {
+            ...placesAt(part, seconds),
+            ...?_instruments.heldPlaces[e.id]
+          },
           left: scoreLeftHand(_document, part, seconds),
           recording: _recording && _recordsInto(e),
           next: practised != null && practised.$2.id == e.id
@@ -154,17 +157,18 @@ extension CanvasInstruments on CanvasController {
     return AudioState(playing: v.playing, muted: v.muted, volume: v.volume);
   }
 
-  Set<int> heldKeys(String id) => Set.unmodifiable(_held[id] ?? const {});
+  Set<int> heldKeys(String id) =>
+      Set.unmodifiable(_instruments.held[id] ?? const {});
 
   /// noteOn presses [key] on instrument [e]: heard at once through its
   /// channel, and written down while recording.
   void noteOn(AudioElement e, int key, {int velocity = 100, FretPlace? place}) {
     var part = e.instrument;
     if (part == null) return;
-    if (!(_held.putIfAbsent(e.id, () => {})).add(key)) return;
+    if (!(_instruments.held.putIfAbsent(e.id, () => {})).add(key)) return;
     // Where on the neck it was pressed, to light it there.
-    if (place != null) (_heldPlaces[e.id] ??= {})[key] = place;
-    _pressedOn[e.id] = e;
+    if (place != null) (_instruments.heldPlaces[e.id] ??= {})[key] = place;
+    _instruments.pressedOn[e.id] = e;
     _heard();
     _soundOn(e, part, key, velocity);
     if (_practice != null) _practiceHeard(e, key);
@@ -175,7 +179,7 @@ extension CanvasInstruments on CanvasController {
     if (_clipRecord?.channel == CanvasController._channelOf(e)) {
       _clipNoteOn(e, key, velocity);
     } else if (_recording && playing && _recordsInto(e)) {
-      (_take[e.id] ??= {})[key] = (_nowInPart(e), velocity);
+      (_instruments.take[e.id] ??= {})[key] = (_nowInPart(e), velocity);
     }
     _keysChanged();
   }
@@ -212,7 +216,9 @@ extension CanvasInstruments on CanvasController {
   void midiNote(int key, int velocity, {String? from}) {
     if (velocity <= 0) {
       // Let go wherever it was pressed, whatever has changed since.
-      for (var MapEntry(key: id, value: keys) in [..._held.entries]) {
+      for (var MapEntry(key: id, value: keys) in [
+        ..._instruments.held.entries
+      ]) {
         if (!keys.contains(key)) continue;
         if (_instrumentHeld(id) case var e?) noteOff(e, key);
       }
@@ -267,7 +273,7 @@ extension CanvasInstruments on CanvasController {
     for (var e in midiHearers(from ?? MidiInput.shared.device?.name)) {
       audio.control(CanvasController._channelOf(e), control, value);
       if (_recording && playing && _recordsInto(e)) {
-        (_controlTake[e.id] ??= {})
+        (_instruments.controlTake[e.id] ??= {})
             .putIfAbsent(control, () => [])
             .add((_nowInPart(e), value));
       }
@@ -280,7 +286,7 @@ extension CanvasInstruments on CanvasController {
   void controlOn(AudioElement e, MidiControl control, double value) {
     audio.control(CanvasController._channelOf(e), control, value);
     if (_recording && playing && _recordsInto(e)) {
-      (_controlTake[e.id] ??= {})
+      (_instruments.controlTake[e.id] ??= {})
           .putIfAbsent(control, () => [])
           .add((_nowInPart(e), value));
     }
@@ -340,7 +346,9 @@ extension CanvasInstruments on CanvasController {
       return;
     }
     var counts = _soundCount.putIfAbsent(channel, () => {});
-    _sounded.putIfAbsent(e.id, () => {})[key] = [for (var (k, _) in keys) k];
+    _instruments.sounded.putIfAbsent(e.id, () => {})[key] = [
+      for (var (k, _) in keys) k
+    ];
     for (var (k, v) in keys) {
       var n = counts[k] = (counts[k] ?? 0) + 1;
       if (n == 1) unawaited(audio.noteOn(channel, part, k, v));
@@ -362,7 +370,8 @@ extension CanvasInstruments on CanvasController {
         if (live.sounding case var k?) audio.noteOff(channel, k);
       }
     }
-    var keys = _sounded[e.id]?.remove(key) ?? (arped ? const <int>[] : [key]);
+    var keys = _instruments.sounded[e.id]?.remove(key) ??
+        (arped ? const <int>[] : [key]);
     var counts = _soundCount[channel] ?? {};
     for (var k in keys) {
       var n = (counts[k] ?? 1) - 1;
@@ -432,19 +441,19 @@ extension CanvasInstruments on CanvasController {
   AudioElement? _instrumentHeld(String id) =>
       _document.elementById(id) is AudioElement
           ? _document.elementById(id) as AudioElement
-          : _pressedOn[id];
+          : _instruments.pressedOn[id];
 
   void _release(AudioElement e, int key) {
-    if (!(_held[e.id]?.remove(key) ?? false)) return;
-    _heldPlaces[e.id]?.remove(key);
-    if (_held[e.id]?.isEmpty ?? false) {
-      _held.remove(e.id);
-      _pressedOn.remove(e.id);
+    if (!(_instruments.held[e.id]?.remove(key) ?? false)) return;
+    _instruments.heldPlaces[e.id]?.remove(key);
+    if (_instruments.held[e.id]?.isEmpty ?? false) {
+      _instruments.held.remove(e.id);
+      _instruments.pressedOn.remove(e.id);
     }
     stepNoteOff(key);
     _soundOff(e, key);
     _clipNoteOff(e, key);
-    if (_take[e.id]?.remove(key) case (var start, var velocity)?) {
+    if (_instruments.take[e.id]?.remove(key) case (var start, var velocity)?) {
       var length = math.max(0.02, _nowInPart(e) - start);
       (_taken[e.id] ??= []).add(MidiNote(key, start, length, velocity));
     }
@@ -464,9 +473,9 @@ extension CanvasInstruments on CanvasController {
     if (_recording == on) return;
     _recording = on;
     if (on) {
-      _take.clear();
+      _instruments.take.clear();
       _taken.clear();
-      _controlTake.clear();
+      _instruments.controlTake.clear();
       if (!playing) play();
     } else {
       _keepTake();
@@ -482,7 +491,7 @@ extension CanvasInstruments on CanvasController {
   /// _keepTake writes what was recorded into each part as one undo step,
   /// held notes ending at the playhead.
   void _keepTake() {
-    for (var e in _take.entries) {
+    for (var e in _instruments.take.entries) {
       var el = _document.elementById(e.key);
       if (el is! AudioElement) continue;
       for (var k in e.value.entries) {
@@ -491,11 +500,11 @@ extension CanvasInstruments on CanvasController {
             k.key, start, math.max(0.02, _nowInPart(el) - start), velocity));
       }
     }
-    _take.clear();
+    _instruments.take.clear();
     var moved = motionPlayer.takeLog(_document, _sessionNow);
     if (_taken.isEmpty &&
         _clipLog.isEmpty &&
-        _controlTake.isEmpty &&
+        _instruments.controlTake.isEmpty &&
         moved.isEmpty) {
       return;
     }
@@ -504,7 +513,7 @@ extension CanvasInstruments on CanvasController {
     next = writeMotionTakes(next, moved, () => motionId("p"));
     // The controllers moved, into each part's curves, replacing what was
     // there over the recorded stretch.
-    for (var e in _controlTake.entries) {
+    for (var e in _instruments.controlTake.entries) {
       var el = next.elementById(e.key);
       if (el is! AudioElement || el.instrument == null) continue;
       var part = el.instrument!;
@@ -521,7 +530,7 @@ extension CanvasInstruments on CanvasController {
       next = next.withElement(
           el.copyWith(instrument: part.copyWith(controls: controls)));
     }
-    _controlTake.clear();
+    _instruments.controlTake.clear();
     for (var e in _taken.entries) {
       var el = next.elementById(e.key);
       if (el is! AudioElement || el.instrument == null) continue;
@@ -534,4 +543,32 @@ extension CanvasInstruments on CanvasController {
     _taken.clear();
     apply(next);
   }
+}
+
+/// _InstrumentState is what CanvasInstruments keeps between calls, here beside the code that
+/// uses it. The controller holds one, as _instruments; most fields are read and
+/// set through CanvasInstruments's getters and setters above, which say what each is.
+class _InstrumentState {
+  /// held is each instrument's keys held down live, by element id.
+  final Map<String, Set<int>> held = {};
+
+  /// heldPlaces are where on a neck each instrument's keys held were
+  /// pressed, by element id and key.
+  final Map<String, Map<int, FretPlace>> heldPlaces = {};
+
+  /// pressedOn is each instrument with keys held, as it was when pressed,
+  /// so they are let go through it after any change and none rings on.
+  final Map<String, AudioElement> pressedOn = {};
+
+  /// controlTake is each instrument's controllers moved while recording.
+  final Map<String, Map<MidiControl, List<ControlPoint>>> controlTake = {};
+
+  /// sounded is what each key held sounds as, through the channel's MIDI
+  /// effects -- a chord's keys, kept to a scale -- and _soundCount how many
+  /// held keys sound each, so one let go does not stop another's.
+  final Map<String, Map<int, List<int>>> sounded = {};
+
+  /// take is each instrument's notes being held while recording, as when
+  /// each started and how hard; _taken the notes finished.
+  final Map<String, Map<int, (double, int)>> take = {};
 }

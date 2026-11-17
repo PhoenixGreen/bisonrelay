@@ -1,15 +1,16 @@
 part of '../canvas_controller.dart';
 
-// A canvas played as a game, and practising. Part of CanvasController.
+// A canvas played as a game, and practising. Part of CanvasController. Its
+// state is _GameState, at the end of this file.
 
 extension CanvasGame on CanvasController {
   /// gameTabOpen is whether the Game tab is showing: the stage draws what a
   /// game touches while it is -- see gameTouchArea.
-  bool get gameTabOpen => _gameTabOpen;
+  bool get gameTabOpen => _gameState.tabOpen;
 
   set gameTabOpen(bool on) {
-    if (on == _gameTabOpen) return;
-    _gameTabOpen = on;
+    if (on == _gameState.tabOpen) return;
+    _gameState.tabOpen = on;
     notifyListeners();
   }
 
@@ -22,7 +23,7 @@ extension CanvasGame on CanvasController {
 
   /// gameView is the canvas as the game has it now, for the stage to draw,
   /// or null when not playing.
-  CanvasDocument? get gameView => _gameView;
+  CanvasDocument? get gameView => _gameState.view;
 
   /// gameFraming is how a game frames the page: the view following its
   /// player as closely as it asks (GameRun.framing), with the scene's Camera
@@ -56,13 +57,13 @@ extension CanvasGame on CanvasController {
   /// it is (0 to 1, eased), or null when none is playing. Its elements'
   /// slot playback is held as it was left; the next scene's start clears it.
   (CanvasDocument, int, SceneTransition, double, LiveMotion)? get gameChange {
-    var left = _gameLeft;
+    var left = _gameState.left;
     if (left == null || !gaming) return null;
     var (from, at, over, began, live) = left;
     var length = over.frames / math.max(1, _document.frameRate);
     var t = length <= 0 ? 1.0 : (_gameClock - began) / length;
     if (t >= 1) {
-      _gameLeft = null;
+      _gameState.left = null;
       return null;
     }
     return (from, at, over, over.ease.apply(t.clamp(0.0, 1.0)), live);
@@ -73,14 +74,14 @@ extension CanvasGame on CanvasController {
   void _gameLeaving() {
     _gameSceneEndSounds();
     // As last seen, or as it is now if left on its very first step.
-    var seen = _gameView ??
+    var seen = _gameState.view ??
         switch (_game) {
           var run? => spoken(
               run.view(_document, frame: _frame, playing: _touchClipPlaying)),
           null => null,
         };
     var over = _document.transitionAfter(_document.at);
-    _gameLeft = seen == null || over.kind == SceneTransitionKind.cut
+    _gameState.left = seen == null || over.kind == SceneTransitionKind.cut
         ? null
         : (seen, _frame, over, _gameClock, motionPlayer.frozen());
   }
@@ -98,7 +99,7 @@ extension CanvasGame on CanvasController {
     if (on) {
       // Start on its own first scene (a title, a menu), and come back to
       // the one being worked on after.
-      _sceneBeforeGame = _document.at;
+      _gameState.sceneBeforeGame = _document.at;
       var start = _document.gameStart.isEmpty
           ? -1
           : _document.sceneIndexNamed(_document.gameStart);
@@ -113,12 +114,12 @@ extension CanvasGame on CanvasController {
         ..start();
       unawaited(run.listen());
       HardwareKeyboard.instance.addHandler(_gameKey);
-      _gameWatch
+      _gameState.watch
         ..reset()
         ..start();
       _gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-        var dt = _gameWatch.elapsedMicroseconds / 1e6;
-        _gameWatch
+        var dt = _gameState.watch.elapsedMicroseconds / 1e6;
+        _gameState.watch
           ..reset()
           ..start();
         stepGame(math.min(dt, 0.05));
@@ -136,10 +137,10 @@ extension CanvasGame on CanvasController {
       // motion back on the timeline's time.
       motionPlayer.clear();
       motionPlayer.running = null;
-      for (var id in _gameSounded) {
+      for (var id in _gameState.sounded) {
         audio.stop(id);
       }
-      _gameSounded.clear();
+      _gameState.sounded.clear();
       _gameClockWatch.stop();
       // Held by a pause, let go: the engine is shared.
       if (_gamePaused) {
@@ -150,14 +151,14 @@ extension CanvasGame on CanvasController {
       _gameTimer = null;
       _game?.dispose();
       _game = null;
-      _gameView = null;
-      _gameLeft = null;
+      _gameState.view = null;
+      _gameState.left = null;
       _gamePaused = false;
       if (playing) pause();
-      if (_sceneBeforeGame case var at? when at != _document.at) {
+      if (_gameState.sceneBeforeGame case var at? when at != _document.at) {
         goToScene(at);
       }
-      _sceneBeforeGame = null;
+      _gameState.sceneBeforeGame = null;
     }
     notifyListeners();
   }
@@ -178,7 +179,7 @@ extension CanvasGame on CanvasController {
     } else {
       _gameClockWatch.start();
       // From now, not from when it was held: no leap forward on letting go.
-      _gameWatch
+      _gameState.watch
         ..reset()
         ..start();
       play();
@@ -244,24 +245,24 @@ extension CanvasGame on CanvasController {
         return;
       }
     }
-    _gameView =
+    _gameState.view =
         spoken(run.view(_document, frame: _frame, playing: _touchClipPlaying));
     // A step of the game is not a change to the canvas: see _notifyPlayhead.
     _notifyView();
   }
 
   /// waitingFor is the action a stop is waiting for, by id, or null.
-  String? get waitingFor => _waitingFor;
+  String? get waitingFor => _gameState.waitingFor;
 
   /// _waitForAction holds a stop until [id] is pressed on keyboard or
   /// controller, then plays on. Pressing Play meanwhile also ends the wait.
   void _waitForAction(String id) {
     _endWait();
-    _waitingFor = id;
+    _gameState.waitingFor = id;
     HardwareKeyboard.instance.addHandler(_waitKey);
     var input = GameInput();
     try {
-      _waitPads = Gamepads.normalizedEvents.listen((e) {
+      _gameState.waitPads = Gamepads.normalizedEvents.listen((e) {
         input.gamepad(e);
         var action = _waitedAction;
         if (action != null && action.pad.any(input.pad.contains)) {
@@ -273,8 +274,9 @@ extension CanvasGame on CanvasController {
     }
   }
 
-  ControlAction? get _waitedAction =>
-      _document.controlsNow.where((a) => a.id == _waitingFor).firstOrNull;
+  ControlAction? get _waitedAction => _document.controlsNow
+      .where((a) => a.id == _gameState.waitingFor)
+      .firstOrNull;
 
   bool _waitKey(KeyEvent event) => waitKey(event);
 
@@ -295,11 +297,11 @@ extension CanvasGame on CanvasController {
   }
 
   void _endWait() {
-    if (_waitingFor == null) return;
-    _waitingFor = null;
+    if (_gameState.waitingFor == null) return;
+    _gameState.waitingFor = null;
     HardwareKeyboard.instance.removeHandler(_waitKey);
-    unawaited(_waitPads?.cancel());
-    _waitPads = null;
+    unawaited(_gameState.waitPads?.cancel());
+    _gameState.waitPads = null;
   }
 
   /// _gameScene goes to scene [id] (by id or name) for the game: its
@@ -383,7 +385,7 @@ extension CanvasGame on CanvasController {
             _soundFrom.remove(channel);
           }
           audio.stop(id);
-          _gameSounded.add(id);
+          _gameState.sounded.add(id);
           unawaited(audio.play(sound));
         }
       case GameSoundSlot(:var clip):
@@ -477,7 +479,9 @@ extension CanvasGame on CanvasController {
   /// until then).
   List<MouthKey>? _slotMouths(String clipId, MediaSource sound, int rate) {
     var key = "$clipId:${sound.assetId}:$rate";
-    if (_mouthsOfSlots.containsKey(key)) return _mouthsOfSlots[key];
+    if (_gameState.mouthsOfSlots.containsKey(key)) {
+      return _gameState.mouthsOfSlots[key];
+    }
     SpeechTake? take;
     for (var e in [
       ..._document.elements,
@@ -507,7 +511,7 @@ extension CanvasGame on CanvasController {
     // From its words at once, where it has them, and once its sound has been
     // read, fitted to the voice as heard (mouthsFromWordsHeard): words timed
     // by length alone drift from it.
-    _mouthsOfSlots[key] =
+    _gameState.mouthsOfSlots[key] =
         words == null ? null : mouthsFromWords(words, frameRate: rate);
     unawaited(() async {
       var length = sound.length;
@@ -517,13 +521,13 @@ extension CanvasGame on CanvasController {
       var count = math.max(1, (length * 100).ceil());
       var peaks = await audio.engine.peaks(file, count);
       if (peaks == null || _disposed) return;
-      _mouthsOfSlots[key] = words == null
+      _gameState.mouthsOfSlots[key] = words == null
           ? mouthsFromLoudness(peaks, length,
               startFrame: 0, frameRate: rate, feel: const LipSyncFeel())
           : mouthsFromWordsHeard(words, peaks, length, frameRate: rate);
       notifyListeners();
     }());
-    return _mouthsOfSlots[key];
+    return _gameState.mouthsOfSlots[key];
   }
 
   /// _gameSceneSounds is what each channel does as a game comes to the
@@ -688,10 +692,10 @@ extension CanvasGame on CanvasController {
   /// the playhead.
   void startPractice(SheetElement sheet) {
     if (playing) pause();
-    _marks.clear();
-    _wrongKeys.clear();
+    _gameState.marks.clear();
+    _gameState.wrongKeys.clear();
     _waiting.clear();
-    _found.clear();
+    _gameState.found.clear();
     _practice = sheet.id;
     sheetMarksOf = _sheetMarks;
     play();
@@ -704,25 +708,25 @@ extension CanvasGame on CanvasController {
   void _endPractice() {
     var p = _practised;
     if (p != null) {
-      for (var k in _accompanying) {
+      for (var k in _gameState.accompanying) {
         audio.noteOff(CanvasController._channelOf(p.$2), k);
       }
     }
-    _accompanying.clear();
+    _gameState.accompanying.clear();
     _waiting.clear();
     _practice = null;
     // The take's marks stay on the score until the next.
   }
 
   SheetMarks _sheetMarks(SheetElement e) => SheetMarks(
-      marks: Map.of(_marks),
+      marks: Map.of(_gameState.marks),
       waiting: _practice == e.id ? Set.of(_waiting) : const {},
-      wrongKeys: Map.of(_wrongKeys));
+      wrongKeys: Map.of(_gameState.wrongKeys));
 
   /// practiceScore is the take so far: how many right, how many wrong.
   (int, int) get practiceScore => (
-        _marks.values.where((m) => m == NoteMark.right).length,
-        _marks.values.where((m) => m == NoteMark.wrong).length
+        _gameState.marks.values.where((m) => m == NoteMark.right).length,
+        _gameState.marks.values.where((m) => m == NoteMark.wrong).length
       );
 
   /// _practiceHolds is whether the playhead holds before [next], waiting
@@ -734,7 +738,9 @@ extension CanvasGame on CanvasController {
     if (sheet.mode != PracticeMode.wait) return false;
     if (_waiting.isNotEmpty) return true;
     for (var (i, n) in part.notes.indexed) {
-      if (!CanvasController._mine(sheet, n) || _found.contains(i)) continue;
+      if (!CanvasController._mine(sheet, n) || _gameState.found.contains(i)) {
+        continue;
+      }
       // Due on the frame it is on, or the one it is going to.
       var f = _noteFrame(inst, n);
       if (f >= _frame && f <= next) _waiting.add(i);
@@ -753,16 +759,16 @@ extension CanvasGame on CanvasController {
     if (now < was) {
       // Round a loop: everything let go and the take begun again, its notes
       // marked afresh each time round.
-      for (var k in _accompanying) {
+      for (var k in _gameState.accompanying) {
         audio.noteOff(channel, k);
       }
-      _accompanying.clear();
+      _gameState.accompanying.clear();
       _waiting.clear();
       for (var (i, n) in part.notes.indexed) {
         if (_noteFrame(inst, n) >= now) {
-          _marks.remove(i);
-          _wrongKeys.remove(i);
-          _found.remove(i);
+          _gameState.marks.remove(i);
+          _gameState.wrongKeys.remove(i);
+          _gameState.found.remove(i);
         }
       }
     }
@@ -775,18 +781,18 @@ extension CanvasGame on CanvasController {
         if (start >= was && start < now) {
           unawaited(audio.noteOn(
               channel, macroedPart(channel, part), n.key, n.velocity));
-          _accompanying.add(n.key);
+          _gameState.accompanying.add(n.key);
         }
-        if (end >= was && end < now && _accompanying.remove(n.key)) {
+        if (end >= was && end < now && _gameState.accompanying.remove(n.key)) {
           audio.noteOff(channel, n.key);
         }
         continue;
       }
       if (sheet.mode == PracticeMode.along &&
-          !_marks.containsKey(i) &&
+          !_gameState.marks.containsKey(i) &&
           now - start > 0.25 * rate &&
           was - start <= 0.25 * rate) {
-        _marks[i] = NoteMark.missed;
+        _gameState.marks[i] = NoteMark.missed;
       }
     }
   }
@@ -805,12 +811,12 @@ extension CanvasGame on CanvasController {
         // Found: it goes on. Right only if right the first time: a wrong
         // key before it stays marked, so the score is honest.
         _waiting.remove(hit);
-        _found.add(hit);
-        _marks.putIfAbsent(hit, () => NoteMark.right);
+        _gameState.found.add(hit);
+        _gameState.marks.putIfAbsent(hit, () => NoteMark.right);
       } else {
         var first = _waiting.first;
-        _marks.putIfAbsent(first, () => NoteMark.wrong);
-        _wrongKeys[first] = key;
+        _gameState.marks.putIfAbsent(first, () => NoteMark.wrong);
+        _gameState.wrongKeys[first] = key;
       }
       return;
     }
@@ -821,11 +827,14 @@ extension CanvasGame on CanvasController {
     int? due;
     var best = double.infinity;
     for (var (i, n) in part.notes.indexed) {
-      if (!CanvasController._mine(sheet, n) || _marks.containsKey(i)) continue;
+      if (!CanvasController._mine(sheet, n) ||
+          _gameState.marks.containsKey(i)) {
+        continue;
+      }
       var d = (_noteFrame(followed, n) - now).abs() / rate;
       if (d > 0.25) continue;
       if (n.key == key) {
-        _marks[i] = NoteMark.right;
+        _gameState.marks[i] = NoteMark.right;
         return;
       }
       if (d < best) {
@@ -834,8 +843,8 @@ extension CanvasGame on CanvasController {
       }
     }
     if (due != null) {
-      _marks[due] = NoteMark.wrong;
-      _wrongKeys[due] = key;
+      _gameState.marks[due] = NoteMark.wrong;
+      _gameState.wrongKeys[due] = key;
     }
   }
 
@@ -899,4 +908,45 @@ extension CanvasGame on CanvasController {
       unawaited(renderParts());
     });
   }
+}
+
+/// _GameState is what CanvasGame keeps between calls, here beside the code that
+/// uses it. The controller holds one, as _gameState; most fields are read and
+/// set through CanvasGame's getters and setters above, which say what each is.
+class _GameState {
+  CanvasDocument? view;
+
+  /// left is the scene a game has just left, as last seen, with its
+  /// transition and when it began on the game's clock: drawn giving way to
+  /// the next. See gameChange.
+  (CanvasDocument, int, SceneTransition, double, LiveMotion)? left;
+
+  final Stopwatch watch = Stopwatch();
+
+  bool tabOpen = false;
+
+  String? waitingFor;
+
+  StreamSubscription<NormalizedGamepadEvent>? waitPads;
+
+  /// sceneBeforeGame is the scene shown when the game began, to return to.
+  int? sceneBeforeGame;
+
+  /// mouthsOfSlots are each slot's mouths once worked out (_slotMouths).
+  final Map<String, List<MouthKey>?> mouthsOfSlots = {};
+
+  /// sounded are the sounds on the canvas a game has played, stopped
+  /// when it ends -- one still opening its file would be heard after.
+  final Set<String> sounded = {};
+
+  final Map<int, NoteMark> marks = {};
+
+  final Map<int, int> wrongKeys = {};
+
+  /// found are the notes Wait for me has had played, this time round: it
+  /// goes on past them, whatever they were marked.
+  final Set<int> found = {};
+
+  /// accompanying is the keys the hand not practised has sounding.
+  final Set<int> accompanying = {};
 }

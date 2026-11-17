@@ -1,28 +1,28 @@
 part of '../canvas_controller.dart';
 
-// Part of CanvasController (state in canvas_controller.dart): drawings --
-// editing a vector element's shapes, points and text.
+// Part of CanvasController: drawings -- editing a vector element's shapes,
+// points and text. Its state is _VectorState, at the end of this file.
 
 extension CanvasVectors on CanvasController {
   /// vectorEditing is the id of the Vector element being edited point by
   /// point, or null; vectorShape its shape picked, vectorPicks its points.
   String? get vectorEditing => _vectorEditing;
 
-  int get vectorShape => _vectorShape;
+  int get vectorShape => _vectors.shape;
 
-  Set<VectorPick> get vectorPicks => _vectorPicks;
+  Set<VectorPick> get vectorPicks => _vectors.picks;
 
   /// vectorPick is the one point picked, if exactly one: its handles shown.
   VectorPick? get vectorPick =>
-      _vectorPicks.length == 1 ? _vectorPicks.first : null;
+      _vectors.picks.length == 1 ? _vectors.picks.first : null;
 
   /// vectorSolo holds every layer of the drawing being edited but the one
   /// picked, as a picture's Solo does. For this run of the app only.
-  bool get vectorSolo => _vectorSolo;
+  bool get vectorSolo => _vectors.solo;
 
   set vectorSolo(bool on) {
-    if (_vectorSolo == on) return;
-    _vectorSolo = on;
+    if (_vectors.solo == on) return;
+    _vectors.solo = on;
     if (on) {
       vectorSoloOf = _soloOf;
     } else if (vectorSoloOf == _soloOf) {
@@ -32,32 +32,32 @@ extension CanvasVectors on CanvasController {
   }
 
   int? _soloOf(VectorElement e) =>
-      _vectorSolo && e.id == _vectorEditing && _vectorShape >= 0
-          ? groupOf(e, _vectorShape)
+      _vectors.solo && e.id == _vectorEditing && _vectors.shape >= 0
+          ? groupOf(e, _vectors.shape)
           : null;
 
   /// vectorTool is what a press on the drawing being edited does: pick and
   /// move points, put them down with the pen, scale them, or tint them.
-  VectorTool get vectorTool => _vectorTool;
+  VectorTool get vectorTool => _vectors.tool;
 
   set vectorTool(VectorTool tool) {
-    if (_vectorTool == tool) return;
+    if (_vectors.tool == tool) return;
     // The align tool lines up what the last of the two select tools picked.
     if (tool == VectorTool.select || tool == VectorTool.selectShapes) {
-      _lastSelect = tool;
+      _vectors.lastSelect = tool;
     }
     if (tool != VectorTool.text) stopVectorTyping();
-    _vectorTool = tool;
+    _vectors.tool = tool;
     // The pen taken out with one point picked carries on from that point.
-    _vectorPenFrom = tool == VectorTool.pen && _vectorPicks.length == 1
-        ? _vectorPicks.first
+    _vectors.penFrom = tool == VectorTool.pen && _vectors.picks.length == 1
+        ? _vectors.picks.first
         : null;
     // The corner tool taken out with a rounded corner's point picked takes
     // that corner up, to be reshaped.
-    if (tool == VectorTool.corner && _vectorPicks.length <= 2) {
-      if (_vectorPicks.firstOrNull case var p?) {
+    if (tool == VectorTool.corner && _vectors.picks.length <= 2) {
+      if (_vectors.picks.firstOrNull case var p?) {
         if (editingVector case var e? when cornerAt(e, p) != null) {
-          _vectorTool = tool;
+          _vectors.tool = tool;
           adoptCorner(p);
           return;
         }
@@ -65,41 +65,41 @@ extension CanvasVectors on CanvasController {
     }
     // The Boolean tool taken out with a shape picked starts from that one.
     var e = editingVector;
-    _vectorCombining = tool == VectorTool.boolean &&
+    _vectors.combining = tool == VectorTool.boolean &&
             e != null &&
-            _vectorShape >= 0 &&
-            _vectorShape < (e.shapes?.length ?? 0)
-        ? {groupOf(e, _vectorShape)}
+            _vectors.shape >= 0 &&
+            _vectors.shape < (e.shapes?.length ?? 0)
+        ? {groupOf(e, _vectors.shape)}
         : const {};
     notifyListeners();
   }
 
   /// vectorPen is whether the pen is out. See vectorTool.
-  bool get vectorPen => _vectorTool == VectorTool.pen;
+  bool get vectorPen => _vectors.tool == VectorTool.pen;
 
   set vectorPen(bool on) =>
       vectorTool = on ? VectorTool.pen : VectorTool.select;
 
   /// vectorPenFrom is the point the pen's next point joins on from, or null
   /// when the next point starts a new shape.
-  VectorPick? get vectorPenFrom => _vectorPenFrom;
+  VectorPick? get vectorPenFrom => _vectors.penFrom;
 
   /// vectorPenShape is the shape the pen is drawing, or -1.
-  int get vectorPenShape => _vectorPenFrom?.shape ?? -1;
+  int get vectorPenShape => _vectors.penFrom?.shape ?? -1;
 
   /// penFrom says where the pen's next point joins on from: the point just
   /// put down, or a point picked to carry on from.
   void penFrom(VectorPick? pick) {
-    _vectorPenFrom = pick;
-    if (pick != null) _vectorShape = pick.shape;
+    _vectors.penFrom = pick;
+    if (pick != null) _vectors.shape = pick.shape;
     notifyListeners();
   }
 
   /// finishPenShape ends the pen's run; the pen stays out for another.
   void finishPenShape() {
-    if (_vectorPenFrom == null) return;
-    _vectorPenFrom = null;
-    _vectorPicks = const {};
+    if (_vectors.penFrom == null) return;
+    _vectors.penFrom = null;
+    _vectors.picks = const {};
     notifyListeners();
   }
 
@@ -107,22 +107,22 @@ extension CanvasVectors on CanvasController {
   /// it, and vectorCornerSize how far back along each side it starts, in
   /// canvas units. Both reshape the corner the tool last made while it is
   /// still picked (see vectorCornerActive).
-  bool get vectorCornerRound => _vectorCornerRound;
+  bool get vectorCornerRound => _vectors.cornerRound;
 
   set vectorCornerRound(bool on) {
-    if (_vectorCornerRound == on) return;
-    _vectorCornerRound = on;
+    if (_vectors.cornerRound == on) return;
+    _vectors.cornerRound = on;
     if (!reshapeCorner()) notifyListeners();
   }
 
-  double get vectorCornerSize => _vectorCornerSize;
+  double get vectorCornerSize => _vectors.cornerSize;
 
   set vectorCornerSize(double v) => sizeCorner(v);
 
   /// sizeCorner sets the corner size and reshapes the corner being made.
   void sizeCorner(double v, {bool transient = false}) {
-    if (_vectorCornerSize == v) return;
-    _vectorCornerSize = v;
+    if (_vectors.cornerSize == v) return;
+    _vectors.cornerSize = v;
     if (!reshapeCorner(transient: transient)) notifyListeners();
   }
 
@@ -130,17 +130,17 @@ extension CanvasVectors on CanvasController {
   /// being made: its size and kind reshape it, and a drag on it goes on
   /// shaping it. Picking anything else finishes it.
   bool get vectorCornerActive {
-    var c = _corner;
+    var c = _vectors.corner;
     return c != null &&
         identical(editingVector, c.after) &&
-        c.picks.length == _vectorPicks.length &&
-        c.picks.containsAll(_vectorPicks);
+        c.picks.length == _vectors.picks.length &&
+        c.picks.containsAll(_vectors.picks);
   }
 
   /// vectorCornerPoint is where the corner being made was, or null.
   Offset? get vectorCornerPoint {
     if (!vectorCornerActive) return null;
-    var c = _corner!;
+    var c = _vectors.corner!;
     return vectorNodeAt(c.before, c.at)?.point;
   }
 
@@ -153,11 +153,11 @@ extension CanvasVectors on CanvasController {
     var found = cornerAt(e, pick);
     if (found == null) return false;
     var (before, at, reach, picks) = found;
-    _corner = (before: before, at: at, after: e, picks: picks);
-    _vectorPicks = picks;
-    _vectorShape = pick.shape;
-    _vectorCornerRound = true;
-    _vectorCornerSize = (reach / VectorSpace(e).unitsPer).roundToDouble();
+    _vectors.corner = (before: before, at: at, after: e, picks: picks);
+    _vectors.picks = picks;
+    _vectors.shape = pick.shape;
+    _vectors.cornerRound = true;
+    _vectors.cornerSize = (reach / VectorSpace(e).unitsPer).roundToDouble();
     notifyListeners();
     return true;
   }
@@ -175,39 +175,39 @@ extension CanvasVectors on CanvasController {
   /// was before it, at the size and kind now set. Answers whether there was.
   bool reshapeCorner({bool transient = false}) {
     if (!vectorCornerActive) return false;
-    var c = _corner!;
+    var c = _vectors.corner!;
     return _shapeCorner(c.before, c.at, transient: transient);
   }
 
   bool _shapeCorner(VectorElement before, VectorPick at,
       {bool transient = false}) {
     var done = withCornered(
-        before, at, _vectorCornerSize * VectorSpace(before).unitsPer,
-        round: _vectorCornerRound);
+        before, at, _vectors.cornerSize * VectorSpace(before).unitsPer,
+        round: _vectors.cornerRound);
     if (done == null) return false;
     var (after, picks) = done;
-    _corner = (before: before, at: at, after: after, picks: picks);
-    _vectorPicks = picks;
-    _vectorShape = at.shape;
+    _vectors.corner = (before: before, at: at, after: after, picks: picks);
+    _vectors.picks = picks;
+    _vectors.shape = at.shape;
     replaceElement(after, transient: transient);
     return true;
   }
 
   /// vectorHandleDrag is what dragging a handle may change, and
   /// vectorHandleSnap whether it turns in fifteen-degree steps.
-  VectorHandleDrag get vectorHandleDrag => _vectorHandleDrag;
+  VectorHandleDrag get vectorHandleDrag => _vectors.handleDrag;
 
   set vectorHandleDrag(VectorHandleDrag d) {
-    if (_vectorHandleDrag == d) return;
-    _vectorHandleDrag = d;
+    if (_vectors.handleDrag == d) return;
+    _vectors.handleDrag = d;
     notifyListeners();
   }
 
-  bool get vectorHandleSnap => _vectorHandleSnap;
+  bool get vectorHandleSnap => _vectors.handleSnap;
 
   set vectorHandleSnap(bool on) {
-    if (_vectorHandleSnap == on) return;
-    _vectorHandleSnap = on;
+    if (_vectors.handleSnap == on) return;
+    _vectors.handleSnap = on;
     notifyListeners();
   }
 
@@ -217,26 +217,26 @@ extension CanvasVectors on CanvasController {
     var e = editingVector;
     if (e == null) return false;
     // Shapes picked whole: every point of them.
-    var picks = _vectorPicks.isEmpty && _picksShapes
+    var picks = _vectors.picks.isEmpty && _picksShapes
         ? itemPicks(e, vectorItems)
-        : _vectorPicks;
+        : _vectors.picks;
     if (picks.isEmpty) return false;
     var copied = copiedShapes(e, picks);
     if (copied.isEmpty) return false;
-    _copiedShapes = copied;
-    _pastes = 0;
+    _vectors.copiedShapes = copied;
+    _vectors.pastes = 0;
     return true;
   }
 
   /// cutVectorPoints copies the points picked and takes them out.
   bool cutVectorPoints() {
     if (!copyVectorPoints()) return false;
-    if (_vectorPicks.isEmpty && _picksShapes) {
-      if (editingVector case var e?) _vectorPicks = itemPicks(e, vectorItems);
-      _vectorItems = const {};
+    if (_vectors.picks.isEmpty && _picksShapes) {
+      if (editingVector case var e?) _vectors.picks = itemPicks(e, vectorItems);
+      _vectors.items = const {};
     }
     deleteVectorPoint();
-    _pastes = -1;
+    _vectors.pastes = -1;
     return true;
   }
 
@@ -244,19 +244,20 @@ extension CanvasVectors on CanvasController {
   /// little down and right of where they were, picked. Answers whether any.
   bool pasteVectorPoints() {
     var e = editingVector;
-    if (e == null || _copiedShapes.isEmpty) return false;
-    _pastes++;
-    var step = 10 * VectorSpace(e).unitsPer * _pastes;
-    var (next, picks) = withPasted(e, _copiedShapes, Offset(step, step));
+    if (e == null || _vectors.copiedShapes.isEmpty) return false;
+    _vectors.pastes++;
+    var step = 10 * VectorSpace(e).unitsPer * _vectors.pastes;
+    var (next, picks) =
+        withPasted(e, _vectors.copiedShapes, Offset(step, step));
     // Picking shapes, what is pasted is picked as shapes -- its box to move
     // it by; picking points, its points.
     if (_picksShapes) {
-      _vectorItems = itemsOf(next, picks);
-      _vectorPicks = const {};
+      _vectors.items = itemsOf(next, picks);
+      _vectors.picks = const {};
     } else {
-      _vectorPicks = picks;
+      _vectors.picks = picks;
     }
-    _vectorShape = picks.isEmpty ? -1 : picks.first.shape;
+    _vectors.shape = picks.isEmpty ? -1 : picks.first.shape;
     replaceElement(next);
     return true;
   }
@@ -265,7 +266,7 @@ extension CanvasVectors on CanvasController {
     var e = editingVector;
     if (e == null) return false;
     if (_picksShapes) {
-      _vectorItems = allItems(e);
+      _vectors.items = allItems(e);
       notifyListeners();
       return true;
     }
@@ -278,37 +279,37 @@ extension CanvasVectors on CanvasController {
   void editPickedPoints(
       VectorElement Function(VectorElement, Set<VectorPick>) edit) {
     var e = editingVector;
-    if (e == null || _vectorPicks.isEmpty) return;
-    var next = edit(e, _vectorPicks);
+    if (e == null || _vectors.picks.isEmpty) return;
+    var next = edit(e, _vectors.picks);
     if (!identical(next, e)) replaceElement(next);
   }
 
   /// vectorBrush is the pencil's brush as it is now -- one picked, then
   /// changed or not -- and vectorPencilColour the colour it draws in.
-  VectorBrush get vectorBrush => _vectorBrush;
+  VectorBrush get vectorBrush => _vectors.brush;
 
   set vectorBrush(VectorBrush b) {
-    _vectorBrush = b;
+    _vectors.brush = b;
     notifyListeners();
   }
 
   /// vectorPencilPoints is whether the drawing's points are shown while the
   /// pencil is out. Off to start with: drawing, they are in the way.
-  bool get vectorPencilPoints => _vectorPencilPoints;
+  bool get vectorPencilPoints => _vectors.pencilPoints;
 
   set vectorPencilPoints(bool on) {
-    if (_vectorPencilPoints == on) return;
-    _vectorPencilPoints = on;
+    if (_vectors.pencilPoints == on) return;
+    _vectors.pencilPoints = on;
     notifyListeners();
   }
 
   /// vectorLanes is how much of a drawing's shapes the timeline shows under
   /// its own keyframes: none, the shape picked, or all (see VectorShapeLanes).
-  VectorLanes get vectorLanes => _vectorLanes;
+  VectorLanes get vectorLanes => _vectors.lanes;
 
   set vectorLanes(VectorLanes l) {
-    if (_vectorLanes == l) return;
-    _vectorLanes = l;
+    if (_vectors.lanes == l) return;
+    _vectors.lanes = l;
     notifyListeners();
   }
 
@@ -347,45 +348,45 @@ extension CanvasVectors on CanvasController {
   /// vectorShapeMade is the shape the shapes tool last drew, while it is
   /// still the one picked: the one its box moves and resizes. -1 with none.
   int get vectorShapeMade =>
-      _vectorShapeMade >= 0 && _vectorShapeMade == _vectorShape
-          ? _vectorShapeMade
+      _vectors.shapeMade >= 0 && _vectors.shapeMade == _vectors.shape
+          ? _vectors.shapeMade
           : -1;
 
-  set vectorShapeMade(int i) => _vectorShapeMade = i;
+  set vectorShapeMade(int i) => _vectors.shapeMade = i;
 
   /// vectorShapeKind is the shape the shapes tool draws; vectorShapeSides a
   /// polygon's sides and a star's points; vectorStarInner a star's inner
   /// points as a share of its outer; vectorShapeCorner a rounded box's
   /// corners as a share of its shorter side.
-  VectorShapeKind get vectorShapeKind => _vectorShapeKind;
+  VectorShapeKind get vectorShapeKind => _vectors.shapeKind;
 
   set vectorShapeKind(VectorShapeKind k) {
-    if (_vectorShapeKind == k) return;
-    _vectorShapeKind = k;
+    if (_vectors.shapeKind == k) return;
+    _vectors.shapeKind = k;
     notifyListeners();
   }
 
-  int get vectorShapeSides => _vectorShapeSides;
+  int get vectorShapeSides => _vectors.shapeSides;
 
   set vectorShapeSides(int n) {
-    if (_vectorShapeSides == n) return;
-    _vectorShapeSides = n;
+    if (_vectors.shapeSides == n) return;
+    _vectors.shapeSides = n;
     notifyListeners();
   }
 
-  double get vectorStarInner => _vectorStarInner;
+  double get vectorStarInner => _vectors.starInner;
 
   set vectorStarInner(double v) {
-    if (_vectorStarInner == v) return;
-    _vectorStarInner = v;
+    if (_vectors.starInner == v) return;
+    _vectors.starInner = v;
     notifyListeners();
   }
 
-  double get vectorShapeCorner => _vectorShapeCorner;
+  double get vectorShapeCorner => _vectors.shapeCorner;
 
   set vectorShapeCorner(double v) {
-    if (_vectorShapeCorner == v) return;
-    _vectorShapeCorner = v;
+    if (_vectors.shapeCorner == v) return;
+    _vectors.shapeCorner = v;
     notifyListeners();
   }
 
@@ -393,27 +394,27 @@ extension CanvasVectors on CanvasController {
   /// drawn in, or null for none; vectorShapeWidth its line's width, in
   /// pixels on screen as it is drawn. A line, an arrow or a mark is always
   /// a line, whatever the fill is set to.
-  Color? get vectorShapeFill => _vectorShapeFill;
+  Color? get vectorShapeFill => _vectors.shapeFill;
 
   set vectorShapeFill(Color? c) {
-    if (_vectorShapeFill == c) return;
-    _vectorShapeFill = c;
+    if (_vectors.shapeFill == c) return;
+    _vectors.shapeFill = c;
     notifyListeners();
   }
 
-  Color? get vectorShapeLine => _vectorShapeLine;
+  Color? get vectorShapeLine => _vectors.shapeLine;
 
   set vectorShapeLine(Color? c) {
-    if (_vectorShapeLine == c) return;
-    _vectorShapeLine = c;
+    if (_vectors.shapeLine == c) return;
+    _vectors.shapeLine = c;
     notifyListeners();
   }
 
-  double get vectorShapeWidth => _vectorShapeWidth;
+  double get vectorShapeWidth => _vectors.shapeWidth;
 
   set vectorShapeWidth(double v) {
-    if (_vectorShapeWidth == v) return;
-    _vectorShapeWidth = v;
+    if (_vectors.shapeWidth == v) return;
+    _vectors.shapeWidth = v;
     notifyListeners();
   }
 
@@ -421,43 +422,43 @@ extension CanvasVectors on CanvasController {
   /// it touches rather than rubbing out what it goes over; vectorEraseSize
   /// and vectorEraseSoft are its screen size and edge fade; vectorEraseLine
   /// and vectorEraseFill whether it rubs out lines, fills, or both.
-  bool get vectorEraseWhole => _vectorEraseWhole;
+  bool get vectorEraseWhole => _vectors.eraseWhole;
 
   set vectorEraseWhole(bool on) {
-    if (_vectorEraseWhole == on) return;
-    _vectorEraseWhole = on;
+    if (_vectors.eraseWhole == on) return;
+    _vectors.eraseWhole = on;
     notifyListeners();
   }
 
-  double get vectorEraseSize => _vectorEraseSize;
+  double get vectorEraseSize => _vectors.eraseSize;
 
   set vectorEraseSize(double v) {
-    if (_vectorEraseSize == v) return;
-    _vectorEraseSize = v;
+    if (_vectors.eraseSize == v) return;
+    _vectors.eraseSize = v;
     notifyListeners();
   }
 
-  double get vectorEraseSoft => _vectorEraseSoft;
+  double get vectorEraseSoft => _vectors.eraseSoft;
 
   set vectorEraseSoft(double v) {
-    if (_vectorEraseSoft == v) return;
-    _vectorEraseSoft = v;
+    if (_vectors.eraseSoft == v) return;
+    _vectors.eraseSoft = v;
     notifyListeners();
   }
 
-  bool get vectorEraseLine => _vectorEraseLine;
+  bool get vectorEraseLine => _vectors.eraseLine;
 
   set vectorEraseLine(bool on) {
-    if (_vectorEraseLine == on) return;
-    _vectorEraseLine = on;
+    if (_vectors.eraseLine == on) return;
+    _vectors.eraseLine = on;
     notifyListeners();
   }
 
-  bool get vectorEraseFill => _vectorEraseFill;
+  bool get vectorEraseFill => _vectors.eraseFill;
 
   set vectorEraseFill(bool on) {
-    if (_vectorEraseFill == on) return;
-    _vectorEraseFill = on;
+    if (_vectors.eraseFill == on) return;
+    _vectors.eraseFill = on;
     notifyListeners();
   }
 
@@ -470,59 +471,59 @@ extension CanvasVectors on CanvasController {
 
   /// vectorMirrorAcross and vectorMirrorDown are the pencil's symmetry: a
   /// stroke mirrored left to right, top to bottom, or both.
-  bool get vectorMirrorAcross => _vectorMirrorAcross;
+  bool get vectorMirrorAcross => _vectors.mirrorAcross;
 
   set vectorMirrorAcross(bool on) {
-    if (_vectorMirrorAcross == on) return;
-    _vectorMirrorAcross = on;
+    if (_vectors.mirrorAcross == on) return;
+    _vectors.mirrorAcross = on;
     notifyListeners();
   }
 
-  bool get vectorMirrorDown => _vectorMirrorDown;
+  bool get vectorMirrorDown => _vectors.mirrorDown;
 
   set vectorMirrorDown(bool on) {
-    if (_vectorMirrorDown == on) return;
-    _vectorMirrorDown = on;
+    if (_vectors.mirrorDown == on) return;
+    _vectors.mirrorDown = on;
     notifyListeners();
   }
 
   /// vectorQuickFill is whether a pencil click fills the area the lines
   /// close round it (the paint bucket) rather than drawing; vectorFillGap is
   /// the widest opening, in screen pixels, still counted as closed.
-  bool get vectorQuickFill => _vectorQuickFill;
+  bool get vectorQuickFill => _vectors.quickFill;
 
   set vectorQuickFill(bool on) {
-    if (_vectorQuickFill == on) return;
-    _vectorQuickFill = on;
+    if (_vectors.quickFill == on) return;
+    _vectors.quickFill = on;
     notifyListeners();
   }
 
   /// vectorTextStyle is the type new text in a drawing is set in -- its
   /// size in the canvas's own pixels -- and vectorTextColour its colour.
-  VectorText get vectorTextStyle => _vectorTextStyle;
+  VectorText get vectorTextStyle => _vectors.textStyle;
 
-  Color get vectorTextColour => _vectorTextColour;
+  Color get vectorTextColour => _vectors.textColour;
 
   set vectorTextColour(Color c) {
-    _vectorTextColour = c;
+    _vectors.textColour = c;
     var e = editingVector;
-    var i = _vectorTyping >= 0 ? _vectorTyping : _vectorShape;
+    var i = _vectors.typing >= 0 ? _vectors.typing : _vectors.shape;
     if (e?.shapes case var shapes? when i >= 0 && i < shapes.length) {
       if (shapes[i].liveText != null) {
         replaceElement(e!.withShape(i, shapes[i].copyWith(fill: c)),
-            transient: _vectorTyping >= 0);
+            transient: _vectors.typing >= 0);
       }
     }
     notifyListeners();
   }
 
   /// vectorTyping is the shape being typed into with the text tool, or -1.
-  int get vectorTyping => _vectorTyping;
+  int get vectorTyping => _vectors.typing;
 
   /// _typedShape is the drawing, shape index and shape being typed into.
   (VectorElement, int, VectorShape)? _typedShape() {
     var e = editingVector;
-    var i = _vectorTyping;
+    var i = _vectors.typing;
     var shapes = e?.shapes;
     if (e == null || shapes == null || i < 0 || i >= shapes.length) {
       return null;
@@ -535,7 +536,7 @@ extension CanvasVectors on CanvasController {
   VectorText? get typedText {
     if (_typedShape() case (_, _, var s)?) return s.liveText;
     var e = editingVector;
-    var i = _vectorShape;
+    var i = _vectors.shape;
     if (e?.shapes case var shapes? when i >= 0 && i < shapes.length) {
       return shapes[i].liveText;
     }
@@ -548,7 +549,7 @@ extension CanvasVectors on CanvasController {
     // The type and nothing else: the words, place and signature belong to
     // the text the settings were showing, and new text started with
     // another's signature could not be typed into.
-    _vectorTextStyle = VectorText(
+    _vectors.textStyle = VectorText(
         family: style.family,
         weight: style.weight,
         italic: style.italic,
@@ -557,7 +558,7 @@ extension CanvasVectors on CanvasController {
         leading: style.leading,
         align: style.align);
     var e = editingVector;
-    var i = _vectorTyping >= 0 ? _vectorTyping : _vectorShape;
+    var i = _vectors.typing >= 0 ? _vectors.typing : _vectors.shape;
     var s = e?.shapes != null && i >= 0 && i < e!.shapes!.length
         ? e.shapes![i]
         : null;
@@ -603,7 +604,7 @@ extension CanvasVectors on CanvasController {
     stopVectorTyping();
     var e = editingVector;
     if (e == null) return;
-    var style = _vectorTextStyle;
+    var style = _vectors.textStyle;
     var t = VectorText(
         family: style.family,
         weight: style.weight,
@@ -621,207 +622,208 @@ extension CanvasVectors on CanvasController {
     replaceElement(
         e.copyWith(shapes: [
           ...shapes,
-          VectorShape(paths: const [], fill: _vectorTextColour, text: t),
+          VectorShape(paths: const [], fill: _vectors.textColour, text: t),
         ]),
         transient: true);
-    _vectorTyping = shapes.length;
-    _vectorShape = shapes.length;
-    _vectorPicks = const {};
+    _vectors.typing = shapes.length;
+    _vectors.shape = shapes.length;
+    _vectors.picks = const {};
     notifyListeners();
   }
 
   /// startVectorTyping types into shape [shape], text already.
   void startVectorTyping(int shape) {
-    if (_vectorTyping == shape) return;
+    if (_vectors.typing == shape) return;
     stopVectorTyping();
     beginInteraction();
-    _vectorTyping = shape;
-    _vectorShape = shape;
-    _vectorPicks = const {};
+    _vectors.typing = shape;
+    _vectors.shape = shape;
+    _vectors.picks = const {};
     notifyListeners();
   }
 
   /// stopVectorTyping finishes the typing as one change; empty text goes.
   void stopVectorTyping() {
-    if (_vectorTyping < 0) return;
+    if (_vectors.typing < 0) return;
     if (_typedShape() case (var e, var i, var s)?
         when (s.liveText?.text.trim() ?? "x").isEmpty) {
       var shapes = [...e.shapes!]..removeAt(i);
       replaceElement(e.copyWith(shapes: shapes), transient: true);
-      if (_vectorShape == i) _vectorShape = -1;
+      if (_vectors.shape == i) _vectors.shape = -1;
     }
-    _vectorTyping = -1;
+    _vectors.typing = -1;
     endInteraction();
     notifyListeners();
   }
 
   /// sampling is whether the eyedropper is out: the next press on the canvas
-  /// gives the colour under it to [_onSampled]. sampled is its last colour.
-  bool get sampling => _onSampled != null;
+  /// gives the colour under it to [_vectors.onSampled]. sampled is its last colour.
+  bool get sampling => _vectors.onSampled != null;
 
-  Color? get sampled => _sampled;
+  Color? get sampled => _vectors.sampled;
 
   void startSampling(ValueChanged<Color> onSampled) {
-    _onSampled = onSampled;
+    _vectors.onSampled = onSampled;
     notifyListeners();
   }
 
   void stopSampling() {
-    if (_onSampled == null) return;
-    _onSampled = null;
+    if (_vectors.onSampled == null) return;
+    _vectors.onSampled = null;
     notifyListeners();
   }
 
   /// sampledColour hands the eyedropper what it took, and puts it away.
   void sampledColour(Color c) {
-    var give = _onSampled;
-    _onSampled = null;
-    _sampled = c;
+    var give = _vectors.onSampled;
+    _vectors.onSampled = null;
+    _vectors.sampled = c;
     give?.call(c);
     notifyListeners();
   }
 
   /// vectorKnifeGap is the gap the knife leaves in a cut, in canvas pixels.
-  double get vectorKnifeGap => _vectorKnifeGap;
+  double get vectorKnifeGap => _vectors.knifeGap;
 
   set vectorKnifeGap(double v) {
-    if (_vectorKnifeGap == v) return;
-    _vectorKnifeGap = v;
+    if (_vectors.knifeGap == v) return;
+    _vectors.knifeGap = v;
     notifyListeners();
   }
 
-  double get vectorFillGap => _vectorFillGap;
+  double get vectorFillGap => _vectors.fillGap;
 
   set vectorFillGap(double v) {
-    if (_vectorFillGap == v) return;
-    _vectorFillGap = v;
+    if (_vectors.fillGap == v) return;
+    _vectors.fillGap = v;
     notifyListeners();
   }
 
   /// vectorPencilFill is the colour a fill brush fills its strokes with, and
   /// the quick fill fills an area with.
-  Color get vectorPencilFill => _vectorPencilFill;
+  Color get vectorPencilFill => _vectors.pencilFill;
 
   set vectorPencilFill(Color c) {
-    if (_vectorPencilFill == c) return;
-    _vectorPencilFill = c;
+    if (_vectors.pencilFill == c) return;
+    _vectors.pencilFill = c;
     notifyListeners();
   }
 
-  Color get vectorPencilColour => _vectorPencilColour;
+  Color get vectorPencilColour => _vectors.pencilColour;
 
   set vectorPencilColour(Color c) {
-    if (_vectorPencilColour == c) return;
-    _vectorPencilColour = c;
+    if (_vectors.pencilColour == c) return;
+    _vectors.pencilColour = c;
     notifyListeners();
   }
 
   /// stylusButtons is what the pen's three buttons do with the pencil out,
   /// in the order the pen reports them (right, middle and back click, as a
   /// tablet's driver sends them); stylusEraser what its other end does.
-  List<StylusAction> get stylusButtons => _stylusButtons;
+  List<StylusAction> get stylusButtons => _vectors.stylusButtons;
 
   void setStylusButton(int index, StylusAction action) {
-    if (index < 0 || index >= _stylusButtons.length) return;
-    _stylusButtons = [
-      for (var (i, a) in _stylusButtons.indexed) i == index ? action : a,
+    if (index < 0 || index >= _vectors.stylusButtons.length) return;
+    _vectors.stylusButtons = [
+      for (var (i, a) in _vectors.stylusButtons.indexed)
+        i == index ? action : a,
     ];
     notifyListeners();
   }
 
-  StylusAction get stylusEraser => _stylusEraser;
+  StylusAction get stylusEraser => _vectors.stylusEraser;
 
   set stylusEraser(StylusAction a) {
-    if (_stylusEraser == a) return;
-    _stylusEraser = a;
+    if (_vectors.stylusEraser == a) return;
+    _vectors.stylusEraser = a;
     notifyListeners();
   }
 
   /// vectorCombining is the shapes picked with the Boolean tool, to be
   /// combined -- each the first of its run of combined shapes.
-  Set<int> get vectorCombining => _vectorCombining;
+  Set<int> get vectorCombining => _vectors.combining;
 
   /// toggleCombining picks shape [shape] for combining, or unpicks it.
   void toggleCombining(int shape) {
-    var next = {..._vectorCombining};
+    var next = {..._vectors.combining};
     if (!next.remove(shape)) next.add(shape);
-    _vectorCombining = next;
+    _vectors.combining = next;
     notifyListeners();
   }
 
   void clearCombining() {
-    if (_vectorCombining.isEmpty) return;
-    _vectorCombining = const {};
+    if (_vectors.combining.isEmpty) return;
+    _vectors.combining = const {};
     notifyListeners();
   }
 
   /// combineVector combines the picked shapes by [op], the result picked.
   void combineVector(VectorCombine op) {
     var e = editingVector;
-    if (e == null || _vectorCombining.length < 2) return;
-    var (next, at) = withCombined(e, _vectorCombining, op);
-    _vectorCombining = at >= 0 ? {at} : const {};
-    _vectorPicks = const {};
-    _vectorShape = -1;
+    if (e == null || _vectors.combining.length < 2) return;
+    var (next, at) = withCombined(e, _vectors.combining, op);
+    _vectors.combining = at >= 0 ? {at} : const {};
+    _vectors.picks = const {};
+    _vectors.shape = -1;
     replaceElement(next);
   }
 
   /// separateVector undoes the combining of every picked result.
   void separateVector() {
     var e = editingVector;
-    if (e == null || _vectorCombining.isEmpty) return;
+    if (e == null || _vectors.combining.isEmpty) return;
     var next = e;
-    for (var base in _vectorCombining) {
+    for (var base in _vectors.combining) {
       next = withSeparated(next, base);
     }
-    _vectorCombining = const {};
+    _vectors.combining = const {};
     replaceElement(next);
   }
 
   /// vectorTint is the tint brush's colour -- or gradient, laid across each
   /// stroke as the colour picker sets it.
-  PaintSpec get vectorTint => _vectorTint;
+  PaintSpec get vectorTint => _vectors.tint;
 
   set vectorTint(PaintSpec p) {
-    if (_vectorTint == p) return;
-    _vectorTint = p;
+    if (_vectors.tint == p) return;
+    _vectors.tint = p;
     notifyListeners();
   }
 
   /// vectorBrushSize is the tint brush's width on screen, in pixels: the
   /// same brush however far in the canvas is zoomed. vectorBrushSoft is how
   /// far its edge fades, 0 to 1.
-  double get vectorBrushSize => _vectorBrushSize;
+  double get vectorBrushSize => _vectors.brushSize;
 
   set vectorBrushSize(double v) {
-    if (_vectorBrushSize == v) return;
-    _vectorBrushSize = v;
+    if (_vectors.brushSize == v) return;
+    _vectors.brushSize = v;
     notifyListeners();
   }
 
-  double get vectorBrushSoft => _vectorBrushSoft;
+  double get vectorBrushSoft => _vectors.brushSoft;
 
   set vectorBrushSoft(double v) {
-    if (_vectorBrushSoft == v) return;
-    _vectorBrushSoft = v;
+    if (_vectors.brushSoft == v) return;
+    _vectors.brushSoft = v;
     notifyListeners();
   }
 
   /// vectorTintLine and vectorTintFill are where the brush's tint shows: on
   /// the drawing's lines, in its fills. Both is both.
-  bool get vectorTintLine => _vectorTintLine;
+  bool get vectorTintLine => _vectors.tintLine;
 
   set vectorTintLine(bool on) {
-    if (_vectorTintLine == on) return;
-    _vectorTintLine = on;
+    if (_vectors.tintLine == on) return;
+    _vectors.tintLine = on;
     notifyListeners();
   }
 
-  bool get vectorTintFill => _vectorTintFill;
+  bool get vectorTintFill => _vectors.tintFill;
 
   set vectorTintFill(bool on) {
-    if (_vectorTintFill == on) return;
-    _vectorTintFill = on;
+    if (_vectors.tintFill == on) return;
+    _vectors.tintFill = on;
     notifyListeners();
   }
 
@@ -1006,22 +1008,22 @@ extension CanvasVectors on CanvasController {
   void _resetVectorEditing() {
     // Typing ends with the editing: left open, it would swallow every later
     // change into one undo step.
-    if (_vectorTyping >= 0) {
-      _vectorTyping = -1;
+    if (_vectors.typing >= 0) {
+      _vectors.typing = -1;
       endInteraction();
     }
-    if (_vectorSolo) {
-      _vectorSolo = false;
+    if (_vectors.solo) {
+      _vectors.solo = false;
       if (vectorSoloOf == _soloOf) vectorSoloOf = null;
     }
-    _vectorItems = const {};
-    _lastSelect = VectorTool.select;
-    _vectorShape = -1;
-    _vectorPicks = const {};
-    _vectorTool = VectorTool.select;
-    _vectorPenFrom = null;
-    _vectorCombining = const {};
-    _vectorShapeMade = -1;
+    _vectors.items = const {};
+    _vectors.lastSelect = VectorTool.select;
+    _vectors.shape = -1;
+    _vectors.picks = const {};
+    _vectors.tool = VectorTool.select;
+    _vectors.penFrom = null;
+    _vectors.combining = const {};
+    _vectors.shapeMade = -1;
   }
 
   /// vectorItems is what the select shapes tool has picked: whole shapes,
@@ -1029,42 +1031,42 @@ extension CanvasVectors on CanvasController {
   Set<VectorItem> get vectorItems {
     var e = editingVector;
     if (e == null) return const {};
-    return liveItems(e, _vectorItems);
+    return liveItems(e, _vectors.items);
   }
 
   /// pickVectorItem picks [item] alone -- or, with [toggle], adds it to
   /// what is picked or takes it out; null lets everything go.
   void pickVectorItem(VectorItem? item, {bool toggle = false}) {
     if (item == null) {
-      _vectorItems = const {};
+      _vectors.items = const {};
     } else if (toggle) {
       var next = {...vectorItems};
       if (!next.remove(item)) next.add(item);
-      _vectorItems = next;
+      _vectors.items = next;
     } else {
-      _vectorItems = {item};
+      _vectors.items = {item};
     }
     // The shape's own settings follow the last one picked.
-    _vectorShape = item?.shape ?? -1;
-    _vectorPicks = const {};
+    _vectors.shape = item?.shape ?? -1;
+    _vectors.picks = const {};
     notifyListeners();
   }
 
   /// vectorAlignsShapes is whether the align tool lines up shapes -- the
   /// select shapes tool was the last select tool used -- or points.
-  bool get vectorAlignsShapes => _lastSelect == VectorTool.selectShapes;
+  bool get vectorAlignsShapes => _vectors.lastSelect == VectorTool.selectShapes;
 
   /// _picksShapes is whether what is picked is shapes rather than points:
   /// the select shapes tool, or the align tool after it.
   bool get _picksShapes =>
-      _vectorTool == VectorTool.selectShapes ||
-      (_vectorTool == VectorTool.align && vectorAlignsShapes);
+      _vectors.tool == VectorTool.selectShapes ||
+      (_vectors.tool == VectorTool.align && vectorAlignsShapes);
 
   /// pickVectorItems picks [items] -- or, with [add], adds them.
   void pickVectorItems(Set<VectorItem> items, {bool add = false}) {
-    _vectorItems = add ? {...vectorItems, ...items} : {...items};
-    _vectorShape = items.isEmpty ? _vectorShape : items.first.shape;
-    _vectorPicks = const {};
+    _vectors.items = add ? {...vectorItems, ...items} : {...items};
+    _vectors.shape = items.isEmpty ? _vectors.shape : items.first.shape;
+    _vectors.picks = const {};
     notifyListeners();
   }
 
@@ -1085,16 +1087,16 @@ extension CanvasVectors on CanvasController {
     if (e == null) return const {};
     var items = vectorItems;
     if (items.isNotEmpty) return {for (var i in items) groupOf(e, i.shape)};
-    if (_vectorShape >= 0 && _vectorShape < (e.shapes?.length ?? 0)) {
-      return {groupOf(e, _vectorShape)};
+    if (_vectors.shape >= 0 && _vectors.shape < (e.shapes?.length ?? 0)) {
+      return {groupOf(e, _vectors.shape)};
     }
     return const {};
   }
 
   void pickVectorShape(int shape) {
-    if (_vectorShape == shape && _vectorPicks.isEmpty) return;
-    _vectorShape = shape;
-    _vectorPicks = const {};
+    if (_vectors.shape == shape && _vectors.picks.isEmpty) return;
+    _vectors.shape = shape;
+    _vectors.picks = const {};
     notifyListeners();
   }
 
@@ -1105,45 +1107,45 @@ extension CanvasVectors on CanvasController {
     if (pick == null) {
       next = const {};
     } else if (toggle) {
-      next = {..._vectorPicks};
+      next = {..._vectors.picks};
       if (!next.remove(pick)) next.add(pick);
     } else {
       next = {pick};
     }
-    if (setEquals(next, _vectorPicks)) return;
-    _vectorPicks = next;
-    if (pick != null) _vectorShape = pick.shape;
+    if (setEquals(next, _vectors.picks)) return;
+    _vectors.picks = next;
+    if (pick != null) _vectors.shape = pick.shape;
     notifyListeners();
   }
 
   /// pickVectorPoints picks [picks] at once: a box dragged across them.
   void pickVectorPoints(Set<VectorPick> picks) {
-    _vectorPicks = {...picks};
-    if (picks.isNotEmpty) _vectorShape = picks.first.shape;
+    _vectors.picks = {...picks};
+    if (picks.isNotEmpty) _vectors.shape = picks.first.shape;
     notifyListeners();
   }
 
   /// deleteVectorPoint takes out the picked points, answering whether any.
   bool deleteVectorPoint() {
-    var e = editingVector, picks = _vectorPicks;
+    var e = editingVector, picks = _vectors.picks;
     if (e == null) return false;
     // A shape picked whole, with no points: every point of it.
-    if (picks.isEmpty && _vectorShape >= 0) {
-      var shape = e.shapes?.elementAtOrNull(_vectorShape);
+    if (picks.isEmpty && _vectors.shape >= 0) {
+      var shape = e.shapes?.elementAtOrNull(_vectors.shape);
       if (shape != null) {
         picks = {
           for (var (p, run) in shape.paths.indexed)
             for (var n = 0; n < run.nodes.length; n++)
-              VectorPick(_vectorShape, p, n),
+              VectorPick(_vectors.shape, p, n),
         };
       }
     }
     if (picks.isEmpty) return false;
     var next = withoutPoints(e, picks);
-    _vectorPicks = const {};
-    _vectorPenFrom = null;
+    _vectors.picks = const {};
+    _vectors.penFrom = null;
     if ((next.shapes?.length ?? 0) < (e.shapes?.length ?? 0)) {
-      _vectorShape = -1;
+      _vectors.shape = -1;
     }
     replaceElement(next);
     return true;
@@ -1268,4 +1270,123 @@ extension CanvasVectors on CanvasController {
     };
     notifyListeners();
   }
+}
+
+/// _VectorState is what CanvasVectors keeps between calls: the tool in hand
+/// and each tool's settings, what is picked, what was copied. The
+/// controller holds one, as _vectors. Most fields are read and set through
+/// CanvasVectors' getters and setters above, which say what each is.
+class _VectorState {
+  int shape = -1;
+
+  Set<VectorPick> picks = const {};
+
+  bool solo = false;
+
+  VectorTool tool = VectorTool.select;
+
+  VectorPick? penFrom;
+
+  bool cornerRound = true;
+
+  double cornerSize = 20;
+
+  /// corner is the corner the corner tool last made: the drawing before,
+  /// the point, the drawing after and its two new points. Still in the
+  /// making while those points alone are picked and the drawing unchanged.
+  ({
+    VectorElement before,
+    VectorPick at,
+    VectorElement after,
+    Set<VectorPick> picks
+  })? corner;
+
+  VectorHandleDrag handleDrag = VectorHandleDrag.any;
+
+  bool handleSnap = false;
+
+  /// copiedShapes is the last points copied, and pastes how many times
+  /// they have been pasted since: each paste lands a step further off.
+  List<VectorShape> copiedShapes = const [];
+  int pastes = 0;
+
+  VectorBrush brush = builtInBrushes.first;
+
+  bool pencilPoints = false;
+
+  VectorLanes lanes = VectorLanes.none;
+
+  int shapeMade = -1;
+
+  VectorShapeKind shapeKind = VectorShapeKind.box;
+
+  int shapeSides = 5;
+
+  double starInner = 0.45;
+
+  double shapeCorner = 0.2;
+
+  Color? shapeFill = const Color(0xFF8AB4F8);
+
+  Color? shapeLine = const Color(0xFF202124);
+
+  double shapeWidth = 3;
+
+  bool eraseWhole = false;
+
+  double eraseSize = 20;
+
+  double eraseSoft = 0;
+
+  bool eraseLine = true;
+
+  bool eraseFill = true;
+
+  bool mirrorAcross = false;
+
+  bool mirrorDown = false;
+
+  bool quickFill = false;
+
+  VectorText textStyle = const VectorText();
+
+  Color textColour = const Color(0xFF000000);
+
+  int typing = -1;
+
+  ValueChanged<Color>? onSampled;
+
+  Color? sampled;
+
+  double knifeGap = 1;
+
+  double fillGap = 3;
+
+  Color pencilFill = const Color(0xFF8AB4F8);
+
+  Color pencilColour = const Color(0xFF202124);
+
+  List<StylusAction> stylusButtons = const [
+    StylusAction.pickColour,
+    StylusAction.pan,
+    StylusAction.undo,
+  ];
+
+  StylusAction stylusEraser = StylusAction.erase;
+
+  Set<int> combining = const {};
+
+  PaintSpec tint = const PaintSpec(Color(0xFFE5484D));
+
+  double brushSize = 24;
+
+  double brushSoft = 0.5;
+
+  bool tintLine = true;
+
+  bool tintFill = true;
+
+  Set<VectorItem> items = const {};
+
+  VectorTool lastSelect = VectorTool.select;
 }

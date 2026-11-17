@@ -1,7 +1,7 @@
 part of '../canvas_controller.dart';
 
-// Keyframes, and the arrivals and exits laid on them. Part of
-// CanvasController.
+// Keyframes, and the arrivals and exits laid on them. Part of CanvasController.
+// Its state is _KeyframeState, at the end of this file.
 
 /// KeyframeTarget is what the Chain's Keyframes card edits: a team's
 /// focused player, a path's points (their times only), or the picked
@@ -199,10 +199,14 @@ extension CanvasKeyframes on CanvasController {
   /// anchorShown is whether [id]'s anchor point is drawn on the stage, to be
   /// dragged unless locked. A way of looking, not part of the design: not
   /// saved, not undone.
-  bool anchorShown(String id) => _anchorsShown.contains(id);
+  bool anchorShown(String id) => _keyframes.anchorsShown.contains(id);
 
   void showAnchor(String id, bool shown) {
-    if (shown ? !_anchorsShown.add(id) : !_anchorsShown.remove(id)) return;
+    if (shown
+        ? !_keyframes.anchorsShown.add(id)
+        : !_keyframes.anchorsShown.remove(id)) {
+      return;
+    }
     notifyListeners();
   }
 
@@ -581,23 +585,25 @@ extension CanvasKeyframes on CanvasController {
     if (t == null || t.points) return 0;
     var sorted = frames.toList()..sort();
     if (sorted.isEmpty) return 0;
-    _keyClipboard = [
+    _keyframes.keyClipboard = [
       for (var f in sorted)
         if (t.track.keyAt(f) case var k?) (f - sorted.first, k)
     ];
-    return _keyClipboard.length;
+    return _keyframes.keyClipboard.length;
   }
 
-  bool get hasCopiedKeys => _keyClipboard.isNotEmpty;
+  bool get hasCopiedKeys => _keyframes.keyClipboard.isNotEmpty;
 
   /// pasteTargetKeys lays the copied keyframes down from the playhead,
   /// keeping their spacing: the frames they landed on, or why not (no room
   /// before the scene ends, or a keyframe already there).
   (List<int>, String?) pasteTargetKeys() {
     var t = keyframeTarget;
-    if (t == null || t.points || _keyClipboard.isEmpty) return (const [], null);
+    if (t == null || t.points || _keyframes.keyClipboard.isEmpty) {
+      return (const [], null);
+    }
     var at = _frame;
-    var wanted = [for (var (offset, _) in _keyClipboard) at + offset];
+    var wanted = [for (var (offset, _) in _keyframes.keyClipboard) at + offset];
     if (wanted.last > _document.frames - 1) {
       return (const [], "There is not room for that before the scene ends.");
     }
@@ -614,7 +620,7 @@ extension CanvasKeyframes on CanvasController {
       );
     }
     var next = t.track;
-    for (var (offset, k) in _keyClipboard) {
+    for (var (offset, k) in _keyframes.keyClipboard) {
       next = next.withKey(k.copyWith(frame: at + offset));
     }
     writeTargetTrack(next);
@@ -651,4 +657,15 @@ const double exitHoldSeconds = 2;
   from = math.max(entranceEnds + 1, to - span);
   if (from >= to) from = math.max(0, to - 1);
   return (from, to);
+}
+
+/// _KeyframeState is what CanvasKeyframes keeps between calls, here beside the code that
+/// uses it. The controller holds one, as _keyframes; most fields are read and
+/// set through CanvasKeyframes's getters and setters above, which say what each is.
+class _KeyframeState {
+  /// keyClipboard is the keyframes copied in the Chain's Keyframes card,
+  /// each relative to the first: see copyTargetKeys.
+  List<(int, Keyframe)> keyClipboard = const [];
+
+  final Set<String> anchorsShown = {};
 }

@@ -1,7 +1,7 @@
 part of '../canvas_controller.dart';
 
-// Part of CanvasController (state in canvas_controller.dart): the view,
-// playback, the control bar's switches and live counters.
+// Part of CanvasController: the view, playback, the control bar's switches and
+// live counters. Its state is _PlaybackState, at the end of this file.
 
 extension CanvasPlayback on CanvasController {
   void resetZoom() {
@@ -98,7 +98,7 @@ extension CanvasPlayback on CanvasController {
       _sessionOnly = false;
     }
     if (playing) return;
-    _playedFrom = (_document.at, _frame);
+    _playbackState.playedFrom = (_document.at, _frame);
     // The session's clock from the playhead: see _sessionClock.
     _sessionClock = _frame / math.max(1, _document.frameRate);
     // Sounds that start by themselves start with the canvas, before the
@@ -124,7 +124,7 @@ extension CanvasPlayback on CanvasController {
         from = 0;
       }
       _previewAt = from;
-      _loopCounts.clear();
+      _playbackState.loopCounts.clear();
       _startTimer();
       notifyListeners();
       if (_frame == 0) _sceneBegins();
@@ -132,7 +132,7 @@ extension CanvasPlayback on CanvasController {
     }
 
     if (_document.frames <= 1) return;
-    _loopCounts.clear();
+    _playbackState.loopCounts.clear();
     _startTimer();
     notifyListeners();
     // From the top, the scene starts: what starts with it starts, as it
@@ -148,9 +148,9 @@ extension CanvasPlayback on CanvasController {
     var interval = Duration(
         microseconds:
             (500000 / _document.frameRate).round().clamp(4000, 500000));
-    _clockFrames = 0;
-    _clockShift = 0;
-    _playWatch = Stopwatch()..start();
+    _playbackState.clockFrames = 0;
+    _playbackState.clockShift = 0;
+    _playbackState.playWatch = Stopwatch()..start();
     // A periodic timer's tick counts the intervals that have passed, not the
     // callbacks that ran, so tick times interval is the time since Play, by
     // the same clock a test's fake time drives.
@@ -163,8 +163,8 @@ extension CanvasPlayback on CanvasController {
   void _tick(int elapsed) {
     var rate = math.max(1, _document.frameRate);
     // Practising, the clock runs at the tempo set -- see practiceRate.
-    var seconds =
-        (clockForTest?.call() ?? elapsed) / 1000000 * _clockRate + _clockShift;
+    var seconds = (clockForTest?.call() ?? elapsed) / 1000000 * _clockRate +
+        _playbackState.clockShift;
     // Only the slots: their clock goes on, the playhead does not.
     if (_sessionOnly) {
       _sessionSeconds = seconds;
@@ -175,8 +175,8 @@ extension CanvasPlayback on CanvasController {
       if (motionPlayer.playing) {
         _motionStep();
         var at = (_sessionNow * rate).floor();
-        if (at != _motionPainted) {
-          _motionPainted = at;
+        if (at != _playbackState.motionPainted) {
+          _playbackState.motionPainted = at;
           _notifyRapid(view: true);
         }
       }
@@ -185,20 +185,20 @@ extension CanvasPlayback on CanvasController {
       return;
     }
     var now = seconds * rate;
-    var due = now.floor() - _clockFrames;
+    var due = now.floor() - _playbackState.clockFrames;
     // A long stall -- the window dragged, the machine asleep -- is let go
     // rather than raced through: past a few frames behind, it carries on
     // from the clock without playing out what was missed.
     if (due > 6) {
-      _clockFrames += due - 6;
+      _playbackState.clockFrames += due - 6;
       due = 6;
     }
     for (var i = 0; i < due && _playback != null; i++) {
-      _clockFrames++;
+      _playbackState.clockFrames++;
       _step();
     }
     if (_playback != null) {
-      _followSound(now - _clockFrames);
+      _followSound(now - _playbackState.clockFrames);
       // A game's slots are stepped by the game: see stepGame.
       if (!gaming && (_clipChannels.isNotEmpty || _clipRecord != null)) {
         _sessionStep(_sessionNow);
@@ -215,9 +215,10 @@ extension CanvasPlayback on CanvasController {
     if (_playback == null || clockForTest != null || _sessionOnly) return 0;
     var rate = math.max(1, _document.frameRate);
     var now =
-        (_playWatch.elapsedMicroseconds / 1000000 * _clockRate + _clockShift) *
+        (_playbackState.playWatch.elapsedMicroseconds / 1000000 * _clockRate +
+                _playbackState.clockShift) *
             rate;
-    return (now - _clockFrames).clamp(0.0, 0.999);
+    return (now - _playbackState.clockFrames).clamp(0.0, 0.999);
   }
 
   /// playsDrift is whether the stage's scene has a drift (a picture's or a
@@ -259,7 +260,7 @@ extension CanvasPlayback on CanvasController {
           clip.at + (before + position - clip.playlist[index].start) * rate;
       var ahead = (heard - (at + into)) / rate;
       if (ahead.abs() > 0.25) return;
-      _clockShift += ahead * 0.1;
+      _playbackState.clockShift += ahead * 0.1;
       return;
     }
   }
@@ -312,7 +313,7 @@ extension CanvasPlayback on CanvasController {
       pause();
       return;
     }
-    var from = _playedFrom;
+    var from = _playbackState.playedFrom;
     if (!playing || from == null) {
       stop();
       return;
@@ -329,11 +330,11 @@ extension CanvasPlayback on CanvasController {
   /// metronome is whether a click sounds on every beat while any canvas
   /// plays (every one has a tempo, on the play bar). The editor's, not the
   /// document's: it is never exported.
-  bool get metronome => _metronome;
+  bool get metronome => _playbackState.metronome;
 
   set metronome(bool on) {
-    if (_metronome == on) return;
-    _metronome = on;
+    if (_playbackState.metronome == on) return;
+    _playbackState.metronome = on;
     _syncMetronome();
     notifyListeners();
   }
@@ -341,7 +342,7 @@ extension CanvasPlayback on CanvasController {
   void _syncMetronome() {
     var sheet = _clicking;
     var on = playing &&
-        (_metronome || sheet != null) &&
+        (_playbackState.metronome || sheet != null) &&
         _previewing == null &&
         _previewAt == null;
     if (!on && _audio == null) return;
@@ -368,7 +369,8 @@ extension CanvasPlayback on CanvasController {
 
   /// bandState is how mixer band [section] is shown: whole, minimised or
   /// hidden, set per band from the rail at the mixer's right edge.
-  BandState bandState(MixerSection section) => _bandStates[section]!;
+  BandState bandState(MixerSection section) =>
+      _playbackState.bandStates[section]!;
 
   /// restoreMixer puts the mixer's bands and returns back as they were
   /// left -- see CanvasPreferences.mixerBands -- without notifying, for the
@@ -378,27 +380,27 @@ extension CanvasPlayback on CanvasController {
     for (var (i, s) in MixerSection.values.indexed) {
       if (i >= bands.length) break;
       var state = BandState.values.where((b) => b.name == bands[i]).firstOrNull;
-      if (state != null) _bandStates[s] = state;
+      if (state != null) _playbackState.bandStates[s] = state;
     }
     if (CanvasController._mainBands
-        .every((s) => _bandStates[s] == BandState.hidden)) {
-      _bandStates[MixerSection.mixer] = BandState.shown;
+        .every((s) => _playbackState.bandStates[s] == BandState.hidden)) {
+      _playbackState.bandStates[MixerSection.mixer] = BandState.shown;
     }
-    _returnsShown = returns;
+    _playbackState.returnsShown = returns;
   }
 
   /// mixerLook is how the mixer and Slots panel were left beyond their bands
   /// (motion slots, cue column widths, slot size and narrowness, rail
   /// folded) as "name=value" pairs, for keeping.
   String get mixerLook => [
-        "motion=${_motionSlots.name}",
-        "cue=${_cueColumnWidth.round()}",
-        "slotsCue=${_slotsCueWidth.round()}",
-        "masterCue=${_masterCueColumnWidth.round()}",
-        "slotsMasterCue=${_slotsMasterCueWidth.round()}",
-        "size=$_slotsPanelSize",
-        "narrow=${_slotsPanelNarrow ? 1 : 0}",
-        "rail=${_mixerRailFolded ? 1 : 0}",
+        "motion=${_playbackState.motionSlots.name}",
+        "cue=${_playbackState.cueColumnWidth.round()}",
+        "slotsCue=${_playbackState.slotsCueWidth.round()}",
+        "masterCue=${_playbackState.masterCueColumnWidth.round()}",
+        "slotsMasterCue=${_playbackState.slotsMasterCueWidth.round()}",
+        "size=${_playbackState.slotsPanelSize}",
+        "narrow=${_playbackState.slotsPanelNarrow ? 1 : 0}",
+        "rail=${_playbackState.mixerRailFolded ? 1 : 0}",
       ].join(";");
 
   /// restoreMixerLook puts [look] (see mixerLook) back, without notifying,
@@ -411,50 +413,52 @@ extension CanvasPlayback on CanvasController {
       double? number() => double.tryParse(value);
       switch (name) {
         case "motion":
-          _motionSlots =
+          _playbackState.motionSlots =
               BandState.values.where((b) => b.name == value).firstOrNull ??
-                  _motionSlots;
+                  _playbackState.motionSlots;
         case "cue":
           if (number() case var n?) {
-            _cueColumnWidth = n
+            _playbackState.cueColumnWidth = n
                 .clamp(CanvasController.cueColumnLeast,
                     CanvasController.cueColumnMost)
                 .toDouble();
           }
         case "slotsCue":
           if (number() case var n?) {
-            _slotsCueWidth = n
+            _playbackState.slotsCueWidth = n
                 .clamp(CanvasController.cueColumnLeast,
                     CanvasController.cueColumnMost)
                 .toDouble();
           }
         case "masterCue":
           if (number() case var n?) {
-            _masterCueColumnWidth = n
+            _playbackState.masterCueColumnWidth = n
                 .clamp(CanvasController.cueColumnLeast,
                     CanvasController.cueColumnMost)
                 .toDouble();
           }
         case "slotsMasterCue":
           if (number() case var n?) {
-            _slotsMasterCueWidth = n
+            _playbackState.slotsMasterCueWidth = n
                 .clamp(CanvasController.cueColumnLeast,
                     CanvasController.cueColumnMost)
                 .toDouble();
           }
         case "size":
-          if (int.tryParse(value) case var n?) _slotsPanelSize = n.clamp(0, 3);
+          if (int.tryParse(value) case var n?) {
+            _playbackState.slotsPanelSize = n.clamp(0, 3);
+          }
         case "narrow":
-          _slotsPanelNarrow = value == "1";
+          _playbackState.slotsPanelNarrow = value == "1";
         case "rail":
-          _mixerRailFolded = value == "1";
+          _playbackState.mixerRailFolded = value == "1";
       }
     }
   }
 
   /// mixerBandNames are the bands' states by name, in order, for keeping.
   List<String> get mixerBandNames =>
-      [for (var s in MixerSection.values) _bandStates[s]!.name];
+      [for (var s in MixerSection.values) _playbackState.bandStates[s]!.name];
 
   /// setMixerSection shows [section] as [state], from the rail: the sends
   /// are never minimised (nothing is smaller than a dial), and the last of
@@ -468,92 +472,92 @@ extension CanvasPlayback on CanvasController {
         CanvasController._mainBands.contains(section) &&
         CanvasController._mainBands
             .where((s) => s != section)
-            .every((s) => _bandStates[s] == BandState.hidden)) {
+            .every((s) => _playbackState.bandStates[s] == BandState.hidden)) {
       return;
     }
-    if (_bandStates[section] == next) return;
-    _bandStates[section] = next;
+    if (_playbackState.bandStates[section] == next) return;
+    _playbackState.bandStates[section] = next;
     notifyListeners();
   }
 
   /// motionSlots is how the slot rows' motion parts show: whole, as a thin
   /// line, or not at all (the rail's Motion slots).
-  BandState get motionSlots => _motionSlots;
+  BandState get motionSlots => _playbackState.motionSlots;
   set motionSlots(BandState state) {
-    if (state == _motionSlots) return;
-    _motionSlots = state;
+    if (state == _playbackState.motionSlots) return;
+    _playbackState.motionSlots = state;
     notifyListeners();
   }
 
   /// cueColumnWidth is the width of the mixer's cue column, on the left: 40
   /// to 240, dragged by its edge.
-  double get cueColumnWidth => _cueColumnWidth;
+  double get cueColumnWidth => _playbackState.cueColumnWidth;
   set cueColumnWidth(double width) {
     var w = width
         .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
         .toDouble();
-    if (w == _cueColumnWidth) return;
-    _cueColumnWidth = w;
+    if (w == _playbackState.cueColumnWidth) return;
+    _playbackState.cueColumnWidth = w;
     notifyListeners();
   }
 
   /// slotsCueWidth is the Slots panel's own cue column, 40 to 240 (120 first).
-  double get slotsCueWidth => _slotsCueWidth;
+  double get slotsCueWidth => _playbackState.slotsCueWidth;
   set slotsCueWidth(double width) {
     var w = width
         .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
         .toDouble();
-    if (w == _slotsCueWidth) return;
-    _slotsCueWidth = w;
+    if (w == _playbackState.slotsCueWidth) return;
+    _playbackState.slotsCueWidth = w;
     notifyListeners();
   }
 
   /// masterCueColumnWidth and slotsMasterCueWidth are the master's cue
   /// columns -- the mixer's and the Slots panel's -- on a scene with cues of
   /// its own: dragged by their own edges, apart from the scene's.
-  double get masterCueColumnWidth => _masterCueColumnWidth;
+  double get masterCueColumnWidth => _playbackState.masterCueColumnWidth;
   set masterCueColumnWidth(double width) {
     var w = width
         .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
         .toDouble();
-    if (w == _masterCueColumnWidth) return;
-    _masterCueColumnWidth = w;
+    if (w == _playbackState.masterCueColumnWidth) return;
+    _playbackState.masterCueColumnWidth = w;
     notifyListeners();
   }
 
-  double get slotsMasterCueWidth => _slotsMasterCueWidth;
+  double get slotsMasterCueWidth => _playbackState.slotsMasterCueWidth;
   set slotsMasterCueWidth(double width) {
     var w = width
         .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
         .toDouble();
-    if (w == _slotsMasterCueWidth) return;
-    _slotsMasterCueWidth = w;
+    if (w == _playbackState.slotsMasterCueWidth) return;
+    _playbackState.slotsMasterCueWidth = w;
     notifyListeners();
   }
 
   /// slotsPanelSize is how tall the Slots panel's slots are: 0 to 2, small
   /// to large, or 3, filling the panel's height.
-  int get slotsPanelSize => _slotsPanelSize;
+  int get slotsPanelSize => _playbackState.slotsPanelSize;
   set slotsPanelSize(int size) {
     var s = size.clamp(0, 3);
-    if (s == _slotsPanelSize) return;
-    _slotsPanelSize = s;
+    if (s == _playbackState.slotsPanelSize) return;
+    _playbackState.slotsPanelSize = s;
     notifyListeners();
   }
 
   /// slotsPanelNarrow makes every Slots panel column 84 wide, no pictures.
-  bool get slotsPanelNarrow => _slotsPanelNarrow;
+  bool get slotsPanelNarrow => _playbackState.slotsPanelNarrow;
   set slotsPanelNarrow(bool narrow) {
-    if (narrow == _slotsPanelNarrow) return;
-    _slotsPanelNarrow = narrow;
+    if (narrow == _playbackState.slotsPanelNarrow) return;
+    _playbackState.slotsPanelNarrow = narrow;
     notifyListeners();
   }
 
   /// mixerRailFolded folds the mixer's rail to a thin strip, for room.
-  bool get mixerRailFolded => _mixerRailFolded;
+  bool get mixerRailFolded => _playbackState.mixerRailFolded;
   set mixerRailFolded(bool folded) {
-    if (folded == _mixerRailFolded) return;
-    _mixerRailFolded = folded;
+    if (folded == _playbackState.mixerRailFolded) return;
+    _playbackState.mixerRailFolded = folded;
     notifyListeners();
   }
 
@@ -566,21 +570,23 @@ extension CanvasPlayback on CanvasController {
   /// another canvas (whose rows may share keys), puts them all back.
   bool rowFolded(String key) {
     _foldsNow();
-    return (laneSize == 0) != _flippedRows.contains(key);
+    return (laneSize == 0) != _playbackState.flippedRows.contains(key);
   }
 
   /// toggleRowFold is row [key]'s fold arrow.
   void toggleRowFold(String key) {
     _foldsNow();
-    if (!_flippedRows.remove(key)) _flippedRows.add(key);
+    if (!_playbackState.flippedRows.remove(key)) {
+      _playbackState.flippedRows.add(key);
+    }
     notifyListeners();
   }
 
   void _foldsNow() {
     var at = (folder, name, laneSize);
-    if (_flippedRowsAt == at) return;
-    _flippedRowsAt = at;
-    _flippedRows.clear();
+    if (_playbackState.flippedRowsAt == at) return;
+    _playbackState.flippedRowsAt = at;
+    _playbackState.flippedRows.clear();
   }
 
   void toggleNarrow(String key) {
@@ -595,39 +601,39 @@ extension CanvasPlayback on CanvasController {
 
   /// returnsShown is whether the mixer shows the returns beside the master;
   /// hidden, what is sent to them is still heard.
-  bool get returnsShown => _returnsShown;
+  bool get returnsShown => _playbackState.returnsShown;
 
   set returnsShown(bool on) {
-    if (_returnsShown == on) return;
-    _returnsShown = on;
+    if (_playbackState.returnsShown == on) return;
+    _playbackState.returnsShown = on;
     notifyListeners();
   }
 
   /// followPlayhead is whether the timeline scrolls to follow the playhead.
-  bool get followPlayhead => _followPlayhead;
+  bool get followPlayhead => _playbackState.followPlayhead;
 
   set followPlayhead(bool on) {
-    if (_followPlayhead == on) return;
-    _followPlayhead = on;
+    if (_playbackState.followPlayhead == on) return;
+    _playbackState.followPlayhead = on;
     notifyListeners();
   }
 
   /// looping is whether playing goes round between [loopRange]'s ends. For
   /// working on a part: the timeline's own Loop action, which a published
   /// piece obeys, is a different thing and is left alone.
-  bool get looping => _looping;
+  bool get looping => _playbackState.looping;
 
   set looping(bool on) {
-    if (_looping == on) return;
-    _looping = on;
-    if (on) _loop ??= _defaultLoop();
+    if (_playbackState.looping == on) return;
+    _playbackState.looping = on;
+    if (on) _playbackState.loop ??= _defaultLoop();
     notifyListeners();
   }
 
   /// loopRange is the loop's start and length in frames: the one set, or
   /// where one would start.
   (int, int) get loopRange {
-    var (from, length) = _loop ?? _defaultLoop();
+    var (from, length) = _playbackState.loop ?? _defaultLoop();
     var frames = math.max(1, _document.frames);
     from = from.clamp(0, frames - 1).toInt();
     return (from, length.clamp(1, frames - from).toInt());
@@ -636,7 +642,7 @@ extension CanvasPlayback on CanvasController {
   void setLoop(int from, int length) {
     var frames = math.max(1, _document.frames);
     from = from.clamp(0, frames - 1).toInt();
-    _loop = (from, length.clamp(1, frames - from).toInt());
+    _playbackState.loop = (from, length.clamp(1, frames - from).toInt());
     notifyListeners();
   }
 
@@ -759,7 +765,7 @@ extension CanvasPlayback on CanvasController {
     var next = _frame + 1;
     // Round the loop: from its end back to its start -- but only from inside
     // it, so a playhead put past the loop plays on from there.
-    if (_looping) {
+    if (_playbackState.looping) {
       var (from, length) = loopRange;
       var end = from + length;
       if (_frame < end && next >= end) next = from;
@@ -782,19 +788,21 @@ extension CanvasPlayback on CanvasController {
       switch (action.kind) {
         case TimelineActionKind.stop:
           pause();
-          _stoppedAt = next;
+          _playbackState.stoppedAt = next;
           if (action.waitsFor.isNotEmpty) _waitForAction(action.waitsFor);
         case TimelineActionKind.pause:
           // The hold steps the playhead back to where it is for as many ticks
           // as it asks, as a countdown rather than a sleep, so the window
           // stays responsive and the playhead can be dragged out of it.
-          var held =
-              _loopCounts.update(action.frame, (v) => v + 1, ifAbsent: () => 1);
+          var held = _playbackState.loopCounts
+              .update(action.frame, (v) => v + 1, ifAbsent: () => 1);
           if (held < action.holdFrames) _frame = next - 1 < 0 ? 0 : next;
-          if (held >= action.holdFrames) _loopCounts.remove(action.frame);
+          if (held >= action.holdFrames) {
+            _playbackState.loopCounts.remove(action.frame);
+          }
         case TimelineActionKind.loop:
-          var count =
-              _loopCounts.update(action.frame, (v) => v + 1, ifAbsent: () => 1);
+          var count = _playbackState.loopCounts
+              .update(action.frame, (v) => v + 1, ifAbsent: () => 1);
           if (action.repeats == 0 || count <= action.repeats) {
             _frame = action.target.clamp(0, _document.frames - 1).toInt();
           }
@@ -817,12 +825,12 @@ extension CanvasPlayback on CanvasController {
       if (a.frame != _frame || a.label.isEmpty || !a.showLabel) continue;
       if (a.kind == TimelineActionKind.stop &&
           !playing &&
-          _stoppedAt == a.frame) {
+          _playbackState.stoppedAt == a.frame) {
         return a;
       }
       if (a.kind == TimelineActionKind.pause &&
           playing &&
-          _loopCounts.containsKey(a.frame)) {
+          _playbackState.loopCounts.containsKey(a.frame)) {
         return a;
       }
     }
@@ -837,22 +845,22 @@ extension CanvasPlayback on CanvasController {
     if (turned) {
       notifyListeners();
     } else {
-      _playheadOnly = true;
+      _playbackState.playheadOnly = true;
       try {
         _notifyRapid(view: true);
       } finally {
-        _playheadOnly = false;
+        _playbackState.playheadOnly = false;
       }
     }
   }
 
   /// notifyingPlayhead is whether only the playhead moving is being told
   /// of: what does not follow it (an unautomated mixer) need not rebuild.
-  bool get notifyingPlayhead => _playheadOnly;
+  bool get notifyingPlayhead => _playbackState.playheadOnly;
 
   /// counterTicks counts the running counters' moves, for the stage's
   /// painter to see a change: counts are not in the document.
-  int get counterTicks => _counterTicks;
+  int get counterTicks => _playbackState.counterTicks;
 
   /// counterValue is what [e] is showing now: a clock shows the time of day,
   /// anything else wherever its own count has got to.
@@ -866,14 +874,15 @@ extension CanvasPlayback on CanvasController {
       if (count == null) return e.from;
       return (_game?.countOf(_document, count.id) ?? count.start).toDouble();
     }
-    return _counters[e.id] ?? e.from;
+    return _playbackState.counters[e.id] ?? e.from;
   }
 
   /// counterRunning is whether [e] is counting now: its own `running` is
   /// where it starts. A clock is always running.
   bool counterRunning(CounterElement e) =>
       e.live &&
-      (e.source == CounterSource.clock || _countersRunning.contains(e.id));
+      (e.source == CounterSource.clock ||
+          _playbackState.countersRunning.contains(e.id));
 
   /// startCounters starts every counter set to start running, as opening a
   /// canvas with a clock on it should.
@@ -890,12 +899,12 @@ extension CanvasPlayback on CanvasController {
     if (!e.live) return true;
     switch (button) {
       case CounterButton.startStop:
-        _runCounter(e, !_countersRunning.contains(e.id));
+        _runCounter(e, !_playbackState.countersRunning.contains(e.id));
         return true;
       case CounterButton.reset:
-        _counters[e.id] = e.from;
+        _playbackState.counters[e.id] = e.from;
         _countersSince[e.id] = DateTime.now();
-        _counterTicks++;
+        _playbackState.counterTicks++;
         notifyListeners();
         return true;
       case CounterButton.input:
@@ -906,22 +915,22 @@ extension CanvasPlayback on CanvasController {
   /// setCounterValue answers the Set button: the number to count on from.
   /// It does not start or stop anything.
   void setCounterValue(CounterElement e, double value) {
-    _counters[e.id] = value;
+    _playbackState.counters[e.id] = value;
     _countersSince[e.id] = DateTime.now();
-    _counterTicks++;
+    _playbackState.counterTicks++;
     notifyListeners();
   }
 
   void _runCounter(CounterElement e, bool on) {
     if (on) {
-      _counters.putIfAbsent(e.id, () => e.from);
+      _playbackState.counters.putIfAbsent(e.id, () => e.from);
       _countersSince[e.id] = DateTime.now();
-      _countersRunning.add(e.id);
-      _counterTicks++;
+      _playbackState.countersRunning.add(e.id);
+      _playbackState.counterTicks++;
       _startCounterTimer();
     } else {
-      _countersRunning.remove(e.id);
-      if (_countersRunning.isEmpty) {
+      _playbackState.countersRunning.remove(e.id);
+      if (_playbackState.countersRunning.isEmpty) {
         _counterTimer?.cancel();
         _counterTimer = null;
       }
@@ -942,13 +951,13 @@ extension CanvasPlayback on CanvasController {
   /// time whenever the window is busy.
   @visibleForTesting
   void tickCounters({DateTime? now}) {
-    if (_countersRunning.isEmpty) return;
+    if (_playbackState.countersRunning.isEmpty) return;
     var at = now ?? DateTime.now();
     var moved = false;
-    for (var id in _countersRunning.toList()) {
+    for (var id in _playbackState.countersRunning.toList()) {
       var e = _document.elementById(id);
       if (e is! CounterElement || !e.live) {
-        _countersRunning.remove(id);
+        _playbackState.countersRunning.remove(id);
         continue;
       }
       var since = _countersSince[id] ?? at;
@@ -956,7 +965,7 @@ extension CanvasPlayback on CanvasController {
       if (seconds <= 0) continue;
       _countersSince[id] = at;
 
-      var value = _counters[id] ?? e.from;
+      var value = _playbackState.counters[id] ?? e.from;
       // Towards the far end, whichever way round the two ends are: the rate
       // is how fast, not which way.
       var step = e.rate.abs() * seconds * (e.span < 0 ? -1 : 1);
@@ -971,18 +980,18 @@ extension CanvasPlayback on CanvasController {
           value = span <= 0 ? e.from : e.from + (over % span) * (e.span.sign);
         } else {
           value = e.to;
-          _countersRunning.remove(id);
+          _playbackState.countersRunning.remove(id);
         }
       }
-      _counters[id] = value;
+      _playbackState.counters[id] = value;
       moved = true;
     }
-    if (_countersRunning.isEmpty) {
+    if (_playbackState.countersRunning.isEmpty) {
       _counterTimer?.cancel();
       _counterTimer = null;
     }
     if (moved) {
-      _counterTicks++;
+      _playbackState.counterTicks++;
       // Counts are not in the canvas: see _notifyPlayhead.
       _notifyView();
     }
@@ -1090,4 +1099,83 @@ extension CanvasPlayback on CanvasController {
     }
     return null;
   }
+}
+
+/// _PlaybackState is what CanvasPlayback keeps between calls, here beside the code that
+/// uses it. The controller holds one, as _playbackState; most fields are read and
+/// set through CanvasPlayback's getters and setters above, which say what each is.
+class _PlaybackState {
+  /// playheadOnly is set only while notifyingPlayhead runs.
+  bool playheadOnly = false;
+
+  /// loopCounts is how often each loop marker has fired, for repeat limits.
+  final Map<int, int> loopCounts = {};
+
+  /// stoppedAt is the frame a stop marker last stopped playback on.
+  int? stoppedAt;
+
+  /// clockFrames is how many frames the playhead has moved since playback
+  /// started. It keeps time by the clock, not by counting ticks, which come
+  /// late when the app is busy and would leave it behind the sound.
+  int clockFrames = 0;
+
+  /// playWatch is the time since Play, read between ticks (betweenFrames).
+  Stopwatch playWatch = Stopwatch();
+
+  /// clockShift is how far, in seconds, the playhead's clock has been moved
+  /// to keep with the sound -- see _followSound.
+  double clockShift = 0;
+
+  /// playedFrom is the scene and frame the last Play started from.
+  (int, int)? playedFrom;
+
+  bool metronome = false;
+
+  final Map<MixerSection, BandState> bandStates = {
+    for (var s in MixerSection.values) s: BandState.shown,
+  };
+
+  final Set<String> flippedRows = {};
+
+  Object? flippedRowsAt;
+
+  bool returnsShown = true;
+
+  bool followPlayhead = true;
+
+  bool looping = false;
+
+  (int, int)? loop;
+
+  /// counters is what each live counter shows, by element id. Not on the
+  /// element: writing each tick into the document would make a clock an
+  /// unsaved change every second and flood the undo history.
+  final Map<String, double> counters = {};
+
+  /// countersRunning is which of them are counting, and _countersSince when
+  /// each was last read, so a tick advances by the time actually passed.
+  final Set<String> countersRunning = {};
+
+  int counterTicks = 0;
+
+  /// motionPainted is the last slot-clock frame painted, slots alone playing.
+  int motionPainted = -1;
+
+  BandState motionSlots = BandState.shown;
+
+  bool mixerRailFolded = false;
+
+  double cueColumnWidth = 96;
+
+  double slotsCueWidth = 120;
+
+  /// The master's cue columns on a scene with cues of its own, each sized
+  /// apart from the scene's.
+  double masterCueColumnWidth = 96;
+
+  double slotsMasterCueWidth = 120;
+
+  int slotsPanelSize = 1;
+
+  bool slotsPanelNarrow = false;
 }
