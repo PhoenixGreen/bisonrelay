@@ -22,7 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_sheet_test.dart is Sheet music: a part written out as a score, the
 // score engraved, and a take practised against it -- waited for, played

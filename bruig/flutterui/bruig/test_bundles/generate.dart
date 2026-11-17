@@ -5,11 +5,20 @@
 //
 //   dart run test_bundles/generate.dart
 //
+// The files are shared out by how long each took (test_bundles/timings.json),
+// so the bundles finish together: the slowest bundle is the suite's time. A
+// file with no timing yet is guessed from its size. After a run made with
+// `sh test_bundles/run.sh --reporter json > run.json`, refresh the timings
+// and the bundles with
+//
+//   dart run test_bundles/generate.dart --timings run.json
+//
 // Run it again after adding or removing a test file:
 // test/test_bundles_cover_test.dart fails until it has been.
 //
 // The whole suite, bundled: test_bundles/run.sh. One file on its own, as
 // ever: flutter test test/<file>.
+import 'dart:convert';
 import 'dart:io';
 
 /// alone are the files that cannot share a process with others: each
@@ -33,13 +42,17 @@ const alone = {
   "test_bundles_cover_test.dart",
 };
 
-/// bundles is how many there are: about one for each core the machine
-/// runs them on.
-const bundles = 8;
+/// bundles is how many there are: small enough that no process runs long --
+/// a process slows as it goes, and 16 ran the suite 30% faster than 8.
+const bundles = 16;
 
 final _bundle = RegExp(r"bundle_\d+_test\.dart$");
 
-void main() {
+void main(List<String> args) {
+  if (args.length == 2 && args.first == "--timings") {
+    _saveTimings(args.last);
+  }
+  var timings = _timings();
   var dir = Directory("test");
   var files = [
     for (var f in dir.listSync())
@@ -47,17 +60,29 @@ void main() {
           f.path.endsWith("_test.dart") &&
           !alone.contains(f.uri.pathSegments.last))
         f,
-  ]..sort((a, b) => b.lengthSync().compareTo(a.lengthSync()));
-  // Shared out by size, the largest first, each to the lightest bundle.
+  ];
+  // A file not timed yet is guessed from its size, at the rate the timed
+  // files ran at.
+  var timedBytes = 0, timedSeconds = 0.0;
+  for (var f in files) {
+    if (timings[_name(f)] case var t?) {
+      timedBytes += f.lengthSync();
+      timedSeconds += t;
+    }
+  }
+  var perByte = timedBytes == 0 ? 1.0 : timedSeconds / timedBytes;
+  double cost(File f) => timings[_name(f)] ?? f.lengthSync() * perByte;
+  files.sort((a, b) => cost(b).compareTo(cost(a)));
+  // Shared out by time, the longest first, each to the lightest bundle.
   var groups = List.generate(bundles, (_) => <File>[]);
-  var weights = List.filled(bundles, 0);
+  var weights = List.filled(bundles, 0.0);
   for (var f in files) {
     var i = 0;
     for (var k = 1; k < bundles; k++) {
       if (weights[k] < weights[i]) i = k;
     }
     groups[i].add(f);
-    weights[i] += f.lengthSync();
+    weights[i] += cost(f);
   }
   var out = Directory("test_bundles");
   for (var old in out.listSync()) {
@@ -85,6 +110,71 @@ void main() {
     File("test_bundles/bundle_${i + 1}_test.dart")
         .writeAsStringSync("${lines.join("\n")}\n");
   }
-  stdout.writeln("${files.length} files in $bundles bundles; "
+  stdout.writeln("${files.length} files in $bundles bundles "
+      "(${[for (var w in weights) w.round()].join(", ")} s); "
       "${alone.length} run alone.");
+}
+
+String _name(File f) => f.uri.pathSegments.last;
+
+const _timingsFile = "test_bundles/timings.json";
+
+/// _timings is how many seconds each test file's tests took, by file name.
+Map<String, double> _timings() {
+  var f = File(_timingsFile);
+  if (!f.existsSync()) return {};
+  return {
+    for (var MapEntry(:key, :value)
+        in (jsonDecode(f.readAsStringSync()) as Map).entries)
+      key as String: (value as num).toDouble(),
+  };
+}
+
+/// _saveTimings writes timings.json from a run's json report: the tests'
+/// time summed for each file -- the bundle's group a file is wrapped in, or
+/// the file run alone.
+void _saveTimings(String report) {
+  var suites = <int, String>{}, groups = <int, String>{};
+  var started = <int, (int, String)>{};
+  var seconds = <String, double>{};
+  for (var line in File(report).readAsLinesSync()) {
+    if (!line.startsWith("{")) continue;
+    Map<String, dynamic> e;
+    try {
+      e = jsonDecode(line) as Map<String, dynamic>;
+    } catch (_) {
+      continue;
+    }
+    switch (e["type"]) {
+      case "suite":
+        suites[e["suite"]["id"]] = (e["suite"]["path"] as String).split("/").last;
+      case "group":
+        groups[e["group"]["id"]] = e["group"]["name"] ?? "";
+      case "testStart":
+        var t = e["test"];
+        var file = suites[t["suiteID"]] ?? "";
+        for (var g in (t["groupIDs"] as List? ?? const [])) {
+          var name = (groups[g] ?? "").split(" ").first;
+          if (name.endsWith("_test.dart")) {
+            file = name;
+            break;
+          }
+        }
+        started[t["id"]] = (e["time"] as int, file);
+      case "testDone":
+        if (started.remove(e["testID"]) case (var at, var file)?) {
+          if (e["hidden"] == true || _bundle.hasMatch(file)) break;
+          seconds[file] =
+              (seconds[file] ?? 0) + ((e["time"] as int) - at) / 1000;
+        }
+    }
+  }
+  var sorted = Map.fromEntries(seconds.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key)));
+  File(_timingsFile).writeAsStringSync(
+      "${const JsonEncoder.withIndent(" ").convert({
+    for (var MapEntry(:key, :value) in sorted.entries)
+      key: double.parse(value.toStringAsFixed(1)),
+  })}\n");
+  stdout.writeln("timings for ${seconds.length} files written");
 }

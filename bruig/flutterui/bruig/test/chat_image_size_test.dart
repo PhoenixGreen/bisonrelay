@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'png_fixture.dart';
+import 'support/png_fixture.dart';
 
 // chat_image_size_test.dart covers the Chat area's Image size actually
 // reaching a picture in a message.

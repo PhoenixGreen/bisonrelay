@@ -22,7 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_device_extras_test.dart is what the prototype's cards had that ours
 // did not (Ken, 2026-11-08, "continue with the Still missing"): a drive run

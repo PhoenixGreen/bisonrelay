@@ -11,7 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_page_style_test.dart is a whole page in one data style, and a
 // page's data laid out over it (Ken, 2026-11-17, the improvements report's

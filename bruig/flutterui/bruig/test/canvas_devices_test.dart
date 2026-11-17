@@ -19,8 +19,8 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_chain_helpers.dart';
 
 // canvas_devices_test.dart is the devices beside the reverb and the delay --
 // gate, auto filter, chorus, flanger, phaser, auto pan, saturator,

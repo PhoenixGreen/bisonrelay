@@ -14,7 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_chart_play_test.dart is a chart in motion and its live words
 // (prototype v6): words in braces worked out from the numbers, whole ones

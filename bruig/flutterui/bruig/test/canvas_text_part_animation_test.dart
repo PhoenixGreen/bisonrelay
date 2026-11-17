@@ -13,7 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_arrival_fixture.dart';
+import 'support/canvas_arrival_fixture.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';

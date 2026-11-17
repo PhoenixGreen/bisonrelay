@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_slot_cues_test.dart is per-canvas cues (Ken, 2026-11-10: "when you move
 // to a scene like whispering wood, you start to get some strange overlaps

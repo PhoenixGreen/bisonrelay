@@ -17,7 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_camera_lens_test.dart is the 2D Camera's lens (Ken, 2026-11-14:
 // "useful camera settings like depth of field"): roll, depth of field by

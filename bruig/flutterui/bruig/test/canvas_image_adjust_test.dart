@@ -26,7 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_image_adjust_test.dart is an adjustment layer: saved, drawn through
 // the real shader over what is under it, and set from the panel.

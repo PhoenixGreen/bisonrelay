@@ -17,7 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_score_channels_test.dart is each part of a score playing on an
 // instrument channel of its own, its notes made from the score at every

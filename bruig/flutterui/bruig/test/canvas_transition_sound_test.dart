@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_transition_sound_test.dart is a transition's Sound row: the sound
 // picked can be heard on its own first, to see it is the one wanted (Ken,

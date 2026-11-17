@@ -16,7 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_curves_view_test.dart is the Curves made easier to work in (Ken,
 // 2026-11-14): pinch and scroll to move about, a playhead to drag, Delete

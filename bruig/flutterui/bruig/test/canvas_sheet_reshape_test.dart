@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_sheet_reshape_test.dart is a sheet made from another (Ken,
 // 2026-11-17, the improvements report's second item): long, wide, grouped

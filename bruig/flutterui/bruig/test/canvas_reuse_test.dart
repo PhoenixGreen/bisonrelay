@@ -14,7 +14,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 import 'package:provider/provider.dart';
 
 // canvas_reuse_test.dart is one design used in many places: a named text

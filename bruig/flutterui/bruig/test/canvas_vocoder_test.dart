@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_vocoder_test.dart is the Vocoder: a voice's bands laid onto a
 // carrier -- hiss, a buzz, the voice's own pitch, or another channel --

@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_score_roll_test.dart is a score part edited in the piano roll (Ken,
 // 2026-11-14): shown as written, and what is drawn written back as notation

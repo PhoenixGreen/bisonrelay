@@ -10,8 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'dart:convert';
 
-import 'plugin_test_support.dart';
-import 'png_fixture.dart';
+import 'support/plugin_test_support.dart';
+import 'support/png_fixture.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_prefs_test.dart covers the overrides: what the user has told the
 // writing tools to stop reporting, and the session switch that silences the

@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_video_ffmpeg_test.dart is the canvas asking a real ffmpeg about a
 // real video: what it is, a still from it, its sound, and its frames.

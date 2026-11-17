@@ -30,7 +30,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_speech_device_test.dart is the Speech device: a script with its
 // cues, spoken by our own voices (Kokoro) or by ElevenLabs, put together as

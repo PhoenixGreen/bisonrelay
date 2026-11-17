@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_speech_view_test.dart is the Speech view as Ken asked for it
 // (2026-11-08): opened, it fills the Chain as the clip editor does -- no

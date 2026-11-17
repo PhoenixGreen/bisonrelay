@@ -22,7 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_expressive_speech_test.dart is the Speech device line by line:
 // the script cut into lines, each with how it is said; the expressive

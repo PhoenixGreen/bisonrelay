@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // plugin_widgets_test.dart covers what a plugin is able to draw, which is the
 // whole of what a plugin is able to do in any slot -- so a gap here is a gap

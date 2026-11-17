@@ -16,7 +16,7 @@ import 'package:flutter/material.dart' hide Canvas, Paint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_chain_helpers.dart';
 
 // canvas_motion_bake_test.dart is the prototype's "Bake into keys": what a
 // move device does to an element made keys in a clip of its own -- the same

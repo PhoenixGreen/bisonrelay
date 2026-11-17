@@ -21,7 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_image_effects_test.dart is a layer's effects and a texture layer:
 // saved, and drawn -- read back pixel by pixel.

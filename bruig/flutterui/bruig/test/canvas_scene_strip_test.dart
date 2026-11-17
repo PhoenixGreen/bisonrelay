@@ -14,8 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_timeline_menus.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_timeline_menus.dart';
 
 // canvas_scene_strip_test.dart is the row of scenes between the ruler and the
 // keyframes while Play runs the whole document: there only then, a box per

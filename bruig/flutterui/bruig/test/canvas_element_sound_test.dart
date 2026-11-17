@@ -21,7 +21,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // An element's own sound: a channel it owns, under its rows on the timeline
 // and beside its strip in the mixer; gone with it; sent whole into a return

@@ -37,11 +37,11 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_media.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_arrival_fixture.dart';
+import 'support/canvas_arrival_fixture.dart';
 import 'package:path/path.dart' as path;
 // ignore: depend_on_referenced_packages
 import 'package:xml/xml.dart';
-import 'motion_convert.dart';
+import 'support/motion_convert.dart';
 
 // canvas_epub_layers_test.dart is a page of an interactive EPUB laid out as
 // its elements, each animated by the reader: that nothing is a film of the

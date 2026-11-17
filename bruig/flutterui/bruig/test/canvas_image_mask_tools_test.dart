@@ -24,7 +24,7 @@ import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_image_mask_tools_test.dart is the mask tools used as they are used:
 // strokes, lassos and fades dragged across a picture on the stage, a subject

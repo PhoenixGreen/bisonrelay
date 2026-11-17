@@ -23,7 +23,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // What the Canvas costs when nobody is using it: found when the whole app
 // had grown slow. A page left goes quiet; the mixer's meters rest; playing

@@ -3,7 +3,7 @@ import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_section_test.dart covers the Writing destination: that it exists
 // exactly while the writing tools do, that it is offered in the menu settings

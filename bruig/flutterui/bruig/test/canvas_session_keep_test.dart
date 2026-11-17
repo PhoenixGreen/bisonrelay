@@ -18,8 +18,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
-import 'canvas_audio_fake.dart';
-import 'canvas_store_age.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_store_age.dart';
 
 // canvas_session_keep_test.dart is what the clip slots and the Speech device
 // keep: saved with the canvas, read back after a restart -- and the sounds

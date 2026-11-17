@@ -23,7 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_panel_kit_test.dart is the sectioned settings panel's parts, pumped
 // and pressed: the stepper, the sections, the search and fold-all over them,

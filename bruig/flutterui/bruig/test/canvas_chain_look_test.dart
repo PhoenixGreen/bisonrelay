@@ -21,8 +21,8 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_chain_helpers.dart';
 
 // canvas_chain_look_test.dart is the Chain drawn as the prototype draws it:
 // one header row -- what it shows, its sound or motion, its views, its

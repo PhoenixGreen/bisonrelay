@@ -24,8 +24,8 @@ import 'package:flutter/material.dart' hide Canvas, Paint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_chain_helpers.dart';
 
 // canvas_motion_devices_test.dart is an element's motion chain beyond its
 // clips: pose devices left of its drawing, pulled -- a Time device asking

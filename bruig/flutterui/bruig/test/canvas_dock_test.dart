@@ -20,9 +20,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_chain_helpers.dart';
-import 'canvas_timeline_menus.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_chain_helpers.dart';
+import 'support/canvas_timeline_menus.dart';
 
 // canvas_dock_test.dart is the panels under the canvas: where each opens
 // (main, left beside it, above), one at a time in a place, the layouts, and

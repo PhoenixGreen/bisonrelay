@@ -7,7 +7,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_popup_test.dart covers what a right-click on a flagged word
 // actually offers. The gap it was originally written for: the composer showed

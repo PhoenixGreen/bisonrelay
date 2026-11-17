@@ -9,7 +9,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_nav_test.dart covers how the sidebar's four parts are arranged.
 //

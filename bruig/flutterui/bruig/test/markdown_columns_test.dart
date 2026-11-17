@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'png_fixture.dart';
+import 'support/png_fixture.dart';
 
 // markdown_columns_test.dart covers columns: a block syntax Bison Relay adds,
 // because Markdown has none of its own in any dialect worth following.

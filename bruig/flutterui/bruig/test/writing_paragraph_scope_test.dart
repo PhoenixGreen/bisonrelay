@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_paragraph_scope_test.dart covers the checker reviewing one
 // paragraph at a time and keeping the answers.

@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_responsive_bar_test.dart is the settings band's half of designing
 // one canvas for several shapes: which shapes are marked, and the way out of

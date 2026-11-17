@@ -17,7 +17,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // A game whose things move by their slots' clips: patrols, platforms and a
 // coin's pop launched as the scene starts, on a touch, on a count -- and

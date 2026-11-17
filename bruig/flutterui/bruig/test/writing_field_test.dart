@@ -7,7 +7,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_field_test.dart covers the marks on the text: that they are there,
 // that they are the right colour, and that they change the moment anything

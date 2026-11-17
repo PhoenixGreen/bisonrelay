@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_play_bar_test.dart is the play bar as Ken redesigned it (2026-11-08):
 // the panels on the left, play and the timer in the middle, Back to the

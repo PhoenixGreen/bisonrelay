@@ -17,7 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_data_views_test.dart is each Data element's own view of its sheet
 // (Ken's plan: "the table shows all 20 clubs, the chart the top 5") --

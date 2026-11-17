@@ -7,7 +7,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_sidebar_test.dart mounts the arrangement the post editor and the
 // feed screen really use -- a composer that offers its text, a host that

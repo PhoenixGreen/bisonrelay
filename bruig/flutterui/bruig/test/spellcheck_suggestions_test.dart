@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:golib_plugin/definitions.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // spellcheck_suggestions_test.dart covers the checker's two jobs -- flagging
 // unknown words with useful corrections, and running the provider's grammar

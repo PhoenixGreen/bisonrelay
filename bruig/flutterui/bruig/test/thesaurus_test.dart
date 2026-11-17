@@ -3,7 +3,7 @@ import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // thesaurus_test.dart covers the app's side of the thesaurus capability:
 // which selections are worth asking a provider about, and that the answer is

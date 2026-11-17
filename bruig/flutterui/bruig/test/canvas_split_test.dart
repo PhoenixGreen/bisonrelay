@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_split_test.dart is a Split: its sound into branches side by side,
 // each its own chain of devices, and back together -- in parallel, as its

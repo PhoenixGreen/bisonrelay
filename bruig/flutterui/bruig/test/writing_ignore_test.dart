@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_ignore_test.dart covers dismissing one phrase under one rule.
 //

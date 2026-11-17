@@ -40,7 +40,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/temp_dirs.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_session_test.dart is the session view: clips in slots, launched on
 // the next bar, scenes, stopping, the launch modes, recording into a slot,
@@ -208,7 +209,7 @@ void main() {
 
     tearDown(() async {
       CanvasStorage.rootOverride = null;
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
 
     AudioElement sound(String elementId, {String channel = ""}) =>
@@ -1298,7 +1299,7 @@ void main() {
 
     tearDown(() async {
       CanvasStorage.rootOverride = null;
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
 
     Future<CanvasController> show(WidgetTester tester) async {

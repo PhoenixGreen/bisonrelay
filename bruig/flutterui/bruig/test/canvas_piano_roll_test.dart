@@ -24,7 +24,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_piano_roll_test.dart is the piano roll -- notes drawn, moved,
 // stretched, quantised, their velocities -- and the controllers' curves in

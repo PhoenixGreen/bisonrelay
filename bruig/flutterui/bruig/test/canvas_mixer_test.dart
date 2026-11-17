@@ -32,8 +32,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_chain_helpers.dart';
 import 'canvas_video_element_test.dart' show FakeFrames;
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';

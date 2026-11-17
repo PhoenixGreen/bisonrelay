@@ -17,8 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_timeline_menus.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_timeline_menus.dart';
 
 // canvas_transport_test.dart is the timeline's control bar: where the
 // playhead is said three ways and read back, tap tempo, the loop, Stop,

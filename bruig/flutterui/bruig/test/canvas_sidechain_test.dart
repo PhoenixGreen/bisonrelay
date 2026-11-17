@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_sidechain_test.dart is a strip listening to another channel: a
 // gate opened, or a compressor pushed down, by another channel's sound --

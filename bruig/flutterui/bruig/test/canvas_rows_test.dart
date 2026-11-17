@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_rows_test.dart is the one list of rows the timeline, the mixer and
 // the slots show (Ken, 2026-11-08: one channel per element): each element

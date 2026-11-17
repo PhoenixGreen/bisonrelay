@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_clip_tools_test.dart is an audio clip's further tools in its
 // editor: fades as long as wanted and the way they go, slicing it into

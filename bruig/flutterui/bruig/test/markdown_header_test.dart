@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'header_harness.dart';
+import 'support/header_harness.dart';
 
 // markdown_header_test.dart covers the banner: its rows, how each divides,
 // and the height they are held to.

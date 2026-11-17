@@ -32,8 +32,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_store_age.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_store_age.dart';
 
 // canvas_audio_element_test.dart is the Audio element in the editor: what it
 // saves, how it is stored and sent, how it is drawn, what the controller does

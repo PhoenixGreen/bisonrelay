@@ -29,7 +29,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_surround_test.dart is where a sound is heard from: the speakers a
 // piece is mixed for, a channel's place among them, a sound placed by the

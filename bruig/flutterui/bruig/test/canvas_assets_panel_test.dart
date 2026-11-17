@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_assets_panel_test.dart is the Assets sidebar: its three sections, a
 // click that puts an asset on the canvas the shape it is, a remove that says

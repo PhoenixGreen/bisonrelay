@@ -16,7 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_fretting_test.dart is a guitar's and a bass's notes on the neck
 // (Ken, 2026-11-14: "when playing a single note further down the neck it

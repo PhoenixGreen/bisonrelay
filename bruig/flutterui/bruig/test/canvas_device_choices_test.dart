@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_device_choices_test.dart is a sound device's settings that are one
 // of a few -- a filter's type, a wobble's shape, a saturator's character --

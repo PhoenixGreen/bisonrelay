@@ -14,7 +14,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'canvas_store_age.dart';
+import 'support/canvas_store_age.dart';
 
 // canvas_data_source_test.dart is about numbers arriving from somewhere else
 // and becoming a table.

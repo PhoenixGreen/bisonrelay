@@ -18,7 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 import 'canvas_video_element_test.dart' show FakeFrames;
 
 // canvas_stock_panel_test.dart is the Stock section with a pretend network:

@@ -31,7 +31,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_video_element_test.dart is the Video element: what it saves, how the runtime
 // keeps its picture in step with its sound, the green screen, and the stage

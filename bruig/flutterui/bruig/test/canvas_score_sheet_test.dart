@@ -31,7 +31,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_score_sheet_test.dart is a Sheet music element showing a part of a
 // score (Ken, 2026-11-14): engraved from the score, a page at a time; the

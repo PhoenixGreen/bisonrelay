@@ -26,7 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as path;
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_scene_bus_test.dart is a scene as a bus: everything heard in a
 // scene -- its channels, its backdrop's, its transition's -- summed through

@@ -36,11 +36,11 @@ import 'package:flutter/services.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_arrival_fixture.dart';
+import 'support/canvas_arrival_fixture.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 

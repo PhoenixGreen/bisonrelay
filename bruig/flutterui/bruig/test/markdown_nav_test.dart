@@ -6,7 +6,7 @@ import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_specs.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'header_harness.dart';
+import 'support/header_harness.dart';
 
 // markdown_nav_test.dart covers a bar of links: what it reads, and where
 // in a banner it ends up.

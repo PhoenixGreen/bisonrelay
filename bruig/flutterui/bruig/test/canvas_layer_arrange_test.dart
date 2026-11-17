@@ -21,7 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_layer_arrange_test.dart is several of a picture's layers worked on
 // at once: picked together on the canvas and in the panel, lined up and

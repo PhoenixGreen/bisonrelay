@@ -20,7 +20,7 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_score_studio_test.dart is the Score Studio (Ken, 2026-11-14): a
 // score written as MuseScore writes one -- note input from the keys, a

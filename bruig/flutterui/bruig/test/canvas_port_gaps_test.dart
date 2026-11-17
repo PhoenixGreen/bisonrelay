@@ -31,7 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_port_gaps_test.dart is the approved mixer/timeline design's pieces
 // the audit found missing (BUILD_PLAN "Port gaps" 6-13): a strip's ×N and

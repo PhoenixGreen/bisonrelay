@@ -8,7 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
-import 'motion_convert.dart';
+import 'support/motion_convert.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';

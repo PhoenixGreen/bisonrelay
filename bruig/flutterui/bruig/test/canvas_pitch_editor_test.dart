@@ -19,7 +19,7 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_pitch_editor_test.dart is the Pitch editor: a recording's notes
 // found from its pitch, moved, split, glued, straightened, and the

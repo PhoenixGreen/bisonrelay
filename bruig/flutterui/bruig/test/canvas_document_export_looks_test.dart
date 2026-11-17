@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // A book or a PDF is drawn with the looks' shaders as a video is (Ken,
 // 2026-11-13: the Decred infographic's book had none of the worn print its

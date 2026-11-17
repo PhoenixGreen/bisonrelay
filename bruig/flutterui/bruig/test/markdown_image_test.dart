@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'png_fixture.dart';
+import 'support/png_fixture.dart';
 
 // markdown_image_test.dart covers how wide a picture in a post is drawn.
 //

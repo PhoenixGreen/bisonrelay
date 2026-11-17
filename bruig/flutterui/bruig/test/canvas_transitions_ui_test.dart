@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show DeviceKnob;
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
     show StudioDrop;
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_chain_helpers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';

@@ -25,7 +25,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_team_pitch_test.dart is a team standing on a pitch: that it goes
 // wherever the pitch goes, that a player dragged lands where the pointer is,

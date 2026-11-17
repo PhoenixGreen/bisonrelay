@@ -31,7 +31,7 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_instances_test.dart is an element reused: one element drawn many
 // times, each copy with its own place and start, and -- Ken, 2026-11-08 --

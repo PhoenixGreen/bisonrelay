@@ -14,7 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
-import 'canvas_store_age.dart';
+import 'support/canvas_store_age.dart';
 
 // canvas_storage_test.dart is about the security boundary and the file
 // handling behind it.

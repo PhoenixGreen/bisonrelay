@@ -5,7 +5,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

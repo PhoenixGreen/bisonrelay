@@ -17,7 +17,7 @@ import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_saved_presets_test.dart is a scene or a whole canvas somebody wants
 // again.

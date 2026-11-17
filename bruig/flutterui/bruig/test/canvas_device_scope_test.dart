@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_device_scope_test.dart is a device's display showing the real
 // sound (Ken, 2026-11-08: "the Gate visual doesn't show real audio

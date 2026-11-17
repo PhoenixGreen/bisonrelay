@@ -17,7 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_interactive_channels_test.dart is a sound on the canvas that plays
 // when pressed: on a channel of its own like every other sound, so it has a

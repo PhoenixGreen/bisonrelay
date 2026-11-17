@@ -15,7 +15,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_motion_trail_test.dart is the prototype's trail and onion skin: the
 // element whose motion the Chain is open on drawn with the path it takes,

@@ -15,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_chart_reading_test.dart is how a chart reads its sheet in the
 // Charts tab's ways (prototype v6): rows with the same label brought

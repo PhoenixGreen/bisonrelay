@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_timeline_clips_test.dart is a sound on the timeline as a clip (Ken,
 // 2026-11-07: "a clip and a timeline clip are interchangeable"): opened in

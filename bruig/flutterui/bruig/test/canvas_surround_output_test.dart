@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_surround_output_test.dart is where a piece's sound goes out: the
 // master's Output (its speakers, a meter each, and which are heard here --

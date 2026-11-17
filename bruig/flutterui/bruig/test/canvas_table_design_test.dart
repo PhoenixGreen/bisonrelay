@@ -21,8 +21,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_table_design_test.dart is the Data Studio's Table tab (Ken,
 // 2026-11-15: a design view to "select cells or rows or columns or tables

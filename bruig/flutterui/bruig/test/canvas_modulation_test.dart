@@ -24,7 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_modulation_test.dart is an LFO moving other devices' knobs: in a
 // sound's chain, block by block in the engine; in an element's motion, at

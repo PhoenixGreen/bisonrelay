@@ -18,7 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_analysers_test.dart is the Chain's analysers: the Scope, the
 // Stereo Image (goniometer and correlation), Loudness (BS.1770 momentary,

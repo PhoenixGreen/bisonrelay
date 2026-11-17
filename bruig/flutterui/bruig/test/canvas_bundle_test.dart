@@ -11,7 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'canvas_store_age.dart';
+import 'support/canvas_store_age.dart';
 
 // canvas_bundle_test.dart is about a canvas surviving the journey to somebody
 // else's machine.

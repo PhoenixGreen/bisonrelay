@@ -25,7 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_data_studio_test.dart is the Data Studio (Ken, 2026-11-15: Table
 // and Chart made one Data element, built in a full-screen studio like

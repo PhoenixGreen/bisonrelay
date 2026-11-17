@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // spellcheck_capability_test.dart covers the ordering the spellcheck
 // capability depends on, which no amount of reading the class reveals: it is

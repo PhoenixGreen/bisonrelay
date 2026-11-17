@@ -19,7 +19,7 @@ import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 import 'canvas_score_sheet_test.dart' as sheet;
 
 // canvas_metronome_test.dart is the metronome (Ken, 2026-11-15: "a stand

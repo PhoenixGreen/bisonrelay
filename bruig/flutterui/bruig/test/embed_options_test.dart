@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'png_fixture.dart';
+import 'support/png_fixture.dart';
 
 // embed_options_test.dart covers shrinking a picture before it goes into a
 // post: a maximum width, then compression of what is left.

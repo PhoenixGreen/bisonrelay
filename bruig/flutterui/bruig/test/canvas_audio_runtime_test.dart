@@ -5,7 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_audio_runtime_test.dart is the rules about what plays, against an
 // engine whose clock the test moves. See audio_runtime.dart.

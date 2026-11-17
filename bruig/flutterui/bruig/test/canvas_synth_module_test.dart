@@ -31,7 +31,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_synth_module_test.dart is synth modules on a canvas (Ken,
 // 2026-11-14: "separate, placeable canvas elements ... chainable on the

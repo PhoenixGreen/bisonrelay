@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_instrument_test.dart is the Instrument: an Audio element playing a
 // part -- its keyboard, its notes played live and recorded, read from a MIDI

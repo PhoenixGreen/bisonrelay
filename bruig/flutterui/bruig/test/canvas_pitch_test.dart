@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_pitch_test.dart is a voice's pitch: heard by YIN, and pulled to a
 // note by Auto-tune's PSOLA.

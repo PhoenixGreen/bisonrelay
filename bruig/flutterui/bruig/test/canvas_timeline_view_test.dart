@@ -28,8 +28,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_timeline_menus.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_timeline_menus.dart';
 
 // canvas_timeline_view_test.dart is the timeline as one piece: a view of the
 // frames shared by the keyframe strip and the channels, zoomed and scrolled;

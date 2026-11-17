@@ -18,8 +18,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_chain_helpers.dart';
 
 // canvas_vocaliser_test.dart is speech sung: a take's words as syllables,
 // a melody one note at a time, and each syllable moved onto its note.

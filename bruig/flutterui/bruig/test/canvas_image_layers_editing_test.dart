@@ -20,7 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_image_layers_editing_test.dart is a picture's layers worked on the
 // way they are worked on: opened with a double click, dragged about on the

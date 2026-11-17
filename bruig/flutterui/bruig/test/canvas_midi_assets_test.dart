@@ -22,7 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_midi_assets_test.dart is MIDI files among the sounds: kept in the
 // library, found by the Audio section's filter, played by a MIDI channel --

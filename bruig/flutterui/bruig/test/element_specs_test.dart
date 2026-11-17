@@ -8,7 +8,7 @@ import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_specs.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'header_harness.dart';
+import 'support/header_harness.dart';
 
 // element_specs_test.dart holds the panel's description of a block against
 // the parser that actually reads one.

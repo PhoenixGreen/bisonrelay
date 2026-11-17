@@ -9,7 +9,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'plugin_test_support.dart';
+import 'support/plugin_test_support.dart';
 
 // writing_checks_test.dart covers the third severity: a rule that asks rather
 // than tells.

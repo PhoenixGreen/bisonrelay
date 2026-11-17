@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'canvas_store_age.dart';
+import 'support/canvas_store_age.dart';
 import 'package:path/path.dart' as path;
 
 // canvas_library_test.dart is the Assets sidebar's library against real files:

@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_out_and_sides_test.dart is the chain prototype's Out trim at the
 // foot of every effect, and its Works on (mid or side) on a strip's EQ and

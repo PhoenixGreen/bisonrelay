@@ -13,7 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_clip_slices_test.dart is what the clip editor's prototype has
 // that ours did not (Ken, 2026-11-07): Normalise, slicing every 1/8 and

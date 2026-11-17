@@ -19,7 +19,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_phrasing_test.dart is the Phrasing panel: a take's words read --
 // their pitch and loudness -- and shaped after it is spoken, a word at a

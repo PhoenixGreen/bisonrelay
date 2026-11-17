@@ -14,7 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_freeze_test.dart freezes a real sound through a chain: rendered
 // with the miniaudio inside a built copy of the SoLoud plugin, as

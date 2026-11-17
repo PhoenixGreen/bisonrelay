@@ -21,8 +21,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_chain_helpers.dart';
 
 // canvas_midi_channel_test.dart is the rest of a MIDI channel: where its
 // notes come from (From), when it plays them (Monitor), the sustain pedal,

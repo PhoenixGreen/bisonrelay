@@ -13,7 +13,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'canvas_chain_helpers.dart';
+import 'support/canvas_chain_helpers.dart';
 
 // canvas_returns_ui_test.dart is sends and returns on the mixer: a dial per
 // return on each channel, the returns' own strips after the channels, adding

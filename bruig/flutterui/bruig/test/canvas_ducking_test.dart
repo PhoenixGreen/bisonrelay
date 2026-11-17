@@ -20,7 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_ducking_test.dart is a voice turning the music down while it
 // speaks: set on the voice's channel in the mixer, worked out from where the

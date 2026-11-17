@@ -28,7 +28,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_automation_test.dart is automation: a channel's settings moved
 // along the timeline by lanes of points -- read in straight lines, heard

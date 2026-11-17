@@ -13,7 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_strip_switch_test.dart is the Chain moved from one strip to
 // another: its EQ, compressor and the rest are the new strip's, not the

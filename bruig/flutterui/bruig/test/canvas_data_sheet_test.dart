@@ -17,7 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_data_sheet_test.dart is the Data element's sheets (Ken, 2026-11-15:
 // Table and Chart made one Data element, its data in sheets): a table and a

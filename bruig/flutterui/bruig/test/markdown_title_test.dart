@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'header_harness.dart';
+import 'support/header_harness.dart';
 
 // markdown_title_test.dart covers how a banner's words are set -- the half
 // of a header whose look belongs to whoever wrote the site.

@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_panels_kept_test.dart is how the panels under the canvas are kept
 // between visits -- the mixer and effects as they were left, and each

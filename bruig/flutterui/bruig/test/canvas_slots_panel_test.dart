@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_slots_panel_test.dart is the Slots panel as the approved design has
 // it (Ken, 2026-11-08: "like Bitwig's clip launcher"): a column for each row

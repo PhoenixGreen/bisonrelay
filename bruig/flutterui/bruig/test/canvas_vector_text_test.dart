@@ -21,7 +21,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_vector_text_test.dart is a drawing's text: the words set in the
 // font's own outlines, kept as text until its points are edited, and typed

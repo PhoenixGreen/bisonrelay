@@ -1,7 +1,7 @@
 import 'package:bruig/components/feed/image_header.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'png_fixture.dart';
+import 'support/png_fixture.dart';
 
 // The fixture builder is what several other tests measure against, so it has
 // to be right before they mean anything.

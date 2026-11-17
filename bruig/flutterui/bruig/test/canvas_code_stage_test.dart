@@ -32,7 +32,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_code_stage_test.dart is the Code and Run panels on the stage, as
 // the prototype Ken approved has them (2026-11-15): tabs shown, dragged

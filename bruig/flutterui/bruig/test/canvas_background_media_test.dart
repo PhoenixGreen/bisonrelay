@@ -27,7 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 import 'canvas_video_element_test.dart' show FakeFrames, solid;
 
 // canvas_background_media_test.dart is a background carrying a picture, a

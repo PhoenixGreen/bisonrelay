@@ -8,7 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // The editor's Play starts "The scene starts" clips as a published canvas
 // does -- from the top, and as each scene begins playing them all -- and

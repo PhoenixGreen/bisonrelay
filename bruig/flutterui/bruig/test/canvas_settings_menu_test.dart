@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_panel_helpers.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // The settings as a menu: the settings panel's icon swaps the sections down
 // the panel for a bar of their names, one shown at a time, with the

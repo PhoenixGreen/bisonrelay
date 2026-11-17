@@ -8,8 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
-import 'canvas_timeline_menus.dart';
+import 'support/canvas_audio_fake.dart';
+import 'support/canvas_timeline_menus.dart';
 
 // canvas_scene_timing_test.dart is time across the scenes of a run: stepping
 // through a join, transitions sized on the scene strip without moving the

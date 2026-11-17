@@ -27,7 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_clip_editor_test.dart is the clip editor -- Ableton's clip view:
 // a clip's start and loop, its gain, launch settings and follow action, its

@@ -21,7 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'canvas_audio_fake.dart';
+import 'support/canvas_audio_fake.dart';
 
 // canvas_data_connect_test.dart is Connect data (Ken, 2026-11-15: "how do
 // you ... import or use an API?"; the prototype's steps chosen 2026-11-16):
