@@ -51,6 +51,14 @@ typedef _LayoutKey = (
 
 final _layouts = <_LayoutKey, TextPainter>{};
 
+/// _partsKeys remembers a parts list written out for the key: a list never
+/// changes once made, and writing it out on every lookup cost more than
+/// the lookup.
+final _partsKeys = Expando<String>();
+
+String _partsKey(List<TextPart> parts) =>
+    [for (var p in parts) p.toJson()].toString();
+
 /// clearTextLayouts lets go of every text laid out and kept.
 void clearTextLayouts() {
   for (var painter in _layouts.values) {
@@ -61,6 +69,7 @@ void clearTextLayouts() {
     painter.dispose();
   }
   _labels.clear();
+  _fits.clear();
 }
 
 // _labels memoises short labels drawn in one style -- a knob's name, a line
@@ -187,7 +196,7 @@ TextPainter layoutText(
     fillWidth,
     // The gradient is baked into the style. See _LayoutKey.
     over?.size,
-    parts.isEmpty ? "" : [for (var p in parts) p.toJson()].toString(),
+    parts.isEmpty ? "" : (_partsKeys[parts] ??= _partsKey(parts)),
   );
   var hit = _layouts[key];
   if (hit != null) return hit;
@@ -423,7 +432,21 @@ double paintTextInBox(
 /// fitFontSize is the largest size at which [text] fits inside [box], for
 /// autoSize: a bisection, since wrapped height steps as words change lines.
 /// [columns] is how many columns it flows into; [box] is one column's box.
+/// _fits keeps fitFontSize's answers. An auto-sized text asked it on every
+/// frame, and each answer is fourteen paragraphs laid out and looked up.
+final _fits = <(String, TextSpec, Size, int), double>{};
+
+/// _fitCap is the number of answers kept: one a text and box size.
+const _fitCap = 1024;
+
 double fitFontSize(String text, TextSpec spec, Size box, {int columns = 1}) {
+  var key = (text, spec, box, columns);
+  if (_fits[key] case var hit?) return hit;
+  if (_fits.length >= _fitCap) _fits.remove(_fits.keys.first);
+  return _fits[key] = _fitFontSize(text, spec, box, columns);
+}
+
+double _fitFontSize(String text, TextSpec spec, Size box, int columns) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return spec.fontSize;
   var count = math.max(1, columns);
   var low = 4.0, high = box.height * 2 * count;

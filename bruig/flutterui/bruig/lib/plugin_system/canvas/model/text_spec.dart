@@ -474,8 +474,15 @@ class TextSpec {
           other.glowBlur == glowBlur &&
           other.glowColor == glowColor;
 
+  /// _hashes remembers each spec's hash: a spec never changes, and its
+  /// nineteen fields cost more to hash than the text caches keyed on it cost
+  /// to look up. A const spec cannot hold it, so an Expando does.
+  static final _hashes = Expando<int>();
+
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => _hashes[this] ??= _hash();
+
+  int _hash() => Object.hash(
         fontFamily,
         fontSize,
         weight,
