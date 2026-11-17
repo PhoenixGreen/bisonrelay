@@ -239,7 +239,9 @@ extension ChartsSlotsStage on ChartsDesignState {
           // A mark over the plot it sits in; writing over everything.
           if (best == null ||
               ChartsDesignState._rank(part.kind) >
-                  ChartsDesignState._rank(best.kind)) best = part;
+                  ChartsDesignState._rank(best.kind)) {
+            best = part;
+          }
         }
         if (best == null) return null;
         if (best.kind == ChartPartKind.mark) {
