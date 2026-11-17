@@ -697,7 +697,7 @@ extension CanvasGame on CanvasController {
     _waiting.clear();
     _gameState.found.clear();
     _practice = sheet.id;
-    sheetMarksOf = _sheetMarks;
+    sheetMarksOf = _sheetMarksHook;
     play();
     notifyListeners();
   }

@@ -2887,6 +2887,13 @@ class CanvasController extends ChangeNotifier {
 
   String? _vectorEditing;
 
+  /// _soloHook and _sheetMarksHook are this controller's answers to the
+  /// painters' hooks (vectorSoloOf, sheetMarksOf), each made once: a method
+  /// of an extension torn off is a new closure every time, never equal to
+  /// the last, so the hook could not otherwise be recognised to take down.
+  late final int? Function(VectorElement) _soloHook = _soloOf;
+  late final SheetMarks Function(SheetElement) _sheetMarksHook = _sheetMarks;
+
   /// _vectors is the state vectors.dart keeps: see _VectorState.
   final _VectorState _vectors = _VectorState();
 
@@ -3904,8 +3911,8 @@ class CanvasController extends ChangeNotifier {
       _game?.dispose();
       _game = null;
     }
-    if (sheetMarksOf == _sheetMarks) sheetMarksOf = null;
-    if (vectorSoloOf == _soloOf) vectorSoloOf = null;
+    if (sheetMarksOf == _sheetMarksHook) sheetMarksOf = null;
+    if (vectorSoloOf == _soloHook) vectorSoloOf = null;
     if (_spritePaint != null) {
       _spritePaint!.dispose();
       _spritePaint = null;

@@ -24,8 +24,8 @@ extension CanvasVectors on CanvasController {
     if (_vectors.solo == on) return;
     _vectors.solo = on;
     if (on) {
-      vectorSoloOf = _soloOf;
-    } else if (vectorSoloOf == _soloOf) {
+      vectorSoloOf = _soloHook;
+    } else if (vectorSoloOf == _soloHook) {
       vectorSoloOf = null;
     }
     notifyListeners();
@@ -1014,7 +1014,7 @@ extension CanvasVectors on CanvasController {
     }
     if (_vectors.solo) {
       _vectors.solo = false;
-      if (vectorSoloOf == _soloOf) vectorSoloOf = null;
+      if (vectorSoloOf == _soloHook) vectorSoloOf = null;
     }
     _vectors.items = const {};
     _vectors.lastSelect = VectorTool.select;
