@@ -112,27 +112,30 @@ void main() {
     expect(find.byKey(const ValueKey("transitionSoundHear")), findsNothing);
   });
 
-  for (var scale in const [0.65, 1.0, 1.5]) {
-    testWidgets("the row fits a card 400 wide, at text $scale", (tester) async {
-      var c = CanvasController(CanvasDocument(),
-          audioEngine: FakeEngine(const {whoosh: 1.5}));
-      addTearDown(c.dispose);
-      var t = const SceneTransition(kind: SceneTransitionKind.fade)
-          .copyWith(sound: whoosh, soundName: "Whoosh", soundLength: 1.5);
-      await tester.pumpWidget(framed(MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-          child: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                  width: 400,
-                  child: CanvasTransitionSound(
-                      value: t,
-                      onChanged: (_) {},
-                      onEvery: (_) {},
-                      onHear: () {}))))));
-      await settle(tester);
-      expect(find.byKey(const ValueKey("transitionSoundHear")), findsOneWidget);
-      expect(tester.takeException(), isNull);
+  testWidgets("the row fits a card 400 wide, at every text size",
+      (tester) async {
+    var c = CanvasController(CanvasDocument(),
+        audioEngine: FakeEngine(const {whoosh: 1.5}));
+    addTearDown(c.dispose);
+    var t = const SceneTransition(kind: SceneTransitionKind.fade)
+        .copyWith(sound: whoosh, soundName: "Whoosh", soundLength: 1.5);
+    setTestScreen(tester, const Size(800, 600));
+    await tester.pumpWidget(framed(Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+            width: 400,
+            child: CanvasTransitionSound(
+                value: t,
+                onChanged: (_) {},
+                onEvery: (_) {},
+                onHear: () {})))));
+    await settle(tester);
+    await sweepSizes(tester,
+        sizes: const [Size(800, 600)],
+        scales: const [0.65, 1.0, 1.5],
+        settle: 1, check: (at) {
+      expect(find.byKey(const ValueKey("transitionSoundHear")), findsOneWidget,
+          reason: at);
     });
-  }
+  });
 }

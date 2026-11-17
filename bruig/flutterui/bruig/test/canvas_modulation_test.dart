@@ -154,52 +154,52 @@ void main() {
   });
 
   group("the cards", () {
-    for (var scale in [1.0, 1.5]) {
-      testWidgets("an LFO is given a knob to move; it wears a ring, at $scale",
-          (tester) async {
-        var c = CanvasController(
-            CanvasDocument(frames: 100, elements: [
-              AudioElement(const ElementBase(id: "a", name: "Pad"),
-                  clip: const MediaClip(
-                      playlist: [MediaSource(assetId: "t", length: 2)],
-                      timed: true)),
-            ]),
-            audioEngine: FakeEngine({"t": 2}));
-        addTearDown(c.dispose);
-        c.setDevicesOf("a", [
-          const MixDevice(DeviceKind.autoFilter),
-          const MixDevice(DeviceKind.lfo),
-        ]);
-        c.openEffects("a");
-        setTestScreen(tester, const Size(2000, 900));
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-          ],
-          child: MaterialApp(
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  body: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => Column(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                CanvasMixer.effects(
-                                    controller: c,
-                                    height: 420,
-                                    onResize: (_) {},
-                                    onClose: () {}),
-                              ])))),
-        ));
+    // One mixer, laid out at each text size in turn: what is added is
+    // removed again, so each size starts as the first did.
+    testWidgets("an LFO is given a knob to move; it wears a ring",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            AudioElement(const ElementBase(id: "a", name: "Pad"),
+                clip: const MediaClip(
+                    playlist: [MediaSource(assetId: "t", length: 2)],
+                    timed: true)),
+          ]),
+          audioEngine: FakeEngine({"t": 2}));
+      addTearDown(c.dispose);
+      c.setDevicesOf("a", [
+        const MixDevice(DeviceKind.autoFilter),
+        const MixDevice(DeviceKind.lfo),
+      ]);
+      c.openEffects("a");
+      setTestScreen(tester, const Size(2000, 900));
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) => Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              CanvasMixer.effects(
+                                  controller: c,
+                                  height: 420,
+                                  onResize: (_) {},
+                                  onClose: () {}),
+                            ])))),
+      ));
+      for (var scale in [1.0, 1.5]) {
+        setTestTextScale(tester, scale);
+        var at = "at ${scale}x";
         await tester.pump(const Duration(milliseconds: 300));
-        expect(tester.takeException(), isNull);
-        expect(find.byKey(const ValueKey("knobModulated")), findsNothing);
+        expect(tester.takeException(), isNull, reason: at);
+        expect(find.byKey(const ValueKey("knobModulated")), findsNothing,
+            reason: at);
         var add = find.byKey(const ValueKey("modAdd"));
         await tester.ensureVisible(add);
         await tester.pump();
@@ -208,17 +208,19 @@ void main() {
         await tester.tap(find.text("Auto Filter · Frequency").last);
         await tester.pump(const Duration(milliseconds: 300));
         var mods = c.devicesOf("a")[1].mods;
-        expect(mods, [ModTarget(c.devicesOf("a")[0].id, "freq", 0.5)]);
+        expect(mods, [ModTarget(c.devicesOf("a")[0].id, "freq", 0.5)],
+            reason: at);
         expect(find.byKey(const ValueKey("knobModulated")), findsOneWidget,
-            reason: "the filter's frequency knob");
-        expect(find.byKey(const ValueKey("modTarget-0")), findsOneWidget);
+            reason: "the filter's frequency knob $at");
+        expect(find.byKey(const ValueKey("modTarget-0")), findsOneWidget,
+            reason: at);
         await tester.tap(find.byKey(const ValueKey("modRemove-0")));
         await tester.pump(const Duration(milliseconds: 100));
-        expect(c.devicesOf("a")[1].mods, isEmpty);
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox());
-      });
-    }
+        expect(c.devicesOf("a")[1].mods, isEmpty, reason: at);
+        expect(tester.takeException(), isNull, reason: at);
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
   group("a follower", () {

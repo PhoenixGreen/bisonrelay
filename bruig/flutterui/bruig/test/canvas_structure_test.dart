@@ -10,10 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_structure_test.dart is a piece of sound laid out in bars: its
@@ -155,41 +153,27 @@ void main() {
   // size the app offers.
   testWidgets("a section row fits any sidebar, at any text size",
       (tester) async {
-    var failures = <String>[];
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);
     c.setKind(CanvasKind.audio);
     for (var name in ["Intro", "Pre-chorus", "Middle 8"]) {
       c.addSection(name);
     }
-    for (var scale in [0.85, 1.0, 1.15, 1.25, 1.5]) {
-      for (var width in [180.0, 220.0, 260.0, 300.0, 344.0, 420.0]) {
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-          ],
-          child: MaterialApp(
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  body: Align(
-                      alignment: Alignment.topLeft,
-                      child: SizedBox(
-                          width: width,
-                          height: 500,
-                          child: CanvasStructurePanel(controller: c))))),
-        ));
-        await tester.pump();
-        if (tester.takeException() case var e?) {
-          failures.add("${width}px at ${scale}x: "
-              "${e.toString().split("\n").first}");
-        }
-      }
-    }
-    expect(failures, isEmpty);
+    // One panel, as wide as the screen at each size.
+    setTestScreen(tester, const Size(180, 600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+            width: double.infinity,
+            height: 500,
+            child: CanvasStructurePanel(controller: c)))));
+    await sweepSizes(tester,
+        sizes: [
+          for (var width in [180.0, 220.0, 260.0, 300.0, 344.0, 420.0])
+            Size(width, 600)
+        ],
+        scales: const [0.85, 1.0, 1.15, 1.25, 1.5],
+        settle: 1);
     expect(find.byKey(const ValueKey("sectionBars-0")), findsOneWidget);
   });
 

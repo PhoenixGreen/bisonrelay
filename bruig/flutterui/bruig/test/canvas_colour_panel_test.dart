@@ -268,47 +268,56 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (var width in [320.0, 260.0, 230.0]) {
-    testWidgets(
-        "at ${width.round()} wide: Greyscale on one line, the value "
-        "ending with A, nothing over", (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(const CanvasDocument().addElement(drawing()));
-      addTearDown(c.dispose);
-      setTestScreen(tester, const Size(900, 1600));
-      await tester.pumpWidget(canvasApp(Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-              width: width, height: 800, child: ColourPanel(controller: c)))));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey("colorFormat")));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Greyscale").last);
-      await tester.pumpAndSettle();
+  testWidgets(
+      "at 320, 260 and 230 wide: Greyscale on one line, the value "
+      "ending with A, nothing over", (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var c = CanvasController(const CanvasDocument().addElement(drawing()));
+    addTearDown(c.dispose);
+    // The panel as wide as the screen, so the sweep narrows it in place.
+    setTestScreen(tester, const Size(320, 1600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+            width: double.infinity,
+            height: 800,
+            child: ColourPanel(controller: c)))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("colorFormat")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Greyscale").last);
+    await tester.pumpAndSettle();
+    await sweepSizes(tester,
+        sizes: const [Size(320, 1600), Size(260, 1600), Size(230, 1600)],
+        scales: const [1.0], check: (at) {
       var format = tester.getRect(find.byKey(const ValueKey("colorFormat")));
-      expect(format.height, lessThan(26), reason: "one line");
+      expect(format.height, lessThan(26), reason: "one line, $at");
       var value = tester.getRect(find.byKey(const ValueKey("colorPickerHex")));
       var alpha = tester.getRect(find.byKey(const ValueKey("channelA")));
       expect(value.right, closeTo(alpha.right, 1),
-          reason: "the value ends where the channels do");
-      expect(tester.takeException(), isNull);
+          reason: "the value ends where the channels do, $at");
     });
-  }
+  });
 
   testWidgets("squeezed very narrow, nothing in it overflows", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);
     c.selectOnly("v");
-    setTestScreen(tester, const Size(900, 1600));
-    for (var width in [100.0, 150.0, 180.0, 200.0, 240.0]) {
-      await tester.pumpWidget(canvasApp(Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-              width: width, height: 800, child: ColourPanel(controller: c)))));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull, reason: "at $width wide");
-    }
+    // The panel as wide as the screen, so the sweep narrows it in place.
+    setTestScreen(tester, const Size(100, 1600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+            width: double.infinity,
+            height: 800,
+            child: ColourPanel(controller: c)))));
+    await tester.pumpAndSettle();
+    await sweepSizes(tester, sizes: [
+      for (var width in [100.0, 150.0, 180.0, 200.0, 240.0]) Size(width, 1600)
+    ], scales: const [
+      1.0
+    ]);
   });
 
   test("a new, empty drawing: the colours its shapes will be drawn in", () {

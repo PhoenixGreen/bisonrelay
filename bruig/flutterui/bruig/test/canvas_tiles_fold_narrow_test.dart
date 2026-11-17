@@ -11,33 +11,31 @@ import 'package:shared_preferences/shared_preferences.dart';
 // overflowed by 12 pixels on the right", at 103 wide).
 
 void main() {
-  for (var scale in [1.0, 1.25, 1.5]) {
-    for (var width in [80.0, 103.0, 140.0]) {
-      testWidgets("${width}px at ${scale}x", (tester) async {
-        SharedPreferences.setMockInitialValues({});
-        await tester.pumpWidget(canvasApp(
-            MediaQuery(
-                data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-                child: Scaffold(
-                    body: Align(
-                        alignment: Alignment.topLeft,
-                        child: SizedBox(
-                            width: width,
-                            child: CanvasCards(
-                                child: CanvasTiles<int>(
-                                    label: "Which shape",
-                                    foldAs: "test.tiles.narrow",
-                                    tiles: [
-                                      for (var i = 0; i < 6; i++)
-                                        CanvasTile(i, "Tile number $i",
-                                            icon: Icons.star)
-                                    ],
-                                    selected: (i) => i == 2,
-                                    onPick: (_) {})))))),
-            scaffold: false));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-      });
-    }
-  }
+  // One row of tiles, as wide as the screen at each size.
+  testWidgets("narrow, at every text size", (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    setTestScreen(tester, const Size(80, 600));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+            width: double.infinity,
+            child: CanvasCards(
+                child: CanvasTiles<int>(
+                    label: "Which shape",
+                    foldAs: "test.tiles.narrow",
+                    tiles: [
+                      for (var i = 0; i < 6; i++)
+                        CanvasTile(i, "Tile number $i", icon: Icons.star)
+                    ],
+                    selected: (i) => i == 2,
+                    onPick: (_) {}))))));
+    await tester.pumpAndSettle();
+    await sweepSizes(tester, sizes: [
+      for (var width in [80.0, 103.0, 140.0]) Size(width, 600)
+    ], scales: const [
+      1.0,
+      1.25,
+      1.5
+    ]);
+  });
 }

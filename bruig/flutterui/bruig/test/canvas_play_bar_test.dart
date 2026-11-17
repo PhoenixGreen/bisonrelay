@@ -65,13 +65,17 @@ void main() {
   testWidgets("the settings sit at the panel's right edge", (tester) async {
     var c = make();
     addTearDown(c.dispose);
-    for (var width in [1200.0, 2400.0]) {
-      await pumpBar(tester, c, width: width);
+    await pumpBar(tester, c, width: 1200);
+    await sweepSizes(tester,
+        sizes: const [Size(1200, 1000), Size(2400, 1000)],
+        scales: const [1.0],
+        settle: 2, check: (at) {
+      var width = tester.view.physicalSize.width;
       var settings =
           tester.getRect(find.byKey(const ValueKey("playBarSettings")));
       expect(width - settings.right, lessThan(24),
-          reason: "against the right edge at $width");
-    }
+          reason: "against the right edge $at");
+    });
     // With Back to the timeline showing too.
     holdByHand(c, "m");
     await tester.pump();

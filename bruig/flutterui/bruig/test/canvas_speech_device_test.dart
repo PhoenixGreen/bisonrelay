@@ -878,27 +878,18 @@ esac
               script: "From the page",
               document: TextDocumentRef(name: "Lines", wasText: "Typed")));
       setTestScreen(tester, const Size(900, 400));
-      for (var scale in [1.0, 1.5]) {
-        await tester.pumpWidget(canvasApp(
-            Builder(
-                builder: (context) => MediaQuery(
-                    data: MediaQuery.of(context)
-                        .copyWith(textScaler: TextScaler.linear(scale)),
-                    child: Scaffold(
-                        body: ListenableBuilder(
-                            listenable: c,
-                            builder: (context, _) => Align(
-                                alignment: Alignment.topLeft,
-                                child: SpeechDevice(
-                                    controller: c,
-                                    channel: "a",
-                                    folded: false,
-                                    onFold: () {},
-                                    height: 260)))))),
-            scaffold: false));
-        await tester.pump();
-        expect(tester.takeException(), isNull, reason: "at ${scale}x");
-      }
+      await tester.pumpWidget(canvasApp(ListenableBuilder(
+          listenable: c,
+          builder: (context, _) => Align(
+              alignment: Alignment.topLeft,
+              child: SpeechDevice(
+                  controller: c,
+                  channel: "a",
+                  folded: false,
+                  onFold: () {},
+                  height: 260)))));
+      await sweepSizes(tester,
+          sizes: const [Size(900, 400)], scales: const [1.0, 1.5], settle: 1);
       expect(
           tester
               .widget<Text>(find.byKey(const ValueKey("speechDocument")))
@@ -948,41 +939,36 @@ esac
         QwenDownload.instance.ready = here;
         c.setSpeech("a", SpeechSpec(script: "Hello", engine: engine));
         c.setVocaliser("a", const VocaliserSpec());
-        for (var scale in [1.0, 1.15, 1.25, 1.5]) {
-          await tester.pumpWidget(canvasApp(
-              Builder(
-                  builder: (context) => MediaQuery(
-                      data: MediaQuery.of(context)
-                          .copyWith(textScaler: TextScaler.linear(scale)),
-                      child: Scaffold(
-                          body: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                            SpeechDevice(
-                                controller: c,
-                                channel: "a",
-                                folded: false,
-                                onFold: () {},
-                                height: 260),
-                            VocaliserDevice(
-                                controller: c,
-                                channel: "a",
-                                folded: false,
-                                onFold: () {},
-                                height: 260)
-                          ])))),
-              scaffold: false));
-          await tester.pump();
-          expect(tester.takeException(), isNull,
-              reason: "$engine, voices here $here, at ${scale}x");
+        // Built again for each, as the downloads are not listened to; laid
+        // out at every text size on that.
+        await tester.pumpWidget(canvasApp(
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SpeechDevice(
+              controller: c,
+              channel: "a",
+              folded: false,
+              onFold: () {},
+              height: 260),
+          VocaliserDevice(
+              controller: c,
+              channel: "a",
+              folded: false,
+              onFold: () {},
+              height: 260)
+        ])));
+        await sweepSizes(tester,
+            sizes: const [Size(1700, 400)],
+            scales: const [1.0, 1.15, 1.25, 1.5],
+            settle: 1, check: (at) {
+          var why = "$engine, voices here $here, $at";
           expect(find.byKey(const ValueKey("speechDownload")),
-              here ? findsNothing : findsOneWidget);
+              here ? findsNothing : findsOneWidget,
+              reason: why);
           for (var button in ["speechSpeak", "vocaliserSing"]) {
             var rect = tester.getRect(find.byKey(ValueKey(button)));
-            expect(rect.bottom, lessThanOrEqualTo(260),
-                reason: "$button at ${scale}x");
+            expect(rect.bottom, lessThanOrEqualTo(260), reason: "$button $why");
           }
-        }
+        });
       }
       await tester.pumpWidget(const SizedBox());
     });

@@ -519,55 +519,60 @@ void main() {
 
   group("Keys open in a short Chain", () {
     for (var clip in [false, true]) {
-      for (var scale in [1.0, 1.5]) {
-        for (var height in [120.0, 170.0, 240.0, 260.0, 320.0, 480.0]) {
-          testWidgets("clip $clip, text $scale, $height tall", (tester) async {
-            var c = make();
-            addTearDown(c.dispose);
-            c.setMotionDevices("logo", const [
-              MotionDevice(MotionDeviceKind.wiggle, id: "m0"),
-              MotionDevice(MotionDeviceKind.glow, id: "m1"),
-            ]);
-            if (clip) {
-              c.applyElementAnimation(
-                  c.selected!, ElementAnimationPreset.fadeIn);
+      testWidgets("clip $clip, text 1.0 and 1.5, 120 to 480 tall",
+          (tester) async {
+        var c = make();
+        addTearDown(c.dispose);
+        c.setMotionDevices("logo", const [
+          MotionDevice(MotionDeviceKind.wiggle, id: "m0"),
+          MotionDevice(MotionDeviceKind.glow, id: "m1"),
+        ]);
+        if (clip) {
+          c.applyElementAnimation(c.selected!, ElementAnimationPreset.fadeIn);
+        }
+        c.keysShown = true;
+        addTearDown(() => c.keysShown = false);
+        // One panel; the text size, the screen and the panel's height
+        // changed in place.
+        var height = ValueNotifier(120.0);
+        setTestScreen(tester, const Size(1600, 160));
+        await tester.pumpWidget(canvasApp(Align(
+            alignment: Alignment.topLeft,
+            child: ValueListenableBuilder<double>(
+                valueListenable: height,
+                builder: (context, h, _) =>
+                    AnimationPanel(controller: c, height: h)))));
+        var rows = find.byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.right);
+        for (var scale in [1.0, 1.5]) {
+          setTestTextScale(tester, scale);
+          for (var h in [120.0, 170.0, 240.0, 260.0, 320.0, 480.0]) {
+            var at = "text $scale, $h tall";
+            tester.view.physicalSize = Size(1600, h + 40);
+            height.value = h;
+            // Back to the start of the row, as a panel first shown is.
+            if (rows.evaluate().isNotEmpty) {
+              tester.state<ScrollableState>(rows.first).position.jumpTo(0);
             }
-            c.keysShown = true;
-            addTearDown(() => c.keysShown = false);
-            setTestScreen(tester, Size(1600, height + 40));
-            await tester.pumpWidget(canvasApp(
-                MediaQuery(
-                    data: MediaQueryData(
-                        size: Size(1600, height + 40),
-                        textScaler: TextScaler.linear(scale)),
-                    child: Scaffold(
-                        body: Align(
-                            alignment: Alignment.topLeft,
-                            child: AnimationPanel(
-                                controller: c, height: height)))),
-                scaffold: false));
             await tester.pump();
-            expect(tester.takeException(), isNull);
-            expect(find.byKey(const ValueKey("keysStrip")), findsOneWidget);
-            if (height >= 240) {
+            expect(tester.takeException(), isNull, reason: at);
+            expect(find.byKey(const ValueKey("keysStrip")), findsOneWidget,
+                reason: at);
+            if (h >= 240) {
               // Along the row to its end: every card laid out at this height.
-              var row = find
-                  .byWidgetPredicate((w) =>
-                      w is Scrollable && w.axisDirection == AxisDirection.right)
-                  .first;
-              var position = tester.state<ScrollableState>(row).position;
+              var position = tester.state<ScrollableState>(rows.first).position;
               for (var i = 0; i < 4; i++) {
                 position.jumpTo(position.maxScrollExtent);
                 await tester.pump();
               }
-              expect(tester.takeException(), isNull);
+              expect(tester.takeException(), isNull, reason: at);
               expect(find.byKey(const ValueKey("motionOutputCard")),
                   findsOneWidget,
-                  reason: "room for the cards under the strip");
+                  reason: "room for the cards under the strip, $at");
             }
-          });
+          }
         }
-      }
+      });
     }
   });
 

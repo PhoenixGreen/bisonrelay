@@ -84,13 +84,19 @@ Future<bool> pumpUntil(WidgetTester tester, bool Function() done,
 
 /// sweepSizes lays out what is already pumped again at each text size in
 /// [scales] and each screen size in [sizes] in turn, [settle] frames each,
-/// and fails naming the size where something threw or overran. One tree
-/// laid out many times costs a fraction of building one for each size; what
-/// it does not check is a widget that reads its size only when first built.
+/// and fails naming the size where something threw or overran. [check], if
+/// given, runs at each size too, handed the size's name for its reasons.
+/// One tree laid out many times costs a fraction of building one for each
+/// size; what it does not check is a widget that reads its size only when
+/// first built.
+///
+/// The text size is the platform's (setTestTextScale): a MediaQuery of the
+/// test's own round the tree would hold it still.
 Future<void> sweepSizes(WidgetTester tester,
     {required List<Size> sizes,
     List<double> scales = const [1.0, 1.4],
-    int settle = 4}) async {
+    int settle = 4,
+    void Function(String at)? check}) async {
   for (var scale in scales) {
     setTestTextScale(tester, scale);
     for (var size in sizes) {
@@ -98,9 +104,10 @@ Future<void> sweepSizes(WidgetTester tester,
       for (var i = 0; i < settle; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      expect(tester.takeException(), isNull,
-          reason: "at ${size.width.round()} by ${size.height.round()}, "
-              "${scale}x text");
+      var at = "at ${size.width.round()} by ${size.height.round()}, "
+          "${scale}x text";
+      expect(tester.takeException(), isNull, reason: at);
+      check?.call(at);
     }
   }
 }

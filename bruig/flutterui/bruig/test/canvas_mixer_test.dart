@@ -1573,8 +1573,9 @@ void main() {
             frameSource: FakeFrames(4));
 
     Future<void> show(WidgetTester tester, CanvasController c,
-        {Object height = 460.0, double scale = 1}) async {
-      // A number, or a ValueListenable of one that the sweep moves.
+        {Object height = 460.0, double? scale = 1}) async {
+      // A number, or a ValueListenable of one that the sweep moves. Without
+      // a scale the text size is the platform's, for a sweep to set.
       ValueListenable<double> heights = height is ValueListenable<double>
           ? height
           : ValueNotifier((height as num).toDouble());
@@ -1587,10 +1588,12 @@ void main() {
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
+            builder: scale == null
+                ? null
+                : (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!),
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.bottomCenter,
@@ -2026,21 +2029,26 @@ void main() {
     testWidgets("a long chain of devices leaves the clips their room",
         (tester) async {
       var failures = <String>[];
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            VideoElement(const ElementBase(id: "v", name: "Speaker"),
+                clip: MediaClip(
+                    playlist: const [MediaSource(assetId: "x", length: 4)],
+                    timed: true,
+                    mix: ChannelMix(devices: [
+                      for (var k in DeviceKind.values.take(10)) MixDevice(k)
+                    ]))),
+          ]),
+          audioEngine: FakeEngine({}),
+          frameSource: FakeFrames(4));
+      // One desk, resized at each text size as a drag resizes it.
+      var height = ValueNotifier(260.0);
+      await show(tester, c, height: height, scale: null);
       for (var scale in [1.0, 1.15, 1.25]) {
+        setTestTextScale(tester, scale);
         for (var h = 260.0; h <= 460; h += 20) {
-          var c = CanvasController(
-              CanvasDocument(frames: 100, elements: [
-                VideoElement(const ElementBase(id: "v", name: "Speaker"),
-                    clip: MediaClip(
-                        playlist: const [MediaSource(assetId: "x", length: 4)],
-                        timed: true,
-                        mix: ChannelMix(devices: [
-                          for (var k in DeviceKind.values.take(10)) MixDevice(k)
-                        ]))),
-              ]),
-              audioEngine: FakeEngine({}),
-              frameSource: FakeFrames(4));
-          await show(tester, c, height: h, scale: scale);
+          height.value = h;
+          await tester.pump();
           if (tester.takeException() case var e?) {
             failures.add("$h ${scale}x: ${e.toString().split("\n").first}");
           }
@@ -2050,9 +2058,9 @@ void main() {
           if (h / scale >= 280 && clips.evaluate().isEmpty) {
             failures.add("$h ${scale}x: no stop");
           }
-          await done(tester, c);
         }
       }
+      await done(tester, c);
       expect(failures, isEmpty);
     });
 
@@ -2115,59 +2123,40 @@ void main() {
   // its right edge. Now they keep to the room and scroll themselves where
   // a channel would otherwise have none.
   testWidgets("narrow: the pinned strips keep to the room", (tester) async {
-    var failures = <String>[];
-    for (var scale in [1.0, 1.5]) {
-      for (var width in [240.0, 281.0, 360.0, 520.0, 1200.0]) {
-        var c = CanvasController(
-            CanvasDocument(frames: 100, frameRate: 25, elements: [
-              for (var id in ["a", "b", "c"])
-                VideoElement(ElementBase(id: id, name: id),
-                    clip: const MediaClip(
-                        playlist: [MediaSource(assetId: "x", length: 4)],
-                        timed: true)),
-            ]),
-            audioEngine: FakeEngine({"x": 4}),
-            frameSource: FakeFrames(4));
-        c.addReturn();
-        c.addReturn();
-        c.returnsShown = true;
-        tester.view.physicalSize = Size(width, 700);
-        tester.view.devicePixelRatio = 1.0;
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-          ],
-          child: MaterialApp(
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  body: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: CanvasMixer(
-                          controller: c,
-                          height: 420,
-                          onResize: (_) {},
-                          onClose: () {})))),
-        ));
-        await tester.pump();
-        if (tester.takeException() case var e?) {
-          failures.add("$width ${scale}x: ${e.toString().split("\n").first}");
-        }
-        // A channel still has a strip's room, and the master is there.
-        var channels = tester.getRect(find.byKey(const ValueKey("strip-a")));
-        if (channels.width < 50) failures.add("$width ${scale}x: no channel");
-        expect(find.byKey(const ValueKey("strip-master")), findsOneWidget);
-        await tester.pump(const Duration(milliseconds: 500));
-        await tester.pumpWidget(const SizedBox());
-        c.dispose();
-      }
-    }
-    tester.view.reset();
-    expect(failures, isEmpty);
+    var c = CanvasController(
+        CanvasDocument(frames: 100, frameRate: 25, elements: [
+          for (var id in ["a", "b", "c"])
+            VideoElement(ElementBase(id: id, name: id),
+                clip: const MediaClip(
+                    playlist: [MediaSource(assetId: "x", length: 4)],
+                    timed: true)),
+        ]),
+        audioEngine: FakeEngine({"x": 4}),
+        frameSource: FakeFrames(4));
+    c.addReturn();
+    c.addReturn();
+    c.returnsShown = true;
+    setTestScreen(tester, const Size(240, 700));
+    await tester.pumpWidget(canvasApp(Align(
+        alignment: Alignment.bottomCenter,
+        child: CanvasMixer(
+            controller: c, height: 420, onResize: (_) {}, onClose: () {}))));
+    await sweepSizes(tester,
+        sizes: [
+          for (var width in [240.0, 281.0, 360.0, 520.0, 1200.0])
+            Size(width, 700)
+        ],
+        scales: const [1.0, 1.5],
+        settle: 1, check: (at) {
+      // A channel still has a strip's room, and the master is there.
+      var channels = tester.getRect(find.byKey(const ValueKey("strip-a")));
+      expect(channels.width, greaterThanOrEqualTo(50),
+          reason: "no channel $at");
+      expect(find.byKey(const ValueKey("strip-master")), findsOneWidget,
+          reason: at);
+    });
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
   });
 }

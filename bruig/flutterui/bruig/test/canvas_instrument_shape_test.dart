@@ -245,10 +245,10 @@ void main() {
         ]),
         audioEngine: FakeEngine({}));
 
+    /// show is the instrument's chain [width] wide, as tall as [height] says
+    /// (420 where not given), at the platform's text size.
     Future<void> show(WidgetTester tester, CanvasController c,
-        {double scale = 1,
-        double width = 1600,
-        ValueNotifier<double>? height}) async {
+        {double width = 1600, ValueNotifier<double>? height}) async {
       height ??= ValueNotifier(420);
       setTestScreen(tester, Size(width, 900));
       await tester.pumpWidget(MultiProvider(
@@ -258,10 +258,6 @@ void main() {
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.bottomCenter,
@@ -551,15 +547,19 @@ void main() {
     });
 
     testWidgets("it fits, at every size and text size", (tester) async {
+      // One chain; the text size, the screen's width and the panel's
+      // height changed in place.
+      var height = ValueNotifier(200.0);
+      var c = make();
+      c.showInstrument("p");
+      c.setInstrumentShape(
+          "p", (s) => s.copyWith(envelope: true, filter: SynthFilter.bandPass));
+      await show(tester, c, width: 900, height: height);
       var failures = <String>[];
       for (var scale in [1.0, 1.25, 1.5]) {
+        setTestTextScale(tester, scale);
         for (var width in [900.0, 1600.0]) {
-          var height = ValueNotifier(200.0);
-          var c = make();
-          c.showInstrument("p");
-          c.setInstrumentShape("p",
-              (s) => s.copyWith(envelope: true, filter: SynthFilter.bandPass));
-          await show(tester, c, scale: scale, width: width, height: height);
+          tester.view.physicalSize = Size(width, 900);
           for (var h = 200.0; h <= 620; h += 30) {
             height.value = h;
             await tester.pump();
@@ -568,10 +568,10 @@ void main() {
                   "${e.toString().split("\n").first}");
             }
           }
-          await tester.pumpWidget(const SizedBox());
-          c.dispose();
         }
       }
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
       expect(failures, isEmpty);
     });
   });

@@ -367,54 +367,56 @@ void main() {
   });
 
   // Ken, 2026-11-08: the header ran 11 px over with its chips, narrow.
-  for (var scale in [1.0, 1.5]) {
-    for (var width in [520.0, 640.0, 760.0, 900.0]) {
-      testWidgets("the header fits $width wide at $scale, chips and all",
-          (tester) async {
-        var c = CanvasController(
-            CanvasDocument(frames: 100, elements: [
-              AudioElement(const ElementBase(id: "m", name: "Music"),
-                  clip: const MediaClip(
-                      playlist: [MediaSource(assetId: "t", length: 8)],
-                      timed: true)),
-            ]),
-            audioEngine: FakeEngine({"t": 8}));
-        addTearDown(c.dispose);
-        setTestScreen(tester, Size(width, 600));
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-          ],
-          child: MaterialApp(
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  body: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: ListenableBuilder(
-                          listenable: c,
-                          builder: (context, _) => ChainPanel(
-                              controller: c, height: 420, onResize: (_) {}))))),
-        ));
-        for (var chain in [mixerMasterKey, "m"]) {
-          c.openEffects(chain);
-          c.listenAt(chain, 0);
+  testWidgets("the header fits 520 to 900 wide at 1.0 and 1.5, chips and all",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "m", name: "Music"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 8)],
+                  timed: true)),
+        ]),
+        audioEngine: FakeEngine({"t": 8}));
+    addTearDown(c.dispose);
+    setTestScreen(tester, const Size(520, 600));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) => ChainPanel(
+                          controller: c, height: 420, onResize: (_) {}))))),
+    ));
+    // One panel, laid out at each width and text size in place.
+    Future<void> fits(String what) async {
+      for (var scale in [1.0, 1.5]) {
+        setTestTextScale(tester, scale);
+        for (var width in [520.0, 640.0, 760.0, 900.0]) {
+          tester.view.physicalSize = Size(width, 600);
           await tester.pump(const Duration(milliseconds: 300));
-          expect(tester.takeException(), isNull, reason: "$chain, listening");
-          c.listenAt(chain, null);
-          await tester.pump(const Duration(milliseconds: 300));
-          expect(tester.takeException(), isNull, reason: "$chain, no chips");
+          expect(tester.takeException(), isNull,
+              reason: "$what, $width wide at $scale");
         }
-        await tester.pumpWidget(const SizedBox());
-        await tester.pump(const Duration(milliseconds: 500));
-      });
+      }
     }
-  }
+
+    for (var chain in [mixerMasterKey, "m"]) {
+      c.openEffects(chain);
+      c.listenAt(chain, 0);
+      await fits("$chain, listening");
+      c.listenAt(chain, null);
+      await fits("$chain, no chips");
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 500));
+  });
 
   group("a macro turning the instrument", () {
     CanvasController make(FakeEngine engine,

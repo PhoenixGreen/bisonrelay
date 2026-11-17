@@ -68,26 +68,30 @@ CanvasController _make() {
   return c;
 }
 
+/// _show shows the effects panel at text [scale], or, without one, at the
+/// platform's text size, for a test to change.
 Future<void> _show(WidgetTester tester, CanvasController c,
-    {double scale = 1, double height = 420}) async {
+    {double? scale = 1, double height = 420}) async {
   setTestScreen(tester, const Size(1400, 720));
+  var panel = Scaffold(
+      body: ListenableBuilder(
+          listenable: c,
+          builder: (context, _) =>
+              Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CanvasMixer.effects(
+                    controller: c,
+                    height: height,
+                    onResize: (_) {},
+                    onClose: () {})
+              ])));
   await tester.pumpWidget(canvasApp(
-      MediaQuery(
-          data: MediaQueryData(
-              size: const Size(1400, 720),
-              textScaler: TextScaler.linear(scale)),
-          child: Scaffold(
-              body: ListenableBuilder(
-                  listenable: c,
-                  builder: (context, _) => Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            CanvasMixer.effects(
-                                controller: c,
-                                height: height,
-                                onResize: (_) {},
-                                onClose: () {})
-                          ])))),
+      scale == null
+          ? panel
+          : MediaQuery(
+              data: MediaQueryData(
+                  size: const Size(1400, 720),
+                  textScaler: TextScaler.linear(scale)),
+              child: panel),
       scaffold: false));
   for (var i = 0; i < 5; i++) {
     await tester.pump(const Duration(milliseconds: 100));
@@ -107,34 +111,43 @@ void main() {
   });
   tearDown(() => CanvasController.takeAudio = audioWas);
 
-  for (var scale in [1.0, 1.5]) {
-    testWidgets(
-        "opened, it fills the Chain, the chain the rail under it "
-        "-- at ${scale}x", (tester) async {
-      var c = _make();
-      addTearDown(c.dispose);
+  // One panel at each text size in turn: the editor closed at one is shown
+  // again for the next.
+  testWidgets("opened, it fills the Chain, the chain the rail under it",
+      (tester) async {
+    var c = _make();
+    addTearDown(c.dispose);
+    c.showSpeech("a");
+    await _show(tester, c, scale: null);
+    for (var scale in [1.0, 1.5]) {
+      setTestTextScale(tester, scale);
       c.showSpeech("a");
-      await _show(tester, c, scale: scale);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      var at = "at ${scale}x";
       var view = find.byKey(const ValueKey("speechEditor"));
-      expect(view, findsOneWidget);
+      expect(view, findsOneWidget, reason: at);
       // On screen: the mixer zooms as a whole at a larger text size.
       expect(tester.getRect(view).width, greaterThan(1300),
-          reason: "as wide as the panel, as the clip editor is");
+          reason: "as wide as the panel, as the clip editor is, $at");
       expect(find.byKey(const ValueKey("editorClose")), findsOneWidget,
-          reason: "the chain as the rail under it");
+          reason: "the chain as the rail under it, $at");
       expect(find.byKey(const ValueKey("addDeviceSlot")), findsNothing,
-          reason: "no other device beside it to scroll through");
-      expect(find.byKey(const ValueKey("chainZone-Effects")), findsNothing);
-      expect(tester.takeException(), isNull, reason: "nothing overflows");
+          reason: "no other device beside it to scroll through, $at");
+      expect(find.byKey(const ValueKey("chainZone-Effects")), findsNothing,
+          reason: at);
+      expect(tester.takeException(), isNull, reason: "nothing overflows $at");
       // Back to the chain: the Speech card in its Generator zone.
       await tester.tap(find.byKey(const ValueKey("editorClose")));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(c.speechShown, isFalse);
-      expect(find.byKey(const ValueKey("device-speechCard")), findsOneWidget);
+      expect(c.speechShown, isFalse, reason: at);
+      expect(find.byKey(const ValueKey("device-speechCard")), findsOneWidget,
+          reason: at);
       await tester.pump(const Duration(seconds: 1));
-      await tester.pumpWidget(const SizedBox());
-    });
-  }
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets("its side panels fold to strips and open again", (tester) async {
     var c = _make();

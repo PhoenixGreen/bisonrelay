@@ -670,25 +670,19 @@ cp "${dir.path}/line.wav" "\$out"
         ]),
         audioEngine: FakeEngine({"t": 2}));
 
-    Future<void> show(WidgetTester tester, CanvasController c,
-            {double scale = 1}) =>
-        tester.pumpWidget(canvasApp(
-            Builder(
-                builder: (context) => MediaQuery(
-                    data: MediaQuery.of(context)
-                        .copyWith(textScaler: TextScaler.linear(scale)),
-                    child: Scaffold(
-                        body: ListenableBuilder(
-                            listenable: c,
-                            builder: (context, _) => Align(
-                                alignment: Alignment.topLeft,
-                                child: SpeechDevice(
-                                    controller: c,
-                                    channel: "a",
-                                    folded: false,
-                                    onFold: () {},
-                                    height: 260)))))),
-            scaffold: false));
+    /// show is the device at the platform's text size (setTestTextScale),
+    /// so a sweep can change it in place.
+    Future<void> show(WidgetTester tester, CanvasController c) =>
+        tester.pumpWidget(canvasApp(ListenableBuilder(
+            listenable: c,
+            builder: (context, _) => Align(
+                alignment: Alignment.topLeft,
+                child: SpeechDevice(
+                    controller: c,
+                    channel: "a",
+                    folded: false,
+                    onFold: () {},
+                    height: 260)))));
 
     testWidgets("its sections: picked, said, cued, joined and split",
         (tester) async {
@@ -786,21 +780,25 @@ cp "${dir.path}/line.wav" "\$out"
       setTestScreen(tester, const Size(1000, 400));
       QwenDownload.instance.ready = true;
       var spec = const SpeechSpec(script: "One. Two.").withScript("One. Two.");
+      void speakWith(SpeechEngineKind engine) => c.setSpeech(
+          "a",
+          spec.copyWith(engine: engine, lines: [
+            spec.lines.first.copyWith(slots: const [
+              SpeechTake("x.wav", 1, []),
+              SpeechTake("y.wav", 1, []),
+            ], chosen: 1),
+            spec.lines.last,
+          ]));
+      // Each engine shown once, then laid out at each text size in place.
       for (var engine in SpeechEngineKind.values) {
-        c.setSpeech(
-            "a",
-            spec.copyWith(engine: engine, lines: [
-              spec.lines.first.copyWith(slots: const [
-                SpeechTake("x.wav", 1, []),
-                SpeechTake("y.wav", 1, []),
-              ], chosen: 1),
-              spec.lines.last,
-            ]));
-        for (var scale in [1.0, 1.5]) {
-          await show(tester, c, scale: scale);
-          await tester.pump();
-          var why = "$engine at ${scale}x";
-          expect(tester.takeException(), isNull, reason: why);
+        speakWith(engine);
+        await show(tester, c);
+        await tester.pump();
+        await sweepSizes(tester,
+            sizes: const [Size(1000, 400)],
+            scales: const [1.0, 1.5],
+            settle: 2, check: (at) {
+          var why = "$engine $at";
           // Heard before it is picked.
           expect(find.byKey(const ValueKey("speechPreview-v1")), findsOneWidget,
               reason: why);
@@ -824,7 +822,7 @@ cp "${dir.path}/line.wav" "\$out"
             expect(find.byKey(ValueKey(action)), findsOneWidget,
                 reason: "$action, $why");
           }
-        }
+        });
       }
       // Slot C picked: free, so none of them.
       await tester.tap(find.byKey(const ValueKey("speechSlot-2")));
@@ -840,6 +838,7 @@ cp "${dir.path}/line.wav" "\$out"
       var c = make();
       addTearDown(c.dispose);
       setTestScreen(tester, const Size(1000, 400));
+      // Each engine shown once, then laid out at each text size in place.
       for (var (engine, here) in [
         (SpeechEngineKind.local, true),
         (SpeechEngineKind.expressive, false),
@@ -851,11 +850,13 @@ cp "${dir.path}/line.wav" "\$out"
             SpeechSpec(
                 engine: engine,
                 script: "[warm] A first line, quite a long one. A second."));
-        for (var scale in [1.0, 1.15, 1.25, 1.5]) {
-          await show(tester, c, scale: scale);
-          await tester.pump();
-          var why = "$engine, voices here $here, at ${scale}x";
-          expect(tester.takeException(), isNull, reason: why);
+        await show(tester, c);
+        await tester.pump();
+        await sweepSizes(tester,
+            sizes: const [Size(1000, 400)],
+            scales: const [1.0, 1.15, 1.25, 1.5],
+            settle: 2, check: (at) {
+          var why = "$engine, voices here $here, $at";
           var expressiveHere =
               engine == SpeechEngineKind.expressive && here && qwenSupported;
           expect(find.byKey(const ValueKey("speechLanguage")),
@@ -872,7 +873,7 @@ cp "${dir.path}/line.wav" "\$out"
                   ? isNull
                   : isNotNull,
               reason: why);
-        }
+        });
       }
       await tester.pumpWidget(const SizedBox());
     });

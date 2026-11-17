@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -177,10 +178,16 @@ void main() {
   });
 
   group("the master's Output", () {
+    /// show shows the master's effects at text [scale] -- or, without one,
+    /// the platform's -- [height] high: a number, or a ValueListenable of
+    /// one that a test moves.
     Future<CanvasController> show(WidgetTester tester,
         {SpeakerLayout speakers = SpeakerLayout.surround51,
-        double scale = 1,
-        double height = 420}) async {
+        double? scale = 1,
+        Object height = 420.0}) async {
+      ValueListenable<double> heights = height is ValueListenable<double>
+          ? height
+          : ValueNotifier((height as num).toDouble());
       var c = CanvasController(
           CanvasDocument(
               frames: 100,
@@ -199,18 +206,20 @@ void main() {
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
+            builder: scale == null
+                ? null
+                : (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!),
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.bottomCenter,
                     child: ListenableBuilder(
-                        listenable: c,
+                        listenable: Listenable.merge([c, heights]),
                         builder: (context, _) => CanvasMixer.effects(
                             controller: c,
-                            height: height,
+                            height: heights.value,
                             onResize: (_) {},
                             onClose: () {}))))),
       ));
@@ -250,19 +259,25 @@ void main() {
 
     testWidgets("it fits, at every text size", (tester) async {
       var failures = <String>[];
-      for (var scale in [1.0, 1.25, 1.5]) {
-        for (var speakers in [SpeakerLayout.stereo, SpeakerLayout.surround71]) {
-          for (var height in [220.0, 320.0, 460.0]) {
-            var c = await show(tester,
-                speakers: speakers, scale: scale, height: height);
+      // A canvas for each speaker layout, its panel laid out at every text
+      // size and resized at each.
+      for (var speakers in [SpeakerLayout.stereo, SpeakerLayout.surround71]) {
+        var height = ValueNotifier(220.0);
+        var c =
+            await show(tester, speakers: speakers, scale: null, height: height);
+        for (var scale in [1.0, 1.25, 1.5]) {
+          setTestTextScale(tester, scale);
+          for (var h in [220.0, 320.0, 460.0]) {
+            height.value = h;
+            await tester.pump();
             if (tester.takeException() case var e?) {
-              failures.add("$speakers $height ${scale}x: "
+              failures.add("$speakers $h ${scale}x: "
                   "${e.toString().split("\n").first}");
             }
-            await tester.pumpWidget(const SizedBox());
-            c.dispose();
           }
         }
+        await tester.pumpWidget(const SizedBox());
+        c.dispose();
       }
       expect(failures, isEmpty);
     });

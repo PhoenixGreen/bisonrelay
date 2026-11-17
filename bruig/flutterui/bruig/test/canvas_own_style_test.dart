@@ -33,8 +33,10 @@ import 'package:provider/provider.dart';
 // sections, every kind of element, in the chain -- the Preset of an own
 // clip, and the "Its own style" card beside it.
 
+/// pump shows [e]'s Animation panel with an own clip picked, at [scale],
+/// or, without one, at the platform's text size, for a test to change.
 Future<CanvasController> pump(WidgetTester tester, CanvasElement e,
-    {MotionKind kind = MotionKind.arrive, double scale = 1}) async {
+    {MotionKind kind = MotionKind.arrive, double? scale = 1}) async {
   setTestScreen(tester, const Size(3000, 420));
   var c = CanvasController(
       CanvasDocument(frames: 96, frameRate: 24, elements: [e]));
@@ -54,10 +56,12 @@ Future<CanvasController> pump(WidgetTester tester, CanvasElement e,
       ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
     ],
     child: MaterialApp(
-        builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!),
+        builder: scale == null
+            ? null
+            : (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!),
         home: Scaffold(
             body: ListenableBuilder(
                 listenable: c,
@@ -81,39 +85,47 @@ Future<void> choose<T>(
 }
 
 void main() {
-  for (var scale in [1.0, 1.5]) {
-    testWidgets("a text's own arrival, picked and set in the chain, at $scale",
-        (tester) async {
-      var c = await pump(
-          tester,
-          TextElement(const ElementBase(id: "t", width: 300, height: 60),
-              text: "The security budget"),
-          scale: scale);
-      TextElement text() => c.document.elementById("t") as TextElement;
+  // One panel, used at each text size in turn, the text put back as it
+  // was first shown before each.
+  testWidgets("a text's own arrival, picked and set in the chain",
+      (tester) async {
+    var c = await pump(
+        tester,
+        TextElement(const ElementBase(id: "t", width: 300, height: 60),
+            text: "The security budget"),
+        scale: null);
+    TextElement text() => c.document.elementById("t") as TextElement;
+    var first = text();
+    for (var scale in [1.0, 1.5]) {
+      setTestTextScale(tester, scale);
+      c.replaceElement(first);
+      await tester.pumpAndSettle();
+      var at = "at ${scale}x";
       // Its family, then which of them (Ken, 2026-11-12), by its tab.
       var family = tester.widget<StudioDrop<String>>(
           find.byKey(const ValueKey("ownTabPresetFamily")));
       expect(family.options.map((o) => o.$1),
           contains(TextAnimationPreset.pop.family.label),
-          reason: "the words' own presets' families, offered");
+          reason: "the words' own presets' families, offered, $at");
       await choose(tester, "ownTabPreset", TextAnimationPreset.pop.family.label,
           TextAnimationPreset.pop);
-      expect(text().animation.preset, TextAnimationPreset.pop);
+      expect(text().animation.preset, TextAnimationPreset.pop, reason: at);
       // The rest beside it: the gap between the words, their order.
-      expect(find.byKey(const ValueKey("ownStyleCard")), findsOneWidget);
+      expect(find.byKey(const ValueKey("ownStyleCard")), findsOneWidget,
+          reason: at);
       tester
           .widget<DeviceKnob>(find.byKey(const ValueKey("ownGap")))
           .onChanged(1.5);
       await tester.pump();
-      expect(text().animation.gap, 1.5);
+      expect(text().animation.gap, 1.5, reason: at);
       tester
           .widget<StudioDrop<bool>>(find.byKey(const ValueKey("ownOrder")))
           .onChanged(true);
       await tester.pump();
-      expect(text().animation.flipOrder, isTrue);
-      expect(tester.takeException(), isNull);
-    });
-  }
+      expect(text().animation.flipOrder, isTrue, reason: at);
+      expect(tester.takeException(), isNull, reason: at);
+    }
+  });
 
   testWidgets("a chart's own arrival: the presets its kind suits",
       (tester) async {

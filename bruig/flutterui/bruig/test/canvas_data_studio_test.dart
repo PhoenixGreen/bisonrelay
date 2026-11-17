@@ -491,18 +491,16 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    for (var scale in [0.65, 1.5]) {
-      testWidgets("nothing overflows at text size $scale, 1280 wide",
-          (tester) async {
-        await studio(tester);
-        tester.platformDispatcher.textScaleFactorTestValue = scale;
-        tester.view.physicalSize = const Size(1280, 800);
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey("dataStudioView-t1")));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-      });
-    }
+    testWidgets("nothing overflows at text sizes 0.65 and 1.5, 1280 wide",
+        (tester) async {
+      await studio(tester);
+      const sizes = [Size(1280, 800)];
+      const scales = [0.65, 1.5];
+      await sweepSizes(tester, sizes: sizes, scales: scales);
+      await tester.tap(find.byKey(const ValueKey("dataStudioView-t1")));
+      await tester.pumpAndSettle();
+      await sweepSizes(tester, sizes: sizes, scales: scales);
+    });
 
     // Ken, 2026-11-17: sheets left behind by deleted tables piled up, and a
     // sheet something showed couldn't be removed at all.

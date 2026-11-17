@@ -313,8 +313,9 @@ void main() {
           const CanvasScene(id: "b", frames: 20),
         ]);
 
+    // Without a scale the text size is the platform's, for a test to change.
     Future<CanvasController> pump(WidgetTester tester,
-        {bool effects = false, double scale = 1}) async {
+        {bool effects = false, double? scale = 1}) async {
       var c = CanvasController(doc(), audioEngine: FakeEngine({"t": 2}));
       addTearDown(c.dispose);
       if (effects) c.openEffects(sceneBusKey);
@@ -326,10 +327,12 @@ void main() {
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
+            builder: scale == null
+                ? null
+                : (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!),
             home: Scaffold(
                 body: ListenableBuilder(
                     listenable: c,
@@ -406,19 +409,26 @@ void main() {
 
     // Ken, 2026-11-08: the prototype's scene chain -- a Source of everything
     // heard in it, and an Output.
-    for (var scale in [1.0, 1.5]) {
-      testWidgets(
-          "its chain starts with what it sums and ends at its Output, "
-          "at $scale", (tester) async {
-        var c = await pump(tester, effects: true, scale: scale);
-        expect(find.byKey(const ValueKey("device-sceneSound")), findsOneWidget);
-        expect(find.byKey(const ValueKey("sceneSoundScreen")), findsOneWidget);
-        expect(find.byKey(const ValueKey("device-busOutput")), findsOneWidget);
+    // One chain at each text size in turn: the level turned is undone, so
+    // each size starts as the first did.
+    testWidgets("its chain starts with what it sums and ends at its Output",
+        (tester) async {
+      var c = await pump(tester, effects: true, scale: null);
+      for (var scale in [1.0, 1.5]) {
+        setTestTextScale(tester, scale);
+        await tester.pump(const Duration(milliseconds: 400));
+        var at = "at ${scale}x";
+        expect(find.byKey(const ValueKey("device-sceneSound")), findsOneWidget,
+            reason: at);
+        expect(find.byKey(const ValueKey("sceneSoundScreen")), findsOneWidget,
+            reason: at);
+        expect(find.byKey(const ValueKey("device-busOutput")), findsOneWidget,
+            reason: at);
         expect(find.byKey(const ValueKey("device-masterMeter")), findsNothing,
-            reason: "the master's meter is the master's");
+            reason: "the master's meter is the master's, $at");
         expect(find.byKey(const ValueKey("junction-0")), findsOneWidget,
-            reason: "measured between its devices, as a channel is");
-        expect(find.text("Master"), findsWidgets);
+            reason: "measured between its devices, as a channel is, $at");
+        expect(find.text("Master"), findsWidgets, reason: at);
         // Its Output's level is the bus's fader, one step a turn.
         await tester
             .ensureVisible(find.byKey(const ValueKey("busOutput-level")));
@@ -426,12 +436,12 @@ void main() {
             .widget<DeviceKnob>(find.byKey(const ValueKey("busOutput-level")))
             .onChanged(-6);
         await tester.pump();
-        expect(c.sceneBus.gainDb, -6);
+        expect(c.sceneBus.gainDb, -6, reason: at);
         c.undo();
-        expect(c.sceneBus.gainDb, 0);
-        expect(tester.takeException(), isNull);
-      });
-    }
+        expect(c.sceneBus.gainDb, 0, reason: at);
+        expect(tester.takeException(), isNull, reason: at);
+      }
+    });
 
     for (var scale in [1.0, 1.5]) {
       testWidgets("the scene's strip sits before the master, at $scale",

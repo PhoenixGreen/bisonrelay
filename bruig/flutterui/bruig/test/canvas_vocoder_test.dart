@@ -195,61 +195,62 @@ void main() {
   });
 
   group("the device", () {
-    for (var scale in [1.0, 1.5]) {
-      testWidgets("its carrier channel is chosen beside its knobs, at $scale",
-          (tester) async {
-        var c = CanvasController(
-            CanvasDocument(frames: 100, elements: [
-              for (var (id, name) in [("a", "Voice"), ("b", "Synth")])
-                AudioElement(ElementBase(id: id, name: name),
-                    clip: const MediaClip(
-                        playlist: [MediaSource(assetId: "t", length: 2)],
-                        timed: true)),
-            ]),
-            audioEngine: FakeEngine({"t": 2}));
+    // One mixer at each text size in turn, the vocoder put on afresh for
+    // each.
+    testWidgets("its carrier channel is chosen beside its knobs",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            for (var (id, name) in [("a", "Voice"), ("b", "Synth")])
+              AudioElement(ElementBase(id: id, name: name),
+                  clip: const MediaClip(
+                      playlist: [MediaSource(assetId: "t", length: 2)],
+                      timed: true)),
+          ]),
+          audioEngine: FakeEngine({"t": 2}));
+      c.setDevicesOf("a", [const MixDevice(DeviceKind.vocoder)]);
+      c.openEffects("a", device: "dev:d0");
+      setTestScreen(tester, const Size(1600, 900));
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) => Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              CanvasMixer.effects(
+                                  controller: c,
+                                  height: 360,
+                                  onResize: (_) {},
+                                  onClose: () {}),
+                            ])))),
+      ));
+      for (var scale in [1.0, 1.5]) {
+        setTestTextScale(tester, scale);
         c.setDevicesOf("a", [const MixDevice(DeviceKind.vocoder)]);
-        c.openEffects("a", device: "dev:d0");
-        setTestScreen(tester, const Size(1600, 900));
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-          ],
-          child: MaterialApp(
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  body: ListenableBuilder(
-                      listenable: c,
-                      builder: (context, _) => Column(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                CanvasMixer.effects(
-                                    controller: c,
-                                    height: 360,
-                                    onResize: (_) {},
-                                    onClose: () {}),
-                              ])))),
-        ));
         await tester.pump(const Duration(milliseconds: 400));
-        expect(tester.takeException(), isNull);
+        var at = "at ${scale}x";
+        expect(tester.takeException(), isNull, reason: at);
         var source = find.byKey(const ValueKey("deviceSource-0"));
         var note = find.byKey(const ValueKey("device-0-note"));
         // A buzz: its note, and no channel.
-        expect(note, findsOneWidget);
-        expect(source, findsNothing);
+        expect(note, findsOneWidget, reason: at);
+        expect(source, findsNothing, reason: at);
         c.setDevicesOf("a", [
           const MixDevice(DeviceKind.vocoder)
               .withValue("carrier", carrierFromChannel.toDouble())
         ]);
         await tester.pump();
-        expect(note, findsNothing, reason: "a channel carries its own notes");
-        expect(source, findsOneWidget);
-        expect(tester.takeException(), isNull);
+        expect(note, findsNothing,
+            reason: "a channel carries its own notes, $at");
+        expect(source, findsOneWidget, reason: at);
+        expect(tester.takeException(), isNull, reason: at);
         // Below its knobs, which scroll where large text leaves no room.
         await tester.ensureVisible(source);
         await tester.pump();
@@ -257,15 +258,17 @@ void main() {
         await tester.pump(const Duration(milliseconds: 500));
         // Every channel but its own.
         expect(find.widgetWithText(DropdownMenuItem<String>, "Voice"),
-            findsNothing);
+            findsNothing,
+            reason: at);
         expect(find.widgetWithText(DropdownMenuItem<String>, "Synth"),
-            findsOneWidget);
+            findsOneWidget,
+            reason: at);
         await tester.tap(find.text("Synth").last);
         await tester.pump(const Duration(milliseconds: 500));
-        expect(c.devicesOf("a").single.sidechain, "b");
-        expect(tester.takeException(), isNull);
-      });
-    }
+        expect(c.devicesOf("a").single.sidechain, "b", reason: at);
+        expect(tester.takeException(), isNull, reason: at);
+      }
+    });
   });
 
   // Ken's systems review, 2026-11-08: a knob turned started it again.

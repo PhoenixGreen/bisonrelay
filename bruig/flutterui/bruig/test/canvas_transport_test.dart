@@ -1,8 +1,6 @@
 import 'dart:typed_data';
 
 import 'support/canvas_app.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
@@ -13,10 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/transport.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/transport_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 import 'support/canvas_timeline_menus.dart';
@@ -436,73 +432,59 @@ void main() {
     testWidgets("at every text size, in every state, nothing overflows",
         (tester) async {
       var failures = <String>[];
-      for (var scale in [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
-        for (var width in [900.0, 1200.0, 1600.0]) {
-          for (var state in [
-            "audio",
-            "audio playing looping",
-            "audio locator",
-            "scenes",
-            "scenes many",
-            "scenes stop marker",
-            "master",
-          ]) {
-            var doc = state.startsWith("audio")
-                ? sound.copyWith(
-                    audio: const AudioSettings(
-                        quantise: Quantise.sixteenthTriplet,
-                        beatsPerBar: 12,
-                        beatUnit: 8))
-                : const CanvasDocument(frames: maxFrameCount);
-            var c = CanvasController(doc);
-            if (state.contains("many") || state == "master") {
-              c.addScene();
-              c.addScene();
-              if (state == "master") c.showMaster();
-            }
-            c.frame = c.document.frames - 1;
-            if (state.contains("locator")) c.addLocator();
-            if (state.contains("marker")) {
-              c.apply(c.document.copyWith(actions: [
-                TimelineAction(
-                    frame: c.frame, kind: TimelineActionKind.loop, label: "x")
-              ]));
-            }
-            if (state.contains("looping")) c.looping = true;
-            if (state.contains("playing")) c.play();
+      setTestScreen(tester, const Size(900, 600));
+      // Each state is a canvas of its own; its bar is laid out at every
+      // text size and width in turn.
+      for (var state in [
+        "audio",
+        "audio playing looping",
+        "audio locator",
+        "scenes",
+        "scenes many",
+        "scenes stop marker",
+        "master",
+      ]) {
+        var doc = state.startsWith("audio")
+            ? sound.copyWith(
+                audio: const AudioSettings(
+                    quantise: Quantise.sixteenthTriplet,
+                    beatsPerBar: 12,
+                    beatUnit: 8))
+            : const CanvasDocument(frames: maxFrameCount);
+        var c = CanvasController(doc);
+        if (state.contains("many") || state == "master") {
+          c.addScene();
+          c.addScene();
+          if (state == "master") c.showMaster();
+        }
+        c.frame = c.document.frames - 1;
+        if (state.contains("locator")) c.addLocator();
+        if (state.contains("marker")) {
+          c.apply(c.document.copyWith(actions: [
+            TimelineAction(
+                frame: c.frame, kind: TimelineActionKind.loop, label: "x")
+          ]));
+        }
+        if (state.contains("looping")) c.looping = true;
+        if (state.contains("playing")) c.play();
+        await tester.pumpWidget(canvasApp(Align(
+            alignment: Alignment.bottomCenter,
+            child: CanvasTimeline(controller: c))));
+        for (var scale in [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
+          setTestTextScale(tester, scale);
+          for (var width in [900.0, 1200.0, 1600.0]) {
             tester.view.physicalSize = Size(width, 600);
-            tester.view.devicePixelRatio = 1.0;
-            await tester.pumpWidget(MultiProvider(
-              providers: [
-                ChangeNotifierProvider<ThemeNotifier>(
-                    create: (c) => ThemeNotifier(doLoad: false)),
-                ChangeNotifierProvider<SnackBarModel>(
-                    create: (c) => SnackBarModel()),
-                ChangeNotifierProvider<CanvasPreferences>(
-                    create: (c) => CanvasPreferences()),
-              ],
-              child: MaterialApp(
-                  builder: (context, child) => MediaQuery(
-                      data: MediaQuery.of(context)
-                          .copyWith(textScaler: TextScaler.linear(scale)),
-                      child: child!),
-                  home: Scaffold(
-                      body: Align(
-                          alignment: Alignment.bottomCenter,
-                          child: CanvasTimeline(controller: c)))),
-            ));
             await tester.pump();
             if (tester.takeException() case var e?) {
               failures.add("$state at ${scale}x, $width wide: "
                   "${e.toString().split("\n").first}");
             }
-            c.pause();
-            await tester.pumpWidget(const SizedBox());
-            c.dispose();
           }
         }
+        c.pause();
+        await tester.pumpWidget(const SizedBox());
+        c.dispose();
       }
-      tester.view.reset();
       expect(failures, isEmpty);
     });
 

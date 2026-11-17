@@ -414,22 +414,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    for (var scale in [0.65, 1.5]) {
-      testWidgets("the steps fit at text size $scale", (tester) async {
-        await studio(tester, scale: scale);
-        final connect = find.byKey(const ValueKey("dataStudioConnectData"));
-        await tester.ensureVisible(connect);
-        await tester.tap(connect);
-        await tester.pumpAndSettle();
-        final web = find.byKey(const ValueKey("connectSource-web"));
-        await tester.ensureVisible(web);
-        await tester.tap(web);
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey("connectNext")));
-        await tester.pumpAndSettle();
-        expect(step(tester), startsWith("Step 2 of 4"));
-        expect(tester.takeException(), isNull);
-      });
-    }
+    testWidgets("the steps fit at text sizes 0.65 and 1.5", (tester) async {
+      // One studio taken through the steps; after each, laid out at both
+      // text sizes in place.
+      Future<void> everyScale(String step) async {
+        for (var scale in [0.65, 1.5]) {
+          setTestTextScale(tester, scale);
+          for (var i = 0; i < 4; i++) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+          expect(tester.takeException(), isNull, reason: "$step, ${scale}x");
+        }
+      }
+
+      await studio(tester, scale: 0.65);
+      await everyScale("opened");
+      final connect = find.byKey(const ValueKey("dataStudioConnectData"));
+      await tester.ensureVisible(connect);
+      await tester.tap(connect);
+      await tester.pumpAndSettle();
+      await everyScale("connecting");
+      final web = find.byKey(const ValueKey("connectSource-web"));
+      await tester.ensureVisible(web);
+      await tester.tap(web);
+      await tester.pumpAndSettle();
+      await everyScale("the web chosen");
+      await tester.tap(find.byKey(const ValueKey("connectNext")));
+      await tester.pumpAndSettle();
+      expect(step(tester), startsWith("Step 2 of 4"));
+      await everyScale("step 2");
+    });
   });
 }

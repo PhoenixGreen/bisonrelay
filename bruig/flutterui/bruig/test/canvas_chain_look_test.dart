@@ -836,26 +836,33 @@ void main() {
     });
 
     // Ken's log: the master's meter, folded, overflowed its fold by 6.
-    for (var scale in [1.0, 1.5]) {
-      testWidgets("every card folded fits its fold, text at ${scale}x",
-          (tester) async {
-        setTestTextScale(tester, scale);
-        var c = CanvasController(
-            CanvasDocument(frames: 100, elements: [
-              AudioElement(const ElementBase(id: "m", name: "Music"),
-                  clip: MediaClip(
-                      playlist: const [MediaSource(assetId: "t", length: 8)],
-                      timed: true,
-                      mix: ChannelMix(devices: [
-                        for (var (i, k) in DeviceKind.values.indexed)
-                          MixDevice(k, id: "d$i"),
-                      ]))),
-            ]),
-            audioEngine: FakeEngine({"t": 8}));
-        addTearDown(c.dispose);
-        for (var shown in ["m", mixerMasterKey]) {
-          c.openEffects(shown);
-          await show(tester, c);
+    testWidgets("every card folded fits its fold, text at 1.0x and 1.5x",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            AudioElement(const ElementBase(id: "m", name: "Music"),
+                clip: MediaClip(
+                    playlist: const [MediaSource(assetId: "t", length: 8)],
+                    timed: true,
+                    mix: ChannelMix(devices: [
+                      for (var (i, k) in DeviceKind.values.indexed)
+                        MixDevice(k, id: "d$i"),
+                    ]))),
+          ]),
+          audioEngine: FakeEngine({"t": 8}));
+      addTearDown(c.dispose);
+      for (var shown in ["m", mixerMasterKey]) {
+        c.openEffects(shown);
+        await show(tester, c);
+        // One panel, the text size changed in place; at each, the cards
+        // are laid out open, then every one built there is folded.
+        var folded = <String>{};
+        for (var scale in [1.0, 1.5]) {
+          setTestTextScale(tester, scale);
+          for (var id in folded) {
+            c.foldDevice(id, false);
+          }
+          await tester.pump(const Duration(milliseconds: 300));
           var folds = find.byWidgetPredicate((w) =>
               w.key is ValueKey<String> &&
               (w.key as ValueKey<String>).value.startsWith("deviceFold-"));
@@ -864,13 +871,15 @@ void main() {
                 .value
                 .substring("deviceFold-".length);
             c.foldDevice(id, true);
+            folded.add(id);
           }
           await tester.pump(const Duration(milliseconds: 300));
-          expect(tester.takeException(), isNull, reason: "$shown folded");
+          expect(tester.takeException(), isNull,
+              reason: "$shown folded, text at ${scale}x");
         }
-        await tester.pumpWidget(const SizedBox());
-      });
-    }
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
 
     testWidgets("its ⋯ duplicates it and resets it, as the prototype's",
         (tester) async {

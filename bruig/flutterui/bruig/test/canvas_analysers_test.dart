@@ -173,8 +173,11 @@ void main() {
   });
 
   group("their cards", () {
+    /// show is the four analysers' cards in the effects panel, as tall as
+    /// [height] says (360 where not given), at the platform's text size.
     Future<(CanvasController, FakeEngine)> show(WidgetTester tester,
-        {double scale = 1, double height = 360}) async {
+        {ValueNotifier<double>? height}) async {
+      height ??= ValueNotifier(360);
       var engine = FakeEngine({"t": 4});
       var c = CanvasController(
           CanvasDocument(frames: 100, elements: [
@@ -201,20 +204,18 @@ void main() {
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.bottomCenter,
-                    child: ListenableBuilder(
-                        listenable: c,
-                        builder: (context, _) => CanvasMixer.effects(
-                            controller: c,
-                            height: height,
-                            onResize: (_) {},
-                            onClose: () {}))))),
+                    child: ValueListenableBuilder<double>(
+                        valueListenable: height,
+                        builder: (context, h, _) => ListenableBuilder(
+                            listenable: c,
+                            builder: (context, _) => CanvasMixer.effects(
+                                controller: c,
+                                height: h,
+                                onResize: (_) {},
+                                onClose: () {})))))),
       ));
       await tester.pump();
       return (c, engine);
@@ -275,19 +276,23 @@ void main() {
     });
 
     testWidgets("they fit, at every height and text size", (tester) async {
+      // One panel, its height and the text size changed in place.
+      var height = ValueNotifier(180.0);
+      var (c, _) = await show(tester, height: height);
       var failures = <String>[];
       for (var scale in [1.0, 1.25, 1.5]) {
-        for (var height in [180.0, 260.0, 360.0, 520.0]) {
-          var (c, _) = await show(tester, scale: scale, height: height);
+        setTestTextScale(tester, scale);
+        for (var h in [180.0, 260.0, 360.0, 520.0]) {
+          height.value = h;
+          await tester.pump();
           if (tester.takeException() case var e?) {
-            failures
-                .add("$height ${scale}x: ${e.toString().split("\n").first}");
+            failures.add("$h ${scale}x: ${e.toString().split("\n").first}");
           }
           await tester.pump(const Duration(milliseconds: 100));
-          await tester.pumpWidget(const SizedBox());
-          c.dispose();
         }
       }
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
       expect(failures, isEmpty);
     });
   });

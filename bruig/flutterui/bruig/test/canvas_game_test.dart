@@ -1461,37 +1461,35 @@ void main() {
           const CanvasScene(id: "two", name: "Level 2"),
         ]);
     setTestScreen(tester, const Size(400, 2400));
-    for (var scale in [1.0, 1.25, 1.5]) {
-      for (var pick in [null, "hero", "coin", "spikes"]) {
-        var c = CanvasController(doc);
-        c.goToScene(1);
-        if (pick != null) c.selectOnly(pick);
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<SnackBarModel>(
-                create: (c) => SnackBarModel()),
-            ChangeNotifierProvider<CanvasPreferences>(
-                create: (c) => CanvasPreferences()),
-          ],
-          child: MaterialApp(
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  body: SizedBox(
-                      width: 300,
-                      height: 2400,
-                      child: CanvasGamePanel(controller: c)))),
-        ));
+    // Each pick shown once, then laid out at each text size in place.
+    for (var pick in [null, "hero", "coin", "spikes"]) {
+      var c = CanvasController(doc);
+      c.goToScene(1);
+      if (pick != null) c.selectOnly(pick);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 300,
+                    height: 2400,
+                    child: CanvasGamePanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      for (var scale in [1.0, 1.25, 1.5]) {
+        setTestTextScale(tester, scale);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull,
             reason: "${pick ?? "nothing"} picked at ${scale}x");
-        await tester.pumpWidget(const SizedBox());
-        c.dispose();
       }
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
     }
   });
 
@@ -1520,8 +1518,7 @@ void main() {
 
   // The Game panel as the board has it (GamePanel2, approved 2026-10-31).
   group("the polished Game panel", () {
-    Future<void> panel(WidgetTester tester, CanvasController c,
-        {double scale = 1}) async {
+    Future<void> panel(WidgetTester tester, CanvasController c) async {
       setTestScreen(tester, const Size(400, 2400));
       await tester.pumpWidget(MultiProvider(
         providers: [
@@ -1532,10 +1529,6 @@ void main() {
               create: (c) => CanvasPreferences()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
             home: Scaffold(
                 body: SizedBox(
                     width: 300,
@@ -1777,21 +1770,24 @@ void main() {
     });
 
     testWidgets("the polished panel fits at every text size", (tester) async {
-      for (var scale in [1.0, 1.25, 1.5]) {
-        for (var pick in [null, "hero"]) {
-          var c = CanvasController(page.copyWith(game: true, counts: const [
-            GameCount("coins", "Coins")
-          ], elements: [
-            if (pick != null)
-              box("hero", 100, 100, 40, 60, as: PlayAs.platformer),
-          ]));
-          if (pick != null) c.selectOnly(pick);
-          await panel(tester, c, scale: scale);
+      // Each pick shown once, then laid out at each text size in place.
+      for (var pick in [null, "hero"]) {
+        var c = CanvasController(page.copyWith(game: true, counts: const [
+          GameCount("coins", "Coins")
+        ], elements: [
+          if (pick != null)
+            box("hero", 100, 100, 40, 60, as: PlayAs.platformer),
+        ]));
+        if (pick != null) c.selectOnly(pick);
+        await panel(tester, c);
+        for (var scale in [1.0, 1.25, 1.5]) {
+          setTestTextScale(tester, scale);
+          await tester.pumpAndSettle();
           expect(tester.takeException(), isNull,
               reason: "${pick ?? "nothing"} picked at ${scale}x");
-          await tester.pumpWidget(const SizedBox());
-          c.dispose();
         }
+        await tester.pumpWidget(const SizedBox());
+        c.dispose();
       }
     });
   });

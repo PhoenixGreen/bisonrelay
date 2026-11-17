@@ -60,31 +60,29 @@ void main() {
         reason: "normal, as before, saved as it was");
   });
 
-  for (var scale in [1.0, 1.5]) {
-    testWidgets("the Output card sets the blend, at $scale", (tester) async {
-      setTestScreen(tester, const Size(3000, 420));
-      var c = CanvasController(_page([_box("r", const Color(0xFFFF0000))]));
-      addTearDown(c.dispose);
-      var id = c.newClip("r", kind: MotionKind.arrive, slot: 0);
-      c.pickMotion("r", id);
-      c.selectOnly("r");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) =>
-                        AnimationPanel(controller: c, height: 400)))),
-      ));
+  testWidgets("the Output card sets the blend, at 1.0 and 1.5", (tester) async {
+    setTestScreen(tester, const Size(3000, 420));
+    var c = CanvasController(_page([_box("r", const Color(0xFFFF0000))]));
+    addTearDown(c.dispose);
+    var id = c.newClip("r", kind: MotionKind.arrive, slot: 0);
+    c.pickMotion("r", id);
+    c.selectOnly("r");
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
+    ));
+    // One panel, the text size changed in place.
+    for (var scale in [1.0, 1.5]) {
+      setTestTextScale(tester, scale);
       await tester.pumpAndSettle();
       // Built along the row, off screen until scrolled to.
       await tester.ensureVisible(find.byKey(const ValueKey("motionOutputBlend"),
@@ -93,10 +91,12 @@ void main() {
       var blend = find.byKey(const ValueKey("motionOutputBlend"));
       tester.widget<StudioDrop<LayerBlend>>(blend).onChanged(LayerBlend.screen);
       await tester.pumpAndSettle();
-      expect(c.document.elementById("r")!.base.blend, LayerBlend.screen);
+      expect(c.document.elementById("r")!.base.blend, LayerBlend.screen,
+          reason: "at $scale");
       c.undo();
-      expect(c.document.elementById("r")!.base.blend, LayerBlend.normal);
-      expect(tester.takeException(), isNull);
-    });
-  }
+      expect(c.document.elementById("r")!.base.blend, LayerBlend.normal,
+          reason: "at $scale");
+      expect(tester.takeException(), isNull, reason: "at $scale");
+    }
+  });
 }

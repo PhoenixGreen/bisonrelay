@@ -88,40 +88,39 @@ void main() {
     });
   });
 
-  for (var scale in [1.0, 1.5]) {
-    testWidgets("the Place card sets From, Of and Offset, at $scale",
-        (tester) async {
-      setTestScreen(tester, const Size(3000, 420));
-      var c =
-          CanvasController(CanvasDocument(frames: 96, frameRate: 24, elements: [
-        ShapeElement(
-            const ElementBase(id: "s", x: 100, y: 100, width: 50, height: 50)),
-        ShapeElement(const ElementBase(
-            id: "o", name: "Rock", x: 400, y: 300, width: 80, height: 40)),
-      ]));
-      addTearDown(c.dispose);
-      var id = c.newClip("s", kind: MotionKind.arrive, slot: 0);
-      c.pickMotion("s", id);
-      c.selectOnly("s");
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
-            home: Scaffold(
-                body: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) =>
-                        AnimationPanel(controller: c, height: 400)))),
-      ));
+  // One card, used at each text size in turn: it ends where it started,
+  // with no place, so each size starts as the first did.
+  testWidgets("the Place card sets From, Of and Offset", (tester) async {
+    setTestScreen(tester, const Size(3000, 420));
+    var c =
+        CanvasController(CanvasDocument(frames: 96, frameRate: 24, elements: [
+      ShapeElement(
+          const ElementBase(id: "s", x: 100, y: 100, width: 50, height: 50)),
+      ShapeElement(const ElementBase(
+          id: "o", name: "Rock", x: 400, y: 300, width: 80, height: 40)),
+    ]));
+    addTearDown(c.dispose);
+    var id = c.newClip("s", kind: MotionKind.arrive, slot: 0);
+    c.pickMotion("s", id);
+    c.selectOnly("s");
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
+    ));
+    MotionClip clip() => c.motionOf("s").clip(id)!;
+    for (var scale in [1.0, 1.5]) {
+      setTestTextScale(tester, scale);
+      var at = "at ${scale}x";
       await tester.pumpAndSettle();
-      MotionClip clip() => c.motionOf("s").clip(id)!;
       tester
           .widget<StudioDrop<String>>(
               find.byKey(const ValueKey("animPlaceFrom")))
@@ -129,23 +128,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(placeOf(clip()),
           const MotionPlace(MotionPlaceKind.beside, target: "o"),
-          reason: "beside the only other one, to start with");
+          reason: "beside the only other one, to start with, $at");
       var of = tester.widget<StudioDrop<String>>(
           find.byKey(const ValueKey("animPlaceOf")));
-      expect(of.options.map((o) => o.$2), contains("Rock"));
+      expect(of.options.map((o) => o.$2), contains("Rock"), reason: at);
       tester
           .widget<DeviceKnob>(find.byKey(const ValueKey("animPlaceOffset")))
           .onChanged(40);
       await tester.pumpAndSettle();
-      expect(placeOf(clip())?.by, 40);
+      expect(placeOf(clip())?.by, 40, reason: at);
       tester
           .widget<StudioDrop<String>>(
               find.byKey(const ValueKey("animPlaceFrom")))
           .onChanged("");
       await tester.pumpAndSettle();
-      expect(placeOf(clip()), isNull, reason: "where it is again");
-      expect(find.byKey(const ValueKey("animPlaceOffset")), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-  }
+      expect(placeOf(clip()), isNull, reason: "where it is again, $at");
+      expect(find.byKey(const ValueKey("animPlaceOffset")), findsNothing,
+          reason: at);
+      expect(tester.takeException(), isNull, reason: at);
+    }
+  });
 }

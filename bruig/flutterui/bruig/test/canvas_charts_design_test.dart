@@ -185,35 +185,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (var scale in [0.65, 1.0, 1.5]) {
-    testWidgets("nothing overflows at text size $scale", (tester) async {
-      await studio(tester, scale: scale);
-      await tester.tapAt(barAt(tester, 0));
-      await tester.pumpAndSettle();
-      await tester.tapAt(barAt(tester, 0));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey("chartsHighlightMark")));
-      await tester.pumpAndSettle();
-      await tester.tap(
-          find.byKey(const ValueKey("studioPill-chartsReach-ChartReach.when")));
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-      await rows(tester, "Places");
-      // The gallery too, and a kind's starting designs.
-      final add = find.byKey(const ValueKey("chartsNew"));
-      await tester.ensureVisible(add);
-      await tester.tap(add);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("chartsKind-horizontalBar")),
-          findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey("chartsKind-horizontalBar")));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey("chartsPreset-0")));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    });
-  }
+  testWidgets("nothing overflows at text sizes 0.65, 1.0 and 1.5",
+      (tester) async {
+    // One studio taken through its steps; after each, laid out at every
+    // text size in place. The size of the screen stays as it is, so a menu
+    // left open stays open.
+    Future<void> everyScale(String step) async {
+      for (var scale in [0.65, 1.0, 1.5]) {
+        setTestTextScale(tester, scale);
+        for (var i = 0; i < 4; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(tester.takeException(), isNull, reason: "$step, ${scale}x");
+      }
+    }
+
+    await studio(tester, scale: 1.0);
+    await everyScale("opened");
+    await tester.tapAt(barAt(tester, 0));
+    await tester.pumpAndSettle();
+    await everyScale("a series picked");
+    await tester.tapAt(barAt(tester, 0));
+    await tester.pumpAndSettle();
+    await everyScale("a bar picked");
+    await tester.tap(find.byKey(const ValueKey("chartsHighlightMark")));
+    await tester.pumpAndSettle();
+    await everyScale("highlighted");
+    await tester.tap(
+        find.byKey(const ValueKey("studioPill-chartsReach-ChartReach.when")));
+    await tester.pumpAndSettle();
+    await everyScale("reach picked");
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await everyScale("escaped");
+    await tester.tap(find.byKey(const ValueKey("chartsRows")));
+    await tester.pumpAndSettle();
+    await everyScale("rows menu open");
+    await tester.tap(find.text("Places").last);
+    await tester.pumpAndSettle();
+    await everyScale("rows picked");
+    // The gallery too, and a kind's starting designs.
+    final add = find.byKey(const ValueKey("chartsNew"));
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    await everyScale("gallery");
+    expect(
+        find.byKey(const ValueKey("chartsKind-horizontalBar")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("chartsKind-horizontalBar")));
+    await tester.pumpAndSettle();
+    await everyScale("a kind's designs");
+    await tester.tap(find.byKey(const ValueKey("chartsPreset-0")));
+    await tester.pumpAndSettle();
+    await everyScale("a design started");
+  });
 
   // Ken, 2026-11-17 (prototype v7): the gallery replaces the suggestions,
   // built from the columns ticked: every kind drawn with them, the best

@@ -27,8 +27,10 @@ import 'package:flutter_test/flutter_test.dart';
 // motion picked writes its keys; a click on a Keys row adds one, a drag
 // retimes it; the Keys device is dragged wider; each change one undo step.
 
+/// pump shows the panel [height] tall, at the platform's text size (see
+/// setTestTextScale), so a sweep can change it in place.
 Future<(CanvasController, String)> pump(WidgetTester tester,
-    {double scale = 1, double height = 360}) async {
+    {double height = 360}) async {
   setTestScreen(tester, const Size(2400, 900));
   var c =
       CanvasController(CanvasDocument(frames: 240, frameRate: 24, elements: [
@@ -41,14 +43,15 @@ Future<(CanvasController, String)> pump(WidgetTester tester,
   var clip = c.newClip("a", preset: presetNamed("Pop"), slot: 0);
   c.pickMotion("a", clip);
   await tester.pumpWidget(canvasApp(
-      MediaQuery(
-          data: MediaQueryData(
-              size: const Size(1600, 900),
-              textScaler: TextScaler.linear(scale)),
-          child: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: AnimationPanel(controller: c, height: height)))),
+      Builder(
+          builder: (context) => MediaQuery(
+              data: MediaQueryData(
+                  size: const Size(1600, 900),
+                  textScaler: MediaQuery.textScalerOf(context)),
+              child: Scaffold(
+                  body: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: AnimationPanel(controller: c, height: height))))),
       scaffold: false));
   await tester.pumpAndSettle();
   return (c, clip);
@@ -116,26 +119,28 @@ void main() {
 
   // Ken, 2026-11-08: the motion devices as the audio ones -- displays wide
   // as the prototype's, settings that do not scroll, choices as dropdowns.
-  for (var scale in [1.0, 1.5]) {
-    testWidgets(
-        "short, a device's screen is kept small over its settings "
-        "(text x$scale)", (tester) async {
-      // The panel at the Chain's M: its cards on the short layout.
-      var (c, clip) = await pump(tester, scale: scale, height: 242);
-      c.setMotionDevices(
-          "a", withMotionDeviceIds([MotionDevice(MotionDeviceKind.oscillate)]));
-      tester.view.physicalSize = const Size(4000, 900);
-      await tester.pumpAndSettle();
-      var id = c.motionDevicesOf("a").single.id;
+  testWidgets(
+      "short, a device's screen is kept small over its settings, "
+      "at each text size", (tester) async {
+    // The panel at the Chain's M: its cards on the short layout.
+    var (c, _) = await pump(tester, height: 242);
+    c.setMotionDevices(
+        "a", withMotionDeviceIds([MotionDevice(MotionDeviceKind.oscillate)]));
+    await tester.pumpAndSettle();
+    var id = c.motionDevicesOf("a").single.id;
+    await sweepSizes(tester,
+        sizes: const [Size(4000, 900)], scales: const [1.0, 1.5], check: (at) {
       // In the settings panel's style (Ken, 2026-11-12): a small screen,
       // the card's width, over its settings.
       var screen = tester.getSize(find.byKey(ValueKey("mdevScreen-$id")));
-      expect(screen.width, greaterThanOrEqualTo(200));
-      expect(screen.height, lessThanOrEqualTo(96));
+      expect(screen.width, greaterThanOrEqualTo(200), reason: at);
+      expect(screen.height, lessThanOrEqualTo(96), reason: at);
       // Moves is a dropdown, not a knob turned through its words.
-      expect(find.byKey(ValueKey("mdev-$id-moves")), findsOneWidget);
+      expect(find.byKey(ValueKey("mdev-$id-moves")), findsOneWidget,
+          reason: at);
       expect(tester.widget(find.byKey(ValueKey("mdev-$id-moves"))),
-          isA<StudioDrop<int>>());
+          isA<StudioDrop<int>>(),
+          reason: at);
       // Nothing in the cards scrolls along, and nothing is cut.
       for (var card in [
         "motionClipsCard",
@@ -149,7 +154,7 @@ void main() {
                     w is SingleChildScrollView &&
                     w.scrollDirection == Axis.horizontal)),
             findsNothing,
-            reason: card);
+            reason: "$card, $at");
       }
       // The clip's name lines up with the dropdowns beside it.
       var name = tester.getRect(find.byKey(const ValueKey("animClipNameBox")));
@@ -157,10 +162,9 @@ void main() {
           tester.getRect(find.byKey(const ValueKey("motionClipsOn-open")));
       // As tall as they are, on their grid: beside them, or under the
       // first of them where the row is full.
-      expect(name.height, closeTo(layer.height, 1));
-      expect(tester.takeException(), isNull);
+      expect(name.height, closeTo(layer.height, 1), reason: at);
     });
-  }
+  });
 
   // Ken, 2026-11-08: the clip's screen shows what it does as set, and is
   // edited there -- its points moved, a stretch's curve, a point added and
@@ -501,12 +505,11 @@ void main() {
     expect(find.textContaining("2.00–"), findsOneWidget);
   });
 
-  for (var scale in [0.65, 1.5]) {
-    testWidgets("at text size $scale, nothing overflows", (tester) async {
-      await pump(tester, scale: scale);
-      expect(tester.takeException(), isNull);
-    });
-  }
+  testWidgets("at text sizes 0.65 and 1.5, nothing overflows", (tester) async {
+    await pump(tester);
+    await sweepSizes(tester,
+        sizes: const [Size(2400, 900)], scales: const [0.65, 1.5]);
+  });
 
   testWidgets("Inside it: an arrival plays the element's own", (tester) async {
     var (c, _) = await pump(tester);

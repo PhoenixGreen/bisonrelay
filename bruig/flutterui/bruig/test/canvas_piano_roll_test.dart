@@ -177,7 +177,7 @@ void main() {
         {int? row,
         double height = 760,
         double bars = 2,
-        double scale = 1,
+        double? scale = 1,
         bool lanes = true}) async {
       c = CanvasController(
           CanvasDocument(
@@ -211,11 +211,15 @@ void main() {
               create: (c) => ThemeNotifier(doLoad: false)),
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
+        // Without a scale the text size is the platform's, for a test to
+        // change.
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
+            builder: scale == null
+                ? null
+                : (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!),
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.bottomCenter,
@@ -554,28 +558,45 @@ void main() {
     });
 
     // Ken: a lane's settings in its panel at the left, not along its top.
-    for (var scale in [1.0, 1.5]) {
-      testWidgets("a lane's settings are in its panel at its left, at $scale",
-          (tester) async {
-        await open(tester, row: 0, scale: scale);
-        expect(tester.takeException(), isNull);
+    // One roll at each text size in turn, the lane added taken away again
+    // so each size starts with one.
+    testWidgets("a lane's settings are in its panel at its left",
+        (tester) async {
+      await open(tester, row: 0, scale: null);
+      for (var scale in [1.0, 1.5]) {
+        setTestTextScale(tester, scale);
+        await tester.pump();
+        await tester.pump();
+        // Zoomed, the desk is built anew and the lanes start folded again:
+        // opened, as open() opens them.
+        var folded = find.byKey(const ValueKey("rollLanesFolded"));
+        if (folded.evaluate().isNotEmpty) {
+          await tester.tap(folded);
+          await tester.pump();
+        }
+        var at = "at ${scale}x";
+        expect(tester.takeException(), isNull, reason: at);
         var panel =
             tester.getRect(find.byKey(const ValueKey("rollLaneHeading-0")));
         var lane = tester.getRect(find.byKey(const ValueKey("rollVelocity")));
-        expect(panel.right, lessThanOrEqualTo(lane.left + 0.5));
-        expect(panel.top, closeTo(lane.top, 0.5), reason: "beside it");
+        expect(panel.right, lessThanOrEqualTo(lane.left + 0.5), reason: at);
+        expect(panel.top, closeTo(lane.top, 0.5), reason: "beside it, $at");
         expect(
             find.descendant(
                 of: find.byKey(const ValueKey("rollLaneHeading-0")),
                 matching: find.byKey(const ValueKey("rollLane"))),
-            findsOneWidget);
+            findsOneWidget,
+            reason: at);
         await tester.tap(find.byKey(const ValueKey("rollLaneAdd")));
         await tester.pump();
-        expect(tester.takeException(), isNull);
-        expect(find.byKey(const ValueKey("rollLaneHeading-1")), findsOneWidget);
-        await done(tester);
-      });
-    }
+        expect(tester.takeException(), isNull, reason: at);
+        expect(find.byKey(const ValueKey("rollLaneHeading-1")), findsOneWidget,
+            reason: at);
+        await tester.tap(find.byKey(const ValueKey("rollLaneRemove")));
+        await tester.pump();
+      }
+      await done(tester);
+    });
 
     // Ken: the lanes made taller or shorter.
     testWidgets("the lanes' edge is dragged to make them taller or shorter",
@@ -712,27 +733,34 @@ void main() {
       await done(tester);
     });
 
-    for (var scale in [1.0, 1.25, 1.5]) {
-      testWidgets("a part's editor fits, narrow and wide, at $scale",
-          (tester) async {
-        // Filling the panel: every column where there is room for them at
-        // this text size, one at a time where not -- and nothing spills.
-        await open(tester, scale: scale);
-        expect(tester.takeException(), isNull);
+    testWidgets("a part's editor fits, narrow and wide, at every text size",
+        (tester) async {
+      // Filling the panel: every column where there is room for them at
+      // each text size, one at a time where not -- and nothing spills. One
+      // editor, opened and folded again at each.
+      await open(tester, scale: null);
+      for (var scale in [1.0, 1.25, 1.5]) {
+        setTestTextScale(tester, scale);
+        await tester.pump();
+        await tester.pump();
+        var at = "at ${scale}x";
+        expect(tester.takeException(), isNull, reason: at);
         // Folded, and open.
-        expect(
-            find.byKey(const ValueKey("editorSettingsOpen")), findsOneWidget);
+        expect(find.byKey(const ValueKey("editorSettingsOpen")), findsOneWidget,
+            reason: at);
         await tester.tap(find.byKey(const ValueKey("editorSettingsOpen")));
         await tester.pump();
-        expect(tester.takeException(), isNull);
-        expect(find.byKey(const ValueKey("partColumn")), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: at);
+        expect(find.byKey(const ValueKey("partColumn")), findsOneWidget,
+            reason: at);
         // Folded again from the open columns.
         await tester.tap(find.byKey(const ValueKey("editorSettingsShut")));
         await tester.pump();
-        expect(find.byKey(const ValueKey("partColumn")), findsNothing);
-        await done(tester);
-      });
-    }
+        expect(find.byKey(const ValueKey("partColumn")), findsNothing,
+            reason: at);
+      }
+      await done(tester);
+    });
 
     testWidgets("Fold shows the scale's keys round the notes, and theirs",
         (tester) async {
@@ -927,46 +955,45 @@ void main() {
   testWidgets("a MIDI channel's chain and piano roll fit, at every size",
       (tester) async {
     var failures = <String>[];
-    for (var scale in [1.0, 1.15, 1.25, 1.5]) {
-      for (var roll in [false, true]) {
-        var height = ValueNotifier(200.0);
-        {
-          var c = CanvasController(
-              CanvasDocument(frames: 100, elements: [
-                AudioElement(const ElementBase(id: "p", name: "Keys"),
-                    clip: const MediaClip(timed: true),
-                    instrument: const InstrumentPart(effects: [
-                      MidiEffect(MidiEffectKind.arpeggiator),
-                      MidiEffect(MidiEffectKind.chord),
-                    ])),
-              ]),
-              audioEngine: FakeEngine({}));
-          roll ? c.openPianoRoll("p") : c.openEffects("p");
-          tester.view.physicalSize = const Size(1600, 900);
-          tester.view.devicePixelRatio = 1;
-          await tester.pumpWidget(MultiProvider(
-            providers: [
-              ChangeNotifierProvider<ThemeNotifier>(
-                  create: (c) => ThemeNotifier(doLoad: false)),
-              ChangeNotifierProvider<SnackBarModel>(
-                  create: (c) => SnackBarModel()),
-            ],
-            child: MaterialApp(
-                builder: (context, child) => MediaQuery(
-                    data: MediaQuery.of(context)
-                        .copyWith(textScaler: TextScaler.linear(scale)),
-                    child: child!),
-                home: Scaffold(
-                    body: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: ValueListenableBuilder(
-                            valueListenable: height,
-                            builder: (context, h, _) => CanvasMixer.effects(
-                                controller: c,
-                                height: h,
-                                onResize: (_) {},
-                                onClose: () {}))))),
-          ));
+    // A chain and a roll, each one panel laid out at every text size and
+    // resized at each.
+    for (var roll in [false, true]) {
+      var height = ValueNotifier(200.0);
+      {
+        var c = CanvasController(
+            CanvasDocument(frames: 100, elements: [
+              AudioElement(const ElementBase(id: "p", name: "Keys"),
+                  clip: const MediaClip(timed: true),
+                  instrument: const InstrumentPart(effects: [
+                    MidiEffect(MidiEffectKind.arpeggiator),
+                    MidiEffect(MidiEffectKind.chord),
+                  ])),
+            ]),
+            audioEngine: FakeEngine({}));
+        roll ? c.openPianoRoll("p") : c.openEffects("p");
+        tester.view.physicalSize = const Size(1600, 900);
+        tester.view.devicePixelRatio = 1;
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+          ],
+          child: MaterialApp(
+              home: Scaffold(
+                  body: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: ValueListenableBuilder(
+                          valueListenable: height,
+                          builder: (context, h, _) => CanvasMixer.effects(
+                              controller: c,
+                              height: h,
+                              onResize: (_) {},
+                              onClose: () {}))))),
+        ));
+        for (var scale in [1.0, 1.15, 1.25, 1.5]) {
+          setTestTextScale(tester, scale);
           // Resized, as a drag resizes it.
           for (var h = 200.0; h <= 620; h += 20) {
             height.value = h;
@@ -976,10 +1003,10 @@ void main() {
                   "${e.toString().split("\n").first}");
             }
           }
-          await tester.pump(const Duration(milliseconds: 300));
-          await tester.pumpWidget(const SizedBox());
-          c.dispose();
         }
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpWidget(const SizedBox());
+        c.dispose();
       }
     }
     tester.view.reset();

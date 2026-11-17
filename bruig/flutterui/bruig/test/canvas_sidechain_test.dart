@@ -159,8 +159,9 @@ void main() {
                         : const ChannelMix())),
         ]);
 
+    // Without a scale the text size is the platform's, for a test to change.
     Future<CanvasController> mixer(WidgetTester tester, String key,
-        {double scale = 1}) async {
+        {double? scale = 1}) async {
       var c = CanvasController(doc(), audioEngine: FakeEngine({"t": 2}));
       addTearDown(c.dispose);
       c.openEffects(key);
@@ -172,10 +173,12 @@ void main() {
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
+            builder: scale == null
+                ? null
+                : (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!),
             home: Scaffold(
                 body: ListenableBuilder(
                     listenable: c,
@@ -193,34 +196,40 @@ void main() {
       return c;
     }
 
-    for (var scale in [1.0, 1.5]) {
-      testWidgets("a ducked channel has the Ducker first, at $scale",
-          (tester) async {
-        var c = await mixer(tester, "music", scale: scale);
-        expect(tester.takeException(), isNull);
+    // One mixer at each text size in turn: the Ducker switched off is
+    // switched back on, so each size starts as the first did.
+    testWidgets("a ducked channel has the Ducker first", (tester) async {
+      var c = await mixer(tester, "music", scale: null);
+      for (var scale in [1.0, 1.5]) {
+        setTestTextScale(tester, scale);
+        await tester.pump(const Duration(milliseconds: 400));
+        var at = "at ${scale}x";
+        expect(tester.takeException(), isNull, reason: at);
         var card = find.byKey(const ValueKey("duckedOn"));
-        expect(card, findsOneWidget);
-        expect(find.byKey(const ValueKey("duckedNow")), findsOneWidget);
-        expect(find.textContaining("By Voice"), findsOneWidget);
+        expect(card, findsOneWidget, reason: at);
+        expect(find.byKey(const ValueKey("duckedNow")), findsOneWidget,
+            reason: at);
+        expect(find.textContaining("By Voice"), findsOneWidget, reason: at);
         // First in the chain: left of the channel's EQ.
         expect(tester.getCenter(card).dx,
-            lessThan(tester.getCenter(find.byKey(const ValueKey("eqOn"))).dx));
+            lessThan(tester.getCenter(find.byKey(const ValueKey("eqOn"))).dx),
+            reason: at);
         // Off leaves the music alone; the setting is the voice's.
         await tester.tap(card);
         await tester.pump(const Duration(milliseconds: 100));
         var voice = c.timelineChannels.firstWhere((l) => l.key == "voice");
-        expect(voice.mix.duck.except, ["music"]);
-        expect(voice.mix.duck.on, isTrue, reason: "still ducks the kick");
+        expect(voice.mix.duck.except, ["music"], reason: at);
+        expect(voice.mix.duck.on, isTrue, reason: "still ducks the kick, $at");
         expect(find.byKey(const ValueKey("duckedOn")), findsOneWidget,
-            reason: "kept, to switch back on");
+            reason: "kept, to switch back on, $at");
         await tester.tap(card);
         await tester.pump(const Duration(milliseconds: 100));
         voice = c.timelineChannels.firstWhere((l) => l.key == "voice");
-        expect(voice.mix.duck.except, isEmpty);
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox());
-      });
-    }
+        expect(voice.mix.duck.except, isEmpty, reason: at);
+        expect(tester.takeException(), isNull, reason: at);
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
 
     testWidgets("the voice itself has no ducked card", (tester) async {
       await mixer(tester, "voice");

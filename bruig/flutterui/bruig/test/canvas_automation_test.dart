@@ -407,7 +407,7 @@ void main() {
     List<AutomationPoint> points(String target) =>
         c.automationLaneOf(channel(), target)?.points ?? const [];
 
-    Future<void> open(WidgetTester tester, {double scale = 1}) async {
+    Future<void> open(WidgetTester tester) async {
       c = CanvasController(
           CanvasDocument(frames: 300, frameRate: 30, elements: [
             AudioElement(const ElementBase(id: "a", name: "Vocals"),
@@ -429,10 +429,6 @@ void main() {
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!),
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.topCenter,
@@ -521,26 +517,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    for (var scale in [1.0, 1.5]) {
-      testWidgets("a lane held by hand says so, and fits, at $scale",
-          (tester) async {
-        await open(tester, scale: scale);
-        c.setAutomationPoints(channel(), "volume", const [(0, -20), (5, 0)]);
-        c.toggleAutomation("a");
-        await tester.pump();
-        var shown = c.mixNow(channel());
-        c.changeChannelMix(channel(), shown, shown.copyWith(gainDb: -3));
-        await tester.pump();
-        expect(find.text("held"), findsOneWidget);
+    testWidgets("a lane held by hand says so, and fits, at 1.0 and 1.5",
+        (tester) async {
+      await open(tester);
+      c.setAutomationPoints(channel(), "volume", const [(0, -20), (5, 0)]);
+      c.toggleAutomation("a");
+      await tester.pump();
+      var shown = c.mixNow(channel());
+      c.changeChannelMix(channel(), shown, shown.copyWith(gainDb: -3));
+      await tester.pump();
+      const sizes = [Size(1000, 500)];
+      const scales = [1.0, 1.5];
+      await sweepSizes(tester, sizes: sizes, scales: scales, check: (at) {
+        expect(find.text("held"), findsOneWidget, reason: at);
         expect(find.text("−3.0 dB"), findsOneWidget,
-            reason: "the lane reads what is heard: the hand's");
-        expect(tester.takeException(), isNull);
-        c.backToArrangement();
-        await tester.pump();
-        expect(find.text("held"), findsNothing);
-        expect(find.text("−20.0 dB"), findsOneWidget);
-        expect(tester.takeException(), isNull);
+            reason: "the lane reads what is heard: the hand's, $at");
       });
-    }
+      c.backToArrangement();
+      await tester.pump();
+      await sweepSizes(tester, sizes: sizes, scales: scales, check: (at) {
+        expect(find.text("held"), findsNothing, reason: at);
+        expect(find.text("−20.0 dB"), findsOneWidget, reason: at);
+      });
+    });
   });
 }

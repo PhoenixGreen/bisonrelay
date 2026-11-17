@@ -10,30 +10,38 @@ import 'package:flutter_test/flutter_test.dart';
 // need to be"): a short row's name had half the room its chips left,
 // "Strings" cut to "Stri..." with room to spare beside it.
 
-Future<void> header(WidgetTester tester, double width,
+/// header shows a header [width] by [height] at text [scale]. Without a
+/// width it is the screen's size and the text the platform's, for a sweep of
+/// sizes to change.
+Future<void> header(WidgetTester tester, double? width,
     {double scale = 1, double height = 40}) async {
+  Widget row(double width, double height) => RowHeader(
+      colour: Colors.blue,
+      width: width,
+      height: height,
+      name: const Text("Strings",
+          key: ValueKey("name"),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false),
+      badges: const [Text("M", key: ValueKey("chip"))],
+      motion: const RowToggle(ValueKey("m"), on: false),
+      sound: const RowToggle(ValueKey("s"), on: true),
+      solo: const RowToggle(ValueKey("o"), on: false));
+  Widget sized(double width, double height) => Align(
+      alignment: Alignment.topLeft,
+      child: SizedBox(width: width, height: height, child: row(width, height)));
+  if (width == null) {
+    await tester.pumpWidget(canvasApp(Builder(builder: (context) {
+      var size = MediaQuery.sizeOf(context);
+      return sized(size.width, size.height);
+    })));
+    return;
+  }
   await tester.pumpWidget(canvasApp(
       MediaQuery(
           data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-          child: Scaffold(
-              body: Align(
-                  alignment: Alignment.topLeft,
-                  child: SizedBox(
-                      width: width,
-                      height: height,
-                      child: RowHeader(
-                          colour: Colors.blue,
-                          width: width,
-                          height: height,
-                          name: const Text("Strings",
-                              key: ValueKey("name"),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              softWrap: false),
-                          badges: const [Text("M", key: ValueKey("chip"))],
-                          motion: const RowToggle(ValueKey("m"), on: false),
-                          sound: const RowToggle(ValueKey("s"), on: true),
-                          solo: const RowToggle(ValueKey("o"), on: false)))))),
+          child: Scaffold(body: sized(width, height))),
       scaffold: false));
 }
 
@@ -53,19 +61,24 @@ void main() {
   // header 19.5 px inside -- under its 20 px line -- and overflowed.
   testWidgets("a row shorter than its line clips it, not overflowing",
       (tester) async {
-    for (var height in [12.0, 18.0, 20.5, 21.5, 26.0]) {
-      await header(tester, 240, height: height);
-      expect(tester.takeException(), isNull, reason: "$height tall");
-    }
+    setTestScreen(tester, const Size(240, 12));
+    await header(tester, null);
+    await sweepSizes(tester,
+        sizes: [
+          for (var height in [12.0, 18.0, 20.5, 21.5, 26.0]) Size(240, height)
+        ],
+        scales: const [1.0],
+        settle: 1);
   });
 
   testWidgets("narrow or at any text size, nothing overflows", (tester) async {
-    for (var scale in [0.65, 1.0, 1.5]) {
-      for (var width in [132.0, 160.0, 240.0, 360.0]) {
-        await header(tester, width, scale: scale);
-        expect(tester.takeException(), isNull,
-            reason: "at $width wide, text at $scale");
-      }
-    }
+    setTestScreen(tester, const Size(132, 40));
+    await header(tester, null);
+    await sweepSizes(tester,
+        sizes: [
+          for (var width in [132.0, 160.0, 240.0, 360.0]) Size(width, 40)
+        ],
+        scales: const [0.65, 1.0, 1.5],
+        settle: 1);
   });
 }

@@ -45,8 +45,10 @@ CanvasController make() => CanvasController(
     ]),
     audioEngine: FakeEngine({}));
 
+/// pumpBoth shows the mixer over the timeline at [scale], or, without one,
+/// at the platform's text size, for a test to change.
 Future<CanvasController> pumpBoth(WidgetTester tester,
-    {double scale = 1}) async {
+    {double? scale = 1}) async {
   setTestScreen(tester, const Size(1400, 900));
   var c = make();
   addTearDown(c.dispose);
@@ -57,10 +59,12 @@ Future<CanvasController> pumpBoth(WidgetTester tester,
       ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
     ],
     child: MaterialApp(
-        builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!),
+        builder: scale == null
+            ? null
+            : (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!),
         home: Scaffold(
             body: Column(children: [
           Expanded(
@@ -466,17 +470,24 @@ void main() {
     expect(lanes, paints..clipRect(rect: Offset.zero & tester.getSize(lanes)));
   });
 
-  for (var scale in [0.65, 1.5]) {
-    testWidgets("at text size $scale, the strip fits", (tester) async {
-      var c = await pumpBoth(tester, scale: scale);
-      expect(tester.takeException(), isNull);
-      // Narrow, and with the slots beside the rows.
+  // One mixer and timeline, at each text size: as they start, then
+  // narrow and with the slots beside the rows, then put back.
+  testWidgets("at every text size, the strip fits", (tester) async {
+    var c = await pumpBoth(tester, scale: null);
+    for (var scale in [0.65, 1.5]) {
+      setTestTextScale(tester, scale);
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: "at ${scale}x");
       c.toggleNarrow(motionStripKey("a"));
       c.slotsBeside = true;
       await frames(tester);
-      expect(tester.takeException(), isNull);
-    });
-  }
+      expect(tester.takeException(), isNull,
+          reason: "narrow, slots beside, at ${scale}x");
+      c.toggleNarrow(motionStripKey("a"));
+      c.slotsBeside = false;
+      await frames(tester);
+    }
+  });
 
   test("a cue put in or taken away moves the elements' slots with it", () {
     var c = make();
