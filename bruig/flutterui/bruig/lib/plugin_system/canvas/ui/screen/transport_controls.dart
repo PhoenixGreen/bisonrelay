@@ -17,18 +17,28 @@ const _figures = [FontFeature.tabularFigures()];
 
 /// fitWidth is how wide [text] is in [style] over the text style in force
 /// at [context], rounded up.
+///
+/// Kept: the readouts ask on every build, a frame at a time in play, and
+/// the answer is the same text's width until the text, the style or the
+/// text size changes.
 double fitWidth(BuildContext context, String text, TextStyle style) {
+  var merged = DefaultTextStyle.of(context).style.merge(style);
+  var scaler = MediaQuery.textScalerOf(context);
+  var key = (text, merged, scaler);
+  if (_widths[key] case var hit?) return hit;
   var painter = TextPainter(
-    text: TextSpan(
-        text: text, style: DefaultTextStyle.of(context).style.merge(style)),
+    text: TextSpan(text: text, style: merged),
     textDirection: TextDirection.ltr,
-    textScaler: MediaQuery.textScalerOf(context),
+    textScaler: scaler,
     maxLines: 1,
   )..layout();
   var width = painter.width.ceilToDouble();
   painter.dispose();
-  return width;
+  if (_widths.length >= 256) _widths.remove(_widths.keys.first);
+  return _widths[key] = width;
 }
+
+final _widths = <(String, TextStyle, TextScaler), double>{};
 
 /// TransportGroup is one of the bar's boxes: a few controls about one thing.
 class TransportGroup extends StatelessWidget {

@@ -795,6 +795,13 @@ void _axisLabels(
   var categories = e.data.categories;
 
   var spec = tickSpec;
+  // Each axis's labels in one type, made once rather than copied for every
+  // label: a fresh copy is hashed and compared in full to find its layout.
+  var tickType = horizontal
+      ? spec.copyWith(
+          align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.top)
+      : spec.copyWith(
+          align: TextAlignSpec.right, verticalAlign: VerticalAlignSpec.middle);
   for (var t in showTicks ? range.ticks : const <double>[]) {
     var f = range.fraction(t);
     var text = formatAxis(e, t);
@@ -803,9 +810,7 @@ void _axisLabels(
       paintTextInBox(
           canvas,
           text,
-          spec.copyWith(
-              align: TextAlignSpec.center,
-              verticalAlign: VerticalAlignSpec.top),
+          tickType,
           Rect.fromLTWH(
               x - spec.fontSize * 2,
               plot.bottom + spec.fontSize * 0.3 + e.xLabelGap,
@@ -816,9 +821,7 @@ void _axisLabels(
       paintTextInBox(
           canvas,
           text,
-          spec.copyWith(
-              align: TextAlignSpec.right,
-              verticalAlign: VerticalAlignSpec.middle),
+          tickType,
           Rect.fromLTRB(
               plot.left - valueGutter,
               y - spec.fontSize,
@@ -831,14 +834,14 @@ void _axisLabels(
   // A scatter by numbers: its across axis's own marks, not a name a slot.
   var across = horizontal ? null : _acrossRangeOf(e);
   if (across != null && showNames) {
+    var acrossType = spec.copyWith(
+        align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.top);
     for (var t in across.ticks) {
       var x = plot.left + plot.width * across.fraction(t);
       paintTextInBox(
           canvas,
           _plain(t),
-          spec.copyWith(
-              align: TextAlignSpec.center,
-              verticalAlign: VerticalAlignSpec.top),
+          acrossType,
           Rect.fromLTWH(
               x - spec.fontSize * 3,
               plot.bottom + spec.fontSize * 0.35 + e.xLabelGap,
@@ -857,6 +860,11 @@ void _axisLabels(
   var nameSpec2 = names.scale < 1
       ? spec.copyWith(fontSize: spec.fontSize * names.scale)
       : spec;
+  var nameType = horizontal
+      ? nameSpec2.copyWith(
+          align: TextAlignSpec.right, verticalAlign: VerticalAlignSpec.middle)
+      : nameSpec2.copyWith(
+          align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.top);
   for (var i = 0; i < slots; i++) {
     if (!names.shows(i, slots)) continue;
     if (horizontal) {
@@ -867,9 +875,7 @@ void _axisLabels(
       paintTextInBox(
           canvas,
           categories[i],
-          nameSpec2.copyWith(
-              align: TextAlignSpec.right,
-              verticalAlign: VerticalAlignSpec.middle),
+          nameType,
           Rect.fromLTRB(
               area.left,
               y + slot / 2 - tall / 2,
@@ -883,9 +889,7 @@ void _axisLabels(
       paintTextInBox(
           canvas,
           categories[i],
-          nameSpec2.copyWith(
-              align: TextAlignSpec.center,
-              verticalAlign: VerticalAlignSpec.top),
+          nameType,
           Rect.fromLTWH(
               x + slot / 2 - wide / 2,
               plot.bottom + spec.fontSize * 0.35 + e.xLabelGap,

@@ -928,9 +928,16 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                     child: CustomPaint(
                       key: const ValueKey("keyframeStrip"),
                       size: Size(constraints.maxWidth, constraints.maxHeight),
-                      painter: _TimelinePainter(
+                      // The playhead on its own layer, the one thing that
+                      // moves every frame of play: the ruler, its marks and
+                      // cues under it are drawn again only when they change.
+                      foregroundPainter: _PlayheadPainter(
                         repaint: controller.playheadMoved,
                         playheadNow: () => controller.frame,
+                        colour: theme.colors.primary,
+                        xFor: (f) => _xFor(f, constraints.maxWidth),
+                      ),
+                      painter: _TimelinePainter(
                         view: _sceneView,
                         // Ticks along the whole of what is laid out (the
                         // run, where the timeline runs), counted from the
@@ -947,7 +954,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                                   document.startOfScene(i) - _origin,
                               ]
                             : const [0],
-                        frame: controller.frame,
                         frameRate: document.frameRate,
                         // A piece of sound is counted in bars and beats,
                         // under its structure.
@@ -1234,7 +1240,6 @@ class _TimelinePainter extends CustomPainter {
   /// the one, at nought, unless the timeline runs along every scene. Each
   /// later one is marked on the ruler, over its join in the scene strip.
   final List<int> sceneStarts;
-  final int frame;
   final int frameRate;
   final List<TimelineAction> actions;
 
@@ -1254,14 +1259,7 @@ class _TimelinePainter extends CustomPainter {
   final (int, int)? brace;
   final bool looping;
 
-  /// playheadNow is where the playhead is as it is painted: in play the
-  /// timeline is not built again for each frame, and [frame] is where it was
-  /// when it last was, kept so a jump made since repaints.
-  final int Function() playheadNow;
-
   const _TimelinePainter({
-    super.repaint,
-    required this.playheadNow,
     this.bars,
     this.brace,
     this.looping = false,
@@ -1270,7 +1268,6 @@ class _TimelinePainter extends CustomPainter {
     required this.scene,
     this.origin = 0,
     this.sceneStarts = const [0],
-    required this.frame,
     required this.frameRate,
     required this.actions,
     this.cues = const [],
@@ -1424,23 +1421,8 @@ class _TimelinePainter extends CustomPainter {
     }
 
     _paintMarkers(canvas);
-    _paintCues(canvas);
-    // The playhead last, over everything, so it can be found at a glance.
-    var x = xFor(playheadNow());
-    canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        Paint()
-          ..color = colors.primary
-          ..strokeWidth = 2);
-    canvas.drawPath(
-      Path()
-        ..moveTo(x - 5, 0)
-        ..lineTo(x + 5, 0)
-        ..lineTo(x, 8)
-        ..close(),
-      Paint()..color = colors.primary,
-    );
+    _paintCues(canvas, size);
+    // The playhead is drawn over all this by _PlayheadPainter.
   }
 
   /// _paintMarkers draws each marker as a flag on the ruler: a staff down
@@ -1483,7 +1465,7 @@ class _TimelinePainter extends CustomPainter {
   /// ruler, as a marker's flies from the top: a marker is something the scene
   /// does, a cue a moment of the whole run that things are timed against, told
   /// apart by end and by colour.
-  void _paintCues(Canvas canvas) {
+  void _paintCues(Canvas canvas, Size size) {
     var ink = Paint()..color = colors.primary;
     var staff = Paint()
       ..color = colors.primary.withValues(alpha: 0.7)
@@ -1491,6 +1473,8 @@ class _TimelinePainter extends CustomPainter {
     const bottom = _rulerHeight - 1;
     for (var (frame, name) in cues) {
       var x = xFor(frame);
+      // Only those in view, name and all: a run can have a great many.
+      if (x < -(_flagWidth + 130) || x > size.width) continue;
       canvas.drawLine(Offset(x, 1), Offset(x, bottom), staff);
       canvas.drawPath(
         Path()
@@ -1519,7 +1503,6 @@ class _TimelinePainter extends CustomPainter {
       old.origin != origin ||
       !listEquals(old.sceneStarts, sceneStarts) ||
       old.view != view ||
-      old.frame != frame ||
       old.frameRate != frameRate ||
       old.actions != actions ||
       !listEquals(old.cues, cues) ||
@@ -1529,6 +1512,43 @@ class _TimelinePainter extends CustomPainter {
       // dearest test here, and it was asked first on every rebuild.
       !identical(old.bars, bars) &&
           old.bars?.toJson().toString() != bars?.toJson().toString();
+}
+
+/// _PlayheadPainter draws the playhead over the timeline: a line down it
+/// with a handle at the top, over everything, so it can be found at a
+/// glance. It repaints on its own as the playhead moves in play, where the
+/// timeline is not built again each frame (see CanvasController
+/// playheadMoved), from [playheadNow], so a jump made since shows too.
+class _PlayheadPainter extends CustomPainter {
+  final int Function() playheadNow;
+  final double Function(int) xFor;
+  final Color colour;
+
+  _PlayheadPainter(
+      {super.repaint,
+      required this.playheadNow,
+      required this.xFor,
+      required this.colour});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.clipRect(Offset.zero & size);
+    var x = xFor(playheadNow());
+    var ink = Paint()..color = colour;
+    canvas.drawLine(Offset(x, 0), Offset(x, size.height), ink..strokeWidth = 2);
+    canvas.drawPath(
+      Path()
+        ..moveTo(x - 5, 0)
+        ..lineTo(x + 5, 0)
+        ..lineTo(x, 8)
+        ..close(),
+      Paint()..color = colour,
+    );
+  }
+
+  // Cheap, and its place comes from a closure: drawn whenever asked.
+  @override
+  bool shouldRepaint(_PlayheadPainter old) => true;
 }
 
 /// _TimelineScrollbar shows which stretch of the timeline is on screen, and
