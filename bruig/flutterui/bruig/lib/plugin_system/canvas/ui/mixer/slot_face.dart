@@ -5,29 +5,23 @@ import 'package:bruig/plugin_system/canvas/ui/timeline/row_header.dart'
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
-// slot_face.dart is a slot's look, one design everywhere the slots are --
-// the mixer, the Slots panel, beside the timeline's rows (the approved
-// design, 2026-11-08): a motion slot is cut-cornered, edged in the motion's
-// teal, and draws its move; a sound slot is round-cornered and draws its
-// wave, or its notes. Each has a launch strip on its left, a darker band
-// with the play mark, its name, and on a tall slot how long it is. An empty
-// slot is a dark well with a small square. What a slot does when pressed,
-// dragged or right-clicked stays with the slot that draws this.
+// slot_face.dart is a slot's look, one design wherever slots appear: a
+// motion slot is cut-cornered, edged in teal, and draws its move; a sound
+// slot is rounded and draws its wave or notes. Each has a darker launch
+// strip with the play mark, its name, and when tall its length. An empty
+// slot is a dark well. Press, drag and menu stay with the caller.
 
-/// SlotSide is which part of a row's slot this is: its motion, or its
-/// sound.
+/// SlotSide is whether this is a row slot's motion or sound part.
 enum SlotSide { motion, sound }
 
 /// slotInk is the writing on a filled slot: dark on its colour.
 const slotInk = Color(0xFF10101A);
 
-/// slotPlayingInk is the play mark of a slot playing.
 const slotPlayingInk = Color(0xFF9BF0A6);
 
-/// soundSlotColour is a sound slot's colour by what the channel is, as the
-/// prototype has them: an instrument's notes amber, speech pink, an
-/// element's own sound its element's colour toward blue, any other sound
-/// blue.
+/// soundSlotColour is a sound slot's colour by channel: an instrument's
+/// notes amber, speech pink, an element's own sound its colour toward blue,
+/// any other blue.
 Color soundSlotColour({bool midi = false, bool speech = false, Color? own}) {
   if (midi) return const Color(0xFFD9A15A);
   if (speech) return const Color(0xFFD77AA3);
@@ -35,11 +29,10 @@ Color soundSlotColour({bool midi = false, bool speech = false, Color? own}) {
   return const Color(0xFF6FA3E0);
 }
 
-/// SlotFace is one part of a slot: [side]'s shape, [colour] (null for an
-/// empty slot), the launch strip with [go] in it, [label] beside it, a
-/// faint picture of what it is drawn from [seed] (its notes where [midi])
-/// and, tall enough, [meta] -- how long it is. [playing] darkens the launch
-/// strip; [progress] runs along its foot while it plays.
+/// SlotFace is one part of a slot: [side]'s shape, [colour] (null for
+/// empty), the launch strip with [go], [label], a faint picture from [seed]
+/// (notes where [midi]) and, tall enough, [meta] (its length). [playing]
+/// darkens the launch strip; [progress] runs along its foot.
 class SlotFace extends StatelessWidget {
   final SlotSide side;
   final Color? colour;
@@ -51,8 +44,7 @@ class SlotFace extends StatelessWidget {
   final bool playing;
   final double? progress;
 
-  /// empty is what an empty slot shows in place of its square: armed to
-  /// record, for one.
+  /// empty replaces an empty slot's square: armed to record, for one.
   final Widget? empty;
 
   const SlotFace({
@@ -152,8 +144,8 @@ class SlotFace extends StatelessWidget {
                                 fontSize: tall ? 11 : 10.5,
                                 fontWeight: FontWeight.w500,
                                 color: slotInk),
-                            // Tall, the name along the top, its length
-                            // along the foot.
+                            // Tall: name along the top, length along the
+                            // foot.
                             child: tall
                                 ? Padding(
                                     padding: const EdgeInsets.only(top: 3),
@@ -210,8 +202,7 @@ class SlotFace extends StatelessWidget {
       });
 }
 
-/// _CutCorners is a motion slot's shape: its top-left and bottom-right
-/// corners cut.
+/// _CutCorners is a motion slot's shape, top-left and bottom-right cut.
 class _CutCorners extends OutlinedBorder {
   final double cut;
   const _CutCorners(this.cut);
@@ -237,9 +228,7 @@ class _CutCorners extends OutlinedBorder {
   _CutCorners copyWith({BorderSide? side}) => _CutCorners(cut);
 }
 
-/// _SlotArt is the faint picture on a filled slot, the same for the same
-/// [seed] every time: a motion's curve, a sound's wave, or an instrument's
-/// notes.
+/// _SlotArt is a filled slot's faint picture, the same for the same [seed].
 class _SlotArt extends CustomPainter {
   final SlotSide side;
   final String seed;
@@ -255,8 +244,8 @@ class _SlotArt extends CustomPainter {
       old.side != side || old.seed != seed || old.midi != midi;
 }
 
-/// cutCornersPath is a motion slot's or clip's shape in [r]: its top-left
-/// and bottom-right corners cut by [cut].
+/// cutCornersPath is a motion slot or clip's shape in [r], top-left and
+/// bottom-right corners cut by [cut].
 Path cutCornersPath(Rect r, double cut) {
   var c = math.min(cut, math.min(r.width, r.height) / 2);
   return Path()
@@ -269,9 +258,9 @@ Path cutCornersPath(Rect r, double cut) {
     ..close();
 }
 
-/// paintSlotArt draws a slot's faint picture into [rect], the same for the
-/// same [seed] every time: a motion's curve, a sound's wave, an
-/// instrument's notes. [opacity] fades it, as the timeline's clips have it.
+/// paintSlotArt draws a slot's faint picture, the same for the same [seed]:
+/// a motion's curve, a sound's wave, or notes. [opacity] fades it, as on
+/// the timeline's clips.
 void paintSlotArt(Canvas canvas, Rect rect, SlotSide side, String seed,
     {bool midi = false, double opacity = 1}) {
   var w = rect.width, h = rect.height;
@@ -322,9 +311,8 @@ void paintSlotArt(Canvas canvas, Rect rect, SlotSide side, String seed,
   canvas.restore();
 }
 
-/// paintLinkMark draws the link mark on a clip linked to another, at [at]
-/// (its top-left), in [colour]: the link icon, as a glyph -- not the ⛓
-/// emoji, which costs the renderer seconds a frame (see bisonrelay_no_emoji).
+/// paintLinkMark draws the link icon at [at] (top-left) in [colour], as a
+/// glyph: the ⛓ emoji costs the renderer seconds a frame.
 void paintLinkMark(Canvas canvas, Offset at, Color colour) {
   var tp = TextPainter(
       text: TextSpan(

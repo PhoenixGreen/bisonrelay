@@ -9,12 +9,11 @@ import 'package:re_highlight/languages/python.dart';
 import 'package:re_highlight/languages/xml.dart';
 import 'package:re_highlight/re_highlight.dart';
 
-// code_highlight.dart colours code by what each piece of it is: a keyword,
-// a string, a function's name. The grammars are highlight.js's, in Dart
-// (re_highlight), so a lesson's colours are the ones a learner sees on the
-// web. What comes out is runs of the text, each with its role; the painter
-// and the stage's editor both build their text from the same runs, so the
-// two never disagree.
+// code_highlight.dart colours code by what each piece is: a keyword, a
+// string, a function's name. The grammars are highlight.js's, in Dart
+// (re_highlight), so a lesson's colours match what a learner sees on the
+// web. Out come runs of the text, each with its role; the painter and the
+// stage's editor both build from the same runs, so they never disagree.
 
 /// CodeRole is what a run of code is, for its colour.
 enum CodeRole {
@@ -148,9 +147,8 @@ List<CodeRun> highlightRuns(CodeLanguage language, String text) {
   return runs;
 }
 
-/// linkNames is what names each of [e]'s files other than [self] goes by in
-/// code: its name, and for a Python module its name without ".py" (as
-/// "import words" uses words.py).
+/// linkNames is the names each of [e]'s files other than [self] goes by in
+/// code: its name and, for a Python module, its name without ".py".
 Map<String, String> linkNames(CodeElement e, String self) => {
       for (var f in e.files)
         if (f.id != self) ...{

@@ -11,14 +11,10 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
 // chart_circular.dart draws the types arranged round a centre: pie, donut,
-// radial bars and radar.
-//
-// What they share with the legend (slice progress and colour) is in
-// chart_common.dart.
+// radial bars and radar. What they share with the legend (slice progress
+// and colour) is in chart_common.dart.
 
-/// paintCircular draws the pie, donut, radial-bar and radar types.
 void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
-  // Another of its ways (chart_variants.dart).
   if (paintVariant(canvas, area, e, reveal)) return;
   var side = math.min(area.width, area.height);
   var box = Rect.fromCenter(center: area.center, width: side, height: side)
@@ -42,10 +38,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         centre = Offset(area.center.dx, area.center.dy + radius / 2);
       }
       var start = half ? -math.pi : -math.pi / 2;
-      // A gap between slices (ChartDesign.gaps).
       var gap = e.design.gaps ? 0.045 : 0.0;
-      // Names round the outside, where the legend does not have them (Ken,
-      // 2026-11-14: names were only in the legend): room made for them.
+      // Names round the outside, with room made, where the legend lacks them.
       var named = e.showXLabels && !e.showLegend;
       if (named) radius *= 0.72;
       var inner = e.type == ChartType.donut ? radius * e.innerRadius : 0.0;
@@ -55,8 +49,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         var sweep = values[i].abs() / total * turn;
         var color = sliceColour(e, i);
 
-        // Each slice opens out of the middle in turn. A sweep is the clip in
-        // paintChart.
+        // Each slice opens out of the middle in turn; a sweep clips instead.
         var slice = sliceProgress(e, reveal, i, values.length);
         if (slice.gone) {
           start += sweep;
@@ -120,9 +113,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
     case ChartType.radialBar:
       // Bars bent round three quarters of a turn, to the chart's top value
-      // or the largest: the quarter left over holds each bar's name at its
-      // start, and its value follows its end (Ken, 2026-11-14: the largest
-      // was a whole ring, and nothing said what any of them were).
+      // or the largest; the quarter left over holds each bar's name at its
+      // start, and its value follows its end.
       var values = data.series.first.values;
       var maxV = values.fold<double>(0, (m, v) => math.max(m, v.abs()));
       if (e.yMax.isFinite && e.yMax > 0) maxV = e.yMax;
@@ -154,8 +146,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
               ..strokeWidth = ring * 0.7
               ..strokeCap = StrokeCap.round
               ..color = color);
-        // Its name, to the left of where it starts -- where the legend
-        // does not have it.
+        // Its name, left of where it starts, where the legend lacks it.
         if (e.showXLabels && !e.showLegend && i < data.categories.length) {
           var size = math.min(e.labelSpec.fontSize, ring * 0.75);
           paintTextInBox(
@@ -235,9 +226,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         ..strokeWidth = 1
         ..color = e.gridColor;
       // The rings are its grid, the spokes its axes and their names its
-      // labels, each with the chart's own switch -- so radars laid over one
-      // another can leave all that to the first (the privacy video drew the
-      // web and the names five times over, doubled while one arrived).
+      // labels, each behind the chart's own switch, so radars laid over one
+      // another can leave all that to the first instead of drawing it twice.
       for (var ringIndex = 1; e.showGrid && ringIndex <= 4; ringIndex++) {
         var path = Path();
         for (var i = 0; i <= axes; i++) {
@@ -246,8 +236,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         }
         canvas.drawPath(path, web);
       }
-      // One scale up the twelve o'clock spoke, not a number at every corner,
-      // which would overlap.
+      // One scale up the twelve o'clock spoke: a number at each would clash.
       if (e.showValues) {
         for (var ringIndex = 1; ringIndex <= 4; ringIndex++) {
           var at = spoke(0, ringIndex / 4);
@@ -265,8 +254,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         }
       }
 
-      // Each spoke's name past its end, further out where it would meet
-      // another's (the shared label rule).
+      // Each spoke's name past its end, further out to clear another's.
       var placer = LabelPlacer(box.inflate(e.labelSpec.fontSize * 3));
       var nameSpec = e.labelSpec.copyWith(
           align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.middle);
@@ -284,8 +272,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       }
 
       for (var s = 0; s < data.series.length; s++) {
-        // One shape per series: staggered by series, grown from the centre
-        // -- or, in turn, each in its own share of the arrival.
+        // One shape per series, grown from the centre: staggered by series,
+        // or in turn, each in its own share of the arrival.
         var slice = e.animation.seriesInTurn
             ? sliceProgress(
                 e, seriesInTurnReveal(reveal, s, data.series.length), 0, 1)
@@ -316,8 +304,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 }
 
 /// paintCentreLabel writes a donut's centre label in its hole of [radius]:
-/// "{total}" as the slices that have arrived added up, so the total counts
-/// up as they open. Sized to the hole, in the values' type.
+/// "{total}" sums the slices that have arrived, so it counts up as they
+/// open. Sized to the hole, in the values' type.
 void paintCentreLabel(ui.Canvas canvas, Offset centre, double radius,
     ChartElement e, List<double> values, double total, double reveal) {
   var arrived = 0.0;
@@ -345,8 +333,7 @@ void paintCentreLabel(ui.Canvas canvas, Offset centre, double radius,
 }
 
 /// _sliceNames writes each slice's name outside the pie of [radius], on a
-/// short line from the slice's middle, nudged apart where neighbours would
-/// overlap: down the right for those on the right, the left for the left.
+/// short line from its middle, nudged apart where neighbours would overlap.
 void _sliceNames(ui.Canvas canvas, Offset centre, double radius, ChartElement e,
     List<(double, double, String, bool)> names) {
   var spec = e.labelSpec;
@@ -359,9 +346,8 @@ void _sliceNames(ui.Canvas canvas, Offset centre, double radius, ChartElement e,
       for (var n in names)
         if ((math.cos(n.$1) >= 0) == right) n,
     ]..sort((a, b) => math.sin(a.$1).compareTo(math.sin(b.$1)));
-    // Each below the last; then, where the last runs past the foot, the
-    // side moved back up, each above the next (the shared label rule's
-    // keep-inside).
+    // Each below the last; where the last runs past the foot, the side is
+    // moved back up (the shared label rule's keep-inside).
     var ys = <double>[];
     for (var (mid, _, _, _) in side) {
       var elbow = centre + Offset(math.cos(mid), math.sin(mid)) * radius * 1.12;

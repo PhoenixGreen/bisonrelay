@@ -8,14 +8,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
 import 'package:bruig/plugin_system/canvas/model/world_map.dart';
 
-// chart_presets.dart is the Charts tab's gallery (Ken, 2026-11-17, from
-// prototype v7 and its research): every kind of chart, grouped by the
-// question it answers, with the starting designs -- sub-presets -- it
-// offers. A sub-preset sets layout, labels, emphasis, notes, grid and
-// motion; never the data, the colours or the words, so a style (see
-// data_styles.dart) and a preset mix freely. The gallery is built from the
-// columns ticked on the left: each kind says how it would read them, or
-// what it needs instead.
+// chart_presets.dart is the Charts tab's gallery: every kind of chart,
+// grouped by the question it answers, with its starting designs
+// (sub-presets). A sub-preset sets layout, labels, emphasis, notes, grid
+// and motion, never the data, colours or words, so a style (see
+// data_styles.dart) and a preset mix freely. Each kind says how it would
+// read the columns ticked on the left, or what it needs instead.
 
 /// ChartQuestion is what a chart answers, after the FT's Visual
 /// Vocabulary; a kind can answer several.
@@ -35,8 +33,7 @@ enum ChartQuestion {
   const ChartQuestion(this.label);
 }
 
-/// ChartUse is what a design suits: an infographic, an explainer video,
-/// analysis.
+/// ChartUse is what a design suits: infographic, explainer video, analysis.
 enum ChartUse {
   infographic("Infographic"),
   video("Video"),
@@ -93,14 +90,13 @@ class ChartPreset {
       {this.plays = false, this.needs});
 }
 
-/// ChartKind is one kind of chart in the gallery.
 class ChartKind {
   final ChartType type;
   final String name, use;
   final List<ChartQuestion> questions;
   final String caveat;
 
-  /// isNew marks the kinds the research added (Ken, 2026-11-17).
+  /// isNew marks a kind badged as new in the gallery.
   final bool isNew;
 
   /// reads is how it would draw the ticked columns, or null when it can't.
@@ -148,11 +144,10 @@ ChartHighlight _top(int n, {bool named = true}) => ChartHighlight(
     reach: ChartReach.top, n: n, fade: true, named: named, colour: _accent);
 const _accent = Color(0xFFF2B33D);
 
-/// _arrive is how a design arrives, by the research's motion rules (its
-/// section 4.7): a line drawn at a steady rate, since easing bends the
-/// sense of time; bars and slices easing out, staggered a little, never
-/// overshooting a value the data doesn't have; dots popping in close
-/// together; a whole-plot wipe or sweep steady.
+/// _arrive is how a design arrives: a line drawn at a steady rate, since
+/// easing bends the sense of time; bars and slices easing out, staggered a
+/// little, never overshooting a value the data doesn't have; dots popping
+/// in close together; a whole-plot wipe or sweep steady.
 ChartAnimation _arrive(ChartAnimationPreset p, {bool inTurn = false}) =>
     ChartAnimation(
         preset: p,
@@ -236,8 +231,8 @@ int _groupOf(Picks p) {
   return best;
 }
 
-/// _timelineLink is a timeline's link reading [series] (start, and an end or
-/// a number), coloured by its groups where [grouped].
+/// _timelineWay is [e] drawn timeline [way]: its start, and an end where
+/// [ends] or a number where [number], coloured by groups where [grouped].
 ChartElement _timelineWay(ChartElement e, Picks p, String way,
     {bool ends = false, bool number = false, bool grouped = false}) {
   var out = _relink(
@@ -266,8 +261,7 @@ SheetLink? _several(Picks p) =>
 SheetLink? _overTime(Picks p) {
   if (p.numbers.isEmpty || p.dates.isEmpty) return null;
   // A long sheet: one number, a line for each name. A wide one: a line
-  // for each column of numbers (found making the Charts canvas: five
-  // clubs' columns ticked drew Arsenal's alone).
+  // for each column of numbers, not the first column's alone.
   if (p.names.isNotEmpty) {
     return p.link(p.dates.first, [p.numbers.first]).copyWith(
         colourBy: p.names.first);
@@ -278,8 +272,7 @@ SheetLink? _overTime(Picks p) {
 SheetLink? _pair(Picks p) => p.numbers.length < 2
     ? null
     : p.link(p.numbers.first, [p.numbers[1]]).copyWith(
-        // The points named by the names ticked (found making the Charts
-        // canvas: "Every point named" wrote their numbers).
+        // The points named by the names ticked, not by their numbers.
         pointNames: p.names.isNotEmpty ? p.names.first : -1);
 
 final chartKinds = _withWays(<ChartKind>[
@@ -710,7 +703,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Leader lit", "Grey stems, the leader in the accent.",
             [_a, _v], _lollipopLit),
       ]),
-  // ---- The research's new kinds (Ken, 2026-11-17).
+  // ---- The newer kinds, badged as new (isNew).
   ChartKind(
       ChartType.diverging,
       "Diverging bars",
@@ -790,8 +783,7 @@ final chartKinds = _withWays(<ChartKind>[
             needs: _needsTwoNumbers),
         ChartPreset("Calendar", "Weeks across, days down.", [_a, _i],
             (e, p) => _first(_mode(e, "calendar")),
-            // A day a row, or it is a grid of nothing (found making the
-            // Charts canvas: clubs by month drew five grey squares).
+            // A day a row: by month it is a grid of empty squares.
             needs: (p) =>
                 p.dates.isEmpty ? "a column of dates, a day a row" : null),
         ChartPreset(
@@ -895,8 +887,7 @@ final chartKinds = _withWays(<ChartKind>[
             (e, p) => _mode(e, "butterfly", values: true, grow: true)),
       ],
       isNew: true),
-  // The kinds analysis needs (Ken, 2026-11-17, the improvements report's
-  // ninth item): chart_analysis.dart.
+  // The kinds analysis needs: chart_analysis.dart.
   ChartKind(
       ChartType.boxPlot,
       "Box plot",
@@ -1017,7 +1008,7 @@ SheetLink? _flowReads(Picks p) => !p.flows || p.numbers.isEmpty
 SheetLink? _bulletReads(Picks p) =>
     p.numbers.isEmpty ? null : p.link(p.labels, p.numbers.take(2).toList());
 
-// ---- The presets (B1: the chart's own fields; B2 adds what they lack).
+// ---- The presets: the chart's own fields, then what they lack.
 
 ChartElement _plain(ChartElement e) => e.copyWith(
     highlights: const [],
@@ -1356,7 +1347,6 @@ ChartElement _lollipopLit(ChartElement e, Picks p) =>
 
 // ---- Modifiers: chips under the presets rather than more cards.
 
-/// ChartModifier is one of the extras a preset can be given.
 enum ChartModifier {
   highlight("Highlight", "Pick out the top one; fade the rest"),
   average("Average line", "A dashed line at the average"),
@@ -1408,9 +1398,8 @@ Picks picksOf(DataSheet sheet, CellRange range, List<int> picks,
 }
 
 /// KindFit is how well a kind suits the ticked columns: [score] 1 for
-/// well, less where it reads badly, and [why] says so in plain words (Ken,
-/// 2026-11-17, the improvements report's third item: the gallery offered a
-/// gauge of eight clubs and a pie of twenty as readily as bars).
+/// well, less where it reads badly, and [why] says so in plain words (a
+/// gauge of eight clubs or a pie of twenty reads badly).
 class KindFit {
   final double score;
   final String? why;
@@ -1545,9 +1534,8 @@ ChartElement? presetChart(
     {Set<ChartModifier> mods = const {}}) {
   var link = kind.reads(p);
   if (link == null || preset.needs?.call(p) != null) return null;
-  // A long sheet -- a row a club a week -- ranked or shared out: each
-  // club once, as at the latest date, not every week's row (found making
-  // the Charts canvas: Bars of Week, Club and Pts listed 36 bars).
+  // A long sheet (a row a club a week) ranked or shared out: each club
+  // once, as at the latest date, not a mark for every week's row.
   if (!kind.questions.contains(ChartQuestion.time) &&
       p.names.isNotEmpty &&
       p.dates.isNotEmpty) {
@@ -1584,11 +1572,10 @@ ChartElement reread(ChartElement c, DataSheet sheet) {
 ChartElement _way(ChartElement e, String m) =>
     e.copyWith(design: e.design.copyWith(mode: m));
 
-/// _waysOf is the starting designs the older kinds gained with their other
-/// ways (Ken, 2026-11-17: "do the remaining designs"), after their own.
+/// _waysOf is further starting designs for kinds with other ways (see
+/// ChartDesign.mode), after their own.
 final Map<ChartType, List<ChartPreset>> _waysOf = {
-  // The analysis ways (Ken, 2026-11-17, the improvements report's ninth
-  // item).
+  // The analysis ways.
   ChartType.area: [
     ChartPreset(
         "Shares of the whole",
@@ -1665,8 +1652,7 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
         "Events down a line at the left, for long stories.",
         [_i, _v],
         (e, p) => _way(_timelineTurn(e, p), "down")),
-    // The research's designs (Ken, 2026-11-17: "more designs for the
-    // timeline chart"; data-design-prototype/timeline-research).
+    // Timeline designs.
     ChartPreset(
         "Spans",
         "Each from its start to its end, packed into rows, like a Gantt chart.",
@@ -1715,7 +1701,7 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
         plays: true),
     ChartPreset("We are here", "Solid up to today, dashed after it: a roadmap.",
         [_i, _a], (e, p) => _timelineWay(_timeline(e, p), p, "progress")),
-    // The research's next designs (Ken, 2026-11-17: "Build all four").
+    // More timeline designs.
     ChartPreset(
         "Evenly spaced",
         "In order, evenly apart, the years between them written in the gaps.",
@@ -1777,8 +1763,7 @@ final Map<ChartType, List<ChartPreset>> _waysOf = {
         "Up and down",
         "Sized by the first number, coloured by whether the second is up or down.",
         [_a],
-        // The second number read too: the change it is coloured by
-        // (found making the Charts canvas: it read the size alone).
+        // The second number read too: the change it is coloured by.
         (e, p) => _relink(_way(_treemap(e, p), "market"),
             (l) => l.copyWith(series: p.numbers.take(2).toList())),
         needs: (p) =>

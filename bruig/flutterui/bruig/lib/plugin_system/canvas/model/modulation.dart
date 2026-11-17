@@ -3,20 +3,19 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
 
 // modulation.dart is a modulator moving other devices' knobs: an LFO in a
-// chain -- a sound's or an element's motion -- turning the knobs it is given
-// up and down around where they are set, by its depth. A knob it moves shows
-// a pink ring.
+// sound's or an element's motion chain turns its knobs up and down around
+// where they are set, by its depth. A knob it moves shows a pink ring.
 
 /// ModTarget is one knob a modulator moves: a device in the same chain by
 /// id, one of its settings, and how far -- a share of the knob's travel
-/// either way of where it is set; negative turns it the other way.
+/// either way; negative turns it the other way.
 class ModTarget {
   final String device;
   final String param;
   final double depth;
 
-  /// from is which of a macro's knobs turns it, from nought; nought for
-  /// any other modulator, which has one.
+  /// from is which of a macro's knobs turns it, from 0; 0 for any other
+  /// modulator.
   final int from;
 
   const ModTarget(this.device, this.param, [this.depth = 0.5, this.from = 0]);
@@ -56,11 +55,10 @@ class ModTarget {
   int get hashCode => Object.hash(device, param, depth, from);
 }
 
-/// macroKnobs is how many knobs a macro has: eight, as the prototype's.
 const int macroKnobs = 8;
 
-/// macroParams are a macro's knobs: each turns what it is given from where
-/// they are set (nought) as far as their depths (all the way).
+/// macroParams are a macro's knobs: each turns its targets from where they
+/// are set (0) as far as their depths (1).
 const List<DeviceParam> macroParams = [
   DeviceParam("m1", "Macro 1", 0, 1, 0),
   DeviceParam("m2", "Macro 2", 0, 1, 0),
@@ -72,20 +70,17 @@ const List<DeviceParam> macroParams = [
   DeviceParam("m8", "Macro 8", 0, 1, 0),
 ];
 
-/// macroValue is how far macro knob [from] of a device read by [value] is
-/// turned: nought to one.
+/// macroValue is how far macro knob [from] is turned, 0 to 1.
 double macroValue(double Function(String id) value, int from) =>
     value("m${from.clamp(0, macroKnobs - 1) + 1}");
 
-/// readModTargets reads a modulator's targets from [json].
 List<ModTarget> readModTargets(Object? json) => [
       if (json is List)
         for (var t in json)
           if (ModTarget.fromJson(t) case var target?) target,
     ];
 
-/// lfoParams are an LFO's settings, as a sound's and a motion's LFO both
-/// have them.
+/// lfoParams are an LFO's settings, shared by sound and motion LFOs.
 const List<DeviceParam> lfoParams = [
   DeviceParam("rate", "Rate", 0.05, 20, 1, "Hz"),
   // Free at its rate, or a cycle every so many bars or beats of the tempo.
@@ -104,9 +99,9 @@ const List<DeviceParam> followerParams = [
   DeviceParam("gain", "Gain", 0.1, 8, 2, "×"),
 ];
 
-/// lfoRate is an LFO's rate in cycles a second, read by [value]: its own,
-/// or with Sync, a cycle every so many bars or beats at [bpm] -- [beatsPerBar]
-/// to a bar, a quarter note to a beat.
+/// lfoRate is an LFO's rate in cycles a second: its own, or with Sync a
+/// cycle every so many bars or beats at [bpm], [beatsPerBar] to a bar and a
+/// quarter note to a beat.
 double lfoRate(double Function(String id) value,
     {double bpm = 120, int beatsPerBar = 4}) {
   var sync = value("sync").round();
@@ -124,8 +119,7 @@ double lfoRate(double Function(String id) value,
 }
 
 /// lfoValue is an LFO of [shape] (see lfoParams) [cycles] cycles in, from
-/// minus one to one. Random holds a new value each cycle, the same for the
-/// same cycle.
+/// -1 to 1. Random holds a new value each cycle, the same for that cycle.
 double lfoValue(int shape, double cycles) {
   var p = cycles - cycles.floorToDouble();
   switch (shape) {
@@ -145,9 +139,8 @@ double lfoValue(int shape, double cycles) {
   }
 }
 
-/// modulated is [base], a setting of [param], moved by [amount] -- a share
-/// of its travel either way (depth times where the LFO is) -- and kept on
-/// the knob.
+/// modulated is [base], a setting of [param], moved by [amount] (a share of
+/// its travel either way) and kept on the knob.
 double modulated(DeviceParam param, double base, double amount) =>
     (base + amount * (param.max - param.min) / 2)
         .clamp(param.min, param.max)

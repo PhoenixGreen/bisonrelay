@@ -7,17 +7,14 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 // model_scene.dart is a 3D object drawn on Flutter GPU: its .glb read once
 // into a scene of its own, posed by its animations at the times its clips
-// say, and seen either framed whole in its box -- turned, tilted, brought
-// closer -- or standing on a stage, through the stage's camera.
-//
-// As the characters are (see vrm_character.dart): a frame is drawn as the
-// canvas asks for it, never ahead, so an export frame is the frame asked for.
+// say, and framed whole in its box or standing on a stage. As with the
+// characters, a frame is drawn when the canvas asks, never ahead, so an
+// export frame is the frame asked for.
 
 /// ModelPlay is one of a model's animations playing: its name, how far in,
 /// in seconds, and how much it counts.
 typedef ModelPlay = (String name, double time, double weight);
 
-/// ModelScene is one 3D object's model, read into a scene of its own.
 class ModelScene extends ChangeNotifier {
   final Scene scene = Scene()..maxGpuFramesInFlight = 0;
 
@@ -34,8 +31,7 @@ class ModelScene extends ChangeNotifier {
   Node? _node;
   final Map<String, AnimationClip> _clips = {};
 
-  /// _centre and _size are the model's middle and how big it is, at rest:
-  /// what it is framed by.
+  /// _centre and _size are the model's middle and size at rest, to frame.
   vm.Vector3 _centre = vm.Vector3.zero();
   vm.Vector3 _size = vm.Vector3.all(1);
 
@@ -44,10 +40,9 @@ class ModelScene extends ChangeNotifier {
 
   bool get ready => _node != null;
 
-  /// animations are the model's own, by name.
   Iterable<String> get animations => _clips.keys;
 
-  /// load reads [bytes] -- a .glb -- into the scene.
+  /// load reads [bytes], a .glb, into the scene.
   Future<void> load(Uint8List bytes) async {
     try {
       var node = await Node.fromGlbBytes(bytes, maxTextureSize: 2048);
@@ -70,8 +65,8 @@ class ModelScene extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  /// _pose sets each animation where [plays] has it, and the rest to
-  /// nothing: as it is at that moment, however it got there.
+  /// _pose sets each animation where [plays] has it, and the rest to nothing:
+  /// as it is at that moment, however it got there.
   void _pose(List<ModelPlay> plays) {
     for (var c in _clips.values) {
       c.weight = 0;
@@ -94,7 +89,6 @@ class ModelScene extends ChangeNotifier {
       double zoom = 1,
       List<ModelPlay> plays = const [],
       double pixelRatio = 1}) {
-    // Let go of (see dispose), it draws nothing.
     if (_disposed) return;
     var node = _node;
     if (node == null || box.width < 1 || box.height < 1) return;
@@ -135,7 +129,6 @@ class ModelScene extends ChangeNotifier {
       double height = 1.6,
       List<ModelPlay> plays = const [],
       double pixelRatio = 1}) {
-    // Let go of (see dispose), it draws nothing.
     if (_disposed) return;
     var node = _node;
     if (node == null || box.width < 1 || box.height < 1) return;

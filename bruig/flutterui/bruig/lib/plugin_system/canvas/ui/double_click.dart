@@ -1,18 +1,17 @@
 import 'package:clock/clock.dart';
 
 // double_click.dart is the second click of a pair, counted by hand. Flutter's
-// double-tap recognizer cannot be used: in the gesture arena it holds back
-// every other press in the row (choosing a scene, opening its menu) until its
-// window passes. These rows want every press at once, and a rename only when
-// a second one follows.
+// double-tap recognizer holds back every other press in the row (choosing a
+// scene, opening its menu) until its window passes; these rows want every
+// press at once, and a rename only when a second one follows.
 
 /// DoubleClick remembers the last press and says whether the next one is the
 /// second of a pair.
 class DoubleClick {
   /// window is how long a pair may take, a little under the system's half
-  /// second. Counted on package:clock's clock, which a widget test's own
-  /// time drives: two taps a test makes back to back are a pair however
-  /// busy the machine, and a pump of [window] sets them apart.
+  /// second. It is counted on package:clock, which a widget test's fake time
+  /// drives, so a test's back-to-back taps are a pair however busy the
+  /// machine, and a pump of [window] sets them apart.
   static const Duration window = Duration(milliseconds: 400);
 
   DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);

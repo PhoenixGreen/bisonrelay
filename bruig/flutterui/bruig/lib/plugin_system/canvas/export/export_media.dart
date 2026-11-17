@@ -22,13 +22,9 @@ import 'package:path/path.dart' as path;
 
 // export_media.dart is the media on the timeline, for an export: the frame
 // each video shows on each frame of the run, and the sound to put under it.
-//
-// The editor's runtimes keep time by the sound card (see video_runtime.dart);
-// an export has no clock, so it asks MediaClip.momentAt where each clip is at
-// each frame and decodes: one reader per video, read forward with the export.
-//
-// Only timed media is here (see _timed): audio a reader presses is not part of
-// the animation and an export leaves it silent.
+// An export has no sound-card clock, so it asks MediaClip.momentAt where each
+// clip is and decodes, one reader per video, read forward with the export.
+// Only timed media is here (see _timed): audio a reader presses is silent.
 
 /// ExportSound is one stretch of one file in the finished sound: where it
 /// starts in the export, which part of the file, and how it fades.
@@ -43,10 +39,9 @@ class ExportSound {
   final double fadeOut;
   final double volume;
 
-  /// mix is the channel strip this stretch plays through, and channel the
-  /// channel's key: every stretch on one channel is summed and then played
-  /// through the strip once, as the editor plays it. Empty for a stretch
-  /// with a strip of its own.
+  /// mix is the channel strip it plays through, and channel its key: a
+  /// channel's stretches are summed, then through the strip once, as in
+  /// the editor. Empty for a stretch with its own strip.
   final ChannelMix mix;
   final String channel;
 
@@ -54,19 +49,16 @@ class ExportSound {
   /// seconds from the start of this stretch.
   final List<GainPoint> envelope;
 
-  /// place is where the sound is heard from over the export, for a placed
-  /// sound: each (seconds into the export, where), in order. See
-  /// SoundPlacement.
+  /// place is where a placed sound is heard from over the export: each
+  /// (seconds into the export, where), in order. See SoundPlacement.
   final List<(double, Heard)> place;
 
-  /// inScene is whether it is a scene's sound -- its own, its backdrop's,
-  /// its transition's -- heard through the scene's bus (see sceneBuses),
-  /// rather than the master's, heard straight.
+  /// inScene is whether it is a scene's sound (own, backdrop's, transition's)
+  /// heard through the scene's bus (sceneBuses), not straight to the master.
   final bool inScene;
 
-  /// clock is the seconds into the export its channel's timeline counts
-  /// from -- its scene's start -- for the lanes of the channel's
-  /// automation, whose points are counted from there.
+  /// clock is the seconds into the export its channel's timeline counts from
+  /// (its scene's start), for the channel's automation lanes.
   final double clock;
 
   const ExportSound({
@@ -90,9 +82,8 @@ class ExportSound {
 class _Placed {
   final CanvasElement element;
 
-  /// start is the frame of the run its own timeline counts from -- its
-  /// scene's first frame, or nought for media on the master -- and until is
-  /// the frame after the last one it can be seen or heard on.
+  /// start is the run frame its timeline counts from (its scene's first, or
+  /// nought on the master); until the frame after its last seen or heard.
   final int start;
   final int until;
 
@@ -107,15 +98,14 @@ class _Placed {
   /// transition: where a placed sound finds its stage.
   final int? scene;
 
-  /// inScene is whether it is heard through its scene's bus: see
-  /// ExportSound.inScene.
+  /// inScene is whether it is heard through its scene's bus.
   final bool inScene;
 
   _Placed(this.element, this.start, this.until,
       [this.scene, this.inScene = false]);
 
-  /// clip is the element's clip as the export plays it: a video that is not
-  /// on the timeline from the start of its scene, wherever it was once put.
+  /// clip is the element's clip as the export plays it: a video off the
+  /// timeline plays from the start of its scene.
   MediaClip get clip => switch (element) {
         VideoElement v when !v.clip.timed => v.clip.copyWith(at: 0),
         VideoElement v => v.clip,
@@ -133,9 +123,8 @@ class _Placed {
   }
 }
 
-/// _timed is whether [e] plays in an export. A video plays whether it is on
-/// the timeline or not: one that is not starts with its scene, as a film has
-/// no viewer to press play.
+/// _timed is whether [e] plays in an export. A video off the timeline
+/// starts with its scene: a film has no viewer to press play.
 bool _timed(CanvasElement e) => switch (e) {
       VideoElement v => !v.isLink && !v.clip.isEmpty,
       AudioElement a => a.clip.timed && !a.clip.isEmpty,
@@ -156,8 +145,8 @@ class ExportMedia {
   ExportMedia._(
       this.document, this.frames, this.locate, this.scale, this._placed);
 
-  /// of is the timed media in [document], or null where there is none -- so
-  /// an export with nothing on its timeline costs nothing extra.
+  /// of is the timed media in [document], or null where there is none, so an
+  /// export with nothing on its timeline costs nothing extra.
   static ExportMedia? of(
     CanvasDocument document, {
     double scale = 1,
@@ -175,8 +164,8 @@ class ExportMedia {
       for (var e in scenes[i].elements) {
         if (_timed(e)) placed.add(_Placed(e, from, until, i, true));
       }
-      // A scene's backdrop is its own, unless the master's covers it --
-      // which is placed once, below, against the whole run.
+      // A scene's backdrop is its own, unless the master's covers it, which
+      // is placed once, below, against the whole run.
       if (master?.sharedBackground == null) {
         for (var e in document.backgroundOf(i).media) {
           if (_timed(e)) placed.add(_Placed(e, from, until, null, true));
@@ -188,8 +177,7 @@ class ExportMedia {
         if (_timed(e)) placed.add(_Placed(e, 0, run));
       }
     }
-    // What the transitions carry, where each transition is -- see
-    // CanvasDocument.transitionSounds.
+    // What the transitions carry (CanvasDocument.transitionSounds).
     for (var e in document.transitionSounds) {
       placed.add(_Placed(e, 0, run, null, true));
     }
@@ -210,18 +198,15 @@ class ExportMedia {
     return p.clip.momentAt((frame - p.start - p.clip.at) / _rate);
   }
 
-  /// at decodes whatever frames the run's frame [frame] needs, and returns
-  /// what to hand the renderer for it.
-  ///
-  /// Frames must be asked for in order, as an export does. Asked for out of
-  /// order it still works, by opening each reader again, which is slow.
+  /// at decodes the frames run frame [frame] needs, for the renderer. Ask in
+  /// order: out of order it reopens each reader, which is slow.
   Future<VideoShow Function(VideoElement)> at(int frame) async {
     var shows = <String, VideoShow>{};
     for (var p in _placed) {
       var e = p.element;
       if (e is! VideoElement) continue;
-      // Past its last frame, its decoder goes: a run of scenes with a video
-      // in each would otherwise have every one of them open by the end.
+      // Past its last frame, its decoder goes, or a run of scenes with a
+      // video in each would hold every one open by the end.
       if (frame >= p.until) {
         p.close();
         continue;
@@ -229,9 +214,8 @@ class ExportMedia {
       if (frame < p.start) continue;
       var moment = _momentAt(p, frame);
       if (moment == null) {
-        // A video that is not on the timeline stays on its last frame once
-        // it has played, as it does on the page; one on the timeline has
-        // been cut out.
+        // A video off the timeline stays on its last frame once it has played,
+        // as on the page; one on the timeline has been cut out.
         shows[e.id] = e.clip.timed
             ? const VideoShow(hidden: true)
             : VideoShow(
@@ -380,8 +364,7 @@ class ExportMedia {
   }
 
   /// _placeOf is where [p]'s sound is heard from, frame by frame, from
-  /// [begins] seconds into the export for [limit] seconds -- each change
-  /// kept, the rest left out -- or nothing for a sound that is not placed.
+  /// [begins] for [limit] seconds (changes only); empty if not placed.
   List<(double, Heard)> _placeOf(
       _Placed p, MediaClip clip, double begins, double limit) {
     if (clip.place.isOff) return const [];
@@ -408,9 +391,8 @@ class ExportMedia {
   static String _channelOf(CanvasElement e, MediaClip clip) =>
       clip.channel.isNotEmpty ? clip.channel : e.id;
 
-  /// _duckEnvelopes is the run's ducking -- see duckEnvelopes -- with the
-  /// shapes of the channels that duck read from their files by ffmpeg, as the
-  /// editor reads them to play.
+  /// _duckEnvelopes is the run's ducking (see duckEnvelopes), the ducking
+  /// channels' shapes read from their files by ffmpeg, as the editor does.
   Future<Map<String, List<GainPoint>>> _duckEnvelopes() async {
     var wanted = {
       for (var s in timedSounds(document))
@@ -436,8 +418,7 @@ class ExportMedia {
   }
 }
 
-/// SceneBus is a scene's bus (see CanvasScene.bus) over the seconds of the
-/// run it plays for.
+/// SceneBus is a scene's bus over the seconds of the run it plays for.
 typedef SceneBus = ({double from, double until, ChannelMix bus});
 
 /// sceneBuses is each scene's bus where it plays in [document]'s run, for
@@ -456,10 +437,9 @@ List<SceneBus> sceneBuses(CanvasDocument document) {
   ];
 }
 
-/// renderSoundtrack is [document]'s timeline sound through its mix -- what a
-/// video export of it would carry -- as an AAC file exactly as long as the
-/// timeline, for a book page laid out as its elements. Null where there is
-/// nothing to hear, or no ffmpeg.
+/// renderSoundtrack is [document]'s mixed timeline sound as AAC, exactly
+/// the timeline's length, for a layered book page; null where silent or
+/// without ffmpeg.
 Future<Uint8List?> renderSoundtrack(CanvasDocument document,
     {Future<String?> Function(MediaKind kind, String id)? locate}) async {
   var ffmpeg = await ffmpegPath();

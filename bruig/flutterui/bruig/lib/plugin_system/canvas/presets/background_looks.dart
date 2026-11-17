@@ -7,12 +7,9 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
 import 'package:flutter/painting.dart';
 
-// background_looks.dart is the designed starting points for every style.
-//
-// A look is a whole recipe (colours, numbers, effects) that every setting
-// can still be changed from.
+// background_looks.dart is each style's designed starting points: whole
+// recipes (colours, numbers, effects) every setting can still change.
 
-/// BackgroundLook is one designed version of a style.
 class BackgroundLook {
   final String name;
   final ProceduralSpec spec;
@@ -24,8 +21,8 @@ List<BackgroundLook> looksFor(ProceduralStyle style) =>
     (_looks ??= _build())[style] ?? const [];
 
 /// withLook is [current] made into [look], keeping what belongs to the
-/// document rather than the design: the run length, whether it moves, the
-/// rings' pictures, and the layers over it (unless the look brings its own).
+/// document rather than the design: run length, whether it moves, the
+/// rings' pictures, and the layers over it (unless the look has its own).
 ProceduralSpec withLook(ProceduralSpec current, BackgroundLook look) {
   var s = look.spec;
   return s.copyWith(
@@ -43,8 +40,7 @@ ProceduralSpec withLook(ProceduralSpec current, BackgroundLook look) {
   );
 }
 
-/// lookMatching is the look [spec] is, if it is still exactly one, for
-/// showing which one is chosen.
+/// lookMatching is the look [spec] still exactly is, to show it chosen.
 BackgroundLook? lookMatching(ProceduralSpec spec) {
   var json = spec.toJson().toString();
   for (var look in looksFor(spec.style)) {
@@ -123,8 +119,7 @@ BackgroundLayer _over(ProceduralStyle style, String name,
       blend: blend,
     );
 
-/// _built is the looks without layers, which the ones with layers are
-/// made from.
+/// _built is the looks without layers, the layered ones made from them.
 late Map<ProceduralStyle, List<BackgroundLook>> _built;
 
 const _hex = "0123456789ABCDEF";
@@ -134,8 +129,7 @@ Map<ProceduralStyle, List<BackgroundLook>> _build() {
   _built = _single();
   ProceduralStyle at(String n) =>
       ProceduralStyle.values.firstWhere((x) => x.name == n);
-  // Stacks: a look with layers over it, each layer itself one of the looks
-  // above.
+  // Stacks: a look with layers over it, each one of the looks above.
   void add(String style, BackgroundLook look) => _built[at(style)]!.add(look);
   add(
       "gradientMesh",

@@ -1,8 +1,6 @@
 // chart_design.dart is how a chart's marks are drawn beyond its type: the
-// choices the gallery's starting designs need (Ken, 2026-11-17; prototype
-// v7 and its research) that a chart had no field for. Kept together so the
-// chart's own list stays readable; each is off unless a design, or the
-// Charts tab, turns it on.
+// gallery designs' choices, kept apart so the chart's list stays readable.
+// Each is off unless a design or the Charts tab turns it on.
 
 class ChartDesign {
   /// track draws a pale full-length bar behind each bar, so a bar reads as
@@ -14,8 +12,7 @@ class ChartDesign {
   final bool valuesInside;
 
   /// labelsAbove puts a sideways bar's name on its own line above it, so a
-  /// long name gets the whole width (Datawrapper's "labels on a separate
-  /// line").
+  /// long name gets the whole width.
   final bool labelsAbove;
 
   /// step draws a line flat then straight up: for values that jump.
@@ -36,15 +33,12 @@ class ChartDesign {
   /// gaps leaves a gap between a pie's or doughnut's slices.
   final bool gaps;
 
-  /// mode is which way one of the new kinds is drawn: a dumbbell's "gap",
-  /// "arrows" or "range"; a heatmap's "grid", "calendar" or "stripes"... (see
-  /// chartModes). Empty, its first.
+  /// mode is how a newer kind is drawn (a dumbbell's "gap" or "range", a
+  /// heatmap's "grid" or "stripes"; see chartModes). Empty, its first.
   final String mode;
 
-  /// even spaces a timeline's events evenly, in order, rather than by
-  /// their dates, writing the time between them in the gaps ("12 yrs"):
-  /// for events bunched in one stretch and scattered in another (the
-  /// timeline research's Proportional / Even switch).
+  /// even spaces a timeline's events evenly in order, the time between them
+  /// in the gaps ("12 yrs"), for dates bunched in one stretch.
   final bool even;
 
   const ChartDesign({

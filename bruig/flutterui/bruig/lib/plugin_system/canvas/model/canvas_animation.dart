@@ -3,18 +3,14 @@ import 'dart:ui' show Offset;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // canvas_animation.dart is keyframe tracks and the timeline's markers.
-//
-// Tracks are the legacy animation model: clips (motion.dart) replace them,
-// and motion_convert.dart turns tracks into clips when a canvas opens. Tracks
-// remain for what a clip cannot say -- backgrounds, stages, scenery, teams --
-// and Keyframe is still the pose type the clip system produces.
-//
-// A track is a sparse list of poses, each holding every animated property at
-// once, interpolated between, so any frame can be asked for without playing
-// the ones before it.
+// Tracks are the legacy model: motion_convert.dart turns them into clips
+// (motion.dart) when a canvas opens. They remain for what a clip cannot say
+// (backgrounds, stages, scenery, teams), and Keyframe is the pose type clips
+// produce. A track is sparse poses, each holding every animated property,
+// interpolated between, so any frame can be asked for without the others.
 
-/// KeyframeEasing is the shape of the interpolation between two keyframes.
-/// (Not `Easing`, which Material also defines.)
+/// KeyframeEasing is how two keyframes are eased between (Material owns
+/// `Easing`).
 enum KeyframeEasing {
   linear("Linear"),
   easeIn("Ease in"),
@@ -77,8 +73,7 @@ enum KeyframeEasing {
   }
 
   /// asCurve is this easing as handles, for the Curves to start from: the
-  /// curve it is, or near it; one that is not a curve (bounce, spring,
-  /// hold), an ease-in-out.
+  /// curve it is, or near it; an ease-in-out for bounce, spring and hold.
   EaseCurve get asCurve => switch (this) {
         KeyframeEasing.linear => EaseCurve.linear,
         // t² and its mirror are exactly these cubics.
@@ -89,11 +84,10 @@ enum KeyframeEasing {
       };
 }
 
-/// EaseCurve is an ease drawn with two handles, as CSS's cubic-bezier: the
-/// curve from (0, 0) to (1, 1) through handles (x1, y1) and (x2, y2), time
-/// across and progress up. The xs stay within 0..1, so time only goes
-/// forward; the ys may leave it, to overshoot (Ken, 2026-11-14: one ease per
-/// keyframe, shaped by its handles in the Curves).
+/// EaseCurve is an ease drawn with two handles, as CSS's cubic-bezier: from
+/// (0, 0) to (1, 1) through (x1, y1) and (x2, y2), time across, progress up.
+/// The xs stay in 0..1 so time only goes forward; the ys may leave it, to
+/// overshoot. One per keyframe, shaped in the Curves.
 class EaseCurve {
   final double x1, y1, x2, y2;
   const EaseCurve(this.x1, this.y1, this.x2, this.y2);
@@ -115,8 +109,7 @@ class EaseCurve {
     return 3 * u * u * a + 6 * u * t * (b - a) + 3 * t * t * (1 - b);
   }
 
-  /// apply is how far along [t] of the way in time is: the curve's height
-  /// where it is [t] across. Pinned at the ends, so a key is reached.
+  /// apply is its height at [t] across; pinned at the ends so keys are hit.
   double apply(double t) {
     if (t <= 0) return 0;
     if (t >= 1) return 1;
@@ -167,10 +160,9 @@ class EaseCurve {
   int get hashCode => Object.hash(x1, y1, x2, y2);
 }
 
-/// Keyframe is one pose: where an element is at one frame.
-///
-/// The offsets are relative to the element's own resting position, so an
-/// animation survives the element being moved afterwards.
+/// Keyframe is one pose: where an element is at one frame. The offsets are
+/// relative to the element's resting position, so an animation survives the
+/// element being moved afterwards.
 class Keyframe {
   final int frame;
 
@@ -193,10 +185,9 @@ class Keyframe {
   /// curve is the shape of that, where [easing] is custom: see EaseCurve.
   final EaseCurve? curve;
 
-  /// values are the extra properties this keyframe pins, by name: the ones
-  /// only some elements have (how far a caption has slid, how far a line is
-  /// bowed). Absolute values, not offsets, as they have no resting state.
-  /// Keys are the constants in [KeyframeChannel].
+  /// values are the extra properties this keyframe pins, by name (keys in
+  /// [KeyframeChannel]): ones only some elements have, such as a caption's
+  /// slide or a line's bow. Absolute, not offsets: they have no resting state.
   final Map<String, double> values;
 
   const Keyframe({
@@ -211,25 +202,20 @@ class Keyframe {
     this.values = const {},
   });
 
-  /// ease is how far from this keyframe to the next [t] of the way between
-  /// them is: by its curve where it has one, else its easing.
+  /// ease is [t] eased to the next key: by [curve] where set, else [easing].
   double ease(double t) => easing == KeyframeEasing.custom && curve != null
       ? curve!.apply(t)
       : easing.apply(t);
 
   /// posesElement is whether this keyframe moves, resizes, turns or fades
-  /// the element. One that carries only [values] (how much of a chart is
-  /// drawn, say) does not.
+  /// the element; one carrying only [values] (a chart's reveal) does not.
   bool get posesElement =>
       dx != 0 || dy != 0 || scale != 1 || rotate != 0 || opacity != 1;
 
-  /// movesElement is whether this keyframe moves, resizes or turns the
-  /// element; unlike [posesElement], not a fade. See
-  /// ElementTrack.posesAnything.
+  /// movesElement is [posesElement] without a fade; see posesAnything.
   bool get movesElement => dx != 0 || dy != 0 || scale != 1 || rotate != 0;
 
-  /// rest is the pose that changes nothing, which is what a track with no
-  /// keyframes evaluates to and what a new keyframe starts from.
+  /// rest changes nothing: an empty track's pose, and a new key's start.
   static const Keyframe rest = Keyframe(frame: 0);
 
   Keyframe copyWith({
@@ -255,7 +241,6 @@ class Keyframe {
         values: values ?? this.values,
       );
 
-  /// withValue is this keyframe with one extra property pinned.
   Keyframe withValue(String key, double value) =>
       copyWith(values: {...values, key: value});
 
@@ -272,8 +257,7 @@ class Keyframe {
         opacity: opacity + (other.opacity - opacity) * t,
         easing: easing,
         curve: curve,
-        // A property only one end pins is held, not interpolated towards a
-        // guessed value.
+        // A property only one end pins is held, not interpolated.
         values: {
           for (var key in {...values.keys, ...other.values.keys})
             key: values.containsKey(key) && other.values.containsKey(key)
@@ -335,31 +319,25 @@ class ElementTrack {
   bool get isEmpty => keys.isEmpty;
 
   /// posesAnything is whether a drag of the element records a pose rather
-  /// than moving it.
-  ///
-  /// True if any keyframe moves, sizes or turns the element; not for fades or
-  /// channels, which play wherever the element is put (counted, every drag
-  /// after a "Dim the others" fade wrote a keyframe). Also true of a track of
-  /// nothing but resting keyframes, the usual way to start a movement: pin
-  /// the start, then pose at a later frame.
+  /// than moving it: true if any keyframe moves, sizes or turns it, or of a
+  /// track of nothing but resting keyframes (the usual start: pin the start,
+  /// then pose later). Not for fades or channels, which play wherever the
+  /// element is put, or every drag after a fade would write a keyframe.
   bool get posesAnything =>
       keys.any((k) => k.movesElement) ||
       (keys.isNotEmpty &&
           keys.every((k) => k.values.isEmpty && !k.posesElement));
 
-  /// at returns the pose for [frame]. Before the first keyframe the first
-  /// pose holds, and after the last the last does; nothing extrapolates.
+  /// at is the pose at [frame]; the ends hold, nothing extrapolates.
   Keyframe at(int frame) => _withHeldValues(frame, _poseAt(frame));
 
-  /// between is the pose part way through a frame, [frame] fractional: the
-  /// same curve [at] reads whole frames of, for drawing it smoothly (the
-  /// Curves).
+  /// between is the pose at fractional [frame], on the same curve [at] reads
+  /// whole frames of, for drawing it smoothly (the Curves).
   Keyframe between(double frame) =>
       _withHeldValues(frame.floor(), _poseAt(frame));
 
-  /// _withHeldValues fills in any extra channel this frame's pose does not
-  /// name itself, from the last keyframe that did, so channels hold past
-  /// their last key as the pose does.
+  /// _withHeldValues fills in each extra channel this frame's pose lacks from
+  /// the last keyframe that set it, so channels hold past their last key.
   Keyframe _withHeldValues(int frame, Keyframe pose) {
     if (keys.isEmpty) return pose;
     var held = <String, double>{};
@@ -403,12 +381,10 @@ class ElementTrack {
       keys.isEmpty && frame > 0 ? withKey(const Keyframe(frame: 0)) : this;
 
   /// restingAt is a new keyframe for [frame] that changes nothing: the pose
-  /// the track already gives there, with no channels of its own, and the
-  /// easing of the stretch it splits.
-  ///
-  /// A keyframe laid for another reason (the ends of an arrival or an exit)
-  /// starts from this, not from rest: a pose is not held between keys as a
-  /// channel is, so a rest key would drag a moved element back.
+  /// the track gives there, no channels, the easing of the stretch it splits.
+  /// A keyframe laid for another reason (an arrival's or exit's ends) starts
+  /// from this, not rest: poses are not held between keys as channels are,
+  /// so a rest key would drag a moved element back.
   Keyframe restingAt(int frame) {
     var pose = _poseAt(frame);
     var easing = KeyframeEasing.linear;
@@ -475,8 +451,7 @@ enum TimelineActionKind {
 /// TimelineAction is a marker on the timeline. A published interactive
 /// canvas obeys them; an exported file plays straight through.
 class TimelineAction {
-  /// id names the marker for what is pinned to it -- a clip that starts or
-  /// ends there follows it when it is moved.
+  /// id names the marker; clips starting or ending there follow it.
   final String id;
 
   final int frame;
@@ -485,8 +460,7 @@ class TimelineAction {
   /// target is the frame [kind] jumps to, and is ignored by stop and pause.
   final int target;
 
-  /// repeats bounds a loop, so a "loop back" marker does not necessarily run
-  /// forever. Zero means no limit.
+  /// repeats bounds a "loop back" marker's loop; zero means no limit.
   final int repeats;
 
   /// holdFrames is how long [TimelineActionKind.pause] waits.
@@ -497,14 +471,13 @@ class TimelineAction {
   final String label;
   final bool showLabel;
 
-  /// waitsFor is what a stop waits for to go on, beside Play: one of the
-  /// game controls' actions, by id -- "press A to start" -- or "" nothing
-  /// more. See CanvasDocument.controlsNow.
+  /// waitsFor is a game control action (by id) a stop also waits for, as
+  /// "press A to start", or "". See CanvasDocument.controlsNow.
   final String waitsFor;
 
-  /// noteAt is where its label sits on the canvas while playback holds at
-  /// it -- its centre, as shares of the canvas's width and height -- and
-  /// noteSize how big, one the standard (see ui/timeline/marker_note.dart).
+  /// noteAt is its label's centre on the canvas while playback holds there,
+  /// as shares of the canvas, and noteSize how big, one standard (see
+  /// ui/timeline/marker_note.dart).
   final Offset noteAt;
   final double noteSize;
 
@@ -590,8 +563,7 @@ class TimelineAction {
 class KeyframeChannel {
   KeyframeChannel._();
 
-  /// slide is how far along its line a caption has travelled, as the fraction
-  /// TextOnCurve.offset holds.
+  /// slide is a caption's travel along its line, as TextOnCurve.offset.
   static const String slide = "slide";
 
   /// reveal is how much of a chart has been drawn, 0 to 1: one channel for
@@ -613,9 +585,8 @@ class KeyframeChannel {
   /// fraction, so a count can pass its end and come back.
   static const String count = "count";
 
-  /// squash is how far an element is stretched along [squashAngle]
-  /// (radians, across the page) and squeezed across it, its area kept: a
-  /// ball squashing as it goes. One is as it is. See the Squash device.
+  /// squash stretches an element along [squashAngle] (radians) and squeezes
+  /// it across, area kept, as a ball squashes; one is none. See Squash.
   static const String squash = "squash";
   static const String squashAngle = "squashAngle";
 
@@ -630,8 +601,7 @@ class KeyframeChannel {
   static const String loopPivotY = "loopPivotY";
 }
 
-/// bounceOut is the classic four-stage bounce -- the one curve a keyframe's
-/// easing and a chart's both bounce on.
+/// bounceOut is the four-stage bounce shared by keyframe and chart easing.
 double bounceOut(double t) {
   const n = 7.5625, d = 2.75;
   if (t < 1 / d) return n * t * t;

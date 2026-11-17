@@ -26,15 +26,13 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-// canvas_file_player.dart plays a canvas file (.bcanvas) where Files
-// previews a PDF or a video: every scene in turn, with play, pause and start
-// again. Its pictures and sounds are stored in the library on opening, so
-// they can be drawn and heard.
+// canvas_file_player.dart plays a .bcanvas file where Files previews a PDF
+// or video: every scene in turn, with play, pause and restart. Its pictures
+// and sounds are stored in the library on opening, to be drawn and heard.
 
-/// openCanvasFile puts the canvas in the file at [filePath] in the library
-/// (its pictures and sounds stored, filed under its own name or its file's)
-/// and goes to the Canvas page, where it opens. A .bcanvas has no other
-/// program to open it.
+/// openCanvasFile puts the canvas in [filePath] in the library (pictures and
+/// sounds stored, filed under its own name or its file's) and opens it on
+/// the Canvas page: no other program opens a .bcanvas.
 Future<void> openCanvasFile(BuildContext context, String filePath) async {
   var snackbar = SnackBarModel.of(context, listen: false);
   var prefs = Provider.of<CanvasPreferences>(context, listen: false);
@@ -67,7 +65,6 @@ Future<void> openCanvasFile(BuildContext context, String filePath) async {
   }
 }
 
-/// CanvasFilePlayer plays the canvas in [file].
 class CanvasFilePlayer extends StatefulWidget {
   final File file;
   const CanvasFilePlayer({required this.file, super.key});
@@ -101,8 +98,8 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
   }
 
   Future<void> _open() async {
-    // A preview stores what the canvas brings with it, so it counts as using
-    // Canvas: not while that is switched off.
+    // A preview stores what the canvas brings, so it counts as using Canvas:
+    // not while that is switched off.
     if (!Provider.of<CanvasPreferences>(context, listen: false).enabled) {
       setState(() => _error = "Turn Canvas on in Settings to play a canvas.");
       return;
@@ -149,8 +146,8 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     _start(c);
   }
 
-  /// _start plays it: from the top, Play starts the clips that start with
-  /// the scene, as the editor's does.
+  /// _start plays from the top, starting the clips that start with the
+  /// scene, as the editor's Play does.
   void _start(CanvasController c) => c.play();
 
   /// _key is a key pressed while it plays: the clips that start on it.
@@ -160,9 +157,8 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     return KeyEventResult.ignored;
   }
 
-  /// _press is a click at [at] in a view [size] big: the button there does
-  /// what it does, and the top sound or video there (the scene's over the
-  /// master's) plays or stops.
+  /// _press is a click at [at] in a view [size] big: the button there acts,
+  /// and the top sound or video there (scene's over master's) plays or stops.
   void _press(CanvasController c, Offset at, Size size) {
     var doc = c.document;
     var page = doc.size.size;
@@ -211,8 +207,8 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
           child: AspectRatio(
             aspectRatio: aspect,
             child: Stack(fit: StackFit.expand, children: [
-              // Buttons and speakers work as for a reader; links are not followed from
-              // a preview.
+              // Buttons and speakers work as for a reader; links are not
+              // followed from a preview.
               LayoutBuilder(
                 builder: (context, box) => Focus(
                   autofocus: true,
@@ -255,8 +251,7 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
   }
 }
 
-/// _PlayedPainter draws the canvas where its playing has got to -- the
-/// scene showing, on its frame -- fitted to the box.
+/// _PlayedPainter draws the canvas where playing has got to, fitted.
 class _PlayedPainter extends CustomPainter {
   final CanvasController c;
   _PlayedPainter(this.c) : super(repaint: c.images);
@@ -270,7 +265,7 @@ class _PlayedPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     canvas.scale(size.width / page.width, size.height / page.height);
     // Played as a run of scenes, as the editor plays them: each giving way
-    // to the next by its transition (it only cut before).
+    // to the next by its transition.
     if (c.previewAt case var at?) {
       paintSequenceFrame(canvas, doc, at,
           images: c.images,

@@ -18,10 +18,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // table_settings.dart is a table's settings.
 
-/// tablePanel is [e]'s panel: the Text panel's shape (see
-/// element_panel.dart) -- a quick strip of its rules and colours; Content
-/// (its cells, where they come from, their order and special cells) and
-/// Look (headers, rules, colours, sizes and type).
+/// tablePanel is [e]'s panel (see element_panel.dart): quick strip, Content
+/// (cells, source, order, special cells) and Look.
 Widget tablePanel(
     BuildContext context,
     CanvasController controller,
@@ -81,7 +79,7 @@ Widget tablePanel(
               width: 52),
         ]),
       ]),
-      // Its cells are what its settings are opened for: not shut away.
+      // Its cells are why its settings are opened: not folded away.
       contentOpen: true,
       bits: tableBits(context, controller, e, write, begin, commit));
 }
@@ -97,18 +95,17 @@ List<PanelBit> tableBits(
     [
       // Which rows of its sheet it shows, and how ordered (Data element).
       PanelBit(PanelSection.content, children: [dataRowsGroup(controller, e)]),
-      // Its own section, like the chart's numbers: the cells are long and seldom
-      // changed once right, and pushed everything else off the bottom. Each
-      // fold here is keyed: Order comes and goes with the sheet, and an
-      // unkeyed fold after it would take its neighbour's open or shut.
+      // Its own section, as long cells would push the rest down. Each fold
+      // is keyed: Order comes and goes with the sheet, and an unkeyed fold
+      // after it would take its neighbour's state.
       PanelBit(PanelSection.content, children: [
         CanvasExpander(
           key: const ValueKey("fold-tableCells"),
           label: "Table",
           remember: "tableCells",
           trailing: "${e.rows.length} rows, ${e.columnCount} columns",
-          // The same Refresh the Data section carries, here where somebody
-          // looking at the cells wants the numbers again.
+          // The Data section's Refresh, also here where someone looking at
+          // the cells wants the numbers again.
           action: sourceRefreshButton(
                   context, controller, e, write, begin, commit) ??
               _sheetRefresh(controller, e),
@@ -117,8 +114,8 @@ List<PanelBit> tableBits(
             TableDataEditor(
               rows: e.rows,
               elementId: e.base.id,
-              // What the source has, where its rows are what it is asked
-              // for: typing a coin offers the coins. See DataPreset.rowNames.
+              // What the source has, where its rows are what it is asked:
+              // typing a coin offers the coins. See DataPreset.rowNames.
               names: e.source.fromRows
                   ? CanvasRowNames.suggestionsFor(presetById(e.source.preset))
                   : const [],
@@ -132,11 +129,9 @@ List<PanelBit> tableBits(
           ],
         )
       ]),
-      // Where the cells come from, a fold with its Refresh on its heading:
-      // pressed without opening anything.
-      // A table showing a sheet takes its numbers from the sheet's
-      // connection (Connect data, in the Data Studio); only a table still
-      // holding a source of its own has the old section.
+      // Where the cells come from, with Refresh on the heading. A table on a
+      // sheet uses the sheet's connection (Data Studio); only one with its
+      // own source has this section.
       if (e.source.on || e.sheet == null)
         PanelBit(PanelSection.content, summary: e.source.kind.label, children: [
           CanvasExpander(
@@ -156,10 +151,8 @@ List<PanelBit> tableBits(
         PanelBit(PanelSection.content, children: [
           _sheetSource(context, controller, e),
         ]),
-      // Sorting is its own section beside the cells: it is about the data, not
-      // the look, and too much for a band. Only for a table with no sheet: one
-      // showing a sheet reads its rows from it at every change, so its order
-      // is Rows shown's (with "First column keeps its place" for a league).
+      // Sorting, about the data not the look. Only with no sheet: a sheet's
+      // table takes its order from Rows shown.
       if (e.sheet == null)
         PanelBit(PanelSection.content, children: [
           CanvasExpander(
@@ -167,7 +160,7 @@ List<PanelBit> tableBits(
             label: "Order",
             remember: "tableSort",
             trailing: _sortSummary(e),
-            // In the heading, so putting a table back in order is one press.
+            // In the heading, so re-sorting a table is one press.
             action: CanvasIconButton(
               key: const ValueKey("tableSortApply"),
               // On the section's heading, level with its arrow.
@@ -188,8 +181,8 @@ List<PanelBit> tableBits(
               for (var level = 0; level < 3; level++)
                 CanvasControlGroup(
                   label: level == 0 ? "Order by" : "Then by",
-                  // Beside the first heading rather than on the section's:
-                  // it is about these three, not the numbering under them.
+                  // Beside the first heading, not the section's: it is about
+                  // these three, not the numbering under them.
                   help: level == 0
                       ? "Choose a column to order the rows by. The second and "
                           "third only decide the rows the one before them left "
@@ -242,8 +235,8 @@ List<PanelBit> tableBits(
             ],
           )
         ]),
-      // One mechanism for three asks: a chip where a column says W (a column and
-      // a word), a highlighted row, a larger points column.
+      // One mechanism for three asks: a chip where a column says W, a
+      // highlighted row, a larger points column.
       PanelBit(PanelSection.content, children: [
         CanvasExpander(
           key: const ValueKey("fold-tableRules"),
@@ -277,8 +270,8 @@ List<PanelBit> tableBits(
           ],
         )
       ]),
-      // How its arrival brings it in: whole, or a row or a column at a
-      // time (the privacy video's table wanted its rows read in turn).
+      // How its arrival brings it in: whole, or a row or column at a time
+      // (for rows read in turn).
       PanelBit(PanelSection.motion,
           summary: e.turn == TableTurn.together ? "" : e.turn.label,
           children: [
@@ -303,8 +296,8 @@ List<PanelBit> tableBits(
                   ]),
                 ]),
           ]),
-      // Everything about how the table looks, below what it says: somebody
-      // setting a table up goes to the data and the order first.
+      // Everything about the look, below the content: setting a table up
+      // starts with the data and the order.
       PanelBit(PanelSection.look, children: [
         CanvasControlGroup(label: "Headers", children: [
           CanvasToggle(
@@ -453,18 +446,16 @@ List<PanelBit> tableBits(
             onChanged: (v) => write(e.copyWith(cellPadding: v)),
             onCommit: commit,
           ),
-          // One figure until somebody wants four: most tables want the same
-          // room on every side, but a title row often wants more above and below.
+          // One figure until four are wanted: most tables want equal room
+          // all round, but a title row often wants more above and below.
           CanvasToggle(
             key: const ValueKey("tableSidedPadding"),
             label: "Sides",
             value: !e.evenPadding,
             onChanged: (v) {
               begin();
-              // On: each side starts where the single figure left it, so
-              // switching it on changes nothing until something is typed.
-              // Off: back to the one figure, and the four are forgotten
-              // rather than kept invisibly.
+              // On: each side starts at the one figure, changing nothing. Off:
+              // back to one figure, the four forgotten, not hidden.
               write(v
                   ? e.copyWith(
                       padTop: e.topPad,
@@ -517,10 +508,9 @@ List<PanelBit> tableBits(
               onCommit: commit,
             ),
           ],
-          // How the columns are sized, as a state rather than a button: dragging
-          // an edge writes every column's width, and this is the way back. Sized
-          // by content is not the same as all matching, which a button called
-          // "Even" would hide.
+          // Column sizing as a state: dragging an edge writes every width,
+          // and this is the way back. Content-sized differs from even, which
+          // a button would hide.
           CanvasDropdown<String>(
             key: const ValueKey("tableColumnSizing"),
             label: "Columns",
@@ -604,12 +594,11 @@ List<PanelBit> tableBits(
           ),
         ),
       ]),
-      // How it arrives, in a section of its own like a headline's.
-      // Its animation: the Chain's Motion view (Ken, 2026-11-08).
+      // Its animation is the Chain's Motion view.
     ];
 
-/// _columnSizing is which of the three states a table's columns are in:
-/// sized by what is in them, all the same, or whatever they were dragged to.
+/// _columnSizing is the table's column state: sized by content, all the
+/// same, or dragged.
 String _columnSizing(TableElement e) {
   if (e.evenColumns) return "fit";
   var first = e.columnWidths.first;
@@ -619,8 +608,8 @@ String _columnSizing(TableElement e) {
   return "even";
 }
 
-/// _tableRuleName says what a rule picks out, for its own heading and for the
-/// button that removes it.
+/// _tableRuleName says what a rule picks out, for its heading and its
+/// remove button.
 String _tableRuleName(TableRule rule) {
   var name = [
     if (rule.column.isNotEmpty) rule.column,
@@ -651,11 +640,10 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
   void styled(TableCellStyle next) => now(rule.copyWith(style: next));
 
   return CanvasExpander(
-    // Named for what it does rather than "Rule 3", so a list of them can be
-    // read without opening each one.
+    // Named for what it does, not "Rule 3", so the list reads unopened.
     label: _tableRuleName(rule),
-    // Remembered like every other section, so a rule being worked on stays
-    // open when the element is selected again.
+    // Remembered like every section, so a rule being worked on stays open
+    // when the element is reselected.
     remember: "tableRule$index",
     children: [
       CanvasControlGroup(label: "Which cells", children: [
@@ -687,8 +675,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
           label: "Matching",
           value: rule.how,
           width: 116,
-          // Whole cell by default: "W" appearing inside "Won" is not what
-          // anybody typing W means.
+          // Whole cell by default: "W" inside "Won" is not what typing W
+          // means.
           options: [for (var m in TableMatch.values) (m, m.label)],
           onChanged: (v) => now(rule.copyWith(how: v)),
         ),
@@ -708,7 +696,7 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
           color: style.background,
           onChanged: (c) => styled(style.copyWith(background: c)),
         ),
-        // Beside the colour it rounds, rather than three rows below it.
+        // Beside the colour it rounds, not three rows below.
         CanvasNumberField(
           label: "Radius",
           value: style.radius,
@@ -742,8 +730,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
               put(rule.copyWith(style: style.copyWith(fontScale: v))),
           onCommit: commit,
         ),
-        // A list, not a number: weight is nine values, and a scrubbed field
-        // moved through nine hundred doing nothing between them.
+        // A list, not a number: weight has nine values, and a scrubbed field
+        // would move through nine hundred doing nothing between them.
         CanvasDropdown<int>(
           label: "Weight",
           value: style.weight,
@@ -794,8 +782,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
               put(rule.copyWith(style: style.copyWith(minHeight: v))),
           onCommit: commit,
         ),
-        // Only on a rule about a whole cell: the pitch lays out the whole cell,
-        // so a rule naming one letter would respace the others.
+        // Only on a whole-cell rule: the pitch lays out the whole cell, so a
+        // one-letter rule would respace the others.
         if (rule.match.isEmpty) ...[
           CanvasNumberField(
             label: "Letter width",
@@ -864,8 +852,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
           onCommit: commit,
         ),
         const CanvasLineBreak(),
-        // Which edges the border is drawn on: four buttons, since top and
-        // bottom are two decisions, not a named style.
+        // Which edges get the border: four buttons, as top and bottom are two
+        // decisions, not a named style.
         for (var (at, icon, name) in const [
           (0, Icons.border_top, "Top"),
           (1, Icons.border_right, "Right"),
@@ -887,8 +875,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
           value: !style.hug,
           onChanged: (v) => styled(style.copyWith(hug: !v)),
         ),
-        // Only on a rule about the whole cell: a word rule draws its own
-        // chip, and a bar over one word is a job for its own cell.
+        // Only on a whole-cell rule: a word rule draws its own chip, and a
+        // bar over one word belongs in its own cell.
         if (rule.match.isEmpty)
           CanvasToggle(
             key: ValueKey("tableRedact$index"),
@@ -897,9 +885,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
             onChanged: (v) => styled(style.copyWith(redact: v)),
           ),
         const CanvasLineBreak(),
-        // On the rule rather than only on the table's type: a column of
-        // numbers wants to be right-aligned and the column of names beside it
-        // does not, and one alignment for the whole table cannot say that.
+        // On the rule, not only the table's type: a numbers column wants
+        // right alignment and the names beside it do not.
         CanvasDropdown<String>(
           label: "Align",
           value: style.align?.name ?? "",
@@ -965,7 +952,7 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
   );
 }
 
-/// _sortSummary is the closed section's one line.
+/// _sortSummary is the shut section's one line.
 String _sortSummary(TableElement e) {
   var named = [
     for (var level in e.sort.levels)
@@ -982,7 +969,7 @@ void _setLevel(TableElement e, SettingsWrite write, VoidCallback begin,
 }
 
 /// _sheetRefresh is the sheet's Refresh on the Table section's heading, for
-/// a table whose sheet is connected.
+/// a table with a connected sheet.
 Widget? _sheetRefresh(CanvasController controller, TableElement e) {
   var id = e.sheet?.sheet;
   var sheet = id == null ? null : controller.sheetById(id);
@@ -993,8 +980,8 @@ Widget? _sheetRefresh(CanvasController controller, TableElement e) {
       sheetId: sheet.id);
 }
 
-/// _sheetSource is where a table's numbers come from, when that is its
-/// sheet: said, with the way to change it.
+/// _sheetSource is where a table's numbers come from when that is its
+/// sheet, with the way to change it.
 Widget _sheetSource(
     BuildContext context, CanvasController controller, TableElement e) {
   var sheet = controller.sheetById(e.sheet!.sheet);

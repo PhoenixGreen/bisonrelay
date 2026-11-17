@@ -8,9 +8,8 @@ extension CanvasScores on CanvasController {
   MusicScore? scoreById(String id) =>
       _document.scores.where((s) => s.id == id).firstOrNull;
 
-  /// addScore puts [score] in the document, a hidden instrument channel
-  /// made for each part that has none -- its sound the part's instrument's
-  /// -- and every channel's notes made from it. One change to undo.
+  /// addScore puts [score] in the document, each part's notes made on its
+  /// channel (a hidden one made where it has none). One change to undo.
   void addScore(MusicScore score) {
     // Inside a gesture already (a drag, newScoreFor), part of its one step.
     var mine = _interaction == null;
@@ -37,9 +36,7 @@ extension CanvasScores on CanvasController {
   }
 
   /// setScore writes [score] over the one with its id, its channels made
-  /// from it again.
-  /// A part new to it (an instrument added) gets its channel as addScore
-  /// gives one.
+  /// again; a new part gets its channel as addScore gives one.
   void setScore(MusicScore score, {bool transient = false}) {
     if (score.parts
         .any((p) => _document.elementById(p.channel) is! AudioElement)) {
@@ -105,9 +102,8 @@ extension CanvasScores on CanvasController {
 
   // ----------------------------------------------- a sheet's playhead
 
-  /// playSheet plays [sheet]'s bars: a range of them from its first bar (if
-  /// the playhead is not already in it), stopping at the end of its last
-  /// (Ken, 2026-11-14: "pick a range of bars to display and playback").
+  /// playSheet plays [sheet]'s bars: from its first bar (unless the playhead
+  /// is already in its range), stopping at the end of its last.
   void playSheet(SheetElement sheet) {
     // Slower or faster than real time: its notes played live, at its speed
     // -- the parts' sounds are made at the speed they were written.
@@ -123,9 +119,8 @@ extension CanvasScores on CanvasController {
     _rangeEnd = span.$2;
   }
 
-  /// setSheetSpeed plays [sheet] at [speed], a share of real time (1),
-  /// to the nearest step, slower or faster for practice (Ken, 2026-11-15);
-  /// playing, it goes on at the new speed from where it is.
+  /// setSheetSpeed plays [sheet] at [speed], a share of real time (1) to the
+  /// nearest step, for practice; playing, it goes on from where it is.
   void setSheetSpeed(SheetElement sheet, double speed) {
     var v = ((speed / sheetSpeedStep).round() * sheetSpeedStep)
         .clamp(sheetSlowest, sheetFastest)
@@ -215,9 +210,8 @@ extension CanvasScores on CanvasController {
     if (on.isNotEmpty) _sheetGo(sheet, on.first, sound: false);
   }
 
-  /// stepSheet moves the playhead to the next note start of [sheet]'s
-  /// part ([by] 1) or the one before (-1), sounding what is there; while
-  /// playing, play goes on from there.
+  /// stepSheet moves the playhead to the next note start of [sheet]'s part
+  /// ([by] 1) or the one before (-1), sounding it; play goes on from there.
   void stepSheet(SheetElement sheet, int by) {
     var on = sheetOnsets(sheet, _document);
     if (on.isEmpty) return;
@@ -336,15 +330,13 @@ extension CanvasScores on CanvasController {
     }
   }
 
-  /// sheetKeyboard is the channel [sheet]'s score part plays on, if it is
-  /// one.
+  /// sheetKeyboard is the channel [sheet]'s score part plays on, if any.
   AudioElement? sheetKeyboard(SheetElement sheet) =>
       sheet.score.isEmpty ? null : scoreChannel(sheet.score, sheet.part);
 
   /// setSheetLook draws [sheet]'s part's instrument as [look] -- keys, a
-  /// neck, pads -- and shows it under the sheet, where it was hidden: what
-  /// is chosen is seen (Ken, 2026-11-15: "you change the "Instrument"
-  /// setting it doesn't work"). One change to undo.
+  /// neck, pads -- and shows it under the sheet if hidden, so the choice is
+  /// seen. One change to undo.
   void setSheetLook(SheetElement sheet, InstrumentLook look) {
     var keys = sheetKeyboard(sheet);
     if (keys == null) return;
@@ -355,9 +347,8 @@ extension CanvasScores on CanvasController {
     if (mine) endInteraction();
   }
 
-  /// showSheetKeyboard shows (or hides) the keyboard of [sheet]'s part on
-  /// the canvas, under the sheet and as wide: the Instrument that follows
-  /// it, lighting what is under the playhead.
+  /// showSheetKeyboard shows or hides [sheet]'s part's keyboard on the
+  /// canvas, under the sheet and as wide, lighting what the playhead is on.
   void showSheetKeyboard(SheetElement sheet, bool show) {
     var e = sheetKeyboard(sheet);
     if (e == null) return;

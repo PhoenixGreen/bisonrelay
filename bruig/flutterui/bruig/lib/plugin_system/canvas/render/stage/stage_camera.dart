@@ -5,14 +5,12 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 
 // stage_camera.dart is how a 3D stage is seen: where a camera stands, which
-// way it looks, and where a point on the stage lands on the page.
-//
-// The stage is measured in metres: x across it, y up from the floor, z
-// towards where the camera starts. The camera always looks at a point a
-// metre above the middle of the floor -- about a person's chest, unless it
-// is panned away -- from some distance away, swung round it ([yaw]) and
-// raised above it ([pitch]). Where from, how far and how wide a lens is all
-// there is to set: a free camera with its own aim is easily lost.
+// way it looks, and where a stage point lands on the page. The stage is in
+// metres: x across, y up from the floor, z towards the camera's start. The
+// camera always looks at a point a metre above the floor's middle (unless
+// panned), swung round it ([yaw]) and raised above it ([pitch]). Position,
+// distance and lens are all there is to set: a free camera with its own aim
+// is easily lost.
 
 /// _target is the point a camera looks at: a metre above the middle of
 /// the floor.
@@ -69,8 +67,8 @@ class StageView {
   static const double nearest = 0.1;
 
   /// eye and target are where the camera stands and what it looks at, in
-  /// metres on the stage; fovY is how much it sees top to bottom, in
-  /// radians. For a 3D scene to be seen exactly as the stage is.
+  /// stage metres; fovY is how much it sees top to bottom, in radians. For
+  /// a 3D scene to be seen exactly as the stage is.
   (double, double, double) get eye => (_eye.x, _eye.y, _eye.z);
   (double, double, double) get target => (_aim.x, _aim.y, _aim.z);
   double get fovY => 2 * math.atan(box.height / 2 / _focal);
@@ -80,11 +78,10 @@ class StageView {
   (double, double, double) get right => (_right.x, _right.y, _right.z);
 
   /// perspective is the matrix that lays [rect], a box on the page, onto
-  /// the stage with its top-left corner at [topLeft], its top-right at
-  /// [topRight] and its bottom-left at [bottomLeft] -- metres on the stage
-  /// -- and shows it as the camera sees it: for Canvas.transform, so an
-  /// element is drawn as it is on the page and set into the stage. Null
-  /// where any corner is behind the lens.
+  /// the stage with its corners at [topLeft], [topRight] and [bottomLeft]
+  /// (stage metres), as the camera sees it: for Canvas.transform, so an
+  /// element drawn as on the page is set into the stage. Null where any
+  /// corner is behind the lens.
   Float64List? perspective(Rect rect, (double, double, double) topLeft,
       (double, double, double) topRight, (double, double, double) bottomLeft) {
     _P p((double, double, double) v) => _P(v.$1, v.$2, v.$3);
@@ -157,8 +154,8 @@ class StageView {
 
   /// toFloor is the point on the floor seen at [page], as metres across
   /// and towards the camera's start, or null where the floor is not seen
-  /// -- above the horizon. With [y], on the level that far above the
-  /// floor instead: where something lifted off it slides.
+  /// (above the horizon). With [y], on the level that far above the floor:
+  /// where something lifted off it slides.
   Offset? toFloor(Offset page, {double y = 0}) {
     var p = page - box.center;
     var ray = (_forward + _right * (p.dx / _focal) - _up * (p.dy / _focal));
@@ -179,9 +176,8 @@ class StageView {
         tx: camera.tx + move.x, ty: camera.ty + move.y, tz: camera.tz + move.z);
   }
 
-  /// framing is the camera turned on [x], [y], [z] -- metres on the stage
-  /// -- from far enough away to see [size] metres of it top to bottom,
-  /// with room round it.
+  /// framing is the camera turned on [x], [y], [z] (stage metres) from far
+  /// enough to see [size] metres of it top to bottom, with room round it.
   StageCamera framing(double x, double y, double z, double size) {
     var d = size * 1.4 * _focal / box.height;
     return camera.copyWith(

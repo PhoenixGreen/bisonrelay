@@ -3,21 +3,17 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:flutter/painting.dart';
 
-// data_styles.dart is the six styles a table or chart can be given at once
-// (Ken, 2026-11-17: they replace the Looks in the Data Studio's Table and
-// Charts tabs; prototype v7). Each is a family of choices from the
-// research on infographics, explainer video and data journalism: its
-// ground and inks, one accent, a palette, its typefaces, how round its
-// shapes are. Giving one keeps the data and the words; a preset (layout,
-// labels, emphasis) is separate, so the two can be mixed freely.
-//
-// Faces are ones the app bundles or every desktop has (see canvasFonts):
-// Georgia for a newspaper's headline, Oswald for a broadcast caption.
+// data_styles.dart is the six styles a table or chart can be given at once:
+// each a family of choices drawn from infographics, explainer video and data
+// journalism (ground and inks, an accent, a palette, typefaces, roundness).
+// Giving one keeps the data and words; a preset (layout, labels, emphasis)
+// is separate, so the two mix freely. Faces are bundled or on every desktop
+// (see canvasFonts).
 
 class DataStyle {
   final String name, note;
 
-  /// ground is its page: the panel behind a chart, a table's cells.
+  /// ground is the panel behind a chart, or a table's cells.
   final Color ground;
   final Color ink, dim, grid, axis, accent, muted;
   final List<Color> palette;
@@ -26,7 +22,6 @@ class DataStyle {
   final int headWeight;
   final double round;
 
-  /// headFill and headInk are a table's header row.
   final Color headFill, headInk;
 
   const DataStyle(this.name, this.note,
@@ -185,9 +180,9 @@ DataStyle? dataStyleNamed(String name) {
   return null;
 }
 
-/// chartInStyle is [e] in style [s]: its words, grid and axes, its series
-/// and slices from the palette, a highlight in the accent, its corners,
-/// and -- unless [panel] is false -- its own ground behind it.
+/// chartInStyle is [e] in style [s]: words, grid, axes, series and slices
+/// from the palette, a highlight in the accent, corners, and, unless
+/// [panel] is false, its own ground.
 ChartElement chartInStyle(ChartElement e, DataStyle s, {bool panel = true}) {
   TextSpec face(TextSpec t, Color colour, String font, [int? weight]) =>
       t.copyWith(color: colour, fontFamily: font, weight: weight);
@@ -204,17 +199,17 @@ ChartElement chartInStyle(ChartElement e, DataStyle s, {bool panel = true}) {
     riseColor: s.rise,
     fallColor: s.fall,
     pointColor: s.palette.first,
-    // A colour per part only where the parts are the chart (a pie, a
-    // waffle, a treemap); bars and lines keep one colour a series.
+    // A colour per part only where the parts are the chart (pie, waffle,
+    // treemap); bars and lines keep one colour a series.
     sliceColors: e.type.isCircular ? s.palette : const [],
-    // Corners only while they are still the last style's (or none): a
-    // design's round-topped columns keep theirs.
+    // Corners only while still the last style's (or none): a design's
+    // round-topped columns keep theirs.
     barRadius: e.barRadius == (dataStyleNamed(e.style)?.round ?? 0)
         ? s.round
         : e.barRadius,
     highlights: [
-      // Only those in the usual highlight colour or the last style's
-      // accent: one chosen on purpose (the rest in grey) keeps its own.
+      // Only highlights in the usual colour or the last style's accent: one
+      // chosen on purpose keeps its own.
       for (var h in e.highlights)
         h.colour == const Color(0xFFF2B33D) ||
                 h.colour == dataStyleNamed(e.style)?.accent
@@ -228,8 +223,8 @@ ChartElement chartInStyle(ChartElement e, DataStyle s, {bool panel = true}) {
   );
 }
 
-/// tableInStyle is [t] in style [s]: its header and cells, rules, stripes,
-/// corners and type.
+/// tableInStyle is [t] in style [s]: header, cells, rules, stripes, corners
+/// and type.
 TableElement tableInStyle(TableElement t, DataStyle s) => t.copyWith(
       style: s.name,
       flatHeader: true,

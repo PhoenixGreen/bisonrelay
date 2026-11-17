@@ -7,16 +7,12 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
 // motion_devices.dart is an element's motion chain beyond its clips: the
-// devices of its Chain's Motion view. Three rules make it work (see the
-// chain prototype):
-//
-//  1. Left of the drawing works on where it is -- a pose; right of it, on
-//     how it looks. Each kind belongs to one side (MotionDeviceSide), and
-//     is only offered there.
-//  2. A device that changes time changes it for everything to its left: it
-//     asks them for another moment. Motion is pulled, as sound is pushed.
-//  3. Left of Instances is shared; right of it, each instance has its own
-//     seed and start (to come, with instancing).
+// devices of its Chain's Motion view. Three rules:
+//  1. Left of the drawing works on where it is (a pose), right of it on how
+//     it looks; each kind belongs to one side (MotionDeviceSide).
+//  2. A device that changes time asks everything to its left for another
+//     moment: motion is pulled, as sound is pushed.
+//  3. Left of Instances is shared; right of it, each instance has its own.
 
 /// MotionDeviceSide is which side of the drawing a device works on.
 enum MotionDeviceSide {
@@ -26,18 +22,16 @@ enum MotionDeviceSide {
   /// look devices change how it looks once drawn: right of it.
   look,
 
-  /// design is the element's own settings, animated: at the drawing itself
-  /// (Ken, 2026-11-12). Its move, turn, size and fade join the pose after
-  /// the pose devices; the rest are the element's own settings, keyed. See
-  /// design_device.dart.
+  /// design is the element's own settings, animated, at the drawing itself.
+  /// Its move, turn, size and fade join the pose after the pose devices; the
+  /// rest are keyed settings. See design_device.dart.
   design,
 }
 
-/// MotionDeviceKind is a kind of motion device, with its settings.
 enum MotionDeviceKind {
-  /// instances is where an element reused splits into its instances (rule
-  /// 3): what is left of it is worked out once, for all of them; what is
-  /// right of it, for each. Its settings are ElementMotion.instances.
+  /// instances is where a reused element splits into its instances (rule 3):
+  /// left of it is worked out once for all, right of it for each. Its
+  /// settings are ElementMotion.instances.
   instances("Instances", MotionDeviceSide.pose, []),
   time("Time", MotionDeviceSide.pose, [
     DeviceParam("speed", "Speed", 0.1, 4, 1, "×"),
@@ -89,15 +83,14 @@ enum MotionDeviceKind {
         "moves", "Moves", 0, 3, 0, "", ["Size", "Up", "Turn", "Opacity"]),
   ]),
 
-  /// lfo moves no pose itself: it turns other devices' knobs up and down,
-  /// a move's or a look's (see MotionDevice.mods and modulation.dart).
+  /// lfo moves no pose itself: it turns other devices' knobs (see
+  /// MotionDevice.mods and modulation.dart).
   lfo("LFO", MotionDeviceSide.pose, lfoParams),
 
   /// macro is eight knobs, each turning any knobs of the chain it is given.
   macro("Macro", MotionDeviceSide.pose, macroParams),
 
-  /// follower moves other devices' knobs by how loud a channel is (its
-  /// target), as Follow sound moves the element.
+  /// follower moves other devices' knobs by how loud its target channel is.
   follower("Follower", MotionDeviceSide.pose, [
     DeviceParam("smooth", "Smooth", 0, 1, 0.3),
     DeviceParam("gain", "Gain", 0.1, 8, 2, "×"),
@@ -109,8 +102,8 @@ enum MotionDeviceKind {
   shadow("Shadow", MotionDeviceSide.look, [
     DeviceParam("distance", "Distance", 0, 80, 8, "px"),
     DeviceParam("blur", "Blur", 0, 60, 10, "px"),
-    // The way it falls, as a compass reads (0 up, 90 right): one name and
-    // one meaning in the Chain and the settings panel (Ken, 2026-11-11).
+    // The way it falls, as a compass reads (0 up, 90 right), the same in the
+    // Chain and the settings panel.
     DeviceParam("angle", "Falls", 0, 360, 135, "°"),
     DeviceParam("strength", "Strength", 0, 1, 0.5),
     DeviceParam("turns", "Turns with it", 0, 1, 0, "",
@@ -118,7 +111,6 @@ enum MotionDeviceKind {
   ]),
   blur("Blur", MotionDeviceSide.look, [
     DeviceParam("amount", "Amount", 0, 40, 4, "px"),
-    // Smeared along the way it moves, by how fast.
     DeviceParam("motion", "Motion blur", 0, 1, 0),
   ]),
   colour("Colour", MotionDeviceSide.look, [
@@ -132,9 +124,8 @@ enum MotionDeviceKind {
     DeviceParam("softness", "Softness", 0, 1, 0),
   ]),
 
-  /// wear eats it away as worn ink is: grunge, dust or halftone dots taken
-  /// out of it -- an icon or a slab printed rather than drawn (Ken's privacy
-  /// video, 2026-11-11: "too clean for this style").
+  /// wear eats it away as worn ink: grunge, dust or halftone dots taken out,
+  /// so it looks printed rather than drawn.
   wear("Wear", MotionDeviceSide.look, [
     DeviceParam(
         "texture", "Texture", 0, 2, 0, "", ["Grunge", "Dust", "Halftone"]),
@@ -144,9 +135,8 @@ enum MotionDeviceKind {
   ]),
 
   /// edges fades it out towards the edges of its box, so it lies in what is
-  /// under it rather than on it: feathered all round, and faded from a side
-  /// or round the middle as asked (see EdgeMask; Ken's privacy video: a
-  /// picture "part of the same background").
+  /// under it: feathered all round, or from a side or round the middle (see
+  /// EdgeMask).
   edges("Edges", MotionDeviceSide.look, [
     DeviceParam("feather", "Feather", 0, 0.5, 0.12),
     DeviceParam("fade", "Fade", 0, 7, 7, "", [
@@ -156,10 +146,8 @@ enum MotionDeviceKind {
     DeviceParam("reach", "Reach", 0, 1, 0.6),
   ]),
 
-  /// lens is a magnifying glass over it, going round: what is under the
-  /// glass drawn bigger, inside a rim with a handle -- a ledger read for
-  /// what it gives away (Ken's privacy video, 2026-11-11: "it should be
-  /// circular magnifying the data").
+  /// lens is a magnifying glass going round over it: what is under the glass
+  /// drawn bigger, inside a rim with a handle.
   lens("Lens", MotionDeviceSide.look, [
     DeviceParam("x", "Across", 0, 1, 0.5),
     DeviceParam("y", "Down", 0, 1, 0.5),
@@ -169,7 +157,6 @@ enum MotionDeviceKind {
     DeviceParam("laps", "Laps a second", 0, 2, 0.15, "/s"),
   ]),
 
-  /// design animates the element's own settings: see design_device.dart.
   design("Design", MotionDeviceSide.design, designParams);
 
   final String label;
@@ -182,64 +169,56 @@ enum MotionDeviceKind {
   static MotionDeviceKind? fromName(String? name) =>
       values.where((k) => k.name == name).firstOrNull;
 
-  /// on is the kinds offered on [side]: see rule 1. Instances is not one:
-  /// it is always there, as Reuse.
+  /// on is the kinds offered on [side] (rule 1). Instances is not one: it is
+  /// always there, as Reuse.
   static List<MotionDeviceKind> on(MotionDeviceSide side) => [
         for (var k in values)
           if (k.side == side && k != instances) k
       ];
 }
 
-/// MotionDevice is one device of an element's motion chain: its kind, its
-/// switch and its settings. Immutable. [id] is its own name within the
-/// chain, kept when it moves (see withMotionDeviceIds).
+/// MotionDevice is one immutable device of an element's motion chain. [id]
+/// is its name within the chain, kept when it moves (withMotionDeviceIds).
 class MotionDevice {
   final MotionDeviceKind kind;
   final bool on;
   final Map<String, double> values;
   final String id;
 
-  /// target is the element it works with, by id -- the path Follow path
-  /// goes along, what Look at looks at -- or "" for none.
+  /// target is the element it works with, by id (the path Follow path goes
+  /// along, what Look at looks at), or "" for none.
   final String target;
 
-  /// mods are the knobs an LFO moves: see modulation.dart.
   final List<ModTarget> mods;
 
-  /// colour is the colour a look draws in -- a glow's, a shadow's, an
-  /// outline's -- as ARGB; null for the kind's own.
+  /// colour is the ARGB colour a look draws in (a glow's, a shadow's), or
+  /// null for the kind's own.
   final int? colour;
 
-  /// layer is what of its element a look is laid on: "" for all of it -- a
-  /// text's box and every piece in it as well as its words -- or one layer
-  /// of it alone: [bodyLayer] for a text's own words, or a piece's id (see
-  /// TextItem), its letters or its picture without the box behind them. A
-  /// text's letters had a shadow, a glow and an outline of their own apart
-  /// from the Chain's; they are looks on that layer now, so each is kept
-  /// once (Ken, 2026-11-11). Only a look's is read.
+  /// layer is what of its element a look is laid on: "" for all of it (a
+  /// text's box and pieces as well as its words), [bodyLayer] for a text's
+  /// own words, or a piece's id (see TextItem) for its letters or picture
+  /// without the box. Only a look's is read.
   final String layer;
 
-  /// bodyLayer is [layer] for a text's own words.
   static const bodyLayer = "body";
 
-  /// keys are its settings' Independent keys, by setting: where one has
-  /// any, it is that value at that moment, and in a straight line between
-  /// (Ken, 2026-11-11: the settings panel sets how it rests, the Chain
-  /// animates the same settings). Times are seconds into the scene.
+  /// keys are its settings' Independent keys: where a setting has any, it is
+  /// that value at that moment, straight-line between; the settings panel
+  /// sets how it rests. Times are seconds into the scene.
   final Map<String, List<DeviceKey>> keys;
 
   /// phaseKeys are its settings' keys in its element's arrival, leaving and
-  /// loop (Ken, 2026-11-12: "A, L, Loop, I"): times are shares of that
-  /// clip -- 0 its start, 1 its end; of one cycle for the loop -- so they
-  /// move and stretch with it. See PhaseSpans.
+  /// loop: times are shares of that clip (0 start, 1 end; one cycle for the
+  /// loop), so they move and stretch with it. See PhaseSpans.
   final Map<MotionPhase, Map<String, List<DeviceKey>>> phaseKeys;
 
-  /// plays are the phases its keys play in: its card's A, L, Loop and I.
-  /// A phase switched off keeps its keys, unplayed.
+  /// plays are the phases its keys play in (its card's A, L, Loop and I). A
+  /// phase switched off keeps its keys, unplayed.
   final Set<MotionPhase> plays;
 
-  /// shown are the settings on its card, where a kind offers more than it
-  /// shows at once: Design's, added from the element's settings panel.
+  /// shown are the settings on its card where a kind offers more than it
+  /// shows: Design's, added from the element's settings panel.
   final List<String> shown;
 
   const MotionDevice(this.kind,
@@ -281,7 +260,6 @@ class MotionDevice {
           shown: shown ?? this.shown,
           mods: mods ?? this.mods);
 
-  /// takesTarget is whether it works with another element.
   bool get takesTarget =>
       kind == MotionDeviceKind.followPath ||
       kind == MotionDeviceKind.lookAt ||
@@ -289,7 +267,6 @@ class MotionDevice {
       kind == MotionDeviceKind.followSound ||
       kind == MotionDeviceKind.follower;
 
-  /// modulates is whether it moves other devices' knobs (see [mods]).
   bool get modulates =>
       kind == MotionDeviceKind.lfo ||
       kind == MotionDeviceKind.follower ||
@@ -297,7 +274,6 @@ class MotionDevice {
 
   MotionDeviceSide get side => kind.side;
 
-  /// value is setting [id], or its default.
   double value(String id) {
     var p = kind.param(id);
     return (values[id] ?? p.initial).clamp(p.min, p.max).toDouble();
@@ -317,7 +293,6 @@ class MotionDevice {
   MotionDevice withMods(List<ModTarget> mods) => _copy(mods: mods);
   MotionDevice withShown(List<String> shown) => _copy(shown: shown);
 
-  /// keysIn are its settings' keys in phase [ph].
   Map<String, List<DeviceKey>> keysIn(MotionPhase ph) =>
       ph == MotionPhase.free ? keys : phaseKeys[ph] ?? const {};
 
@@ -336,27 +311,21 @@ class MotionDevice {
     return _copy(phaseKeys: all);
   }
 
-  /// playing is whether its keys in [ph] play: see [plays].
   bool playing(MotionPhase ph) => plays.contains(ph);
 
-  /// withPlaying is this with its keys in [ph] played, or not.
   MotionDevice withPlaying(MotionPhase ph, bool play) =>
       _copy(plays: play ? {...plays, ph} : ({...plays}..remove(ph)));
 
-  /// keyed is whether setting [id] is animated by keys, in any phase.
   bool keyed(String id) => MotionPhase.values.any((ph) => keyedIn(id, ph));
 
-  /// keyedIn is whether setting [id] has keys in phase [ph].
   bool keyedIn(String id, MotionPhase ph) =>
       keysIn(ph)[id]?.isNotEmpty ?? false;
 
-  /// animated is whether any of its settings is.
   bool get animated => MotionPhase.values
       .any((ph) => keysIn(ph).values.any((k) => k.isNotEmpty));
 
-  /// liveIn is the phase whose keys of setting [id] play at [t] -- the clip
-  /// playing then, where its keys play in it and it has some; otherwise
-  /// Independent -- or null where none do.
+  /// liveIn is the phase whose keys of [id] play at [t]: the clip playing
+  /// then, where its keys play and it has some; else Independent; or null.
   MotionPhase? liveIn(String id, double t, PhaseSpans spans) {
     for (var ph in spans.phasesAt(t)) {
       if (playing(ph) && keyedIn(id, ph)) return ph;
@@ -367,9 +336,8 @@ class MotionDevice {
     return null;
   }
 
-  /// valueAt is setting [id] at [t] seconds: by the keys playing then (see
-  /// [liveIn]), level before the first and after the last; how it rests
-  /// where none play.
+  /// valueAt is setting [id] at [t] seconds by the keys playing then (see
+  /// [liveIn]), level outside them; how it rests where none play.
   double valueAt(String id, double t, {PhaseSpans spans = PhaseSpans.none}) {
     var ph = liveIn(id, t, spans);
     if (ph == null) return value(id);
@@ -381,8 +349,7 @@ class MotionDevice {
         : _along(ks, at).clamp(p.min, p.max).toDouble();
   }
 
-  /// at is this device as it is [t] seconds into the scene: its keyed
-  /// settings' values then. Itself where nothing is keyed.
+  /// at is this device [t] seconds in, with its keyed settings' values then.
   MotionDevice at(double t, {PhaseSpans spans = PhaseSpans.none}) {
     if (!animated) return this;
     var next = this;
@@ -396,15 +363,15 @@ class MotionDevice {
   }
 
   /// keyPhase is the phase a key made at [t] goes in: the clip playing then
-  /// where its keys play in it; otherwise Independent.
+  /// where its keys play in it, else Independent.
   MotionPhase keyPhase(double t, PhaseSpans spans) =>
       spans.phasesAt(t).firstWhere(playing, orElse: () => MotionPhase.free);
 
   double _when(MotionPhase ph, double t, PhaseSpans spans) =>
       ph == MotionPhase.free ? t : spans.shareIn(ph, t);
 
-  /// keyAt is whether setting [id] has a key at [t], in the phase a key
-  /// made there would go in: within a frame or so.
+  /// keyAt is whether [id] has a key within a frame or so of [t], in the phase
+  /// a key made there would go in.
   bool keyAt(String id, double t,
       {double near = 0.02, PhaseSpans spans = PhaseSpans.none}) {
     var ph = keyPhase(t, spans);
@@ -413,9 +380,8 @@ class MotionDevice {
     return keysIn(ph)[id]?.any((k) => (k.t - at).abs() <= within) ?? false;
   }
 
-  /// withKey is this with setting [id] keyed to [v] at [t], in the phase a
-  /// key made there goes in (see [keyPhase]): a key already there moved to
-  /// it.
+  /// withKey keys [id] to [v] at [t] in [keyPhase]'s phase, replacing a key
+  /// there.
   MotionDevice withKey(String id, double t, double v,
       {double near = 0.02, PhaseSpans spans = PhaseSpans.none}) {
     var p = kind.param(id);
@@ -433,9 +399,8 @@ class MotionDevice {
     return _withKeysIn(ph, {...keysIn(ph), id: list}).withPlaying(ph, true);
   }
 
-  /// withoutKeyAt is this without setting [id]'s key at [t], in the phase
-  /// a key there is in. Its last key taken away, the setting keeps the
-  /// value it had there, where it was keyed independently.
+  /// withoutKeyAt drops [id]'s key at [t]. With its last key gone the setting
+  /// keeps the value it had there, where it was keyed independently.
   MotionDevice withoutKeyAt(String id, double t,
       {double near = 0.02, PhaseSpans spans = PhaseSpans.none}) {
     var ph = keyPhase(t, spans);
@@ -453,12 +418,10 @@ class MotionDevice {
     return _withKeysIn(ph, {...keysIn(ph), id: list});
   }
 
-  /// withKeysOf is this with setting [id]'s keys in [ph] made [list].
   MotionDevice withKeysOf(String id, MotionPhase ph, List<DeviceKey> list) =>
       _withKeysIn(ph, {...keysIn(ph), id: list});
 
-  /// withoutKeys is this with setting [id] no longer animated, in any
-  /// phase: it keeps the value it has at [at].
+  /// withoutKeys unkeys [id] in every phase, keeping its value at [at].
   MotionDevice withoutKeys(String id,
       {double at = 0, PhaseSpans spans = PhaseSpans.none}) {
     var v = valueAt(id, at, spans: spans);
@@ -586,9 +549,9 @@ class MotionDevice {
   int get hashCode => Object.hash(kind, on, id, colour, values.length);
 }
 
-/// MotionPhase is where a device's keys play (Ken, 2026-11-12): in its
-/// element's arrival, its leaving, its loop -- or independently, in the
-/// scene's own time. Its card's A, L, Loop and I.
+/// MotionPhase is where a device's keys play: in its element's arrival,
+/// leaving or loop, or independently in the scene's own time. Its card's A,
+/// L, Loop and I.
 enum MotionPhase {
   arrive("Arrive", "A"),
   leave("Leave", "L"),
@@ -607,7 +570,6 @@ class PhaseSpans {
   final (double, double)? leave;
   final (double, double)? loop;
 
-  /// cycle is how long one go round the loop takes.
   final double cycle;
 
   const PhaseSpans({this.arrive, this.leave, this.loop, this.cycle = 2});
@@ -622,20 +584,16 @@ class PhaseSpans {
         MotionPhase.free => null,
       };
 
-  /// phasesAt are the clips playing at [t]: an arrival's or leaving's
-  /// last moment is in it, so its end can be keyed, though the loop starts
-  /// there too.
+  /// phasesAt are the clips playing at [t]. An arrival's or leaving's last
+  /// moment is in it, so its end can be keyed, though the loop starts there.
   List<MotionPhase> phasesAt(double t) => [
         for (var ph in const [MotionPhase.arrive, MotionPhase.leave])
           if (spanOf(ph) case (var a, var b) when t >= a && t <= b) ph,
         if (loop case (var a, var b) when t >= a && t < b) MotionPhase.loop,
       ];
 
-  /// phaseAt is the clip playing at [t], or free outside them all.
   MotionPhase phaseAt(double t) => phasesAt(t).firstOrNull ?? MotionPhase.free;
 
-  /// shareIn is [t] as a share of phase [ph]: of its clip, or of one go
-  /// round the loop.
   double shareIn(MotionPhase ph, double t) {
     var span = spanOf(ph);
     if (span == null) return t;
@@ -647,8 +605,7 @@ class PhaseSpans {
     return ((t - a) / math.max(0.0001, b - a)).clamp(0.0, 1.0).toDouble();
   }
 
-  /// timeOf is a key at share [share] of phase [ph] in seconds: the loop's
-  /// first go round.
+  /// timeOf is a key at [share] of [ph], in seconds (the loop's first go).
   double timeOf(MotionPhase ph, double share) {
     var span = spanOf(ph);
     if (span == null) return share;
@@ -668,7 +625,6 @@ class PhaseSpans {
   int get hashCode => Object.hash(arrive, leave, loop, cycle);
 }
 
-/// KeyEase is how a key's value goes into the next key's.
 enum KeyEase {
   straight("Straight"),
   easeInOut("Ease in and out"),
@@ -687,9 +643,9 @@ enum KeyEase {
       };
 }
 
-/// DeviceKey is one key of a device's setting: value [v] at [t] -- seconds
-/// into the scene, or a share of a clip (see MotionDevice.phaseKeys) --
-/// and how it goes into the next.
+/// DeviceKey is one key of a device's setting: value [v] at [t] (seconds
+/// into the scene, or a share of a clip; see MotionDevice.phaseKeys) and
+/// how it goes into the next.
 class DeviceKey {
   final double t;
   final double v;
@@ -707,8 +663,8 @@ class DeviceKey {
   int get hashCode => Object.hash(t, v, ease);
 }
 
-/// _along is the value [ks] come to at [t]: level before the first and
-/// after the last, eased between as each key says.
+/// _along is the value [ks] come to at [t]: level outside them, eased
+/// between as each key says.
 double _along(List<DeviceKey> ks, double t) {
   if (t <= ks.first.t) return ks.first.v;
   if (t >= ks.last.t) return ks.last.v;
@@ -722,7 +678,7 @@ double _along(List<DeviceKey> ks, double t) {
   return ks.last.v;
 }
 
-/// _alongColour is [_along] for colours kept as ARGB: each channel blended.
+/// _alongColour is [_along] for ARGB colours, each channel blended.
 double _alongColour(List<DeviceKey> ks, double t) {
   int ch(double v, int shift) => (v.toInt() >> shift) & 0xFF;
   if (t <= ks.first.t) return ks.first.v;
@@ -754,8 +710,8 @@ bool _sameKeys(Map<String, List<DeviceKey>> a, Map<String, List<DeviceKey>> b) {
   return true;
 }
 
-/// withMotionDeviceIds is [chain] with an id on every device: those it has
-/// kept, and the next free "m" and a number for any without.
+/// withMotionDeviceIds gives every device in [chain] an id: its own, or the
+/// next free "m" and a number.
 List<MotionDevice> withMotionDeviceIds(List<MotionDevice> chain) {
   if (chain.every((d) => d.id.isNotEmpty)) return chain;
   var next = 0;
@@ -766,9 +722,8 @@ List<MotionDevice> withMotionDeviceIds(List<MotionDevice> chain) {
   return [for (var d in chain) d.id.isEmpty ? d.withId("m${next++}") : d];
 }
 
-/// motionDevicesInOrder is [chain] as it runs: its pose devices first, in
-/// their order, then its looks in theirs -- the drawing between them, as
-/// rule 1 has it, wherever a device was put.
+/// motionDevicesInOrder is [chain] as it runs: pose devices first, then
+/// looks, each in their order, wherever a device was put (rule 1).
 List<MotionDevice> motionDevicesInOrder(List<MotionDevice> chain) => [
       for (var d in chain)
         if (d.side == MotionDeviceSide.pose) d,
@@ -778,8 +733,7 @@ List<MotionDevice> motionDevicesInOrder(List<MotionDevice> chain) => [
         if (d.side == MotionDeviceSide.look) d,
     ];
 
-/// motionFamily is where [kind] is listed when one is added, as the sound
-/// chain's devices are: by what it does.
+/// motionFamily is the heading [kind] is listed under when adding.
 String motionFamily(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.time => "Time",
       MotionDeviceKind.wiggle ||
@@ -809,8 +763,8 @@ String motionFamily(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.design => "Design",
     };
 
-/// motionAbout is what [kind] does, in a few words: what its "?" and its
-/// ⋯ menu's "What it does" say.
+/// motionAbout is what [kind] does in a few words, for its "?" and its ⋯
+/// menu's "What it does".
 String motionAbout(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.instances =>
         "Where the element splits into its copies: what is left of it is "
@@ -867,9 +821,8 @@ String motionAbout(MotionDeviceKind kind) => switch (kind) {
             "its arrival, leaving and loop, or on their own.",
     };
 
-/// motionParamShown is whether [p] of [d] does anything as it is set, so
-/// is shown: Time's Every only while it loops, Wiggle's Seed only on an
-/// element with copies.
+/// motionParamShown is whether [p] of [d] does anything as set: Time's Every
+/// only while it loops, Wiggle's Seed only on an element with copies.
 bool motionParamShown(MotionDevice d, DeviceParam p, {bool reused = false}) =>
     switch ((d.kind, p.id)) {
       (MotionDeviceKind.time, "every") => d.value("loop").round() != 0,

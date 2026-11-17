@@ -16,29 +16,23 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// canvas_library.dart is the pictures, videos and sounds somebody has added,
-// as a library they can see, use again and clear out: the Assets sidebar.
-//
-// The files stay content-addressed in the Pictures, Videos and Audio folders.
-// This adds a list of which of them are *assets*, with the names they were
-// added under, and for a video the poster and soundtrack that came with it.
-//
-// An asset stays until it is removed from the sidebar, even if no canvas
-// uses it yet. The tidy-up is for what is not an asset: a poster whose video
-// has gone, a crest a table no longer shows.
+// canvas_library.dart is the Assets sidebar: the pictures, videos and sounds
+// somebody has added, to see, use again and clear out. The files stay
+// content-addressed in the Pictures, Videos and Audio folders; this lists
+// which are assets, with their names and a video's poster and soundtrack.
+// An asset stays until removed from the sidebar, used or not; the tidy-up
+// is for what is not an asset, such as a poster whose video has gone.
 
-/// AssetKind is which of the three sections an asset is in.
 enum AssetKind {
   picture("Pictures"),
   video("Videos"),
   audio("Audio"),
 
-  /// vector is the drawings -- .svg files, kept in their own store and
-  /// placed as a Vector element. See VectorElement.
+  /// vector is .svg drawings, in their own store, placed as a VectorElement.
   vector("Vectors"),
 
-  /// model is the 3D objects -- .glb files, in the model store -- placed as
-  /// a 3D object. See Object3dElement.
+  /// model is .glb 3D objects, in the model store, placed as an
+  /// Object3dElement.
   model("3D objects");
 
   final String label;
@@ -48,7 +42,6 @@ enum AssetKind {
       values.firstWhere((k) => k.name == name, orElse: () => picture);
 }
 
-/// LibraryAsset is one thing in the library.
 class LibraryAsset {
   /// id is the stored file's: a picture's in the picture store, a video's or
   /// a sound's in the media store.
@@ -57,28 +50,26 @@ class LibraryAsset {
   final String name;
   final DateTime added;
 
-  /// width and height are a picture's or a video's, when known; length a
-  /// video's or a sound's, in seconds.
+  /// width and height are a picture's or video's, when known; length a
+  /// video's or sound's, in seconds.
   final int width;
   final int height;
   final double length;
 
-  /// poster, sound and fps are what a video brought with it -- see
-  /// MediaSource.
+  /// poster, sound and fps are what a video brought with it (MediaSource).
   final String poster;
   final String sound;
   final double fps;
 
-  /// author, license, origin and from are the credit an asset from a stock
-  /// library keeps: who made it, under what licence, its page, and which
-  /// library. Empty for anything added from a file.
+  /// author, license, origin and from credit an asset from a stock library:
+  /// who made it, the licence, its page, and which library. Empty for
+  /// anything added from a file.
   final String author;
   final String license;
   final String origin;
   final String from;
 
-  /// animations are a 3D object's own, as its file has them: see
-  /// glbAnimations.
+  /// animations are a 3D object's own, from its file (glbAnimations).
   final List<ModelAnimation> animations;
 
   const LibraryAsset({
@@ -99,7 +90,6 @@ class LibraryAsset {
     this.animations = const [],
   });
 
-  /// credited is whether there is anybody to credit.
   bool get credited => author.isNotEmpty || license.isNotEmpty;
 
   /// credit is the line somebody using it would print.
@@ -204,8 +194,8 @@ class LibraryAsset {
     );
   }
 
-  /// fromSource is a video or a sound as an asset, from what was learned about
-  /// it when it was added.
+  /// fromSource is a video or sound as an asset, from what was learned when
+  /// it was added.
   static LibraryAsset fromSource(AssetKind kind, MediaSource s,
           {DateTime? added}) =>
       LibraryAsset(
@@ -262,8 +252,8 @@ class CanvasLibrary {
   static Future<List<LibraryAsset>> _read() async {
     var file = await _path();
     if (!await file.exists()) {
-      // The first time: whatever is already stored joins the library, named
-      // after what the canvases that use it call it.
+      // The first time, whatever is already stored joins the library, named as
+      // the canvases using it name it.
       var found = await _discover();
       await _write(found);
       return found;
@@ -277,8 +267,8 @@ class CanvasLibrary {
       ]..sort((a, b) => b.added.compareTo(a.added));
       return out;
     } catch (exception) {
-      // Kept aside before anything writes over it: the next add would
-      // otherwise save a library of one.
+      // Kept aside before anything writes over it, or the next add would save a
+      // library of one.
       debugPrint("Unable to read the canvas library: $exception");
       try {
         await file.rename("${file.path}.unreadable");
@@ -293,7 +283,7 @@ class CanvasLibrary {
         file.path, jsonEncode([for (var a in assets) a.toJson()]));
   }
 
-  /// add puts [asset] in the library, or renames it where it is there already.
+  /// add puts [asset] in the library, or renames it if already there.
   static Future<void> add(LibraryAsset asset) async {
     await _serial(() async {
       var all = [...await _read()];
@@ -316,9 +306,9 @@ class CanvasLibrary {
     changes.value++;
   }
 
-  /// addPicture puts the stored picture [id] in the library as [name], with
-  /// its size read from [bytes] -- which is what lets one dragged onto the
-  /// canvas arrive the shape it is. A drawing has no pixels to count.
+  /// addPicture puts the stored picture [id] in the library as [name], sized
+  /// from [bytes] so one dragged onto the canvas arrives its own shape. A
+  /// drawing has no pixels to count.
   static Future<void> addPicture(
       String id, String name, List<int> bytes) async {
     var width = 0, height = 0;
@@ -341,7 +331,7 @@ class CanvasLibrary {
         height: height));
   }
 
-  /// addModel puts a 3D object in the library, with what it can do.
+  /// addModel puts a 3D object in the library, with its animations.
   static Future<void> addModel(
           String id, String name, List<ModelAnimation> animations,
           {String author = "",
@@ -359,7 +349,6 @@ class CanvasLibrary {
           origin: origin,
           from: from));
 
-  /// addVector puts a drawing in the library, under the Vectors.
   static Future<void> addVector(String id, String name) => add(LibraryAsset(
       id: id, kind: AssetKind.vector, name: name, added: DateTime.now()));
 
@@ -371,7 +360,6 @@ class CanvasLibrary {
     return null;
   }
 
-  /// rename gives the asset [id] a new name.
   static Future<void> rename(String id, String name) async {
     await _serial(() async {
       var all = [...await _read()];
@@ -383,7 +371,6 @@ class CanvasLibrary {
     changes.value++;
   }
 
-  /// credit records where the asset [id] came from.
   static Future<void> credit(String id,
       {required String author,
       required String license,
@@ -400,9 +387,9 @@ class CanvasLibrary {
     changes.value++;
   }
 
-  /// unlist takes the asset [id] off the library's list, its files kept:
-  /// for one replaced by another that a canvas, or its undo, may still use.
-  /// A tidy deletes them once nothing does.
+  /// unlist takes the asset [id] off the list but keeps its files, for one
+  /// replaced by another that a canvas, or its undo, may still use. A tidy
+  /// deletes them once nothing does.
   static Future<void> unlist(String id) async {
     await _serial(() async {
       var all = [...await _read()];
@@ -413,10 +400,9 @@ class CanvasLibrary {
     changes.value++;
   }
 
-  /// remove takes the asset [id] out of the library, and deletes its files
-  /// where no other asset shares them. Anything still using it is left
-  /// pointing at nothing, which is what the sidebar warns about first -- see
-  /// usedBy.
+  /// remove takes the asset [id] out, deleting its files where no other asset
+  /// shares them. Anything still using it is left pointing at nothing, which
+  /// the sidebar warns about first (see usedBy).
   static Future<void> remove(String id) async {
     await _serial(() async {
       var all = [...await _read()];
@@ -436,8 +422,8 @@ class CanvasLibrary {
   }
 
   static Future<void> _delete(String file, LibraryAsset owner) async {
-    // A video's poster is a picture, and its sound is audio, whatever the
-    // asset itself is.
+    // A video's poster is a picture and its sound is audio, whatever the asset
+    // itself is.
     String? where;
     if (file == owner.poster ||
         (owner.kind == AssetKind.picture && file == owner.id)) {
@@ -453,7 +439,7 @@ class CanvasLibrary {
     } catch (_) {}
   }
 
-  /// usedBy is the canvases that use the asset [id], by name.
+  /// usedBy is the names of the canvases that use the asset [id].
   static Future<List<String>> usedBy(String id) async {
     var out = <String>[];
     await for (var (folder, name, document) in _documents()) {
@@ -464,13 +450,13 @@ class CanvasLibrary {
     return out;
   }
 
-  /// tidy deletes stored files that are neither an asset -- nor a video's
-  /// poster or sound -- nor used by any saved canvas, nor by [open], the canvas
-  /// in the editor, which may not have been saved.
+  /// tidy deletes stored files that are not an asset, a video's poster or
+  /// sound, or used by any saved canvas or by [open], the canvas in the
+  /// editor, which may not be saved.
   static Future<int> tidy({Set<String> open = const {}}) {
-    // One at a time: two at once would each walk the library. One that
-    // failed does not stop the next: chained on its error, every later tidy
-    // would have failed with it.
+    // One at a time: two at once would each walk the library. A failed one
+    // does not stop the next: chained on its error, every later tidy would
+    // fail with it.
     var run = (_tidying ?? Future.value(0))
         .then((_) => 0, onError: (_) => 0)
         .then((_) => _tidy(open))
@@ -485,10 +471,9 @@ class CanvasLibrary {
   /// tidyEvery is the least time between the tidies saves ask for.
   static const Duration tidyEvery = Duration(minutes: 5);
 
-  /// tidySoon is a tidy after a save, unless there has been one within
-  /// [tidyEvery]: every save had tidied, and a tidy walks the whole
-  /// library. What it would have deleted waits for a later save, as it
-  /// waits for sweepGrace anyway. What [open] names is kept.
+  /// tidySoon is a tidy after a save, unless one ran within [tidyEvery]: a
+  /// tidy walks the whole library. What it would delete waits for a later
+  /// save, as it waits for sweepGrace anyway. What [open] names is kept.
   static void tidySoon({Set<String> open = const {}}) {
     var last = _tidied;
     if (last != null && DateTime.now().difference(last) < tidyEvery) return;
@@ -510,7 +495,7 @@ class CanvasLibrary {
           await CanvasMedia.sweep(MediaKind.video, keep) +
           await CanvasMedia.sweep(MediaKind.vector, keep) +
           // 3D objects' models too: a canvas previewed in a chat stores its
-          // own, and they went nowhere once it was gone.
+          // own, which must go once it is gone.
           await CanvasMedia.sweep(MediaKind.model, keep) +
           await _sweepSpeechTakes(keep);
     } catch (_) {
@@ -518,16 +503,14 @@ class CanvasLibrary {
     }
   }
 
-  /// _sweepSpeechTakes deletes the Speech device's takes no canvas has any
-  /// more -- removed, replaced, or a canvas deleted -- see
-  /// CanvasStorage.speechTakesDir.
+  /// _sweepSpeechTakes deletes Speech device takes no canvas has (removed,
+  /// replaced, or its canvas deleted); see CanvasStorage.speechTakesDir.
   static Future<int> _sweepSpeechTakes(Set<String> keep) async {
     var gone = 0;
     var dir = Directory(await CanvasStorage.speechTakesDir());
     await for (var f in dir.list()) {
       if (f is File && !keep.contains(path.basename(f.path))) {
-        // Not one just made: a take said a moment ago is not in any saved
-        // canvas yet (see sweepGrace).
+        // Not one just made: a fresh take is in no saved canvas yet.
         if (DateTime.now().difference(await f.lastModified()) < sweepGrace) {
           continue;
         }
@@ -538,7 +521,7 @@ class CanvasLibrary {
     return gone;
   }
 
-  /// _documents is every saved canvas, with the folder and name it is under.
+  /// _documents is every saved canvas, with its folder and name.
   static Stream<(String, String, CanvasDocument)> _documents() async* {
     var folders = <String>[""];
     for (var entry in await CanvasStorage.list("")) {
@@ -553,9 +536,9 @@ class CanvasLibrary {
     }
   }
 
-  /// _discover is what is already stored, as assets: every picture, video and
-  /// sound, less the posters and soundtracks that came with videos, named as
-  /// the canvases that use them name them.
+  /// _discover is what is already stored, as assets: every picture, video
+  /// and sound but videos' posters and soundtracks, named as the canvases
+  /// using them name them.
   static Future<List<LibraryAsset>> _discover() async {
     var names = <String, String>{};
     var sources = <String, MediaSource>{};
@@ -614,8 +597,8 @@ class CanvasLibrary {
         added: await when(await CanvasAssets.pathOf(id)),
       ));
     }
-    // The models with them: 3D files imported for the old characters are 3D
-    // objects now.
+    // The models with them: 3D files imported for old characters are 3D
+    // objects.
     for (var kind in [
       MediaKind.audio,
       MediaKind.video,
@@ -640,9 +623,8 @@ class CanvasLibrary {
     return out;
   }
 
-  /// resetForTest forgets the pending chain and tidy, so one test's failure
-  /// -- or a tidy a widget test started and never let finish -- cannot hold
-  /// the next one up.
+  /// resetForTest forgets the pending chain and tidy, so one test's failure,
+  /// or a tidy a widget test never let finish, cannot hold up the next.
   @visibleForTesting
   static void resetForTest() {
     _pending = Future.value();

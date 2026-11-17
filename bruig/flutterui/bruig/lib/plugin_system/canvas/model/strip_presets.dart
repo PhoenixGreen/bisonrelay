@@ -1,9 +1,8 @@
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
-// strip_presets.dart is the presets a strip's own cards come with -- its EQ,
-// its compressor, the master's limiter, a Ducker -- as the prototype's
-// "Presets ▾" on every device: a few starting points by name, beside the
-// ones saved (see device_presets.dart).
+// strip_presets.dart is the built-in presets of a strip's own cards (EQ,
+// compressor, the master's limiter, a Ducker): a few named starting points
+// beside the saved ones (see device_presets.dart).
 
 /// StripPart is one of a strip's own cards that has presets.
 enum StripPart {
@@ -19,7 +18,7 @@ enum StripPart {
       values.where((p) => p.name == name).firstOrNull;
 }
 
-/// LimiterSet is a limiter's settings: its ceiling, look-ahead and release.
+/// LimiterSet is a limiter's ceiling, look-ahead and release.
 typedef LimiterSet = ({double ceilingDb, double aheadMs, double releaseMs});
 
 /// eqPresets are an EQ's starting points, switched on.

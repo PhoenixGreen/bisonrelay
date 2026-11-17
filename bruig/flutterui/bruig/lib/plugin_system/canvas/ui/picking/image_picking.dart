@@ -20,8 +20,7 @@ import 'package:path/path.dart' as path;
 // on eleven canvases is stored once.
 
 /// _compressAbove is the size past which the size controls are offered on
-/// the way in. Not a limit: publishing checks the real one against the
-/// rendered PNG.
+/// the way in. Not a limit: publishing checks the real one on the PNG.
 const int _compressAbove = 512 * 1024;
 
 /// pictureSize is a stored picture's own width and height in pixels, decoded
@@ -61,8 +60,7 @@ Future<String?> compressCanvasPicture(
   if (result == null) return null;
 
   var id = await CanvasAssets.save(result);
-  // Content-addressed, so compressing to exactly what was already there hands
-  // back the same id. Nothing to do, and nothing to say about it.
+  // Content-addressed: compressing to what was there gives the same id.
   if (id == assetId) return null;
   // The smaller copy is in the library under the same name as the one it was
   // made from; the original stays there too, until it is removed.
@@ -73,9 +71,8 @@ Future<String?> compressCanvasPicture(
   return id;
 }
 
-/// _mimeOf sniffs the stored bytes, which is the only way to know: an asset id
-/// is a hash and the file beside it has whatever extension save() worked out,
-/// neither of which is a mime type.
+/// _mimeOf sniffs the stored bytes: neither the asset id (a hash) nor the
+/// file's extension is a mime type.
 String _mimeOf(List<int> bytes) =>
     lookupMimeType("", headerBytes: bytes.take(64).toList()) ?? "image/png";
 
@@ -188,9 +185,8 @@ Future<String?> pickCanvasVector(BuildContext context) async {
   }
 }
 
-/// _report says something went wrong, and does not itself go wrong: the
-/// snackbar is looked up only now, and guarded, since a throw here from a
-/// fire-and-forget callback would be swallowed and the button do nothing.
+/// _report says something went wrong without itself throwing: a throw from
+/// a fire-and-forget callback would be swallowed and the button do nothing.
 // ignore: use_build_context_synchronously
 void _report(BuildContext context, String message) {
   debugPrint(message);
@@ -198,7 +194,6 @@ void _report(BuildContext context, String message) {
   try {
     SnackBarModel.of(context).error(message);
   } catch (_) {
-    // No snackbar here. The message is already in the log, and a picker that
-    // fell over is not made better by falling over twice.
+    // No snackbar: the message is in the log already.
   }
 }

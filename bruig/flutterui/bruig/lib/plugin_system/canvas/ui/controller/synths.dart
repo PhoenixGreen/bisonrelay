@@ -7,9 +7,8 @@ part of '../canvas_controller.dart';
 // is kept made from the modules by apply() (see synth_channels.dart).
 
 extension CanvasSynths on CanvasController {
-  /// addSynthRack puts down the prototype's rack of modules (see
-  /// synthRack), its speaker on a hidden instrument channel of its own
-  /// that plays the patch. One change to undo; the speaker picked.
+  /// addSynthRack puts down synthRack's modules, the speaker picked and on a
+  /// hidden channel of its own that plays the patch. One change to undo.
   void addSynthRack({Offset? center}) {
     var ch = newInstrument(_document);
     ch = ch
@@ -100,10 +99,9 @@ extension CanvasSynths on CanvasController {
     });
   }
 
-  /// synthShowFor is what module [e] is doing on the stage: the keys held
-  /// on a keyboard, and on the rest what the note watched on a speaker it
-  /// reaches is making of it -- its sound, its level, where its envelope
-  /// is.
+  /// synthShowFor is what module [e] is doing on the stage: a keyboard's
+  /// held keys; on the rest, what the note watched on a speaker it reaches
+  /// makes of it -- its sound, its level, where its envelope is.
   SynthShow synthShowFor(SynthModuleElement e, int frame) {
     // The timeline's time while it plays; the screens' own while a key
     // sounds by itself, so an LFO's lamp beats.
@@ -263,9 +261,8 @@ extension CanvasSynths on CanvasController {
         speakers.firstOrNull;
   }
 
-  /// addSynthTask puts a task card down where it covers no module: at
-  /// the rack's top left (above the keyboard, where the prototype's card
-  /// was), else to the left of the rack, else beside [near].
+  /// addSynthTask puts a task card where it covers no module: the rack's top
+  /// left, above the keyboard, else left of the rack, else beside [near].
   void addSynthTask(SynthModuleElement near) {
     var card = newElement(ElementKind.synthTask, _document) as SynthTaskElement;
     var mods = _document.elements.whereType<SynthModuleElement>().toList();
@@ -284,9 +281,8 @@ extension CanvasSynths on CanvasController {
   }
 
   /// setSynthTarget makes the rack as it is now [card]'s target: the patch
-  /// its speaker hears, to be heard, and a check of everything that
-  /// differs from the rack's start (see synthChecksFor). The card grows to
-  /// show them.
+  /// its speaker hears, and a check of each thing that differs from the
+  /// rack's start (see synthChecksFor). The card grows to show them.
   void setSynthTarget(SynthTaskElement card) {
     var speaker = synthSpeakerFor(card);
     if (speaker == null) return;
@@ -306,8 +302,8 @@ extension CanvasSynths on CanvasController {
           height: synthTaskLayout(card, null).height *
               synthTaskScale(card.bounds))) as SynthTaskElement;
 
-  /// hearSynthTarget plays [card]'s target: a chord of A, C and E held a
-  /// few seconds, through its speaker's channel, as the prototype's did.
+  /// hearSynthTarget plays [card]'s target through its speaker's channel: a
+  /// chord of A, C and E held a few seconds.
   void hearSynthTarget(SynthTaskElement card) {
     var target = card.target;
     var speaker = synthSpeakerFor(card);
@@ -327,8 +323,7 @@ extension CanvasSynths on CanvasController {
     });
   }
 
-  /// checkSynthTask is how many of [card]'s checks the patch meets, of how
-  /// many.
+  /// checkSynthTask is how many of [card]'s checks the patch meets, of all.
   (int, int) checkSynthTask(SynthTaskElement card) =>
       (card.checks.where((c) => c.met(_document)).length, card.checks.length);
 }

@@ -68,25 +68,16 @@ import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
     show partWav, soundBankPath;
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
-// epub_layers.dart is a page of an interactive EPUB as the things on it, each
-// animated by the reader the way it is animated on the canvas.
-//
-// The page is never a film of itself. What does not move is drawn once (the
-// background held still), and each element that moves is its own layer:
-//
-// - Its picture, drawn once by the renderer.
-// - Moved, turned, grown and faded by CSS keyframes sampled a frame at a
-//   time. The pose is the element's clips and keyframes together; how
-//   it arrives and leaves is read off the renderer as it draws each frame
-//   (see motionProbe). A word-by-word arrival is a picture a word.
-// - What CSS cannot do -- a chart growing, a counter counting, a picture
-//   shattering, a keyed video -- is a short video of that element alone for
-//   the frames it changes, with its own picture either side.
+// epub_layers.dart lays a page of an interactive EPUB out as the things on
+// it, each animated by the reader as on the canvas. What does not move is
+// drawn once; each element that moves is a layer: its picture, moved by CSS
+// keyframes sampled a frame at a time (pose from its clips and keyframes,
+// arrival and leaving read off the renderer, see motionProbe), or, where
+// CSS cannot do it, a short video of that element alone.
 
-/// EpubSprite is one picture: where it goes on the page, in pixels, and where
-/// it is on its sheet.
+/// EpubSprite is one picture: where it goes on the page, in pixels,
+/// and where it is on its sheet.
 class EpubSprite {
-  /// href is the sheet it is on.
   final String href;
   final double x;
   final double y;
@@ -103,7 +94,7 @@ class EpubSprite {
   Rect get rect => Rect.fromLTWH(x, y, width, height);
 }
 
-/// EpubKey is what CSS says about something at one frame: property to value.
+/// EpubKey is what CSS says about something at one frame.
 class EpubKey {
   final int frame;
   final Map<String, String> css;
@@ -120,9 +111,8 @@ class EpubPart {
   const EpubPart(this.sprite, {this.keys = const [], this.clipKeys = const []});
 }
 
-/// EpubClip is an element's change as a video of the element alone: [href],
-/// playing from frame [at] for [frames] frames, over [rect]. [before] and
-/// [after] are the element either side of it.
+/// EpubClip is an element's change as a video of it alone: [href], from
+/// frame [at] for [frames], over [rect], with [before] and [after] it.
 class EpubClip {
   final String href;
   final int at;
@@ -134,14 +124,9 @@ class EpubClip {
       {this.before, this.after});
 }
 
-/// EpubReaction is a clip an element plays when something happens on the
-/// page -- [on] is `click:<element>` for a click on that element, or
-/// `end:<clip>` for another clip ending -- as keyframes over its own
-/// [frames], and the sound linked with it in its row. The page's script plays
-/// it over the element's place on the timeline and lets it go at its end:
-/// the canvas's clips started by a click or by another clip, kept in a book
-/// (Ken, 2026-11-13: "is there a way to fix this export limitation that
-/// also complies with the epub3 format?").
+/// EpubReaction is a clip an element plays when [on] happens
+/// (`click:<element>` or `end:<clip>`): keyframes over its [frames], with
+/// its row's linked sound, played over the element's timeline place.
 class EpubReaction {
   /// clip is its id, which a reaction that follows it names in [on].
   final String clip;
@@ -149,7 +134,7 @@ class EpubReaction {
   final int frames;
   final List<EpubKey> keys;
 
-  /// sound is its linked sound's file in the book, and volume how loud.
+  /// sound is its linked sound's file in the book; volume how loud.
   final String? sound;
   final double volume;
 
@@ -157,13 +142,9 @@ class EpubReaction {
       {this.sound, this.volume = 1});
 }
 
-/// EpubLayer is one element that moves, can be shown and hidden, or changes
-/// under the pointer.
-/// EpubControl is a button on a layer that the page's clock answers: a
-/// Sheet music element's playbar (Ken, 2026-11-14). [act] is what it asks
-/// of the clock, [rect] where it is in page pixels, [data] what else it
-/// says (the frames to step between, the span to seek along), [inner] what
-/// is drawn in it (a pause for the play button, shown while it plays).
+/// EpubControl is a layer button the page's clock answers (a Sheet music
+/// playbar's): [act] the ask, [rect] its place in page pixels, [data] its
+/// frames or span, [inner] what is drawn in it while playing.
 class EpubControl {
   final String act;
   final Rect rect;
@@ -174,12 +155,9 @@ class EpubControl {
       {this.data = const {}, this.inner = "", this.label = ""});
 }
 
-/// EpubKeyboard is an instrument a reader plays (Ken, 2026-11-14: "click a
-/// note on the instrument and have it play both as a mouse/keyboard input
-/// and a midi instrument input"): where it is in page pixels, its keys
-/// (each key's number, its box within, whether it is black, and a picture
-/// of it lit), and its sound -- every key from [low], [step] seconds apart,
-/// in one file.
+/// EpubKeyboard is an instrument a reader plays by pointer, keyboard or
+/// MIDI: its place, its keys (number, box, black, lit picture), and every
+/// key's sound from [low], [step] seconds apart, in one file.
 class EpubKeyboard {
   final Rect box;
   final List<({int key, Rect rect, bool black, EpubSprite lit})> keys;
@@ -189,6 +167,7 @@ class EpubKeyboard {
   const EpubKeyboard(this.box, this.keys, this.sound, this.low, this.step);
 }
 
+/// EpubLayer is one element that moves, shows and hides, or hovers.
 class EpubLayer {
   /// id is the element's, which a Show-or-hide button names.
   final String id;
@@ -196,30 +175,27 @@ class EpubLayer {
   /// visible is whether it is showing when the page opens.
   final bool visible;
 
-  /// originX and originY are the element's anchor, in the page's pixels:
-  /// what its pose turns and grows it about.
+  /// originX and originY are the element's anchor in page pixels: what its
+  /// pose turns and grows it about.
   final double originX;
   final double originY;
 
-  /// pose is where the element is -- moved, turned, grown and faded -- as
+  /// pose is where the element is, moved, turned, grown and faded, as
   /// keyframes; empty where it stays where it was put.
   final List<EpubKey> pose;
 
-  /// parts are its pictures and how each moves; clip its change as a video,
-  /// for one CSS cannot draw.
+  /// parts are its pictures and how each moves; clip a video of it.
   final List<EpubPart> parts;
   final EpubClip? clip;
 
   /// hover is the button as it is under the pointer, and hoverBox where it
-  /// can be pointed at, in page pixels. Null for anything that does not
-  /// change when pointed at.
+  /// can be pointed at, in page pixels. Null where pointing changes nothing.
   final EpubSprite? hover;
   final Rect? hoverBox;
 
   /// legend is where a chart's key has a series to switch on and off, in
-  /// page pixels, each with the bit it flips; switched is the chart as it
-  /// is with each set of those bits flipped, by mask. Empty for anything
-  /// else. See _LayerMaker._legend.
+  /// page pixels, each with the bit it flips; switched is the chart with
+  /// each set of those bits flipped, by mask. See _LayerMaker._legend.
   final List<(int, Rect)> legend;
   final Map<int, EpubSprite> switched;
 
@@ -261,9 +237,8 @@ class EpubLayer {
       parts.any((p) => p.keys.length > 1 || p.clipKeys.length > 1);
 }
 
-/// EpubSlab is a stretch of the page that does not move, flattened: the
-/// backdrop and the elements over it up to the first that moves, or the
-/// still elements between two that do.
+/// EpubSlab is a flattened stretch of the page that does not move: the
+/// backdrop and what is over it below the first mover, or between two.
 class EpubSlab {
   final EpubSprite sprite;
   const EpubSlab(this.sprite);
@@ -280,33 +255,28 @@ class EpubStage {
   /// marks are the timeline's stops, pauses, loops and jumps.
   final List<TimelineAction> marks;
 
-  /// autoplay is whether the page starts by itself: unless it has playhead
-  /// buttons of its own.
+  /// autoplay is whether the page starts itself: not with playhead buttons.
   final bool autoplay;
 
   /// timeline is whether sound or video follows its playhead.
   final bool timeline;
 
-  /// backdropVideo is the page's background video, played by the reader on a
-  /// loop over the backdrop and under everything else. Null where there is
-  /// none, or none a reader can show.
+  /// backdropVideo is the page's background video, looped over the backdrop
+  /// and under everything; null where there is none a reader can show.
   final String? backdropVideo;
 
-  /// clickable are the elements a click on starts a reaction, and where
-  /// each is on the page, in its pixels.
+  /// clickable are the elements a click on starts a reaction, and where.
   final List<(String, Rect)> clickable;
 
   /// sounds are the reactions' sound files, each once.
   final List<String> sounds;
 
   /// camera is how the page's Camera frames it, frame by frame where it
-  /// moves: a transform on everything on the stage. Empty for none. See
-  /// cameraKeys.
+  /// moves, as a transform on the whole stage; empty for none. See cameraKeys.
   final List<EpubKey> camera;
 
-  /// lens is what the Camera's lens does to each layer by its element's
-  /// depth -- blurs it away from the focus, moves it by parallax -- as
-  /// keys on a wrapper round the layer, by the layer's id. See lensKeys.
+  /// lens is what the Camera's lens does to each layer by depth (blur,
+  /// parallax), as keys on a wrapper round it, by layer id. See lensKeys.
   final Map<String, List<EpubKey>> lens;
 
   /// vignette is the Camera's darkened corners, as keys of the overlay's
@@ -359,9 +329,8 @@ class StageResult {
 class ElementFilms {
   final String ffmpeg;
 
-  /// alpha is whether HEVC with a clear background can be made here --
-  /// VideoToolbox's, on a Mac. Without it, the element is filmed over what
-  /// is under it on the page, which is exact only where that holds still.
+  /// alpha is whether clear-backed HEVC can be made (VideoToolbox's): else
+  /// an element is filmed over what is under it, exact only if that is still.
   final bool alpha;
 
   const ElementFilms(this.ffmpeg, {this.alpha = false});
@@ -371,8 +340,7 @@ class ElementFilms {
     if (ffmpeg == null) return null;
     Directory? work;
     try {
-      // Tried rather than asked about: an encoder can be listed and still
-      // decline to open.
+      // Tried, not asked about: a listed encoder may still not open.
       work = await Directory.systemTemp.createTemp("canvas-alpha");
       var out = path.join(work.path, "a.mp4");
       var run = await Process.run(ffmpeg, [
@@ -396,11 +364,9 @@ class ElementFilms {
   }
 }
 
-/// buildEpubStage lays page [index] of [document] out as layers, at [pixels]
-/// page pixels to the design unit on a page of [width] by [height] pixels.
-///
-/// Returns null where the page has nothing that moves, nothing to show or
-/// hide and nothing that changes under the pointer: its picture is enough.
+/// buildEpubStage lays page [index] out as layers, [pixels] page pixels a
+/// design unit on a [width] by [height] page; null where nothing moves,
+/// shows, hides or hovers, so its picture is enough.
 Future<StageResult?> buildEpubStage(
   CanvasDocument document,
   int index, {
@@ -414,15 +380,13 @@ Future<StageResult?> buildEpubStage(
   /// hold still, as their own picture.
   ElementFilms? films,
 
-  /// media is the page's timeline media, for a keyed video on it -- which is
+  /// media is the page's timeline media, for a keyed video on it, which is
   /// filmed as itself, keyed, frame by frame.
   ExportMedia? media,
 
   /// layered are elements to give a layer whether or not they move: a video
   /// the reader plays, which needs its own place in the stack.
   Set<String> layered = const {},
-
-  /// timeline is whether the page has sound or video on its timeline.
   bool timeline = false,
 
   /// backdropVideo is the page's background video as a file a reader plays,
@@ -442,8 +406,8 @@ Future<StageResult?> buildEpubStage(
       over: document.masterOver);
   var pageBox = Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
 
-  // Shown and hidden by a button on the page: a layer even when it is still,
-  // so there is something to show and hide.
+  // Shown and hidden by a button on the page: a layer even when still, so
+  // there is something to show and hide.
   var toggled = {
     for (var e in elements)
       if (e is ButtonElement &&
@@ -452,15 +416,13 @@ Future<StageResult?> buildEpubStage(
         e.action.elementId,
   };
 
-  // Buttons that change under the pointer: a layer each, with the look it
-  // changes to.
+  // Buttons that change under the pointer: a layer each, and its look.
   var hovering = {
     for (var e in elements)
       if (e is ButtonElement && e.visible && _hovers(e)) e.id,
   };
 
-  // Lines that are only there to carry text and have asked to stay out of the
-  // picture, as the renderer leaves them.
+  // Lines that only carry text and asked to stay out of the picture.
   var hidden = {
     for (var e in elements)
       if (e is TextElement && e.curve?.hideHost == true) e.curve!.elementId,
@@ -475,8 +437,7 @@ Future<StageResult?> buildEpubStage(
         e,
   ];
 
-  // What plays a clip on a click, or after another clip: a layer each, and
-  // where those clicks land.
+  // What plays a clip on a click or after a clip: a layer each.
   var reacting = {
     for (var e in drawn)
       if (_reactionClips(e).isNotEmpty) e.id,
@@ -539,10 +500,9 @@ Future<StageResult?> buildEpubStage(
   var below = <CanvasElement>[];
   var first = true;
 
-  // The still elements since the last one that moved, as one picture. The
-  // first also carries the backdrop and the facing leaf's overhang; with a
-  // background video, the backdrop is a slab of its own so the video can go
-  // between it and the rest.
+  // The still elements since the last mover, as one picture. The first
+  // carries the backdrop and facing overhang; with a background video
+  // the backdrop is a slab apart, so the video goes between.
   Future<void> flatten() async {
     var base = first;
     first = false;
@@ -574,9 +534,7 @@ Future<StageResult?> buildEpubStage(
       }
     }
 
-    // Its pictures read, not their placeholders: a vector not yet loaded
-    // was drawn as its dashed box (Ken, 2026-11-13: about 13 missing,
-    // the Decred logo among them).
+    // Its pictures read: a vector not yet loaded is a dashed box.
     await drawWhenLoaded(images, (c) {
       c.scale(pixels);
       paintStill(c);
@@ -692,8 +650,7 @@ Future<StageResult?> buildEpubStage(
       },
   ];
 
-  // A score sheet's playbar plays the page (Ken, 2026-11-14: "rather than
-  // the ugly play button").
+  // A score sheet's playbar plays the page, not the start screen's.
   var ownPlay =
       drawn.any((e) => e is SheetElement && e.playbar && e.score.isNotEmpty);
   var stage = EpubStage(
@@ -727,11 +684,8 @@ Future<StageResult?> buildEpubStage(
 }
 
 /// cameraKeys is how [page]'s Camera frames it on each of its [frames], as
-/// a transform on the whole stage, [width] by [height] pixels at [pixels]
-/// a design unit: the frame it shows scaled up to fill the page. A key on
-/// each frame it moves on and at each end of each hold, played straight
-/// between them, so its easing is the canvas's. Empty where it has none,
-/// or one on a 3D stage, which frames the stage rather than the page.
+/// a stage transform: a key at each move and hold end, played straight so
+/// the easing is the canvas's. Empty with none, or one on a 3D stage.
 List<EpubKey> cameraKeys(
     CanvasDocument page, int frames, double pixels, int width, int height) {
   var cam = cameraOf(page);
@@ -768,10 +722,9 @@ List<EpubKey> cameraKeys(
   return keys;
 }
 
-/// lensKeys are what [page]'s Camera's lens does to each of [elements] by
-/// its depth, on each of [frames] where that changes: its parallax as a
-/// transform from the camera's framing to its own (see parallaxed), its
-/// depth of field as a blur. Only those it does anything to.
+/// lensKeys are what [page]'s Camera's lens does to [elements] by depth,
+/// frame by frame where it changes: parallax as a transform (see
+/// parallaxed), depth of field as a blur; only those it touches.
 Map<String, List<EpubKey>> lensKeys(CanvasDocument page,
     List<CanvasElement> elements, int frames, double pixels) {
   var cam = cameraOf(page);
@@ -848,7 +801,6 @@ List<EpubKey> vignetteKeys(CanvasDocument page, int frames) {
   ];
 }
 
-/// _BackdropVideo marks where the background video goes in the stack.
 class _BackdropVideo {
   const _BackdropVideo();
 }
@@ -856,7 +808,6 @@ class _BackdropVideo {
 /// isBackdropVideo is whether a stage item is the background video's place.
 bool isBackdropVideo(Object item) => item is _BackdropVideo;
 
-/// _LayerMaker makes one element's layer.
 class _LayerMaker {
   final CanvasElement e;
   final CanvasDocument page;
@@ -953,7 +904,7 @@ class _LayerMaker {
 
   Future<EpubLayer> _make({required bool hovers}) async {
     // A video the reader plays is its own <video> in this layer, poster and
-    // all: a picture of it under that played over a frozen copy of itself.
+    // all, not a picture of it under a frozen copy of itself.
     if (player) {
       var box = e.bounds;
       return EpubLayer(
@@ -1012,8 +963,7 @@ class _LayerMaker {
       pose: _poseKeys(),
       parts: parts,
       clip: clip,
-      // As it looks when it has arrived: the pointer is on a button that is
-      // there.
+      // As it looks once arrived: the pointer is on a button that is there.
       hover: hovers ? await picture(frames - 1, hovered: true) : null,
       hoverBox: hovers
           ? Rect.fromLTRB(box.left * pixels, box.top * pixels,
@@ -1068,11 +1018,9 @@ class _LayerMaker {
     );
   }
 
-  /// _sheetLayer is a score sheet as a book plays it (Ken, 2026-11-14): each
-  /// page of its systems a picture, there while that page shows; each note
-  /// lit a picture of its own, there while it sounds; the playhead a line
-  /// moved along by the clock; and its playbar, buttons the clock answers --
-  /// to the start, a note back, play and pause, a note on, and the track.
+  /// _sheetLayer is a score sheet as a book plays it: each systems page and
+  /// each lit note a picture shown on cue, the playhead a line moved by the
+  /// clock, and its playbar's buttons, which the clock answers.
   Future<EpubLayer?> _sheetLayer(SheetElement s) async {
     var bounds = s.bounds;
     var views = [
@@ -1166,8 +1114,7 @@ class _LayerMaker {
         }
       }
     }
-    // The playbar: the track filled as far as the clock has got, and its
-    // buttons the clock answers.
+    // The playbar: the track filled as far as the clock has got.
     var controls = <EpubControl>[];
     if (sheetBarRect(s, bounds) case var bar?) {
       var parts0 = sheetBarParts(bar, practice: false);
@@ -1214,8 +1161,7 @@ class _LayerMaker {
       Rect px(Rect r) => Rect.fromLTRB(
           r.left * pixels, r.top * pixels, r.right * pixels, r.bottom * pixels);
       var onsets = sheetOnsets(s, page).join(",");
-      // A pause over the play button while it plays: the bar's tint over the
-      // paper, and two bars.
+      // A pause over the play button while it plays.
       var play = parts0[SheetBarPart.play]!;
       var tint = ui.Color.alphaBlend(
           s.ink.withValues(alpha: 0.07), s.paper.withValues(alpha: 1));
@@ -1328,10 +1274,9 @@ class _LayerMaker {
   }
 
   /// _synthKeysLayer is a synth's keyboard module as a book plays it: the
-  /// module at rest, each key lit while the reader presses it, and the
-  /// keys' sounds -- the patch as it is set, played through the speaker
-  /// it is patched to (rendered, as an instrument's are: its knobs are not
-  /// turned in a book). Null where it reaches no speaker.
+  /// module at rest, each key lit while pressed, and the keys' sounds -- the
+  /// patch as set, rendered through the speaker it is patched to (knobs are
+  /// not turned in a book). Null where it reaches no speaker.
   Future<EpubLayer?> _synthKeysLayer(SynthModuleElement keys) async {
     var speaker = synthSpeakersHearing(page, keys.id).firstOrNull;
     var ch = speaker == null ? null : page.elementById(speaker.channel);
@@ -1389,10 +1334,9 @@ class _LayerMaker {
   /// a note held a second, and its ring.
   static const keyStep = 1.6;
 
-  /// _keySounds is every key of [a] from the lowest of [keys] to the
-  /// highest, each played as [a] plays it, [keyStep] seconds apart in one
-  /// file -- AAC where there is ffmpeg, a small WAV where not -- and the
-  /// lowest key's number. Null where it cannot be played.
+  /// _keySounds is [a]'s keys from the lowest of [keys] to the highest, as
+  /// [a] plays them, [keyStep] seconds apart in one file (AAC with ffmpeg,
+  /// else WAV), with the lowest's number; null where unplayable.
   Future<(EpubFile, int)?> _keySounds(AudioElement a, List<int> keys) async {
     if (keys.isEmpty) return null;
     var part = a.instrument!;
@@ -1437,17 +1381,15 @@ class _LayerMaker {
     }
   }
 
-  /// _reactions are [e]'s clips that start on a click or after another
-  /// clip, each sampled a frame at a time as the canvas plays it -- from
-  /// where the element stands, the clip alone -- with the sound linked with
-  /// it in its row.
+  /// _reactions are [e]'s clips started by a click or a clip, each sampled
+  /// frame by frame alone, with the sound linked with it in its row.
   List<EpubReaction> _reactions() {
     var out = <EpubReaction>[];
     var m = e.base.motion;
     for (var c in _reactionClips(e)) {
       var n = math.max(1, (c.span * rate).round());
-      // The element with this clip alone on its timeline, from frame 0, on
-      // the page -- so a Go to finds what it goes to.
+      // The element with this clip alone on its timeline, from frame 0, on the
+      // page, so a Go to finds what it goes to.
       var alone = e.withBase(
           motion: m.copyWith(placed: [
         ClipPlacement(id: "rx-${c.id}", clip: c.id, layer: c.layer, start: 0),
@@ -1533,9 +1475,8 @@ class _LayerMaker {
     return keys;
   }
 
-  /// _cssAble is whether everything [e] does besides its pose is a motion --
-  /// something the renderer does to it through applyMotionSpec, which CSS
-  /// can do too.
+  /// _cssAble is whether everything [e] does besides its pose is a motion
+  /// the renderer applies through applyMotionSpec, which CSS can do too.
   bool _cssAble() {
     // Nothing but the arrival and the leaving changes.
     String others(int f) {
@@ -1571,10 +1512,10 @@ class _LayerMaker {
   }
 
   /// _cssParts is [e] as pictures moved by CSS, read off the renderer frame
-  /// by frame -- or null where what it does cannot be read that way.
+  /// by frame, or null where what it does cannot be read that way.
   Future<List<EpubPart>?> _cssParts() async {
-    // Ask the renderer, frame by frame, what it moves and how -- only over
-    // the stretch where the element arrives or leaves.
+    // Ask the renderer, frame by frame, what it moves and how, only over the
+    // stretch where the element arrives or leaves.
     var span = _valuedSpan(e, frames, poseAt);
     if (span == null) return null;
     var calls = <int, List<MotionCall>>{};
@@ -1592,7 +1533,7 @@ class _LayerMaker {
     }
 
     // The pieces: whatever the renderer moved, known by where it was before
-    // it moved it -- the same box at every frame.
+    // it moved it (the same box at every frame).
     String keyOf(MotionCall c) {
       var b = c.before;
       return "${c.box.left.toStringAsFixed(2)},${c.box.top.toStringAsFixed(2)},"
@@ -1616,12 +1557,12 @@ class _LayerMaker {
     if (pieces.isEmpty) return null;
     var byPiece = e is TextElement &&
         (e as TextElement).animation.preset.scope != TextAnimationScope.block;
-    // A whole-element motion that turns out to move it in several pieces --
-    // columns, each moved on its own -- would cut the picture wrongly.
+    // A whole-element motion that moves it in several pieces (columns, each
+    // on its own) would cut the picture wrongly.
     if (!byPiece && pieces.length > 1) return null;
 
-    // As it is when it has arrived, and what of it never moves at all -- a
-    // box behind text, say, which is there before the words are.
+    // As it is once arrived, and what of it never moves at all: a box behind
+    // text, say, which is there before the words are.
     Keyframe settledWith(double reveal) => Keyframe(frame: 0, values: {
           ...poseAt(0).values,
           KeyframeChannel.reveal: reveal,
@@ -1636,11 +1577,9 @@ class _LayerMaker {
     var parts = <EpubPart>[];
     if (await picture(0, element: bare) case var s?) parts.add(EpubPart(s));
 
-    // Text in a box, its words arriving one by one: the words are cut from
-    // it drawn without its box, and the box is a picture of its own, there
-    // from when the arrival starts. Cut with the words, the box went in
-    // slices with them -- a chip's outline in pieces (Ken, 2026-11-13: the
-    // mixer's "2.00 DCR" chips).
+    // Text in a box arriving word by word: the words are cut from it
+    // drawn boxless, the box a picture of its own from the arrival's
+    // start, so it does not go in slices with them.
     var words = settled;
     if (byPiece && settled is TextElement) {
       var t = settled;
@@ -1660,8 +1599,8 @@ class _LayerMaker {
             const EpubKey(0, {"opacity": "0"}),
             if (from > 1) EpubKey(from - 1, const {"opacity": "0"}),
             EpubKey(from, const {"opacity": "1"}),
-            // Held to the last frame: a last key short of it is run on to
-            // the style written inline -- the first key's, hidden.
+            // Held to the last frame: a last key short of it runs on to the
+            // style written inline, the first key's, hidden.
             if (frames - 1 > from) EpubKey(frames - 1, const {"opacity": "1"}),
           ]));
         }
@@ -1672,8 +1611,8 @@ class _LayerMaker {
     try {
       for (var entry in pieces.entries) {
         var c = entry.value;
-        // A piece is its box, and a little above and below it for what
-        // reaches past a line -- as the renderer clips each piece.
+        // A piece is its box, and a little above and below it for what reaches
+        // past a line, as the renderer clips each piece.
         var crop = byPiece
             ? _mapRect(
                 c.before,
@@ -1690,8 +1629,7 @@ class _LayerMaker {
     return parts;
   }
 
-  /// _moved is one piece's keyframes, from what the renderer did to it at
-  /// each frame.
+  /// _moved is one piece's keyframes, from what the renderer did to it.
   EpubPart _moved(EpubSprite sprite, String key,
       Map<int, List<MotionCall>> calls, String Function(MotionCall) keyOf) {
     var blurs = false, clips = false;
@@ -1758,8 +1696,7 @@ class _LayerMaker {
         keys: _compact(looks), clipKeys: clips ? _compact(frames_) : const []);
   }
 
-  /// _film makes [e]'s change a video of it alone, over the frames it
-  /// changes on.
+  /// _film makes [e]'s change a video of it alone, over its frames.
   Future<EpubClip?> _film(List<String> names) async {
     var films = this.films!;
     int a, b;
@@ -1780,9 +1717,8 @@ class _LayerMaker {
         (region.width / 2).ceil() * 2.0, (region.height / 2).ceil() * 2.0);
     var w = box.width.round(), h = box.height.round();
 
-    // What is under it on the page, which holds still. With HEVC alpha it is
-    // only used for half-clear pixels (see _solidOrClear); without, the
-    // element is filmed over it.
+    // What is under it, holding still: with HEVC alpha, only for half-clear
+    // pixels (see _solidOrClear); without, it is filmed over this.
     ui.Picture under;
     {
       var recorder = ui.PictureRecorder();
@@ -1806,9 +1742,8 @@ class _LayerMaker {
         "-hide_banner", "-loglevel", "error", "-y", //
         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "${w}x$h",
         "-r", "$rate", "-i", "-",
-        // Tagged sRGB, which is what the renderer drew: untagged, a reader
-        // assumes the TV curve and the film no longer matches the element's
-        // own picture. The encoder takes this from the frames.
+        // Tagged sRGB, as drawn: untagged, a reader assumes the TV
+        // curve and the film stops matching the element's picture.
         "-vf",
         [
           if (!films.alpha) "scale=out_color_matrix=bt709:out_range=tv",
@@ -1906,13 +1841,10 @@ class _LayerMaker {
   }
 }
 
-/// _solidOrClear makes every pixel of [alone] -- the element by itself --
-/// either clear or solid: a half-clear one takes the colour it makes over the
-/// page, from [onPage], and becomes solid.
-///
-/// Apple Books treats video colour as premultiplied, so half-clear pixels
-/// would come out too bright; with none, it looks the same however alpha is
-/// read. Exact because what is under the element holds still.
+/// _solidOrClear makes each pixel of [alone] clear or solid, a half-clear
+/// one taking its colour over the page from [onPage]: Apple Books treats
+/// video as premultiplied, so half-clear pixels come out too bright.
+/// Exact because what is under the element holds still.
 void _solidOrClear(Uint8List alone, Uint8List onPage) {
   var mine = alone.buffer.asUint32List(alone.offsetInBytes, alone.length >> 2);
   var page =
@@ -1945,7 +1877,6 @@ ElementAnimation? _elementAnimation(CanvasElement e) => switch (e) {
       _ => null,
     };
 
-/// _cssColour is [c] as CSS.
 String _cssColour(ui.Color c) =>
     "rgba(${(c.r * 255).round()},${(c.g * 255).round()},${(c.b * 255).round()},"
     "${c.a.toStringAsFixed(3)})";
@@ -1977,7 +1908,7 @@ String _n(double v, int places) {
   return s == "-0" ? "0" : s;
 }
 
-/// _mul is a times b, for column-major 4x4 matrices as the canvas gives them.
+/// _mul is a times b, for the canvas's column-major 4x4 matrices.
 Float64List _mul(Float64List a, Float64List b) {
   var out = Float64List(16);
   for (var c = 0; c < 4; c++) {
@@ -2024,21 +1955,16 @@ Rect _mapRect(Float64List m, Rect r) {
       ps.map((p) => p.dy).reduce(math.max));
 }
 
-/// _Sheets packs a page's pictures onto as few sheets as will hold them, so a
-/// page is a few files rather than one a picture. Each picture is drawn over
-/// its region, read back, trimmed to its ink and named by its pixels; one
-/// already packed is not packed twice. Sprites come back placed
-/// provisionally -- a sheet is named when it is written -- and [placed] gives
-/// the final one after [close].
+/// _Sheets packs a page's pictures onto few sheets, each trimmed to its
+/// ink and named by its pixels so none is packed twice. Sprites come back
+/// provisional; [placed] gives the final one after [close].
 class _Sheets {
   final String stem;
 
-  /// side is how large a sheet may grow, in pixels: 16 MB decoded, within
-  /// what a tablet will decode without complaint.
+  /// side is how large a sheet may grow: 16 MB decoded, fine on a tablet.
   static const int side = 2048;
 
-  /// gap keeps a picture's neighbours out of it when a reader scales it and
-  /// samples across its edge.
+  /// gap keeps neighbours out of a picture a reader scales and samples.
   static const int gap = 2;
 
   final List<EpubFile> files = [];
@@ -2162,9 +2088,8 @@ class _Sheets {
     }
   }
 
-  /// _write names [image]'s file at once and encodes it alongside whatever
-  /// is drawn next; nothing waits on it but [close]. The image is the
-  /// writer's to dispose.
+  /// _write names [image]'s file at once and encodes it while the next is
+  /// drawn; only [close] waits. The writer disposes the image.
   String _write(ui.Image image) {
     var href = "$stem-${_encoding.length}.png";
     _encoding.add(() async {
@@ -2199,10 +2124,8 @@ class _Sheets {
       sy: sprite.sy);
 }
 
-/// _switchable is the series of a chart's key that a reader can switch on
-/// and off, with where each entry is drawn, in design units -- at most the
-/// first five, which is thirty-two pictures of the chart. Empty for anything
-/// that is not a chart with a key of series.
+/// _switchable is a chart key's series a reader can switch, with each
+/// entry's place: at most five (32 pictures). Empty for anything else.
 List<(int, Rect)> _switchable(CanvasElement e) {
   if (e is! ChartElement || !e.visible) return const [];
   return chartLegendRects(e, e.bounds).take(5).toList();
@@ -2212,17 +2135,15 @@ List<(int, Rect)> _switchable(CanvasElement e) {
 bool _hovers(ButtonElement e) => e.hoverFill.a > 0 || e.hoverTextColor.a > 0;
 
 /// _regionFor is the part of the page, in page pixels, that [e] can draw in
-/// at rest: its box, turned as it is turned, with room round it for what
-/// reaches outside a box -- a shadow, an outline, an arrival that slides or
-/// grows in. Within the page, unless [moves], when what is off the page at
-/// rest can be brought onto it.
+/// at rest: its box, turned, with room for what reaches outside it (a
+/// shadow, an outline, an arrival that slides or grows in). Within the page
+/// unless [moves], when what is off the page can be brought onto it.
 Rect _regionFor(
     CanvasElement e, double pixels, Rect pageBox, CanvasDocument document,
     {required bool moves}) {
   var bounds = e.bounds;
   // An element reused is drawn as all of its instances, each where it is
-  // put from the element (its place is in the picture; the shared move in
-  // the CSS).
+  // put (its place is in the picture; the shared move in the CSS).
   if (e.base.motion.instances case var set?) {
     for (var x in set.items) {
       bounds = bounds.expandToInclude(e.bounds.shift(Offset(x.dx, x.dy)));
@@ -2238,9 +2159,8 @@ Rect _regionFor(
   } else {
     var turned = _turnedBounds(bounds, e.rotationRadians);
     var side = math.max(bounds.width, bounds.height);
-    // An arrival that slides, grows, spins or scatters reaches as far again
-    // as the element is big. Anything else only reaches as far as a shadow
-    // or an outline -- a chart grows inside its own box.
+    // An arrival that slides, grows, spins or scatters reaches as far
+    // again as it is big; anything else only as far as a shadow.
     var room = (_travels(e) ? side : side * 0.1 + 24) +
         // Its looks reach as far as they reach (see motion_looks.dart).
         looksReach(e.base.motion.looks);
@@ -2258,8 +2178,7 @@ Rect _regionFor(
       region.right.ceilToDouble(), region.bottom.ceilToDouble());
 }
 
-/// _travels is whether [e] has an arrival or a leaving that can take it out
-/// of its own box.
+/// _travels is whether [e] arrives or leaves beyond its own box.
 bool _travels(CanvasElement e) {
   if (e is TextElement) return e.animation.on || e.animation.closes;
   var a = switch (e) {
@@ -2354,12 +2273,9 @@ bool _changes(CanvasElement e, int frames, CanvasDocument page) {
   return false;
 }
 
-/// _lookAt names what [e] looks like at frame [f], its pose aside: two frames
-/// with the same name are the same picture.
-///
-/// Mostly that is the channels the pose pins. Things that read the frame
-/// itself (staggered text, chart series, text on a line, running players,
-/// animated patterns) add the frame to the name where it can matter.
+/// _lookAt names [e]'s look at frame [f], pose aside: the same name is the
+/// same picture. Mostly the pose's pinned channels; what reads the frame
+/// itself (staggered text, series, players, patterns) adds it.
 String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
     {Keyframe Function(int frame)? poseAt}) {
   var values = pose.values.entries.toList()
@@ -2391,9 +2307,8 @@ class EpubFrame {
 }
 
 /// _liveFrames are [e]'s pages in frames of their own in a book: a Run
-/// panel's web page, run live (without the app's console catcher), where
-/// it has run one; each pane of a Code panel, the file it shows -- whole,
-/// to be scrolled and read.
+/// panel's web page, run live (without the app's console catcher), where it
+/// has run one; each pane of a Code panel, its file whole, to be scrolled.
 List<EpubFrame> _liveFrames(
     CanvasElement e, CanvasDocument page, double pixels) {
   Rect onPage(Rect r) => Rect.fromLTRB(
@@ -2451,9 +2366,8 @@ void codeRunSpans(CanvasDocument doc) {
     {int rate = 24}) {
   var all = (0, frames - 1);
   switch (e) {
-    // A Code panel holds still in a book: its files are frames over its
-    // panes, whole, to be scrolled (see _liveFrames). A Run panel changes
-    // when it runs, from waiting to its run.
+    // A Code panel holds still in a book (its files are frames, see
+    // _liveFrames); a Run panel changes when it runs.
     case CodeElement _:
       return null;
     case CodeRunElement r:
@@ -2475,10 +2389,8 @@ void codeRunSpans(CanvasDocument doc) {
   }
 }
 
-/// _valuedSpan is from the first keyframe that pins a channel to the last.
-///
-/// With clips, the stretch over which the values its poses carry change,
-/// sampled frame by frame through [poseAt].
+/// _valuedSpan is from the first channel-pinning keyframe to the last;
+/// with clips, where their poses' values change, sampled via [poseAt].
 (int, int)? _valuedSpan(
     CanvasElement e, int frames, Keyframe Function(int frame)? poseAt) {
   if (poseAt != null && !e.base.motion.isEmpty) {
@@ -2507,13 +2419,11 @@ void codeRunSpans(CanvasDocument doc) {
 bool _sameValues(Map<String, double> a, Map<String, double> b) =>
     a.length == b.length && a.entries.every((x) => b[x.key] == x.value);
 
-/// _inkBounds is the smallest rectangle holding every pixel of [rgba] that
-/// is not fully transparent, or null for none. A word a pixel, so a row of
-/// nothing is a quarter of the reads.
+/// _inkBounds is the box round every pixel of [rgba] not fully clear, or
+/// null. Read a word a pixel, so a blank row is a quarter of the reads.
 Rect? _inkBounds(Uint8List rgba, int width, int height) {
   var px = rgba.buffer.asUint32List(rgba.offsetInBytes, width * height);
-  // Two pixels a read, to find the rows with nothing in them -- most of
-  // them, round an element.
+  // Two pixels a read, to find the empty rows round an element.
   var pairs = width.isEven
       ? rgba.buffer.asUint64List(rgba.offsetInBytes, width * height >> 1)
       : null;
@@ -2558,9 +2468,8 @@ Rect? _inkBounds(Uint8List rgba, int width, int height) {
       left.toDouble(), top.toDouble(), right + 1.0, bottom + 1.0);
 }
 
-/// _hashOf names a picture's pixels: FNV-1a over its words, 64 bits. Only
-/// compared between pictures of the same size in the same place on the same
-/// page, so a fast non-cryptographic hash is enough.
+/// _hashOf names a picture's pixels: 64-bit FNV-1a, only compared between
+/// same-sized pictures in one place on one page, so fast is enough.
 int _hashOf(Uint8List rgba) {
   var words = rgba.buffer.asUint32List(rgba.offsetInBytes, rgba.length >> 2);
   var h = 0xcbf29ce484222325;
@@ -2577,9 +2486,8 @@ bool isTimedMedia(CanvasElement e) => switch (e) {
       _ => false,
     };
 
-/// _reactionClips are [e]'s clips a book can play on something happening on
-/// the page: started by a click on a named element, or by another clip
-/// ending. Not sounds, which go with them.
+/// _reactionClips are [e]'s clips a book plays on a click on a named
+/// element or another clip ending; not sounds, which go with them.
 List<MotionClip> _reactionClips(CanvasElement e) => [
       for (var c in e.base.motion.clips)
         if (!c.isSound &&
@@ -2589,9 +2497,8 @@ List<MotionClip> _reactionClips(CanvasElement e) => [
           c,
     ];
 
-/// _reactionSounds are the sounds linked with [elements]' reactions, a file
-/// each for the book by asset: an MP3 or AAC as it is -- core EPUB 3 audio
-/// -- anything else made AAC by ffmpeg, or left out without it.
+/// _reactionSounds are [elements]' reaction sounds, a file each by asset:
+/// MP3 or AAC as is, anything else made AAC by ffmpeg, or left out.
 Future<Map<String, EpubFile>> _reactionSounds(
     CanvasDocument page, List<CanvasElement> elements) async {
   var ids = <String>{};

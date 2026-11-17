@@ -4,22 +4,17 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
-// label_placer.dart is one rule for keeping a chart's words apart, shared by
-// every kind (Ken, 2026-11-17, the improvements report's first item): the
-// Charts canvas found names crowding under twenty columns, scatter names on
-// top of one another, a key reading "20242025", words broken mid-word on
-// small tiles -- each kind with its own partial fix, or none.
-//
-// A label asks for a few places in order of preference; it gets the first
-// that is inside the chart and clear of every label already placed (and of
-// anything kept clear), else none -- dropped, or for the caller to shrink.
+// label_placer.dart is one rule for keeping a chart's words apart, shared
+// by every kind, so names do not crowd, overlap or break mid-word. A label
+// asks for a few places in order of preference; it gets the first inside
+// the chart and clear of every label already placed (and of anything kept
+// clear), else none: dropped, or for the caller to shrink.
 
 /// LabelPlacer hands out room for labels, first come first served.
 class LabelPlacer {
   /// bounds is where labels may go: the chart's own box.
   final Rect bounds;
 
-  /// gap is the least room left between two labels.
   final double gap;
 
   final List<Rect> _taken = [];
@@ -58,9 +53,8 @@ class LabelPlacer {
     return null;
   }
 
-  /// around is the places for a label of [size] beside a point [at] of
-  /// radius [r], in the usual order: above, right, below, left, then the
-  /// four corners.
+  /// around is the places for a label of [size] beside a point [at] of radius
+  /// [r], in the usual order: above, right, below, left, then the four corners.
   static List<Rect> around(Offset at, Size size, double r, {double gap = 3}) {
     var w = size.width, h = size.height, d = r + gap;
     return [
@@ -76,7 +70,7 @@ class LabelPlacer {
   }
 }
 
-/// sizeOf is how big [text] is written in [spec] on one line.
+/// labelSize is how big [text] is written in [spec] on one line.
 Size labelSize(String text, TextSpec spec) {
   var p = layoutText(text, spec, maxWidth: double.infinity);
   return Size(p.width, p.height);
@@ -93,9 +87,8 @@ class AxisNames {
   bool shows(int i, int n) =>
       every <= 1 || i % every == 0 || (i == n - 1 && (n - 1) % every == 0);
 
-  /// of is how [names] fit slots [slot] wide written in [spec]: their full
-  /// size where the widest fits, else as small as [minScale], else every
-  /// second, third... name at that size.
+  /// of is how [names] fit slots [slot] wide in [spec]: full size if the
+  /// widest fits, else down to [minScale], else every second, third... name.
   static AxisNames of(List<String> names, TextSpec spec, double slot,
       {double minScale = 0.75}) {
     if (names.isEmpty || slot <= 0) return const AxisNames(1, 1);

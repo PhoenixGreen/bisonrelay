@@ -8,17 +8,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // dock_switcher.dart is what opens the panels under the canvas, at the play
-// bar's right end, as the reader chose (DockLayout.switcher): a button for
-// each panel, the layouts alone, or -- with tabs over each place (see
-// DockPlaceTabs) -- the layouts. How many places, how they are switched and
-// keeping a layout are in the bar's settings: see play_bar_settings.dart.
+// bar's end, as chosen (DockLayout.switcher): a button per panel, the
+// layouts alone, or tabs over each place (DockPlaceTabs) with the layouts.
+// Places, switching and saved layouts are set in play_bar_settings.dart.
 
-/// DockSwitcherBar is the switcher on the play bar.
 class DockSwitcherBar extends StatelessWidget {
   final CanvasController controller;
 
-  /// compact is the buttons as their icons alone, for a narrow bar: their
-  /// names are their hover text.
+  /// compact is the buttons as icons alone, for a narrow bar; their names
+  /// are their hover text.
   final bool compact;
 
   const DockSwitcherBar(
@@ -52,10 +50,10 @@ class DockSwitcherBar extends StatelessWidget {
   }
 }
 
-/// DockPanelButton is one panel's button: lit while it is open, with where
-/// it opens drawn beside its name. Pressed, it opens or closes; with Shift,
-/// it opens on the left. Dragged onto the map that appears, it opens there
-/// from then on; its right-click menu says the same.
+/// DockPanelButton is one panel's button: lit while open, with where it
+/// opens drawn by its name. Pressed, it opens or closes (with Shift, on the
+/// left). Dropped on the map that appears, or set from its right-click menu,
+/// it opens there from then on.
 class DockPanelButton extends StatefulWidget {
   final CanvasController controller;
   final DockPanel panel;
@@ -80,7 +78,6 @@ class _DockPanelButtonState extends State<DockPanelButton> {
   CanvasController get controller => widget.controller;
   DockPanel get panel => widget.panel;
 
-  /// _buttonRect is where this button is in [overlayContext]'s overlay.
   Rect _buttonRect(BuildContext overlayContext) {
     var box = context.findRenderObject();
     var overlay = Overlay.maybeOf(overlayContext)?.context.findRenderObject();
@@ -125,9 +122,8 @@ class _DockPanelButtonState extends State<DockPanelButton> {
       link: _link,
       child: OverlayPortal(
         controller: _map,
-        // Where it fits on screen, near the button (Ken, 2026-11-10: it ran
-        // off the window's left and top): over the button where there is
-        // room, else under it, slid sideways to stay in the window.
+        // Near the button and inside the window: over it where there is
+        // room, else under it, slid sideways to stay on screen.
         overlayChildBuilder: (overlayContext) => CustomSingleChildLayout(
           delegate: _NearButton(_buttonRect(overlayContext)),
           child: DockDropMap(controller: controller, panel: panel),
@@ -291,19 +287,17 @@ class DockDropMap extends StatelessWidget {
   }
 }
 
-/// DockPlaceGlyph is the places drawn small, with [place] filled in: where a
-/// panel opens. One place is one box; two, a narrow and a wide side by side;
-/// three, a band over them too.
+/// DockPlaceGlyph is the places drawn small, [place] filled in: one place a
+/// box; two a narrow and a wide side by side; three, a band over them too.
 class DockPlaceGlyph extends StatelessWidget {
   final DockPlaces places;
 
   /// place is the one filled in; with none, every place is.
   final DockPlace? place;
 
-  /// size is how big it is drawn: small on a button, larger on a tile.
   final Size size;
 
-  /// color is what it is drawn in: the text's, unless given.
+  /// color is the text's colour unless given.
   final Color? color;
 
   const DockPlaceGlyph(
@@ -336,8 +330,7 @@ class _GlyphPainter extends CustomPainter {
           ..color = color.withValues(
               alpha: place == null || place == here ? 1 : 0.3));
     var w = size.width, h = size.height;
-    // In proportion however big it is drawn: the gap a sixteenth, the left a
-    // third, the band above a third.
+    // In proportion at any size: gap a sixteenth, left and band a third.
     var gap = (w / 16).clamp(1.0, 4.0);
     if (places == DockPlaces.one) {
       box(Offset.zero & size, DockPlace.main);
@@ -361,7 +354,6 @@ class _GlyphPainter extends CustomPainter {
 class DockLayoutsButton extends StatelessWidget {
   final CanvasController controller;
 
-  /// compact is the button as its icon alone.
   final bool compact;
 
   const DockLayoutsButton(
@@ -403,17 +395,15 @@ class DockLayoutsButton extends StatelessWidget {
   }
 }
 
-/// DockPlaceTabs is a row of tabs over [place], one for each panel that
-/// opens there, for the tabs switcher: pressed, a tab shows its panel (or,
-/// shown, closes it). A tab dragged onto another place's row moves its panel
-/// there.
+/// DockPlaceTabs is a row of tabs over [place], one per panel that opens
+/// there: pressed, a tab shows its panel (or closes it); dragged onto
+/// another place's row, it moves its panel there.
 class DockPlaceTabs extends StatelessWidget {
   final CanvasController controller;
   final DockPlace place;
   const DockPlaceTabs(
       {required this.controller, required this.place, super.key});
 
-  /// height is the row's.
   static const double height = 26;
 
   @override

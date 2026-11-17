@@ -19,11 +19,10 @@ import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// motion_clips_card.dart is the Motion chain's first card, as the chain
-// prototype has it (Ken, 2026-11-08): the element's clips as chips to pick
-// and launch, the picked one's path drawn, its Speed and its layer's
-// Weight, and whether it arrives, loops, leaves or acts -- with how its
-// layer mixes (Replace or Add) and how a press launches it.
+// motion_clips_card.dart is the Motion chain's first card: the element's
+// clips as chips to pick and launch, the picked one's path drawn, its Speed
+// and its layer's Weight, and whether it arrives, loops, leaves or acts,
+// with how its layer mixes (Replace or Add) and how a press launches it.
 
 /// MotionClipsCard is [element]'s clips: [clip] the one picked.
 class MotionClipsCard extends StatelessWidget {
@@ -87,8 +86,7 @@ class MotionClipsCard extends StatelessWidget {
             side: BorderSide(
                 color: on ? const Color(0xFF8FE3C3) : const Color(0xFF3A7A5C))),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          // ▶ launches it, as its slot does; held, a gate or a repeat goes
-          // on until let go.
+          // ▶ launches it as its slot does; held, a gate or repeat goes on.
           Listener(
             key: ValueKey("motionClipsLaunch-${x.id}"),
             onPointerDown: (_) => controller.pressMotionSlot(e.id, slot),
@@ -156,15 +154,13 @@ class MotionClipsCard extends StatelessWidget {
         if (o.id != e.id) o
     ];
     String target() => others.isEmpty ? "" : others.first.id;
-    // Its settings packed under its path, as the prototype's: Speed and
-    // Weight, then what it is and the ready-made motion it starts from --
-    // the element's own styles among them -- which way, its layer and how
-    // that mixes, and its name.
+    // Its settings packed under its path: Speed and Weight, then what it is
+    // and the ready-made motion it starts from (the element's own styles
+    // among them), which way, its layer and how that mixes, and its name.
     List<Widget> controls(DeviceTier tier) => [
           chips,
           // An own arrival or leaving is set by its tab; its clip's own
-          // settings -- speed, layer, how it mixes, its name -- are behind
-          // this, for those who want them (Ken, 2026-11-12).
+          // settings (speed, layer, how it mixes, its name) are behind this.
           if (ownPicked)
             Align(
               alignment: Alignment.centerLeft,
@@ -192,8 +188,7 @@ class MotionClipsCard extends StatelessWidget {
                       live: transient),
                   onCommit: controller.endInteraction,
                 ),
-                // A camera move's own amount: how close it gets, or how
-                // hard it shakes.
+                // A camera move's amount: how close it gets, or how hard.
                 if (cameraZoomOf(c) case var zoom?)
                   DeviceKnob(
                     key: const ValueKey("motionClipsZoom"),
@@ -267,8 +262,7 @@ class MotionClipsCard extends StatelessWidget {
                 ],
                 onChanged: (l) => edit((x) => x.copyWith(layer: l)),
               ),
-              // Whether it takes over from the layers under it or adds to
-              // them.
+              // Whether it takes over from the layers under it or adds to them.
               StudioDrop<bool>(
                 key: const ValueKey("motionClipsLayer"),
                 label: "Mixes",
@@ -296,8 +290,7 @@ class MotionClipsCard extends StatelessWidget {
       glows: true,
       folded: folded,
       onFold: onFold,
-      // Three settings across under its path; wider with a larger text
-      // size, so they keep their words.
+      // Three settings under its path, wider with larger text to fit words.
       width: 400 * scale,
       besideDisplay: 240,
       besideSettings: 400,
@@ -317,8 +310,7 @@ class MotionClipsCard extends StatelessWidget {
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: controls,
-      // Its own arrival, loop and leaving first, to set up and to switch
-      // between (Ken, 2026-11-12); its other clips under them.
+      // Its own arrival, loop and leaving first; its other clips under them.
       lead: [
         if (OwnStyle.of(e) != null)
           OwnTabsRow(controller: controller, element: e),
@@ -339,11 +331,9 @@ class MotionClipsCard extends StatelessWidget {
     );
   }
 
-  /// _presetDrops are [c]'s Preset -- the ready-made motions of its kind,
-  /// then the element's own ways to arrive or leave (Ken, 2026-11-08: the
-  /// clip holds how it arrives, leaves and loops; picked, in one step) --
-  /// and, by what is picked, which way it goes and how far; for a loop,
-  /// the element's own loop beside it.
+  /// _presetDrops are [c]'s Preset (the ready-made motions of its kind, then
+  /// the element's own arrive and leave styles) and, by what is picked, its
+  /// way and reach; for a loop, the element's own loop beside it.
   List<Widget> _presetDrops(
       BuildContext context,
       MixerLook look,
@@ -353,8 +343,7 @@ class MotionClipsCard extends StatelessWidget {
     var e = element;
     var animates = CanvasController.animates(e);
     var a = CanvasController.elementAnimationOf(e);
-    // Its own animation, whichever kind: a box's, the words', a chart's
-    // (Ken, 2026-11-08: text and chart too, as the sidebar had them).
+    // Its own animation, whichever kind: a box's, the words', a chart's.
     var styled = OwnStyle.of(e);
     var own = c.inside["own"] == true;
     var arriving = c.kind == MotionKind.arrive;
@@ -424,8 +413,8 @@ class MotionClipsCard extends StatelessWidget {
             }
           },
         ),
-      // Shown edited too, so the settings -- and the screen over them --
-      // keep their places as it is edited; picked, the preset again.
+      // Shown edited too, so the settings and the screen over them keep
+      // their places as it is edited; picked, the preset again.
       if (!own && preset != null && preset.ways.isNotEmpty)
         StudioDrop<MotionWay>(
           key: const ValueKey("animPresetWay"),
@@ -464,9 +453,9 @@ class MotionClipsCard extends StatelessWidget {
     ];
   }
 
-  /// _reset puts [c] back as its preset made it -- which way it goes, its
-  /// name, speed, layer and launch kept -- or, its own style, that style's
-  /// direction and reach as they start. Null where it is as it was made.
+  /// _reset puts [c] back as its preset made it (which way it goes, its
+  /// name, speed, layer and launch kept) or, its own style, that style's
+  /// direction and reach as they start. Null where it is as made.
   VoidCallback? _reset(
       MotionClip c, ClipEditFn edit, String Function() target) {
     if (c.isSound) return null;
@@ -509,7 +498,7 @@ class MotionClipsCard extends StatelessWidget {
   }
 
   /// _kindOf is [c] made [kind]: its first ready-made motion of that kind,
-  /// or -- None -- no motion at all, its keys gone.
+  /// or, with None, no motion at all, its keys gone.
   static MotionClip _kindOf(MotionClip c, MotionKind? kind) {
     if (kind == null) {
       return c.copyWith(keys: const {}, preset: "", edited: false);
@@ -553,10 +542,9 @@ class _ClipNameState extends State<_ClipName> {
   Widget build(BuildContext context) {
     var s = MixerLook.of(context).studio;
     var panel = ChainPanelStyle.on(context);
-    // Laid out as a StudioDrop is -- its label over a box 22 high -- to
-    // line up with the dropdowns beside it (Ken). One line: Return keeps
-    // the name and leaves it, Escape leaves it as it was (Ken: it could not
-    // be left once renamed).
+    // Laid out as a StudioDrop is (its label over a box 22 high) to line up
+    // with the dropdowns beside it. One line: Return keeps the name and
+    // leaves, Escape leaves it as it was, so it can always be left.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,

@@ -1,12 +1,10 @@
 import 'dart:ui';
 
-// canvas_geometry.dart is the one place that answers "how big is this
-// document, really".
-//
-// A canvas has two sizes. The *design size* is the coordinate space every
-// element's x, y, width and height are written in. The *export size* is how
-// many pixels come out. Keeping them apart makes a canvas resolution
-// independent: the same document renders at any width without resampling.
+// canvas_geometry.dart answers "how big is this document, really". A
+// canvas has two sizes: the *design size* is the space every element's x,
+// y, width and height are written in; the *export size* is how many pixels
+// come out. Keeping them apart makes a canvas resolution independent: the
+// same document renders at any width without resampling.
 
 /// CanvasRatio is the shape of the canvas. [custom] is the only value that
 /// reads [CanvasSize.customRatio].
@@ -57,13 +55,11 @@ class CanvasSizePreset {
   final CanvasRatio ratio;
   final int width;
 
-  /// label is what it is called, without the number (the dropdown adds the
-  /// pixels).
+  /// label is its name without the pixels, which the dropdown adds.
   final String label;
 
   const CanvasSizePreset(this.ratio, this.width, this.label);
 
-  /// height is this preset's height in pixels.
   int get height => (width / ratio.value).round();
 }
 
@@ -91,8 +87,7 @@ const List<CanvasSizePreset> canvasSizePresets = [
   CanvasSizePreset(CanvasRatio.banner, 1500, "Header"),
   CanvasSizePreset(CanvasRatio.wideBanner, 1500, "Header"),
 
-  // Paper, by the width of the sheet. A3 at 300dpi is the largest within
-  // maxCanvasWidth.
+  // Paper by sheet width. A3 at 300dpi is the largest within maxCanvasWidth.
   CanvasSizePreset(CanvasRatio.a4, 3508, "A3 at 300dpi"),
   CanvasSizePreset(CanvasRatio.a4, 2480, "A4 at 300dpi"),
   CanvasSizePreset(CanvasRatio.a4, 1754, "A3 at 150dpi"),
@@ -105,15 +100,13 @@ const List<CanvasSizePreset> canvasSizePresets = [
   CanvasSizePreset(CanvasRatio.a4Wide, 1240, "A5 at 150dpi"),
 ];
 
-/// sizePresetsFor is the named sizes that belong to one shape; empty for a
-/// custom ratio.
+/// sizePresetsFor is one shape's named sizes; empty for a custom ratio.
 List<CanvasSizePreset> sizePresetsFor(CanvasRatio ratio) => [
       for (var p in canvasSizePresets)
         if (p.ratio == ratio) p
     ];
 
-/// canvasFrameRates are the rates offered in the settings bar; its Custom
-/// entry takes any other.
+/// canvasFrameRates are the settings bar's rates; Custom takes any other.
 const List<int> canvasFrameRates = [1, 12, 24, 30, 60];
 
 /// a4PageWidth is how many pixels across one A4 page is by default: 150
@@ -125,8 +118,7 @@ const int a4PageWidth = 1240;
 const int minFrameRate = 1;
 const int maxFrameRate = 120;
 
-/// defaultFrameRateFor is the rate a new canvas of [ratio] starts at: one
-/// for paper, 24 for a screen.
+/// defaultFrameRateFor is a new canvas's rate: 1 for paper, 24 for screen.
 int defaultFrameRateFor(CanvasRatio ratio) => ratio.isPaper ? 1 : 24;
 
 /// minCanvasWidth and maxCanvasWidth bound the design and export widths.
@@ -135,7 +127,6 @@ int defaultFrameRateFor(CanvasRatio ratio) => ratio.isPaper ? 1 : 24;
 const int minCanvasWidth = 64;
 const int maxCanvasWidth = 4096;
 
-/// defaultCanvasWidth is what a new document starts at.
 const int defaultCanvasWidth = 1280;
 
 /// CanvasSize is a ratio and a width, and the height that follows from them
@@ -152,14 +143,12 @@ class CanvasSize {
   /// canvas saved before the two were separate.
   final int exportWidth;
 
-  /// scalesDesign is what changing [exportWidth] does. On, it is a
-  /// resolution: the scene is scaled on the way out. Off, it is a page: the
-  /// design width follows the export width, so there is more room around the
-  /// design at the same scale.
+  /// scalesDesign is what changing [exportWidth] does. On, a resolution:
+  /// the scene is scaled on the way out. Off, a page: the design width
+  /// follows, giving more room around the design at the same scale.
   final bool scalesDesign;
 
-  /// customRatio is width/height when [ratio] is [CanvasRatio.custom], and
-  /// ignored otherwise.
+  /// customRatio is width/height for [CanvasRatio.custom]; ignored otherwise.
   final double customRatio;
 
   const CanvasSize({

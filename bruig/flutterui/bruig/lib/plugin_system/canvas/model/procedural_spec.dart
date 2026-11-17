@@ -9,17 +9,13 @@ import 'package:bruig/plugin_system/canvas/model/procedural_params.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
 
-// procedural_spec.dart is the recipe for a generated background: which
-// algorithm, which colours, how dense, and which seed.
-//
-// A recipe rather than a picture: it weighs nothing in a saved document,
-// redraws sharp at any export width, and shuffling is one integer changing.
-// The canvas background and a background element share it.
+// procedural_spec.dart is the recipe for a generated background, shared by
+// the canvas background and a background element. A recipe, not a picture:
+// it weighs nothing in a saved document, redraws sharp at any export width,
+// and shuffling is one integer changing.
 
-/// ProceduralStyle is which generator runs.
-///
-/// Ordered from quietest to loudest, the order the dropdown shows. See
-/// render/procedural/ for what each one draws.
+/// ProceduralStyle is which generator runs, ordered quietest to loudest as
+/// the dropdown shows. See render/procedural/.
 enum ProceduralStyle {
   plain("Plain", "A flat fill, or a gradient between the two colours"),
   gradientMesh("Gradient mesh", "Soft blended blooms of colour"),
@@ -35,8 +31,7 @@ enum ProceduralStyle {
   rings("Rings", "Concentric rings radiating from a point"),
   blockchain("Blockchain",
       "Chained blocks, a node network, a ledger, a Merkle tree or a field of blocks"),
-  // The drawn ones: pen and brush marks, suited to a pattern inside
-  // lettering.
+  // The drawn ones: pen and brush marks, suited to a pattern in lettering.
   halftone("Halftone", "Comic-book dots, bigger where the ink is heavier"),
   speedLines("Speed lines", "Rays bursting out from a point"),
   crosshatch("Crosshatch", "Inked hatching, crossed at an angle"),
@@ -52,7 +47,6 @@ enum ProceduralStyle {
   final String description;
   const ProceduralStyle(this.label, this.description);
 
-  /// family is which heading it is listed under.
   StyleFamily get family => switch (this) {
         plain ||
         gradientMesh ||
@@ -74,7 +68,6 @@ enum ProceduralStyle {
         pitch => StyleFamily.sport,
       };
 
-  /// params is the settings this style has of its own. See StyleParam.
   List<StyleParam> get params => paramsOf(this);
 
   static ProceduralStyle fromName(String? name) => values.firstWhere(
@@ -96,7 +89,6 @@ enum ProceduralStyle {
       };
 }
 
-/// StyleFamily is a heading the styles are grouped under in the list.
 enum StyleFamily {
   light("Gradient & light"),
   tech("Grids & tech"),
@@ -109,11 +101,9 @@ enum StyleFamily {
   const StyleFamily(this.label);
 }
 
-/// PitchSport is which surface [ProceduralStyle.pitch] marks out.
-///
-/// The markings keep the sport's real proportions and are letterboxed inside
-/// the rectangle given, so players placed on a diagram stay in the right
-/// places.
+/// PitchSport is which surface [ProceduralStyle.pitch] marks out, in the
+/// sport's real proportions letterboxed in the rectangle, so players placed
+/// on a diagram stay in the right places.
 enum PitchSport {
   // The names are saved in documents; labels and order may change.
   football("Football", 105 / 68),
@@ -138,86 +128,75 @@ enum PitchSport {
       .firstWhere((s) => s.name == name, orElse: () => PitchSport.football);
 }
 
-/// defaultGlyphs is the rain's default character set: half-width katakana and
-/// digits, which read as rain rather than as text.
+/// defaultGlyphs is the rain's default characters: half-width katakana and
+/// digits, which read as rain rather than text.
 const String defaultGlyphs =
     "0123456789ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ";
 
-/// ProceduralSpec is a background recipe.
 class ProceduralSpec {
   final ProceduralStyle style;
 
-  /// seed is what the shuffle button changes. Every generator draws from a
-  /// pseudo-random sequence started from it, so the same seed is the same
+  /// seed starts every generator's pseudo-random sequence, so one seed is one
   /// picture on every machine and at every export size.
   final int seed;
 
-  /// background is painted before the generator runs; every style draws on
-  /// top of it.
+  /// background is painted before the generator runs.
   final Color background;
 
-  /// foreground and accent are the generator's own two colours; what they
-  /// mean is up to the generator (for rain, the trail and the lit head).
+  /// foreground and accent are the generator's two colours (for rain, the
+  /// trail and the lit head).
   final Color foreground;
   final Color accent;
 
-  /// gradient fades [background] towards a second colour behind the
-  /// generator, or null for a flat one. Set in the Base colour's picker.
+  /// gradient fades [background] to a second colour, or null for flat.
   final GradientSpec? gradient;
 
-  /// foregroundFade and accentFade fade the generator's own two colours
-  /// across the frame, or null for flat ones. See paintProcedural.
+  /// foregroundFade and accentFade fade those two across the frame, or null.
   final GradientSpec? foregroundFade;
   final GradientSpec? accentFade;
 
-  /// density is roughly "how much of it": 0 draws nothing and 1 fills the
-  /// frame. Turning it down should leave a quieter version of the same
-  /// picture, not a different one.
+  /// density is "how much of it", 0 nothing to 1 full; turned down it should
+  /// give a quieter version of the same picture.
   final double density;
 
-  /// scale sizes the generator's repeating unit -- the cell of a grid, the
-  /// glyph of the rain, the disc of the bokeh -- as a fraction of the shorter
-  /// side, so a background looks the same at every export width.
+  /// scale sizes the generator's repeating unit (a grid cell, a rain glyph, a
+  /// bokeh disc) as a fraction of the shorter side, so a background looks the
+  /// same at every export width.
   final double scale;
 
   /// intensity is how bright the brightest parts get.
   final double intensity;
 
-  /// variation is how much the generator is allowed to differ from itself:
-  /// jitter in a grid, spread of sizes in a bokeh, curl in a flow field.
+  /// variation is how much the generator differs from itself: grid jitter,
+  /// bokeh size spread, flow-field curl.
   final double variation;
 
   /// rotation turns the whole pattern, in degrees.
   final double rotation;
 
-  /// glyphs is the character set the glyph styles draw from.
   final String glyphs;
 
-  /// animated is whether the pattern moves with the frame. Off by default.
+  /// animated moves the pattern with the frame. Off by default.
   final bool animated;
 
   /// speed multiplies how far the pattern advances per frame.
   final double speed;
 
-  /// passFrames is how many frames one complete run takes, for a movement
-  /// counted in runs (for rings, every ring born and dissolved). See
-  /// proceduralRunSeconds.
+  /// passFrames is how many frames one run takes, for a movement counted in
+  /// runs. See proceduralRunSeconds.
   final int passFrames;
 
-  /// loopTimes is how many runs play before the movement holds (nought is
-  /// for ever), and loopGap is the frames of stillness between runs.
-  ///
-  /// Either one set makes the movement counted in runs ([inRuns]), timed by
-  /// [passFrames] rather than [speed].
+  /// loopTimes is how many runs play before the movement holds (0 is for
+  /// ever), and loopGap the frames of stillness between runs. Either one set
+  /// counts the movement in runs ([inRuns]), timed by [passFrames] not
+  /// [speed].
   final int loopTimes;
   final int loopGap;
 
-  /// pauseAt, pauseFor and pauseEase are a rest in the middle of the
-  /// movement: the frame it stops on, how many frames it stays stopped, and
-  /// how many it spends easing into and out of the stop.
-  ///
-  /// The pattern's own clock is held while the document's runs on, so it
-  /// picks up where it left off. pauseFor nought is no pause.
+  /// pauseAt, pauseFor and pauseEase are a rest mid-movement: the frame it
+  /// stops on, how many frames it stays, and how many it spends easing in and
+  /// out. The pattern's clock is held while the document's runs on, so it
+  /// picks up where it left off. pauseFor 0 is no pause.
   final int pauseAt;
   final int pauseFor;
   final int pauseEase;
@@ -228,8 +207,7 @@ class ProceduralSpec {
   /// rings is read only by [ProceduralStyle.rings].
   final RingSpec rings;
 
-  /// light is the one light thrown over the finished pattern, whatever the
-  /// style. See LightSpec.
+  /// light is the one light over the finished pattern. See LightSpec.
   final LightSpec light;
 
   /// metal is read only by [ProceduralStyle.metal].
@@ -239,26 +217,22 @@ class ProceduralSpec {
   /// as a background.
   final double vignette;
 
-  /// loopFrames makes the movement come back to where it began every this
-  /// many frames, so that an exported GIF or video loops without a jump;
-  /// nought leaves it running on. loopBlend is how much of the loop, at its
-  /// end, is spent blending back into its start. See paintProcedural.
+  /// loopFrames brings the movement back to its start every this many frames,
+  /// so an exported GIF or video loops without a jump; 0 runs on. loopBlend is
+  /// how much of the loop's end blends into its start.
   final int loopFrames;
   final double loopBlend;
 
-  /// seamless is whether the movement is made to loop.
   bool get seamless => animated && !inRuns && loopFrames > 0;
 
-  /// effects is what is done to the pattern once it is drawn. See
-  /// EffectsSpec.
+  /// effects is what is done to the pattern once drawn. See EffectsSpec.
   final EffectsSpec effects;
 
-  /// params is the style's own settings, by id, where they differ from the
-  /// style's defaults. Read through [p]. See StyleParam.
+  /// params is the style's own settings by id where they differ from its
+  /// defaults; read through [p].
   final Map<String, double> params;
 
-  /// layers is the patterns laid over this one, bottom first. See
-  /// BackgroundLayer.
+  /// layers is the patterns laid over this one, bottom first.
   final List<BackgroundLayer> layers;
 
   const ProceduralSpec({
@@ -296,8 +270,7 @@ class ProceduralSpec {
     this.layers = const [],
   });
 
-  /// p is the style's own setting [id]: what it has been set to, or the
-  /// style's default for it.
+  /// p is the style's own setting [id], or the style's default for it.
   double p(String id) {
     var set = params[id];
     for (var param in style.params) {
@@ -308,19 +281,17 @@ class ProceduralSpec {
     return set ?? 0;
   }
 
-  /// choice is [p] for a setting that is a choice, as the index chosen.
+  /// choice is [p] for a choice setting, as the index chosen.
   int choice(String id) => p(id).round();
 
   /// on is [p] for a switch.
   bool on(String id) => p(id) >= 0.5;
 
-  /// withParam is this with the style's own setting [id] set to [value].
   ProceduralSpec withParam(String id, double value) =>
       copyWith(params: {...params, id: value});
 
-  /// inRuns is whether the movement is counted in runs rather than going
-  /// round for ever: one run that then holds, a set number of them, or runs
-  /// with a gap between. All three are timed in frames.
+  /// inRuns is whether the movement is counted in runs (one that holds, a set
+  /// number, or with gaps), timed in frames, rather than going for ever.
   bool get inRuns => animated && (loopTimes > 0 || loopGap > 0);
 
   ProceduralSpec copyWith({
@@ -396,8 +367,8 @@ class ProceduralSpec {
         layers: layers ?? this.layers,
       );
 
-  /// shuffled is the next seed along: sequential rather than random, so the
-  /// button walks a stable series and an earlier pick can be found again.
+  /// shuffled is the next seed along: sequential, so an earlier pick can be
+  /// found again.
   ProceduralSpec shuffled() => copyWith(seed: seed + 1);
 
   Map<String, dynamic> toJson() => {
@@ -431,9 +402,8 @@ class ProceduralSpec {
         if (style == ProceduralStyle.metal) "metal": metal.toJson(),
         "vignette": vignette,
         if (effects.toJson() case var e when e.isNotEmpty) "effects": e,
-        // Only this style's own, where they differ from its defaults.
-        // Settings from a previous style are kept while open (switching
-        // back finds them) and dropped on save.
+        // Only this style's own, where they differ from its defaults. Another
+        // style's settings are kept while open and dropped on save.
         if (_ownParams() case var own when own.isNotEmpty) "params": own,
         if (layers.isNotEmpty) "layers": [for (var l in layers) l.toJson()],
       };
@@ -444,9 +414,8 @@ class ProceduralSpec {
             if (param.clamped(v) != param.initial) param.id: param.clamped(v),
       };
 
-  /// A pitch's camera settings are left out where they are its View's (the
-  /// writer drops a setting at its initial value), so they are filled back
-  /// in from the View here.
+  /// A pitch's camera settings are omitted where they equal its View's (the
+  /// writer drops initial values), so they are filled in from the View here.
   factory ProceduralSpec.fromJson(Map<String, dynamic> json) {
     var spec = ProceduralSpec._fromJson(json);
     if (spec.style != ProceduralStyle.pitch) return spec;

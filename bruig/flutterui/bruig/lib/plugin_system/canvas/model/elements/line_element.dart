@@ -5,8 +5,8 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
-/// LineStrokeCap is how the stroke itself finishes. What is drawn at the end
-/// is [LineEnd], separately, since a line can want a round end and an arrow.
+/// LineStrokeCap is how the stroke itself finishes; what is drawn at the
+/// end is [LineEnd], apart, since a line can want a round end and an arrow.
 enum LineStrokeCap {
   flat("Flat", StrokeCap.butt),
   round("Round", StrokeCap.round),
@@ -23,7 +23,7 @@ enum LineStrokeCap {
 }
 
 /// lineSliver is the depth of a level line's box, or the width of an
-/// upright one's -- see LineElement.withEnds.
+/// upright one's: see LineElement.withEnds.
 const double lineSliver = 0.01;
 
 /// snapLineAngle is [moving] swung about [fixed] onto the nearest multiple of
@@ -76,10 +76,10 @@ enum LineEnd {
         _ => 3.5,
       };
 
-  /// cover is how much of the line this decoration sits on top of, as a
-  /// multiple of the stroke width, so the stroke is cut back to where the
-  /// decoration begins. Otherwise the line shows through a hollow end or
-  /// pokes out beside a solid one. A bar crosses the line, which reaches it.
+  /// cover is how much of the line this decoration sits on, as a multiple of
+  /// the stroke width, so the stroke is cut back to where it begins rather
+  /// than showing through a hollow end or poking out beside a solid one. A
+  /// bar crosses the line, which reaches it.
   double get cover => switch (this) {
         LineEnd.none || LineEnd.bar => 0,
         LineEnd.circle || LineEnd.hollowCircle => 1.2,
@@ -90,24 +90,22 @@ enum LineEnd {
       };
 }
 
-/// LineElement is a stroke from one corner of its box to the other, so it
-/// resizes, rotates and animates through the same handles as everything
-/// else. [flipped] chooses which pair of corners.
+/// LineElement is a stroke corner to corner of its box, so the usual
+/// handles resize, turn and animate it; [flipped] picks the corners.
 class LineElement extends CanvasElement {
   final Color color;
 
-  /// fade is the second colour the stroke runs to, or null for a flat one.
-  /// Chosen in the picker beside [color] -- see GradientSpec.
+  /// fade is the second colour the stroke runs to, or null for a flat one,
+  /// chosen in the picker beside [color] (see GradientSpec).
   final GradientSpec? fade;
   final double strokeWidth;
 
-  /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
-  /// each end.
+  /// cap is how the stroke finishes; startEnd and endEnd its ends.
   final LineStrokeCap cap;
   final LineEnd startEnd;
   final LineEnd endEnd;
 
-  /// endSize scales whatever is drawn at both ends. A multiple of the stroke
+  /// endSize scales what is drawn at both ends, as a multiple of the stroke
   /// width, so an arrow stays in proportion when the line thickens.
   final double endSize;
 
@@ -118,11 +116,9 @@ class LineElement extends CanvasElement {
   /// a fraction of its length. Negative bows the other way.
   final double curvature;
 
-  /// flipped runs the line from bottom-left to top-right instead of from
-  /// top-left to bottom-right.
+  /// flipped runs the line bottom-left to top-right.
   final bool flipped;
 
-  /// animation is how it arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
   const LineElement(
@@ -155,11 +151,10 @@ class LineElement extends CanvasElement {
     return math.atan2(d.dy, d.dx) * 180 / math.pi;
   }
 
-  /// withEnds is this line drawn from [a] to [b].
-  ///
-  /// A level line would be a box with no height, which is not drawn, so it
-  /// gets [lineSliver]: too little to see as a slope. The box always runs
-  /// left to right, so a line drawn right to left has its ends swapped.
+  /// withEnds is this line drawn from [a] to [b]. A level line would be a box
+  /// with no height, which is not drawn, so it gets [lineSliver]. The box
+  /// always runs left to right, so a line drawn right to left has its ends
+  /// swapped.
   LineElement withEnds(Offset a, Offset b) {
     var backwards = b.dx < a.dx || (b.dx == a.dx && b.dy < a.dy);
     var from = backwards ? b : a, to = backwards ? a : b;

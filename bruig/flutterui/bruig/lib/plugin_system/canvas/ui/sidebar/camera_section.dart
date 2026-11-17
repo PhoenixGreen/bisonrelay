@@ -19,8 +19,7 @@ enum CameraMove {
   final String label;
   const CameraMove(this.label);
 
-  /// camera is this move at [strength]: how far it zooms in, as a fraction
-  /// (0.12 is twelve per cent closer).
+  /// camera is this move at [strength], the zoom as a fraction (0.12: 12%).
   SceneCamera? camera(double strength) {
     var z = 1 + strength;
     var d = strength / 2;
@@ -59,7 +58,6 @@ enum CameraMove {
   }
 }
 
-/// CanvasCameraSection sets the slow move of the scene being edited.
 class CanvasCameraSection extends StatelessWidget {
   final CanvasController controller;
   const CanvasCameraSection({required this.controller, super.key});

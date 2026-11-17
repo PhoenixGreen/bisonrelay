@@ -5,9 +5,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// PitchOrbit is the camera an orbit pad moves: degrees of tilt up and down
-/// and to the side, degrees of turn, perspective from nought to one, and the
-/// zoom (one fits the frame).
+/// PitchOrbit is an orbit pad's camera: tilts and turn in degrees,
+/// perspective nought to one, zoom (one fits).
 typedef PitchOrbit = ({
   double tilt,
   double side,
@@ -16,14 +15,9 @@ typedef PitchOrbit = ({
   double zoom,
 });
 
-/// PitchOrbitPad moves a pitch's camera with one gesture instead of four
-/// numbers, drawing the pitch as the camera sees it.
-///
-/// - Drag: left and right turns, up and down tilts.
-/// - Shift-drag, or drag with the right button: left and right tilts to the
-///   side, up and down is the perspective.
-/// - Scroll or pinch: zoom.
-/// - Double-click: back to flat, straight down.
+/// PitchOrbitPad moves a pitch's camera with one gesture: drag turns and
+/// tilts; shift- or right-drag tilts sideways and sets perspective; scroll
+/// or pinch zooms; double-click flattens.
 class PitchOrbitPad extends StatefulWidget {
   final PitchOrbit value;
   final VoidCallback onBegin;
@@ -170,8 +164,8 @@ class _PitchOrbitPadState extends State<PitchOrbitPad> {
   }
 }
 
-/// _OrbitPainter draws a pitch as the camera sees it, and the camera's
-/// numbers along the bottom.
+/// _OrbitPainter draws a pitch as the camera sees it, the camera's numbers
+/// along the bottom.
 class _OrbitPainter extends CustomPainter {
   final PitchOrbit v;
   final Color line, fill, faint;
@@ -230,7 +224,7 @@ class _OrbitPainter extends CustomPainter {
       i == 0 ? circle.moveTo(p.dx, p.dy) : circle.lineTo(p.dx, p.dy);
     }
     canvas.drawPath(circle, pen);
-    // The near touchline, so which way round it is can be told.
+    // The near touchline, so which way round it is shows.
     canvas.drawLine(
         place(outline[0]),
         place(outline[1]),

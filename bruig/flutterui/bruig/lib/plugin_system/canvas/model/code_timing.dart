@@ -7,10 +7,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart'
 
 // code_timing.dart is what a Code panel shows at a moment of its scene: how
 // much of each file is typed, which tab each pane shows, which lines are
-// lit, and when a Run panel runs it. All of it is worked out from the
-// element and the time alone, so the stage, a video and a book agree.
+// lit, and when a Run panel runs it, all from the element and the time
+// alone, so the stage, a video and a book agree.
 
-/// _times keeps each file's letter times for its typing.
 final LinkedHashMap<String, Float64List> _times = LinkedHashMap();
 
 /// letterTimes is when each of [text]'s letters is typed, in seconds from
@@ -95,7 +94,6 @@ int typedCount(CodeElement e, String id, double t, CodePlan plan) {
   return lo;
 }
 
-/// litSteps is [e]'s steps lit at [t].
 List<CodeStep> litSteps(CodeElement e, double t) => [
       for (var s in e.steps)
         if (s.litAt(t)) s
@@ -139,8 +137,7 @@ double? runAt(CodeRunElement run, CodeElement? code) => switch (run.when) {
         code == null ? 0 : (code.typing.on ? codePlan(code).end + 0.6 : 0),
     };
 
-/// lessonLength is how long [e]'s typing and steps take, for a scene that
-/// has to be long enough to show them.
+/// lessonLength is how long [e]'s typing and steps take, so a scene fits.
 double lessonLength(CodeElement e) {
   var end = codePlan(e).end;
   for (var s in e.steps) {
@@ -149,9 +146,8 @@ double lessonLength(CodeElement e) {
   return end;
 }
 
-/// lessonSpan is when [e]'s lesson is on the timeline: from its typing's
-/// start (or its first lit lines, with no typing) to its last lit lines'
-/// end; null for one with neither.
+/// lessonSpan is when [e]'s lesson is on the timeline, from its typing's
+/// start (else its first lit lines) to its last lit lines' end; else null.
 (double, double)? lessonSpan(CodeElement e) {
   var end = lessonLength(e);
   if (end <= 0) return null;
@@ -173,17 +169,16 @@ CodeElement lessonMoved(CodeElement e, double by) {
       steps: [for (var s in e.steps) s.copyWith(at: s.at + d)]);
 }
 
-/// lessonTypedBy is [e] typed in by [end] seconds: its typing faster or
-/// slower to end there, its lit lines after it moved by as much as the
-/// typing's end did.
+/// lessonTypedBy is [e] typed in by [end] seconds, its typing faster or
+/// slower to end there and its lit lines moved by as much as that end.
 CodeElement lessonTypedBy(CodeElement e, double end) {
   if (!e.typing.on) return e;
   var plan = codePlan(e);
   var was = plan.end;
   var took = was - e.typing.start;
   if (took <= 0) return e;
-  // What does not change with the speed -- each line's pause, and the
-  // half second between files -- and what does.
+  // What does not change with the speed (each line's pause, the half second
+  // between files), and what does.
   var fixed = 0.0;
   if (!e.typing.together) fixed += 0.5 * math.max(0, plan.files.length - 1);
   for (var id in plan.files.keys) {
@@ -201,8 +196,8 @@ CodeElement lessonTypedBy(CodeElement e, double end) {
   ]);
 }
 
-/// _mostLines is the most lines any one pane types: what its pauses add up
-/// to, the panes typing all at once.
+/// _mostLines is the most lines any one pane types: its pauses' total with
+/// the panes typing all at once.
 int _mostLines(CodeElement e, CodePlan plan) {
   var most = 0;
   for (var pane in e.shownPanes) {

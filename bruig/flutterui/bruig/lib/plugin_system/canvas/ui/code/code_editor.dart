@@ -5,14 +5,12 @@ import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// code_editor.dart is a Code panel's file opened for typing: CodeEditorBody,
-// a text field with line numbers whose text is coloured as the painter
-// colours it (codeSpan). Tab indents as the file's language does, Shift-Tab
-// takes it out again, Escape is done and Cmd-Return (or Ctrl-Return) runs.
-//
-// On the stage it is CodePaneEditor, laid exactly where the pane's code is
-// drawn and at the page's scale, so opening it changes nothing that is seen
-// but the caret; in the Code Studio it fills its pane at the studio's size.
+// code_editor.dart is a Code panel's file opened for typing: a text field
+// with line numbers, coloured as the painter colours it (codeSpan). Tab
+// indents as the language does, Shift-Tab outdents, Escape is done and
+// Cmd-Return (or Ctrl-Return) runs. On the stage it lies exactly over the
+// pane's drawn code at the page's scale, so opening it changes nothing seen
+// but the caret; in the Code Studio it fills its pane.
 
 /// _CodeText colours what is typed as the painter would.
 class _CodeText extends TextEditingController {
@@ -93,8 +91,7 @@ class _CodeEditorBodyState extends State<CodeEditorBody> {
     _text.element = widget.element;
     _text.file = widget.file;
     _text.fontSize = widget.fontSize;
-    // Changed from outside (undone, another pane, another file): the field
-    // follows.
+    // Changed from outside (undone, another pane, another file): follow it.
     var now = widget.element.file(widget.file)?.text;
     if (now != null && now != _text.text) {
       _text.value = TextEditingValue(
@@ -185,10 +182,9 @@ class _CodeEditorBodyState extends State<CodeEditorBody> {
         : fs * 0.5;
     var widest = lines.fold(
         0, (int w, l) => math.max(w, l.replaceAll("\t", "    ").length));
-    // Not scaled by the app's text size (Ken runs a larger one): its lines
-    // are measured at [fs] -- the scroll view's height, the gutter, the
-    // painted code it lies over -- and a scaled field outgrew that and
-    // scrolled inside itself, so the top could not be reached.
+    // Not scaled by the app's text size: its lines are measured at [fs] (the
+    // scroll view's height, the gutter, the painted code under it), and a
+    // scaled field outgrows that and scrolls inside itself.
     return MediaQuery.withNoTextScaling(
         child: LayoutBuilder(builder: (context, room) {
       var textW = math.max(

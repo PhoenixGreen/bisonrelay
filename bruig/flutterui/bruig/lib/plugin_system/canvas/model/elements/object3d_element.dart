@@ -1,19 +1,17 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/glb_info.dart';
 
-// object3d_element.dart is a 3D object: a model from the library's 3D
-// objects -- a .glb -- drawn in its box, or standing on a 3D stage as
-// anything can (see StageSpot). Turned, tilted and brought closer in its
-// box; its own animations, read from the file, are its clips: "From the
-// model", in its slots, played, placed and layered as any clip is.
+// object3d_element.dart is a 3D object: a .glb model from the library drawn
+// in its box, or standing on a 3D stage as anything can (see StageSpot).
+// Turned, tilted and brought closer in its box; its own animations, read
+// from the file, are its "From the model" clips, used as any clip is.
 
 /// Object3dElement is a 3D object; see the top of this file.
 class Object3dElement extends CanvasElement {
   /// assetId is the model in the library's store, or "" for none yet.
   final String assetId;
 
-  /// animations are the model's own, as the file has them: what its clips
-  /// can play.
+  /// animations are the model's own, what its clips can play.
   final List<ModelAnimation> animations;
 
   /// turn and tilt are how it is seen in its box, in degrees: round to its

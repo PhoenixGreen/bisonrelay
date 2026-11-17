@@ -7,15 +7,13 @@ import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 
 // patch_voice.dart plays a synth patch (see model/synth_patch.dart): each
 // note a voice that works every module the speaker hears through, a sample
-// at a time, sources first -- the keyboard's pitch and gate, oscillators and
-// noise, envelopes and LFOs, the filter, the amp, the mixer, the speaker.
+// at a time, sources first.
 //
-// What a module does with what is patched into it follows the prototype the
-// patch was designed in (sheet-music-prototype/index.html): an envelope
-// only moves anything once the keyboard's gate is patched into it; an amp
-// with nothing in its gain is on while the key is held; a cable into a
-// filter's cutoff opens it by up to its amount, in octaves; one into an
-// oscillator's mod bends it by up to its mod, in semitones.
+// What a module does with its inputs: an envelope moves anything only once
+// the keyboard's gate is patched into it; an amp with nothing in its gain
+// is on while the key is held; a cable into a filter's cutoff opens it by
+// up to its amount, in octaves; one into an oscillator's mod bends it by up
+// to its mod, in semitones.
 
 /// PatchGraph is a patch made ready to play: its modules in the order a
 /// voice works them out, each input as the place of the module it comes
@@ -86,14 +84,12 @@ class PatchGraph {
     return PatchGraph._(patch, nodes, inputs, gated, release, tail);
   }
 
-  /// wiring is its patch's: see SynthPatch.wiring.
   String get wiring => patch.wiring;
 }
 
-/// PatchVoice is a note played on a patch.
 class PatchVoice extends Voice {
-  /// graph is what it plays: changed for one wired alike as a setting
-  /// changes, it goes on in that.
+  /// graph is what it plays; swapped for one wired alike as a setting
+  /// changes, the note goes on in that.
   PatchGraph graph;
   final double _f0, _velocity;
   final math.Random _random;
@@ -287,7 +283,7 @@ class PatchVoice extends Voice {
         math.pow(2, _in(k, "cutoff", 0) * m.value("amount"));
     cutoff = cutoff.clamp(20.0, mixRate * 0.45);
     var g = math.tan(math.pi * cutoff / mixRate);
-    // Resonance 0.1 to 20, as the prototype's: a Q from about 0.7 to 20.
+    // Resonance 0.1 to 20: a Q from about 0.7 to 20.
     var q = 0.7 + m.value("res").clamp(0.0, 20.0) * 0.97;
     var kk = 1 / q;
     var a1 = 1 / (1 + g * (g + kk));
@@ -366,8 +362,8 @@ class _Room {
 
 /// PatchWatch is a note played on a patch to be looked at rather than
 /// heard: a voice kept going alongside the one heard, a stretch at a time,
-/// each module's latest output kept -- for its screen to show its real
-/// sound, its meter its real level, its envelope where it is.
+/// keeping each module's latest output for its screen, meter and envelope
+/// to show.
 class PatchWatch {
   final int key;
   PatchVoice _voice;
@@ -418,10 +414,8 @@ class PatchWatch {
   bool get done => _voice.done;
   void release() => _voice.release();
 
-  /// has is whether module [id] is in what is watched.
   bool has(String id) => _rings.containsKey(id);
 
-  /// advance plays [samples] more of it.
   void advance(int samples) {
     if (_voice.done) return;
     if (_l.length < samples) {

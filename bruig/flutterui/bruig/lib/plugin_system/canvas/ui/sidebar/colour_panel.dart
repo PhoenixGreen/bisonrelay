@@ -21,14 +21,13 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_items.dart';
 import 'package:flutter/material.dart';
 
-// colour_panel.dart is the Design sidebar's Colour section: the colours of
-// whatever is selected (or the background's three) as swatches, the one in
-// front being the one chosen; an always-open compact colour picker; and an
-// eyedropper that takes a colour off the canvas.
+// colour_panel.dart is the Design sidebar's Colour section: the selection's
+// colours (or the background's three) as swatches, the chosen one in front;
+// an always-open compact picker; and an eyedropper taking canvas colours.
 
-/// ColourSlot is one colour the Colour section can set: its name, whether it
-/// is a line (drawn as a ring) or an area (a disc), its value (null for none),
-/// and how it is set, colour and fade. [transient] is for a change still being
+/// ColourSlot is one colour the Colour section can set: its name, whether
+/// it is a line (a ring) or an area (a disc), its value (null for none), and
+/// how it is set, colour and fade. [transient] is for a change still being
 /// made: see CanvasController.replaceElement.
 class ColourSlot {
   final String id;
@@ -52,7 +51,7 @@ class ColourSlot {
   });
 }
 
-/// colourSlotsFor is the colours the Colour section offers now: the selected
+/// colourSlotsFor is the colours the Colour section offers: the selected
 /// element's area and line or words colours, or the background's three when
 /// nothing (or the background) is selected.
 List<ColourSlot> colourSlotsFor(CanvasController controller) {
@@ -178,8 +177,7 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
                 c == null ? v.copyWith(clearTint: true) : v.copyWith(tint: c),
             (_) => v),
       ];
-    // A chart's colours are its series' (a pie's, its slices'), up to a
-    // row of swatches.
+    // A chart's colours are its series' (a pie's slices'), up to a row.
     case ChartElement c when c.type.isCircular:
       var slices = c.data.categories.length.clamp(0, 8);
       return [
@@ -396,13 +394,11 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
   }
 }
 
-/// _backgroundSlots is the background's three colours: its base, and the
-/// pattern's own two.
+/// _backgroundSlots is the background's base and its pattern's two colours.
 List<ColourSlot> _backgroundSlots(CanvasController controller) {
   var bg = controller.document.editedBackground;
   var spec = bg.spec;
-  // None is clear: the base shows what is behind the canvas, and the
-  // pattern's colour leaves the pattern.
+  // None is clear: the base shows through, and the pattern's colour drops.
   const clear = Color(0x00000000);
   Color? shown(Color c) => c.a == 0 ? null : c;
   void set(ProceduralSpec next, bool transient) =>
@@ -453,7 +449,6 @@ List<ColourSlot> _backgroundSlots(CanvasController controller) {
   ];
 }
 
-/// ColourPanel is the Colour section of the Design sidebar.
 class ColourPanel extends StatefulWidget {
   final CanvasController controller;
   const ColourPanel({required this.controller, super.key});
@@ -468,8 +463,7 @@ class _ColourPanelState extends State<ColourPanel> {
   /// _active is the slot being chosen: the one drawn in front.
   String _active = "fill";
 
-  /// _settle closes a run of picker changes into one undo step, once the
-  /// picker has been still a moment.
+  /// _settle makes a run of picker changes one undo step once it is still.
   Timer? _settle;
 
   @override
@@ -492,8 +486,7 @@ class _ColourPanelState extends State<ColourPanel> {
     _settle = Timer(const Duration(milliseconds: 600), _done);
   }
 
-  /// _now makes [change] a change of its own: one undo step, however many
-  /// writes it is.
+  /// _now makes [change] a change of its own: one undo step, however written.
   void _now(void Function() change) {
     _done();
     controller.beginInteraction();
@@ -521,8 +514,7 @@ class _ColourPanelState extends State<ColourPanel> {
               orElse: () => slots.first);
           var owner = controller.selected?.id ?? "background";
           var two = slots.length == 2;
-          // The swatches, and to the right of them the eyedropper and the
-          // colour it last took.
+          // The swatches, then the eyedropper and the colour it last took.
           var leading = Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -546,9 +538,9 @@ class _ColourPanelState extends State<ColourPanel> {
                     : null,
               ),
               Row(mainAxisSize: MainAxisSize.min, children: [
-                // The eyedropper: its next press on the canvas takes the colour there
-                // for the slot being chosen. Drawn small rather than as an IconButton,
-                // which keeps a 40px square whatever it is told.
+                // The eyedropper: its next press on the canvas takes the
+                // colour there for the chosen slot. Drawn small, not as an
+                // IconButton, which keeps a 40px square whatever it is told.
                 Tooltip(
                   message: "Pick colour",
                   child: InkWell(
@@ -560,8 +552,7 @@ class _ColourPanelState extends State<ColourPanel> {
                             _slot(active.id)?.setColour(c, transient: true))),
                     child: SizedBox.square(
                       dimension: 24,
-                      // Drawn rather than the icon font's, whose stroke is heavier than the
-                      // swatches'.
+                      // Drawn: the icon font's stroke is heavier.
                       child: CustomPaint(
                         painter: _DropperPainter(controller.sampling
                             ? Theme.of(context).colorScheme.primary
@@ -582,8 +573,7 @@ class _ColourPanelState extends State<ColourPanel> {
               ]),
             ],
           );
-          // Scrolled where there is not the room, with no bar, as every panel
-          // in the column is.
+          // Scrolled where short of room, with no bar, as the column is.
           return ScrollConfiguration(
               behavior: const CanvasNoScrollbar(),
               child: SingleChildScrollView(
@@ -602,8 +592,7 @@ class _ColourPanelState extends State<ColourPanel> {
                           _write(() => active.setColour(c, transient: true)),
                       onGradientChanged: (g) =>
                           _write(() => active.setGradient(g, transient: true)),
-                      // A saved colour replaced by this one everywhere on the canvas: see
-                      // replaceColour.
+                      // A saved colour replaced everywhere: replaceColour.
                       onReplaceEverywhere: (from, to) {
                         _done();
                         controller.replaceColour(from, to);
@@ -616,10 +605,9 @@ class _ColourPanelState extends State<ColourPanel> {
       );
 }
 
-/// _Swatches is the colours, each offset down and right from the one before,
-/// the one being chosen drawn on top; pressing a swatch chooses it. Beside
-/// them, for two, arrows that swap them; below, a swatch that sets the chosen
-/// one to none.
+/// _Swatches is the colours, each offset down and right from the one
+/// before, the chosen one on top; pressing a swatch chooses it. Beside two,
+/// arrows that swap them; below, a swatch that sets the chosen one to none.
 class _Swatches extends StatelessWidget {
   final List<ColourSlot> slots;
   final ColourSlot active;
@@ -704,9 +692,8 @@ class _Swatches extends StatelessWidget {
   }
 }
 
-/// _SwatchPainter draws a colour as a disc -- or, for a line, a thick ring
-/// -- with a slash through white where it is none, and a brighter edge on
-/// the one being chosen.
+/// _SwatchPainter draws a colour as a disc (a line's as a thick ring), white
+/// slashed where it is none, the chosen one brighter edged.
 class _SwatchPainter extends CustomPainter {
   final ColourSlot slot;
   final Color outline;
@@ -848,7 +835,6 @@ class _DropperPainter extends CustomPainter {
     canvas.translate(k / 2, k / 2);
     canvas.rotate(math.pi / 4);
     canvas.translate(-k / 2, -k / 2);
-    // The tube, the tip below it, the collar and the bulb above.
     canvas.drawRRect(
         RRect.fromRectAndRadius(Rect.fromPoints(at(0.44, 0.38), at(0.56, 0.78)),
             Radius.circular(k * 0.04)),

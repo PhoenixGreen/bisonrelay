@@ -21,26 +21,11 @@ import 'package:flutter_vrm/flutter_vrm.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 // vrm_scene.dart puts a CharacterShape and a CharacterOutfit on a VrmAvatar
-// drawn by flutter_scene.
-//
-// The mesh: each shaped group's vertices are packed as the importer packed
-// them and uploaded over the old, so skinning and the face's expressions
-// carry on as before (an expression is a change on top of the vertices).
-//
-// The skeleton: flutter_vrm writes every humanoid bone from its rest place
-// each frame, so a bone moved directly would be put back. Instead each bone
-// that can change sits under a node of its own, put between it and its
-// parent when the avatar loads. That node holds T(t')·S(s)·T(-t), where t is
-// the bone's rest place and t' its new one: whatever turn the rig gives the
-// bone, it lands at t' and draws s times as big, because a scale the same
-// every way does not care which way it is turned. Skinning, the spring
-// bones and the eyes all follow, as they read where the bones are.
-//
-// The clothes: each one made to fit is a node of its own beside the body,
-// bound to the body's bones, drawn in flutter_vrm's MToon with the skin's
-// settings and an outline like the skin's, and shaped with the body. The
-// body's own clothes are shown, hidden, or cut shorter; and the skin's
-// picture is painted again where they come off.
+// drawn by flutter_scene. Shaped vertices are uploaded over the old, so
+// skinning and expressions carry on. flutter_vrm resets every humanoid bone
+// from rest each frame, so a bone that can change sits under its own node
+// holding T(t')·S(s)·T(-t): a uniform scale ignores turning, so whatever turn
+// the rig gives it, it lands at t' at s times the size.
 
 /// CharacterHit is where a ray met the character: see ShapedAvatar.pick.
 typedef CharacterHit = ({
@@ -51,7 +36,6 @@ typedef CharacterHit = ({
   String? surface,
 });
 
-/// ShapedAvatar is an avatar that can be shaped and dressed.
 class ShapedAvatar {
   final VrmAvatar avatar;
   final VrmShapeRig rig;
@@ -59,8 +43,7 @@ class ShapedAvatar {
   /// wardrobe makes its clothes; null for a body they cannot be made for.
   final VrmWardrobe? wardrobe;
 
-  /// holder is what goes in the scene: the avatar inside it, sized by the
-  /// character's height.
+  /// holder is what goes in the scene, sized by the character's height.
   final Node holder;
 
   final Map<String, (Node, vm.Vector3)> _wrappers;
@@ -71,18 +54,17 @@ class ShapedAvatar {
   final Map<VrmRegion, String> _regionKeys = {};
   CharacterShape? _shape;
 
-  /// _body is the body's mesh node; its primitives as drawn are the file's,
-  /// then the outlines flutter_vrm adds after them.
+  /// _body is the body's mesh node: the file's primitives, then the outlines
+  /// flutter_vrm adds.
   final Node? _body;
 
-  /// _byName is every node of the avatar, by name.
   final Map<String, Node> _byName;
 
   ShapedAvatar._(this.avatar, this.rig, this.wardrobe, this.holder,
       this._wrappers, this._geometry, this._body, this._byName);
 
-  /// load reads [bytes], a VRM 1.0 file, ready to shape and dress. The file
-  /// is read for shaping off the main isolate while the avatar loads.
+  /// load reads [bytes], a VRM 1.0 file, ready to shape and dress; the
+  /// shaping data is read off the main isolate while the avatar loads.
   static Future<ShapedAvatar> load(Uint8List bytes) async {
     final rigFuture = Isolate.run(() {
       final rig = VrmShapeRig(VrmMeshData.read(bytes));
@@ -99,8 +81,8 @@ class ShapedAvatar {
     }
 
     walk(avatar.root);
-    // Every bone the proportions can move, wrapped before the avatar is in
-    // a scene, so nothing has to be mounted again.
+    // Every bone the proportions can move, wrapped before the avatar is in a
+    // scene, so nothing has to be mounted again.
     final wrappers = <String, (Node, vm.Vector3)>{};
     for (final name in _shapedBones) {
       final bone = byName[name],
@@ -141,10 +123,9 @@ class ShapedAvatar {
 
   CharacterShape get shape => _shape ?? const CharacterShape();
 
-  /// apply shapes the character as [s] says. Only what [s] changes is
-  /// worked out again: a region whose changes are the same is left alone.
-  /// Without [bones], the skeleton is left as made: for a character worn
-  /// only for its hair, which is placed on another's head, at its size.
+  /// apply shapes the character as [s] says, redoing only regions whose
+  /// changes differ. Without [bones] the skeleton stays as made: for a
+  /// character worn only for its hair, placed on another's head.
   void apply(CharacterShape s, {bool bones = true}) {
     if (s == _shape && !_reshape) return;
     _shape = s;
@@ -178,18 +159,16 @@ class ShapedAvatar {
         vm.Matrix4.diagonal3Values(p.height, p.height, p.height);
   }
 
-  // ---------------------------------------------------------------------
   // Shaped by hand.
 
   List<SculptStroke> _sculpt = const [];
   String _sculptKey = '';
   bool _reshape = false;
 
-  /// sculpt shapes the body by hand as well, with [strokes]
-  /// (character_sculpt.dart), on the next [apply].
+  /// sculpt adds hand-shaping [strokes] (character_sculpt.dart) on the next
+  /// [apply].
   void sculpt(List<SculptStroke> strokes) {
-    // Asked at every frame: the same list is the same strokes, without
-    // hashing every point of every one.
+    // Asked every frame: the same list is the same strokes, unhashed.
     if (identical(strokes, _sculpt)) return;
     final key = strokes.map((s) => s.key).join(';');
     if (key == _sculptKey) return;
@@ -199,25 +178,23 @@ class ShapedAvatar {
   }
 
   /// _deformers are [region]'s changes: the shaping's, then the strokes'.
-  /// Not the hair's, which keeps its own shape over a head shaped by hand.
+  /// Not the hair's, which keeps its shape over a hand-shaped head.
   List<Deformer> _deformers(VrmRegion region, CharacterShape s) => [
         ...rig.deformers(region, s),
         if (region != VrmRegion.hair) ...StrokeDeformer.of(_sculpt),
       ];
 
-  // ---------------------------------------------------------------------
   // Physics: how the hair and clothes swing.
 
-  /// _springs swings the hair and clothes in place of the avatar's own, with
-  /// their settings changed; null for them as made.
+  /// _springs swings hair and clothes in place of the avatar's own, with
+  /// changed settings; null for as made.
   VrmSpringBoneSystem? _springs;
   String _physicsKey = "1.0|1.0|1.0|0.0";
 
   /// physics swings the hair [hair] times as loose as made and the clothes
-  /// [clothes] times, as heavy as [weight] times, in a wind of [wind]
-  /// (nought to one) blowing across. flutter_vrm reads the swing settings
-  /// once, so a change makes the swing again: from rest, its chains put
-  /// back first.
+  /// [clothes] times, [weight] times as heavy, in a cross wind of [wind]
+  /// (0 to 1). flutter_vrm reads the settings once, so a change rebuilds the
+  /// swing from rest, its chains put back first.
   void physics(
       {double hair = 1,
       double clothes = 1,
@@ -279,13 +256,11 @@ class ShapedAvatar {
     );
   }
 
-  // ---------------------------------------------------------------------
   // The body at rest, for posing (vrm_pose.dart).
 
-  /// bodyAtRest is points on the body at rest, as it is shaped: the skin
-  /// of its torso, neck and thighs, and the clothes over them -- its own and
-  /// made ones -- every [step]th of each. [cloth] marks the clothes, and
-  /// [loose] those that hang away from the body, as a skirt does.
+  /// bodyAtRest is every [step]th point of the shaped body at rest: torso,
+  /// neck and thigh skin and the clothes over them. [cloth] marks clothes,
+  /// [loose] those that hang away, as a skirt does.
   Iterable<({double x, double y, double z, bool cloth, bool loose})> bodyAtRest(
       {int step = 3}) sync* {
     final w = wardrobe;
@@ -312,8 +287,8 @@ class ShapedAvatar {
         loose: false
       );
     }
-    // The body's own clothes, where they are worn: they are in its mesh, and
-    // without them arms go through them.
+    // The body's own clothes where worn: they are in its mesh, and without
+    // them arms go through them.
     final o = _dressed ?? CharacterOutfit.asDesigned;
     for (final p in w.body.primitives) {
       if (p.vertices != w.skin) continue;
@@ -354,11 +329,10 @@ class ShapedAvatar {
     }
   }
 
-  // ---------------------------------------------------------------------
   // The face's expression (character_face.dart).
 
-  /// _faceUnits are the nodes with the face's shapes, each with where its
-  /// shapes are by their names after "Fcl_" ("EYE_Joy").
+  /// _faceUnits are the face-shape nodes, each with shape indices by the name
+  /// after "Fcl_" ("EYE_Joy").
   late final List<(Node, Map<String, int>)> _faceUnits = [
     for (final m in rig.data.meshes)
       if (_byName[m.name] case final n? when n.morphTargetCount > 0)
@@ -373,15 +347,14 @@ class ShapedAvatar {
         )
   ]..removeWhere((e) => e.$2.isEmpty);
 
-  /// _wore is each shape [wear] last set: what it was before, and what it
-  /// was set to. flutter_vrm sets again, each frame, only the shapes its own
-  /// expressions use; the rest keep what they were given, and would gather
-  /// more each frame if this were added to them again.
+  /// _wore is each shape [wear] last set: its value before, and what it was
+  /// set to. flutter_vrm resets each frame only the shapes its expressions
+  /// use; the rest keep what they were given and would accumulate if added
+  /// to again.
   final Map<(Node, int), (double, double)> _wore = {};
 
-  /// wear puts [units] on the face, over what the avatar's own expressions
-  /// set -- a blink among them, which gives way as far as the eyes are
-  /// already closing.
+  /// wear puts [units] on the face over the avatar's own expressions,
+  /// including a blink, which gives way as far as the eyes already close.
   void wear(Map<String, double> units) {
     double u(String k) => units[k] ?? 0;
     final closing = math.max(
@@ -395,8 +368,8 @@ class ShapedAvatar {
       if (live == null) continue;
       void put(int i, double Function(double base) value) {
         final k = (node, i), now = live[i], was = _wore[k];
-        // Unchanged since it was set: flutter_vrm left it alone, so it is
-        // still what was set, over what it was before.
+        // Unchanged since set: flutter_vrm left it, so it is still ours over
+        // what it was before.
         final base = was != null && (now - was.$2).abs() < 1e-6 ? was.$1 : now;
         final v = value(base).clamp(0.0, 1.0);
         node.setMorphWeight(i, v);
@@ -414,7 +387,7 @@ class ShapedAvatar {
         put(shut, (b) => b * (1 - closing.clamp(0.0, 1.0)) + u('EYE_Close'));
       }
     }
-    // Shapes set before and not now go back to what they were.
+    // Shapes set before and not now go back.
     for (final k in _wore.keys.toList()) {
       if (touched.contains(k)) continue;
       final (base, v) = _wore.remove(k)!;
@@ -425,9 +398,9 @@ class ShapedAvatar {
     }
   }
 
-  /// blushAt is where a blush goes on each cheek, on the face as made: a
-  /// point on the skin under each eye, toward the outside, with the way
-  /// it faces; and how big. Empty for a face without its landmarks.
+  /// blushAt is where a blush goes on each cheek of the face as made: a skin
+  /// point under each eye, toward the outside, its facing, and its size.
+  /// Empty for a face without landmarks.
   late final List<(vm.Vector3, vm.Vector3, double)> blushAt = () {
     final L = rig.face;
     if (L == null) return const <(vm.Vector3, vm.Vector3, double)>[];
@@ -459,8 +432,8 @@ class ShapedAvatar {
     return out;
   }();
 
-  /// creaseKey is what [creases] are drawn from in [shape], so they are
-  /// drawn again only when it changes.
+  /// creaseKey is what [creases] depend on in [shape], so they are redrawn
+  /// only when it changes.
   static String creaseKey(CharacterShape shape) => [
         shape.age,
         shape.get("muscle.definition"),
@@ -470,21 +443,19 @@ class ShapedAvatar {
         shape.get("body.muscle"),
       ].map((v) => v.toStringAsFixed(2)).join(";");
 
-  /// creases are the lines the years and the muscles draw on the skin, as
-  /// paint: on the forehead, at the corners of the eyes, under them and
-  /// from the nose to the mouth as it ages -- from 35, deepest at 80 -- and
-  /// with muscles defined, the line down the middle of the stomach, the
-  /// bands across it, the pecs' lower edge on a flat chest and the lines of
-  /// the obliques. Laid on the body as made, so they follow its shaping.
+  /// creases are the lines of age and muscle drawn as paint: forehead, eye
+  /// corners, under the eyes and beside the mouth from age 35 (deepest at
+  /// 80); and with muscle defined, the stomach's midline and bands, the pecs'
+  /// lower edge on a flat chest, and the obliques. Laid on the body as made,
+  /// so they follow its shaping.
   List<PaintStroke> creases(CharacterShape shape) {
     final out = <PaintStroke>[];
     final L = rig.face, B = rig.body;
     const ink = 0x5a3328;
     double clamp01(double v) => v.clamp(0.0, 1.0).toDouble();
 
-    // A line through [xy] on the front of the face or the body, followed
-    // along the skin, as a stroke -- mirrored onto the other side where it
-    // is one of a pair.
+    // A line through [xy] on the front of the face or body, followed along
+    // the skin, mirrored onto the other side when one of a pair.
     void line(List<(double, double)> xy,
         {required bool face,
         required double radius,
@@ -492,7 +463,6 @@ class ShapedAvatar {
         bool mirror = false}) {
       if (opacity < 0.02 || xy.length < 2) return;
       final fwd = L?.fwd ?? 1;
-      // Points close enough together for the brush to run unbroken.
       final dense = <(double, double)>[xy.first];
       for (var i = 1; i < xy.length; i++) {
         final (ax, ay) = xy[i - 1];
@@ -506,9 +476,8 @@ class ShapedAvatar {
           dense.add((ax + (bx - ax) * k / n, ay + (by - ay) * k / n));
         }
       }
-      // On the skin itself under each point, not on the nearest corner of
-      // it: corners are further apart than the brush is wide, and a line
-      // laid on them is a row of dots.
+      // On the skin under each point, not its nearest corner: corners are
+      // further apart than the brush is wide, making a row of dots.
       var lo = vm.Vector2(double.infinity, double.infinity),
           hi = vm.Vector2(-double.infinity, -double.infinity);
       for (final (x, y) in dense) {
@@ -534,12 +503,10 @@ class ShapedAvatar {
           points: points));
     }
 
-    // The years, on the face.
     final age = clamp01((shape.age - 35) / 45);
     if (L != null && age > 0) {
       final es = L.es, ey = L.eyeY, r = es * 0.036;
       final cx = (L.eyeL.x + L.eyeR.x) / 2;
-      // Across the forehead, more of them the older.
       for (var k = 0; k < 3 && k < (age * 3.2).ceil(); k++) {
         final y = ey + es * (0.95 + 0.22 * k);
         line([
@@ -547,7 +514,7 @@ class ShapedAvatar {
             (cx + es * 0.85 * i / 6, y + es * 0.05 * (1 - math.pow(i / 6, 2)))
         ], face: true, radius: r, opacity: age * 0.32 * (1 - 0.2 * k));
       }
-      // Crow's feet, fanning out from the outer corner of each eye.
+      // Crow's feet, fanning from each eye's outer corner.
       final corner = L.eyeL.x + es * 0.44;
       for (final a in const [-0.4, 0.05, 0.45]) {
         final long = es * 0.16 * (0.6 + 0.4 * age);
@@ -556,7 +523,6 @@ class ShapedAvatar {
           (corner + math.cos(a) * long, ey + math.sin(a) * long)
         ], face: true, radius: r * 0.8, opacity: age * 0.22, mirror: true);
       }
-      // Under each eye.
       line([
         for (var i = 0; i <= 6; i++)
           (
@@ -564,10 +530,9 @@ class ShapedAvatar {
             ey - es * 0.42 - es * 0.05 * math.sin(math.pi * i / 6)
           )
       ], face: true, radius: r, opacity: age * 0.28, mirror: true);
-      // Bracketing the mouth: from a little over its corners, curving
-      // out and down past them -- where the cheeks fold as it ages. Kept
-      // close to the mouth: run from the nose on a face drawn with a small
-      // high nose, they cross the cheek like whiskers.
+      // Bracketing the mouth: from a little over its corners, curving out
+      // and down. Kept close to the mouth: run from a small high nose, they
+      // cross the cheek like whiskers.
       final top = L.mouth.y + (L.noseTip.y - L.mouth.y) * 0.45;
       line([
         for (var i = 0; i <= 6; i++)
@@ -587,7 +552,7 @@ class ShapedAvatar {
       }
     }
 
-    // The muscles, on the body: as defined as the body is lean.
+    // Muscles, as defined as the body is lean.
     if (B != null) {
       final u = B.u, r = 0.008 * u;
       final fat = clamp01(shape.get("muscle.fat"));
@@ -599,10 +564,8 @@ class ShapedAvatar {
           clamp01(defined * 0.7 + 0.5 * shape.get("muscle.abs")) * (1 - fat);
       final pecs = clamp01(defined * 0.6 + 0.6 * shape.get("muscle.pecs"));
       final top = B.pec.y - 0.06 * u, bottom = B.navel.y + 0.025 * u;
-      // Down the middle, from under the chest to the navel.
       line([(0, top), (0, bottom)],
           face: false, radius: r, opacity: abs * 0.55);
-      // The bands across.
       for (final t in const [0.28, 0.55, 0.8]) {
         final y = top + (bottom - top) * t;
         line([
@@ -621,7 +584,6 @@ class ShapedAvatar {
             )
         ], face: false, radius: r * 1.2, opacity: pecs * 0.5, mirror: true);
       }
-      // The obliques, down towards the hips.
       line([
         (0.1 * u, B.waist.y - 0.02 * u),
         (0.075 * u, (B.waist.y + B.hips.y) / 2 - 0.02 * u),
@@ -631,10 +593,9 @@ class ShapedAvatar {
     return out;
   }
 
-  /// _skinTriangles are the triangles of the front of the face's or the
-  /// body's skin, as made -- the side [fwd] along z faces -- whose outline
-  /// across x and y reaches into [lo]..[hi]: each as its three corners'
-  /// vertex numbers and the positions and normals they index.
+  /// _skinTriangles are the front-facing (along [fwd]) skin triangles of the
+  /// face or body as made, whose x-y outline reaches into [lo]..[hi]: each
+  /// as three vertex numbers and the positions and normals they index.
   List<(int, int, int, Float32List, Float32List)> _skinTriangles(
       vm.Vector2 lo, vm.Vector2 hi,
       {required bool face, required double fwd}) {
@@ -647,7 +608,6 @@ class ShapedAvatar {
         final ix = p.indices;
         for (var t = 0; t + 2 < ix.length; t += 3) {
           final a = ix[t], b = ix[t + 1], c = ix[t + 2];
-          // Facing forward, near enough.
           final nz =
               (nrm[a * 3 + 2] + nrm[b * 3 + 2] + nrm[c * 3 + 2]) / 3 * fwd;
           if (nz < 0.1) continue;
@@ -665,9 +625,8 @@ class ShapedAvatar {
     return out;
   }
 
-  /// _onSkin is the point on the front of [triangles] seen straight on at
-  /// [x], [y] -- the one nearest the viewer, the side [fwd] along z -- and
-  /// which way the skin faces there; null where none is under it.
+  /// _onSkin is the front-most point of [triangles] seen straight on at [x],
+  /// [y], and the skin's facing there; null where none is under it.
   static (vm.Vector3, vm.Vector3)? _onSkin(double x, double y,
       List<(int, int, int, Float32List, Float32List)> triangles, double fwd) {
     (vm.Vector3, vm.Vector3)? best;
@@ -695,16 +654,13 @@ class ShapedAvatar {
     return best;
   }
 
-  /// _shapedAt are each group's vertices at rest as last shaped, where
-  /// shaping moved them.
+  /// _shapedAt are each group's vertices at rest as last shaped.
   final Map<ShapeGroup, Float32List> _shapedAt = {};
 
-  /// pick is where a ray from [from] going [dir], in the scene, first
-  /// meets the body, its face or the clothes it wears: that place on the
-  /// body as it is shaped at rest, and as it was made; which way the
-  /// surface faces there; how far along the ray it is; and what it is --
-  /// "skin", or a piece of clothing by its slot's name, or null for
-  /// anything else. Null if it meets none of them.
+  /// pick is where a scene ray from [from] along [dir] first meets the body,
+  /// face or clothes: the place on the shaped body at rest and as made, the
+  /// surface's facing, the distance along the ray, and what it is ("skin", a
+  /// clothing slot's name, or null). Null if it meets nothing.
   CharacterHit? pick(vm.Vector3 from, vm.Vector3 dir) {
     final d = dir.normalized();
     var best = double.infinity;
@@ -755,8 +711,8 @@ class ShapedAvatar {
     return hit;
   }
 
-  /// _posed is [g]'s vertices, at rest as [rest], posed as [node] is now:
-  /// skinned as the GPU skins them.
+  /// _posed is [g]'s [rest] vertices posed as [node] is now, skinned as the
+  /// GPU skins them.
   Float32List? _posed(ShapeGroup g, Node node, Float32List rest) {
     final vs = g.vertices;
     final out = Float32List(vs.count * 3);
@@ -801,9 +757,9 @@ class ShapedAvatar {
     return out;
   }
 
-  /// _rayTriangle is how far along [d] from [o] the ray meets triangle
-  /// [i0], [i1], [i2] of [p], and where on it (two barycentric weights);
-  /// null where it misses, from either side.
+  /// _rayTriangle is how far along [d] from [o] the ray meets triangle [i0],
+  /// [i1], [i2] of [p], and where (two barycentric weights); null on a miss
+  /// from either side.
   static (double, double, double)? _rayTriangle(
       vm.Vector3 o, vm.Vector3 d, Float32List p, int i0, int i1, int i2) {
     final ax = p[i0 * 3], ay = p[i0 * 3 + 1], az = p[i0 * 3 + 2];
@@ -849,8 +805,8 @@ class ShapedAvatar {
     _uploaded[g] = shaped == null ? '' : key;
   }
 
-  /// restVersion counts the changes to the body's shape and what it
-  /// wears: a pose measured at rest is measured again when it moves on.
+  /// restVersion counts changes to the body's shape and clothes, so a pose
+  /// measured at rest is remeasured.
   int restVersion = 0;
 
   void _upload(ShapeGroup g, Float32List packed) {
@@ -867,8 +823,7 @@ class ShapedAvatar {
     }
   }
 
-  /// update moves the avatar on by [dt], and lights the clothes as the
-  /// avatar is lit.
+  /// update moves the avatar on by [dt], lighting the clothes as it is lit.
   void update(double dt, {Camera? camera}) {
     avatar.update(dt, camera: camera);
     _springs?.update(dt);
@@ -885,11 +840,8 @@ class ShapedAvatar {
     }
   }
 
-  // ---------------------------------------------------------------------
-  // Hair.
-
-  /// _drawn are [node]'s [i]th primitive as drawn: the primitive, and the
-  /// outline flutter_vrm draws over the same geometry.
+  /// _drawn is [node]'s [i]th primitive as drawn, and the outline flutter_vrm
+  /// draws over the same geometry.
   List<MeshPrimitive> _drawn(VrmMeshNode node, int i) {
     final mesh = _byName[node.name]?.mesh;
     if (mesh == null || i >= mesh.primitives.length) return const [];
@@ -901,40 +853,35 @@ class ShapedAvatar {
   }
 
   /// _outlines is whether flutter_vrm's own outlines are drawn: not once a
-  /// look is applied, whose finish draws the lines.
+  /// look's finish draws the lines.
   bool _outlines = true;
 
-  /// _show shows or hides a primitive as [drawn] lists it -- the primitive
-  /// first, then its outlines.
+  /// _show shows or hides a primitive and its outlines ([drawn]).
   void _show(List<MeshPrimitive> drawn, bool on) {
     for (var k = 0; k < drawn.length; k++) {
       drawn[k].visible = on && (k == 0 || _outlines);
     }
   }
 
-  // ---------------------------------------------------------------------
   // Painting: each material's colour, shading and picture, for the look,
   // the colours picked, and the clothes taken off.
 
-  /// look is the look applied, if any.
   CharacterLook? get look => _look;
   CharacterLook? _look;
 
-  /// _colours are the colours picked, by what they colour (hair, skin, eyes,
-  /// brows), as 0xRRGGBB; _hairAs the colour other characters' hair worn
-  /// here takes; and how grey the years have turned the hair.
+  /// _colours are the colours picked (hair, skin, eyes, brows) as 0xRRGGBB;
+  /// _hairAs the colour borrowed hair takes here; and how grey the hair is.
   Map<VrmPart, int> _colours = const {};
   int? _hairAs;
   double _grey = 0;
 
-  /// _bare is whether the skin's painted clothes are taken off above the
-  /// knees and below them.
+  /// _bare is whether the skin's painted clothes are off above, and below,
+  /// the knees.
   (bool, bool) _bare = (false, false);
 
   /// applyLook draws the character in [l]: every MToon material shaded as
-  /// [l] shades, and the lines left to the finish (vrm_look.dart).
-  /// Without [finished] -- no finish to draw the lines, where its shader
-  /// could not be loaded -- flutter_vrm's own outlines stay.
+  /// [l] says, lines left to the finish (vrm_look.dart). Without [finished]
+  /// (its shader failed to load) flutter_vrm's own outlines stay.
   void applyLook(CharacterLook l, {bool finished = true}) {
     if (l == _look && finished == !_outlines) return;
     final retexture = l.fill != _look?.fill || l.levels != _look?.levels;
@@ -945,8 +892,7 @@ class ShapedAvatar {
       final mesh = _byName[node.name]?.mesh;
       if (mesh == null) continue;
       for (var i = node.primitives.length; i < mesh.primitives.length; i++) {
-        // An outline flutter_vrm added: shown again only where its own
-        // primitive is.
+        // A flutter_vrm outline: shown only where its primitive is.
         if (!_outlines) mesh.primitives[i].visible = false;
       }
     }
@@ -954,10 +900,9 @@ class ShapedAvatar {
     if (retexture) _retexture();
   }
 
-  /// colour colours the hair, skin, eyes and brows as [colours] say,
-  /// 0xRRGGBB by what they colour, the rest as made. Hair worn from this
-  /// character on another's head takes [hairAs] where no colour is picked;
-  /// [grey] greys the hair.
+  /// colour colours hair, skin, eyes and brows as [colours] (0xRRGGBB) say,
+  /// the rest as made. This character's hair worn on another's head takes
+  /// [hairAs] when no colour is picked; [grey] greys the hair.
   void colour(Map<VrmPart, int> colours, {int? hairAs, double grey = 0}) {
     final same = colours.length == _colours.length &&
         colours.entries.every((e) => _colours[e.key] == e.value);
@@ -972,7 +917,7 @@ class ShapedAvatar {
     if (!same || regrey) _retexture();
   }
 
-  /// _materials are the character's own MToon materials, each once, with
+  /// _materials are the character's own MToon materials, once each, with
   /// the primitive it draws and its outline, if any.
   late final List<(VrmPrimitive, PreprocessedMaterial, PreprocessedMaterial?)>
       _materials = () {
@@ -1002,18 +947,17 @@ class ShapedAvatar {
     return out;
   }();
 
-  /// _maskCutouts makes each cut-out material (cloth and hair whose
-  /// picture's clear parts are cut away) cut out in the depth it writes too.
-  /// flutter_vrm leaves that off, and the finish, which finds its lines in
-  /// depth and normals, would line edges of cloth that is not there.
+  /// _maskCutouts makes cut-out materials (cloth and hair with clear parts)
+  /// cut out in depth too. flutter_vrm leaves that off, and the finish,
+  /// which finds lines in depth and normals, would line absent cloth.
   void _maskCutouts() {
     for (final (_, m, _) in _materials) {
       final a = m.parameters.assignedValues;
       final tex = a['base_color_texture'];
       if (a['alpha_mode'] != 1 || tex is! gpu.Texture) continue;
       final cutoff = a['alpha_cutoff'];
-      // Protected for subclasses that set up their own mask; flutter_vrm's
-      // MToon is not one, and there is no other way to give it a mask.
+      // Protected for subclasses with their own mask; flutter_vrm's MToon is
+      // not one, and there is no other way to give it a mask.
       // ignore: invalid_use_of_protected_member
       m.configureDepthAlphaMask(
         texture: GpuTextureSource(tex),
@@ -1022,8 +966,8 @@ class ShapedAvatar {
     }
   }
 
-  /// _originals are each material's colour and pictures as made, kept the
-  /// first time they are changed, to go back to.
+  /// _originals are each material's colour and pictures as made, kept on
+  /// first change to go back to.
   final Map<PreprocessedMaterial, (vm.Vector4, gpu.Texture?, gpu.Texture?)>
       _originals = {};
 
@@ -1038,8 +982,7 @@ class ShapedAvatar {
         );
       });
 
-  /// hairAverage is the colour this character's hair is mostly, once its
-  /// picture has been read.
+  /// hairAverage is the colour this character's hair mostly is, once read.
   int? hairAverage;
 
   /// _chosen is the colour [p] is drawn in, or null for as made.
@@ -1064,7 +1007,6 @@ class ShapedAvatar {
     }
   }
 
-  /// _recolour sets every material's colour and shading for the look.
   void _recolour() {
     final l = _look;
     for (final (p, m, outline) in _materials) {
@@ -1097,16 +1039,16 @@ class ShapedAvatar {
     }
   }
 
-  /// _read are the pictures as read, by their bytes, and _pictures as
-  /// changed, by what was changed: kept once made.
+  /// _read are pictures as read, by their bytes; _pictures as changed, by
+  /// the change. Both kept once made.
   final Map<Uint8List, Future<(Uint8List, int, int)>> _read = {};
   final Map<String, Texture2D> _pictures = {};
   Future<List<int>?>? _faceColour;
   int _painting = 0;
 
-  /// _retexture gives each material the picture it is now drawn with: its
-  /// own, or its own with the skin's painted clothes taken off, in grey to
-  /// be coloured, or in flat tones.
+  /// _retexture gives each material its current picture: its own, or with
+  /// the skin's painted clothes off, in grey to be coloured, or in flat
+  /// tones.
   Future<void> _retexture() async {
     _retexturing++;
     try {
@@ -1118,7 +1060,6 @@ class ShapedAvatar {
 
   int _retexturing = 0;
 
-  /// busy is whether clothes, decals or pictures are still being made.
   bool get busy =>
       _dressing || _decorating || _paintingLayers || _retexturing > 0;
 
@@ -1185,7 +1126,6 @@ class ShapedAvatar {
     }
   }
 
-  /// _decode is a picture's RGBA, its width and its height.
   static Future<(Uint8List, int, int)> _decode(Uint8List bytes,
       {int? size}) async {
     final codec = await ui.instantiateImageCodec(bytes,
@@ -1199,7 +1139,6 @@ class ShapedAvatar {
     return out;
   }
 
-  /// _readFaceColour is the face's skin colour, from its picture.
   Future<List<int>?> _readFaceColour() async {
     final fb = rig.data.images[VrmPart.face]?.bytes;
     if (fb == null) return null;
@@ -1207,8 +1146,7 @@ class ShapedAvatar {
     return faceSkinColour(px, fw, fh, rig.data);
   }
 
-  /// hairRoles are what each piece of the character's hair is: the fringe,
-  /// the back and sides, or the tails.
+  /// hairRoles are each hair piece's role: fringe, back and sides, or tails.
   late final Map<VrmPrimitive, HairRole> hairRoles = {
     for (final node in rig.data.meshes)
       for (final p in node.primitives)
@@ -1216,8 +1154,8 @@ class ShapedAvatar {
           p: rig.face == null ? HairRole.back : hairRoleOf(p, rig.face!),
   };
 
-  /// showHair shows the pieces of hair [show] says to. As a [donor] -- a
-  /// character worn only for its hair -- everything else of it is hidden.
+  /// showHair shows the hair pieces [show] picks. As a [donor] (worn only
+  /// for its hair) everything else is hidden.
   void showHair(bool Function(HairRole) show, {bool donor = false}) {
     for (final node in rig.data.meshes) {
       for (var i = 0; i < node.primitives.length; i++) {
@@ -1229,14 +1167,12 @@ class ShapedAvatar {
     }
   }
 
-  /// headNode is the head's bone.
   Node? get headNode => avatar.humanoid.node(VrmHumanBone.head);
 
-  /// wearOn places this character, worn for its hair, so its head is on
-  /// [base]'s head, grown by [grow] to fit it. It is posed as [base] is
-  /// first, so its springs and colliders -- its hair's swing, and the
-  /// shoulders the hair lies on -- are where [base]'s are, not standing in
-  /// the T it was made in.
+  /// wearOn places this character, worn for its hair, with its head on
+  /// [base]'s, grown by [grow]. It is posed as [base] first, so its springs
+  /// and colliders (the hair's swing, the shoulders it lies on) match
+  /// [base]'s rather than the T it was made in.
   void wearOn(ShapedAvatar base, double grow) {
     final head = base.headNode?.globalTransform, mine = headNode;
     if (head == null || mine == null) return;
@@ -1250,7 +1186,7 @@ class ShapedAvatar {
       }
     }
     rig.apply();
-    // Where the head is now, from the holder: put there on [base]'s head.
+    // Where the head is now, from the holder, put on [base]'s head.
     final here = (holder.localTransform.clone()..invert()) *
         mine.globalTransform as vm.Matrix4;
     holder.localTransform = head.clone()
@@ -1258,18 +1194,14 @@ class ShapedAvatar {
       ..multiply(vm.Matrix4.inverted(here));
   }
 
-  // ---------------------------------------------------------------------
-  // Dressing.
-
   final Map<WearSlot, _Worn> _worn = {};
   CharacterOutfit? _want, _dressed;
   bool _dressing = false;
 
-  /// dressError is why the last dressing failed, or null.
   String? dressError;
 
   /// dress puts [o] on. Clothes take a moment to make, so changes made
-  /// while one is being put on wait for it, and only the last is put on.
+  /// meanwhile wait, and only the last is put on.
   Future<void> dress(CharacterOutfit o) async {
     _want = o;
     if (_dressing) return;
@@ -1300,7 +1232,7 @@ class ShapedAvatar {
     for (final slot in WearSlot.values) {
       final g = o[slot];
       // Underwear and socks under other clothes have no outline: it would
-      // show through what is over them.
+      // show through.
       final under = switch (slot) {
         WearSlot.underwear => o[WearSlot.top].source != WearSource.none ||
             o[WearSlot.bottom].source != WearSource.none,
@@ -1339,24 +1271,22 @@ class ShapedAvatar {
       _bare = (upper, lower);
       await _retexture();
     }
-    // Decals on clothes go with the clothes.
     final load = _decalLoad;
-    // Through their guards, so two runs never lay the same one twice.
+    // Decals on clothes go with them, through their guards so two runs
+    // never lay the same one twice.
     if (load != null) await decorate(_decalWant, load);
-    // And paint on clothes.
     if (_paintWant.isNotEmpty || _paints.isNotEmpty) await paint(_paintWant);
   }
 
-  // ---------------------------------------------------------------------
-  // Paint: strokes on the skin and clothes, each surface's drawn into a
-  // picture of its own (vrm_paint.dart) on a copy of the triangles painted,
-  // a hair off the surface, as decals are.
+  // Paint: strokes on skin and clothes, each surface drawn into its own
+  // picture (vrm_paint.dart) on a copy of the painted triangles, a hair off
+  // the surface, as decals are.
 
   final Map<String, _Worn> _paints = {};
   List<PaintStroke> _paintWant = const [];
   bool _paintingLayers = false, _paintAgain = false;
 
-  /// paint paints [strokes] on the character, in place of what was.
+  /// paint paints [strokes] on the character, replacing what was.
   Future<void> paint(List<PaintStroke> strokes) async {
     _paintWant = strokes;
     if (_paintingLayers) {
@@ -1374,10 +1304,9 @@ class ShapedAvatar {
     }
   }
 
-  /// _paintTargets are the surfaces that can be painted now: an id, what a
-  /// stroke on it is said to be on, the node it is drawn beside, its
-  /// skin's joints, its vertices and triangles, how far over it paint lies,
-  /// and a key that changes when it does.
+  /// _paintTargets are the surfaces paintable now: an id, what a stroke on
+  /// it is said to be on, the node it is drawn beside, the skin's joints,
+  /// vertices and triangles, how far over it paint lies, and a change key.
   List<
       ({
         String id,
@@ -1456,8 +1385,8 @@ class ShapedAvatar {
         vertices: worn.group.vertices,
         triangles: worn.group.triangles,
         lift: 0.0009,
-        // A made garment's pattern repeats over it, front and back alike:
-        // no place to paint one spot and not another.
+        // A made garment's pattern repeats front and back: no place to paint
+        // one spot and not another.
         cells: true,
         key: worn.key,
       ));
@@ -1497,7 +1426,6 @@ class ShapedAvatar {
       final old = _paints.remove(t.id);
       if (old != null) _unwear(old);
       if (layer == null) continue;
-      // The surface's vertices, or each painted triangle's own.
       final from = layer.source;
       final n = from?.length ?? vs.count;
       int src(int i) => from == null ? i : from[i];
@@ -1548,10 +1476,9 @@ class ShapedAvatar {
     }
   }
 
-  /// _overlayMaterial is a material that lays [tex] over the skin, as the
-  /// skin is drawn, where it is not clear, at depth layer [layer]: drawn over
-  /// the surface it lies on at any distance and round any curve, which
-  /// lifting it off the surface alone does not hold.
+  /// _overlayMaterial lays [tex] over the skin, drawn as the skin is where
+  /// [tex] is not clear, at depth layer [layer]: over its surface at any
+  /// distance and curve, which lifting it off the surface alone cannot do.
   Future<PreprocessedMaterial> _overlayMaterial(Texture2D tex,
       {required int layer}) async {
     final material = await loadFmatMaterial('assets/materials/mtoon_blend.fmat',
@@ -1570,14 +1497,11 @@ class ShapedAvatar {
       ..setVec3('matcap_factor', vm.Vector3.zero())
       ..setVec3('emissive_factor', vm.Vector3.zero());
     material.depthLayer = layer;
-    // Both faces: VRoid's clothes wind their triangles either way, so a decal
-    // or paint cut from them, drawn from one side, would lose those facing in.
+    // Both faces: VRoid's clothes wind triangles either way, so a decal or
+    // paint cut from them, drawn one-sided, would lose those facing in.
     material.doubleSided = true;
     return material;
   }
-
-  // ---------------------------------------------------------------------
-  // Decals: pictures and vectors laid on the skin and clothes.
 
   final Map<String, _Worn> _decals = {};
   List<CharacterDecal> _decalWant = const [];
@@ -1585,9 +1509,8 @@ class ShapedAvatar {
   final Map<String, Texture2D> _decalPictures = {};
   bool _decorating = false, _decorateAgain = false;
 
-  /// decorate lays [decals] on the character, reading each one's picture
-  /// with [load] (RGBA, its width and height). Changes made while some are
-  /// being laid on wait for them, and only the last are laid on.
+  /// decorate lays [decals] on the character, reading pictures with [load].
+  /// Changes made meanwhile wait, and only the last are laid on.
   Future<void> decorate(List<CharacterDecal> decals,
       Future<(Uint8List, int, int)?> Function(String source) load) async {
     _decalWant = decals;
@@ -1607,8 +1530,8 @@ class ShapedAvatar {
     }
   }
 
-  /// _surface is what [on] is now -- the skin, or the piece of clothing
-  /// worn -- with a key that changes when it does; null for nothing worn.
+  /// _surface is what [on] is now (skin or worn piece) and a change key;
+  /// null for nothing worn.
   (DecalSurface, String)? _surface(String on) {
     final w = wardrobe;
     if (w == null) return null;
@@ -1652,11 +1575,10 @@ class ShapedAvatar {
 
   Uint32List? _skinTris;
 
-  /// _clothLift is how far over the body's own clothes (VRoid's, in its
-  /// mesh) a decal or paint lies: a little more than over clothes made to
-  /// fit. Much more (8 mm) and a decal floats visibly over the buttons and
-  /// frills it should lie among; checked across bodies, looks and angles,
-  /// nothing hides it at this lift.
+  /// _clothLift is how far over the body's own (VRoid mesh) clothes a decal
+  /// or paint lies: a little more than over made clothes. Much more (8 mm)
+  /// and a decal floats over the buttons and frills it should lie among; at
+  /// this lift nothing hides it across bodies, looks and angles.
   static const double _clothLift = 0.0012;
 
   Future<void> _decorate(List<CharacterDecal> decals,
@@ -1689,7 +1611,7 @@ class ShapedAvatar {
       final material = await _overlayMaterial(tex, layer: 1);
       final worn = _meshNode('decal-${d.id}', key, mesh, material, null, body);
       parent.add(worn.node);
-      // One laid meanwhile is taken off: never two of it, one lost.
+      // One laid meanwhile is taken off: never two of it, nor one lost.
       final was = _decals[d.id];
       if (was != null) _unwear(was);
       _decals[d.id] = worn;
@@ -1707,8 +1629,7 @@ class ShapedAvatar {
     _packed.remove(w.group);
   }
 
-  /// _skinMaterials are the skin's materials, each with the outline
-  /// drawn over the same geometry, if any.
+  /// _skinMaterials are the skin's materials, each with its outline, if any.
   List<(PreprocessedMaterial, PreprocessedMaterial?, VrmPrimitive)>
       _skinMaterials() {
     final mesh = _body?.mesh, w = wardrobe;
@@ -1775,16 +1696,16 @@ class ShapedAvatar {
         // A cool grey shade, so any colour of cloth darkens as cloth does.
         ..setVec3('shade_color_factor', vm.Vector3(0.48, 0.43, 0.48))
         ..setInt('alpha_mode', 0)
-        // Cloth has no rim of light, shine, glow or bumps of its own: the
-        // skin's warm rim round dark trousers is a glow, and its bumps laid
-        // out over a repeated pattern are specks.
+        // Cloth has no rim light, shine, glow or bumps: the skin's warm rim
+        // round dark trousers is a glow, and its bumps over a repeated
+        // pattern are specks.
         ..setFloat('normal_scale', 0)
         ..setVec3('parametric_rim_color_factor', vm.Vector3.zero())
         ..setVec3('matcap_factor', vm.Vector3.zero())
         ..setVec3('emissive_factor', vm.Vector3.zero());
     }
-    // The outline in a dark shade of the cloth, not the skin's: a light
-    // line round dark trousers is a glow.
+    // The outline a dark shade of the cloth, not the skin's: a light line
+    // round dark trousers is a glow.
     double linear(int shift) =>
         0.3 * math.pow(((g.colour >> shift) & 0xff) / 255, 2.2);
     outline?.parameters.setVec3(
@@ -1792,8 +1713,8 @@ class ShapedAvatar {
     return _meshNode('wear-${slot.name}', key, mesh, material, outline, body);
   }
 
-  /// _meshNode is [mesh] drawn in [material] (and [outline]), bound to the
-  /// body's bones beside it, as a node to add next to it.
+  /// _meshNode is [mesh] in [material] (and [outline]), bound to the body's
+  /// bones, as a node to add beside it.
   _Worn _meshNode(String name, String key, GarmentMesh mesh,
       PreprocessedMaterial material, PreprocessedMaterial? outline, Node body,
       {List<String>? joints}) {
@@ -1830,8 +1751,7 @@ class ShapedAvatar {
     return _Worn(key, scene, group, [material, if (outline != null) outline]);
   }
 
-  /// _setIndices draws [p] with [cut] of its triangles, and says whether
-  /// that is a change.
+  /// _setIndices draws [p] with [cut] of its triangles; true if that changed.
   bool _setIndices(VrmPrimitive p, Uint32List cut) {
     final now = _indices[p];
     if (now != null &&
@@ -1842,9 +1762,8 @@ class ShapedAvatar {
     return true;
   }
 
-  /// _showOwn shows the body's own top, bottom and shoes where they are
-  /// worn, with their sleeves and trouser legs cut as asked, and hides them
-  /// where they are not.
+  /// _showOwn shows the body's own top, bottom and shoes where worn, sleeves
+  /// and legs cut as asked, and hides them where not.
   void _showOwn(CharacterOutfit o) {
     final mesh = _body?.mesh, w = wardrobe;
     if (mesh == null || w == null) return;
@@ -1887,8 +1806,8 @@ class ShapedAvatar {
   }
 }
 
-/// _Worn is a garment on the character: what it was made from, its node,
-/// its shape to be shaped with the body, and its materials to be lit.
+/// _Worn is a garment on the character: its source, node, shape to shape
+/// with the body, and materials to light.
 class _Worn {
   final String key;
   final Node node;

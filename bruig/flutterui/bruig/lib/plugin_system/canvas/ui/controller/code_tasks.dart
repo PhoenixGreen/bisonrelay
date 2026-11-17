@@ -1,9 +1,8 @@
 part of '../canvas_controller.dart';
 
-// Part of CanvasController: Code task cards (code_task_element.dart) --
-// put down beside a Code panel, kept the height of what they say, and
-// checked: their checks against the code as it is, and the project built
-// (a Flutter app compiled, a Dart program run) where a check asks.
+// Part of CanvasController: Code task cards (code_task_element.dart), put
+// beside a Code panel, kept the height of their text, and checked against
+// the code as it is, building it where a check asks.
 
 extension CanvasCodeTasks on CanvasController {
   /// _codeNow is a fingerprint of [code]'s files as they are: a check
@@ -11,8 +10,8 @@ extension CanvasCodeTasks on CanvasController {
   int _codeNow(CodeElement? code) =>
       code == null ? 0 : Object.hashAll([for (var f in code.files) f.text]);
 
-  /// codeTaskShowFor is how the stage shows card [e]: checked, if it was
-  /// against the code as it is now, and whether that built.
+  /// codeTaskShowFor is how the stage shows card [e]: checked (if against
+  /// the code as it is now) and whether that built.
   CodeTaskShow codeTaskShowFor(CodeTaskElement e) {
     if (_codeTaskBusy.contains(e.id)) {
       return const CodeTaskShow(checking: true);
@@ -23,8 +22,8 @@ extension CanvasCodeTasks on CanvasController {
     return CodeTaskShow(checked: true, built: done.$2);
   }
 
-  /// checkCodeTask checks card [e] against its Code panel's code: building
-  /// it first where one of its checks asks that it builds.
+  /// checkCodeTask checks card [e] against its Code panel's code, building
+  /// it first where a check asks.
   Future<void> checkCodeTask(CodeTaskElement e) async {
     if (_codeTaskBusy.contains(e.id)) return;
     var (code, run) = e.codeIn(_document);
@@ -88,8 +87,8 @@ extension CanvasCodeTasks on CanvasController {
     selectOnly(card.id);
   }
 
-  /// setCodeTask writes [e] over the card with its id, its height fitted
-  /// to what it now says.
+  /// setCodeTask writes [e] over the card with its id, its height fitted to
+  /// its text.
   void setCodeTask(CodeTaskElement e, {bool transient = false}) =>
       replaceElement(e.withBase(height: codeTaskFitHeight(e, e.width)),
           transient: transient);

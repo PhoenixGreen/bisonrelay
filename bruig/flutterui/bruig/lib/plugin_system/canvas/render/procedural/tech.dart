@@ -1,10 +1,9 @@
 part of 'generators.dart';
 
 // tech.dart is the Grids & tech family: dots, ruled lines, a honeycomb, a
-// circuit board and falling symbols. (Blockchain is in blockchain.dart.)
-//
-// Each style's settings default to what it drew before it had any, so older
-// documents look the same; every later addition is off by default.
+// circuit board and falling symbols (Blockchain is in blockchain.dart).
+// Each style's settings default to its original drawing, so older
+// documents look the same; every added setting is off by default.
 
 /// _dot draws one dot of radius [r] at [p] in the shape [shape] -- circle,
 /// square, diamond or cross.
@@ -91,10 +90,9 @@ void _dotGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _ledGrid is a dot-matrix wall: cells lit in clusters rather than at random.
-///
-/// A noise field sets each region's brightness and the per-cell hash only
-/// decides whether a cell reaches it, so lit cells form blocks and runs.
+/// _ledGrid is a dot-matrix wall, cells lit in clusters: a noise field sets
+/// each region's brightness and the per-cell hash only decides whether a
+/// cell reaches it, so lit cells form blocks and runs.
 void _ledGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var cell = _unit(rect, spec);
   var cols = (rect.width / cell).ceil() + 1;
@@ -217,10 +215,9 @@ void _lineGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _floorGrid is the grid laid flat and seen from just above it: lines
-/// running away to a point on the horizon, and lines across that crowd
-/// together as they get further off -- and, where asked, a sun setting
-/// behind it all.
+/// _floorGrid is the grid laid flat and seen from just above: lines running
+/// to a point on the horizon, lines across crowding together further off,
+/// and, where asked, a sun setting behind it.
 void _floorGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
     double step, int every, Paint thin, Paint thick) {
   var horizon = rect.top + rect.height * spec.p("horizon");
@@ -290,7 +287,6 @@ void _sun(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double horizon) {
     canvas.drawRect(Rect.fromLTWH(box.left, y, box.width, h), cut);
   }
   canvas.restore();
-  // The glow round it.
   canvas.drawCircle(
       c,
       r * 1.8,
@@ -513,7 +509,6 @@ void _circuit(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       }
     }
 
-    // Data on its way along the trace.
     if (pulses > 0 && hash(spec.seed + 61, i, 0) < pulses) {
       var total = 0.0;
       for (var k = 0; k + 1 < route.length; k++) {
@@ -604,9 +599,9 @@ void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var y = up ? rect.bottom - row * size : rect.top + row * size;
       if (y < rect.top - size || y > rect.bottom + size) continue;
 
-      // The glyph is chosen from the cell, not the place in the tail, so a
-      // column's characters stay put while the light runs down through them:
-      // falling light rather than scrolling text.
+      // The glyph is chosen by cell, not place in the tail, so a column's
+      // characters stay put while the light runs down them: falling light
+      // rather than scrolling text.
       var cellRow = row.floor();
       var gi = (hash(spec.seed + 31, ix,
                   cellRow + (spec.animated ? (t * speed).floor() : 0)) *
@@ -641,7 +636,6 @@ String? _glyphFont(ProceduralSpec spec) => switch (spec.choice("glyphFont")) {
       _ => null,
     };
 
-/// _symbolField scatters glyphs at varying size and angle.
 void _symbolField(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var glyphs = spec.glyphs.isEmpty ? defaultGlyphs : spec.glyphs;
   var rnd = SeededRandom(spec.seed);

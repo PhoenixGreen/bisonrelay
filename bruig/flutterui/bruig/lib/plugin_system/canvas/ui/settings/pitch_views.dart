@@ -5,10 +5,10 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
 // pitch_views.dart is a pitch camera's shots and saved views: the five
-// places a camera usually is for each View, and the ones somebody has kept.
+// usual camera places for each View, and kept ones.
 
-/// pitchCameraKeys are the settings a camera is: what a shot or a saved view
-/// puts in place, "zoom" being the spec's Size.
+/// pitchCameraKeys are the settings a camera is, which a shot or saved view
+/// sets; "zoom" is the spec's Size.
 const pitchCameraKeys = [
   "tiltV",
   "tiltH",
@@ -46,8 +46,8 @@ bool _sameCamera(Map<String, double> a, Map<String, dynamic> b) =>
       return v is num && ((a[k] ?? 0) - v).abs() < 0.01;
     });
 
-/// pitchShotDropdown is the five shots [spec]'s View offers, the one it is
-/// on picked out -- or Custom, once the camera has been moved off them.
+/// pitchShotDropdown is the five shots [spec]'s View offers, the current
+/// one picked, or Custom once the camera moves off them.
 Widget pitchShotDropdown(
     ProceduralSpec spec, ValueChanged<ProceduralSpec> onChanged) {
   var view = spec.choice("view");
@@ -69,9 +69,8 @@ Widget pitchShotDropdown(
   );
 }
 
-/// PitchSavedViews keeps cameras: the one in use saved under a name, and
-/// any saved one put back. Watches the saved views, which are shared by
-/// every pitch.
+/// PitchSavedViews keeps cameras: the current one saved under a name, and
+/// any saved one restored. Saved views are shared by every pitch.
 class PitchSavedViews extends StatefulWidget {
   final ProceduralSpec spec;
   final ValueChanged<ProceduralSpec> onChanged;
@@ -136,7 +135,7 @@ class _PitchSavedViewsState extends State<PitchSavedViews> {
               onPressed: name.trim().isEmpty
                   ? null
                   : () async {
-                      // The same name again is the same view, changed.
+                      // The same name again overwrites that view.
                       for (var p in saved.where((p) => p.name == name.trim())) {
                         await store.remove(p);
                       }

@@ -3,14 +3,11 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // image_strokes.dart is brushwork: paint on a paint layer, and retouching
-// (clone, heal, dodge, burn, blur) done to a picture.
-//
-// Kept as strokes rather than pixels: far smaller, and sharp at any export
-// size. A paint stroke's points are fractions of the picture's frame; a
-// retouching stroke's are fractions of the picture it is on, so it stays on
-// the blemish however the picture is moved or cropped.
+// (clone, heal, dodge, burn, blur) done to a picture. Kept as strokes, not
+// pixels: far smaller, and sharp at any export size. Paint points are
+// fractions of the frame; retouching points fractions of the picture, so
+// they stay on the blemish however the picture is moved or cropped.
 
-/// StrokeKind is what a stroke does.
 enum StrokeKind {
   /// paint lays colour on a paint layer; erase takes it off again.
   paint("Paint"),
@@ -39,13 +36,12 @@ enum StrokeKind {
   static StrokeKind fromName(String? name) =>
       values.firstWhere((k) => k.name == name, orElse: () => StrokeKind.paint);
 
-  /// retouches is whether the stroke is done to a picture rather than laid
-  /// on a paint layer.
+  /// retouches is whether it is done to a picture, not a paint layer.
   bool get retouches => this != paint && this != erase;
 }
 
 /// BrushTip is the shape of a brush and how the pen drives it. The default
-/// is the plain round brush, which a stroke saved without a tip draws with.
+/// is the plain round brush, which a stroke saved without a tip uses.
 class BrushTip {
   /// roundness is how round the tip is: 1 a circle, near 0 a flat nib.
   final double roundness;
@@ -65,8 +61,8 @@ class BrushTip {
   /// grain leaves gaps in the paint, as a pencil or chalk on paper does.
   final double grain;
 
-  /// pressureSize is how much a light touch thins the line, and
-  /// pressureOpacity how much it fades it -- nothing at 0, all of it at 1.
+  /// pressureSize is how much a light touch thins the line, pressureOpacity
+  /// how much it fades it: nothing at 0, all of it at 1.
   final double pressureSize;
   final double pressureOpacity;
 
@@ -74,8 +70,7 @@ class BrushTip {
   /// full line sooner, over 1 it takes a firm press to get there.
   final double pressureCurve;
 
-  /// tiltSize widens the line as the pen leans over, as the side of a
-  /// pencil does.
+  /// tiltSize widens the line as the pen leans over, as a pencil's side does.
   final double tiltSize;
 
   const BrushTip({
@@ -250,12 +245,10 @@ const brushPresets = [
       tip: BrushTip(spacing: 0.6, scatter: 1.2, grain: 0.3, pressureSize: 0.5)),
 ];
 
-/// StrokeMark is one stroke of a brush.
 class StrokeMark {
   final StrokeKind kind;
 
-  /// points are the path, as fractions -- of the frame for paint, of the
-  /// picture for retouching.
+  /// points are the path, in fractions of the frame (paint) or picture.
   final List<Offset> points;
 
   /// pressure is the pen's at each point, 0 to 1; empty for a mouse.
@@ -272,8 +265,7 @@ class StrokeMark {
   /// colour is paint's colour.
   final Color colour;
 
-  /// source is where a clone copies from, as how far from the stroke: the
-  /// stroke's points plus this are what is copied.
+  /// source is where a clone copies from, offset from the stroke's points.
   final Offset source;
 
   final BrushTip tip;
@@ -368,8 +360,8 @@ class StrokeMark {
   }
 }
 
-/// strokesFromJson reads a list of strokes, skipping what is not one --
-/// and no more than [maxStrokes] of them.
+/// strokesFromJson reads a list of strokes, skipping what is not one, and
+/// no more than [maxStrokes] of them.
 List<StrokeMark> strokesFromJson(Object? raw) => [
       if (raw is List)
         for (var s in raw.take(maxStrokes))
@@ -380,9 +372,8 @@ List<StrokeMark> strokesFromJson(Object? raw) => [
 const int maxStrokes = 20000;
 
 /// _withinReach is [points] cut off once the line through them has gone
-/// [_longest] frame-widths: the brush lays a dab every half pixel along
-/// it, and a received stroke zig-zagging across the frame would otherwise
-/// be a billion of them.
+/// [_longest] frame-widths: the brush lays a dab every half pixel, and a
+/// received stroke zig-zagging across the frame could be a billion of them.
 List<Offset> _withinReach(List<Offset> points) {
   var gone = 0.0;
   for (var i = 1; i < points.length; i++) {

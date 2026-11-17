@@ -12,12 +12,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// button_settings.dart is a button's settings: the Text panel's shape (see
-// element_panel.dart) -- a quick strip of what it says and does, and its
-// fill; Content (its words and what pressing it does) and Look (its label's
-// type, its box, its colours under the pointer, its looks).
+// button_settings.dart is a button's panel (see element_panel.dart): quick
+// strip, Content (words and action) and Look (type, box, hover colours).
 
-/// buttonPanel is [e]'s panel.
 Widget buttonPanel(
     BuildContext context,
     CanvasController controller,
@@ -145,17 +142,14 @@ Widget buttonPanel(
       ]);
 }
 
-/// _playable is whether a button's media actions can be aimed at [e]: a
-/// sound, or a video made from files. A linked video is somebody else's
-/// player, which a button on this canvas cannot start or stop.
+/// _playable is whether media actions can target [e]: a sound, or a file
+/// video. A linked video is another site's player, beyond our control.
 bool _playable(CanvasElement e) =>
     e is AudioElement || (e is VideoElement && !e.isLink);
 
-/// buttonActionControls are what a press does -- a button's, or an element
-/// pressed in a game -- and what it does it to: a frame, a sound, an
-/// element other than [selfId], a scene, a link. [set] writes the change;
-/// live, for a field being typed into, with [commit] when it is left. [key],
-/// where given, starts the Does dropdown's key.
+/// buttonActionControls are what a press does (a button's, or a game
+/// element's) and its target. [set] writes live, [commit] when the field is
+/// left; [key] keys the Does dropdown.
 List<Widget> buttonActionControls(
     CanvasController controller,
     ButtonAction action,
@@ -182,9 +176,8 @@ List<Widget> buttonActionControls(
         onChanged: (v) => set(action.copyWith(frame: v.round()), live: true),
         onCommit: commit,
       ),
-    // A sound is an Audio element, on this canvas or on the master under
-    // it -- a button on page three can pause the music the master plays
-    // on every page.
+    // A sound is an Audio element on this canvas or the master under it, so
+    // a button on page three can pause the master's music.
     if (action.kind.needsSound)
       CanvasDropdown<String>(
         key: const ValueKey("buttonSound"),
@@ -199,8 +192,8 @@ List<Widget> buttonActionControls(
             for (var other in controller.document.masterScene?.elements ??
                 const <CanvasElement>[])
               if (_playable(other)) (other.id, "${other.name} (master)"),
-          // What the background plays: a button that stops the music is
-          // most of what a music bed needs.
+          // What the background plays: a stop-the-music button is most of
+          // what a music bed needs.
           for (var other in controller.document.drawnBackground.media)
             (other.id, other.name),
         ],
@@ -218,9 +211,8 @@ List<Widget> buttonActionControls(
         ],
         onChanged: (v) => set(action.copyWith(elementId: v)),
       ),
-    // Which canvas of this document to show. Held by id rather than by
-    // place in the order, so rearranging the scenes does not quietly point
-    // the button at a different one.
+    // Which scene to show, held by id rather than order, so reordering the
+    // scenes cannot silently retarget the button.
     if (action.kind.needsScene)
       CanvasDropdown<String>(
         key: const ValueKey("buttonScene"),

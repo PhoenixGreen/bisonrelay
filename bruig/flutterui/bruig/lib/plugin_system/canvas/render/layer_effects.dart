@@ -6,14 +6,12 @@ import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
-// layer_effects.dart draws a texture layer -- see shaders/texture.frag -- and
-// a layer with its effects: a shadow and a glow under it, a blur through it,
-// an inner shadow over it. See image_effects.dart for the settings.
-//
-// Shadows, glows and plain blurs are compositor layers with an image
-// filter. Motion and zoom blurs and the colour fringe draw the same picture
-// several times, shifted or scaled, so for them the layer is rasterised
-// once at the canvas's drawn size and kept in [RasterCache].
+// layer_effects.dart draws a texture layer (shaders/texture.frag) and a
+// layer with its effects (image_effects.dart): a shadow and glow under it, a
+// blur through it, an inner shadow over it. Shadows, glows and plain blurs
+// are compositor layers with an image filter; motion and zoom blurs and the
+// colour fringe draw the picture several times, so the layer is rasterised
+// once at the drawn size and kept in [RasterCache].
 
 /// TextureShader loads shaders/texture.frag once; [ready] turns true when it
 /// has, so painters waiting on it can repaint.
@@ -23,9 +21,8 @@ class TextureShader {
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
   static Future<void> load() async {
-    // The program, not the loading, is what is kept: a load begun
-    // where it never finishes (a test's own time, gone) would leave
-    // every later wait for it waiting for ever.
+    // The program, not the loading, is kept: a load begun where it never
+    // finishes (a finished test's clock) would leave later waits hanging.
     if (_program != null || _unloadable) return;
     try {
       _program = await ui.FragmentProgram.fromAsset("shaders/texture.frag");
@@ -37,8 +34,8 @@ class TextureShader {
   }
 }
 
-/// paintTexture draws [spec] across [frame], laid on by [blendMode] --
-/// dstOut, for one taking its marks out of what is under it (Wear).
+/// paintTexture draws [spec] across [frame], laid on by [blendMode]: dstOut
+/// for one taking its marks out of what is under it (Wear).
 void paintTexture(ui.Canvas canvas, Rect frame, TextureSpec spec,
     {BlendMode blendMode = BlendMode.srcOver}) {
   var program = TextureShader._program;
@@ -81,10 +78,9 @@ void clearEffectRasters() {
   _loose.clear();
 }
 
-/// _raster is [content] -- covering [room] -- as pixels at the size [canvas]
-/// is drawn at, capped at 4096 a side and 16 megapixels. With a [key] it is
-/// kept in [RasterCache] against [from]; without, the last few are kept in
-/// [_loose] until they fall out.
+/// _raster is [content] (covering [room]) as pixels at the size [canvas] is
+/// drawn at, capped at 4096 a side and 16 megapixels. With a [key] it is kept
+/// in [RasterCache] against [from]; without, the last few are kept in [_loose].
 (ui.Image, Rect) _raster(ui.Canvas canvas, Rect room, ui.Picture content,
     String? key, List<Object?> from) {
   var scale = deviceScaleOf(canvas);
@@ -124,9 +120,8 @@ void clearEffectRasters() {
   return (made, src);
 }
 
-/// _towards is the offset [distance] along [angle] degrees -- the way a
-/// light at that angle throws a shadow: 135 is a light up and to the left,
-/// and a shadow down and to the right.
+/// _towards is the offset [distance] along [angle] degrees, the way a light
+/// at that angle throws a shadow: 135 is a light up and to the left.
 Offset _towards(double angle, double distance) {
   var t = angle * math.pi / 180;
   return Offset(-math.cos(t) * distance, math.sin(t) * distance);
@@ -141,8 +136,7 @@ ui.ImageFilter? _chain(List<ui.ImageFilter> filters) {
   return f;
 }
 
-/// _brightnessAsShape is a picture as its brightness: solid where it is
-/// white, gone where it is black.
+/// _brightnessAsShape is a picture as its brightness: white solid, black gone.
 const _brightnessAsShape = ColorFilter.matrix([
   0, 0, 0, 0, 255, //
   0, 0, 0, 0, 255, //
@@ -150,15 +144,12 @@ const _brightnessAsShape = ColorFilter.matrix([
   0.2126, 0.7152, 0.0722, 0, 0, //
 ]);
 
-/// paintWithEffects draws [content] -- a layer, covering [room] -- with
-/// [effects], [unit] canvas units to a thousandth of the frame's shorter
-/// side. [key] names what is rasterised, drawn from [from], so it is kept.
-///
-/// [lightening] is the blend of a layer laid with one that only lightens
-/// (screen, add). Such a layer shows where it is bright, not where it is
-/// drawn, so its shadow and glow take their shape from its brightness and
-/// it is laid over them with that blend; otherwise a screened light on
-/// black would glow as a rectangle, its black covering the glow.
+/// paintWithEffects draws [content] (a layer, covering [room]) with [effects],
+/// [unit] canvas units to a thousandth of the frame's shorter side. [key] names
+/// what is rasterised, drawn from [from], so it is kept. [lightening] is the
+/// blend of a layer that only lightens (screen, add): it shows where it is
+/// bright, so its shadow and glow take their shape from its brightness;
+/// otherwise a screened light on black would glow as a rectangle.
 void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
     List<LayerEffect> effects, ui.Picture content,
     {String? key, List<Object?> from = const [], BlendMode? lightening}) {
@@ -230,7 +221,7 @@ void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
     var d = _towards(f.value("angle"), f.value("distance") * unit);
     var sigma = f.value("blur") * unit / 2;
     // Only on the layer: the colour everywhere, with the layer's own shape
-    // -- moved and softened -- cut out of it, laid on where the layer is.
+    // (moved and softened) cut out of it, laid on where the layer is.
     canvas.saveLayer(reach, Paint()..blendMode = BlendMode.srcATop);
     canvas.drawRect(reach, Paint()..color = colour);
     canvas.saveLayer(
@@ -249,8 +240,8 @@ void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
   canvas.restore();
 }
 
-/// _paintCopies draws [image] -- the layer, rasterised over [room] -- as
-/// the copies its motion blur, zoom blur and fringe make of it, averaged.
+/// _paintCopies draws [image] (the layer, rasterised over [room]) as the
+/// averaged copies its motion blur, zoom blur and fringe make.
 void _paintCopies(ui.Canvas canvas, Rect room, double unit,
     List<LayerEffect> effects, ui.Image image, Rect src) {
   // Every copy of each effect, as where it goes and how it is coloured.

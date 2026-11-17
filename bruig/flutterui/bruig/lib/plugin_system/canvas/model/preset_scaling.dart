@@ -4,16 +4,14 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 
-// preset_scaling.dart is a saved design arriving on a canvas of another size.
-// A preset carries the page it was made on and is scaled by the ratio of the
-// two pages, so it looks as it did where it was made. The same rule as
-// CanvasSize.scalesDesign: a bigger page is a resolution, not more room.
+// preset_scaling.dart is a saved design arriving on a canvas of another
+// size. A preset carries the page it was made on and is scaled by the ratio
+// of the two pages, as CanvasSize.scalesDesign: a bigger page is a
+// resolution, not more room.
 
 /// presetScale is how much a design made on [from] is sized by to sit on
-/// [to].
-///
-/// The smaller of the two ratios, so it fits across and down. One where the
-/// source page is unknown (older presets).
+/// [to]: the smaller of the two ratios, so it fits across and down; 1 where
+/// the source page is unknown.
 double presetScale(Size? from, Size to) {
   if (from == null || from.width <= 0 || from.height <= 0) return 1;
   if (to.width <= 0 || to.height <= 0) return 1;
@@ -22,10 +20,9 @@ double presetScale(Size? from, Size to) {
   return (by - 1).abs() < 0.001 ? 1 : by;
 }
 
-/// scaledElement is [element] at [by] times the size, place and all.
-///
-/// The box is scaled here and its contents (type, spacing, padding) by
-/// [CanvasElement.scaledBy]; scaling the box alone would stretch it.
+/// scaledElement is [element] at [by] times the size, place and all. The
+/// box is scaled here and its contents by [CanvasElement.scaledBy]; scaling
+/// the box alone would stretch it.
 CanvasElement scaledElement(CanvasElement element, double by) {
   if (by == 1) return element;
   var inner = element.scaledBy(by);
@@ -50,7 +47,6 @@ CanvasElement centredOn(CanvasElement element, Size on) => element.withBase(
       y: (on.height - element.height) / 2,
     );
 
-/// sizeFromJson reads a page size written by [sizeToJson].
 Size? sizeFromJson(dynamic json) {
   if (json is! Map) return null;
   var w = json["w"], h = json["h"];
@@ -58,6 +54,6 @@ Size? sizeFromJson(dynamic json) {
   return Size(w.toDouble(), h.toDouble());
 }
 
-/// sizeToJson is the page a preset was made on, as it is saved.
+/// sizeToJson is the page a preset was made on, as saved.
 Map<String, dynamic> sizeToJson(Size size) =>
     {"w": size.width, "h": size.height};

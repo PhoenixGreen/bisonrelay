@@ -1,9 +1,7 @@
-// character_look.dart is how a new 3D character is drawn: its lines, its
-// fill, its shading and light, its colour, and the finish of the page. 2D and
-// 3D are both looks of the same character. What the dials do is in
-// render/vrm/vrm_look.dart.
+// character_look.dart is how a 3D character is drawn: lines, fill,
+// shading, light, colour and finish; 2D and 3D are both looks. The dials
+// work in render/vrm/vrm_look.dart.
 
-/// CharacterLook is one look. Immutable.
 class CharacterLook {
   /// lineStyle is none, clean, pencil or brush.
   final String lineStyle;
@@ -17,8 +15,7 @@ class CharacterLook {
   final int lineColour;
   final String lineMode;
 
-  /// fill is painted (the textures as made) or flat (fewer tones), with
-  /// [levels] how few.
+  /// fill is painted (textures as made) or flat, [levels] tones.
   final String fill;
   final double levels;
 
@@ -160,8 +157,7 @@ class CharacterLook {
         "paperColour": paperColour
       };
 
-  /// fromJson reads what toJson wrote, each setting missing or wrong
-  /// taken from [base].
+  /// fromJson reads toJson's output, missing or bad settings from [base].
   factory CharacterLook.fromJson(Map<String, dynamic> j,
       [CharacterLook base = const CharacterLook()]) {
     final n = {

@@ -21,14 +21,12 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_scene.dart';
 // elements standing on it are on the page. Both come from the one camera at
 // the one frame, so feet stay on the floor where it is drawn.
 
-/// stageView is how [stage]'s camera sees it on [frame].
 StageView stageView(StageElement stage, int frame) =>
     StageView(stage.bounds, stage.cameraAt(frame));
 
-/// paintStage draws [stage] as it is seen on [frame], filling [box]: its
-/// set drawn in 3D by [images] where it keeps stages (stage_scene.dart),
-/// and a sketch of it -- the sky, the floor and the wall, plain -- where 3D
-/// cannot be drawn, or not yet.
+/// paintStage draws [stage] as seen on [frame], filling [box]: its set in
+/// 3D by [images] where it keeps stages (stage_scene.dart), and a plain
+/// sketch of sky, floor and wall where 3D cannot be drawn, or not yet.
 void paintStage(Canvas canvas, Rect box, StageElement stage, int frame,
     {CanvasImageSource? images}) {
   var source = images is CanvasStageSource ? images as CanvasStageSource : null;
@@ -84,10 +82,10 @@ ColorFilter? lightFilter(StageLight light) => light.strength <= 0
     : ColorFilter.mode(
         light.tint.withValues(alpha: light.strength), BlendMode.srcATop);
 
-/// stageNamed is the stage called [id], as it is drawn: a Background
-/// element showing one, or the canvas's own background where [backdrop] is
-/// one -- stretched to [page]. Null where there is no such stage, or it is
-/// showing its pattern instead.
+/// stageNamed is the stage called [id], as drawn: a Background element
+/// showing one, or the canvas's own background where [backdrop] is one,
+/// stretched to [page]. Null where there is no such stage, or it shows its
+/// pattern instead.
 StageElement? stageNamed(String id, Iterable<CanvasElement> elements,
     {CanvasBackground? backdrop, Rect? page}) {
   if (id == backgroundStageId) {
@@ -97,8 +95,8 @@ StageElement? stageNamed(String id, Iterable<CanvasElement> elements,
   for (var el in elements) {
     if (el.id != id) continue;
     if (el is BackgroundElement && el.isStage) return el.staged;
-    // A stage made in code, as the tests make one. A saved one is read as
-    // the Background element it has become.
+  // A stage made in code, as tests make one; a saved stage is read as a
+  // Background element.
     if (el is StageElement) return el;
   }
   return null;
@@ -115,9 +113,9 @@ List<(String, String)> stagesIn(Iterable<CanvasElement> elements,
           (el.id, el.name),
     ];
 
-/// canStand is whether [e] can stand on a stage: anything on the canvas,
-/// but for a stage itself and scenery that is behind everything -- and a
-/// sound on the timeline, which is not on the canvas at all.
+/// canStand is whether [e] can stand on a stage: anything on the canvas
+/// but a stage itself and scenery behind everything (a sound on the
+/// timeline is not on the canvas at all).
 bool canStand(CanvasElement e) =>
     e is! StageElement &&
     e is! ParallaxElement &&
@@ -195,10 +193,9 @@ Staged? staged(CanvasElement e, Iterable<CanvasElement> elements, int frame,
     return Staged(
         spot, stage, view, quad, _around(quad), feet.depth, null, feet.page);
   }
-  // A flat: its own box, its longer side as long as the spot says, stood
-  // up, turned to the camera, laid down or hung on the wall. A straight
-  // line's box has no height, or no width: it is given some, round its
-  // stroke, for a plane to stand in.
+  // A flat: its own box, longer side as long as the spot says, stood up,
+  // turned to the camera, laid down or hung on the wall. A straight line's
+  // box is given some height or width round its stroke, for a plane.
   var rect = Rect.fromLTWH(e.x, e.y, e.width, e.height);
   var thin = e is LineElement ? math.max(e.strokeWidth * 4, 8.0) : 1.0;
   if (rect.width < thin) {
@@ -269,13 +266,11 @@ Rect _around(List<Offset> points) => Rect.fromLTRB(
     points.map((p) => p.dx).reduce(math.max),
     points.map((p) => p.dy).reduce(math.max));
 
-/// inStageOrder is [elements] in the order they are drawn: each element
-/// standing on a stage taken out of its place and drawn just after its
-/// stage, the furthest from the camera first, so the nearer stand in front
-/// whatever order they were added in and however the camera moves.
-///
-/// Those on the background's own stage come first of all, since that stage
-/// is behind everything.
+/// inStageOrder is [elements] in drawing order: each element standing on a
+/// stage drawn just after its stage, furthest from the camera first, so the
+/// nearer stand in front however the camera moves. Those on the
+/// background's own stage come first, since that stage is behind
+/// everything.
 List<CanvasElement> inStageOrder(List<CanvasElement> elements, int frame,
     {CanvasBackground? backdrop, Rect? page}) {
   var onStages = <String, List<(double, CanvasElement)>>{};

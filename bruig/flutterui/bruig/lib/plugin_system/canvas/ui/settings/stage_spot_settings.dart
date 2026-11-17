@@ -7,12 +7,11 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:flutter/material.dart';
 
-// stage_spot_settings.dart is where an element stands on a 3D stage, set on
-// the element: on the page or on a stage, where on its floor, how big, which
-// way round, and how it stands. See stage_spot.dart.
+// stage_spot_settings.dart is where an element stands on a 3D stage: floor
+// place, size, facing and stance. See stage_spot.dart.
 
-/// stageSpotSettings is [e]'s place on a stage, as a section: nothing where
-/// it cannot stand on one, or there is no stage to stand on.
+/// stageSpotSettings is [e]'s place on a stage as a section: nothing where
+/// it cannot stand on one or there is no stage.
 List<Widget> stageSpotSettings(
   BuildContext context,
   CanvasController controller,
@@ -32,8 +31,8 @@ List<Widget> stageSpotSettings(
     commit();
   }
 
-  // Where it stands on this frame: its own spot, or its keys' -- and set,
-  // this frame's key where it is keyed.
+  // Where it stands this frame (its own spot or its keys'), and when set,
+  // this frame's key where keyed.
   final shown = e.spotAt(controller.frame) ?? spot;
   void live(StageSpot s) {
     begin();
@@ -84,7 +83,7 @@ List<Widget> stageSpotSettings(
                       now(e.withBase(spot: spot.copyWith(stage: id)));
                       return;
                     }
-                    // Each one put a step along from the last, not on top of it.
+                    // Each placed a step along from the last, not on top.
                     final already = doc.elements
                         .where((x) => x.base.spot?.stage == id)
                         .length;

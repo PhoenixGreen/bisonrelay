@@ -11,16 +11,10 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
-// dsp.dart is the arithmetic a mix is made of: filters, a compressor, a
-// limiter, a channel strip, the master, and a loudness meter.
-//
-// It is the one definition of how a mix sounds: the editor plays through it
-// and exports render with it, so the two cannot disagree.
-//
-// Pure Dart with no Flutter, so a render can run in an isolate. Every
-// processor works on blocks of stereo audio (two Float32Lists) and keeps its
-// state between blocks, so a sound processed in pieces matches one
-// processed whole.
+// dsp.dart is the arithmetic of a mix: filters, compressor, limiter, strip,
+// master and loudness meter, the one definition editor and exports share.
+// Pure Dart, so a render can run in an isolate; processors keep state
+// between stereo blocks, so pieces match a whole.
 
 /// mixRate is the sample rate everything is mixed at.
 const int mixRate = 48000;
@@ -38,9 +32,8 @@ class Biquad {
         a1 = c[3],
         a2 = c[4];
 
-  /// carryFrom takes on [was]'s state: a section retuned goes on from where
-  /// the one it replaces was, rather than from silence -- a knob turned
-  /// does not click.
+  /// carryFrom takes on [was]'s state, so a retuned section goes on rather
+  /// than starting from silence, and a turned knob does not click.
   void carryFrom(Biquad was) {
     _l1 = was._l1;
     _l2 = was._l2;
@@ -69,8 +62,8 @@ class EqProcessor {
   final List<Biquad> _sections;
   final double _gain;
 
-  /// With [carry], the EQ it replaces, its sections go on from that one's
-  /// state where they are the same sections (see Biquad.carryFrom).
+  /// With [carry], the EQ it replaces, matching sections go on from its
+  /// state (see Biquad.carryFrom).
   EqProcessor(Eq eq, {EqProcessor? carry})
       : _sections = [
           for (var c in eqBiquads(eq, mixRate.toDouble())) Biquad(c)
@@ -91,16 +84,14 @@ class EqProcessor {
   }
 }
 
-/// Compressor is a Dynamics: a peak detector across both sides (so the
-/// stereo picture does not wander), the static curve of
-/// [Dynamics.reducedDb], smoothed by the attack and release in decibels,
-/// then the makeup and the dry/wet mix.
+/// Compressor is a Dynamics: a peak detector over both sides (a still
+/// stereo picture), [Dynamics.reducedDb] smoothed in dB, makeup, dry/wet.
 class Compressor {
   final Dynamics d;
   final double _attack, _release, _makeup;
   double _reduction;
 
-  /// source is the channel it listens to rather than its own sound (see
+  /// source is the channel it listens to instead of its own sound (see
   /// Dynamics.sidechain), fed into [key] before each block.
   final String? source;
   final SideKey key = SideKey();
@@ -108,8 +99,8 @@ class Compressor {
   /// reductionDb is how many decibels it is taking off now: its meter.
   double get reductionDb => _reduction;
 
-  /// With [carry], the one it replaces, it goes on turning down as far as
-  /// that one was, so a knob turned does not jump the level.
+  /// With [carry], the one it replaces, it goes on turning down as far, so
+  /// a turned knob does not jump the level.
   Compressor(this.d, {Compressor? carry})
       : _attack = _coefficient(d.attackMs, mixRate.toDouble()),
         _release = _coefficient(d.releaseMs, mixRate.toDouble()),
@@ -123,8 +114,7 @@ class Compressor {
       var peak = key.level(i, math.max(l[i].abs(), r[i].abs()));
       var level = peak <= 1e-9 ? -180.0 : 20 * math.log(peak) / math.ln10;
       var want = level - d.reducedDb(level);
-      // Down quickly, back slowly: the attack when it has to turn down
-      // more, the release when less.
+      // Attack when it must turn down more, release when less.
       var k = want > _reduction ? _attack : _release;
       _reduction = want + k * (_reduction - want);
       var g = dbToGain(-_reduction) * _makeup;
@@ -136,9 +126,8 @@ class Compressor {
   }
 }
 
-/// Limiter holds every peak under its ceiling: it looks a few milliseconds
-/// ahead, so the turn-down is under way before the peak arrives rather than
-/// clipping its front, and lets go over the release.
+/// Limiter holds every peak under its ceiling, looking a few ms ahead so
+/// the turn-down starts before the peak instead of clipping its front.
 class Limiter {
   final double ceiling;
   final int _ahead;
@@ -147,26 +136,21 @@ class Limiter {
   int _at = 0;
   double _gain = 1;
 
-  /// _loudest is the loudest in [_peaks] and _loudestAt where it is: kept
-  /// as each sample comes, the window looked through again only when the
-  /// loudest leaves it -- rather than at every sample (Ken's systems
-  /// review, 2026-11-08), for the same gain.
+  /// _loudest is the loudest in [_peaks] and _loudestAt where: the window is
+  /// rescanned only when the loudest leaves it, not every sample.
   double _loudest = 0;
   int _loudestAt = 0;
 
-  /// least is the lowest gain of the last block: how far it turned the
-  /// sound down, one for not at all.
+  /// least is the lowest gain of the last block, one for none.
   double least = 1;
 
-  /// With [carry], the one it replaces, what that one held back is still
-  /// heard and its gain goes on from where it was -- where the lookahead
-  /// is as long; a new one would drop the few milliseconds in it.
+  /// With [carry], the one it replaces, its held samples are still heard
+  /// and its gain goes on, where the lookahead matches.
   Limiter(double ceilingDb,
       {double aheadMs = 5, double releaseMs = 50, Limiter? carry})
       : ceiling = dbToGain(ceilingDb),
         _ahead = math.max(1, (aheadMs / 1000 * mixRate).round()),
-        // A quarter of the lookahead: all but settled by the time the peak
-        // that asked for it is heard.
+        // A quarter of the lookahead: all but settled when the peak lands.
         _attack = _coefficient(aheadMs / 4, mixRate.toDouble()),
         _release = _coefficient(releaseMs, mixRate.toDouble()),
         _dl = Float32List(math.max(1, (aheadMs / 1000 * mixRate).round())),
@@ -186,15 +170,15 @@ class Limiter {
   void process(Float32List l, Float32List r, int n) {
     least = 1;
     for (var i = 0; i < n; i++) {
-      // What comes in now is heard [_ahead] samples later; the gain is
-      // worked out from the loudest of everything in that window.
+      // Heard [_ahead] samples later; the gain follows the loudest in that
+      // window.
       var peak = math.max(l[i].abs(), r[i].abs());
       _peaks[_at] = peak;
       if (peak >= _loudest) {
         _loudest = peak;
         _loudestAt = _at;
       } else if (_loudestAt == _at) {
-        // The loudest has just left the window: the next loudest found.
+        // The loudest has left the window: find the next.
         _loudest = 0;
         for (var j = 0; j < _peaks.length; j++) {
           if (_peaks[j] > _loudest) {
@@ -218,13 +202,9 @@ class Limiter {
   }
 }
 
-/// StripProcessor is a channel strip: its devices, EQ and compressor in the
-/// order set, then the fader and balance. A muted strip is silent.
-/// carriedDevice is the running processor, among [was] (the specs a
-/// chain was built from) and [chain] (what runs them), that device [id]
-/// can go on as, now set as [now] -- the same kind, listening to the same
-/// channel, retuned where it can be -- or null for a new one. So a chain
-/// rebuilt keeps its delays' and reverbs' tails.
+/// carriedDevice is the processor among [was] and [chain] device [id], now
+/// [now], can go on as (same kind and source, retuned), or null, so a
+/// rebuilt chain keeps its tails.
 DeviceProcessor? carriedDevice(List<MixDevice>? was,
     List<DeviceProcessor?>? chain, String id, MixDevice now) {
   if (was == null || chain == null || !now.on) return null;
@@ -234,64 +214,59 @@ DeviceProcessor? carriedDevice(List<MixDevice>? was,
   if (running == null || !then.on || then.kind != now.kind) return null;
   if (then.source != now.source) return null;
   if (running is Tunable) {
-    // Set again even as it is: an LFO may have left it somewhere else.
+    // Set even if unchanged: an LFO may have moved it.
     (running as Tunable).tune(now);
     return running;
   }
   return then == now ? running : null;
 }
 
+/// StripProcessor is a channel strip: devices, EQ and compressor in order,
+/// then fader and balance.
 class StripProcessor {
   ChannelMix _mix;
   final EqProcessor _eq;
   final Compressor? _comp;
 
-  /// _chain is a processor for each of the channel's devices, in order,
-  /// null for one switched off.
+  /// _chain is a processor per device, in order, null for one switched off.
   final List<DeviceProcessor?> _chain;
 
   /// _gl and _gr are the levels the last block ended on (see [level]).
   double _gl, _gr;
 
-  /// _clock is how many seconds the strip has run, for its LFOs; carried
-  /// on when the strip is rebuilt, so they do not jump.
+  /// _clock is the seconds the strip has run, for its LFOs; carried over
+  /// on a rebuild so they do not jump.
   double _clock = 0;
 
-  /// _moved are the devices, by place, an LFO moved on the last block: let
-  /// go of, each goes back to where it is set. _movedInner likewise, for
-  /// devices in a split's branches: (split's place, branch, place in it).
+  /// _moved are the devices an LFO moved last block, by place; let go, each
+  /// returns to its setting. _movedInner is split branches' (place, branch).
   Set<int> _moved = {};
   Set<(int, int, int)> _movedInner = {};
 
-  /// tapping is whether shape notes [taps]: on while a chain's meters
-  /// between devices are on screen, as measuring costs a pass per step.
+  /// tapping is whether shape notes [taps]: on while the chain's meters are
+  /// on screen, as measuring costs a pass per step.
   bool tapping = false;
 
-  /// taps are the peaks, left and right, at each step of the last block's
-  /// shape: coming in, after each device in order (an off or a listening
-  /// device passes it on as it was), then after the EQ and the compressor
-  /// in the order they ran. Empty when not [tapping], or muted.
+  /// taps are the left and right peaks at each step of the last block (in,
+  /// after each device, EQ, compressor). Empty when not [tapping] or muted.
   List<(double, double)> taps = const [];
 
-  /// scopes are the devices of its chain, by step (a device's id, or the
-  /// EQ's or compressor's), whose sound in and out is kept for their
-  /// screens: see device_scope.dart. Set by its graph each block.
+  /// scopes are the chain's devices, by step id, whose sound in and out is
+  /// kept for their screens (see device_scope.dart). Set by its graph.
   Map<String, DeviceScope> scopes = const {};
 
-  /// listenAt, set, is the step of its chain heard in place of its end: the
-  /// sound coming in (nought), or after that many steps -- the prototype's
-  /// "Listen from here". Set by its graph each block.
+  /// listenAt, set, is the step heard in place of the chain's end: the
+  /// sound coming in (nought), or after that many steps. Set by its graph.
   int? listenAt;
   Float32List _heardL = Float32List(0), _heardR = Float32List(0);
   final SideRunner _sides = SideRunner();
 
-  /// _eqSides and _compSides run its EQ and compressor on what they work on
-  /// -- the whole sound, its middle or its sides (Eq.stereo).
+  /// _eqSides and _compSides run the EQ and compressor on the whole sound,
+  /// its middle or its sides (Eq.stereo).
   final SideRunner _eqSides = SideRunner(), _compSides = SideRunner();
 
-  /// StripProcessor runs [mix]. With [carry], the strip it replaces, a
-  /// device of the same id, kind and source keeps running -- so a chain put
-  /// in another order keeps its delays' and reverbs' tails.
+  /// StripProcessor runs [mix]. With [carry], devices of the same id, kind
+  /// and source keep running, so a reordered chain keeps its tails.
   StripProcessor(ChannelMix mix, {StripProcessor? carry})
       : _mix = mix,
         _eq = EqProcessor(mix.eq, carry: carry?._eq),
@@ -302,8 +277,7 @@ class StripProcessor {
                     deviceIdAt(mix.devices, i), d) ??
                 DeviceProcessor.of(d)
         ],
-        // Its fader where the strip it replaces left it, ramped on from
-        // there (see level).
+        // The fader where the old strip left it, ramped on (see level).
         _gl = carry?._gl ?? (mix.mute ? 0 : mix.gains.$1),
         _gr = carry?._gr ?? (mix.mute ? 0 : mix.gains.$2) {
     tapping = carry?.tapping ?? false;
@@ -320,9 +294,8 @@ class StripProcessor {
 
   Compressor? get compressor => _comp;
 
-  /// retune takes [next], a channel differing only in levels, sends and
-  /// device settings, without resetting state. A changed device is tuned in
-  /// place where it is [Tunable], otherwise rebuilt.
+  /// retune takes [next], differing only in levels, sends and settings,
+  /// keeping state: [Tunable] devices tuned in place, others rebuilt.
   void retune(ChannelMix next) {
     for (var i = 0; i < _chain.length && i < next.devices.length; i++) {
       var was = _mix.devices[i], now = next.devices[i];
@@ -342,13 +315,10 @@ class StripProcessor {
     level(l, r, n);
   }
 
-  /// shape is the strip before its fader, where a pre-fader send is taken.
-  /// A muted strip still runs its chain -- its meters between devices show
-  /// the sound going through, as Ken expects -- and is silenced at its
-  /// fader (see level), its sends too (MixGraph._send).
+  /// shape is the strip before its fader, where pre-fader sends are taken. A
+  /// muted strip still runs, so its meters show, and is silenced at the fader.
   void shape(Float32List l, Float32List r, int n) {
-    // Moved by its modulators every so often within the block, so a knob
-    // they turn glides rather than steps; all at once with none.
+    // Modulated knobs move several times a block so they glide, not step.
     var every = _modulating ? modulationStep : n;
     List<(double, double)>? taps;
     for (var at = 0; at < n; at += every) {
@@ -372,9 +342,8 @@ class StripProcessor {
   bool get _modulating =>
       _mix.devices.any((d) => d.on && d.kind.modulates && d.mods.isNotEmpty);
 
-  /// _run runs [l] and [r] through the chain, in the order it was arranged
-  /// in: the EQ and the compressor among the devices wherever they were
-  /// put (see ChannelMix.chain). The peaks between each step, when tapping.
+  /// _run runs [l] and [r] through the chain as arranged (see
+  /// ChannelMix.chain), returning the peaks between steps when tapping.
   List<(double, double)>? _run(Float32List l, Float32List r, int n) {
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
     var listen = listenAt;
@@ -415,7 +384,7 @@ class StripProcessor {
       taps?.add(blockPeaks(l, r, n));
       if (listen == ++at) keep();
     }
-    // Heard from where it was listened to: what the rest did is not.
+    // Heard from the listening point: what the rest did is not.
     if (kept) {
       l.setRange(0, n, _heardL);
       r.setRange(0, n, _heardR);
@@ -423,10 +392,8 @@ class StripProcessor {
     return taps;
   }
 
-  /// _modulate turns the knobs the strip's LFOs move, for this block: each
-  /// moved device set to where it is plus what every LFO on it adds (see
-  /// modulation.dart), in place, keeping its state. One no longer moved
-  /// goes back to where it is set.
+  /// _modulate sets each LFO-moved device to its setting plus every LFO's
+  /// share (modulation.dart), in place; unmoved ones return to their setting.
   void _modulate() {
     var adds = <int, Map<String, double>>{};
     var inner = <(int, int, int), Map<String, double>>{};
@@ -440,12 +407,12 @@ class StripProcessor {
       } else if (d.kind == DeviceKind.follower &&
           at < _chain.length &&
           _chain[at] is Follower) {
-        // As loud as it heard on the last block.
+        // As loud as it heard last block.
         var now = (_chain[at] as Follower).level;
         v = (_) => now;
       } else if (d.kind == DeviceKind.macro) {
-        // Each its own knob's way, nought to all the way (twice the half
-        // travel an LFO swings).
+        // Each its own knob's way, nought to full (twice an LFO's half
+        // swing).
         v = (t) => macroValue(d.value, t.from) * 2;
       } else {
         continue;
@@ -475,7 +442,7 @@ class StripProcessor {
         add[t.param] = (add[t.param] ?? 0) + t.depth * v(t);
       }
     }
-    // Those in branches: let go of, set back; moved, set where moved.
+    // Branch devices: let go, set back; moved, set where moved.
     for (var (i, b, j) in _movedInner.difference(inner.keys.toSet())) {
       if (i >= _chain.length) continue;
       if (_chain[i] case SplitProcessor split) {
@@ -512,10 +479,8 @@ class StripProcessor {
     _moved = adds.keys.toSet();
   }
 
-  /// level is the fader and balance, ramped from the last block's over this
-  /// one so a level moved by automation does not click.
-  /// Muted, it ramps down to silence over the block, and back up when let
-  /// go, so a mute or a solo does not click.
+  /// level is the fader and balance, ramped over the block so automation,
+  /// mute and solo do not click.
   void level(Float32List l, Float32List r, int n) {
     var (gl, gr) = _mix.mute ? (0.0, 0.0) : _mix.gains;
     if (gl == _gl && gr == _gr) {
@@ -537,8 +502,8 @@ class StripProcessor {
   }
 }
 
-/// modulationStep is how many samples apart a strip's modulators move the
-/// knobs they turn: a millisecond and a third, too fine to hear as steps.
+/// modulationStep is how many samples apart modulators move their knobs:
+/// a millisecond and a third, too fine to hear as steps.
 const int modulationStep = 64;
 
 /// blockPeaks is the loudest sample of each side of a block, nought to one.
@@ -552,9 +517,8 @@ const int modulationStep = 64;
   return (math.min(pl, 1.0), math.min(pr, 1.0));
 }
 
-/// SideRunner runs a device on the whole sound, or -- its Works on set to
-/// Mid or Side, as the prototype's -- on only its middle (what both sides
-/// share) or only its sides (where they differ), the rest passing by.
+/// SideRunner runs a device on the whole sound, or (Works on Mid or Side)
+/// only the middle or only the sides, the rest passing by.
 class SideRunner {
   Float32List _a = Float32List(0), _b = Float32List(0), _rest = Float32List(0);
 
@@ -575,9 +539,8 @@ class SideRunner {
     }
   }
 
-  /// runOn runs [process] on the whole sound (mode 0), or on only its
-  /// middle (1) or its sides (2), the rest passing by: a device's Works on,
-  /// and a strip's EQ's and compressor's.
+  /// runOn runs [process] on the whole sound (mode 0), the middle (1) or
+  /// the sides (2), the rest passing by.
   void runOn(
       int mode,
       void Function(Float32List l, Float32List r, int n) process,
@@ -624,18 +587,14 @@ abstract class Sidechained implements DeviceProcessor {
   void feed(Float32List l, Float32List r, int n);
 }
 
-/// SideKey is what a gate or compressor listens to in place of its own
-/// sound: another channel's loudest side, sample by sample, for the block
-/// about to be processed. Not fed -- the channel gone -- it is not [fed],
-/// and the device listens to its own sound.
+/// SideKey is another channel's loudest side, per sample, that a gate or
+/// compressor hears instead of its own; not [fed], it hears its own.
 class SideKey {
   Float32List _peaks = Float32List(0);
   bool _fed = false;
 
-  /// _at and _length are where in the block fed it is read from, and how
-  /// long that block is: a strip whose modulators move its knobs runs its
-  /// chain a short stretch at a time (see StripProcessor.shape), each
-  /// stretch reading on from the last.
+  /// _at and _length are the read place and size of the fed block: a
+  /// modulated strip runs a short stretch at a time (StripProcessor.shape).
   int _at = 0, _length = 0;
 
   void feed(Float32List l, Float32List r, int n) {
@@ -648,7 +607,7 @@ class SideKey {
     _length = n;
   }
 
-  /// silence is a channel that is there with nothing on it this block.
+  /// silence is a channel there with nothing on it this block.
   void silence(int n) {
     if (_peaks.length < n) _peaks = Float32List(n);
     _peaks.fillRange(0, n, 0);
@@ -662,15 +621,14 @@ class SideKey {
   double level(int i, double own) =>
       _fed && _at + i < _length ? _peaks[_at + i] : own;
 
-  /// done is a stretch of [n] run: the next reads on from it, and with the
-  /// block it was fed run out, the next block is listened to afresh.
+  /// done is a stretch of [n] run: the next reads on, and once the fed
+  /// block runs out the next block is heard afresh.
   void done(int n) {
     _at += n;
     if (_at >= _length) _fed = false;
   }
 }
 
-/// DeviceProcessor is a device of a chain, running.
 abstract class DeviceProcessor {
   void process(Float32List l, Float32List r, int n);
 
@@ -694,8 +652,8 @@ abstract class DeviceProcessor {
       DeviceKind.vocoder => Vocoder(device),
       DeviceKind.tuner => PitchListener(pitch: true),
       DeviceKind.spectrum => PitchListener(),
-      // The latest of the sound, for the Scope over its Time and the
-      // Stereo Image over 20ms; a loudness meter.
+      // The latest of the sound for the Scope over its Time and the Stereo
+      // Image over 20ms; a loudness meter.
       DeviceKind.scope =>
         WaveTap(DeviceKind.scope, frames: WaveTap.framesOf(device)),
       DeviceKind.stereoImage =>
@@ -704,16 +662,15 @@ abstract class DeviceProcessor {
       // It makes no sound: it moves other devices' knobs (see shape).
       DeviceKind.lfo => null,
       DeviceKind.follower => Follower(device),
-      // Knobs only: what it turns, it turns (see shape).
+      // Knobs only (see shape).
       DeviceKind.macro => null,
       DeviceKind.split => SplitProcessor(device),
     };
   }
 }
 
-/// Reverb is Freeverb (Jezar's public-domain design: eight damped combs and
-/// four allpasses a side, the right's delays a little longer for width),
-/// scaled to 48kHz, with a pre-delay in front.
+/// Reverb is Freeverb (Jezar's public-domain design: eight combs and four
+/// allpasses a side) scaled to 48kHz, with a pre-delay.
 class Reverb implements DeviceProcessor, Tunable {
   static const _combs = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
   static const _allpasses = [556, 441, 341, 225];
@@ -724,8 +681,8 @@ class Reverb implements DeviceProcessor, Tunable {
   final List<_Comb> _cl, _cr;
   final List<_Allpass> _al, _ar;
 
-  /// _preL and _preR are as long as the longest pre-delay and read [_pre]
-  /// behind the write point, so changing the pre-delay reallocates nothing.
+  /// _preL and _preR are as long as the longest pre-delay, read [_pre]
+  /// behind the write point, so changing it reallocates nothing.
   final Float32List _preL, _preR;
   int _preAt = 0, _pre = 0;
 
@@ -822,10 +779,10 @@ class _Allpass {
 }
 
 /// Delay is an echo fed back through a low-pass, so each repeat is quieter
-/// and darker; with ping-pong, each repeat crosses to the other side.
+/// and darker; ping-pong crosses each repeat to the other side.
 class Delay implements DeviceProcessor, Tunable {
-  /// _l and _r are as long as the longest time and read [_time] behind the
-  /// write point. A changed time glides there, as a tape delay's does.
+  /// _l and _r are as long as the longest time, read [_time] behind the
+  /// write point. A changed time glides there, as on a tape delay.
   final Float32List _l, _r;
   final double _rate;
   late double _feedback, _wet, _dry, _cross, _lp, _to;
@@ -887,20 +844,19 @@ class Delay implements DeviceProcessor, Tunable {
 }
 
 /// MasterProcessor is the master strip: EQ and glue in the order set, the
-/// fader, a gain to bring the whole to its loudness target where one is
-/// asked for, and the limiter last.
+/// fader, a gain to the loudness target where asked, and the limiter last.
 class MasterProcessor {
   final MasterMix mix;
 
-  /// _g is the gain the last block ended on: the fader and normaliser,
-  /// ramped from there to where they are now.
+  /// _g is the gain the last block ended on (fader and normaliser), ramped
+  /// from there.
   double _g;
   final EqProcessor _eq;
   final Compressor? _glue;
   final Limiter? _limiter;
 
-  /// _devices are the master's own, by place among its devices: null for
-  /// one that is off or only listens.
+  /// _devices are the master's own, by place: null for one off or only
+  /// listening.
   final List<DeviceProcessor?> _devices;
   List<DeviceProcessor> get devices => [
         for (var d in _devices)
@@ -911,31 +867,27 @@ class MasterProcessor {
   /// measured on a first pass; 0 until then.
   double normaliseDb;
 
-  /// tapping is whether process notes [taps]: on while the master's
-  /// devices are on screen, as a channel strip's are (StripProcessor.taps).
+  /// tapping is whether process notes [taps], as StripProcessor.tapping.
   bool tapping = false;
 
-  /// taps are the peaks coming in and after each step of its chain, in the
-  /// order it ran, on the last block. Empty when not [tapping].
+  /// taps are the peaks in and after each step of the last block, in the
+  /// order run. Empty when not [tapping].
   List<(double, double)> taps = const [];
 
   /// scopes are as a strip's (StripProcessor.scopes).
   Map<String, DeviceScope> scopes = const {};
 
-  /// listenAt, set, is the step of its chain heard in place of its end, as
-  /// a strip's is (StripProcessor.listenAt). Its gain and limiter still
-  /// follow: what is listened to never comes out louder than the mix.
+  /// listenAt is as StripProcessor.listenAt. Gain and limiter still follow,
+  /// so what is listened to is never louder than the mix.
   int? listenAt;
   Float32List _heardL = Float32List(0), _heardR = Float32List(0);
   final SideRunner _sides = SideRunner();
 
-  /// _eqSides and _compSides run its EQ and compressor on what they work on
-  /// -- the whole sound, its middle or its sides (Eq.stereo).
+  /// _eqSides and _compSides: see StripProcessor's.
   final SideRunner _eqSides = SideRunner(), _compSides = SideRunner();
 
-  /// With [carry], the master it replaces, it goes on from that one's state
-  /// -- its EQ, glue, limiter, fader and the devices it still has -- so a
-  /// knob turned on the master as it plays does not drop or click.
+  /// With [carry], the master it replaces, its state carries on, so a knob
+  /// turned during play does not drop or click.
   MasterProcessor(this.mix, {this.normaliseDb = 0, MasterProcessor? carry})
       : _eq = EqProcessor(mix.eq, carry: carry?._eq),
         _glue = mix.comp.on ? Compressor(mix.comp, carry: carry?._glue) : null,
@@ -955,11 +907,10 @@ class MasterProcessor {
     tapping = carry?.tapping ?? false;
   }
 
-  /// process runs the master on a block, the limiter only when [limit]. The
-  /// measuring pass leaves it out, as a loudness normaliser measures.
+  /// process runs the master on a block, the limiter only when [limit]:
+  /// the loudness measuring pass leaves it out.
   void process(Float32List l, Float32List r, int n, {bool limit = true}) {
-    // In the order it was arranged in (see MasterMix.chain); the limiter
-    // last, always.
+    // As arranged (see MasterMix.chain); the limiter always last.
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
     var listen = listenAt;
     var kept = false;
@@ -997,7 +948,7 @@ class MasterProcessor {
       taps?.add(blockPeaks(l, r, n));
       if (listen == ++at) keep();
     }
-    // Heard from where it was listened to: what the rest did is not.
+    // Heard from the listening point: what the rest did is not.
     if (kept) {
       l.setRange(0, n, _heardL);
       r.setRange(0, n, _heardR);
@@ -1018,16 +969,13 @@ class MasterProcessor {
     if (limit) _limiter?.process(l, r, n);
   }
 
-  /// limited is the least gain its limiter set on the last block: one for
-  /// none, or no limiter.
+  /// limited is the least gain its limiter set last block: one for none.
   double get limited => _limiter?.least ?? 1;
 }
 
-/// LoudnessMeter is ITU-R BS.1770-4 integrated loudness, in LUFS: the sound
-/// K-weighted, its power taken over 400ms blocks overlapping by three
-/// quarters, and gated -- absolutely at −70 LUFS, then relatively at 10 LU
-/// under the mean of what passed. The filter coefficients are the standard's
-/// own, which are given for 48kHz: the rate everything is mixed at.
+/// LoudnessMeter is ITU-R BS.1770-4 integrated loudness in LUFS: K-weighted
+/// 400ms blocks, overlapping by three quarters, gated at −70 LUFS then 10
+/// LU under the mean. The standard's coefficients are for 48kHz, our rate.
 class LoudnessMeter {
   final _pre = Biquad(const [
     1.53512485958697,
@@ -1066,12 +1014,12 @@ class LoudnessMeter {
   static double _lufs(double power) =>
       power <= 0 ? -double.infinity : -0.691 + 10 * math.log(power) / math.ln10;
 
-  /// integrated is the loudness of everything added, or minus infinity for
+  /// integrated is the loudness of everything added, minus infinity for
   /// silence.
   double get integrated => _gated(_steps);
 
-  /// momentary and shortTerm are the loudness of the last 400ms and the
-  /// last three seconds, ungated, as a meter shows them.
+  /// momentary and shortTerm are the ungated loudness of the last 400ms and
+  /// three seconds.
   double get momentary => _over(4);
   double get shortTerm => _over(30);
 
@@ -1085,7 +1033,6 @@ class LoudnessMeter {
     return _lufs(sum / (_steps.length - from));
   }
 
-  /// reset starts it again: nothing measured.
   void reset() {
     _steps.clear();
     _sum = 0;

@@ -14,12 +14,9 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
-// mix_render.dart renders the timeline's sound (the stretches placed by
-// ExportMedia.sounds) through the mix graph into a WAV file, normalised to
-// the master's loudness target where asked, and limited. ffmpeg only
-// decodes the inputs; the mixing is dsp.dart's, as in the editor.
-//
-// It runs in an isolate: minutes of sound take seconds of arithmetic.
+// mix_render.dart renders the timeline's sound through the mix graph to a
+// WAV, normalised to the loudness target where asked, and limited; ffmpeg
+// only decodes. It runs in an isolate: minutes of sound are seconds of work.
 
 /// renderMixWav writes [sounds] mixed through [master] to [out], [seconds]
 /// long, as a 48kHz float WAV of every one of [speakers], or their stereo
@@ -36,10 +33,8 @@ Future<bool> renderMixWav(List<ExportSound> sounds, MasterMix master,
         ffmpeg, out, speakers, fold));
 
 /// _block is how much is rendered at a time: automation, places and the
-/// scene's bus are set once a block, so it is about as often as the editor
-/// sets them while it plays, once a frame -- at 4096 (85ms) a filter swept
-/// by a lane stepped in an export as it did not in the editor (Ken's
-/// systems review, 2026-11-08).
+/// scene's bus are set once a block, so it matches the editor's once a
+/// frame. Much larger (4096, 85ms) and a lane-swept filter audibly steps.
 const int _block = 1024;
 
 /// _Stretch is one decoded stretch and where it starts, in frames.
@@ -69,7 +64,7 @@ Future<bool> _render(
   var places = <String, List<(double, Heard)>>{};
   var clocks = <String, double>{};
   // The channels heard through the scenes' buses: those whose first sound
-  // -- whose strip it is -- is a scene's.
+  // (whose strip it is) is a scene's.
   var inScene = <String>{};
   var decodedAny = false;
   // A muted channel a vocoder, a gate or a compressor listens to is still
@@ -107,8 +102,7 @@ Future<bool> _render(
   // applies the gain that reaches it.
   var normalise = 0.0;
   if (master.normalise) {
-    // Measured as it will be written: every speaker, BS.1770-weighted, or
-    // the fold-down pair.
+    // Measured as written: every speaker, BS.1770-weighted, or the fold-down.
     var weights = fold ? const [1.0, 1.0] : loudnessWeights(speakers);
     var meter = SpeakerLoudness(weights);
     _pass(channels, strips, places, clocks, master, returns, (scenes, inScene),
@@ -138,8 +132,7 @@ Future<bool> _render(
   return true;
 }
 
-/// _pass runs the whole mix once through a [MixGraph], handing each
-/// finished block to [take].
+/// _pass runs the mix once through a [MixGraph], each block to [take].
 void _pass(
     Map<String, List<_Stretch>> channels,
     Map<String, ChannelMix> strips,
@@ -173,7 +166,7 @@ void _pass(
     for (var e in places.entries) {
       graph.setPlacement(e.key, heardOn(e.value, middle));
     }
-    // The bus of the scene playing; between scenes -- none -- the master.
+    // The bus of the scene playing; between scenes, the master.
     var (buses, inScene) = scenes;
     var bus = buses
         .where((b) => b.from <= middle && middle < b.until)
@@ -240,9 +233,8 @@ void _addStretch(_Stretch s, int at, int n, Float32List l, Float32List r) {
 Future<(Float32List, Float32List)?> _decode(String ffmpeg, ExportSound s) =>
     ffmpegDecode(ffmpeg, s.path, from: s.from, length: s.length);
 
-/// wavHeader is the header of a 32-bit float WAV of [frames] in
-/// [channels]. More than two is WAVE_FORMAT_EXTENSIBLE with a channel mask
-/// for ffmpeg's 5.1 (FL FR FC LFE BL BR) or 7.1 (plus SL SR).
+/// wavHeader heads a 32-bit float WAV of [frames] in [channels]; over two
+/// is WAVE_FORMAT_EXTENSIBLE, masked for ffmpeg's 5.1 or 7.1 order.
 @visibleForTesting
 Uint8List wavHeader(int frames, [int channels = 2]) {
   var extensible = channels > 2;

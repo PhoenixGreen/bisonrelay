@@ -7,24 +7,21 @@ import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 
-// chart_play.dart is a chart in motion (prototype v6): once it has arrived
-// it plays through its dates -- a race, the bars overtaking one another --
-// or through its steps, ChartElement.play seconds on each. Part-way, the
-// chart is a blend of two readings of its sheet: each number between its
-// two values, each bar between its two places. Everything else follows:
-// highlights rank the blended numbers and live words read them.
+// chart_play.dart is a chart in motion: once arrived it plays through its
+// dates (a race, bars overtaking) or its steps, ChartElement.play seconds
+// each. Part-way, the chart blends two readings of its sheet: each number
+// between its two values, each bar between its two places. Highlights rank
+// the blended numbers and live words read them.
 
-/// easeBetween is the smooth step a chart moves between two readings by.
 double easeBetween(double t) {
   var x = t.clamp(0.0, 1.0);
   return x < .5 ? 2 * x * x : 1 - math.pow(-2 * x + 2, 2) / 2;
 }
 
 /// chartBlend is the chart part-way, [f] from 0 to 1, from reading [a] to
-/// reading [b]: [b]'s categories, each worth between what it was in [a]
-/// (nothing, if it was not there) and what it is in [b], and drawn between
-/// its place in [a] and its place in [b]. Whole numbers are kept whole for
-/// the words from [a].
+/// [b]: [b]'s categories, each worth between its value in [a] (nothing if
+/// absent) and in [b], drawn between its places in each. Whole numbers are
+/// kept whole for the words from [a].
 ChartData chartBlend(ChartData a, ChartData b, double f) {
   if (f <= 0) return a;
   if (f >= 1) return b;
@@ -62,8 +59,7 @@ ChartData chartBlend(ChartData a, ChartData b, double f) {
   );
 }
 
-/// throughDates is the dates a chart plays through, in the sheet's order,
-/// each once.
+/// throughDates is the dates a chart plays through, each once, in order.
 List<String> throughDates(DataSheet sheet, SheetLink link) {
   if (link.through < 0 || link.through >= link.range.cols) return const [];
   var g = link.range, out = <String>[];
@@ -132,8 +128,7 @@ ChartElement chartPlaying(ChartElement e, DataSheet sheet, double seconds) {
   return a.copyWith(data: chartBlend(read(a), read(b), f));
 }
 
-/// playLength is how long [e] plays for, in seconds, once it has arrived:
-/// a stretch per date or step after the first.
+/// playLength is [e]'s seconds of play after arriving, a stretch per step.
 double playLength(ChartElement e, DataSheet sheet) {
   var link = e.sheet;
   if (e.play <= 0 || link == null) return 0;
@@ -146,16 +141,14 @@ double playLength(ChartElement e, DataSheet sheet) {
 
 /// ChartStepsFollow is what moves a chart from step to step: its own pace
 /// (ChartElement.play seconds each); the timeline's marks, a step from each
-/// mark on -- a Stop mark waits for a click, so a presentation moves on a
-/// step at a click; or the scenes (or pages), a step in each scene the chart
-/// is in.
+/// mark on (a Stop mark waits for a click, as a presentation does); or the
+/// scenes (or pages), a step in each scene the chart is in.
 enum ChartStepsFollow {
   time("Its own pace"),
   marks("Timeline marks"),
   scenes("Scenes or pages"),
 
-  /// speech is a step as each line of the narration is spoken (Ken,
-  /// 2026-11-17: chart_story.dart).
+  /// speech is a step per line of narration spoken (chart_story.dart).
   speech("The narration");
 
   final String label;
@@ -165,8 +158,7 @@ enum ChartStepsFollow {
       values.firstWhere((f) => f.name == name, orElse: () => time);
 }
 
-/// stepGlide is how long a chart takes to ease into a step it is moved to
-/// by a mark, in seconds.
+/// stepGlide is the seconds a chart eases into a step a mark moves it to.
 const double stepGlide = 0.6;
 
 /// chartAtStep is [e] on step [k], eased in from step [k] - 1 for the first
@@ -201,9 +193,9 @@ ChartElement chartAtStep(ChartElement e, DataSheet sheet, int k, double since) {
   return (k, since);
 }
 
-/// stepByScenes is which step a chart following the scenes is on: its
-/// place among the scenes it is in -- [inScenes], the indices of the scenes
-/// holding it or a linked copy of it -- the scene [at] being shown.
+/// stepByScenes is which step a chart following the scenes is on: the place
+/// of [at], the scene shown, among [inScenes] (the scenes holding it or a
+/// linked copy).
 int stepByScenes(List<int> inScenes, int at) {
   var k = inScenes.indexOf(at);
   return k < 0 ? 0 : k;
@@ -211,14 +203,12 @@ int stepByScenes(List<int> inScenes, int at) {
 
 // ---- Gliding when the numbers change, in the editor.
 
-/// chartGlides are charts easing from the numbers they had to the ones
-/// they have after a change (a refresh, an edit): by id, what they were
-/// drawn as and the frame time the glide began at (null until it is first
-/// drawn). Kept here, not in the document: it is how the editor draws a
-/// moment, not the design, and an export never sees it.
+/// chartGlides are charts easing from the numbers they had to those after a
+/// change (a refresh, an edit): by id, what they were drawn as and when the
+/// glide began (null until first drawn). Kept here, not in the document: it
+/// is how the editor draws a moment, not the design; an export never sees it.
 final Map<String, (ChartData, Duration?)> chartGlides = {};
 
-/// chartGlideTime is how long a glide takes.
 const Duration chartGlideTime = Duration(milliseconds: 650);
 
 /// chartGlideBeat ticks after each frame a chart was drawn part-way through
@@ -239,9 +229,8 @@ Duration? _frameNow() {
   }
 }
 
-/// startGlide eases chart [id] from [from] -- what it was drawn as, part
-/// way through a glide already if it was in one -- to whatever it is next
-/// drawn with.
+/// startGlide eases chart [id] from [from] (what it was drawn as, part way
+/// through any glide) to whatever it is next drawn with.
 void startGlide(String id, ChartData from) {
   chartGlides[id] = (from, null);
 }

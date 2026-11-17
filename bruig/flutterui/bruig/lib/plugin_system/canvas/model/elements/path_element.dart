@@ -6,34 +6,28 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 
-// path_element.dart is a bezier curve, and optionally the route something
-// takes along it: name a follower and time each node, and the shape and the
-// movement are edited in one place.
-//
-// The movement is not evaluated at paint time. It is baked into the
-// follower's own keyframes (see CanvasController.applyPathFollow), so the
-// exporter, the GIF encoder and a published canvas replay it without
-// knowing what a path is.
+// path_element.dart is a bezier curve, and optionally the route a named
+// follower takes along it, timed node by node. The movement is not worked
+// out at paint time: it is baked into the follower's own keyframes (see
+// CanvasController.applyPathFollow), so exports and a published canvas
+// replay it without knowing what a path is.
 
 /// PathNode is one point on the curve, with the handles that shape the
-/// segments either side of it.
-///
-/// The point and both handles are fractions of the element's box, so moving
-/// or resizing the element takes the whole curve with it.
+/// segments either side. The point and both handles are fractions of the
+/// element's box, so moving or resizing the element takes the curve along.
 class PathNode {
   /// x and y are 0..1 within the element's box.
   final double x;
   final double y;
 
-  /// inDx/inDy and outDx/outDy are the control handles, as offsets from the
-  /// point itself in the same fractional units. Two rather than a mirrored
-  /// pair, so a node can be a corner.
+  /// inDx/inDy and outDx/outDy are the handles, offsets from the point:
+  /// two, not a mirrored pair, so a node can be a corner.
   final double inDx;
   final double inDy;
   final double outDx;
   final double outDy;
 
-  /// frame is when the follower reaches this node. On the node, not in a
+  /// frame is when the follower reaches this node: on the node, not in a
   /// parallel list that would have to stay the same length.
   final int frame;
 
@@ -100,14 +94,12 @@ class PathNode {
       );
 }
 
-/// PathFollow names what travels along the curve: an element, or one player
-/// of a team, which has no id of its own and is addressed as the timeline
-/// does, by the team's id and the row's index.
+/// PathFollow names what travels the curve: an element, or a team's
+/// player, by the team's id and row index, as the timeline does.
 class PathFollow {
   final String elementId;
 
-  /// playerIndex is set when the follower is a player of a team, and null when
-  /// it is the element itself.
+  /// playerIndex is set when the follower is a team's player.
   final int? playerIndex;
 
   const PathFollow({required this.elementId, this.playerIndex});
@@ -124,19 +116,16 @@ class PathFollow {
       );
 }
 
-/// PathElement is the curve.
 class PathElement extends CanvasElement {
   final List<PathNode> nodes;
 
   final Color color;
 
-  /// fade is the second colour the stroke runs to, or null for a flat one.
-  /// Chosen in the picker beside [color] -- see GradientSpec.
+  /// fade is the stroke's second colour, or null (see GradientSpec).
   final GradientSpec? fade;
   final double strokeWidth;
 
-  /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
-  /// each end -- the same three settings a line has.
+  /// cap, startEnd and endEnd finish the stroke, as on a line.
   final LineStrokeCap cap;
   final LineEnd startEnd;
   final LineEnd endEnd;
@@ -149,14 +138,12 @@ class PathElement extends CanvasElement {
 
   final bool closed;
 
-  /// guide draws the curve only while it is being edited, and leaves it out of
-  /// anything published. Turned on when a follower is attached; a path with
-  /// no follower is a drawing and shows.
+  /// guide draws the curve only while editing, never published; on once a
+  /// follower is attached, since a path without one is a drawing.
   final bool guide;
 
   final PathFollow? follow;
 
-  /// animation is how it arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
   const PathElement(
@@ -179,7 +166,6 @@ class PathElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.path;
 
-  /// pointOf maps a node's fractional point into document coordinates.
   Offset pointOf(PathNode node) =>
       Offset(x + node.x * width, y + node.y * height);
 
@@ -193,13 +179,11 @@ class PathElement extends CanvasElement {
   int get firstFrame => nodes.isEmpty ? 0 : nodes.first.frame;
   int get lastFrame => nodes.isEmpty ? 0 : nodes.last.frame;
 
-  /// segments is the number of curve pieces: one fewer than the nodes, or one
-  /// per node when the path is closed.
+  /// segments is the curve pieces: nodes less one, or one each if closed.
   int get segments =>
       nodes.length < 2 ? 0 : (closed ? nodes.length : nodes.length - 1);
 
-  /// pointOnSegment evaluates one cubic piece at [t] in 0..1, in document
-  /// coordinates.
+  /// pointOnSegment is one cubic piece at [t], in document coordinates.
   Offset pointOnSegment(int index, double t) {
     if (nodes.length < 2) {
       return nodes.isEmpty ? center : pointOf(nodes.first);
@@ -227,14 +211,12 @@ class PathElement extends CanvasElement {
     );
   }
 
-  /// _arcSamples is how finely a segment is measured when converting a time
-  /// into a distance along it: well under a pixel of error on a hand-drawn
-  /// curve, and cheap enough to bake a whole path.
+  /// _arcSamples is how finely a segment is measured when turning a time into
+  /// a distance: well under a pixel of error, and cheap enough to bake a path.
   static const int _arcSamples = 16;
 
-  /// positionOnSegment is [t] of the way along a segment *by distance* rather
-  /// than by the curve's own parameter, which runs slow round a bend and
-  /// would make a follower slow down in the turn.
+  /// positionOnSegment is [t] along a segment *by distance*: the curve's
+  /// own parameter runs slow round a bend, slowing a follower there.
   Offset positionOnSegment(int index, double t) {
     if (t <= 0) return pointOnSegment(index, 0);
     if (t >= 1) return pointOnSegment(index, 1);
@@ -260,8 +242,8 @@ class PathElement extends CanvasElement {
     return pointOnSegment(index, 1);
   }
 
-  /// positionAtFrame is where a follower is on [frame]. Before the first
-  /// node and after the last it holds at the nearer end.
+  /// positionAtFrame is where a follower is on [frame], holding at the nearer
+  /// end before the first node and after the last.
   Offset? positionAtFrame(int frame) {
     if (nodes.isEmpty) return null;
     if (nodes.length == 1) return pointOf(nodes.first);
@@ -290,9 +272,8 @@ class PathElement extends CanvasElement {
     ]);
   }
 
-  /// withNode replaces one node, keeping the frames in order. Clamped
-  /// between its neighbours rather than sorted, since sorting would reorder
-  /// the curve itself.
+  /// withNode replaces one node, keeping the frames in order: clamped between
+  /// its neighbours, not sorted, since sorting would reorder the curve.
   PathElement withNode(int index, PathNode node) {
     if (index < 0 || index >= nodes.length) return this;
     var lower = index == 0 ? 0 : nodes[index - 1].frame;
@@ -302,9 +283,8 @@ class PathElement extends CanvasElement {
     return copyWith(nodes: next);
   }
 
-  /// insertAfter adds a point in the middle of the segment following [index],
-  /// without changing the shape of the curve: de Casteljau subdivision gives
-  /// two cubics that are exactly the original.
+  /// insertAfter splits the segment after [index] without changing the
+  /// curve: de Casteljau gives two cubics exactly the original.
   PathElement insertAfter(int index, {int maxFrame = 1 << 30}) {
     if (index < 0 || index >= nodes.length - 1) return this;
     var a = nodes[index];
@@ -346,9 +326,8 @@ class PathElement extends CanvasElement {
     return copyWith(nodes: next).withDistinctFrames(maxFrame: maxFrame);
   }
 
-  /// withDistinctFrames gives every point a frame of its own. Two sharing a
-  /// frame put the follower in two places at once and draw one timeline mark
-  /// for two points. It re-spaces the whole run rather than nudging one.
+  /// withDistinctFrames gives every point its own frame (two sharing one
+  /// put the follower in two places), re-spacing the whole run.
   PathElement withDistinctFrames({int maxFrame = 1 << 30}) {
     if (nodes.length < 2) return this;
 
@@ -366,8 +345,7 @@ class PathElement extends CanvasElement {
     return spreadFrames(from, to);
   }
 
-  /// appendNode carries the path on past its last point, in the direction it
-  /// was already going.
+  /// appendNode carries the path on past its end, the way it was going.
   PathElement appendNode({int maxFrame = 1 << 30}) {
     if (nodes.isEmpty) {
       return copyWith(nodes: const [PathNode(x: 0.5, y: 0.5, frame: 0)]);

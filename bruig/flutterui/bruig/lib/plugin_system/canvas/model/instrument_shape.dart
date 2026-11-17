@@ -1,12 +1,9 @@
 import 'dart:math' as math;
 
 // instrument_shape.dart is how an instrument plays its sound, set in its
-// editor (see instrument_editor.dart) and done by the sampler
-// (media/synth/sampler.dart): its volume envelope, a filter with an envelope
-// of its own, an LFO, and how its voices go -- one at a time or many, gliding
-// from note to note, how far the bend wheel bends, its tuning and how hard a
-// key must be struck. As it is by default, it plays the sound as the bank
-// (or the built-in voice) has it.
+// editor and done by the sampler (media/synth/sampler.dart): volume envelope,
+// a filter with its own envelope, an LFO, voice mode, glide, bend range,
+// tuning and velocity curve. By default it plays the sound as the bank has it.
 
 /// VoiceMode is how many notes sound at once: any number; one, each note
 /// started afresh; or one, a note played while another is held only moving
@@ -45,10 +42,9 @@ enum LfoTarget {
   const LfoTarget(this.label);
 }
 
-/// InstrumentShape is how an instrument plays: see the file comment.
 class InstrumentShape {
-  /// envelope is whether its own volume envelope -- [attack], [decay],
-  /// [sustain], [release] -- shapes each note, rather than the sound's.
+  /// envelope is whether [attack], [decay], [sustain], [release] shape each
+  /// note, rather than the sound's own envelope.
   final bool envelope;
 
   /// attack is seconds to full; decay seconds from there to [sustain] (nought
@@ -57,8 +53,7 @@ class InstrumentShape {
 
   final SynthFilter filter;
 
-  /// cutoff is the filter's corner, in hertz; resonance its peak there,
-  /// nought to one.
+  /// cutoff is the filter's corner in hertz; resonance its peak, 0 to 1.
   final double cutoff, resonance;
 
   /// filterEnvelope is how far each note's start opens the filter: up to
@@ -74,8 +69,7 @@ class InstrumentShape {
 
   final VoiceMode mode;
 
-  /// glide is seconds to slide from one note to the next, in [VoiceMode.mono]
-  /// and [VoiceMode.legato].
+  /// glide is seconds to slide between notes in mono and legato modes.
   final double glide;
 
   /// voices is how many sound at once, at most.
@@ -111,13 +105,11 @@ class InstrumentShape {
     this.velocityCurve = 0,
   });
 
-  /// maxVoices is the most voices an instrument has.
   static const int maxVoices = 64;
 
-  /// plain is the sound as it is: nothing done to it.
+  /// plain is the sound untouched.
   bool get plain => this == const InstrumentShape();
 
-  /// glides is whether one note slides to the next.
   bool get glides => mode != VoiceMode.poly && glide > 0;
 
   /// velocity is [played] through [velocityCurve].
@@ -206,7 +198,7 @@ class InstrumentShape {
   @override
   int get hashCode => Object.hashAll(_fields);
 
-  /// toJson is only what differs from as it is by default.
+  /// toJson is only what differs from the default.
   Map<String, dynamic> toJson() {
     const d = InstrumentShape();
     return {
@@ -264,8 +256,7 @@ class InstrumentShape {
 }
 
 /// instrumentTarget is the instrument among a chain's devices, as a macro's
-/// targets name it (ModTarget.device): its settings are the part's, not a
-/// device's.
+/// targets name it (ModTarget.device).
 const String instrumentTarget = "instrument";
 
 /// InstrumentKnob is one of the instrument's settings a macro or a
@@ -288,7 +279,6 @@ const List<InstrumentKnob> instrumentKnobs = [
   InstrumentKnob("glide", "Glide", 0, 5),
 ];
 
-/// instrumentValue is setting [id] of [s].
 double instrumentValue(InstrumentShape s, String id) => switch (id) {
       "attack" => s.attack,
       "decay" => s.decay,
@@ -314,9 +304,9 @@ InstrumentShape withInstrumentValue(InstrumentShape s, String id, double v) =>
       _ => s,
     };
 
-/// turnedBy is [base], setting [k], moved by [amount] -- a share of its
-/// travel, as a chain device's knob is moved (see modulation.dart) -- along
-/// its own scale: a log one for times and frequencies.
+/// turnedBy is [base] of [k] moved by [amount] -- a share of its travel, as
+/// a device knob moves (modulation.dart) -- along its scale: log for times
+/// and frequencies.
 double turnedBy(InstrumentKnob k, double base, double amount) {
   if (!k.log || k.min <= 0) {
     return (base + amount * (k.max - k.min) / 2).clamp(k.min, k.max);

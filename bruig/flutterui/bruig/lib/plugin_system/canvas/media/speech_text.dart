@@ -1,29 +1,10 @@
-// speech_text.dart readies a script for our own voices: written forms
-// said as words, and a pronunciation for every word the voices' dictionary
-// does not have.
-//
-// Kokoro is given sounds, not letters: sherpa-onnx looks each word up in a
-// pronouncing dictionary (190,000 British English words) and leaves out any
-// it cannot find -- silently, so "Decred" and "2016" were simply not said.
-// So, before it speaks:
-//
-//  - numbers, money, percentages, times, ordinals and a few symbols and
-//    abbreviations are written out as words (British: "one hundred and
-//    five", "twenty sixteen", "five pounds fifty");
-//  - every word still missing is given a pronunciation, in the dictionary's
-//    own sounds, in a small dictionary of its own that is read after the
-//    main one. In order: an acronym is spelt out by its letters' names; a
-//    plural or possessive of a known word is that word and its s; a word
-//    with a known word inside it -- "Decred" has "cred" -- is that word
-//    and the rest; and what is left is read by the NRL letter-to-sound
-//    rules (Elovitz, Johnson, McHugh and Shore, "Automatic Translation of
-//    English Text to Phonetics by Means of Letter-to-Sound Rules", NRL
-//    Report 7948, 1976: a US Government work, in the public domain),
-//    checked against whackintalk's transcription (MIT).
+// speech_text.dart readies a script for our voices: written forms said as
+// British words, and a pronunciation for each word the dictionary lacks,
+// which sherpa-onnx would silently skip. Fallback is the NRL letter-to-sound
+// rules (NRL Report 7948, 1976, public domain), checked against
+// whackintalk's transcription (MIT).
 
-// ---------------------------------------------------------------------------
-// Written forms as words
-// ---------------------------------------------------------------------------
+// ---- Written forms as words ---------------------------------------------
 
 const _ones = [
   "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", //
@@ -41,8 +22,7 @@ const _scales = [
   (1000, "thousand"),
 ];
 
-/// cardinal is [n] in words, as it is said in Britain: "one hundred and
-/// five".
+/// cardinal is [n] in words, as said in Britain: "one hundred and five".
 String cardinal(int n) {
   if (n < 0) return "minus ${cardinal(-n)}";
   if (n < 20) return _ones[n];
@@ -99,8 +79,7 @@ String ordinal(int n) {
 String _digits(String s) =>
     [for (var c in s.split("")) _ones[int.parse(c)]].join(" ");
 
-/// _number is a written number -- commas and all, a decimal point -- in
-/// words.
+/// _number is a written number (commas, a decimal point) in words.
 String _number(String text) {
   var plain = text.replaceAll(",", "");
   var parts = plain.split(".");
@@ -141,11 +120,9 @@ const _abbreviations = {
 
 final _numberAt = r"\d[\d,]*(?:\.\d+)?";
 
-/// speakable is [text] with its written forms in words, ready for the
-/// voices' dictionary: numbers, money, percentages, times, ordinals,
-/// abbreviations whose full stop would end a sentence, and symbols. Quote
-/// marks and brackets go, since the dictionary does not know a word with
-/// one stuck to it.
+/// speakable is [text] with numbers, money, times, ordinals, symbols and
+/// sentence-ending abbreviations in words; quotes and brackets dropped, as
+/// the dictionary knows no word with one attached.
 String speakable(String text) {
   var s = text
       .replaceAll(RegExp("[‘’ʼ]"), "'")
@@ -220,22 +197,18 @@ String speakable(String text) {
       .trim();
 }
 
-/// spacedChinese is Chinese [text] with a space between its Chinese and
-/// any letters or numbers beside it: the dictionary is asked for a word at
-/// a time, and "到Decred" would be asked for as one.
+/// spacedChinese spaces Chinese [text] from adjacent letters or numbers,
+/// or "到Decred" would be looked up as one word.
 String spacedChinese(String text) => text
     .replaceAllMapped(
         RegExp("([\u3400-\u9fff])([A-Za-z0-9])"), (m) => "${m[1]} ${m[2]}")
     .replaceAllMapped(
         RegExp("([A-Za-z0-9])([\u3400-\u9fff])"), (m) => "${m[1]} ${m[2]}");
 
-// ---------------------------------------------------------------------------
-// Pronouncing what the dictionary does not have
-// ---------------------------------------------------------------------------
+// ---- Pronouncing what the dictionary does not have ----------------------
 
-/// wordsOf are the words in [text] as the voices' dictionary is asked for
-/// them: split at spaces, sentence punctuation -- Chinese too -- and
-/// hyphens, with any quote mark at their ends taken off.
+/// wordsOf are [text]'s words as looked up: split at spaces, sentence
+/// punctuation (Chinese too) and hyphens, end quotes dropped.
 List<String> wordsOf(String text) => [
       for (var w in text.split(
           RegExp("[\\s,.!?;:\\-\u3001\u3002\uff01\uff0c\uff1a\uff1b\uff1f]+")))
@@ -244,8 +217,8 @@ List<String> wordsOf(String text) => [
           word,
     ];
 
-/// readLexicon is a pronouncing dictionary's text: a word a line, then its
-/// sounds, each separated by spaces.
+/// readLexicon reads a pronouncing dictionary's text: a word a line, then
+/// its sounds, separated by spaces.
 Map<String, String> readLexicon(String text) {
   var out = <String, String>{};
   for (var line in text.split("\n")) {
@@ -256,9 +229,8 @@ Map<String, String> readLexicon(String text) {
   return out;
 }
 
-/// missingWords are the pronunciations for the words in [text] that
-/// [lexicon] does not have -- a word and its sounds, as a line of a
-/// dictionary would be. [american]: as an American says them.
+/// missingWords are pronunciations for [text]'s words missing from
+/// [lexicon], as dictionary lines; [american] as an American says them.
 Map<String, String> missingWords(String text, Map<String, String> lexicon,
     {bool american = false}) {
   var out = <String, String>{};
@@ -273,8 +245,9 @@ Map<String, String> missingWords(String text, Map<String, String> lexicon,
 
 const _vowelLetters = "aeiouy";
 
-/// pronounce is [word]'s sounds, in [lexicon]'s own: see the note at the
-/// top for the order things are tried in. Null where nothing can be said.
+/// pronounce is [word]'s sounds in [lexicon]'s own, or null. Tried in
+/// order: acronym letters, a known word's plural or possessive, a known
+/// word inside it ("Decred" has "cred") plus the rest, then the NRL rules.
 String? pronounce(String word, Map<String, String> lexicon,
     {bool american = false}) {
   var w = word.toLowerCase();
@@ -304,8 +277,8 @@ String? pronounce(String word, Map<String, String> lexicon,
     var base = letters.substring(0, letters.length - end.length + keep);
     if (lexicon[base] case var sounds?) return "$sounds ${_plural(sounds)}";
   }
-  // A word it knows inside it, at its start or its end, and the rest read
-  // by the rules -- the longest known piece; or two known words.
+  // A known word at its start or end (the longest) and the rest by the
+  // rules; or two known words.
   String? best;
   var bestLength = 0;
   for (var cut = 1; cut < bare.length; cut++) {
@@ -332,8 +305,8 @@ String? pronounce(String word, Map<String, String> lexicon,
   return _ruleSounds(bare, stressed: true, american: american);
 }
 
-/// _plural is the s on the end of a word ending in [sounds]: "iz" after a
-/// hiss, "s" after a voiceless sound, "z" otherwise.
+/// _plural is the s ending a word in [sounds]: "iz" after a hiss, "s" after
+/// a voiceless sound, "z" otherwise.
 String _plural(String sounds) {
   var last = sounds.split(" ").last;
   if (const {"s", "z", "ʃ", "ʒ", "ʧ", "ʤ"}.contains(last)) return "ɪ z";
@@ -461,10 +434,9 @@ const _sibilants = ["S", "C", "G", "Z", "X", "J", "CH", "SH"];
 const _palatal = ["T", "S", "R", "D", "L", "Z", "N", "J", "TH", "CH", "SH"];
 const _suffixes = ["ER", "E", "ES", "ED", "ING", "ELY"];
 
-/// _fits is whether the letters of [text] from [at], going the way of
-/// [step], fit [pattern] -- read the same way. See the rules' signs: #
-/// vowels, : any consonants, ^ a consonant, . a voiced one, + a front
-/// vowel, & a hiss, @ a consonant before a long u, % a suffix.
+/// _fits is whether [text] from [at], going [step]'s way, fits [pattern].
+/// Signs: # vowels, : any consonants, ^ a consonant, . a voiced one, + a
+/// front vowel, & a hiss, @ a consonant before a long u, % a suffix.
 bool _fits(String text, int at, String pattern, int step) {
   var t = at;
   bool inside(int i) => i >= 0 && i < text.length;
@@ -554,13 +526,10 @@ const _consonantSounds = {
   "Y": "j", "Z": "z", "ZH": "ʒ",
 };
 
-/// _ruleSounds is [word] by the rules, in the voices' British sounds: no r
-/// unless a vowel follows it, the vowel before it longer instead. With
-/// [stressed], the first full vowel is stressed -- after an unstressed
-/// prefix -- as a word of its own; without, none is, as part of a word.
-/// [endsWord] is whether it is the end of the word, where a last "ee" is
-/// said short. [american]: every r said, in the American dictionary's own
-/// vowels.
+/// _ruleSounds is [word] by the rules in British sounds: no r unless a
+/// vowel follows. [stressed] stresses the first full vowel after any
+/// unstressed prefix; [endsWord] shortens a last "ee"; [american] says
+/// every r, in American vowels.
 String _ruleSounds(String word,
     {required bool stressed, bool endsWord = true, bool american = false}) {
   var phones = rulePhones(word);

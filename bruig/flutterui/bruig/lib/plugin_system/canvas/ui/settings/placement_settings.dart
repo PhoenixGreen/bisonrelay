@@ -9,9 +9,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
-// placement_settings.dart is where a sound is heard from, set on the sound
-// itself: an Audio element's, or a Video's. See SoundPlacement. Its channel
-// follows it in place of the channel's own pan.
+// placement_settings.dart is where a sound is heard from, set on the Audio
+// or Video element (see SoundPlacement), overriding its channel's pan.
 
 /// placementSummary is how a sound is placed, in a few words.
 String placementSummary(SoundPlacement place) => switch (place.by) {
@@ -21,8 +20,8 @@ String placementSummary(SoundPlacement place) => switch (place.by) {
       PlaceBy.follow => "With another element",
     };
 
-/// placementGroup is [e]'s sound's placement, as settings: what it is
-/// placed by, and what that needs.
+/// placementGroup is [e]'s sound placement: what it is placed by, and what
+/// that needs.
 Widget placementGroup(CanvasController controller, CanvasElement e,
     MediaClip clip, void Function(MediaClip next) clipNow,
     {void Function(MediaClip next)? clipLive, VoidCallback? commit}) {

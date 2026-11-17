@@ -13,8 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:flutter/material.dart';
 
 // design_panel.dart is the three things used to build a canvas, in one
-// column: what can be added, what is already there, and the settings of the
-// selection. A panel stack (components/panel_stack.dart), so each panel
+// column: what can be added, what is already there, and the selection's
+// settings. A panel stack (components/panel_stack.dart), so each panel
 // opens, shuts, resizes and moves, and all of that is remembered.
 
 class CanvasDesignPanel extends StatefulWidget {
@@ -28,12 +28,10 @@ class CanvasDesignPanel extends StatefulWidget {
 class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   CanvasController get controller => widget.controller;
 
-  /// The three bodies, built once and handed to the stack unchanged.
-  ///
-  /// The stack rebuilds whenever a heading changes, which is every controller
-  /// notification (one per pixel of a drag). Handed the same widget instance,
-  /// Flutter leaves the subtree alone, so each body listens for what it shows
-  /// and rebuilds itself.
+  /// The three bodies, built once and handed to the stack unchanged. The
+  /// stack rebuilds on every controller notification (one per pixel of a
+  /// drag); handed the same widget instance, Flutter leaves the subtree
+  /// alone, so each body listens for what it shows and rebuilds itself.
   late Widget _add;
   late Widget _scenes;
   late Widget _structure;
@@ -45,8 +43,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   @override
   void initState() {
     super.initState();
-    // Tiles keep their pictures while a control is dragged -- see
-    // TileSnapshot.holding.
+    // Tiles keep their pictures during a control drag: TileSnapshot.holding.
     TileSnapshot.holding = () => widget.controller.interacting;
     readSettingsLayout();
     _makeBodies();
@@ -54,8 +51,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
 
   @override
   void dispose() {
-    // The hook set above held this panel, its editor and its document for
-    // the rest of the session.
+    // The hook above would hold this panel and its document for the session.
     TileSnapshot.letGo();
     super.dispose();
   }
@@ -63,8 +59,8 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   @override
   void didUpdateWidget(CanvasDesignPanel old) {
     super.didUpdateWidget(old);
-    // Built once per controller: keeping the old bodies would leave the column
-    // bound to a document nobody is looking at.
+    // Built once per controller: keeping the old bodies would leave the
+    // column bound to a document nobody is looking at.
     if (old.controller != widget.controller) _makeBodies();
   }
 
@@ -114,9 +110,9 @@ const designPanelIds = [
   "settings",
 ];
 
-/// SettingsPanelBody is the settings of whatever is selected: its own widget with
-/// its own listener, because it is the most expensive body in the column and
-/// must not rebuild when a heading elsewhere changes.
+/// SettingsPanelBody is the selection's settings: its own widget with its
+/// own listener, because it is the column's most expensive body and must
+/// not rebuild when a heading elsewhere changes.
 class SettingsPanelBody extends StatefulWidget {
   final CanvasController controller;
   const SettingsPanelBody({required this.controller, super.key});
@@ -128,12 +124,12 @@ class SettingsPanelBody extends StatefulWidget {
 class _SettingsBodyState extends State<SettingsPanelBody> {
   CanvasController get controller => widget.controller;
 
-  /// _scroll keeps the column where it was, remembered per element, so
-  /// clicking between elements does not put the settings back at the top.
+  /// _scroll keeps the column where it was, per element, so clicking between
+  /// elements does not put the settings back at the top.
   final ScrollController _scroll = ScrollController();
 
-  /// _at is where each element's settings were left, by element id (the panels
-  /// are different lengths, so one offset would not do).
+  /// _at is where each element's settings were left, by element id (the
+  /// panels are different lengths, so one offset would not do).
   static final Map<String, double> _at = {};
 
   /// _showing is whose settings are on screen, so the offset is filed under
@@ -160,8 +156,7 @@ class _SettingsBodyState extends State<SettingsPanelBody> {
     if (id != null && _scroll.hasClients) _at[id] = _scroll.offset;
   }
 
-  /// _onSelectionChanged files the offset under whoever is leaving and
-  /// restores whoever is arriving.
+  /// _onSelectionChanged files the offset of who leaves, restores who comes.
   void _onSelectionChanged() {
     var id = controller.selected?.id;
     if (id == _showing) return;
@@ -182,18 +177,17 @@ class _SettingsBodyState extends State<SettingsPanelBody> {
         listenable: controller,
         // Every change except view-only ones (zoom, pan, frame shape, tool):
         // see CanvasController.revision. Keyed on that rather than a list of
-        // what the settings read, because such a list goes stale as soon as a
-        // control shows something outside the document (the retouch brush, its
-        // size, a waiting stroke).
+        // what the settings read, which goes stale as soon as a control
+        // shows something outside the document (the retouch brush, say).
         select: () => controller.revision,
         builder: (context, _) => ScrollConfiguration(
-          // No scroll bar: these settings are scrolled with two fingers, and a
-          // bar that flashes on each scroll adds nothing.
+          // No scroll bar: these settings are scrolled with two fingers,
+          // and a bar that flashes on each scroll adds nothing.
           behavior: const CanvasNoScrollbar(),
           child: SingleChildScrollView(
             controller: _scroll,
-            // A gap under the header so the first row of small captions does not
-            // read as the header's second line.
+            // A gap under the header so the first row of small captions
+            // does not read as the header's second line.
             padding: EdgeInsets.fromLTRB(
                 8, (canvasGroupGap + canvasRowGap) / 2, 8, canvasGroupGap - 4),
             child: CanvasControlScope(

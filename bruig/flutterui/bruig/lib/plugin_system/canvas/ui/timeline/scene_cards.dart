@@ -19,11 +19,9 @@ import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 
-// scene_cards.dart is a scene's motion in the Chain, as the chain prototype
-// has it (Ken, 2026-11-08: "the scene design hasn't been brought over"):
-// its Transition -- how it gives way to the next, played on its screen --
-// and its Camera, the slow move over it, each a studio device card like
-// every other in the chain.
+// scene_cards.dart is a scene's motion in the Chain: its Transition -- how
+// it gives way to the next, played on its screen -- and its Camera, the
+// slow move over it, each a studio device card like every other.
 
 const sceneAccent = Color(0xFF5AB4C8);
 
@@ -353,8 +351,8 @@ class _SceneTransitionCardState extends State<SceneTransitionCard>
       height: widget.height,
       icon: Icons.movie_filter_outlined,
       accent: sceneAccent,
-      // Its screen down its left, the full height, as the prototype's wide
-      // card: its settings are many, and would squeeze it to a strip.
+      // Its screen down its left, the full height: its settings are many,
+      // and would squeeze it to a strip.
       displayBeside: true,
       besideDisplay: 250,
       besideSettings: 340,
@@ -728,7 +726,7 @@ CameraElement? sceneCameraOf(CanvasController c, int index) {
       .firstOrNull;
 }
 
-/// _SceneRow is a card's label and what it is: the Output's rows.
+/// _sceneRow is a card's label and what it is: the Output's rows.
 Widget _sceneRow(MixerLook look, String label, String value, {Key? key}) =>
     Row(key: key, children: [
       Expanded(
@@ -743,10 +741,10 @@ Widget _sceneRow(MixerLook look, String label, String value, {Key? key}) =>
       ),
     ]);
 
-/// SceneAddCamera is a scene's Source with nothing in it yet: the chain
-/// prototype's "+" -- a Camera put on the scene, whose clips key its zoom
-/// and where it looks over the scene, are then the Source. A scene not
-/// open is opened first: its elements are edited where they are.
+/// SceneAddCamera is a scene's Source with nothing in it yet: a "+" that
+/// puts a Camera on the scene, whose clips key its zoom and where it looks,
+/// as the Source. A scene not open is opened first: its elements are
+/// edited where they are.
 class SceneAddCamera extends StatelessWidget {
   final CanvasController controller;
   final int scene;

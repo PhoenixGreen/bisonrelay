@@ -10,13 +10,11 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 /// WrapSide is which side of an obstacle the words go.
 enum WrapSide {
-  /// both fills every free run on the line, so a narrow obstacle has words on
-  /// either side of it.
+  /// both fills every free run on the line, words either side of an obstacle.
   both("Both sides"),
 
-  /// left keeps the words to the left of whatever is in the way, and right to
-  /// the right of it: one block of text beside a picture, not lines broken
-  /// in two.
+  /// left keeps the words left of whatever is in the way, right to its right:
+  /// one block of text beside a picture, not lines broken in two.
   left("Left of it"),
   right("Right of it");
 
@@ -27,15 +25,13 @@ enum WrapSide {
       values.firstWhere((s) => s.name == name, orElse: () => both);
 }
 
-/// TextWrap is words flowing around whatever overlaps their box.
-///
-/// Off by default: with it on the words are set line by line against the
-/// elements around them rather than laid out once, which is slower.
+/// TextWrap is words flowing around whatever overlaps their box. Off by
+/// default: on, the words are set line by line against the elements around
+/// them rather than laid out once, which is slower.
 class TextWrap {
   final bool on;
 
-  /// gap is how much room is left between the words and the thing they are
-  /// going round.
+  /// gap is the room left between the words and what they go round.
   final double gap;
 
   final WrapSide side;
@@ -61,7 +57,6 @@ class TextWrap {
       );
 }
 
-/// ColumnRuleStyle is how the line between two columns is drawn.
 enum ColumnRuleStyle {
   none("None"),
   solid("Solid"),
@@ -77,23 +72,18 @@ enum ColumnRuleStyle {
       );
 }
 
-/// TextColumns is how a paragraph is broken into columns.
 class TextColumns {
-  /// count is how many columns the text flows across. One costs nothing
-  /// extra to draw.
   final int count;
 
-  /// gap is the space between two columns, in design units. The rule, if there
-  /// is one, is drawn down the middle of it.
+  /// gap is the space between columns in design units; a rule runs down it.
   final double gap;
 
   final ColumnRuleStyle ruleStyle;
   final double ruleWidth;
   final Color ruleColor;
 
-  /// noBlankStart drops a blank line that would have begun a column (or a
-  /// box in a chain), so its text does not sit lower than its neighbour's.
-  /// On by default; the setting exists to turn it off.
+  /// noBlankStart (on by default) drops a blank line that would begin a
+  /// column or chained box, so it does not sit lower than its neighbour.
   final bool noBlankStart;
 
   const TextColumns({
@@ -107,11 +97,9 @@ class TextColumns {
 
   bool get isSingle => count <= 1;
 
-  /// says is whether this has anything to record: not the single column
-  /// every text element starts with.
+  /// says is whether this has anything to record beyond the default.
   bool get says => !isSingle || !noBlankStart;
 
-  /// columnWidth is how wide each column is inside a box [total] wide.
   double columnWidth(double total) {
     if (count <= 1) return total;
     var used = gap * (count - 1);
@@ -158,29 +146,26 @@ class TextColumns {
 /// TextOnCurve puts a paragraph along another element's line. The line is
 /// named rather than copied, so moving or reshaping it carries the text.
 class TextOnCurve {
-  /// elementId is a line or a path element. Anything else, or an element
-  /// since deleted, is ignored and the text falls back to its box.
+  /// elementId is a line or a path element. Anything else, or a deleted
+  /// element, is ignored and the text falls back to its box.
   final String elementId;
 
   /// offset slides the text along the curve, as a fraction of its length.
   final double offset;
 
-  /// away flips the text to the other side of the line, for a label that
-  /// should sit under it rather than on it.
+  /// away flips the text to the other side of the line, for a label under it.
   final bool away;
 
-  /// spacing is extra room between letters as they are placed, on top of the
-  /// spec's own letter spacing, for tight bends where glyphs would overlap.
+  /// spacing is extra room between letters on top of the spec's own, for
+  /// tight bends where glyphs would overlap.
   final double spacing;
 
-  /// hideHost leaves the line itself undrawn. Hiding the line element
-  /// instead would not do: a hidden element is skipped everywhere, including
-  /// here, so the text would go with it.
+  /// hideHost leaves the line undrawn. Hiding the line element would not do:
+  /// a hidden element is skipped everywhere, and the text would go with it.
   final bool hideHost;
 
-  /// mask hides whatever has slid off the ends of the line. The words follow
-  /// the line past its ends; with this the line is a window, so a slide
-  /// reads as words arriving from behind something.
+  /// mask hides what has slid off the line's ends, so the line is a window
+  /// and a slide reads as words arriving from behind something.
   final bool mask;
 
   const TextOnCurve({
@@ -228,71 +213,56 @@ class TextOnCurve {
       );
 }
 
-/// TextElement is a paragraph in a box. How the letters look is in
-/// [textSpec] and the box around them in [box], so a new type control
-/// belongs in TextSpec rather than here.
+/// TextElement is a paragraph in a box. The letters' look is in [textSpec]
+/// and the box in [box]; a new type control belongs in TextSpec.
 class TextElement extends CanvasElement {
   final String text;
   final TextSpec textSpec;
   final BoxSpec box;
 
-  /// autoSize grows the type to fill the box rather than wrapping it: a
-  /// headline grows with its box, where body copy reflows.
+  /// autoSize grows the type to fill the box rather than wrapping it.
   final bool autoSize;
 
-  /// columns is how the paragraph is broken up. See [TextColumns].
   final TextColumns columns;
 
-  /// animation is how the words arrive. See [TextAnimation].
   final TextAnimation animation;
 
-  /// slot is where the element's own words sit, or null for the box.
-  ///
-  /// Null, the usual case, fills the box: the words wrap, take columns and
-  /// flow on. Given a slot they behave like a piece -- as wide as they come
-  /// out, held to that corner -- so they stack with the pieces in it.
-  /// Ignored on a line, in columns or in a chain, which arrange the whole box.
+  /// slot is where the element's own words sit, or null (usual) to fill the
+  /// box: wrap, take columns and flow on. In a slot they behave like a piece
+  /// -- as wide as they come out, held to that corner -- and stack with the
+  /// pieces there. Ignored on a line, in columns or in a chain.
   final TextSlot? slot;
 
-  /// items are the extra pieces of writing in this element's box, each in a
-  /// slot of its own, for a card rather than a paragraph. See [TextItem].
+  /// items are the extra pieces of writing in the box, each in its own slot.
   final List<TextItem> items;
 
-  /// parts are the runs of this text that are drawn differently -- a word in
-  /// another colour, a phrase in bold, its own arrival. See [TextPart].
+  /// parts are runs drawn differently: another colour, bold, own arrival.
   final List<TextPart> parts;
 
-  /// highlight and underline are the element's own marks: a band behind all
-  /// of the words, a line under all of them. The same two a part carries;
-  /// see [drawnParts].
+  /// highlight and underline are the element's own marks over all of its
+  /// words, the same two a part carries; see [drawnParts].
   final PartHighlight? highlight;
   final PartUnderline? underline;
 
-  /// flowTo is the text element the words that do not fit run on into, or ""
-  /// for none. One way only: a ring of boxes has no first box, and flowFor
-  /// refuses to make one.
+  /// flowTo is the text element the overflow runs on into, or "" for none.
+  /// One way only: a ring of boxes has no first box, and flowFor refuses one.
   final String flowTo;
 
-  /// document is the Writing library document these words came from, if any.
-  /// The words are copied into [text], so the canvas draws without the
-  /// library and an export never waits on disk. See TextDocumentRef.
+  /// document is the Writing library document these words came from, if
+  /// any; copied into [text], so drawing and export never wait on it.
   final TextDocumentRef document;
 
-  /// documentParts are the runs the document's own markdown asked for -- a
-  /// heading, a bold phrase, a link. Kept apart from [parts] because they are
-  /// rewritten every time the document is read, and the reader's must survive.
+  /// documentParts are the runs the document's markdown asked for, apart
+  /// from [parts]: they are rewritten on every read; the reader's must stay.
   final List<TextPart> documentParts;
 
-  /// wrap flows the words around whatever overlaps the box. See TextWrap.
   final TextWrap wrap;
 
-  /// style is the name of the document's text style this text is set in,
-  /// or empty for its own -- see CanvasDocument.textStyles. Changing the
-  /// style restyles every text that names it.
+  /// style names the document's text style this is set in, or "" for its
+  /// own (see CanvasDocument.textStyles); changing the style restyles all.
   final String style;
 
-  /// curve attaches the text to a line, or is null for a paragraph in its own
-  /// box. See [TextOnCurve].
+  /// curve attaches the text to a line, or is null for its own box.
   final TextOnCurve? curve;
 
   const TextElement(
@@ -319,9 +289,8 @@ class TextElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.text;
 
-  /// assetIds is every stored picture this element refers to: the pictures
-  /// among its pieces, and one showing through its letters. A picture left
-  /// out is swept away as unused; see CanvasStorage.liveAssetIds.
+  /// assetIds is every stored picture this element refers to. One left out
+  /// is swept away as unused; see CanvasStorage.liveAssetIds.
   @override
   Set<String> get assetIds => {
         for (var item in items) ...{
@@ -333,36 +302,30 @@ class TextElement extends CanvasElement {
         ...box.assetIds,
       };
 
-  /// drawnParts are the parts the painter works from: the element's own
-  /// marks as a part covering every word, so they share the parts' drawing
-  /// and timing, and then the parts themselves. The marks come first, so a
-  /// part's own highlight is drawn over them and a part still decides the
-  /// colour and weight of its words.
+  /// drawnParts are the parts the painter works from: the element's own marks
+  /// as a part over every word, then the parts. Marks first, so a part's
+  /// highlight draws over them and a part still decides its words' look.
   List<TextPart> get drawnParts => drawnPartsWith(documentParts);
 
-  /// drawnPartsWith is drawnParts with the document's runs given rather than
-  /// taken from the element -- which is what a box in a chain needs, since
-  /// the runs it draws are the head's, moved. See TextFlow.parts.
+  /// drawnPartsWith is drawnParts with the document's runs given, as a box in
+  /// a chain needs: it draws the head's runs, moved. See TextFlow.parts.
   List<TextPart> drawnPartsWith(List<TextPart> fromDocument) => [
         if (highlight != null || underline != null)
           TextPart(highlight: highlight, underline: underline),
-        // The reader's own parts last, so they win where they overlap: see
-        // partAt, where the later part decides.
+        // The reader's parts last, so they win where they overlap (partAt).
         ...fromDocument,
         ...parts,
       ];
 
-  /// displayText is what actually goes on the canvas -- the typed string with
-  /// the case transform applied. See TextCase on why the transform is not
-  /// baked into [text].
+  /// displayText is the typed string with the case transform applied; see
+  /// TextCase on why it is not baked into [text].
   String get displayText => textSpec.textCase.apply(text);
 
   @override
   bool get scalesInside => true;
 
-  /// scaledBy is the words, the pieces and the box at [by] times the size.
-  /// Not a curve's offset, which is a fraction of the line, and not the
-  /// column count. See CanvasElement.scaledBy.
+  /// scaledBy scales the words, pieces and box by [by], but not a curve's
+  /// offset (a fraction of the line) or the column count.
   @override
   CanvasElement scaledBy(double by) => copyWith(
         textSpec: textSpec.scaledBy(by),
@@ -439,8 +402,8 @@ class TextElement extends CanvasElement {
         "textSpec": textSpec.toJson(),
         "box": box.toJson(),
         if (autoSize) "autoSize": true,
-        // Written whenever it says anything, not only for several columns:
-        // No blank first line applies to a one-column box in a chain too.
+        // Written whenever it says anything: No blank first line applies to
+        // a one-column box in a chain too.
         if (columns.says) "columns": columns.toJson(),
         if (animation.any) "animation": animation.toJson(),
         if (slot != null) "slot": slot!.name,

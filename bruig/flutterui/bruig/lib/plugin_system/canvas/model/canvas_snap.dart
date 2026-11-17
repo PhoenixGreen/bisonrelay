@@ -19,11 +19,9 @@ class SnapResult {
   bool get caught => onVertical != null || onHorizontal != null;
 }
 
-/// snapTopLeft nudges a moving element's top-left so that one of its own
-/// interesting points lands on a line.
-///
-/// [within] is in document units: the caller converts
-/// CanvasGuides.snapWithin, in screen pixels, through the zoom.
+/// snapTopLeft nudges a moving element's top-left so one of its own
+/// interesting points lands on a line. [within] is in document units: the
+/// caller converts CanvasGuides.snapWithin (screen pixels) through the zoom.
 SnapResult snapTopLeft(
   Offset topLeft,
   Size size,
@@ -115,11 +113,10 @@ class _Catch {
   const _Catch(this.line, this.shift);
 }
 
-/// _nearest is the closest pairing of anything on the element with anything on
-/// the canvas, if one of them is near enough.
-///
-/// Nearest wins rather than first: on a fine grid several lines are in
-/// reach, and the first could jump past the one it was nearly touching.
+/// _nearest is the closest pairing of anything on the element with anything
+/// on the canvas, if near enough. Nearest wins rather than first: on a fine
+/// grid several lines are in reach, and the first could jump past the one
+/// it was nearly touching.
 _Catch? _nearest(List<double> points, List<double> lines, double within) {
   _Catch? best;
   var closest = within;

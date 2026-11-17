@@ -26,13 +26,10 @@ import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
 // own_style.dart is an element's own ways to arrive, leave and loop in its
-// motion chain (Ken, 2026-11-08: everything the sidebar's Animation
-// sections had, in the chain, before those sections go). One adapter over
-// the three kinds of own animation -- a box's (ElementAnimation), the words'
-// (TextAnimation) and a chart's (ChartAnimation) -- for the Motion clips
-// card's Preset, and the "Its own style" card that holds the rest: the
-// curve, where a growing one starts, the gap between pieces, their order,
-// how a cut cuts, a text's mark and copies, and the loop's every setting.
+// motion chain. OwnStyle is one adapter over the three kinds of own
+// animation -- a box's (ElementAnimation), the words' (TextAnimation) and a
+// chart's (ChartAnimation) -- used by the Motion clips card's Preset and by
+// the "Its own style" card, which holds every other setting.
 
 enum OwnStyleKind { element, text, chart }
 
@@ -95,8 +92,8 @@ class OwnStyle {
   String labelOf(String name) =>
       presets().where((p) => p.$1 == name).firstOrNull?.$2 ?? name;
 
-  /// withPreset is it arriving (or leaving) [name]: a new arrival with the
-  /// curve and cut it was made for, as the sidebar's applied it.
+  /// withPreset is it arriving (or leaving) [name]: a new arrival brings
+  /// the curve and cut its preset was made for.
   CanvasElement withPreset(String name, {bool leaving = false}) {
     switch (kind) {
       case OwnStyleKind.element:
@@ -137,8 +134,8 @@ class OwnStyle {
         OwnStyleKind.chart => _withChart(_chart.copyWith(ease: e)),
       };
 
-  /// scale is where a growing arrival starts from -- the preset's own, as
-  /// it plays, where none is set -- or null where nothing grows.
+  /// scale is where a growing arrival starts from (the preset's own where
+  /// none is set), or null where nothing grows.
   double? get scale => switch (kind) {
         OwnStyleKind.element => _box.scales ? _box.scaleFor(_box.preset) : null,
         OwnStyleKind.text => _text.scales ? _text.scaleFor(_text.preset) : null,
@@ -265,8 +262,8 @@ class OwnStyle {
 /// clips card's tabs have them.
 const ownKinds = [MotionKind.arrive, MotionKind.loop, MotionKind.leave];
 
-/// ownColour is what an own arrival, loop or leaving is drawn in: the Keys
-/// strip's, the Chain's group, the tab.
+/// ownKindColour is what an own arrival, loop or leaving is drawn in: in
+/// the Keys strip, the Chain's group and the tab.
 Color ownKindColour(MotionKind kind) => phaseColour(switch (kind) {
       MotionKind.arrive => MotionPhase.arrive,
       MotionKind.leave => MotionPhase.leave,
@@ -275,12 +272,12 @@ Color ownKindColour(MotionKind kind) => phaseColour(switch (kind) {
     });
 
 /// OwnTabs is the Motion clips card's choice of the element's own arrival,
-/// loop and leaving (Ken, 2026-11-12: "toggle between the 3 presets"):
-/// each tab says its preset, or None; picked, the Chain shows it.
+/// loop and leaving: each tab says its preset, or None; picked, the Chain
+/// shows it.
 extension OwnTabs on CanvasController {
-  /// ownTabOf is the tab the Chain shows for [e]: one picked, the own clip
-  /// picked, or -- nothing yet -- its arrival; null for a clip of its own
-  /// making, or an element with no own animation.
+  /// ownTabOf is the tab the Chain shows for [e]: the one picked, the own
+  /// clip picked, or else its arrival; null for a clip of its own making,
+  /// or an element with no own animation.
   MotionKind? ownTabOf(CanvasElement e) {
     if (OwnStyle.of(e) == null) return null;
     if (ownTab case var k?) return k;
@@ -327,7 +324,7 @@ extension OwnTabs on CanvasController {
     return name == "none" ? "" : name;
   }
 
-  /// ownPresetLabel is it as the tab says it.
+  /// ownPresetLabel is ownPresetOf as the tab says it.
   String ownPresetLabel(CanvasElement e, MotionKind kind) {
     var name = ownPresetOf(e, kind);
     if (name.isEmpty) return "None";
@@ -344,9 +341,9 @@ extension OwnTabs on CanvasController {
             ]
           : OwnStyle(e).presets(leaving: kind == MotionKind.leave);
 
-  /// showPhase is the Chain's filter set to [ph] -- null for all of it --
-  /// across the whole Chain (Ken, 2026-11-12): an arrival, loop or leaving
-  /// also turns the Motion clips card to its tab, and its cards with it.
+  /// showPhase sets the whole Chain's filter to [ph] (null for all of it).
+  /// An arrival, loop or leaving also turns the Motion clips card, and its
+  /// cards, to its tab.
   void showPhase(String? element, MotionPhase? ph) {
     var e = element == null ? null : document.elementById(element);
     if (e != null && OwnStyle.of(e) != null) {
@@ -380,8 +377,8 @@ extension OwnTabs on CanvasController {
   }
 
   /// setOwnPreset makes [element]'s own [kind] preset [name], laid down
-  /// as the settings panel lays it, or ("") takes it away; the Chain then
-  /// shows it.
+  /// as the settings panel lays it, or with "" takes it away; the Chain
+  /// then shows it.
   void setOwnPreset(String element, MotionKind kind, String name) {
     var e = document.elementById(element);
     if (e == null) return;
@@ -397,8 +394,8 @@ extension OwnTabs on CanvasController {
       return;
     }
     var leaving = kind == MotionKind.leave;
-    // One there already: its preset changed, where it is (as the Motion clips
-    // card's Preset did); laid down only where there is none.
+    // One there already has its preset changed where it is; a clip is laid
+    // down only where there is none.
     if (name.isNotEmpty && ownAnyOf(e, kind) != null) {
       beginInteraction();
       replaceElement(OwnStyle(e).withPreset(name, leaving: leaving));
@@ -422,8 +419,6 @@ extension OwnTabs on CanvasController {
   }
 }
 
-/// OwnTabsRow is the tabs, and -- where the tab picked has nothing yet, or
-/// is the loop -- its Preset to set it up.
 /// _presetPicks are [e]'s own [kind]'s Preset and Kind (see
 /// preset_pair.dart), setting it as setOwnPreset does.
 List<Widget> _presetPicks(
@@ -478,6 +473,8 @@ List<Widget> _presetPicks(
   }
 }
 
+/// OwnTabsRow is the tabs and, where the tab picked has nothing yet or is
+/// the loop, its Preset to set it up.
 class OwnTabsRow extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -561,8 +558,8 @@ class OwnTabsRow extends StatelessWidget {
               tab(k),
             ],
           ]),
-          // Its preset in two: its family, then which of them (Ken,
-          // 2026-11-12) -- a chart's, a short list, in one.
+          // Its preset in two, its family then which of them; a chart's, a
+          // short list, in one.
           if (on != null) ...[
             const SizedBox(height: 8),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -698,8 +695,7 @@ class OwnStyleCard extends StatelessWidget {
             options: const [(false, "Together"), (true, "One after another")],
             onChanged: (v) => write(style.withPiecesInTurn(v)),
           ),
-        // A chart's series: together, or each after the one before (Ken's
-        // privacy video: five series arrived as one).
+        // A chart's series: together, or each after the one before.
         if (!leaving &&
             element is ChartElement &&
             (element as ChartElement).data.series.length > 1)

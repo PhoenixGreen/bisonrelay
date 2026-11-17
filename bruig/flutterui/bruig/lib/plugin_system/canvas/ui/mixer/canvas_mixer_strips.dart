@@ -1,17 +1,11 @@
 part of 'canvas_mixer.dart';
 
-// canvas_mixer_strips.dart is the mixer's columns: one for each channel, each
-// return and the master, every one the same shape, in bands top to bottom as
-// Ableton's session mixer has them:
-//
-//   the clips: a channel's clip slots, launched live; the master's scenes;
-//   the devices: a column's effects as slots that open them;
-//   the sends: its send dials;
-//   the mixer: pan, on, solo and arm in a column beside the fader.
-//
-// Each band is one height across every column (see _Bands), so the faders
-// start on the same line and are as tall. Each band is shown or hidden from
-// the rail at the right (MixerSection).
+// canvas_mixer_strips.dart is the mixer's columns: one for each channel,
+// return and the master, all the same shape, in bands top to bottom as in
+// Ableton's session mixer: clips (a channel's slots; the master's scenes),
+// devices (effects as slots), sends (dials), and the mixer (pan, on, solo
+// and arm beside the fader). Each band is one height across every column
+// (_Bands), so the faders line up; the rail (MixerSection) shows or hides it.
 
 /// _headH, _bandGap and the rest are the columns' measures, at the desk's
 /// own size (see _CanvasMixerState.build).
@@ -24,35 +18,29 @@ const double _clipGap = 3;
 const double _stopH = 16;
 
 /// _clipRowsWanted is the most clip slots the clips band is made tall
-/// enough for, room allowing (fewer while fewer are shown: see
-/// CanvasController.slotsShown); more scroll.
+/// enough for, room allowing (fewer while fewer show); more scroll.
 const int _clipRowsWanted = 4;
 
-/// _clipsLeast is the least a clips band is given, room allowing: one
-/// slot, and the stop button under it.
+/// _clipsLeast is the least a clips band is given: one slot and its stop.
 const double _clipsLeast = _clipH + _clipGap + _slotGap + _stopH;
 
 /// _mixerMinH is the least a mixer band is given (its left column and a
 /// fader still worth dragging), and _mixerCapH the most before the room
-/// left goes to the clips instead.
-// Both grown by the sound half's label, pan and switch rows over the
-// fader (the approved design), so the fader keeps its room.
+/// left goes to the clips. Both include the sound half's label, pan and
+/// switch rows over the fader, so the fader keeps its room.
 const double _mixerMinH = 120 + _soundRowsH;
 const double _mixerCapH = 230 + _soundRowsH;
 const double _soundRowsH = 30;
 
-/// _buttonW and _buttonH are those buttons'.
 const double _buttonW = 18;
 const double _buttonH = 12;
 
-/// _wideW and _narrowW are a column's widths: wide, with names and a
-/// numbered fader, or narrow, for more channels in view; each column either,
-/// by itself or all together (CanvasController.narrowStrips).
+/// _wideW and _narrowW are a column's widths: wide, with names and a numbered
+/// fader, or narrow, each column or all (CanvasController.narrowStrips).
 const double _wideW = 116;
 const double _narrowW = 62;
 
-/// _sendRow is a row of send dials: the dial and its letter; a narrow
-/// column's dials are smaller, two to a row.
+/// _sendRow is a row of send dials; a narrow column's are smaller, two a row.
 const double _sendRow = 35;
 const double _narrowSendRow = 29;
 
@@ -66,15 +54,13 @@ double sendsHeight(int returns, {bool narrow = false}) {
   return rows * (narrow ? _narrowSendRow : _sendRow) + (rows - 1) * 2;
 }
 
-/// _Bands is how tall the clips and devices bands of every column are (null
-/// for one hidden), and whether the mixer band, which takes what is left, is
-/// shown.
+/// _Bands is how tall every column's clips and devices bands are (null for
+/// one hidden), and whether the mixer band, taking what is left, shows.
 class _Bands {
   final double? clips;
   final double? devices;
 
-  /// sends is the send dials' band, the height the most of them take; null
-  /// when hidden or there are no returns to send to.
+  /// sends is the send dials' band height; null when hidden or no returns.
   final double? sends;
 
   /// mixer is whether the mixer band shows whole, taking what is left;
@@ -82,19 +68,16 @@ class _Bands {
   final bool mixer;
   final bool miniMixer;
 
-  /// bare is the mixer at its smallest: no column has its head (its name
-  /// and the arrow that narrows it).
+  /// bare is the mixer at its smallest: no column has its head.
   final bool bare;
 
   /// motion is the room every column's motion half takes over its sound
   /// half, and motionClip each slot row's motion part over its sound part:
-  /// nought where no element has a strip (the approved design: one strip,
-  /// one column of slots, per element; the sound halves on one line).
+  /// nought where no element has a strip, so the sound halves share a line.
   final double motion;
   final double motionClip;
 
-  /// devicesMini is whether the devices band is minimised: a line saying
-  /// how many there are (the approved design).
+  /// devicesMini is whether the devices band is minimised to a count.
   final bool devicesMini;
   const _Bands(this.clips, this.devices, this.mixer,
       {this.miniMixer = false,
@@ -104,8 +87,7 @@ class _Bands {
       this.motion = 0,
       this.motionClip = 0});
 
-  /// need is the least [states] take of a column's height: the head, the
-  /// gaps, and each band at its least -- as fit gives them.
+  /// need is the least [states] take of a column's height, as fit gives it.
   static double need(Map<MixerSection, BandState> states,
       {required double devicesWanted,
       required double devicesCap,
@@ -143,15 +125,12 @@ class _Bands {
   }
 
   /// _Bands.fit shares [inner], a column's height inside its frame, among the
-  /// bands as [states] says. A minimised band has its least (a clip slot and
-  /// its stop, a device slot, the mixer as a row) and the whole ones share the
-  /// rest: the mixer its least first, then each of the others what it wants,
-  /// then the mixer more, to [_mixerCapH], then the clips the rest. Short of
-  /// room, the clips and devices share it as they want it, and scroll.
-  ///
-  /// The devices want no more than [devicesCap] (three slots and the sends)
-  /// while the clips and the mixer both show whole, so a long chain scrolls
-  /// rather than squeezing them.
+  /// bands as [states] says. A minimised band has its least; the whole ones
+  /// share the rest: the mixer its least, each other what it wants, the mixer
+  /// more up to [_mixerCapH], then the clips the rest. Short of room, clips
+  /// and devices share it as they want it, and scroll. The devices want no
+  /// more than [devicesCap] while clips and mixer both show whole, so a long
+  /// chain scrolls rather than squeezing them.
   factory _Bands.fit(double inner, Map<MixerSection, BandState> states,
       double devicesWanted, double devicesCap,
       {double sendsH = 0,
@@ -174,7 +153,6 @@ class _Bands {
     var clips = whole(MixerSection.clips);
     var devices = whole(MixerSection.devices);
     var mixer = whole(MixerSection.mixer);
-    // The sends: their own height, as tall as the most dials take.
     var sends = states[MixerSection.sends] != BandState.hidden && sendsH > 0
         ? sendsH
         : null;
@@ -197,8 +175,7 @@ class _Bands {
     if (mini(MixerSection.mixer)) {
       fixed += bare ? _bareMixerH : _miniMixerH + (motion ? _motionLineH : 0);
     }
-    // Too short for even the least of each with the motion's parts: the
-    // motion's parts go first.
+    // Too short for each band's least with the motion parts: they go first.
     if (motion && fixed > avail) {
       return _Bands.fit(inner, states, devicesWanted, devicesCap,
           sendsH: sendsH, bare: bare, clipRows: clipRows);
@@ -242,9 +219,8 @@ class _Bands {
     if (devices && clips) {
       d = rest >= wanted ? want : rest * want / wanted;
       c = rest - d;
-      // A slot and the stop under it, at the least, taken from the devices,
-      // which scroll: shared by what each wanted, a long chain would leave the
-      // clips a sliver.
+      // At least a slot and its stop, taken from the devices, which scroll:
+      // shared by want, a long chain would leave the clips a sliver.
       if (c < _clipsLeast + mc && rest > _clipsLeast + mc) {
         c = _clipsLeast + mc;
         d = rest - c;
@@ -268,8 +244,7 @@ class _Bands {
 const double _miniMixerH = 34;
 
 /// _motionGap is under the motion half; _motionClipH a slot row's motion
-/// part, _motionClipGap under it; _motionLineH the motion's line over a
-/// minimised mixer.
+/// part, _motionClipGap under it; _motionLineH the line over a mini mixer.
 const double _motionGap = 4;
 const double _motionClipH = 14;
 const double _motionClipMini = 4;
@@ -279,8 +254,7 @@ const double _motionLineH = 18;
 /// _bareMixerH is it at the mixer's smallest: the meter alone.
 const double _bareMixerH = 12;
 
-/// _StripFrame is a column: its frame, its head, and its bands at the
-/// heights every column shares.
+/// _StripFrame is a column: its frame, head and bands at shared heights.
 class _StripFrame extends StatelessWidget {
   final double width;
   final bool selected;
@@ -296,7 +270,6 @@ class _StripFrame extends StatelessWidget {
   /// without, which keeps the band's room so the faders line up.
   final Widget Function()? sends;
 
-  /// miniMixer is the mixer band minimised: see _miniMixerBand.
   final Widget Function() miniMixer;
 
   /// motion is the motion half over the sound half, where the column has
@@ -312,17 +285,14 @@ class _StripFrame extends StatelessWidget {
   final VoidCallback? onNarrow;
   final Key? narrowKey;
 
-  /// badges go after its name, where it is wide: an element's copies (×N)
-  /// and All for one on the master canvas. See stripBadges.
+  /// badges go after its name, where it is wide: see stripBadges.
   final List<Widget> badges;
 
-  /// rowColour is its row's colour, as a bar along the top of its head
-  /// (the approved design); none on the buses and the master.
+  /// rowColour is a bar along the top of its head; none on buses or master.
   final Color? rowColour;
 
-  /// deviceCount is how many devices it has, motion and sound: the devices
-  /// band minimised says so, rather than showing the first of them. Null
-  /// where it has nothing to count (the band shows itself).
+  /// deviceCount is how many devices it has, motion and sound, for the
+  /// devices band minimised; null where it has nothing to count.
   final int? deviceCount;
 
   const _StripFrame({
@@ -362,10 +332,9 @@ class _StripFrame extends StatelessWidget {
         border:
             Border.all(color: master ? colors.outline : colors.outlineVariant),
       ),
-      // Picked, drawn over the frame rather than thickening it, which would move
-      // the picked column's bands off the others' line. Always there, clear when
-      // not picked: a decoration that comes and goes changes the tree under it,
-      // and a reading being typed into would lose what was typed.
+      // Picked: drawn over the frame, not thickening it, which would move its
+      // bands off the others' line. Always there, clear when not picked: one
+      // that comes and goes changes the tree, losing a reading being typed.
       foregroundDecoration: BoxDecoration(
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
@@ -499,15 +468,13 @@ class _Well extends StatelessWidget {
       );
 }
 
-/// _band is a column of [children] in a band: scrolled when the band is
-/// shorter than they are.
+/// _band is [children] in a band, scrolled where the band is shorter.
 Widget _band(List<Widget> children) => ListView(
       padding: EdgeInsets.zero,
       physics: const ClampingScrollPhysics(),
       children: children,
     );
 
-/// _slots lays [slots] out a slot's height each, [_slotGap] apart.
 List<Widget> _slots(List<Widget> slots) => [
       for (var (i, s) in slots.indexed) ...[
         if (i > 0) const SizedBox(height: _slotGap),
@@ -516,9 +483,8 @@ List<Widget> _slots(List<Widget> slots) => [
     ];
 
 /// _mixerBand is a strip's sound half, row for row as the motion half over
-/// it (the approved design, 2026-11-08): SOUND and the level; the pan, a
-/// slider centred as the cross-fader is; the switches -- on, solo, arm --
-/// as chips; then the fader on its meter, with the room left.
+/// it: SOUND and the level; the pan, a slider centred as the cross-fader is;
+/// the switches (on, solo, arm) as chips; then the fader on its meter.
 Widget _mixerBand({
   required Widget left,
   required Widget fader,
@@ -588,18 +554,15 @@ Widget _mixerBand({
 const double _panH = 28;
 const double _chipH = 14;
 
-/// _soundLeast is the least a sound half is drawn at: its rows, and a
-/// fader still worth dragging.
+/// _soundLeast is the least a sound half gets: its rows and a usable fader.
 const double _soundLeast = 14 + 3 + _panH + 4 + _chipH + 4 + 30;
 
-/// _SoundLeft is what a strip has besides its fader: its pan, and the on,
-/// solo and arm switches it has; laid out by _mixerBand.
+/// _SoundLeft is a strip's pan and its on, solo and arm switches.
 class _SoundLeft extends StatelessWidget {
   final Widget pan;
   final Widget? on, solo, arm;
   const _SoundLeft({required this.pan, this.on, this.solo, this.arm});
 
-  // Shown alone, as it once was: the pan over the switches.
   @override
   Widget build(BuildContext context) => Column(children: [
         SizedBox(height: _panH, child: pan),
@@ -608,7 +571,6 @@ class _SoundLeft extends StatelessWidget {
       ]);
 }
 
-/// _leftColumn is a strip's pan and switches, for _mixerBand.
 Widget _leftColumn({
   required Widget pan,
   Widget? on,
@@ -744,8 +706,8 @@ Widget _onToggle(MixerLook theme, String label, bool muted, VoidCallback onTap,
         {required Key key, required String what, IconData? icon}) =>
     _Toggle(
         key: key,
-        // M, lit amber while muted (the approved design); a switch with an
-        // icon (the scene's power) lit while on.
+        // M, lit amber while muted; a switch with an icon (the scene's
+        // power) lit while on.
         label: icon == null ? "M" : label,
         icon: icon,
         on: icon == null ? muted : !muted,
@@ -761,7 +723,6 @@ Widget _onToggle(MixerLook theme, String label, bool muted, VoidCallback onTap,
                 "exports.",
         onTap: onTap);
 
-/// _faderOf is a column's fader and its reading, for the mixer band.
 Widget _faderOf(MixerLook theme, double db, _Meter meter,
         _MixWrite<double> onChanged, VoidCallback onCommit,
         {bool wide = false, bool narrow = false}) =>
@@ -788,8 +749,7 @@ class _ChannelStrip extends StatelessWidget {
   final bool editable;
   final bool soloed;
 
-  /// midi is whether it is a MIDI channel (an instrument's), which can be
-  /// armed, and [armed] whether it is.
+  /// midi is whether it is a MIDI channel, which can be [armed].
   final bool midi;
   final bool armed;
   final _Meter meter;
@@ -804,7 +764,6 @@ class _ChannelStrip extends StatelessWidget {
   final VoidCallback onOpenDuck;
   final VoidCallback onOpenPanner;
 
-  /// clips is its clips band, from the mixer: see _ClipBand.
   final Widget Function() clips;
 
   /// selected is whether this is the channel picked, here or on the
@@ -828,8 +787,7 @@ class _ChannelStrip extends StatelessWidget {
   final InstrumentPart? part;
   final ValueChanged<String>? onOpenDevice;
 
-  /// onRemoveDevice takes one of its devices out, by id: a right-click on
-  /// its slot.
+  /// onRemoveDevice takes a device out by id: a right-click on its slot.
   final ValueChanged<String>? onRemoveDevice;
 
   /// motion and motionLine are its element's motion half and line, where
@@ -841,14 +799,11 @@ class _ChannelStrip extends StatelessWidget {
   /// goes, the master or a return it shares.
   final Widget? leadSlot;
 
-  /// badges go after its name: see _StripFrame.badges.
   final List<Widget> badges;
 
-  /// rowColour is its row's: see _StripFrame.rowColour.
   final Color? rowColour;
 
-  /// motionDevices are its element's motion devices, as slots: first in its
-  /// devices band, before the sound's.
+  /// motionDevices are its element's motion slots, before the sound's.
   final List<Widget> motionDevices;
 
   const _ChannelStrip({
@@ -956,7 +911,6 @@ class _ChannelStrip extends StatelessWidget {
                   onRemove: () => onRemoveDevice?.call("midi$i"),
                   key: ValueKey("midiSlot-$i")),
           ],
-          // Its Speech device, and its own devices, in their order.
           if (mix.speech case var speech?)
             _slot(
                 theme,
@@ -1003,7 +957,6 @@ class _ChannelStrip extends StatelessWidget {
               key: const ValueKey("duckSlot")),
         ]),
       ]),
-      // Its send dials, in a band of their own (see MixerSection.sends).
       sends: () => _Sends(
         narrow: narrow,
         mix: mix,
@@ -1074,8 +1027,8 @@ class _ChannelStrip extends StatelessWidget {
             onCommit,
             narrow: narrow),
         reading: Row(mainAxisSize: MainAxisSize.min, children: [
-          // Held by hand, off its automation: an amber ◉, the reading
-          // amber (the approved design); following it, a red dot.
+          // Held by hand, off its automation: an amber ◉ and amber reading;
+          // following it, a red dot.
           if (held.contains("volume"))
             Padding(
               key: const ValueKey("faderHeld"),
@@ -1167,7 +1120,6 @@ class _ReturnStrip extends StatelessWidget {
   final ValueChanged<String?> onOpen;
   final VoidCallback onRemove;
 
-  /// onRemoveDevice: see _ChannelStrip.onRemoveDevice.
   final ValueChanged<String>? onRemoveDevice;
   final bool selected;
   final bool narrow;
@@ -1228,8 +1180,7 @@ class _ReturnStrip extends StatelessWidget {
               textKey: const ValueKey("returnName"),
               fieldKey: const ValueKey("returnNameField")),
         ),
-        // Not in a narrow column, which has room only for its letter and a
-        // little of its name.
+        // Not when narrow: room only for its letter and a little name.
         if (!narrow)
           InkWell(
             key: const ValueKey("removeReturn"),
@@ -1315,10 +1266,9 @@ class _ReturnStrip extends StatelessWidget {
 }
 
 /// _SceneStrip is the bus of the scene shown (see CanvasScene.bus): every
-/// sound in the scene -- its channels, its backdrop's, its transition's --
-/// sums into it on its way to the master, while the master's own sounds go
-/// straight there. Its devices, EQ and compressor in its chain's order, its
-/// pan and its fader.
+/// sound in the scene (its channels, backdrop, transition) sums into it on
+/// its way to the master; the master's own sounds go straight there. Its
+/// devices, EQ and compressor in chain order, its pan and its fader.
 class _SceneStrip extends StatelessWidget {
   final String name;
   final ChannelMix mix;
@@ -1336,8 +1286,7 @@ class _SceneStrip extends StatelessWidget {
   final VoidCallback onSelect;
 
   /// joins are its slots: a transition each, one per join between scenes,
-  /// outside the cue rows (decision 2 of the approved design); motion its
-  /// motion half, the scenes' camera.
+  /// outside the cue rows; motion its motion half, the scenes' camera.
   final Widget Function()? joins;
   final Widget Function()? motion;
 
@@ -1492,7 +1441,6 @@ class _MasterStrip extends StatelessWidget {
   /// onOpenDevice opens one of its own devices, by id: see devicesOf.
   final ValueChanged<String>? onOpenDevice;
 
-  /// onRemoveDevice: see _ChannelStrip.onRemoveDevice.
   final ValueChanged<String>? onRemoveDevice;
 
   /// scenes is its clips band: the scenes, each launching its row.
@@ -1575,9 +1523,8 @@ class _MasterStrip extends StatelessWidget {
               Text("${dbText(mix.ceilingDb)} dBTP", style: small()),
               () => onChanged(mix.copyWith(limiter: !mix.limiter)),
               key: const ValueKey("limiterSlot")),
-          // The loudness the whole mix is aimed at, measured from its own
-          // editor (see _LoudnessDevice). Reaching it in an export is a
-          // publish setting.
+          // The loudness the mix is aimed at, measured from its own editor (see
+          // _LoudnessDevice); reaching it in an export is a publish setting.
           _slot(
               theme,
               "Loudness",
@@ -1635,10 +1582,9 @@ class _MasterStrip extends StatelessWidget {
 }
 
 /// _JoinSlot is one join between scenes on the Scenes strip, as a slot: the
-/// scene it leaves and the one it arrives at, a dot where its transition
-/// has a sound; pressed, the join plays -- a little of the one, the
-/// transition, a little of the other (previewTransitionAfter). Not a cue's:
-/// a cue launch passes it by.
+/// scenes it leaves and arrives at, a dot where its transition has a sound;
+/// pressed, it plays a little of each scene around the transition
+/// (previewTransitionAfter). A cue launch passes it by.
 class _JoinSlot extends StatefulWidget {
   final CanvasController controller;
   final int join;
@@ -1653,11 +1599,10 @@ class _JoinSlot extends StatefulWidget {
   State<_JoinSlot> createState() => _JoinSlotState();
 }
 
-/// _JoinSlotState is a transition's slot on the Scenes strip, as every other
-/// slot is (Ken, 2026-11-10): the scene's colour, the same launch strip --
-/// pressed, the transition plays -- and a label, its own or what it does,
-/// named from its right-click menu. Clicked, or double-clicked, its
-/// transition opens in the Chain (Ken, 2026-11-10).
+/// _JoinSlotState is a transition's slot on the Scenes strip, like every
+/// other slot: the scene's colour, the same launch strip (pressed, the
+/// transition plays), and a label named from its right-click menu. Clicked
+/// or double-clicked, its transition opens in the Chain.
 class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
   final GlobalKey<ChannelNameEditorState> _name = GlobalKey();
   final MenuController _menu = MenuController();
@@ -1665,8 +1610,7 @@ class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
   CanvasController get c => widget.controller;
   int get join => widget.join;
 
-  // Lit while its transition plays, and picked while the Chain shows it, as
-  // every other slot is (Ken, 2026-11-10: they did neither).
+  // Lit while its transition plays; picked while the Chain shows it.
   @override
   Object? get _slotNow => (c.joinPlaying(join), c.pickedScene == join);
 
@@ -1741,10 +1685,8 @@ class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
       child: GestureDetector(
         onSecondaryTapUp: (d) => _menu.open(position: d.localPosition),
         // Picked on the press, anywhere on the card, as the strip is (see
-        // pickJoin). Only its name and its launch strip did (Ken, 2026-11-10:
-        // the Woods and Citadel transitions took two clicks): a press
-        // anywhere else on the card went by to the strip, which picked the
-        // join after the scene shown -- Sunken Ruins, from the Woods.
+        // pickJoin): a press that went by to the strip would pick the join
+        // after the scene shown instead.
         child: Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
@@ -1768,8 +1710,7 @@ class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
   }
 }
 
-/// _SceneMotion is the Scenes strip's motion half: the camera, each scene's
-/// own.
+/// _SceneMotion is the Scenes strip's motion half: each scene's camera.
 class _SceneMotion extends StatelessWidget {
   final MixerLook theme;
   final bool narrow;
@@ -1811,10 +1752,9 @@ class _SceneMotion extends StatelessWidget {
   }
 }
 
-/// _AllFold is the tab before the All group's strips -- the master canvas's,
-/// there in every scene -- that folds them away, and back: "All scenes" on
-/// its side, how many there are, and the arrow. Shares its fold with the
-/// timeline's heading (CanvasController.allFolded).
+/// _AllFold is the tab before the All group's strips (the master canvas's,
+/// in every scene) that folds them away and back: "All scenes", their count
+/// and the arrow, sharing its fold with CanvasController.allFolded.
 class _AllFold extends StatelessWidget {
   final CanvasController controller;
   final MixerLook theme;
@@ -1863,10 +1803,10 @@ class _AllFold extends StatelessWidget {
   }
 }
 
-/// _CueColumn is the cue launchers in a column of their own, on the
-/// mixer's left (Ken, 2026-11-08), level with the strips' slots: a launch
-/// for each cue row, and Stop all under them. Dragged by its right edge,
-/// 40 to 240 wide; narrowed, each keeps its arrow.
+/// _CueColumn is the cue launchers in a column of their own on the mixer's
+/// left, level with the strips' slots: a launch for each cue row, and Stop
+/// all under them. Dragged by its right edge, 40 to 240 wide; narrowed, each
+/// keeps its arrow.
 class _CueColumn extends StatelessWidget {
   final CanvasController controller;
   final MixerLook theme;
@@ -1875,7 +1815,7 @@ class _CueColumn extends StatelessWidget {
   final double width;
 
   /// master is whether these are the master's cues, beside its channels,
-  /// on a scene with cues of its own (Ken, 2026-11-10: per-canvas cues).
+  /// on a scene with cues of its own.
   final bool master;
 
   const _CueColumn(
@@ -1929,14 +1869,12 @@ class _CueColumn extends StatelessWidget {
                     ),
                   if (bands.clips case var h?) ...[
                     const SizedBox(height: _bandGap),
-                    // Scrolled with the slots beside it, and no bar of its
-                    // own (Ken, 2026-11-10: "remove the scroll bar").
+                    // Scrolled with the slots beside it, no bar of its own.
                     SizedBox(height: h, child: slots),
                   ],
                 ]),
           ),
         ),
-        // Its right edge, dragged to widen or narrow it.
         Positioned(
           right: 0,
           top: 0,
@@ -1947,7 +1885,6 @@ class _CueColumn extends StatelessWidget {
             child: GestureDetector(
               key: ValueKey(master ? "masterCueColumnGrip" : "cueColumnGrip"),
               behavior: HitTestBehavior.opaque,
-              // Each its own width.
               onHorizontalDragUpdate: (d) => master
                   ? controller.masterCueColumnWidth += d.delta.dx
                   : controller.cueColumnWidth += d.delta.dx,
@@ -1979,12 +1916,11 @@ class _RailBand {
 const double _railWidth = 50;
 const double _railFoldedWidth = 14;
 
-/// _BandRail is the rail on the mixer's left (the approved design): a
-/// button for each band, its icon and name over three bars of how it shows
-/// (three shown, one minimised, none hidden), pressed for a choice of Show,
-/// Minimise or Hide; under a line, the returns and every column narrow; a
-/// "?" at the foot. The arrow at its top folds it to a thin strip. Short of
-/// height, the names go.
+/// _BandRail is the rail on the mixer's left: a button for each band, its
+/// icon and name over three bars of how it shows (three shown, one
+/// minimised, none hidden), pressed for Show, Minimise or Hide; under a
+/// line, the returns and every column narrow; a "?" at the foot. Its top
+/// arrow folds it to a thin strip. Short of height, the names go.
 class _BandRail extends StatelessWidget {
   final List<_RailBand> bands;
   final MixerLook theme;
@@ -2097,8 +2033,8 @@ class _BandRail extends StatelessWidget {
       BandState.minimised => 1,
       BandState.hidden => 0,
     };
-    // A picture of each choice -- a strip in small, the band whole, a
-    // sliver or gone -- and a word on what it does (the approved design).
+    // A picture of each choice (a strip in small, the band whole, a sliver
+    // or gone) and a word on what it does.
     Widget choice(BandState s, String label) => MenuItemButton(
           key: ValueKey("section-${b.key}-${s.name}"),
           style: MenuItemButton.styleFrom(
@@ -2328,10 +2264,8 @@ mixin _OnSessionPulse<T extends StatefulWidget> on State<T> {
 }
 
 /// _chainSlots is a strip's devices, EQ and compressor as slots, in the
-/// order its chain runs them -- as the Chain shows them (Ken's systems
-/// review, 2026-11-08: the strips listed the EQ and compressor last
-/// whatever the order). [devicePrefix], [eqKey] and [compKey] are each
-/// strip's own keys.
+/// order its chain runs them, as the Chain shows them. [devicePrefix],
+/// [eqKey] and [compKey] are each strip's own keys.
 List<Widget> _chainSlots(
   MixerLook theme, {
   required List<String> chain,
@@ -2387,13 +2321,11 @@ List<Widget> _chainSlots(
 bool get _blinkOn => DateTime.now().millisecondsSinceEpoch ~/ 250 % 2 == 0;
 
 /// _clipColumn lays a column of clip rows out: [row] for each scene, a
-/// slot's height and gap apart, scrolled by [scroll], over [foot].
-///
-/// With [motion], each row is a motion part ([motionRow], or nothing) over
-/// its sound part ([row]); [whole] is a row that is both (the cue launch).
-///
-/// [clip] is the sound part's height (the Slots panel's are taller), and
-/// [stop] whether the stop goes under the slots here.
+/// slot's height and gap apart, scrolled by [scroll], over [foot]. With
+/// [motion], each row is a motion part ([motionRow], or nothing) over its
+/// sound part ([row]); [whole] is a row that is both (the cue launch).
+/// [clip] is the sound part's height (taller in the Slots panel), and [stop]
+/// whether the stop goes under the slots here.
 Widget _clipColumn(ScrollController scroll, int rows,
         Widget Function(int row) row, Widget foot,
         {double motion = 0,
@@ -2425,7 +2357,6 @@ Widget _clipColumn(ScrollController scroll, int rows,
         key: ValueKey(extent),
         controller: scroll,
         padding: EdgeInsets.zero,
-        // Rows come to rest on whole rows (the approved design).
         physics: _RowSnap(extent),
         itemExtent: extent,
         itemCount: rows,
@@ -2469,8 +2400,7 @@ Widget _clipColumn(ScrollController scroll, int rows,
       ]);
     });
 
-/// _RowSnap is the slots' scrolling: let go, they come to rest with a whole
-/// row at the top, rather than part of one.
+/// _RowSnap is the slots' scrolling: let go, they rest on a whole row.
 class _RowSnap extends ClampingScrollPhysics {
   final double extent;
   const _RowSnap(this.extent, {super.parent});
@@ -2502,16 +2432,14 @@ class _RowSnap extends ClampingScrollPhysics {
   }
 }
 
-/// _ClipBand is a channel's clip slots: a row for each scene, and its stop
-/// button under them.
+/// _ClipBand is a channel's clip slots, a row per scene, over its stop.
 class _ClipBand extends StatelessWidget {
   final CanvasController controller;
   final String channel;
   final MixerLook theme;
   final ScrollController scroll;
 
-  /// motion and motionRow are each row's motion part, over its sound slot:
-  /// see _clipColumn.
+  /// motion and motionRow are each row's motion part: see _clipColumn.
   final double motion;
   final Widget Function(int row)? motionRow;
 
@@ -2560,9 +2488,8 @@ class _ClipBand extends StatelessWidget {
 }
 
 /// _ClipSlot is one slot: a clip (its colour, a play mark, its name) or an
-/// empty slot, which stops the channel when pressed, or on an armed MIDI
-/// channel records into it. A right-click offers what can be done with it;
-/// a double-click on an empty one makes a clip there (see _make).
+/// empty slot, which stops the channel when pressed or records on an armed
+/// MIDI channel. Right-click for its menu; double-click empty to make one.
 class _ClipSlot extends StatefulWidget {
   final CanvasController controller;
   final String channel;
@@ -2655,7 +2582,7 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
     var studio = widget.theme.studio;
     Widget check(bool on) => Icon(on ? Icons.check : null, size: 14);
     // An element's own sound with a motion in the same row: linked, the
-    // two launch together (Ken, 2026-11-10).
+    // two launch together.
     var owner = soundOwnerOf(c.document, widget.channel);
     var link = owner != null && owner.base.motion.slot(widget.row) != null
         ? MenuItemButton(
@@ -2787,11 +2714,10 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
 
   void _openMenu(Offset at) => _menu.open(position: at);
 
-  /// _make puts a clip in this empty slot, double-clicked (Ken, 2026-11-08,
-  /// as the motion slots do): on a MIDI channel an empty one to draw notes
-  /// into, on an audio channel one of the channel's sound -- its first; the
-  /// menu has the rest. Picked, it takes Delete; double-clicked again, it
-  /// opens. With no sound to make one of, the menu says so.
+  /// _make puts a clip in this empty slot on a double-click, as the motion
+  /// slots do: an empty one to draw notes into on a MIDI channel, else one of
+  /// the channel's first sound (the menu has the rest). Picked, it takes
+  /// Delete; double-clicked again, it opens. With no sound, the menu says so.
   void _make(Offset at) {
     if (!c.makeSessionClip(widget.channel, widget.row)) {
       _openMenu(at);
@@ -2803,10 +2729,9 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
     });
   }
 
-  /// _menuAt is where a right-click (or a Mac's Control-click) went down, for
-  /// its menu to open when it comes up: opened on the press, a menu still open
-  /// from another slot, closing on the same press, could take the new one with
-  /// it.
+  /// _menuAt is where a right-click (or a Mac's Control-click) went down, so
+  /// its menu opens when it comes up: opened on the press, a menu still open
+  /// from another slot, closing on the same press, could take it along.
   Offset? _menuAt;
 
   @override
@@ -2863,8 +2788,7 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
           ),
         ),
         label: _renaming
-            // Return or a click away keeps the name; Escape leaves it as it
-            // was.
+            // Return or a click away keeps the name; Escape undoes it.
             ? CallbackShortcuts(
                 bindings: {
                   const SingleActivator(LogicalKeyboardKey.escape): () =>
@@ -2956,7 +2880,6 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
         },
         onPointerCancel: (_) => _menuAt = null,
         child: GestureDetector(
-          // Double-clicked: a clip in an empty slot.
           onDoubleTapDown: clip == null ? (d) => _make(d.localPosition) : null,
           onDoubleTap: clip == null ? () {} : null,
           child: MouseRegion(cursor: SystemMouseCursors.click, child: body),
@@ -3032,7 +2955,6 @@ class _SceneBand extends StatelessWidget {
   /// motion is the rows' motion part: a cue's launch is the whole row.
   final double motion;
 
-  /// master is whether these are the master's cues: see _CueColumn.
   final bool master;
 
   const _SceneBand({
@@ -3119,7 +3041,6 @@ class _SceneSlot extends StatefulWidget {
   final int row;
   final MixerLook theme;
 
-  /// master is whether it is one of the master's cues: see _CueColumn.
   final bool master;
   const _SceneSlot(
       {required this.controller,
@@ -3219,8 +3140,6 @@ class _SceneSlotState extends State<_SceneSlot> {
             }
           },
           onPointerCancel: (_) => _menuAt = null,
-          // As the prototype's: a cell with a small square launch, green
-          // while its row plays, and the cue's name.
           child: Container(
             decoration: BoxDecoration(
               color: studio.strip,
@@ -3229,7 +3148,6 @@ class _SceneSlotState extends State<_SceneSlot> {
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: LayoutBuilder(
                 builder: (context, box) => box.maxWidth < 30 && !_renaming
-                    // Narrowed: the launch alone.
                     ? Center(child: _cueGo(lit, studio))
                     : Row(children: [
                         _cueGo(lit, studio),
@@ -3291,8 +3209,7 @@ Widget _miniMixerBand(
         : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             SizedBox(
               height: _buttonH,
-              // Each side shrunk to fit a narrow column, rather than running out
-              // of it.
+              // Each side shrinks to fit a narrow column.
               child: Row(children: [
                 Flexible(
                   child: FittedBox(
@@ -3432,9 +3349,9 @@ class _PanTrackPainter extends CustomPainter {
       old.balance != balance || old.studio != studio;
 }
 
-/// stripBadges are a strip's badges, as the timeline's row has them (the
-/// approved design): ×N where [element] is reused N times, in amber, and All
-/// for a sound on the master canvas, there in every scene.
+/// stripBadges are a strip's badges, as the timeline's row has them: ×N in
+/// amber where [element] is reused N times, and All for a sound on the
+/// master canvas, there in every scene.
 List<Widget> stripBadges(MixerLook theme, String key,
     {CanvasElement? element, bool all = false}) {
   var studio = theme.studio;
@@ -3520,8 +3437,7 @@ class _MiniNote extends StatelessWidget {
   }
 }
 
-/// _chainCount is how many devices a chain has: its EQ, its compressor and
-/// each of its devices, as _chainSlots shows them.
+/// _chainCount is how many devices a chain has, as _chainSlots shows them.
 int _chainCount(List<String> chain, List<MixDevice> devices) => chain
     .where(
         (s) => s == chainEq || s == chainComp || deviceIndexOf(devices, s) >= 0)

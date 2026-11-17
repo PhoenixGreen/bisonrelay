@@ -10,15 +10,13 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart'
 import 'package:bruig/plugin_system/canvas/render/score_engraver.dart';
 import 'package:flutter/painting.dart';
 
-// score_sheet.dart is a Sheet music element showing a part of a score (Ken,
-// 2026-11-14: "show one part on the canvas ... lighting the notes as the
-// playhead passes"): the part (or one hand of it) engraved, a few systems
-// at a time, turned to the page the playhead is on; the notes under the
-// playhead lit, and the playhead drawn unless the sheet says highlight only.
+// score_sheet.dart is a Sheet music element showing a part of a score: the
+// part (or one hand of it) engraved a few systems at a time, turned to the
+// playhead's page, the notes under the playhead lit, and the playhead drawn
+// unless the sheet says highlight only.
 //
-// The playhead is the canvas's own: the frame, through the part's channel's
-// start. Stopped or playing, the sheet, the timeline and the instrument
-// agree on where it is.
+// The playhead is the canvas's own (the frame, through the part's channel's
+// start), so the sheet, timeline and instrument agree on where it is.
 
 /// SheetView is a score part as a sheet shows it at a frame.
 class SheetView {
@@ -27,14 +25,14 @@ class SheetView {
   final AudioElement channel;
   final EngravedScore engraved;
 
-  /// scale is drawn size to the engraving's; origin where its (0, 0) is
-  /// drawn; window the engraving's rows shown.
+  /// scale is drawn size to the engraving's; origin is where its (0, 0) is
+  /// drawn; window is the engraving's rows shown.
   final double scale;
   final Offset origin;
   final Rect window;
 
-  /// seconds is where the playhead is in the part's playing, and place
-  /// where that is in the score (null outside it).
+  /// seconds is the playhead's place in the part's playing; place is where
+  /// that is in the score (null outside it).
   final double seconds;
   final ({int played, int bar, double at})? place;
 
@@ -45,8 +43,7 @@ class SheetView {
   Offset toScore(Offset p) => (p - origin) / scale;
 }
 
-/// SheetBarPart is a piece of a sheet's playbar (Ken, 2026-11-14: "a
-/// playbar over the top of the sheet music").
+/// SheetBarPart is a piece of a sheet's playbar.
 enum SheetBarPart {
   start,
   back,
@@ -54,9 +51,9 @@ enum SheetBarPart {
   on,
   track,
 
-  /// click switches its metronome on and off; slower, faster and reset set
-  /// how fast it plays, and speed shows it (Ken, 2026-11-15) -- in the
-  /// editor, not a book, whose sound is made at the speed it was written.
+  /// click switches its metronome; slower, faster and reset set its speed,
+  /// shown by speed. In the editor only: a book's sound is made at the
+  /// written speed.
   click,
   slower,
   speed,
@@ -64,19 +61,16 @@ enum SheetBarPart {
   reset,
 }
 
-/// sheetBarRect is where [e]'s playbar is in [bounds], or null where it
-/// has none: a strip across the top, a finger's height however small the
-/// sheet.
+/// sheetBarRect is [e]'s playbar in [bounds], or null if it has none: a
+/// strip across the top, a finger's height however small the sheet.
 Rect? sheetBarRect(SheetElement e, Rect bounds) {
   if (!e.playbar || e.score.isEmpty) return null;
-  // Inside its frame's room, along the top.
   var room = e.box.inner(bounds);
   var h = (room.height * 0.085).clamp(18.0, 44.0);
   return Rect.fromLTWH(room.left, room.top, room.width, h);
 }
 
-/// sheetBars are the bars [e] shows of [s], the first and the last,
-/// counted from nought.
+/// sheetBars are the first and last bars [e] shows of [s], from nought.
 (int, int) sheetBars(SheetElement e, MusicScore s) {
   var last = math.max(0, s.barCount - 1);
   var a = e.fromBar > 0 ? (e.fromBar - 1).clamp(0, last) : 0;
@@ -84,9 +78,8 @@ Rect? sheetBarRect(SheetElement e, Rect bounds) {
   return (a, b);
 }
 
-/// sheetSpan is where in the part's playing [e]'s bars play, in seconds:
-/// from the first time its first bar starts to the end of its last bar
-/// after that -- the whole playing for a sheet of every bar.
+/// sheetSpan is when [e]'s bars play in the part's playing, in seconds:
+/// from its first bar's first start to the end of its last bar after that.
 (double, double) sheetSpan(SheetElement e, MusicScore s) {
   var order = s.playOrder();
   if (order.isEmpty) return (0, 0);
@@ -101,8 +94,8 @@ Rect? sheetBarRect(SheetElement e, Rect bounds) {
   );
 }
 
-/// sheetFrames is [sheetSpan] in [doc]'s frames, from [e]'s part's
-/// channel's start: where its play starts and stops. Null without a part.
+/// sheetFrames is [sheetSpan] in [doc]'s frames from the part's channel's
+/// start. Null without a part.
 (int, int)? sheetFrames(SheetElement e, CanvasDocument doc) {
   var s = doc.scores.where((x) => x.id == e.score).firstOrNull;
   var part = s?.partById(e.part);
@@ -116,8 +109,8 @@ Rect? sheetBarRect(SheetElement e, Rect bounds) {
   );
 }
 
-/// sheetBarParts are where each piece of a playbar in [bar] is: four
-/// buttons, a square each, then the track to the end.
+/// sheetBarParts are where each piece of a playbar in [bar] is: four square
+/// buttons, then the track to the end.
 Map<SheetBarPart, Rect> sheetBarParts(Rect bar, {bool practice = true}) {
   var side = bar.height;
   var pad = side * 0.15;
@@ -132,8 +125,8 @@ Map<SheetBarPart, Rect> sheetBarParts(Rect bar, {bool practice = true}) {
     out[p] = Rect.fromLTWH(x, bar.top, side, side);
     x += side;
   }
-  // The practice parts along the right: the click, then the speed between
-  // slower and faster, and back to real time.
+  // The practice parts along the right: click, then speed between slower
+  // and faster, and reset.
   var right = bar.right - pad;
   if (practice) {
     for (var (p, w) in [
@@ -153,29 +146,26 @@ Map<SheetBarPart, Rect> sheetBarParts(Rect bar, {bool practice = true}) {
   return out;
 }
 
-/// sheetSpeedStep is how much a playbar's slower and faster change the
-/// speed by.
+/// sheetSpeedStep is how much slower and faster change the speed by.
 const sheetSpeedStep = 0.05;
 
-/// sheetTrackLine is the line a playbar's [track] draws: its fill along it.
+/// sheetTrackLine is the line a playbar's [track] draws its fill along.
 Rect sheetTrackLine(Rect track) {
   var h = track.height * 0.14;
   return Rect.fromLTWH(track.left, track.center.dy - h / 2, track.width, h);
 }
 
-/// sheetKnobRadius is how big a playbar's knob is on [track].
 double sheetKnobRadius(Rect track) => sheetTrackLine(track).height * 1.6;
 
-/// sheetPlaying says whether the canvas is playing, for the playbar's play
-/// button to show pause; set by the editor (and nothing, in a video).
+/// sheetPlaying says whether the canvas is playing, so play shows pause;
+/// set by the editor (null in a video).
 bool Function()? sheetPlaying;
 
-/// paintSheetBar draws [e]'s playbar in [bar]: its buttons in the sheet's
-/// ink on a tint of it, and the track filled as far as [progress].
+/// paintSheetBar draws [e]'s playbar in [bar]: buttons in the sheet's ink
+/// on a tint of it, the track filled to [progress].
 ///
-/// A book draws the track's fill and knob as pictures of their own, moved by
-/// its clock: [knob] false leaves the knob out. [sheetTrackLine] and
-/// [sheetKnobRadius] say where they are.
+/// A book draws the track's fill and knob as pictures of their own, moved
+/// by its clock: [knob] false leaves the knob out.
 void paintSheetBar(
     ui.Canvas canvas, Rect bar, SheetElement e, double progress, bool playing,
     {bool knob = true, bool practice = true}) {
@@ -287,12 +277,12 @@ void paintSheetBar(
       case SheetBarPart.faster:
         label("+", c, box.height * 0.55, fill.color);
       case SheetBarPart.speed:
-        // How fast, as a share of real time: picked out when it is not.
+        // Speed as a share of real time, picked out when not real time.
         var real = (e.tempo - 1).abs() < 1e-6;
         label("${(e.tempo * 100).round()}%", c, box.height * 0.34,
             real ? fill.color : const Color(0xFFE2622B));
       case SheetBarPart.reset:
-        // Back to real time: there only when it is not.
+        // Reset to real time: only when not already.
         if ((e.tempo - 1).abs() > 1e-6) {
           label("1×", c, box.height * 0.36, fill.color);
         }
@@ -328,8 +318,8 @@ final _notes = Expando<Map<String, List<ScoreNote>>>();
 List<ScoreNote> partNotesOf(MusicScore s, String part) =>
     (_notes[s] ??= {})[part] ??= s.partNotes(part);
 
-/// sheetEventMarks are practice marks by note index in [channel]'s part,
-/// as colours by the score's event ids.
+/// sheetEventMarks turns practice marks by note index into colours by the
+/// score's event ids.
 Map<String, Color> sheetEventMarks(SheetView view, Map<int, Color> byNote) {
   var notes = view.channel.instrument?.notes ?? const [];
   var played = partNotesOf(view.score, view.part.id);
@@ -376,11 +366,8 @@ EngravedScore _engraved(
 }
 
 /// _pageWidth is how wide [e]'s part is engraved to fill [room] across, as
-/// the Studio's page does (Ken, 2026-11-15: "in the studio each
-/// instrument's music is full width of the page ... on the canvas it
-/// isn't"): a page of its systems, at 860 across, is as tall as it is;
-/// engraved as much wider as the room is for its height, the bars spread
-/// across it.
+/// the Studio's page does: a page of systems at 860 across is as tall as it
+/// is; engraved as much wider as the room is for its height.
 double _pageWidth(EngravedScore engraved, SheetElement e, Rect room,
     {double at = 860}) {
   var systems = engraved.systems;
@@ -393,7 +380,7 @@ double _pageWidth(EngravedScore engraved, SheetElement e, Rect room,
 }
 
 /// sheetViewOf is [e] showing its score part at [frame] in [bounds], or
-/// null where it shows no score part (or its score or channel has gone).
+/// null where it shows none (or its score or channel has gone).
 SheetView? sheetViewOf(
     SheetElement e, Rect bounds, CanvasDocument doc, int frame) {
   if (e.score.isEmpty) return null;
@@ -401,7 +388,6 @@ SheetView? sheetViewOf(
   var part = s?.partById(e.part);
   var channel = part == null ? null : doc.elementById(part.channel);
   if (s == null || part == null || channel is! AudioElement) return null;
-  // Inside its frame's room, and under the playbar if it has one.
   var bar = sheetBarRect(e, bounds);
   bounds = e.box.inner(bounds);
   if (bar != null) {
@@ -410,8 +396,8 @@ SheetView? sheetViewOf(
   }
   if (bounds.width <= 0 || bounds.height <= 0) return null;
   var staves = sheetStaves(part, e.hands);
-  // As wide as its room is for a page's height -- worked out twice, as a
-  // page's height moves a little with how many bars are on a line.
+  // As wide as its room for a page's height, worked out twice: a page's
+  // height moves a little with how many bars are on a line.
   var width = _pageWidth(_engraved(s, part.id, staves, e), e, bounds);
   width = _pageWidth(_engraved(s, part.id, staves, e, width: width), e, bounds,
       at: width);
@@ -442,12 +428,12 @@ SheetView? sheetViewOf(
   return SheetView(s, part, channel, es, scale, origin, window, seconds, place);
 }
 
-/// paintScoreSheet draws [view] in [bounds]: the paper, the page of the
-/// part, the notes under the playhead lit, practice marks by event, and the
-/// playhead unless [e] shows the highlight only.
+/// paintScoreSheet draws [view] in [bounds]: paper, the part's page, notes
+/// under the playhead lit, practice marks, and the playhead unless [e]
+/// shows the highlight only.
 ///
-/// A book draws it a piece at a time (see epub_layers.dart): [lit] in place
-/// of what is under the playhead, [head] whether the playhead is drawn,
+/// A book draws it a piece at a time (epub_layers.dart): [lit] in place of
+/// what is under the playhead, [head] whether the playhead is drawn,
 /// [progress] and [playing] for the playbar, [bar] whether it is drawn.
 void paintScoreSheet(
     ui.Canvas canvas, Rect bounds, SheetElement e, SheetView view,
@@ -459,8 +445,8 @@ void paintScoreSheet(
     bool bar = true,
     bool knob = true,
     bool practice = true}) {
-  // Its frame: the paper (or what fills the box) inside its corners, and
-  // the border over the music, after it.
+  // Its frame: the paper inside its corners, the border drawn over the
+  // music.
   var frame = e.box.copyWith(fill: e.paper);
   paintBoxFill(canvas, bounds, frame);
   var sounding = lit ?? sheetSounding(view);
@@ -473,8 +459,8 @@ void paintScoreSheet(
       state: ScorePaintState(
           playing: sounding,
           marks: marks,
-          // The paper is the box's, drawn once above; the music in the
-          // sheet's own ink.
+          // The paper is the box's, drawn above; the music in the sheet's
+          // own ink.
           paper: const Color(0x00000000),
           ink: e.ink,
           // Each hand in its instrument's colour, on a piano's part.
@@ -504,14 +490,13 @@ Set<String> sheetSounding(SheetView view) => {
           n.event
     };
 
-/// sheetProgress is how far through its playing [view]'s playhead is.
 double sheetProgress(SheetElement e, SheetView view) {
   var (from, to) = sheetSpan(e, view.score);
   return to <= from ? 0 : ((view.seconds - from) / (to - from)).clamp(0.0, 1.0);
 }
 
-/// sheetOnsets are the frames where a note of [e]'s part (the staves it
-/// shows) starts, in order, through the repeats.
+/// sheetOnsets are the frames where a note of [e]'s shown staves starts, in
+/// order, through the repeats.
 List<int> sheetOnsets(SheetElement e, CanvasDocument doc) {
   var s = doc.scores.where((x) => x.id == e.score).firstOrNull;
   var part = s?.partById(e.part);
@@ -531,9 +516,8 @@ List<int> sheetOnsets(SheetElement e, CanvasDocument doc) {
   for (var n in partNotesOf(s, part.id)) {
     if (!mine.contains(n.event)) continue;
     if (n.note.start < from - 1e-6 || n.note.start >= to - 1e-6) continue;
-    // A strum's strings are a moment apart: its first is the onset.
-    // The first frame the note has started by, so that at its onset it is
-    // lit and heard (rounded, a frame could fall just before it).
+    // A strum's first string is the onset. Rounded up so at its onset the
+    // note is lit and heard (rounding could fall a frame before it).
     frames.add(channel.clip.at + (n.note.start * rate - 1e-6).ceil());
   }
   var list = frames.toList()..sort();

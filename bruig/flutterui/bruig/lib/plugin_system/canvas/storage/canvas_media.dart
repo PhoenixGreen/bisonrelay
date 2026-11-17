@@ -6,15 +6,11 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// canvas_media.dart keeps the sounds and videos canvases play, beside the
-// pictures.
-//
-// The same arrangement as the picture store (canvas_assets.dart): one copy
-// of each file, named by a hash of its bytes, swept of anything no saved
-// canvas names. Two differences, both because these files are big: a file is
-// hashed and copied as a stream, never read into memory whole; and the
-// player (SoLoud, ffmpeg) is handed a path rather than bytes, so it reads
-// only what it needs.
+// canvas_media.dart keeps the sounds and videos canvases play, stored as
+// pictures are (canvas_assets.dart): one copy per file, named by a hash of
+// its bytes, swept of what no saved canvas names. These files are big, so
+// a file is hashed and copied as a stream, never read whole, and the player
+// (SoLoud, ffmpeg) is given a path so it reads only what it needs.
 
 /// isPlaylist is whether [bytes] are a playlist or a list of other files
 /// (m3u, ffconcat, xml, ini-like) rather than a sound or a film: text that
@@ -32,7 +28,6 @@ bool isPlaylist(List<int> bytes) {
   return "#<[".contains(head[0]) || head.startsWith("ffconcat");
 }
 
-/// MediaKind is which store folder a file belongs in.
 enum MediaKind {
   audio(canvasAudioFolder, 512 * 1024 * 1024),
   video(canvasVideoFolder, 4 * 1024 * 1024 * 1024),
@@ -40,9 +35,9 @@ enum MediaKind {
   /// vector is the drawings: .svg files, bounded as pictures are.
   vector(canvasVectorFolder, 20 * 1024 * 1024),
 
-  /// model is the 3D objects' models: .glb and .gltf files. What somebody
-  /// imported is a library asset, and stays; what nothing uses -- a
-  /// received canvas's, the canvas gone -- is swept with the rest.
+  /// model is the 3D objects' models: .glb and .gltf files. An imported model
+  /// is a library asset and stays; one nothing uses (a received canvas's,
+  /// the canvas gone) is swept with the rest.
   model(canvasModelFolder, 256 * 1024 * 1024);
 
   final String folder;
@@ -55,17 +50,16 @@ enum MediaKind {
 
 final _idPattern = RegExp(r"^[a-f0-9]{16}\.[a-z0-9]{2,5}$");
 
-/// playableAudio is what the audio engine can open as it is. Anything else is
-/// converted on the way in -- see media_import.dart.
+/// playableAudio is what the audio engine can open as it is; anything else
+/// is converted on the way in (see media_import.dart).
 const playableAudio = {".mp3", ".wav", ".ogg", ".opus", ".flac"};
 
 /// isMidiId is whether stored sound [id] is a MIDI file: notes for an
-/// instrument to play, not a sound the engine can.
+/// instrument, not a sound the engine can play.
 bool isMidiId(String id) => id.endsWith(".mid");
 
 class CanvasMedia {
-  /// _dir is the folder for [kind], created only when something is about to
-  /// be written to it.
+  /// _dir is the folder for [kind], created only when about to be written to.
   static Future<String> _dir(MediaKind kind, {bool create = false}) async {
     var dir = path.join(await CanvasStorage.libraryDir(), kind.folder);
     if (create) await Directory(dir).create(recursive: true);
@@ -84,7 +78,6 @@ class CanvasMedia {
     return path.join(await _dir(kind, create: create), id);
   }
 
-  /// existingPath is [pathFor] for a file that is actually there.
   static Future<String?> existingPath(MediaKind kind, String id) async {
     var file = await pathFor(kind, id);
     if (file != null && await File(file).exists()) return file;
@@ -92,8 +85,7 @@ class CanvasMedia {
   }
 
   /// saveFile copies [sourcePath] into the store and returns its id, or null
-  /// when it could not be stored: missing, empty, too big, or of a kind the
-  /// store does not know.
+  /// when it is missing, empty, too big, or of an unknown kind.
   static Future<String?> saveFile(MediaKind kind, String sourcePath) async {
     try {
       var source = File(sourcePath);
@@ -121,8 +113,8 @@ class CanvasMedia {
     }
   }
 
-  /// saveBytes stores a file that arrived as bytes, under the id it arrived
-  /// with -- for unpacking a bundle, whose ids are the sender's hashes.
+  /// saveBytes stores bytes under the id they arrived with, for unpacking a
+  /// bundle, whose ids are the sender's hashes.
   static Future<bool> saveBytes(
       MediaKind kind, String id, List<int> bytes) async {
     if (bytes.isEmpty || bytes.length > kind.maxBytes) return false;
@@ -145,9 +137,8 @@ class CanvasMedia {
     }
   }
 
-  /// saveVector stores a drawing's bytes and returns its id -- the file's own
-  /// digest and ".svg", so the same drawing added twice is one file -- or
-  /// null where it could not be stored.
+  /// saveVector stores a drawing's bytes and returns its id (its digest and
+  /// ".svg", so the same drawing added twice is one file), or null.
   static Future<String?> saveVector(List<int> bytes) async {
     var id = "${sha256.convert(bytes).toString().substring(0, 16)}.svg";
     return await saveBytes(MediaKind.vector, id, bytes) ? id : null;
@@ -164,7 +155,6 @@ class CanvasMedia {
     }
   }
 
-  /// kindOf is which store an id belongs in, from its extension.
   static MediaKind kindOf(String id) => path.extension(id) == ".svg"
       ? MediaKind.vector
       : const {".glb", ".gltf", ".vrm"}.contains(path.extension(id))
@@ -173,7 +163,6 @@ class CanvasMedia {
           ? MediaKind.video
           : MediaKind.audio;
 
-  /// stored is every file in [kind]'s store.
   static Future<List<String>> stored(MediaKind kind) async {
     try {
       var dir = Directory(await _dir(kind));
@@ -187,8 +176,8 @@ class CanvasMedia {
     }
   }
 
-  /// sweep deletes every file in [kind]'s store that [liveIds] does not name,
-  /// except those newer than [sweepGrace].
+  /// sweep deletes every file in [kind]'s store not in [liveIds], except
+  /// those newer than [sweepGrace].
   static Future<int> sweep(MediaKind kind, Set<String> liveIds) async {
     var removed = 0;
     try {
@@ -209,12 +198,12 @@ class CanvasMedia {
         }
       }
     } catch (_) {
-      // No folder yet, which means nothing to sweep.
+      // No folder yet: nothing to sweep.
     }
     return removed;
   }
 
-  /// sniffExtension is what a file is, from its first bytes -- never from its
+  /// sniffExtension is what a file is from its first bytes, never from its
   /// name, which is whatever somebody called it.
   static Future<String> sniffExtension(String filePath) async {
     RandomAccessFile? handle;
@@ -240,14 +229,13 @@ class CanvasMedia {
     }
 
     if (at(0, "RIFF") && at(8, "WAVE")) return ".wav";
-    // A Standard MIDI File: notes, not a sound -- kept with the sounds, and
+    // A Standard MIDI File: notes, not a sound -- kept with the sounds and
     // played by an instrument.
     if (at(0, "MThd")) return ".mid";
     if (at(0, "RIFF") && at(8, "AVI ")) return ".avi";
     if (at(0, "fLaC")) return ".flac";
     if (at(0, "OggS")) {
-      // Opus says so in its first page; anything else in Ogg is Vorbis as far
-      // as a player is concerned.
+      // Opus says so in its first page; other Ogg is Vorbis to a player.
       return at(28, "OpusHead") ? ".opus" : ".ogg";
     }
     if (at(0, "glTF")) return ".glb";
@@ -268,8 +256,8 @@ class CanvasMedia {
     if (b.length > 1 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0) return ".mp3";
     if (at(0, "FORM") && (at(8, "AIFF") || at(8, "AIFC"))) return ".aiff";
     if (at(4, "ftyp")) {
-      // The ISO family, which is both a song and a film. The brand says which
-      // it was made as; a video without its picture is still a video file.
+      // The ISO family, both song and film; the brand says which it was made
+      // as. A video without its picture is still a video file.
       if (at(8, "M4A ") || at(8, "M4B ") || at(8, "M4P ")) return ".m4a";
       if (at(8, "qt  ")) return ".mov";
       return ".mp4";

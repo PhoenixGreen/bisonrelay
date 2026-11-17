@@ -8,12 +8,11 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// track_curves.dart is the Curves of an element's own keyframes (Ken,
-// 2026-11-09: the approved keyframes prototype, v2): the same design as a
-// clip's Curves (motion_curves.dart), across the Motion view. The Keyframes
-// card says when each keyframe is; this says how much, and how it eases to
-// the next. A keyframe holds all its values at one frame, so a key dragged
-// sideways moves its whole keyframe; up or down, it changes that one value.
+// track_curves.dart is the Curves of an element's own keyframes, the same
+// design as a clip's Curves (motion_curves.dart), across the Motion view.
+// The Keyframes card says when each keyframe is; this says how much, and how
+// it eases to the next. A keyframe holds all its values at one frame, so a
+// key dragged sideways moves its whole keyframe; up or down, that one value.
 // Double-click a line for a keyframe there; right-click a key to put that
 // value back to rest (a channel's, taken out of the keyframe).
 
@@ -170,8 +169,8 @@ class _TrackCurvesState extends State<TrackCurves>
                   height: 18,
                   margin: const EdgeInsets.symmetric(horizontal: 6),
                   color: s.edge),
-              // Each ease's handles on its lines, to shape it by hand (Ken,
-              // 2026-11-14), and the whole of it again after zooming.
+              // Each ease's handles on its lines, to shape it by hand, and
+              // the whole of it again after zooming.
               tb("trackCurvesHandles", "Handles", curvesShowHandles,
                   () => setState(() => curvesShowHandles = !curvesShowHandles)),
               if (!view.fitted)

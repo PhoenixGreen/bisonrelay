@@ -4,28 +4,23 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-// image_silhouette.dart is where a picture's ink is, as opposed to its box,
-// so text can wrap round a cut-out rather than its rectangle.
-//
-// The shape is a profile, not a path: per row band, where the ink starts and
-// ends. That is all a line of text asks, and it is one pass over the pixels.
+// image_silhouette.dart is where a picture's ink is, so text can wrap round
+// a cut-out: a profile, not a path (per row band, where ink starts and
+// ends), which is all a line of text asks and one pass over the pixels.
 
 /// ImageSilhouette is the leftmost and rightmost ink on each of [rows] bands
 /// of a picture, as fractions of its width.
 class ImageSilhouette {
-  /// left and right are 0..1 across the picture. An empty row has left
-  /// greater than right.
+  /// left and right are 0..1 across; an empty row has left greater than right.
   final Float32List left;
   final Float32List right;
   final int rows;
 
   const ImageSilhouette(this.left, this.right, this.rows);
 
-  /// spanIn is the ink between two heights, in the coordinates the picture is
-  /// drawn in.
-  ///
-  /// [dst] is where the picture is on the canvas and [src] the part of it
-  /// shown (after crop and fit), so only on-screen rows count.
+  /// spanIn is the ink between two heights, in the picture's drawing
+  /// coordinates. [dst] is where the picture is drawn and [src] the part of
+  /// it shown (after crop and fit), so only on-screen rows count.
   (double, double)? spanIn(
       Rect dst, Rect src, Size image, double top, double bottom) {
     if (dst.width <= 0 || dst.height <= 0 || image.height <= 0) return null;
@@ -63,10 +58,8 @@ class ImageSilhouette {
   }
 }
 
-/// silhouetteOf reads a decoded picture's alpha and builds its profile.
-///
-/// [rows] bands over the height, each keeping the leftmost and rightmost
-/// non-transparent pixel.
+/// silhouetteOf reads a decoded picture's alpha into [rows] bands, each
+/// keeping the leftmost and rightmost non-transparent pixel.
 Future<ImageSilhouette?> silhouetteOf(ui.Image image, {int rows = 128}) async {
   var data = await image.toByteData();
   if (data == null) return null;

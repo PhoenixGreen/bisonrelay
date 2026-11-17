@@ -8,13 +8,11 @@ import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:flutter/painting.dart';
 import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
-// chart_notes.dart is notes bound to the data on the kinds without axes --
-// a pie, a treemap, bubbles, a waffle (Ken, 2026-11-17: the improvements
-// report's leftovers). Each finds its item where the chart drew it (its
-// noted marks): a label as a pill on it, a callout or an arrow from words
-// placed clear of the marks, a bracket as a curve between two items with
-// the gap written on it. They draw on once the data has arrived, as the
-// axis charts' do (chart_cartesian.dart _notes).
+// chart_notes.dart is notes bound to the data on the kinds without axes (a
+// pie, a treemap, bubbles, a waffle). Each finds its item where the chart
+// drew it (its noted marks): a label as a pill on it, a callout or an arrow
+// from words placed clear of the marks, a bracket as a curve between two
+// items with the gap on it. They draw on once the data has arrived.
 
 /// boundNotes is which of [e]'s notes the kinds without axes draw.
 List<(int, ChartNote)> boundNotes(ChartElement e) => [
@@ -155,8 +153,7 @@ void paintBoundNotes(ui.Canvas canvas, Rect area, ChartElement e,
         var said = note.text.isEmpty
             ? "${gap > 0 ? "+" : ""}${formatSeries(e, 0, gap)}"
             : liveWords(d, note.text);
-        // A curve from one to the other, bowed away from the middle, the
-        // gap on it.
+        // A curve between them, bowed away from the middle, the gap on it.
         var p0 = a.center, p1 = b.center;
         var mid = (p0 + p1) / 2;
         var away = mid - area.center;

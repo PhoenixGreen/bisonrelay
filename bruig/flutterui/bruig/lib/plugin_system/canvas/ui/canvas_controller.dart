@@ -220,9 +220,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
 
-// The controller's methods, by area, as extensions in parts of this
-// library: its state stays here, in the class, where every part can reach
-// it. A method goes in the part for its area; a field goes in the class.
+// The controller's methods live, by area, as extensions in parts of this
+// library; its state stays in the class, where every part can reach it.
 part 'controller/pictures.dart';
 part 'controller/vectors.dart';
 part 'controller/scenes.dart';
@@ -246,19 +245,16 @@ part 'controller/code_tasks.dart';
 part 'controller/data_views.dart';
 part 'controller/data_sheets.dart';
 
-// canvas_controller.dart holds everything about the canvas being edited that
-// is not the document itself: the selection, the playhead, the zoom, the undo
-// history and whether any of it has been saved.
+// canvas_controller.dart holds everything about the canvas being edited
+// that is not the document itself: the selection, the playhead, the zoom,
+// the undo history and whether any of it has been saved.
 //
-// The document is immutable (see canvas_document.dart), so every edit goes
-// through [apply], the only place the document is replaced. Undo is therefore
-// a list of past documents rather than operations to reverse, and an edit
-// cannot half-happen: the selection and the document change in one
-// assignment.
+// The document is immutable, so every edit goes through [apply], the only
+// place it is replaced: undo is a list of past documents, and an edit
+// cannot half-happen.
 
-/// _maxUndo bounds the history. Documents are small and share unchanged
-/// elements, so it can be generous; it is bounded only because a session
-/// spent nudging a slider would otherwise grow without limit.
+/// _maxUndo bounds the history. Documents share unchanged elements, so it
+/// can be generous; it is bounded only so it cannot grow without limit.
 const int _maxUndo = 120;
 
 /// minZoom and maxZoom bound the view, as multiples of the fitted size (see
@@ -273,16 +269,14 @@ enum RetouchBrush {
   /// erase takes the picture away, for a patch the automatic pass missed.
   erase("Rub out"),
 
-  /// cutAround draws a boundary rather than a mark: everything outside it
-  /// goes. See RemovalStroke.fill.
+  /// cutAround draws a boundary: all outside it goes. See RemovalStroke.fill.
   cutAround("Cut around"),
 
   /// restore puts it back, for a hand or a shoulder the automatic pass ate.
   restore("Put back"),
 
-  /// markBackground and markSubject do not change the picture at all: they
-  /// leave evidence for RemovalMode.learn to work from. See
-  /// BackgroundRemoval.hints.
+  /// markBackground and markSubject leave the picture as it is: they are
+  /// hints for RemovalMode.learn (see BackgroundRemoval.hints).
   markBackground("Mark background"),
   markSubject("Mark subject");
 
@@ -291,13 +285,11 @@ enum RetouchBrush {
 
   bool get on => this != RetouchBrush.off;
 
-  /// teaches is whether this brush leaves a hint rather than rubbing something
-  /// out. It matters only where the stroke is stored.
+  /// teaches is whether the brush leaves a hint rather than rubbing out.
   bool get teaches =>
       this == RetouchBrush.markBackground || this == RetouchBrush.markSubject;
 
-  /// keeps is whether the mark is about the subject rather than the
-  /// background.
+  /// keeps is whether the mark is about the subject, not the background.
   bool get keeps =>
       this == RetouchBrush.restore || this == RetouchBrush.markSubject;
 
@@ -320,9 +312,8 @@ enum CanvasTool {
   const CanvasTool(this.label, this.description);
 }
 
-/// StageTool is what the gizmo on an element standing on a 3D stage does:
-/// the bar's three 3D tools, in place of Select and Pan while the scene is
-/// a stage. Their keys are G, R and S.
+/// StageTool is what the gizmo does to an element on a 3D stage: the bar's
+/// 3D tools (keys G, R and S), in place of Select and Pan on a stage.
 enum StageTool {
   move("Move", "G",
       "arrows along the stage, the square across the floor"),
@@ -342,12 +333,10 @@ enum StageNav { all, orbit, none }
 /// CanvasFit is how large the canvas's frame is drawn. Two modes because a
 /// tall document fitted whole is a narrow strip down the middle of the window.
 enum CanvasFit {
-  /// whole shows all of the canvas at once, limited by whichever of the two
-  /// dimensions runs out first. Nothing scrolls.
+  /// whole shows all of the canvas at once; nothing scrolls.
   whole("Show the whole canvas"),
 
-  /// width fills the area's full width and lets the canvas be as tall as it
-  /// needs, scrolling if that is taller than the window.
+  /// width fills the area's width, scrolling if the canvas is taller.
   width("Fit to width");
 
   final String label;
@@ -362,9 +351,8 @@ ElementTrack _pinnedAt(
   return track.withKey(at.copyWith(values: {...at.values, ...channels}));
 }
 
-/// FetchedRows is what one element's last refresh in this sitting returned,
-/// kept so the mapping controls can change column without asking the source
-/// again.
+/// FetchedRows is an element's last refresh this sitting, kept so the
+/// mapping controls can change column without asking the source again.
 class FetchedRows {
   /// fields is every path that led to a value in the first record.
   final List<String> fields;
@@ -407,11 +395,9 @@ class CanvasController extends ChangeNotifier {
   CanvasDocument get document => _document;
 
   /// lastFetched is what each element's last refresh returned, by element id.
-  ///
-  /// Here rather than in the settings panel, because two buttons run a
-  /// refresh (the Data source section's and the Table section's); and not a
-  /// global, which would outlive its canvas and mix up element ids across
-  /// canvases. Not saved in the document: it is a fact about this sitting.
+  /// Held here because two panel sections run a refresh; not a global, which
+  /// would outlive its canvas and mix up ids. Not saved: it is about this
+  /// sitting.
   final Map<String, FetchedRows> lastFetched = {};
 
   final CanvasImageStore images = CanvasImageStore();
@@ -419,8 +405,7 @@ class CanvasController extends ChangeNotifier {
   final List<CanvasDocument> _undo = [];
   final List<CanvasDocument> _redo = [];
 
-  /// _interaction is the document as it was when a drag began, so the whole
-  /// gesture is one undo step: pushed onto the history when it ends.
+  /// _interaction is the document as a drag began: the gesture's undo step.
   CanvasDocument? _interaction;
 
   Set<String> _selection = {};
@@ -428,15 +413,11 @@ class CanvasController extends ChangeNotifier {
 
   bool _backgroundSelected = false;
 
-  /// backgroundSelected is whether the canvas's own background is the thing
-  /// being edited.
-  ///
-  /// A flag rather than a sentinel id in [selection], so the operations that
-  /// walk the selection (delete, duplicate, nudge) need not learn to skip it.
-  /// It is exclusive with the element selection.
+  /// backgroundSelected is whether the canvas's own background is being
+  /// edited. A flag rather than a sentinel id in [selection], so delete,
+  /// duplicate and nudge need not skip it; exclusive with the selection.
   bool get backgroundSelected => _backgroundSelected;
 
-  /// selectBackground makes the background the selected layer.
   void selectBackground() {
     if (_backgroundSelected && _selection.isEmpty) return;
     _selection = {};
@@ -449,25 +430,21 @@ class CanvasController extends ChangeNotifier {
 
   double _zoom = 1;
 
-  /// zoom is a multiple of the size at which the canvas fills the area it is
-  /// drawn in, not of the document's own pixels: a document's pixel size
-  /// depends only on its export width, so the canvas always fills the area to
-  /// begin with and 1 is the whole canvas. The fitted size is worked out by
-  /// the stage (CanvasStage), the only thing that knows how much room there is.
+  /// zoom is a multiple of the size at which the canvas fills its area, not
+  /// of the document's pixels, so 1 is always the whole canvas. The fitted
+  /// size is worked out by CanvasStage, the only thing that knows the room.
   double get zoom => _zoom;
 
   /// _fitScale is what the stage last reported: how much the canvas is
   /// shrunk to fill the window before any zoom. See [viewScale].
   double _fitScale = 1;
 
-  /// viewScale is document pixels to screen pixels: what the percentage on
-  /// the band means. Not [zoom], which is 1 whenever the whole canvas shows,
-  /// whatever size that is.
+  /// viewScale is document pixels to screen pixels, what the band's
+  /// percentage means: not [zoom], which is 1 whenever the canvas fits.
   double get viewScale => _fitScale * _zoom;
 
-  /// reportFitScale is the stage telling the controller how much room it
-  /// found. Notifies only when the answer changes, since it is asked on every
-  /// layout.
+  /// reportFitScale is the stage reporting how much room it found. Notifies
+  /// only when the answer changes, since it is called on every layout.
   void reportFitScale(double value) {
     if (!value.isFinite || value <= 0) return;
     if ((value - _fitScale).abs() < 0.0001) return;
@@ -475,43 +452,36 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// setViewScale zooms so that one document pixel is [value] screen pixels,
-  /// which is what typing a percentage into the band means.
+  /// setViewScale zooms so one document pixel is [value] screen pixels.
   void setViewScale(double value) {
     if (!value.isFinite || value <= 0 || _fitScale <= 0) return;
     zoom = value / _fitScale;
   }
 
-  /// atFit is whether the view is showing the whole canvas, untouched: what
-  /// the Fit button lights up for.
+  /// atFit is whether the view shows the whole canvas untouched (Fit lit).
   bool get atFit => (_zoom - 1).abs() < 0.001 && _pan.dx == 0 && _pan.dy == 0;
 
   Offset2 _pan = const Offset2(0, 0);
   Offset2 get pan => _pan;
 
-  /// revision counts every change that is about the *document* rather than
-  /// the view of it. The sidebar watches it, so panning, zooming and hovering
-  /// do not lay out its many fields again.
-  ///
-  /// Safe by default: every notification moves it except the few that go
-  /// through [_notifyView], so a forgotten case costs a needless rebuild
-  /// rather than a panel showing something untrue.
+  /// revision counts every change to the document rather than the view of
+  /// it. The sidebar watches it, so panning, zooming and hovering do not lay
+  /// out its fields again. Every notification moves it except those through
+  /// [_notifyView], so a forgotten case costs a rebuild, not a stale panel.
   int get revision => _revision;
   int _revision = 0;
 
   /// _viewOnly is set only while [_notifyView] is running.
   bool _viewOnly = false;
 
-  /// _playheadOnly is set only while the playhead's moving on is told of:
-  /// see notifyingPlayhead.
+  /// _playheadOnly is set only while notifyingPlayhead runs.
   bool _playheadOnly = false;
 
   @override
   void notifyListeners() {
     if (_disposed) return;
-    // A drawing is edited only while it is there and is the one thing
-    // selected: whatever took that away (undo, delete, a pruned selection)
-    // ends the editing.
+    // A drawing is edited only while it is the one thing selected: undo,
+    // delete or a pruned selection ends the editing.
     var editing = _vectorEditing;
     if (editing != null &&
         (_backgroundSelected ||
@@ -539,8 +509,7 @@ class CanvasController extends ChangeNotifier {
       var e = editingImage!;
       _alsoPicked.removeWhere((id) => e.layerById(id) == null);
     }
-    // Picked copies, only while their element is the one thing selected,
-    // and only those it still has.
+    // Picked copies last only while their element is the one thing selected.
     if (_copiesOf case var of?
         when _selection.length != 1 || _selection.first != of) {
       _copiesOf = null;
@@ -552,23 +521,19 @@ class CanvasController extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  /// arrived says something the settings draw from has finished loading --
-  /// a model their tiles show -- so they are drawn again with it.
+  /// arrived redraws the settings once something they draw has loaded.
   void arrived() => notifyListeners();
 
-  /// restoreFit puts back the frame the reader last chose, without notifying:
-  /// it is called from initState, and notifying a Provider-held controller
-  /// during a build throws (with a costly stack capture). The first build
-  /// reads the new value anyway.
+  /// restoreFit puts back the frame last chosen, without notifying: it is
+  /// called from initState, and notifying during a build throws.
   void restoreFit(CanvasFit value) {
     _fit = value;
     _zoom = 1;
     _pan = const Offset2(0, 0);
   }
 
-  /// _notifyView tells everyone that the *view* moved -- the zoom, the pan,
-  /// how the canvas is framed, which tool is in hand -- without claiming the
-  /// document changed.
+  /// _notifyView tells listeners the view moved (zoom, pan, framing, tool)
+  /// without claiming the document changed.
   void _notifyView() {
     _viewOnly = true;
     try {
@@ -586,8 +551,7 @@ class CanvasController extends ChangeNotifier {
   set fit(CanvasFit value) {
     if (_fit == value) return;
     _fit = value;
-    // A zoom chosen against the old frame means a different magnification
-    // against the new one.
+    // A zoom chosen against the old frame means something else in the new.
     _zoom = 1;
     _pan = const Offset2(0, 0);
     _notifyView();
@@ -595,10 +559,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _autoKeyframe = false;
 
-  /// autoKeyframe makes every move record itself: dragging anything with the
-  /// playhead on frame N writes a keyframe at N instead of moving the thing.
-  /// Off by default, so a document can be tidied without recording the
-  /// tidying.
+  /// autoKeyframe makes dragging anything on frame N write a keyframe at N
+  /// instead of moving it. Off by default, so tidying is not recorded.
   bool get autoKeyframe => _autoKeyframe;
 
   set autoKeyframe(bool value) {
@@ -609,9 +571,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _showOverspill = false;
 
-  /// showOverspill draws a margin of the world outside the canvas. Off by
-  /// default, since the canvas shows what gets published; on, an element
-  /// entering from off the page can be seen, selected and dragged there.
+  /// showOverspill draws a margin of the world outside the canvas, so an
+  /// element entering from off the page can be seen and dragged there.
   bool get showOverspill => _showOverspill;
 
   set showOverspill(bool value) {
@@ -622,10 +583,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _showHelpers = true;
 
-  /// showHelpers is whether the editing furniture is drawn: the box around the
-  /// selection, the resize handles and the rotation ring. Off, it shows the
-  /// design as published, and the handles stop answering the pointer too, so
-  /// nothing invisible can be grabbed.
+  /// showHelpers draws the selection box, resize handles and rotation ring.
+  /// Off, the handles stop answering too, so nothing unseen can be grabbed.
   bool get showHelpers => _showHelpers;
 
   set showHelpers(bool value) {
@@ -636,9 +595,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _showAllBounds = false;
 
-  /// showAllBounds outlines every element on the canvas, not only the selected
-  /// one: for elements that relate to each other, such as a chain of text
-  /// boxes. Off by default; one switch for the whole canvas.
+  /// showAllBounds outlines every element, not only the selected one, for
+  /// elements that relate to each other, such as a chain of text boxes.
   bool get showAllBounds => _showAllBounds;
 
   set showAllBounds(bool value) {
@@ -649,9 +607,9 @@ class CanvasController extends ChangeNotifier {
 
   bool _lockJoins = false;
 
-  /// lockJoins keeps the connectors between text boxes from being changed by
-  /// a drag: their small grips sit on the same outline as the resize handles.
-  /// Locked, the grips are still drawn but do not answer the pointer.
+  /// lockJoins stops a drag changing the connectors between text boxes,
+  /// whose grips sit on the resize handles' outline; locked, they ignore
+  /// the pointer.
   bool get lockJoins => _lockJoins;
 
   set lockJoins(bool value) {
@@ -674,10 +632,9 @@ class CanvasController extends ChangeNotifier {
 
   int? _focusedPlayer;
 
-  /// focusedPlayer is which player of the selected team the timeline is about.
-  /// A player is not an element and cannot be selected, so this says which
-  /// one the keyframe controls point at. Set by clicking one on the canvas and
-  /// cleared whenever the selection changes.
+  /// focusedPlayer is which player of the selected team the keyframe
+  /// controls point at, since a player cannot be selected. Set by clicking
+  /// one on the canvas; cleared when the selection changes.
   int? get focusedPlayer => _focusedPlayer;
 
   set focusedPlayer(int? value) {
@@ -686,8 +643,7 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// focusedTeam is the selected element when it is a team, and null
-  /// otherwise. What the timeline asks before offering a player's keyframes.
+  /// focusedTeam is the selected element when it is a team, else null.
   TeamElement? get focusedTeam {
     var element = selected;
     return element is TeamElement ? element : null;
@@ -695,9 +651,8 @@ class CanvasController extends ChangeNotifier {
 
   RetouchBrush _retouch = RetouchBrush.off;
 
-  /// retouch is whether the pointer is painting a picture's background in or
-  /// out rather than moving things about. A mode rather than a modifier key,
-  /// since retouching takes a run of strokes.
+  /// retouch is the brush painting a picture's background in or out. A mode
+  /// rather than a modifier key, since retouching takes a run of strokes.
   RetouchBrush get retouch => _retouch;
 
   set retouch(RetouchBrush value) {
@@ -706,16 +661,13 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _pendingStroke is a stroke that has been drawn but not yet applied, and
-  /// _pendingPicture is the picture it was drawn on. Held so it is redrawn
-  /// against the brush settings as they change, and applied when the reader
-  /// is satisfied.
+  /// _pendingStroke is a stroke drawn but not applied, on _pendingPicture.
+  /// Held so it redraws as the brush settings change until it is applied.
   List<Offset>? _pendingStroke;
   String? _pendingPicture;
 
-  /// pendingKeeps and pendingTeaches are what the brush was doing when the
-  /// stroke was drawn. Kept with the stroke rather than read live: changing
-  /// brush is doing something else, not adjusting this stroke.
+  /// _pendingKeeps, _pendingTeaches and _pendingFills are what the brush was
+  /// doing when the stroke was drawn: changing brush starts something else.
   bool _pendingKeeps = false;
   bool _pendingTeaches = false;
   bool _pendingFills = false;
@@ -740,7 +692,6 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// discardStroke throws the held stroke away.
   void discardStroke() {
     if (_pendingStroke == null) return;
     _pendingStroke = null;
@@ -748,8 +699,7 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// applyStroke writes the held stroke onto its picture, with the brush's
-  /// settings as they stand now.
+  /// applyStroke writes the held stroke onto its picture, brush as it is.
   void applyStroke() {
     var id = _pendingPicture;
     var points = _pendingStroke;
@@ -765,9 +715,8 @@ class CanvasController extends ChangeNotifier {
       points: points,
       radius: _brushSize,
       keep: _pendingKeeps,
-      // A hint is a sample rather than a mark on the picture, so it is taken
-      // exactly where it was drawn: softening or snapping it would collect
-      // colours the reader did not point at.
+      // A hint is a sample, not a mark, so it is taken exactly where drawn:
+      // softening or snapping it would collect colours not pointed at.
       hardness: _pendingTeaches ? 1 : _brushHardness,
       snap: _clingFor(_pendingTeaches, _pendingKeeps),
       fill: _pendingFills,
@@ -783,10 +732,9 @@ class CanvasController extends ChangeNotifier {
     discardStroke();
   }
 
-  /// magnetiseCling finds the edge the held stroke crossed, and sets the cling
-  /// to it: the stroke's colour distances fall into two clusters with a gap
-  /// between them. See suggestSnap. Returns false when there is no edge, as
-  /// for a stroke drawn entirely on the background.
+  /// magnetiseCling sets the cling to the edge the held stroke crossed, where
+  /// its colour distances split into two clusters (see suggestSnap). False
+  /// when there is no edge.
   Future<bool> magnetiseCling() async {
     var stroke = pendingAsStroke();
     var id = _pendingPicture;
@@ -803,8 +751,7 @@ class CanvasController extends ChangeNotifier {
     return true;
   }
 
-  /// pendingAsStroke is the held stroke as it would be applied right now,
-  /// which is what the preview on the canvas is drawn from.
+  /// pendingAsStroke is the held stroke as it would apply now: the preview.
   RemovalStroke? pendingAsStroke() {
     var points = _pendingStroke;
     if (points == null || points.isEmpty) return null;
@@ -819,10 +766,9 @@ class CanvasController extends ChangeNotifier {
     );
   }
 
-  /// _clingFor is how much a stroke should cling. Never for a hint, which
-  /// must be sampled exactly where drawn, and never for putting something
-  /// back: the subject is every colour there is, so clinging would restore
-  /// only the pixels like the first one.
+  /// _clingFor is how much a stroke clings. Never for a hint, sampled exactly
+  /// where drawn, nor for putting back: the subject is every colour, so
+  /// clinging would restore only pixels like the first.
   double _clingFor(bool teaches, bool keeps) =>
       teaches || keeps ? 0 : _brushSnap;
 
@@ -841,9 +787,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _cutInside = false;
 
-  /// cutInside takes what a boundary encloses rather than what surrounds it.
-  /// Read when the stroke is applied, so it can be turned over while one is
-  /// held.
+  /// cutInside takes what a boundary encloses rather than what surrounds it,
+  /// read when the stroke is applied so it can be flipped while one is held.
   bool get cutInside => _cutInside;
 
   set cutInside(bool value) {
@@ -852,8 +797,8 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _brushSnap starts at nothing: clinging is an aid to reach for
-  /// deliberately, and on by default it made the brush look broken.
+  /// _brushSnap starts at nothing: clinging is an aid to reach for on
+  /// purpose, and on by default it makes the brush look broken.
   double _brushSnap = 0;
 
   /// brushSnap makes a stroke cling to what is already in the picture. See
@@ -882,10 +827,9 @@ class CanvasController extends ChangeNotifier {
 
   bool _pageLocked = false;
 
-  /// pageLocked holds the page where it is: nothing scrolls or zooms it.
-  /// On a 3D stage the gestures that would have moved it steer the
-  /// stage's camera instead -- drags orbit, a shifted drag pans, a pinch
-  /// zooms -- so the camera can be flown without the page sliding about.
+  /// pageLocked stops the page scrolling or zooming. On a 3D stage those
+  /// gestures steer the stage's camera instead: drag orbits, shift-drag
+  /// pans, pinch zooms.
   bool get pageLocked => _pageLocked;
 
   set pageLocked(bool value) {
@@ -926,12 +870,10 @@ class CanvasController extends ChangeNotifier {
   /// _pickedOf is the element the picked clip is on.
   String? _pickedOf;
 
-  /// _pickLeft is whether the selection has moved on from the picked
-  /// clip's element: another element clicked. Its clip is no longer what
-  /// the Chain shows (Ken, 2026-11-12: "when I click a different element
-  /// the clips shown are still the previous" -- and Delete took nothing,
-  /// aimed at that clip on the element now picked). The selection changes
-  /// in many places; the pick is let go here, as it is read.
+  /// _pickLeft is whether another element has been selected since the clip
+  /// was picked. The pick is then let go as it is read, so the Chain and
+  /// Delete do not act on the previous element's clip; the selection
+  /// changes in too many places to clear it at each.
   bool get _pickLeft =>
       _pickedOf != null &&
       _selection.isNotEmpty &&
@@ -945,9 +887,8 @@ class CanvasController extends ChangeNotifier {
   Set<(String, String)> _motionPicks = const {};
 
   /// motionPicks are the clips picked together on the timeline, as
-  /// (element, placement): by the box dragged across the lanes, or with
-  /// Shift (Ken, 2026-11-11: "select multiple audio/motion clips and then
-  /// ... move them"). Moved together, and taken out together by Delete.
+  /// (element, placement), by a box drag or Shift: moved and deleted
+  /// together.
   Set<(String, String)> get motionPicks => _motionPicks;
 
   /// pickMotions makes [picks] the clips picked together; one alone is
@@ -1006,16 +947,14 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// _ownTab is the Motion clips card's Arrive, Loop or Leave picked where
-  /// it has no clip to pick -- not set up yet, or the loop, which plays
-  /// without one (Ken, 2026-11-12): its Preset is set up there. A clip
-  /// picked lets it go.
+  /// it has no clip (unset, or the loop, which plays without one); its
+  /// Preset is set there. Picking a clip lets it go.
   MotionKind? _ownTab;
 
   MotionKind? get ownTab => _ownTab;
 
-  /// _clipSettings are the elements whose own preset shows its clip's own
-  /// settings -- speed, layer, how it mixes, its name -- on the Motion
-  /// clips card: for the session.
+  /// _clipSettings are the elements whose preset shows its clip's own
+  /// settings (speed, layer, mix, name) on the Motion clips card.
   final Set<String> _clipSettings = {};
 
   bool clipSettingsOpen(String element) => _clipSettings.contains(element);
@@ -1046,10 +985,9 @@ class CanvasController extends ChangeNotifier {
   int? _previewJoin;
   Set<String> _pickedSceneWith = const {};
 
-  /// pickedScene is the scene the Animation panel shows, by index -- the
-  /// transition after it, and its camera -- picked by a double click on its
-  /// box on the timeline. It gives way to a clip picked, or to anything
-  /// selected after it.
+  /// pickedScene is the scene the Animation panel shows, by index (with its
+  /// transition and camera), picked by double-clicking its timeline box. A
+  /// clip picked, or a new selection, overrides it.
   int? get pickedScene {
     var i = _pickedScene;
     if (i == null || i >= _document.allScenes.length) return null;
@@ -1057,10 +995,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// transitionsAsDefault is whether the Chain's transition is the default
-  /// -- every scene's that has none of its own -- rather than one join's:
-  /// on the master, but for a join picked by its own slot (Ken, 2026-11-10:
-  /// each transition clicked on the master's Scenes strip showed the same,
-  /// the default).
+  /// (every scene's without its own) rather than one join's: true on the
+  /// master, unless a join was picked by its own slot.
   bool get transitionsAsDefault =>
       _document.editingMaster && !(_joinPicked && pickedScene != null);
 
@@ -1078,13 +1014,11 @@ class CanvasController extends ChangeNotifier {
 
   bool _animationOpen = false;
 
-  /// _chainMotion is the view the Chain panel opens on when its button
-  /// opens it: the one it was last on.
+  /// _chainMotion is the view the Chain reopens on: the one it was last on.
   bool _chainMotion = false;
 
-  /// animationOpen is whether the Chain panel is out on its motion -- what
-  /// was the Animation panel -- in its place under the canvas (see dock).
-  /// Opening it puts the Chain's sound away: one view at a time.
+  /// animationOpen is whether the Chain panel is open on its motion (see
+  /// dock). Opening it puts the Chain's sound away: one view at a time.
   bool get animationOpen => _animationOpen;
 
   set animationOpen(bool value) {
@@ -1100,17 +1034,15 @@ class CanvasController extends ChangeNotifier {
 
   String? _chainFocus;
 
-  /// chainFocus is the card the settings panel last asked the Chain to show
-  /// -- a look's or a move's device id, or "clips" for the clip picked --
-  /// until the Chain has brought it into view (see chainFocused).
+  /// chainFocus is the card the settings last asked the Chain to show (a
+  /// device id, or "clips"), until the Chain has (see chainFocused).
   String? get chainFocus => _chainFocus;
 
   /// chainFocused is the Chain saying it has shown [chainFocus].
   void chainFocused() => _chainFocus = null;
 
-  /// showInChain opens [element]'s Chain on its motion at device [device]
-  /// -- or at [clip], placed as [placement], picked -- for a line of the
-  /// settings panel that says what its Chain does (see panel_parts.dart).
+  /// showInChain opens [element]'s Chain on its motion at [device], or with
+  /// [clip] at [placement] picked, for a settings line (panel_parts.dart).
   void showInChain(String element, String? device,
       {String? clip, String? placement}) {
     if (clip != null) {
@@ -1123,14 +1055,12 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// chainShowsMotion is whether the Chain panel shows its motion rather
-  /// than its sound.
+  /// chainShowsMotion is whether the Chain shows motion rather than sound.
   bool get chainShowsMotion => _animationOpen;
 
-  /// chainMeters, chainBadges and chainMacros are what the Chain shows
-  /// besides its devices -- the meters between them, what each does to the
-  /// level, the Macros zone -- each hidden from its ⋯ for room, as the
-  /// prototype's. The reader's view, not the canvas's.
+  /// chainMeters, chainBadges and chainMacros show the meters between the
+  /// Chain's devices, each device's effect on the level, and the Macros
+  /// zone; each can be hidden for room. A view setting, not saved.
   bool get chainMeters => _chainMeters;
   bool _chainMeters = true;
   set chainMeters(bool on) {
@@ -1155,10 +1085,8 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// motionTrail is whether the stage shows the element whose motion the
-  /// Chain is open on with its trail and onion skin: the path its middle
-  /// takes, and faint copies of where it was a moment before. On until
-  /// hidden, as the prototype's.
+  /// motionTrail shows the trail (the path its middle takes) and onion skin
+  /// of the element whose motion the Chain is open on. On by default.
   bool get motionTrail => _motionTrail;
   bool _motionTrail = true;
   set motionTrail(bool on) {
@@ -1167,10 +1095,9 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _chainOpensOnMotion is the view the Chain's button opens it on: what
-  /// is picked -- an element drawn on the canvas its motion, a channel or a
-  /// sound its sound -- or, with neither, the view it was last on. It never
-  /// switches an open Chain: only the switch in its header does.
+  /// _chainOpensOnMotion is the view the Chain's button opens on: motion for
+  /// an element drawn on the canvas, sound for a channel or sound, else the
+  /// last view. Only the header's switch changes an open Chain.
   bool get _chainOpensOnMotion {
     var picked = selectedElements;
     if (picked.any((e) => e is! AudioElement)) return true;
@@ -1178,8 +1105,7 @@ class CanvasController extends ChangeNotifier {
     return _chainMotion;
   }
 
-  /// showChain switches the Chain panel to its motion, or its sound: the
-  /// effects of the channel last opened there.
+  /// showChain shows the Chain's motion, or its sound (the last channel's).
   void showChain({required bool motion}) {
     if (motion) {
       animationOpen = true;
@@ -1190,8 +1116,7 @@ class CanvasController extends ChangeNotifier {
 
   bool _rowsShown = true;
 
-  /// rowsShown is the Timeline panel: the timeline's rows, under the play
-  /// bar, in their place (see dock).
+  /// rowsShown is the Timeline panel, open in its place (see dock).
   bool get rowsShown => _rowsShown;
 
   set rowsShown(bool value) {
@@ -1203,8 +1128,7 @@ class CanvasController extends ChangeNotifier {
 
   bool _barBelow = false;
 
-  /// barBelow is whether the play bar is under the panels rather than over
-  /// them: the reader's choice, kept by the play bar (see CanvasPlayBar).
+  /// barBelow puts the play bar under the panels: kept by CanvasPlayBar.
   bool get barBelow => _barBelow;
   set barBelow(bool value) {
     if (_barBelow == value) return;
@@ -1214,9 +1138,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _trackpadScrolls = false;
 
-  /// trackpadScrolls is whether a sideways swipe or the wheel moves the
-  /// timeline along. Off unless asked for: somebody swiping up and down
-  /// through the channels would find the frames sliding under them.
+  /// trackpadScrolls lets a sideways swipe or the wheel move the timeline.
+  /// Off by default, so swiping through the channels does not slide frames.
   bool get trackpadScrolls => _trackpadScrolls;
   set trackpadScrolls(bool value) {
     if (_trackpadScrolls == value) return;
@@ -1224,10 +1147,9 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// timelineZoomAsked counts the times the play bar's menu has asked the
-  /// timeline to zoom, by timelineZoomFactor (nought: to the whole scene).
-  /// The timeline takes each up as it sees it; with none open, it is
-  /// dropped.
+  /// timelineZoomAsked counts the play bar's requests to zoom the timeline
+  /// by timelineZoomFactor (0: to the whole scene). With no timeline open,
+  /// a request is dropped.
   int timelineZoomAsked = 0;
   double timelineZoomFactor = 1;
 
@@ -1243,9 +1165,8 @@ class CanvasController extends ChangeNotifier {
 
   DockLayout _dock = const DockLayout();
 
-  /// dock is where each panel under the canvas opens, how many places there
-  /// are and how they are switched: the reader's, kept by the screen in the
-  /// preferences. Changed, each place is left showing one panel at most.
+  /// dock is where each panel under the canvas opens and how the places are
+  /// switched, saved in preferences. Changing it leaves one panel per place.
   DockLayout get dock => _dock;
 
   set dock(DockLayout next) {
@@ -1255,14 +1176,12 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// restoreDock puts back [layout] without telling anyone, as the screen
-  /// opens.
+  /// restoreDock puts back [layout] as the screen opens, without notifying.
   void restoreDock(DockLayout layout) {
     _dock = layout;
     _dockSettle();
   }
 
-  /// dockOpen is whether [panel] is open, in its place.
   bool dockOpen(DockPanel panel) => switch (panel) {
         DockPanel.timeline => _rowsShown,
         DockPanel.slots => _slotsBeside,
@@ -1270,8 +1189,7 @@ class CanvasController extends ChangeNotifier {
         DockPanel.chain => _animationOpen || _effectsOpen,
       };
 
-  /// setDockOpen opens or closes [panel]: opened, whatever else was showing
-  /// in its place gives way.
+  /// setDockOpen opens or closes [panel], displacing what shares its place.
   void setDockOpen(DockPanel panel, bool open) {
     switch (panel) {
       case DockPanel.timeline:
@@ -1291,8 +1209,7 @@ class CanvasController extends ChangeNotifier {
     }
   }
 
-  /// toggleDock is [panel]'s button: open it, or close it if it is open.
-  /// [beside] opens it on the left, beside main, where there is a left.
+  /// toggleDock is [panel]'s button; [beside] opens it on the left, if any.
   void toggleDock(DockPanel panel, {bool beside = false}) {
     if (beside && _dock.places != DockPlaces.one) {
       if (_dock.homeOf(panel) != DockPlace.left) {
@@ -1306,8 +1223,7 @@ class CanvasController extends ChangeNotifier {
     setDockOpen(panel, !dockOpen(panel));
   }
 
-  /// moveDockPanel has [panel] open in [place] from now on, and opens it
-  /// there.
+  /// moveDockPanel makes [place] the home of [panel] and opens it there.
   void moveDockPanel(DockPanel panel, DockPlace place) {
     if (!_dock.placesShown.contains(place)) return;
     _dock = _dock.withHome(panel, place);
@@ -1324,13 +1240,11 @@ class CanvasController extends ChangeNotifier {
     return null;
   }
 
-  /// dockArrangement is the layout last chosen, while nothing has been
-  /// changed since; null otherwise.
+  /// dockArrangement is the layout last chosen, until anything changes.
   String? get dockArrangement => _arrangementChosen;
   String? _arrangementChosen;
 
-  /// arrange shows [layout]: the panel it names in each place, and nothing
-  /// else. With one place, its own one panel.
+  /// arrange shows [layout]'s panel in each place (with one place, its one).
   void arrange(DockArrangement layout) {
     var homes = {..._dock.homes, ...layout.homes};
     Map<DockPlace, DockPanel> shown;
@@ -1363,8 +1277,7 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// saveArrangement keeps what is showing now as a layout of the reader's
-  /// own, called [name].
+  /// saveArrangement saves what is showing as a layout called [name].
   DockArrangement saveArrangement(String name) {
     var layout = DockArrangement(
       name,
@@ -1389,7 +1302,6 @@ class CanvasController extends ChangeNotifier {
     return layout;
   }
 
-  /// removeArrangement forgets the reader's layout called [name].
   void removeArrangement(String name) {
     _dock = _dock.copyWith(
         saved: [..._dock.saved.where((a) => a.name != name)]);
@@ -1397,8 +1309,7 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// _dockOpening is [panel] opening: whatever else is showing in its place
-  /// closes, without telling anyone (the caller does).
+  /// _dockOpening closes whatever else shows in [panel]'s place, silently.
   void _dockOpening(DockPanel panel) {
     var place = _dock.placeOf(panel);
     for (var other in DockPanel.values) {
@@ -1409,8 +1320,7 @@ class CanvasController extends ChangeNotifier {
     _arrangementChosen = null;
   }
 
-  /// _dockSettle leaves each place showing one panel at most, after the
-  /// places or the homes change: the first open one, in the buttons' order.
+  /// _dockSettle leaves one open panel per place, the first in button order.
   void _dockSettle() {
     var taken = <DockPlace>{};
     for (var panel in DockPanel.values) {
@@ -1437,8 +1347,7 @@ class CanvasController extends ChangeNotifier {
 
   TimelineShow _timelineShow = TimelineShow.everything;
 
-  /// timelineShow is the ⋯ menu's Show: everything, only the animation, or
-  /// only the sound -- on the timeline and in the mixer alike.
+  /// timelineShow is the ⋯ menu's Show, for the timeline and the mixer.
   TimelineShow get timelineShow => _timelineShow;
   set timelineShow(TimelineShow value) {
     if (_timelineShow == value) return;
@@ -1448,9 +1357,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _slotsBeside = false;
 
-  /// slotsBeside is the Slots panel: each element's and channel's slots, in
-  /// their place (see dock) -- beside the timeline's rows, lined up with
-  /// them, when the slots are on the left and the timeline in main.
+  /// slotsBeside is the Slots panel, open in its place (see dock); level
+  /// with the timeline's rows when it is on the left and they are in main.
   bool get slotsBeside => _slotsBeside;
   set slotsBeside(bool value) {
     if (_slotsBeside == value) return;
@@ -1459,22 +1367,19 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// slotsWithRows is the slots open beside the timeline's rows: the two
-  /// drawn as one, a row of slots level with each row of the timeline.
+  /// slotsWithRows is the slots drawn level with the timeline's rows.
   bool get slotsWithRows =>
       _slotsBeside &&
       _rowsShown &&
       _dock.placeOf(DockPanel.slots) == DockPlace.left &&
       _dock.placeOf(DockPanel.timeline) == DockPlace.main;
 
-  /// slotCellWidth and slotCellHeight are a slot beside the rows: one size
-  /// however wide the column or tall the row.
+  /// slotCellWidth and slotCellHeight are a slot's fixed size by the rows.
   static const double slotCellWidth = 72, slotCellHeight = 22;
 
-  /// slotsShown is how many slots each row has: two to begin with, and one
-  /// more past the last used -- by a clip in any element's or channel's
-  /// slots, or a named cue -- never more than the cues there are. See
-  /// _slotRowsGrown, which adds a cue as the last one fills.
+  /// slotsShown is how many slots each row has: at least two, and one past
+  /// the last used (by any clip or named cue), never more than the cues.
+  /// See _slotRowsGrown.
   int get slotsShown {
     if (!identical(_slotsShownOf, _document)) {
       _slotsShownOf = _document;
@@ -1514,17 +1419,15 @@ class CanvasController extends ChangeNotifier {
     return last;
   }
 
-  /// _slotRowsGrown is [next] with a cue added when its last is in use, so
-  /// there is always an empty slot to fill. See slotsShown.
+  /// _slotRowsGrown adds a cue to [next] when its last is used (slotsShown).
   static CanvasDocument _slotRowsGrown(CanvasDocument next) {
     var rows = next.session.rows;
     if (rows >= 256 || lastSlotUsed(next) < rows - 1) return next;
     return next.copyWith(session: next.session.withScene());
   }
 
-  /// slotsColumn is the most the slots beside the rows take across, dragged
-  /// by the grip between them and the time: they grow to it as they are
-  /// filled, and scroll past it (see slotsScroll).
+  /// slotsColumn is the widest the slots beside the rows grow as they fill,
+  /// set by dragging the grip; past it they scroll (see slotsScroll).
   double get slotsColumn => _slotsColumn;
   double _slotsColumn = slotsColumnDefault;
   static const double slotsColumnDefault = 6 * (slotCellWidth + 3) + 5,
@@ -1542,14 +1445,12 @@ class CanvasController extends ChangeNotifier {
   /// slotsContent is how wide every slot shown is, laid side by side.
   double get slotsContent => slotsShown * (slotCellWidth + 3) + 5;
 
-  /// slotsScroll is how far the slots beside the rows are scrolled along,
-  /// every row together: a notifier of its own, so a scroll redraws the
-  /// slots and nothing else.
+  /// slotsScroll is how far all the slots beside the rows are scrolled: its
+  /// own notifier, so a scroll redraws the slots and nothing else.
   final ValueNotifier<double> slotsScroll = ValueNotifier(0);
 
-  /// scrollSlots scrolls the slots by [by] pixels, as far as there is more
-  /// of them than the [shown] column (the slots beside the rows', unless
-  /// given) shows.
+  /// scrollSlots scrolls the slots by [by] pixels, within what overflows the
+  /// [shown] column (the slots beside the rows by default).
   void scrollSlots(double by, {double? shown}) {
     slotsScroll.value = (slotsScroll.value + by)
         .clamp(0.0, math.max(0.0, slotsContent - (shown ?? slotsWidth)))
@@ -1558,17 +1459,14 @@ class CanvasController extends ChangeNotifier {
 
   void _clampSlotsScroll() => scrollSlots(0);
 
-  /// slotsWidth is the slots beside the rows, a cue each, or nought with
-  /// them put away or the mixer in their place; leftWidth everything left
-  /// of the lanes -- the strips and the slots -- which is where the time
-  /// starts.
+  /// slotsWidth is the slots beside the rows, or 0 when they are not shown;
+  /// leftWidth is everything left of the lanes, where the time starts.
   double get slotsWidth =>
       slotsWithRows ? math.min(_slotsColumn, slotsContent) : 0;
   double get leftWidth => headerWidth + slotsWidth;
 
-  /// canvasSnap is the bar's Snap: the page's snap switch on a page, and
-  /// on a 3D stage the stage's own, which starts off -- both in the Grid
-  /// and guides settings. Not [snapping], which is the timeline's.
+  /// canvasSnap is the bar's Snap: the page's snap, or on a 3D stage the
+  /// stage's own, which starts off. Not [snapping], which is the timeline's.
   bool get canvasSnap =>
       onStage3d ? _document.guides.stageSnap : _document.guides.snap;
 
@@ -1581,10 +1479,9 @@ class CanvasController extends ChangeNotifier {
             : g.copyWith(snap: value)));
   }
 
-  /// steeredStage is the 3D stage the view controls steer: the one the
-  /// selected element stands on, or else the scene's first -- the canvas
-  /// background's, then a Background element's. Null where the scene has
-  /// none, and the bar shows the page's tools.
+  /// steeredStage is the 3D stage the view controls steer: the selected
+  /// element's, else the scene's first (background, then a Background
+  /// element). Null where there is none, and the bar shows the page tools.
   StageElement? get steeredStage {
     if (_selection.length == 1) {
       var spot = _document.elementById(_selection.first)?.base.spot;
@@ -1599,12 +1496,10 @@ class CanvasController extends ChangeNotifier {
     return null;
   }
 
-  /// onStage3d is whether the scene shows a 3D stage.
   bool get onStage3d => steeredStage != null;
 
-  /// steer moves the steered stage's camera to [to] of where it is on this
-  /// frame -- its own setting, or this frame's key where it is keyed.
-  /// Nothing where there is no stage, or it is locked.
+  /// steer moves the steered stage's camera to [to] of its setting on this
+  /// frame (its key where keyed). Nothing without a stage, or if locked.
   void steer(StageCamera Function(StageCamera) to, {bool transient = false}) {
     var s = steeredStage;
     if (s == null || s.locked) return;
@@ -1619,8 +1514,8 @@ class CanvasController extends ChangeNotifier {
               yaw: (c.yaw + dx + 540) % 360 - 180, pitch: c.pitch + dy),
           transient: transient);
 
-  /// panCameraBy slides the steered stage's camera by [by], page units:
-  /// the stage follows the pointer.
+  /// panCameraBy slides the steered camera by [by] page units, with the
+  /// pointer.
   void panCameraBy(Offset by, {bool transient = false}) {
     var s = steeredStage;
     if (s == null) return;
@@ -1628,15 +1523,13 @@ class CanvasController extends ChangeNotifier {
     steer((c) => view.panned(by), transient: transient);
   }
 
-  /// dollyBy takes the steered stage's camera [factor] times as far from
-  /// what it looks at: below one nearer.
+  /// dollyBy scales the steered camera's distance by [factor]: below 1 nearer.
   void dollyBy(double factor, {bool transient = false}) =>
       steer((c) => c.copyWith(distance: c.distance * factor),
           transient: transient);
 
-  /// frameSelected turns the steered stage's camera on the selected
-  /// element, near enough to fill the view with it. Nothing unless one
-  /// element standing on a stage is selected.
+  /// frameSelected turns the steered camera to fill the view with the one
+  /// selected element, if it stands on a stage.
   void frameSelected() {
     if (_selection.length != 1) return;
     var e = _document.elementById(_selection.first);
@@ -1654,8 +1547,7 @@ class CanvasController extends ChangeNotifier {
     steer((c) => at.view.framing(middle.$1, middle.$2, middle.$3, size));
   }
 
-  /// resetCamera puts the steered stage's camera back where a stage's
-  /// camera starts, with its lens kept.
+  /// resetCamera puts the steered camera back to its start, keeping its lens.
   void resetCamera() => steer((c) => StageCamera(lens: c.lens));
 
   CanvasTool _tool = CanvasTool.select;
@@ -1669,15 +1561,13 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  /// hoveredButton is the button under the pointer, which the renderer needs
-  /// so hover colours can be seen while they are being chosen.
+  /// hoveredButton is the button under the pointer, so hover colours show.
   String? hoveredButton;
 
   Timer? _playback;
   bool get playing => _playback != null;
 
-  /// _loopCounts tracks how many times each loop marker has fired, so a marker
-  /// with a repeat limit stops rather than running forever.
+  /// _loopCounts is how often each loop marker has fired, for repeat limits.
   final Map<int, int> _loopCounts = {};
 
   /// _stoppedAt is the frame a stop marker last stopped playback on.
@@ -1685,9 +1575,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _opened = false;
 
-  /// opened is whether this session has ever been shown. The session
-  /// outlives the page, so only the first visit restores what was last saved;
-  /// later ones would throw away the work in progress.
+  /// opened is whether this session has been shown. The session outlives
+  /// the page, so only the first visit restores the last save.
   bool get opened => _opened;
 
   /// markOpened is called by the page as it builds.
@@ -1704,17 +1593,15 @@ class CanvasController extends ChangeNotifier {
   int _edits = 0, _savedEdits = 0;
   bool get _dirty => _edits != _savedEdits;
 
-  /// dirty is whether there are changes the file on disk does not have. Set
-  /// by [apply] rather than by comparing documents: comparing deeply on every
-  /// keystroke is expensive, and an edit that restores the saved state is
-  /// still an edit.
+  /// dirty is whether the file on disk lacks changes. Counted by [apply]
+  /// rather than comparing documents, which is costly on every keystroke;
+  /// an edit back to the saved state is still an edit.
   bool get dirty => _dirty;
 
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
 
-  /// selectedElements are the chosen elements in paint order, which is the
-  /// order every multi-element operation wants.
+  /// selectedElements are the chosen elements in paint order.
   List<CanvasElement> get selectedElements => [
         for (var e in _document.elements)
           if (_selection.contains(e.id)) e
@@ -1728,13 +1615,9 @@ class CanvasController extends ChangeNotifier {
   // Editing
   // ------------------------------------------------------------------------
 
-  /// apply replaces the document, pushing the old one onto the undo history.
-  /// [transient] skips the history, for the many small changes inside one
-  /// gesture; [beginInteraction] already remembered where it started.
-  /// _glideCharts starts a glide (chart_play.dart) for each chart on the
-  /// page whose numbers [next] changes from [was] -- a refresh, a typed
-  /// cell, an undo -- so it eases to them rather than jumping; and keeps
-  /// the stage drawing while any glides.
+  /// _glideCharts starts a glide (chart_play.dart) for each chart whose
+  /// numbers change from [was] to [next], so it eases rather than jumps, and
+  /// keeps the stage drawing while any glides.
   void _glideCharts(CanvasDocument was, CanvasDocument next) {
     if (identical(was.elements, next.elements)) return;
     var before = {
@@ -1770,6 +1653,9 @@ class CanvasController extends ChangeNotifier {
 
   void _patternCounted() => notifyListeners();
 
+  /// apply replaces the document, pushing the old one onto the undo history.
+  /// [transient] skips the history, for the many small changes inside one
+  /// gesture; [beginInteraction] already remembered where it started.
   void apply(CanvasDocument next, {bool transient = false}) {
     _endPreview();
     if (identical(next, _document)) return;
@@ -1780,16 +1666,14 @@ class CanvasController extends ChangeNotifier {
     var designing = next;
     next = synthSynced(next,
         designedAt: (e, f) => designedNow(e, f, designing));
-    // Each Data element shows its sheet, and what one changes of its own
-    // data goes into the sheet for the rest (see data_sync.dart).
-    // A sheet made from another follows it, before its views follow it
-    // (sheet_reshape.dart).
+    // Each Data element shows its sheet, and its own data changes go into
+    // the sheet (data_sync.dart); a sheet made from another follows it
+    // first (sheet_reshape.dart).
     next = sheetsMade(_document, next);
     next = dataSynced(_document, next);
 
-    // A picture's frame takes in what was put past it once a change is made,
-    // not at every step of a drag, whose sums start from where things were
-    // when it began. See endInteraction, and changePaint.
+    // A picture's frame grows to its content once a change is made, not at
+    // each step of a drag, whose sums start from where it began.
     if (!transient) next = _slotRowsGrown(_imagesGrown(next, _document));
 
     var was = _document;
@@ -1804,9 +1688,7 @@ class CanvasController extends ChangeNotifier {
     _edits++;
     scheduleAutosave();
 
-    // A selection can outlive the elements it names (a delete, another
-    // document); pruning here spares every reader an id that resolves to
-    // nothing.
+    // Prune ids the document no longer has, so no reader meets one.
     _selection = _selection.where((id) => _document.elementById(id) != null).toSet();
 
     if (_frame >= _document.frames) _frame = _document.frames - 1;
@@ -1821,9 +1703,8 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _imagesGrown is [next] with the frame of every picture changed since
-  /// [was] grown to take in what is drawn in it. See
-  /// ImageElement.grownToFit.
+  /// _imagesGrown is [next] with every picture changed since [was] grown to
+  /// fit what is drawn in it (ImageElement.grownToFit).
   CanvasDocument _imagesGrown(CanvasDocument next, CanvasDocument was) {
     var out = next;
     for (var e in next.elements) {
@@ -1835,19 +1716,16 @@ class CanvasController extends ChangeNotifier {
     return out;
   }
 
-  /// interacting is whether a gesture is under way (a drag, a number being
-  /// scrubbed), which the canvas draws a little faster for.
+  /// interacting is whether a gesture is under way: drawn a little faster.
   bool get interacting => _interaction != null;
 
-  /// beginInteraction starts a gesture: everything until [endInteraction] is
-  /// one undo step.
+  /// beginInteraction starts a gesture: one undo step until [endInteraction].
   void beginInteraction() {
     _endPreview();
     _interaction ??= _document;
   }
 
-  /// endInteraction closes the gesture, pushing its starting document onto the
-  /// history if anything actually changed.
+  /// endInteraction closes the gesture as one undo step, if anything changed.
   void endInteraction() {
     var before = _interaction;
     _interaction = null;
@@ -1869,8 +1747,7 @@ class CanvasController extends ChangeNotifier {
 
   void undo() {
     _endPreview();
-    // A gesture still open is closed first, so what it did is the step taken
-    // back rather than pushed later on top of the undo.
+    // Close an open gesture first, so it is the step taken back.
     endInteraction();
     if (_undo.isEmpty) return;
     _redo.add(_document);
@@ -1899,17 +1776,14 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _beforePreview is the document as it really is while a setting is being
-  /// tried on the canvas -- see tryElement -- and null otherwise.
+  /// _beforePreview is the real document while tryElement shows a setting.
   CanvasDocument? _beforePreview;
 
-  /// trying is whether the canvas is showing a setting being tried.
   bool get trying => _beforePreview != null;
 
-  /// tryElement shows [element] on the canvas in place of the one it
-  /// replaces, without it being an edit: not in the undo history, not saved,
-  /// and gone with a null or with the next real edit. For previewing the
-  /// options of a list before one is chosen.
+  /// tryElement previews [element] in place of the one it replaces, outside
+  /// the history and unsaved, until a null or the next real edit: for
+  /// previewing a list's options before one is chosen.
   void tryElement(CanvasElement? element) {
     if (element == null) {
       if (_endPreview()) notifyListeners();
@@ -1920,8 +1794,7 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _endPreview puts the document back as it really is, and says whether
-  /// there was a preview to end.
+  /// _endPreview restores the real document; false if there was no preview.
   bool _endPreview() {
     var before = _beforePreview;
     if (before == null) return false;
@@ -1930,10 +1803,9 @@ class CanvasController extends ChangeNotifier {
     return true;
   }
 
-  /// withCountLaidOut is a new keyframed counter with its count pinned: its
-  /// start where the playhead is and its finish two seconds on, or the two
-  /// seconds before the end when the playhead is too near it. Otherwise From
-  /// and To would do nothing until both were pinned by hand.
+  /// withCountLaidOut pins a new keyframed counter's count from the playhead
+  /// to two seconds on (or the last two seconds near the end), so From and
+  /// To work without pinning both by hand.
   CounterElement withCountLaidOut(CounterElement e) {
     var last = _document.frames - 1;
     if (!e.keyed || e.track != null || last < 1) return e;
@@ -1951,7 +1823,6 @@ class CanvasController extends ChangeNotifier {
     ])) as CounterElement;
   }
 
-  /// replaceElement applies a change to one element.
   void replaceElement(CanvasElement element, {bool transient = false}) =>
       apply(_document.withElement(element), transient: transient);
 
@@ -2020,9 +1891,7 @@ class CanvasController extends ChangeNotifier {
         }
       }
     }
-    // And the clips picked on the timeline from another canvas (another
-    // scene's, or the master's), which are as much on the timeline as this
-    // scene's.
+    // And clips picked on the timeline from another scene or the master.
     for (var id in _offCanvas) {
       next = _removedAnywhere(next, id);
     }
@@ -2072,10 +1941,9 @@ class CanvasController extends ChangeNotifier {
     return clip == null ? null : start + clip.at;
   }
 
-  /// placeTimedClip puts [e]'s [clip] at frame [run] of the whole run. A clip
-  /// on a scene goes to the scene [run] falls in, so one dragged past the end
-  /// of its own becomes the next one's; one on the master goes where it is
-  /// put, and one on the backdrop as before.
+  /// placeTimedClip puts [e]'s [clip] at frame [run] of the whole run. A
+  /// clip on a scene moves to the scene [run] falls in; one on the master or
+  /// the backdrop stays on it.
   void placeTimedClip(CanvasElement e, MediaClip clip, int run,
       {bool transient = false}) {
     run = math.max(0, run);
@@ -2113,8 +1981,7 @@ class CanvasController extends ChangeNotifier {
     var scene = next.allScenes[to];
     next = next.withScene(
         to, scene.copyWith(elements: [...scene.elements, placed]));
-    // Still picked, wherever it has gone: on this canvas it is part of the
-    // selection, and off it one of the clips picked elsewhere.
+    // Keep it picked, in the selection here or among clips picked elsewhere.
     var picked = clipSelection.contains(e.id);
     apply(next, transient: transient);
     if (picked) {
@@ -2129,8 +1996,8 @@ class CanvasController extends ChangeNotifier {
     }
   }
 
-  /// deleteElement takes out the element [id] -- a layers row's delete, for
-  /// screens with no Delete key. Being edited, its editing is put down first.
+  /// deleteElement takes out element [id], for a layers row's delete,
+  /// ending its editing first.
   void deleteElement(String id) {
     if (_document.elementById(id) == null) return;
     if (_vectorEditing == id) editVector(null);
@@ -2139,8 +2006,7 @@ class CanvasController extends ChangeNotifier {
     apply(_document.removeElement(id));
   }
 
-  /// duplicateSelected copies the chosen elements, offset a little so the copy
-  /// is visibly a second thing.
+  /// duplicateSelected copies the chosen elements, offset a little.
   void duplicateSelected() {
     if (_selection.isEmpty) return;
     var next = _document;
@@ -2154,29 +2020,24 @@ class CanvasController extends ChangeNotifier {
       made.add(copy.id);
       ids[element.id] = copy.id;
     }
-    // Synth modules copied together patched to each other, not the
-    // originals.
+    // Synth modules copied together are patched to each other.
     apply(synthCopied(next, ids));
     _selection = made;
     notifyListeners();
   }
 
-  /// _clipboard is what was last copied. Held here rather than on the system
-  /// clipboard: an element has no sensible text form, and JSON there would
-  /// replace whatever the reader had copied elsewhere. Static, so a copy
-  /// survives leaving the page.
+  /// _clipboard is what was last copied. Not the system clipboard: an
+  /// element has no sensible text form, and JSON would replace what the
+  /// reader copied elsewhere. Static, so a copy survives leaving the page.
   static List<CanvasElement> _clipboard = const [];
 
-  /// _pasteOffset is how far each paste is stepped down and right, so each
-  /// paste is visibly another copy.
+  /// _pasteOffset steps each paste down and right, so it is visibly a copy.
   static const double _pasteOffset = 16;
 
-  /// canPaste is whether there is anything to paste.
   bool get canPaste => _clipboard.isNotEmpty;
 
-  /// copySelected puts the selection on the clipboard, with the clips picked
-  /// on the timeline from another canvas (such as the master's music picked
-  /// from a scene, which is not in the selection).
+  /// copySelected copies the selection and the clips picked on the timeline
+  /// from another canvas, such as the master's music picked from a scene.
   void copySelected() {
     var chosen = [...selectedElements];
     if (_offCanvas.isNotEmpty) {
@@ -2191,8 +2052,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// _canvasStart is where the canvas holding element [id] starts on the
-  /// run's clock -- 0 for the master, which runs on it -- or null when it is
-  /// not on one: copied from somewhere since taken out.
+  /// run's clock (0 for the master), or null when it is on none.
   int? _canvasStart(String id) {
     var master = _document.master;
     if (master != null && master.elements.any((e) => e.id == id)) return 0;
@@ -2204,7 +2064,6 @@ class CanvasController extends ChangeNotifier {
     return null;
   }
 
-  /// cutSelected copies and then deletes.
   void cutSelected() {
     if (_selection.isEmpty && _offCanvas.isEmpty) return;
     copySelected();
@@ -2223,10 +2082,9 @@ class CanvasController extends ChangeNotifier {
       CanvasElement copy;
       var timed = (element is AudioElement && element.clip.timed) ||
           (element is VideoElement && element.clip.timed);
-      // A clip from the master, copied from a scene, goes back onto the
-      // master beside the one copied, at the playhead on the run's clock. One
-      // from another scene comes to the scene the playhead is in: sent back
-      // to its own at a frame past its end, it would never play.
+      // A master clip copied from a scene goes back onto the master at the
+      // playhead on the run's clock. One from another scene comes to the
+      // playhead's scene: sent back past its own end, it would never play.
       var away = timed &&
               !_onCanvas(element.id) &&
               (_document.master?.elements.any((e) => e.id == element.id) ??
@@ -2241,8 +2099,7 @@ class CanvasController extends ChangeNotifier {
             .copyWith(clip: element.clip.copyWith(at: at))
             .withId(newElementId());
       } else if (element is VideoElement && element.clip.timed) {
-        // And a video on the timeline the same: at the playhead, in the same
-        // place on the canvas -- the same shot, later.
+        // A timed video likewise: at the playhead, in the same place.
         copy = element
             .copyWith(clip: element.clip.copyWith(at: at))
             .withId(newElementId());
@@ -2307,13 +2164,10 @@ class CanvasController extends ChangeNotifier {
     apply(next, transient: transient);
   }
 
-  /// alignSelected lines every chosen element up on one edge or middle,
-  /// against the selection's own box rather than the canvas (the guides and
-  /// snapping are for that). One element is therefore a no-op, and the
-  /// buttons are dead until there are two.
+  /// alignSelected lines the chosen elements up on one edge or middle of the
+  /// selection's own box, not the canvas, so it needs two.
   void alignSelected(CanvasAlign align, {bool transient = false}) {
-    // With a picture's layers open, its picked layers -- against the box
-    // they make between them, as elements are.
+    // With a picture's layers open, its picked layers, against their box.
     if (editingImage case var e?) {
       var ids = [for (var l in alignableLayers) l.id];
       if (ids.length >= 2) {
@@ -2354,10 +2208,9 @@ class CanvasController extends ChangeNotifier {
     apply(next, transient: transient);
   }
 
-  /// spreadSelected puts an even gap between the chosen elements: the two on
-  /// the ends stay and the rest move, so it needs three. Even gaps rather
-  /// than even centres, since elements of different sizes spaced by centre
-  /// leave visibly different gaps.
+  /// spreadSelected puts an even gap between the chosen elements; the end
+  /// two stay, so it needs three. Gaps rather than centres, since spacing
+  /// different sizes by centre leaves visibly different gaps.
   void spreadSelected(bool across, {bool transient = false}) {
     if (editingImage case var e?) {
       var ids = [for (var l in alignableLayers) l.id];
@@ -2396,22 +2249,16 @@ class CanvasController extends ChangeNotifier {
     apply(next, transient: transient);
   }
 
-  /// posesRatherThanMoves is whether dragging [element] should record a
-  /// keyframe instead of relocating it.
-  ///
-  /// A keyframe's dx and dy are offsets from the element's resting position,
-  /// so moving the rest moves every keyframe with it; a drag meant as a pose
-  /// would record nothing. So a drag poses when the document is animated and
-  /// either auto-keyframe is on or the element has already been posed. The X
-  /// and Y fields still move the rest, and the animation with it.
-  ///
-  /// Posed, not merely keyed: a chart given an arrival preset has keys that
-  /// say only how much is drawn, and dragging it should move it.
+  /// posesRatherThanMoves is whether dragging [element] records a keyframe
+  /// instead of moving it. Keyframes are offsets from the resting position,
+  /// so moving the rest moves them all and a pose would record nothing.
+  /// A drag poses when the document is animated and auto-keyframe is on or
+  /// the element is already posed (not merely keyed: a chart's arrival keys
+  /// say only how much is drawn). The X and Y fields still move the rest.
   bool posesRatherThanMoves(CanvasElement element) =>
       _document.isAnimated &&
-      // Never for something a path is driving: a pose written by a drag would
-      // be overwritten the next time a point moved, so the drag moves its
-      // start instead and the whole run travels with it.
+      // Never for an element a path drives: the next point moved would
+      // overwrite the pose, so the drag moves its start instead.
       pathDriving(element.id) == null &&
       (_autoKeyframe || (element.track?.posesAnything == true));
 
@@ -2429,21 +2276,17 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// movedTo is the stage's drag: where [element]'s top-left should now be.
-  /// An absolute target rather than a delta, since accumulated deltas drift
-  /// and on a pose would compound into the keyframe.
+  /// Absolute rather than a delta, since deltas drift and compound on a pose.
   CanvasElement movedTo(CanvasElement element, Offset topLeft) {
-    // Something on a stage is moved across its floor -- or up and along its
-    // back wall -- to under where it has been dragged to.
+    // An element on a stage moves across its floor, or along its back wall.
     if (element.base.spot != null) {
       var at = stagedIn(_document, element, _frame);
       if (at != null) {
-        // Where it stands on this frame, keyed or its own; where it is keyed,
-        // the move is a key on this frame.
+        // Where it stands on this frame; keyed, the move is a key here.
         var spot = at.spot;
         var by = topLeft - at.box.topLeft;
         var view = at.view;
-        // Snapping, it lands on the 3D steps -- there are no lines on a
-        // stage to land on.
+        // Snapping lands on the 3D steps: a stage has no lines to snap to.
         var step =
             _document.guides.stageSnap ? _document.guides.stageStep : 0.0;
         double snap(double v) =>
@@ -2460,9 +2303,8 @@ class CanvasController extends ChangeNotifier {
                     x: snap(spot.x + now.dx - was.dx),
                     lift: snap(spot.lift + now.dy - was.dy)));
           default:
-            // The point on the floor under the pointer moves as the pointer
-            // does, on the level the element is lifted to, so it stays under
-            // the hand.
+            // The floor point under the pointer follows it, on the level
+            // the element is lifted to.
             var level = spot.stand == SpotStand.floor ? 0.0 : spot.lift;
             var was = view.toFloor(at.foot, y: level),
                 now = view.toFloor(at.foot + by, y: level);
@@ -2489,12 +2331,10 @@ class CanvasController extends ChangeNotifier {
     );
   }
 
-  /// cameraShifted is [start] -- a camera as a drag began -- looking [by]
-  /// further across and down: a keyframe on this frame where it is
-  /// animated, else its box moved. Kept to what the framing allows (the
-  /// picture stays on the page), so a drag past the edge does not leave a
-  /// pose the frame cannot follow (Ken, 2026-11-14: the camera was hard to
-  /// move; a keyed one jumped, moved by the frame's corner, not its box's).
+  /// cameraShifted is [start], a camera as a drag began, looking [by]
+  /// further across and down: a key on this frame where it is animated,
+  /// else its box moved. Kept to what the framing allows, so a drag past
+  /// the edge leaves no pose the frame cannot follow.
   CanvasElement cameraShifted(CameraElement start, Offset by) {
     var page = _document.size.rect;
     var (zoom, _) = cameraFraming(start, _frame, _document);
@@ -2515,10 +2355,9 @@ class CanvasController extends ChangeNotifier {
             frame: _frame, dx: pose.dx + moved.dx, dy: pose.dy + moved.dy)));
   }
 
-  /// cameraZoomed is [start] -- a camera as a drag began -- [factor] times
-  /// closer (below one, further), about the middle of what it shows: a
-  /// keyframe's size where it is animated, else its box. Never further out
-  /// than the whole page, nor closer than eight times.
+  /// cameraZoomed is [start], a camera as a drag began, [factor] times
+  /// closer about the middle of its view: a key's size where animated, else
+  /// its box. Between the whole page and eight times.
   CanvasElement cameraZoomed(CameraElement start, double factor) {
     if (!factor.isFinite || factor <= 0) return start;
     var (zoom, at) = cameraFraming(start, _frame, _document);
@@ -2554,10 +2393,9 @@ class CanvasController extends ChangeNotifier {
     return cam;
   }
 
-  /// pathDriving is the path that owns [elementId]'s keyframes, if one does.
-  /// A follower's track is rewritten whenever the route or its timing
-  /// changes, so the timeline refuses hand edits to it and shows the path's
-  /// points instead.
+  /// pathDriving is the path that owns [elementId]'s keyframes, if any. Its
+  /// track is rewritten when the route changes, so the timeline refuses hand
+  /// edits and shows the path's points.
   PathElement? pathDriving(String elementId, {int? playerIndex}) {
     for (var element in _document.elements) {
       if (element is! PathElement) continue;
@@ -2569,13 +2407,10 @@ class CanvasController extends ChangeNotifier {
     return null;
   }
 
-  /// applyPathFollow writes [path]'s route into its follower's keyframes.
-  ///
-  /// Baked rather than evaluated live, so the renderer, the GIF encoder and a
-  /// published canvas play it as any other track and cannot disagree. The
-  /// follower's keyframes are owned by the path, as the settings say. One
-  /// keyframe per frame between the first node and the last, sampled by arc
-  /// length (see PathElement.positionOnSegment).
+  /// applyPathFollow bakes [path]'s route into its follower's keyframes, one
+  /// per frame from the first node to the last, sampled by arc length.
+  /// Baked rather than live, so the renderer, the GIF encoder and a
+  /// published canvas play it like any track and cannot disagree.
   void applyPathFollow(PathElement path) {
     var follow = path.follow;
     if (follow == null || path.nodes.length < 2) return;
@@ -2591,9 +2426,8 @@ class CanvasController extends ChangeNotifier {
     if (target is TeamElement && index != null) {
       if (index < 0 || index >= target.players.length) return;
       var spot = target.players[index];
-      // On a pitch, every point of the route is carried down onto the
-      // pitch's own metres, so the follower keeps to the curve as drawn
-      // however the pitch is seen.
+      // On a pitch the route is carried onto the pitch's own metres, so the
+      // follower keeps to the curve however the pitch is seen.
       var ground = teamGround(_document, target, from);
       if (ground != null) {
         replaceElement(target.withPlayer(
@@ -2614,9 +2448,8 @@ class CanvasController extends ChangeNotifier {
         target.withBase(track: _bake(path, target.center, from, to)));
   }
 
-  /// _bakeOnPitch is [_bake] for a player standing on a pitch: the route's
-  /// points found on the field, and kept as a run in the units a run on a
-  /// pitch is kept in -- see playerPlace.
+  /// _bakeOnPitch is [_bake] for a player on a pitch, in the units a run on
+  /// a pitch is kept in (see playerPlace).
   ElementTrack _bakeOnPitch(PathElement path, TeamGround ground,
       TeamElement team, PlayerSpot spot, int from, int to) {
     var rest = teamFieldPoint(team, spot, ground.place);
@@ -2646,8 +2479,7 @@ class CanvasController extends ChangeNotifier {
     return ElementTrack(keys);
   }
 
-  /// clearPathFollow takes the baked keyframes back off, as unlinking a
-  /// follower must, or the element is stranded on the route.
+  /// clearPathFollow takes the baked keys off, or the follower is stranded.
   void clearPathFollow(PathElement path) {
     var follow = path.follow;
     if (follow == null) return;
@@ -2680,24 +2512,18 @@ class CanvasController extends ChangeNotifier {
     return target.name;
   }
 
-  /// valueAt reads an animatable extra channel at the current frame, falling
-  /// back to [orElse] when nothing has been keyed. See KeyframeChannel.
+  /// valueAt is extra [channel] on this frame, or [orElse] if never keyed.
   double valueAt(CanvasElement element, String channel, double orElse) =>
       element.poseAt(_frame).values[channel] ?? orElse;
 
-  /// hasValueKey is whether [channel] is pinned on this exact frame: what its
-  /// diamond shows.
+  /// hasValueKey is whether [channel] is pinned on this frame: its diamond.
   bool hasValueKey(CanvasElement element, String channel) =>
       element.track?.keyAt(_frame)?.values.containsKey(channel) ?? false;
 
-  /// setValueKey pins one extra property at the current frame.
-  ///
-  /// Seeded at the start like every other first keyframe, so one press makes
-  /// a movement rather than a value for the whole document (see
-  /// ElementTrack.seededFor). A counter passes [seed] false: the seed is a
-  /// resting pose, which marks the element as animated in space (see
-  /// ElementTrack.posesAnything), and a count needs none since its first key
-  /// holds for every frame before it.
+  /// setValueKey pins one extra property at the current frame, seeded at the
+  /// start so one press makes a movement (see ElementTrack.seededFor). A
+  /// counter passes [seed] false: a seed marks the element as moving in
+  /// space, and a count's first key holds for every frame before it anyway.
   void setValueKey(CanvasElement element, String channel, double value,
       {bool seed = true}) {
     var track = seed
@@ -2709,8 +2535,7 @@ class CanvasController extends ChangeNotifier {
             .withKey(at.copyWith(frame: _frame).withValue(channel, value))));
   }
 
-  /// clearValueKey takes one property off this frame's keyframe, and the
-  /// keyframe with it when that was all it held.
+  /// clearValueKey unpins [channel] here, and the key if that was all of it.
   void clearValueKey(CanvasElement element, String channel) {
     var track = element.track;
     var at = track?.keyAt(_frame);
@@ -2722,11 +2547,10 @@ class CanvasController extends ChangeNotifier {
     replaceElement(withTrackOrNone(element, next));
   }
 
-  /// lipSync gives [e] the mouths for what is said on [voice]: from the
-  /// words (heard first if they have not been), or with [words] off from the
-  /// loudness alone. Mouths it laid before over the same stretch are
-  /// replaced. One undo step. Returns what stopped it, or how many mouths it
-  /// laid.
+  /// lipSync gives [e] mouths for what [voice] says: from the words (heard
+  /// first if need be), or from loudness alone with [words] off. Replaces
+  /// its earlier mouths over the stretch, as one undo step. Returns what
+  /// stopped it, or how many mouths it laid.
   Future<({String? problem, int mouths})> lipSync(
       CanvasElement e, AudioElement voice,
       {bool words = true, LipSyncFeel feel = const LipSyncFeel()}) async {
@@ -2737,8 +2561,7 @@ class CanvasController extends ChangeNotifier {
     var rate = math.max(1, _document.frameRate);
     var length = source.length > 0 ? source.length : 0.0;
     var from = source.start, to = source.end > 0 ? source.end : length;
-    // Where the voice starts and stops in the run, and where the
-    // character's own frames start.
+    // Where the voice starts and stops in the run, and the character's frames.
     var voiceAt = _clipOffset(voice) + voice.clip.at;
     var voiceEnd = voiceAt + ((to - from) * rate).ceil();
     var mine = _clipOffset(e);
@@ -2746,8 +2569,7 @@ class CanvasController extends ChangeNotifier {
     List<MouthKey> keys;
     if (words) {
       var tag = "voice:${voice.id}";
-      // A Speech device take knows its words and their timing: read from it
-      // rather than heard again.
+      // A Speech take knows its words and timing: read, not heard again.
       var said = _takeWords(voice, voiceAt, rate) ??
           [
             for (var w in this.words)
@@ -2806,9 +2628,8 @@ class CanvasController extends ChangeNotifier {
     return (problem: null, mouths: 0);
   }
 
-  /// _takeWords are the words of [voice] where it is a Speech device's take,
-  /// as run frames from [voiceAt], only those its trim keeps. Null for any
-  /// other sound.
+  /// _takeWords are [voice]'s words where it is a Speech device's take, as
+  /// run frames from [voiceAt], kept by its trim; null for any other sound.
   List<SpokenWord>? _takeWords(AudioElement voice, int voiceAt, int rate) {
     var source = voice.clip.playlist.firstOrNull;
     if (source == null) return null;
@@ -2828,16 +2649,14 @@ class CanvasController extends ChangeNotifier {
     ];
   }
 
-  /// clearLipSync takes every mouth off [e]: from its track, or a 3D
-  /// character's scene.
+  /// clearLipSync takes every mouth off [e], a 3D character.
   void clearLipSync(CanvasElement e) => replaceElement(switch (e) {
         Character3dElement c => c.performing(c.performance.withMouths(const [])),
         _ => e,
       });
 
-  /// stageFilmed is [stage] with its camera set to [camera]: its own setting
-  /// until the camera has been keyed, and from then on this frame's key (the
-  /// rule a character's pose follows).
+  /// stageFilmed is [stage] with its camera at [camera]: its own setting
+  /// until the camera is keyed, then this frame's key.
   StageElement stageFilmed(StageElement stage, StageCamera camera) {
     var keyed = stage.track?.keys
             .any((k) => k.values.keys.any((c) => c.startsWith("cam."))) ??
@@ -2858,8 +2677,7 @@ class CanvasController extends ChangeNotifier {
   void putStage(StageElement stage, {bool transient = false}) =>
       putBackdrop(stage, transient: transient);
 
-  /// parallaxOf is the parallax scenery called [id] as it is drawn on this
-  /// canvas, the way [stageOf] is the stage.
+  /// parallaxOf is the parallax scenery [id] as drawn, as [stageOf] is.
   ParallaxElement? parallaxOf(String id) {
     if (id == backgroundParallaxId) {
       var bg = _document.drawnBackground;
@@ -2872,17 +2690,15 @@ class CanvasController extends ChangeNotifier {
     return null;
   }
 
-  /// parallaxFilmed is [p] with its camera set to [camera], by the rule
-  /// [stageFilmed] follows.
+  /// parallaxFilmed is [p] with its camera at [camera], as [stageFilmed].
   ParallaxElement parallaxFilmed(ParallaxElement p, ParallaxCamera camera) {
     if (!_cameraKeyed(p)) return p.copyWith(camera: camera);
     return p.withBase(track: _pinnedAt(p.track!, _frame, camera.channels))
         as ParallaxElement;
   }
 
-  /// putBackdrop writes a stage or a parallax back where it lives: the
-  /// Background element that draws it, or the background behind the
-  /// canvas.
+  /// putBackdrop writes a stage or a parallax back where it lives: its
+  /// Background element, or the background behind the canvas.
   void putBackdrop(CanvasElement backdrop, {bool transient = false}) {
     var bg = _document.editedBackground;
     switch (backdrop) {
@@ -2937,9 +2753,8 @@ class CanvasController extends ChangeNotifier {
         _ => const {},
       };
 
-  /// keyCamera keys [stage]'s camera as it is on this frame, and on the
-  /// first frame too the first time, so the move starts from where the
-  /// camera was.
+  /// keyCamera keys [stage]'s camera on this frame, and on the first frame
+  /// the first time, so the move starts where the camera was.
   void keyCamera(CanvasElement stage) {
     var track = stage.track ?? ElementTrack.empty;
     if (!_cameraKeyed(stage) && _frame != 0) {
@@ -2949,7 +2764,6 @@ class CanvasController extends ChangeNotifier {
         stage.withBase(track: _pinnedAt(track, _frame, _cameraNow(stage))));
   }
 
-  /// hasCameraKey is whether the camera is keyed on this frame.
   bool hasCameraKey(CanvasElement stage) =>
       stage.track
           ?.keyAt(_frame)
@@ -2958,7 +2772,6 @@ class CanvasController extends ChangeNotifier {
           .any((c) => c.startsWith("cam.")) ??
       false;
 
-  /// clearCameraKey takes the camera off this frame's keyframe.
   void clearCameraKey(CanvasElement stage) {
     var track = stage.track;
     var at = track?.keyAt(_frame);
@@ -2973,14 +2786,12 @@ class CanvasController extends ChangeNotifier {
             : track.withKey(without)));
   }
 
-  /// spotKeyed is whether where [e] stands on its stage is keyed.
   bool spotKeyed(CanvasElement e) =>
       e.track?.keys.any((k) => k.values.keys.any((c) => c.startsWith("spot."))) ??
       false;
 
-  /// spotted is [e] standing at [spot]: its own spot until it has been
-  /// keyed, and from then on this frame's key. Which stage it is on and how
-  /// it stands are its own, keyed or not.
+  /// spotted is [e] standing at [spot]: its own spot until keyed, then this
+  /// frame's key. Its stage and how it stands are never keyed.
   CanvasElement spotted(CanvasElement e, StageSpot spot) {
     var own = e.base.spot;
     if (own == null || !spotKeyed(e)) return e.withBase(spot: spot);
@@ -2989,8 +2800,7 @@ class CanvasController extends ChangeNotifier {
     return kept.withBase(track: _pinnedAt(e.track!, _frame, spot.channels));
   }
 
-  /// keySpot keys where [e] stands as it is on this frame, and on the first
-  /// frame too the first time, so it moves from where it stood.
+  /// keySpot keys [e]'s spot here, and the first time frame 0 too.
   void keySpot(CanvasElement e) {
     var spot = e.spotAt(_frame);
     if (spot == null) return;
@@ -3001,7 +2811,6 @@ class CanvasController extends ChangeNotifier {
     replaceElement(e.withBase(track: _pinnedAt(track, _frame, spot.channels)));
   }
 
-  /// hasSpotKey is whether where [e] stands is keyed on this frame.
   bool hasSpotKey(CanvasElement e) =>
       e.track
           ?.keyAt(_frame)
@@ -3010,7 +2819,6 @@ class CanvasController extends ChangeNotifier {
           .any((c) => c.startsWith("spot.")) ??
       false;
 
-  /// clearSpotKey takes where [e] stands off this frame's keyframe.
   void clearSpotKey(CanvasElement e) {
     var track = e.track;
     var at = track?.keyAt(_frame);
@@ -3034,16 +2842,14 @@ class CanvasController extends ChangeNotifier {
   String? _imageEditing;
   String _imageLayerId = baseLayerId;
 
-  /// _alsoPicked are the layers picked with [imageLayer], in the order they
-  /// were picked: what the align tools line up and a drag moves together.
-  /// The settings are the first one's.
+  /// _alsoPicked are the layers picked with [imageLayer], in pick order, for
+  /// the align tools and a drag; the settings are the first one's.
   final List<String> _alsoPicked = [];
 
   FrameTool? _frameTool = FrameTool.image;
 
-  /// _textLayers is the layer picked in each text element's Layers, by the
-  /// element's id: one of its pieces, by the piece's id. A text element not
-  /// in here has its own words picked. For this run of the app.
+  /// _textLayers is the piece picked in each text element's Layers, by
+  /// element id; one not here has its own words picked.
   final Map<String, String> _textLayers = {};
 
   PositionTool? _positionTool = PositionTool.place;
@@ -3112,10 +2918,9 @@ class CanvasController extends ChangeNotifier {
 
   double _vectorCornerSize = 20;
 
-  /// _corner is the corner the corner tool last made: the drawing before
-  /// it, the point it was made at, and the drawing and the two points it
-  /// made. Still being made for as long as those two points are what is
-  /// picked and nothing else has changed the drawing.
+  /// _corner is the corner the corner tool last made: the drawing before,
+  /// the point, the drawing after and its two new points. Still in the
+  /// making while those points alone are picked and the drawing unchanged.
   ({
     VectorElement before,
     VectorPick at,
@@ -3127,9 +2932,8 @@ class CanvasController extends ChangeNotifier {
 
   bool _vectorHandleSnap = false;
 
-  /// _copiedShapes is what the last copy of points copied, and _pastes how
-  /// many times it has been pasted since -- each paste a step further off,
-  /// so pastes do not land on top of one another.
+  /// _copiedShapes is the last points copied, and _pastes how many times
+  /// they have been pasted since: each paste lands a step further off.
   List<VectorShape> _copiedShapes = const [];
   int _pastes = 0;
 
@@ -3232,8 +3036,7 @@ class CanvasController extends ChangeNotifier {
   /// playSheet), or null.
   int? _rangeEnd;
 
-  /// studio3dElement is the 3D character the Studio was opened to change,
-  /// if it was opened for one.
+  /// studio3dElement is the 3D character the Studio was opened for, if any.
   String? studio3dElement;
 
   Set<VectorItem> _vectorItems = const {};
@@ -3248,40 +3051,32 @@ class CanvasController extends ChangeNotifier {
 
   int? _previewAt;
 
-  /// previewEnd is where the preview stops, so watching a transition does not
-  /// run on through the rest of the document.
+  /// _previewEnd is where the preview stops, so a transition does not run on.
   int _previewEnd = 0;
 
-  /// _previewFrom is the scene the preview was started on, so that watching a
-  /// join leaves the editor where it was found.
+  /// _previewFrom is the scene the preview started on, returned to after it.
   int? _previewFrom;
 
-  /// _previewFromMaster is whether the shared canvas was the one open when
-  /// the preview started, so stopping puts it back.
+  /// _previewFromMaster is whether the master was open as the preview began.
   bool _previewFromMaster = false;
 
   // ------------------------------------------------------------------------
   // Cues -- see model/canvas_cues.dart.
 
-  /// wordQuery is what is being looked for among the words, from an
-  /// element's cue card -- this sitting's, never the document's.
+  /// _wordQuery is what an element's cue card searches the words for. Unsaved.
   String _wordQuery = "";
 
-  /// _sceneFrames is where the playhead was on each scene when it was last
-  /// left, by scene id. Not in the document: it is where somebody is, not
-  /// something they made.
+  /// _sceneFrames is where the playhead was on each scene when last left, by
+  /// scene id: where somebody is, so not in the document.
   final Map<String, int> _sceneFrames = {};
 
-  /// _sceneClipboard is the scene last copied, held as an element's copy is
-  /// (see [_clipboard]): static, so a scene copied from one canvas pastes into
-  /// another.
+  /// _sceneClipboard is the scene last copied: static, like [_clipboard], so
+  /// it pastes into another canvas.
   static CanvasScene? _sceneClipboard;
 
-  /// hasCopiedScene is whether there is a scene waiting to be pasted.
   static bool get hasCopiedScene => _sceneClipboard != null;
 
-  /// forgetCopiedScene empties it. For a test that needs to start from
-  /// nothing copied, since the clipboard is deliberately static.
+  /// forgetCopiedScene empties it, for tests, as the clipboard is static.
   @visibleForTesting
   static void forgetCopiedScene() => _sceneClipboard = null;
 
@@ -3294,13 +3089,11 @@ class CanvasController extends ChangeNotifier {
   set zoom(double value) {
     var next = value.clamp(minZoom, maxZoom);
     if (next == _zoom) return;
-    // About the middle of what is looked at: the view scaled with the page,
-    // so the point in the middle of the window stays there.
+    // Scale the pan with the page, so the window's middle stays put.
     var f = next / _zoom;
     _pan = Offset2(_pan.dx * f, _pan.dy * f);
     _zoom = next;
-    // Coming back to the whole canvas re-centres it, or a pan made while
-    // zoomed in would leave the fitted canvas off to one side.
+    // Back at the fit, re-centre, or an earlier pan leaves it off-centre.
     if ((_zoom - 1).abs() < 0.001) _pan = const Offset2(0, 0);
     _notifyView();
   }
@@ -3316,8 +3109,8 @@ class CanvasController extends ChangeNotifier {
 
   set frame(int value) {
     var next = value.clamp(0, math.max(0, _document.frames - 1)).toInt();
-    // A playhead put somewhere by hand is no longer showing a transition it
-    // was stepped into -- see goToRunFrame.
+    // A playhead moved by hand ends a transition it was stepped into (see
+    // goToRunFrame).
     if (_playAll && _previewFrom == null && !playing && _previewAt != null) {
       _previewAt = null;
       notifyListeners();
@@ -3329,14 +3122,12 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _clockFrames is how many frames the playhead has been moved on since
-  /// playback started. The playhead keeps time by the clock, not by counting
-  /// ticks, which come late whenever the app is busy and would leave it
-  /// behind the sound.
+  /// _clockFrames is how many frames the playhead has moved since playback
+  /// started. It keeps time by the clock, not by counting ticks, which come
+  /// late when the app is busy and would leave it behind the sound.
   int _clockFrames = 0;
 
-  /// _playWatch is the time since Play, read between ticks: see
-  /// betweenFrames.
+  /// _playWatch is the time since Play, read between ticks (betweenFrames).
   Stopwatch _playWatch = Stopwatch();
 
   /// _clockShift is how far, in seconds, the playhead's clock has been moved
@@ -3387,10 +3178,9 @@ class CanvasController extends ChangeNotifier {
   // Live counters
   // ------------------------------------------------------------------------
 
-  /// _counters is what each live counter is showing, by element id. Held here
-  /// rather than on the element: writing every tick into the document would
-  /// make a clock an unsaved change once a second and flood the undo history.
-  /// It goes when the window does.
+  /// _counters is what each live counter shows, by element id. Not on the
+  /// element: writing each tick into the document would make a clock an
+  /// unsaved change every second and flood the undo history.
   final Map<String, double> _counters = {};
 
   /// _countersRunning is which of them are counting, and _countersSince when
@@ -3423,9 +3213,8 @@ class CanvasController extends ChangeNotifier {
   /// pressed, by element id and key.
   final Map<String, Map<int, FretPlace>> _heldPlaces = {};
 
-  /// _metroStarted is each metronome going, by id, and when it started on
-  /// _metroClock; _metroTick redraws them; _metroTaps are each one's last
-  /// taps of Tap.
+  /// _metroStarted is when each running metronome started on _metroClock,
+  /// by id; _metroTick redraws them; _metroTaps are each one's last taps.
   final Map<String, double> _metroStarted = {};
   final Stopwatch _metroClock = Stopwatch();
   Timer? _metroTick;
@@ -3452,8 +3241,7 @@ class CanvasController extends ChangeNotifier {
   final Set<String> _codeRunHere = {};
   final Map<String, Map<int, double>> _codeScroll = {};
 
-  /// _codeRuns are the Run panels running now, by id, and what each has
-  /// printed so far.
+  /// _codeRuns are the Run panels running now, by id, and what each printed.
   final Map<String, List<CodeLog>> _codeRuns = {};
 
   /// _codeLive is the Run panel open live, by id, and what it has printed;
@@ -3476,9 +3264,8 @@ class CanvasController extends ChangeNotifier {
   static Future<String?> Function(List<int> png) saveCodePicture =
       (png) => CanvasAssets.save(png);
 
-  /// _slowSheet is the sheet played slower or faster than real time, its
-  /// notes live (see playSheet); _slowHeld the keys it is sounding, by
-  /// channel.
+  /// _slowSheet is the sheet played off real time, its notes live (see
+  /// playSheet); _slowHeld the keys it sounds, by channel.
   String? _slowSheet;
   final Map<String, Set<int>> _slowHeld = {};
 
@@ -3498,9 +3285,8 @@ class CanvasController extends ChangeNotifier {
   /// _synthSeconds is how long the screens have been ticking.
   double _synthSeconds = 0;
 
-  /// _pressedOn is each instrument with keys held, as it was when they were
-  /// pressed: let go through it whatever has changed since -- the scene
-  /// turned, the element deleted -- so no note is left ringing.
+  /// _pressedOn is each instrument with keys held, as it was when pressed,
+  /// so they are let go through it after any change and none rings on.
   final Map<String, AudioElement> _pressedOn = {};
 
   static String _channelOf(AudioElement e) =>
@@ -3534,14 +3320,12 @@ class CanvasController extends ChangeNotifier {
   /// motionPlayer is what the elements' slots are playing.
   final MotionPlayer motionPlayer = MotionPlayer();
 
-  /// _motionPainted is the frame of the slots' clock last painted, playing
-  /// only the slots.
+  /// _motionPainted is the last slot-clock frame painted, slots alone playing.
   int _motionPainted = -1;
 
-  /// _triggeredOff are the elements a trigger -- the scene starting, a
-  /// click, a key -- took off their timelines while this Play ran. Stop
-  /// puts them back, so the next Play starts as the canvas does; what was
-  /// launched from a slot stays off until Back, as it always has.
+  /// _triggeredOff are the elements a trigger (scene start, click, key) took
+  /// off their timelines this Play. Stop puts them back so the next Play
+  /// starts as the canvas does; slot launches stay off until Back.
   final Set<String> _triggeredOff = {};
 
   /// _slotPressed is the slot being pressed, whose sound the press sees to
@@ -3554,8 +3338,7 @@ class CanvasController extends ChangeNotifier {
 
   final Quantise _launchQuantise = Quantise.bar;
 
-  /// _clipChannels is what each channel is playing from its slots, and what
-  /// it is about to.
+  /// _clipChannels is what each channel plays from its slots, and will next.
   final Map<String, _ClipChannel> _clipChannels = {};
 
   /// _clipRecord is the clip being recorded into a slot, if one is.
@@ -3576,17 +3359,15 @@ class CanvasController extends ChangeNotifier {
   /// _sessionSeconds is the slots' own clock, playing on their own.
   double _sessionSeconds = 0;
 
-  /// _sessionClock is the session's clock while the timeline plays: where
-  /// the playhead was as Play was pressed, moved on a frame at every frame
-  /// played -- not sent back with the playhead by a Loop or a Jump, or to
-  /// nought at each scene of a run (Ken's systems review, 2026-11-08: a clip
-  /// waiting for the loop's end never came, and one playing never ended).
+  /// _sessionClock is the session's clock while the timeline plays: from the
+  /// playhead at Play, one frame on per frame played. A Loop, a Jump or a
+  /// new scene does not move it back, so clips waiting for a loop's end
+  /// come and playing ones end.
   double _sessionClock = 0;
 
   /// _offTimeline are the channels that have left the timeline for their
-  /// slots, as Ableton's tracks do: a clip launched there while the
-  /// timeline plays silences the channel's timeline -- and it stays silent,
-  /// its clip stopped or not, until Back to the timeline.
+  /// slots, as Ableton's tracks do: silent on the timeline from a clip's
+  /// launch until Back to the timeline.
   final Set<String> _offTimeline = {};
 
   /// launchLevel is how loud [clip] plays launched at [velocity]: its
@@ -3605,10 +3386,6 @@ class CanvasController extends ChangeNotifier {
 
   final math.Random _followDice = math.Random();
 
-  // ---- Recording into a slot
-
-  // ---- What is in the slots
-
   // ------------------------------------------------------------------------
   // Played as a game
   // ------------------------------------------------------------------------
@@ -3621,10 +3398,9 @@ class CanvasController extends ChangeNotifier {
   CanvasDocument? _facesPointerOf;
   bool _facesPointerWas = false;
 
-  /// _gameLeft is the scene a game has just left -- as it was last seen,
-  /// on its frame -- with the transition after it and when it began, on
-  /// the game's clock: drawn giving way to the one arrived at. See
-  /// gameChange.
+  /// _gameLeft is the scene a game has just left, as last seen, with its
+  /// transition and when it began on the game's clock: drawn giving way to
+  /// the next. See gameChange.
   (CanvasDocument, int, SceneTransition, double, LiveMotion)? _gameLeft;
   Timer? _gameTimer;
   final Stopwatch _gameWatch = Stopwatch();
@@ -3636,21 +3412,18 @@ class CanvasController extends ChangeNotifier {
   String? _waitingFor;
   StreamSubscription<NormalizedGamepadEvent>? _waitPads;
 
-  /// _sceneBeforeGame is the scene showing when the game was started, to go
-  /// back to when it stops.
+  /// _sceneBeforeGame is the scene shown when the game began, to return to.
   int? _sceneBeforeGame;
 
-  /// _mouthsOfSlots are each slot's mouths, once worked out: see
-  /// _slotMouths.
+  /// _mouthsOfSlots are each slot's mouths once worked out (_slotMouths).
   final Map<String, List<MouthKey>?> _mouthsOfSlots = {};
 
   /// _gameSounded are the sounds on the canvas a game has played, stopped
   /// when it ends -- one still opening its file would be heard after.
   final Set<String> _gameSounded = {};
 
-  /// escStopsGame is whether Escape ends the game -- as it does in the
-  /// editor -- or is left to whatever holds the game: a published game's
-  /// player, where Escape leaves.
+  /// escStopsGame is whether Escape ends the game, as in the editor, or is
+  /// left to a published game's player, where Escape leaves.
   bool escStopsGame = true;
 
   // ------------------------------------------------------------------------
@@ -3671,8 +3444,8 @@ class CanvasController extends ChangeNotifier {
   /// _accompanying is the keys the hand not practised has sounding.
   final Set<int> _accompanying = {};
 
-  /// _mine is whether note [i] is the player's to play: of the hand being
-  /// practised -- the right hand from middle C up -- and not in Listen.
+  /// _mine is whether [n] is the player's to play: of the hand practised
+  /// (the right from middle C up), and not in Listen.
   static bool _mine(SheetElement sheet, MidiNote n) =>
       sheet.mode != PracticeMode.listen &&
       switch (sheet.hands) {
@@ -3681,9 +3454,8 @@ class CanvasController extends ChangeNotifier {
         PracticeHands.both => true,
       };
 
-  /// partRenderer plays a part into the bytes of a WAV, and partStore keeps
-  /// them, returning the stored file's id -- see part_render.dart. Both
-  /// stand-ins for tests.
+  /// partRenderer plays a part into WAV bytes and partStore keeps them,
+  /// returning the file's id (part_render.dart): stand-ins for tests.
   @visibleForTesting
   static Future<Uint8List> Function(InstrumentPart part, {String? bankPath})
       partRenderer = partWav;
@@ -3735,9 +3507,8 @@ class CanvasController extends ChangeNotifier {
   /// _speechStops is Stop, for each channel speaking now.
   final Map<String, SpeechStop> _speechStops = {};
 
-  /// _speechInto is the slot each waiting line is to be spoken into, by
-  /// channel and line -- a slot being replaced -- where it is not the
-  /// line's first free one.
+  /// _speechInto is the slot each waiting line replaces, by channel and
+  /// line, where it is not the line's first free slot.
   final Map<String, Map<String, int>> _speechInto = {};
 
   final _seeds = math.Random();
@@ -3748,8 +3519,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// speechLibrary lists a spoken take in the Audio library as [name], and
-  /// speechUnlist takes one off the list, its file kept: stand-ins for
-  /// tests.
+  /// speechUnlist unlists one, keeping its file: stand-ins for tests.
   @visibleForTesting
   static Future<void> Function(String id, String name, double seconds)
       speechLibrary = (id, name, seconds) => CanvasLibrary.add(LibraryAsset(
@@ -3762,15 +3532,13 @@ class CanvasController extends ChangeNotifier {
   static Future<void> Function(String id) speechUnlist =
       (id) => CanvasLibrary.unlist(id);
 
-  /// keepRecording keeps a recording made from another -- [wav]'s bytes --
-  /// as a take is kept (see speechTakeStore), answering its id: a voice's
-  /// notes moved in the Pitch editor.
+  /// keepRecording keeps a recording made from another, such as a voice's
+  /// notes moved in the Pitch editor, as a take is kept; answers its id.
   static Future<String?> keepRecording(Uint8List wav) => speechTakeStore(wav);
 
-  /// speechTakeStore keeps a line's take -- [wav]'s bytes -- apart from the
-  /// library, with the canvases that have it, answering its id: in the
-  /// Audio library only once it is saved or put on the timeline, and
-  /// deleted by a tidy once no canvas has it. A stand-in for tests.
+  /// speechTakeStore keeps a take's [wav] apart from the library, answering
+  /// its id: listed only once saved or put on the timeline, and tidied once
+  /// no canvas has it. A stand-in for tests.
   @visibleForTesting
   static Future<String?> Function(Uint8List wav) speechTakeStore =
       (wav) async {
@@ -3785,32 +3553,26 @@ class CanvasController extends ChangeNotifier {
     }
   };
 
-  // Not transient by default: a take put in a slot with no gesture open
-  // would otherwise be removed by the next Undo of anything.
-
   // ---- Phrasing: a take's words shaped after it is spoken
 
   ({String channel, int line, int slot})? _phrasing;
 
-  /// phrasingPicked are the words picked, by their place in the take as
-  /// spoken: what a drag or a setting changes. The first is the one its
-  /// settings show.
+  /// phrasingPicked are the words picked, by place in the take as spoken,
+  /// for a drag or a setting to change; the settings show the first.
   Set<int> phrasingPicked = const {0};
 
   final Map<String, TakeReading> _readings = {};
 
   /// _readingTakes are the takes being read now, and _unreadTakes those
-  /// whose sound could not be read: said so, rather than "Reading…" for
-  /// ever (Ken's Phrasing that did nothing).
+  /// whose sound could not be read, so they say so rather than "Reading…".
   final Set<String> _readingTakes = {}, _unreadTakes = {};
 
   Timer? _shapeTimer;
 
   final Map<String, Future<SpeechTake?>> _shaping = {};
 
-  /// speechSplitAt is where section [text] is split: at the sentence's
-  /// end nearest its middle -- or, one sentence, the comma -- or null for
-  /// none.
+  /// speechSplitAt is where section [text] splits: at the sentence end
+  /// nearest its middle, else the comma, or null for none.
   static int? speechSplitAt(String text) {
     var body = text.isEmpty ? text : text.substring(0, text.length - 1);
     List<int> at(String marks) => [
@@ -3824,9 +3586,8 @@ class CanvasController extends ChangeNotifier {
         (a, b) => (b - middle).abs() < (a - middle).abs() ? b : a);
   }
 
-  /// _joinAway joins [sounds] -- the takes [takes] chosen, a pause between
-  /// each two -- gives them the finish, and makes the WAV, in an isolate of
-  /// its own.
+  /// _joinAway joins [sounds] (the chosen [takes], with pauses), finishes
+  /// them and makes the WAV, on an isolate of its own.
   static Future<
       ({Uint8List wav, double seconds, List<TimedWord> words, bool exact})>
       _joinAway(List<Float32List> sounds, List<SpeechTake> takes, double speed,
@@ -3936,12 +3697,6 @@ class CanvasController extends ChangeNotifier {
   List<String> _channelOrder = const [];
 
   // ------------------------------------------------------------------------
-  // Replacing a colour everywhere -- see canvas_palette.dart.
-
-  // ------------------------------------------------------------------------
-  // Reuse: text styles, linked copies, staggered arrivals.
-
-  // ------------------------------------------------------------------------
   // Sound tools -- see audio_tools.dart.
 
   Set<String> _selectedChannels = {};
@@ -3950,9 +3705,8 @@ class CanvasController extends ChangeNotifier {
 
   TimelineTool _timelineTool = TimelineTool.select;
 
-  /// laneHeights is how tall each channel has been dragged, by channel. The
-  /// reader's, not the document's: kept for each canvas by the screen -- see
-  /// canvasView.
+  /// laneHeights is each channel's dragged height: the reader's, kept per
+  /// canvas by the screen (see canvasView).
   final Map<String, double> laneHeights = {};
 
   bool _mixerOpen = false;
@@ -3963,32 +3717,27 @@ class CanvasController extends ChangeNotifier {
 
   // ---- Kept between visits
 
-  /// timelineView is the stretch the timeline is zoomed to -- null for all
-  /// of it -- as the timeline last drew it; timelineViewSet counts the
-  /// times it was put back from outside, for the timeline to take up.
+  /// timelineView is the stretch the timeline is zoomed to (null for all),
+  /// as last drawn; timelineViewSet counts restores from outside.
   TimelineView? timelineView;
   int timelineViewSet = 0;
 
   bool _effectsOpen = false;
 
-  /// _speechShown is whether the Chain's sound shows the channel's Speech:
-  /// its script, takes and voice, and Sing. Speech makes clips; it is not a
-  /// step of the chain, so it shows only when asked for (see showSpeech).
+  /// _speechShown is whether the Chain's sound shows the channel's Speech.
+  /// Speech makes clips rather than being a chain step, so it shows on ask.
   bool _speechShown = false;
 
   /// _pitchShown is whether the Chain shows its channel's Pitch editor.
   bool _pitchShown = false;
 
-  /// _instrumentShown is whether the Chain shows its channel's Instrument
-  /// editor.
+  /// _instrumentShown is whether the Chain shows its Instrument editor.
   bool _instrumentShown = false;
 
-  /// _chainFull is whether the Chain fills the window: the canvas put away
-  /// for it, as the prototype's full-screen button does.
+  /// _chainFull is whether the Chain fills the window, the canvas put away.
   bool _chainFull = false;
 
-  /// chainFull: see _chainFull. The screen puts the canvas away while it is
-  /// set, and the dock then fills the room.
+  /// chainFull: see _chainFull. While set, the dock fills the canvas's room.
   bool get chainFull => _chainFull;
 
   set chainFull(bool full) {
@@ -3997,14 +3746,12 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _keysShown is whether the Chain's Keys strip is open over its cards
-  /// (Ken, 2026-11-12): kept for the session, as a card's fold is.
+  /// _keysShown is whether the Chain's Keys strip is open: for the session.
   static bool _keysShown = false;
 
   bool get keysShown => _keysShown;
 
-  /// keysHeight is how tall the Keys strip was dragged, or null for as
-  /// tall as it opens: kept for the session.
+  /// _keysHeight is the Keys strip's dragged height, or null for its own.
   static double? _keysHeight;
 
   double? get keysHeight => _keysHeight;
@@ -4033,8 +3780,7 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _hear is which of a surround mix's speakers the editor plays: see
-  /// hearSpeakers.
+  /// _hear is which surround speakers the editor plays: see hearSpeakers.
   SpeakerGroup _hear = SpeakerGroup.all;
 
   /// _motionPreview is the element whose motion chain the stage shows as it
@@ -4055,14 +3801,13 @@ class CanvasController extends ChangeNotifier {
 
   bool _editorWide = true;
 
-  /// _settingsShut is, by editor -- "roll" a part's piano roll, "clip" a
-  /// slot's clip -- whether its columns of settings are folded away to a
-  /// strip. The roll's start folded, as Ken asked: the notes first.
+  /// _settingsShut is, by editor ("roll" a piano roll, "clip" a slot's
+  /// clip), whether its settings are folded to a strip. The roll starts
+  /// folded, so the notes come first.
   final Map<String, bool> _settingsShut = {"roll": true};
 
-  /// _analysing are the devices, as "strip|device", whose displays show
-  /// the real sound: off until switched on (Ken, 2026-11-08), as keeping
-  /// and drawing it costs.
+  /// _analysing are the devices, as "strip|device", whose displays show the
+  /// real sound: off until switched on, as keeping and drawing it costs.
   final Set<String> _analysing = {};
 
   /// _learning is the setting waiting for a controller's knob, and
@@ -4078,12 +3823,10 @@ class CanvasController extends ChangeNotifier {
   final Map<String, Map<String, double>> _abOther = {};
   final Set<String> _abB = {};
 
-  /// _abSets are the other sets of the cards whose settings are not one
-  /// device's knobs -- an EQ's bands, a compressor's, a limiter's: see
-  /// toggleABOf.
+  /// _abSets are the other A/B sets of cards whose settings are not knobs
+  /// (an EQ's bands, a compressor's, a limiter's): see toggleABOf.
   final Map<String, Object> _abSets = {};
 
-  /// _motionCurves is whether the Motion view shows its Curves.
   bool _motionCurves = false;
 
   /// _trackCurves is whether the Motion view shows the Curves of what the
@@ -4121,15 +3864,13 @@ class CanvasController extends ChangeNotifier {
   /// [_stepAt] is where the chord being held goes; [_stepHeld] its keys.
   bool _rollStep = false;
 
-  /// keysHeld ticks when a key is pressed or let go live: what the stage
-  /// draws held keys by. A key played is heard at once -- the sound sent
-  /// before anything else -- and only the stage is redrawn for it, not the
-  /// whole editor (Ken: 200ms between a key and its note).
+  /// keysHeld ticks when a key is pressed or let go live, for the stage to
+  /// draw held keys by. The sound is sent first and only the stage redraws,
+  /// not the whole editor, so a key's note is heard at once.
   final ValueNotifier<int> keysHeld = ValueNotifier(0);
 
-  /// playheadMoved goes up each time the playhead moves on as it plays: what
-  /// draws the playhead alone listens to it (the piano roll's line), rather
-  /// than being built again with everything else.
+  /// playheadMoved ticks each time the playhead moves on in play, so what
+  /// draws only the playhead (the piano roll's line) need not rebuild.
   final ValueNotifier<int> playheadMoved = ValueNotifier(0);
 
   /// _freezing are the channels being frozen now: see freezeChain.
@@ -4142,9 +3883,8 @@ class CanvasController extends ChangeNotifier {
 
   int _noteToolPresses = 1;
 
-  /// clipAudio is the whole of a stored sound, both sides at the mix's
-  /// rate, for Reverse and Crop to make a new file from -- or null. A
-  /// stand-in for tests.
+  /// clipAudio is a whole stored sound, both sides at the mix rate, for
+  /// Reverse and Crop, or null. Tests replace it.
   static Future<(Float32List, Float32List)?> Function(String assetId)
       clipAudio = (id) async {
     var file = await CanvasMedia.existingPath(MediaKind.audio, id);
@@ -4175,13 +3915,11 @@ class CanvasController extends ChangeNotifier {
 
   bool _cuesShown = true;
 
-  /// foldedDevices is which of the mixer's devices are folded down to their
-  /// switch and a meter, by the device's id ("eq", "comp", "meter" ...).
-  /// The reader's, for this session, and the same on every strip.
+  /// foldedDevices are the mixer's devices folded to their switch and a
+  /// meter, by device id ("eq", "comp" ...), the same on every strip.
   final Set<String> foldedDevices = {};
 
-  // M, as the approved design opens (Ken, 2026-11-08): S is the overview,
-  // an element's motion alone.
+  // M to start; S is the overview, an element's motion alone.
   int _laneSize = 1;
 
   double _headerWidth = 240;
@@ -4197,21 +3935,19 @@ class CanvasController extends ChangeNotifier {
   double _cueColumnWidth = 96;
   double _slotsCueWidth = 120;
 
-  /// The master's cue columns, on a scene with cues of its own: each its
-  /// own width (Ken, 2026-11-10: resized, both cue columns went together).
+  /// The master's cue columns on a scene with cues of its own, each sized
+  /// apart from the scene's.
   double _masterCueColumnWidth = 96;
   double _slotsMasterCueWidth = 120;
   int _slotsPanelSize = 1;
   bool _slotsPanelNarrow = false;
 
-  /// cueColumnLeast and cueColumnMost are how narrow and wide the mixer's
-  /// cue column goes.
+  /// cueColumnLeast and cueColumnMost bound the mixer's cue column width.
   static const double cueColumnLeast = 40;
   static const double cueColumnMost = 240;
 
-  /// allFolded is whether the All group -- the master canvas's rows, there
-  /// in every scene -- is folded away under its heading, on the timeline as
-  /// in the mixer (Ken, 2026-11-08). The reader's, for this session.
+  /// allFolded is whether the All group (the master's rows, in every scene)
+  /// is folded under its heading, on the timeline and in the mixer.
   bool get allFolded => _allFolded;
   set allFolded(bool folded) {
     if (folded == _allFolded) return;
@@ -4219,8 +3955,7 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// _waveforms is each stored sound's shape, read once and kept -- see
-  /// waveformOf.
+  /// _waveforms is each stored sound's shape, read once (see waveformOf).
   static final Map<String, Float32List?> _waveforms = {};
   static final Set<String> _readingWaveform = {};
 
@@ -4263,10 +3998,9 @@ class CanvasController extends ChangeNotifier {
         _ => elementAnimationOf(element).loop,
       };
 
-  /// elementAnimationOf is [element]'s own arrival, for the kinds that have
-  /// one, or an empty animation for the kinds that do not. A switch rather
-  /// than a getter on CanvasElement, which would promise every element can be
-  /// animated this way.
+  /// elementAnimationOf is [element]'s own arrival, or an empty one for
+  /// kinds without. A switch rather than a getter on CanvasElement, which
+  /// would promise every element animates this way.
   static ElementAnimation elementAnimationOf(CanvasElement element) =>
       switch (element) {
         ShapeElement e => e.animation,
@@ -4298,8 +4032,7 @@ class CanvasController extends ChangeNotifier {
       element is LineElement ||
       element is PathElement ||
       element is TableElement ||
-      // A counter arrives and leaves like any box, whatever its number is
-      // doing meanwhile.
+      // A counter arrives like any box, whatever its number does.
       element is CounterElement ||
       // And a button: arriving is not pressing.
       element is ButtonElement ||
@@ -4343,10 +4076,9 @@ class CanvasController extends ChangeNotifier {
   void load(CanvasDocument document, {String? folder, String? name}) {
     pause();
     stopAudio();
-    // Sounds with nothing in them, on the canvas as elements, are dropped:
-    // older versions left them for empty channels. An empty channel made on
-    // purpose from the mixer (named, with effects, a Speech device or clips
-    // in its slots) stays, since its slots and mix would go with it.
+    // Empty sounds left as elements are dropped. An empty channel made on
+    // purpose (named, with effects, Speech or slot clips) stays, since its
+    // slots and mix would go with it.
     for (var e in document.elements) {
       if (e is AudioElement &&
           e.clip.timed &&
@@ -4358,8 +4090,7 @@ class CanvasController extends ChangeNotifier {
               .containsKey(e.clip.channel.isNotEmpty ? e.clip.channel : e.id)) {
         document = document.removeElement(e.id);
       }
-      // A drawing saved while it was being edited, before saving fitted its
-      // box: fitted now, so it opens drawn round all of it.
+      // A drawing saved mid-edit opens with its box fitted round it.
       if (e is VectorElement && e.edited) {
         var fitted = boxedToDrawing(e);
         if (!identical(fitted, e)) document = document.withElement(fitted);
@@ -4374,8 +4105,6 @@ class CanvasController extends ChangeNotifier {
     _selection = {};
     _backgroundSelected = false;
     _focusedPlayer = null;
-    // Opened on the frame everything has arrived by rather than on nought,
-    // so a canvas whose elements arrive does not open as an empty page.
     _beforePreview = null;
     _undo.clear();
     _redo.clear();
@@ -4387,10 +4116,8 @@ class CanvasController extends ChangeNotifier {
     _pan = const Offset2(0, 0);
     // A piece of sound opens on what it is made with.
     if (document.kind.isAudio) _openSoundDesk();
-    // An element's keyframes stay its own, as they were saved: the Keyframes
-    // card edits them. They were once made into clips as a canvas opened,
-    // which took the card's keys away from it on every opening (Ken,
-    // 2026-11-11).
+    // Opened on the frame everything has arrived by, so a canvas whose
+    // elements arrive does not open as an empty page.
     _frame = settledFrameOf(_document);
     notifyListeners();
   }
@@ -4405,18 +4132,15 @@ class CanvasController extends ChangeNotifier {
     _chainMotion = false;
   }
 
-  /// _autosave is the pending write, if any.
   Timer? _autosave;
 
   /// _autosaveDelay is how long the editing has to stop for: long enough
   /// that a drag is one write, short enough to lose nothing.
   static const Duration _autosaveDelay = Duration(seconds: 3);
 
-  /// scheduleAutosave writes the document out shortly, once the editing
-  /// stops. Only for a document saved at least once: until then there is
-  /// nowhere to write, and inventing a file would fill the library with
-  /// documents nobody asked to keep. Debounced, so a burst of edits costs one
-  /// write.
+  /// scheduleAutosave writes the document out once editing stops for a
+  /// moment, so a burst of edits is one write. Only once saved: until then
+  /// there is nowhere to write, and inventing a file would fill the library.
   void scheduleAutosave() {
     if (name == null || !_dirty) return;
     _autosave?.cancel();
@@ -4426,10 +4150,9 @@ class CanvasController extends ChangeNotifier {
     });
   }
 
-  /// _toSave is the document as it is written out: a drawing still being
-  /// edited is written with its box fitted round it, as leaving the editing
-  /// would fit it (not done live, as that would move the pencil's mirror
-  /// lines). See _fitEditedVector.
+  /// _toSave is the document as written: a drawing still being edited gets
+  /// its box fitted, as leaving editing would (not live, which would move
+  /// the pencil's mirror lines). See _fitEditedVector.
   CanvasDocument get _toSave {
     // Never a look that is only being tried. See tryElement.
     var document = _beforePreview ?? _document;
@@ -4439,8 +4162,7 @@ class CanvasController extends ChangeNotifier {
     return identical(fitted, e) ? document : document.withElement(fitted);
   }
 
-  /// save writes back to where this document came from, or nowhere when it has
-  /// never been saved.
+  /// save writes back to where the document came from, if it has been saved.
   Future<bool> save() async {
     _autosave?.cancel();
     _autosave = null;
@@ -4551,24 +4273,20 @@ class TimedLane {
   final CanvasElement element;
 
   /// offset is how many frames the clip's timeline is ahead of the scene's:
-  /// nought for a clip on this scene, the scene's start in the run for one
-  /// that follows the run.
+  /// 0 on this scene, the scene's run start for a clip following the run.
   final int offset;
 
-  /// editable is whether it can be changed from here: a transition's sound
-  /// is changed on its transition. The master's can be, from any scene, and
-  /// are written back to it.
+  /// editable is whether it can be changed here: a transition's sound is
+  /// changed on its transition; the master's, from any scene.
   final bool editable;
 
-  /// scene is which canvas the clip is on: -1 for the master, and otherwise
-  /// the scene's place in the list.
+  /// scene is the clip's canvas: -1 for the master, else the scene's index.
   final int scene;
 
   const TimedLane(this.element,
       {this.offset = 0, this.editable = true, this.scene = -1});
 
-  /// sceneLabel is the scene, as the channel strip names it: M for the
-  /// master, S1 for the first scene.
+  /// sceneLabel names the scene on the channel strip: M, or S1 for the first.
   String get sceneLabel => scene < 0 ? "M" : "S${scene + 1}";
 
   MediaClip get clip => switch (element) {
@@ -4580,10 +4298,9 @@ class TimedLane {
   /// channelKey is the channel this is on: its own, for a clip with none.
   String get channelKey => clip.channel.isNotEmpty ? clip.channel : element.id;
 
-  /// interactive is whether this is a sound on the canvas that plays when
-  /// it is pressed, rather than at a time on the timeline: on a channel all
-  /// the same, so it has a strip and effects like every other sound, but
-  /// with nothing on its lane to move or cut. See interactiveLanes.
+  /// interactive is whether this sounds when pressed on the canvas rather
+  /// than at a time: it has a strip and effects like any sound, but nothing
+  /// on its lane to move or cut. See interactiveLanes.
   bool get interactive =>
       (element is AudioElement || element is VideoElement) && !clip.timed;
 }
@@ -4618,12 +4335,10 @@ class TimelineChannel {
   bool get editable => lanes.any((l) => l.editable);
   bool get video => first.element is VideoElement;
 
-  /// interactive is a channel of sounds played by pressing them on the
-  /// canvas -- see TimedLane.interactive.
+  /// interactive is a channel of sounds pressed on the canvas (TimedLane).
   bool get interactive => lanes.every((l) => l.interactive);
 
-  /// sceneLabel is which canvas the channel's clips are on -- see
-  /// TimedLane.sceneLabel.
+  /// sceneLabel is which canvas its clips are on (TimedLane.sceneLabel).
   String get sceneLabel => first.sceneLabel;
 
   /// locked is whether every sound on it is locked -- see lockChannel.
@@ -4685,17 +4400,15 @@ class _ClipPlay {
   final double length;
   final bool loops;
 
-  /// startAt and loopAt are where it starts, and where its loop starts, in
-  /// seconds into what it plays.
+  /// startAt and loopAt are where it and its loop start, seconds into it.
   final double startAt, loopAt;
 
   /// origin is when it would have started from its start: [from], or
   /// earlier where it took over another's place -- legato.
   double origin;
 
-  /// followed is whether its follow action has been done, and followFrom
-  /// when its wait for it began: [from], or the clip's it carries on --
-  /// played again as it was changed.
+  /// followed is whether its follow action is done, and followFrom when its
+  /// wait began: [from], or that of the clip it carries on from.
   bool followed = false;
   late double followFrom = from;
 
@@ -4722,9 +4435,8 @@ class _ClipPlay {
 
 // ---- Work for another isolate
 //
-// Each started from a top-level function: a closure made inside a
-// controller method can capture the controller and its timers, which cannot
-// be sent to an isolate.
+// Each starts from a top-level function: a closure made in a controller
+// method can capture the controller and its timers, which cannot be sent.
 
 /// _wavAway is [l] and [r] as a WAV file's bytes, made in another isolate.
 Future<Uint8List> _wavAway(Float32List l, Float32List r) =>
@@ -4788,10 +4500,9 @@ Future<double> _tempoAway(
     Isolate.run(
         () => estimateTempo(l, r, near: near, beatsPerBar: beatsPerBar));
 
-/// clipPieces are what [clip] plays over [seconds] from its start, at
-/// [secondsPerBeat] and [secondsPerBar]: each a stretch of it -- from and
-/// to, in seconds into what it plays -- and when, from its start, it is
-/// heard. From its start on to its loop's end, then round its loop.
+/// clipPieces are what [clip] plays over [seconds] from its start: each a
+/// stretch (from and to, seconds into what it plays) and when it is heard,
+/// from the start on to the loop's end, then round the loop.
 List<(double, double, double)> clipPieces(SessionClip clip, double seconds,
     double secondsPerBeat, double secondsPerBar) {
   var length = math.max(0.05, clip.bars * secondsPerBar);
@@ -4852,16 +4563,14 @@ class _ClipPlayed {
   _ClipPlayed(this.channel, this.clip, this.from, this.to);
 }
 
-/// _LiveArp is an arpeggiator playing live: the keys held -- each as the
-/// keys it sounds through the effects before the arpeggiator -- and the one
-/// sounding.
+/// _LiveArp is an arpeggiator playing live: the keys held, each as the keys
+/// it sounds through the effects before it, and the one sounding.
 class _LiveArp {
   final Arpeggio player;
   final Map<int, List<int>> pressed = {};
 
-  /// velocities are each key's notes' loudest, through the channel's
-  /// Velocity effect: a step is played as loud as the loudest held, as the
-  /// rendered arpeggiator plays it.
+  /// velocities are each key's loudest note through the Velocity effect: a
+  /// step plays as loud as the loudest held, as the rendered one does.
   final Map<int, int> velocities = {};
   int? sounding;
 

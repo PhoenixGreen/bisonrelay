@@ -3,17 +3,15 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// procedural_rings.dart is the Rings background's own settings, beyond the
-// density/scale/variation every generator shares: where each ring starts,
-// where it ends and what happens to it on the way.
+// procedural_rings.dart is the Rings background's own settings beyond those
+// every generator shares: where rings start, end, and what happens between.
 
 /// RingEdge is what happens at the two ends of a ring's life.
 enum RingEdge {
   /// hard is on and off: a ring appears at full strength and vanishes.
   hard("Hard"),
 
-  /// soft rolls it in and out, so rings read as light rather than as drawn
-  /// circles.
+  /// soft rolls it in and out, so rings read as light, not drawn circles.
   soft("Soft");
 
   final String label;
@@ -25,8 +23,7 @@ enum RingEdge {
 
 /// RingIconPlace is where an icon sits on the ring it belongs to.
 enum RingIconPlace {
-  /// middle puts one in the middle, sized against its ring, so it grows and
-  /// fades with that ring.
+  /// middle puts one in its ring's middle, sized against it, growing with it.
   middle("In the middle"),
 
   /// around spaces several along the ring itself.
@@ -40,18 +37,16 @@ enum RingIconPlace {
 }
 
 /// RingDrift is a range each icon around a ring takes its own number from,
-/// so the icons scatter rather than reading as one drawn shape. Nought to
-/// nought (the default) is no scatter.
+/// so the icons scatter. Nought to nought, the default, is no scatter.
 class RingDrift {
-  /// least and most are the two ends of the range. Either may be negative,
-  /// and they may be given either way round.
+  /// least and most are the range's ends, in either order, either negative.
   final double least;
   final double most;
 
   const RingDrift({this.least = 0, this.most = 0});
 
-  /// resting is whether the range is just [rest], the value that means no
-  /// scatter: nought where the number is added, one where it multiplies.
+  /// resting is whether the range is just [rest], the no-scatter value:
+  /// nought where the number is added, one where it multiplies.
   bool resting(double rest) => least == rest && most == rest;
 
   bool get none => resting(0);
@@ -59,8 +54,8 @@ class RingDrift {
   /// at is the number for one icon, given its own roll of nought to one.
   double at(double roll) => least + (most - least) * roll.clamp(0.0, 1.0);
 
-  /// within is this range clamped to two limits, for numbers read back that
-  /// must stay meaningful (a fade share of nought draws nothing).
+  /// within is this range clamped, for numbers read back that must stay
+  /// meaningful (a fade share of nought draws nothing).
   RingDrift within(double lowest, double highest) => RingDrift(
         least: least.clamp(lowest, highest),
         most: most.clamp(lowest, highest),
@@ -80,10 +75,8 @@ class RingDrift {
           : RingDrift(least: rest, most: rest);
 }
 
-/// RingPick is one more picture an icon may be drawn as, and how often.
-///
-/// Each place around the ring takes a picture at random by weight: two comes
-/// up twice as often as one, and nought never.
+/// RingPick is one more picture an icon may be drawn as; each place picks at
+/// random by weight (two twice as often as one, nought never).
 class RingPick {
   final String asset;
   final double weight;
@@ -104,49 +97,40 @@ class RingPick {
       );
 }
 
-/// RingIcon is a picture carried by one of the rings. It inherits the ring's
-/// place, size and fade, so it arrives, swells and dissolves with it.
+/// RingIcon is a picture carried by a ring. It takes the ring's place, size
+/// and fade, so it arrives, swells and dissolves with it.
 class RingIcon {
   /// asset is a picture in the canvas's own store: a drawing or a bitmap.
   final String asset;
 
-  /// ring is which ring carries it, counted from one. Past the last ring it
-  /// is not drawn.
-  ///
-  /// Nought ties it to the movement instead: it lives one run rather than one
-  /// ring's life and is sized against the page, so with both fades held it
-  /// simply stays while rings come and go.
+  /// ring is which ring carries it, from one; past the last ring it is not
+  /// drawn. Nought ties it to the movement instead: it lives one run, sized
+  /// against the page, so with both fades held it stays while rings pass.
   final int ring;
 
   final RingIconPlace place;
 
-  /// count is how many are spaced around the ring, for
-  /// [RingIconPlace.around].
+  /// count is how many are spaced around the ring ([RingIconPlace.around]).
   final int count;
 
-  /// size is how big it is drawn, as a fraction of its ring's radius.
+  /// size is a fraction of its ring's radius.
   final double size;
 
   /// tinted paints it in one colour, [tint], rather than its own.
   final bool tinted;
   final Color tint;
 
-  /// turn is an extra rotation in degrees. Around the ring, each icon is
-  /// already turned to face out of it.
+  /// turn is extra rotation in degrees; icons around a ring already face out.
   final double turn;
 
-  /// The drift ranges say how far each icon around a ring may differ from
-  /// the rest (see [RingDrift]).
+  /// The drift ranges are how far each icon around a ring may differ from
+  /// the rest (see [RingDrift]). driftWhen is in ring lives, so an icon
+  /// arrives at its own moment; driftWhere is in gaps between icons;
+  /// driftSize is added to one; driftTurn is in degrees.
   ///
-  /// driftWhen is in ring lives, so an icon sits ahead of or behind its ring
-  /// and arrives at its own moment. driftWhere is in gaps between icons (a
-  /// half is halfway to the neighbour). driftSize is added to one. driftTurn
-  /// is in degrees.
-  ///
-  /// driftFade is a share of the ring's strength (one is the ring's own), not
-  /// an offset: an offset could not brighten a ring at full strength, and a
-  /// share never lifts an icon above its ring, so a fade out still reaches
-  /// nothing.
+  /// driftFade is a share of the ring's strength, not an offset: an offset
+  /// could not brighten a ring at full strength, and a share never lifts an
+  /// icon above its ring, so a fade out still reaches nothing.
   final RingDrift driftWhen;
   final RingDrift driftWhere;
   final RingDrift driftSize;
@@ -158,23 +142,20 @@ class RingIcon {
   final List<RingPick> also;
   final double weight;
 
-  /// opacity, smallest and largest override what the icon inherits from its
-  /// ring; null inherits.
-  ///
-  /// opacity replaces the ring's strength, so a picture can sit steadily
-  /// behind rings that come and go. smallest and largest hold its size
+  /// opacity, smallest and largest override what the icon takes from its
+  /// ring; null inherits. opacity replaces the ring's strength, so a picture
+  /// can sit steadily behind rings; smallest and largest hold its size
   /// between two fractions of the page.
   final double? opacity;
   final double? smallest;
   final double? largest;
 
-  /// holdIn and holdOut leave out the ring's arrival or departure: an icon
-  /// there from the first frame, or one that stays once arrived.
+  /// holdIn and holdOut leave out the ring's arrival or departure: there from
+  /// the first frame, or staying once arrived.
   final bool holdIn;
   final bool holdOut;
 
-  /// firstRunOnly draws it only during the first run of the movement, like
-  /// a title card.
+  /// firstRunOnly draws it only in the movement's first run, like a title.
   final bool firstRunOnly;
 
   const RingIcon({
@@ -217,8 +198,7 @@ class RingIcon {
     RingDrift? driftFade,
     List<RingPick>? also,
     double? weight,
-    // The three nullable fields take a set flag: null is a real value here,
-    // so it cannot also mean "not given".
+    // The nullable fields take a set flag: null is a real value here.
     bool setOpacity = false,
     double? opacity,
     bool setSmallest = false,
@@ -266,8 +246,8 @@ class RingIcon {
         if (!driftWhere.none) "driftWhere": driftWhere.toJson(),
         if (!driftSize.none) "driftSize": driftSize.toJson(),
         if (!driftTurn.none) "driftTurn": driftTurn.toJson(),
-        // A key of its own: this setting was once an offset saved under
-        // another key, and those numbers read as a share would hide the icon.
+        // A key of its own: older files kept an offset under the old key,
+        // and those numbers read as a share would hide the icon.
         if (!driftFade.resting(1)) "fadeShare": driftFade.toJson(),
         if (also.isNotEmpty) "also": [for (var pick in also) pick.toJson()],
         if (weight != 1) "weight": weight,
@@ -318,49 +298,42 @@ class RingSpec {
   /// count is how many rings are on the page at once.
   final int count;
 
-  /// width is how thick each one is, as a fraction of the shorter side.
+  /// width is each ring's thickness, a fraction of the shorter side.
   final double width;
 
-  /// from and to are where a ring is born and dies, measured outwards:
-  /// nought is the middle of the page and one the far corner, so a ring
-  /// going to one leaves the picture entirely.
+  /// from and to are where a ring is born and dies, outwards: nought the
+  /// page's middle, one the far corner (off the picture).
   final double from;
   final double to;
 
-  /// centreX and centreY are where they come from, across and down the page.
+  /// centreX and centreY are where rings come from, across and down the page.
   final double centreX;
   final double centreY;
 
-  /// inward runs the whole thing backwards: rings shrink towards the middle
-  /// rather than growing out of it.
+  /// inward runs it backwards: rings shrink towards the middle.
   final bool inward;
 
-  /// spacing bunches the rings towards their start (below a half) or towards
-  /// their end (above it). A half spaces them evenly.
+  /// spacing bunches the rings towards their start (below a half) or end
+  /// (above); a half spaces them evenly.
   final double spacing;
 
-  /// spacingJitter, widthJitter and colorJitter are how much each ring is
-  /// allowed to differ from the next: where it sits, how thick it is, and
-  /// which of the two colours it leans towards.
+  /// spacingJitter, widthJitter and colorJitter are how much each ring may
+  /// differ from the next in place, thickness and colour.
   final double spacingJitter;
   final double widthJitter;
   final double colorJitter;
 
-  /// accentEvery is how often a ring is drawn in the accent colour rather
-  /// than the main one. Nought is never.
+  /// accentEvery is how often a ring is in the accent colour; nought never.
   final int accentEvery;
 
-  /// buildUp starts the animation on an empty screen and lets the rings
-  /// arrive one at a time, rather than opening on the full set. Read only
-  /// when the background is animated: a still shows the set at work.
+  /// buildUp opens the animation on an empty screen, rings arriving one at a
+  /// time. Read only when animated: a still shows the full set.
   final bool buildUp;
 
   /// fadeIn and fadeOut are the fractions of a ring's travel spent arriving
-  /// and leaving; edge is whether that is a roll or a switch.
-  ///
-  /// About a third each by default, the least that reads as a fade: early in
-  /// its travel a ring is only a few pixels across, so a shorter fade is
-  /// over before the ring is big enough to see.
+  /// and leaving; edge is a roll or a switch. About a third each by default,
+  /// the least that reads as a fade: a young ring is only a few pixels
+  /// across, so a shorter fade ends before it can be seen.
   final double fadeIn;
   final double fadeOut;
   final RingEdge edge;
@@ -374,11 +347,9 @@ class RingSpec {
   /// distortion squashes the rings into ellipses and leans them over.
   final double distortion;
 
-  /// grunge eats the stroke away: gaps, speckles, and a thinner line where
-  /// the ink ran out.
+  /// grunge eats the stroke away: gaps, speckles, a line thinning out.
   final double grunge;
 
-  /// icons are the pictures the rings carry. See RingIcon.
   final List<RingIcon> icons;
 
   const RingSpec({
@@ -453,26 +424,20 @@ class RingSpec {
       );
 
   /// ageOf is how far through its life ring [index] is at [t], in lives;
-  /// negative for a ring not yet born while the set builds up.
-  ///
-  /// Rings are spaced one life divided by [count] apart, so they arrive in
-  /// order as a steady procession.
+  /// negative before birth while building up. Rings are a life/[count] apart.
   double ageOf(int index, double t, {double jitter = 0}) {
     var many = count <= 0 ? 1 : count;
     return t - (index + jitter) / many;
   }
 
-  /// spread is where ring [index] sits in its travel: nought at its birth and
-  /// one where it dies, whatever life it is on.
+  /// spread is where ring [index] is in its travel: nought born, one dying.
   double spread(int index, double t, {double jitter = 0}) {
     var wrapped = ageOf(index, t, jitter: jitter) % 1;
     return wrapped < 0 ? wrapped + 1 : wrapped;
   }
 
-  /// alphaAt is how strongly a ring shows at a point in its travel.
-  ///
-  /// [arriving] and [leaving] are false for an icon that holds one end: see
-  /// [RingIcon.holdIn].
+  /// alphaAt is how strongly a ring shows at [through]. [arriving] and
+  /// [leaving] are false for an icon holding one end ([RingIcon.holdIn]).
   double alphaAt(double through, {bool arriving = true, bool leaving = true}) {
     // The weaker of the two ends wins, so fades that overlap both apply.
     var came =
@@ -482,8 +447,7 @@ class RingSpec {
         : 1.0;
     var on = math.min(came, goes);
     if (edge == RingEdge.hard) return on <= 0 ? 0 : 1;
-    // Smoothed at both ends, so a ring arrives and leaves rather than
-    // switching on and then dimming at an even rate.
+    // Smoothed at both ends, so a ring eases in and out, not linearly.
     return on * on * (3 - 2 * on);
   }
 

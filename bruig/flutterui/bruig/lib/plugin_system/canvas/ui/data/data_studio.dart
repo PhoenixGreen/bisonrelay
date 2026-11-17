@@ -23,21 +23,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// data_studio.dart is the Data Studio (Ken, 2026-11-15: Table and Chart made
-// one Data element, built in "a full screen studio mode ... more inline with
-// common spreadsheet software like open office"): the canvas's sheets given
-// the whole page, as Calc lays a workbook out.
-//
-// Across the top, its tools; under them the name box and the formula bar;
-// the sheet in the middle (data_grid.dart) with a tab for each sheet below
-// it and a status bar under that (the selection's sum, average and count).
-// On the right, what the canvas shows: the Data element picked, drawn as it
-// is on the page, the others of this sheet to pick from -- their ranges
-// drawn round in the sheet -- and the picked one's own settings, as its
-// panel on the canvas has them.
-//
-// Every change goes through the controller, so the canvas follows at once
-// and each is a step to undo.
+// data_studio.dart is the Data Studio: the canvas's sheets given the whole
+// page, as Calc lays a workbook out. Tools, name box and formula bar across
+// the top; the sheet (data_grid.dart) with its tabs and a status bar; on
+// the right, the Data element picked, drawn as on the page, with its
+// siblings and settings. Every change goes through the controller, so the
+// canvas follows at once and each is a step to undo.
 
 class DataStudio extends StatefulWidget {
   final CanvasController controller;
@@ -57,8 +48,7 @@ class DataStudio extends StatefulWidget {
 /// theme, kept while the app runs.
 bool _paper = true;
 
-/// DataStudioTab is what the studio shows: the sheet, or the design of one
-/// of its tables.
+/// DataStudioTab is the sheet, or a table's or chart's design.
 enum DataStudioTab { sheet, table, charts }
 
 class _DataStudioState extends State<DataStudio> {
@@ -78,17 +68,15 @@ class _DataStudioState extends State<DataStudio> {
   final FocusNode _nameFocus = FocusNode();
   String? _renaming;
 
-  /// _asking is what the sheet tabs bar is asking to be sure of before it
-  /// does it: "remove" (this sheet, with what shows it) or "tidy" (every
-  /// sheet nothing on the canvas shows); null, nothing.
+  /// _asking is what the tabs bar wants confirmed: "remove" (this sheet) or
+  /// "tidy" (every sheet nothing shows); null, nothing.
   String? _asking;
   final TextEditingController _rename = TextEditingController();
   String _said = "";
   DataStudioTab _tab = DataStudioTab.sheet;
 
-  // Connect data (data_connect.dart): the steps open in the side panel,
-  // the grid previewing what will come; after a refresh, the cells that
-  // changed light up for a moment.
+  // Connect data (data_connect.dart): steps in the side panel, the grid
+  // previewing; after a refresh the changed cells light up briefly.
   bool _connecting = false;
   bool _editingSource = false;
   List<List<String>>? _preview;
@@ -141,8 +129,8 @@ class _DataStudioState extends State<DataStudio> {
 
   void _say(String words) => setState(() => _said = words);
 
-  /// _rows is the selection's rows clamped to what the sheet holds -- a
-  /// column picked whole is its used rows.
+  /// _used is the selection's rows clamped to what the sheet holds: a column
+  /// picked whole is its used rows.
   CellRange _used(CellRange g) {
     var s = sheet!;
     var used = s.used;
@@ -150,8 +138,8 @@ class _DataStudioState extends State<DataStudio> {
         math.max(g.c0, math.min(g.c1, used.c1)));
   }
 
-  /// _forView is the range a new view of the selection shows: the
-  /// selection, or -- one cell picked -- the block it is in.
+  /// _forView is the range a new view of the selection shows: the selection,
+  /// or, with one cell picked, the block it is in.
   CellRange _forView() {
     var g = _sel.range;
     if (!_sel.single) return _used(g);
@@ -188,8 +176,8 @@ class _DataStudioState extends State<DataStudio> {
         "${descending ? "largest" : "smallest"} first.");
   }
 
-  /// _rowsOrColumns puts [n] rows (or columns) in before [at], or takes
-  /// them out from it: the grid's right-click menu on its headers.
+  /// _rowsOrColumns puts [n] rows (or columns) in before [at], or takes them
+  /// out from it: the grid's right-click menu on its headers.
   void _rowsOrColumns(
       {required bool rows,
       required bool insert,
@@ -211,8 +199,7 @@ class _DataStudioState extends State<DataStudio> {
     _gridFocus.requestFocus();
   }
 
-  /// _resize gives the grid [rows] by [columns] (its ends' − and +): the
-  /// selection kept inside it.
+  /// _resize gives the grid [rows] by [columns], the selection kept in.
   void _resize(int rows, int columns) {
     var s = sheet!;
     var cutting = s.rowCount > rows || s.columnCount > columns;
@@ -417,9 +404,8 @@ class _DataStudioState extends State<DataStudio> {
     );
   }
 
-  /// _tableTab is the Table tab: the design of the table picked among this
-  /// sheet's views (or its first), with a chip for each when there are
-  /// several.
+  /// _tableTab is the Table tab: the picked (or first) table's design, a
+  /// chip for each of several.
   Widget _tableTab(BuildContext context, DataSheet s) {
     final colors = ThemeNotifier.of(context).colors;
     var tables = _views.whereType<TableElement>().toList();
@@ -540,9 +526,7 @@ class _DataStudioState extends State<DataStudio> {
         ],
         gap(8),
         // The sheet's name is on its tab under the grid; on the other tabs,
-        // here, since they have no tabs of sheets.
-        // The rest of the bar is the sheet's name there, so Done is at the
-        // right.
+        // here. It fills the bar, so Done is at the right.
         Expanded(
           child: _tab == DataStudioTab.sheet
               ? const SizedBox.shrink()
@@ -563,7 +547,6 @@ class _DataStudioState extends State<DataStudio> {
     );
   }
 
-  /// _undoRedo are Undo and Redo, as icons.
   List<Widget> _undoRedo() => [
         StudioPill(
             key: const ValueKey("dataStudioUndo"),
@@ -596,7 +579,7 @@ class _DataStudioState extends State<DataStudio> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       // The tools scroll sideways where the window is short of room (a big
-      // text size), the cell's box and its formula keeping theirs.
+      // text size), the cell's box and formula keeping theirs.
       child: LayoutBuilder(
         builder: (context, room) => Row(children: [
           ConstrainedBox(
@@ -744,8 +727,7 @@ class _DataStudioState extends State<DataStudio> {
     return CellFormat(kind, symbol: parts.length > 1 ? parts[1] : r"$");
   }
 
-  /// _setFormat gives the selection [f]: whole columns, picked by their
-  /// letters, as their columns'.
+  /// _setFormat gives the selection [f]: whole columns as their columns'.
   void _setFormat(DataSheet s, CellFormat? f) {
     var g = _sel.range;
     var columns = g.r0 == 0 && g.r1 >= s.shownRows - 1;
@@ -756,7 +738,7 @@ class _DataStudioState extends State<DataStudio> {
   Widget _sheetTabs(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
     var sheets = c.document.sheets;
-    // Sheets nothing on the canvas shows -- left behind when their tables
+    // Sheets nothing on the canvas shows, left behind when their tables
     // and charts were deleted. One is always kept.
     var unused = {
       for (var x in sheets)
@@ -851,8 +833,8 @@ class _DataStudioState extends State<DataStudio> {
                               style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
-                                  // Nothing on the canvas shows it: said
-                                  // by its look, and by Remove unused.
+                                  // Nothing on the canvas shows it: said by its
+                                  // look, and by Remove unused.
                                   fontStyle: unused.contains(sh.id)
                                       ? FontStyle.italic
                                       : FontStyle.normal,
@@ -961,13 +943,10 @@ class _DataStudioState extends State<DataStudio> {
     );
   }
 
-  /// _side is the Sheet tab's side panel: all about the sheet (Ken,
-  /// 2026-11-16: what a table or chart looks like is the Table and Charts
-  /// tabs'). The Studio's sidebar shape (data_studio_side.dart; the
-  /// sidebar prototype, 2026-11-17): the cells picked in its header and the
-  /// strip under it -- what they add up to and how they are written --
-  /// then what shows the sheet, where it comes from, a new sheet from it,
-  /// and the sheet itself.
+  /// _side is the Sheet tab's side panel, all about the sheet (what a table
+  /// or chart looks like is for the Table and Charts tabs): the cells picked
+  /// and what they add up to, then what shows the sheet, where it comes
+  /// from, a new sheet from it, and the sheet itself.
   Widget _side(BuildContext context, DataSheet s, CanvasElement? picked) {
     var views = _views;
     var made = s.made;
@@ -1038,8 +1017,7 @@ class _DataStudioState extends State<DataStudio> {
                 ],
               ]),
             ]),
-        // Another sheet made from this one, or what this one is made from
-        // (data_reshape.dart).
+        // A sheet made from this one, or its source (data_reshape.dart).
         studioSection(
             remember: "sheet.reshape",
             icon: Icons.splitscreen_outlined,
@@ -1078,8 +1056,7 @@ class _DataStudioState extends State<DataStudio> {
                               c.renameSheet(s.id, v.trim());
                             }
                           })),
-                  // Kept in a folder, for the list of sheets
-                  // (data_sheet_find).
+                  // Kept in a folder, for the list of sheets (data_sheet_find).
                   _labelled(
                       "Folder",
                       _Box(
@@ -1155,9 +1132,8 @@ class _DataStudioState extends State<DataStudio> {
             ]);
       });
 
-  /// _selection is the strip under the header: what the cells picked add
-  /// up to, and how they are written -- their number format and colour
-  /// rules (Calc's Format Cells and Conditional Formatting).
+  /// _selection is the strip under the header: the picked cells' totals and
+  /// how they are written (Calc's Format Cells, Conditional Formatting).
   List<Widget> _selection(BuildContext context, DataSheet s) {
     final colors = ThemeNotifier.of(context).colors;
     var g = _used(_sel.range);
@@ -1251,8 +1227,8 @@ class _DataStudioState extends State<DataStudio> {
         stat("Count", "$count"),
       ]),
       const SizedBox(height: 10),
-      // How its numbers are written (Calc's Number Format), and how many
-      // decimals: a stepper, as every number in the sidebars is.
+      // How its numbers are written (Calc's Number Format), and decimals as a
+      // stepper, as every number in the sidebars is.
       Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         Expanded(
           child:
@@ -1295,10 +1271,8 @@ class _DataStudioState extends State<DataStudio> {
     ];
   }
 
-  /// _madeFrom is what on the canvas shows the sheet: a table or chart put
-  /// down from the selection, one taken off; each with the range it reads,
-  /// pointed at the selection instead, or opened in its tab to be
-  /// designed.
+  /// _madeFrom is what shows the sheet: tables or charts put down or taken
+  /// off, each with its range, to repoint or open in its tab.
   List<Widget> _madeFrom(
       BuildContext context, DataSheet s, CanvasElement? picked) {
     var views = _views;

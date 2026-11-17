@@ -33,20 +33,18 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-// tile_map_settings.dart is a Tile map's settings: its tile sets -- each a
-// sheet brought in or taken from one of Kenney's packs, sliced by its grid,
-// its tiles laid out to pick from -- painting them onto the map, and its
-// layers.
+// tile_map_settings.dart is a Tile map's settings: tile sets (imported or
+// from a Kenney pack, sliced by grid), painting, and layers.
 
 /// pickedTileSource is the tile set shown in each map's settings, by id.
 final Map<String, int> pickedTileSource = {};
 
-/// terrainUi is, for each map's tile set -- "id/set" -- the terrain set
-/// shown, the terrain picked in it, and whether its tags are being set.
+/// terrainUi is, per map tile set ("id/set"), the terrain set shown, the
+/// terrain picked in it, and whether its tags are being set.
 final Map<String, ({int set, int terrain, bool tagging})> terrainUi = {};
 
-/// _terrainEditing is the terrain set of [e]'s tile set [s] shown, with
-/// its place and the terrain picked; null when it has none.
+/// _terrainEditing is the shown terrain set of [e]'s tile set [s], with its
+/// place and picked terrain; null when it has none.
 ({TerrainSet set, int index, int terrain, bool tagging})? _terrainEditing(TileMapElement e, int s) {
   var sets = e.sources[s].terrains;
   if (sets.isEmpty) return null;
@@ -61,7 +59,7 @@ TileMapElement _withTerrainSet(TileMapElement e, int s, int si, TerrainSet set) 
         i == s ? x.copyWith(terrains: [for (var (j, t) in x.terrains.indexed) j == si ? set : t]) : x
     ]);
 
-/// terrainColours is the colours new terrains are given, in turn.
+/// terrainColours is the colours new terrains get, in turn.
 const List<Color> terrainColours = [
   Color(0xFF6DBE45), Color(0xFF3FA7D6), Color(0xFFB07A4A), Color(0xFFE8D27A), Color(0xFF9AA3AD), Color(0xFFD65F8A),
 ];
@@ -114,7 +112,7 @@ List<Widget> tileMapSettings(BuildContext context, CanvasController controller, 
               onTag: switch (_terrainEditing(e, s)) {
                 (set: var ts, index: var si, terrain: var t, tagging: true) => (tile, place) {
                     if (!ts.places.contains(place)) return;
-                    // A place already the terrain picked is made nothing.
+                    // A place already the picked terrain is cleared.
                     var was = (ts.tags[tile] ?? List.filled(9, -1))[place];
                     now(_withTerrainSet(e, s, si, ts.tagged(tile, place, was == t ? -1 : t)));
                   },
@@ -189,8 +187,8 @@ List<Widget> tileMapSettings(BuildContext context, CanvasController controller, 
   ];
 }
 
-/// _paintGroup is painting on the map: on and off, the tool, the tile laid
-/// and how it is turned, the grid, and how big the tiles are on the canvas.
+/// _paintGroup is painting on the map: on and off, tool, the tile laid and
+/// its turn, the grid, and the tiles' size on the canvas.
 Widget _paintGroup(
     CanvasController controller, TileMapElement e, TilePaintSession? painting, void Function(TileMapElement) now) {
   return CanvasControlGroup(
@@ -372,9 +370,8 @@ Widget _paintGroup(
   );
 }
 
-/// _animateGroup is tile [index] of set [s] made to play, as Godot's tile
-/// animations are: it and so many tiles after it on the sheet -- across,
-/// or down -- shown in turn, so many a second, wherever it is painted.
+/// _animateGroup makes tile [index] of set [s] play, as Godot's tile
+/// animations do: it and following tiles shown in turn, wherever painted.
 Widget _animateGroup(TileMapElement e, int s, int index, void Function(TileMapElement) now) {
   var source = e.sources[s];
   var a = source.animations[index];
@@ -434,8 +431,8 @@ Widget _animateGroup(TileMapElement e, int s, int index, void Function(TileMapEl
   );
 }
 
-/// _patternsGroup is the stamps kept with the map: one picked to paint
-/// with, the stamp painted with kept, and the picked one taken out.
+/// _patternsGroup is the stamps kept with the map: pick one to paint with,
+/// keep the current stamp, remove the picked one.
 Widget _patternsGroup(
     CanvasController controller, TileMapElement e, TilePaintSession painting, void Function(TileMapElement) now) {
   var kept = e.patterns.indexOf(painting.stamp);
@@ -478,8 +475,8 @@ Widget _patternsGroup(
   );
 }
 
-/// paintStamp draws [stamp] of [map]'s tiles as big as fits [size], in the
-/// middle.
+/// paintStamp draws [stamp] of [map]'s tiles as big as fits [size],
+/// centred.
 void paintStamp(Canvas canvas, Size size, CanvasController controller, TileMapElement map, TileStamp stamp) {
   if (map.sources.isEmpty) return;
   var first = map.sources.first;
@@ -514,10 +511,8 @@ class _StampPainter extends CustomPainter {
   bool shouldRepaint(_StampPainter old) => old.stamp != stamp || !identical(old.map, map);
 }
 
-/// TilePalette is a tile set's sheet, its tiles to pick from: big enough
-/// to see, scrolled when it is bigger than the room, those picked lit. A
-/// click picks one; a drag across them, or a shift-click from the last,
-/// picks a block of them -- a stamp.
+/// TilePalette is a tile set's sheet to pick from, picks lit: click one;
+/// drag, or shift-click from the last, for a block (a stamp).
 class TilePalette extends StatefulWidget {
   final CanvasController controller;
   final TileMapElement map;
@@ -525,8 +520,8 @@ class TilePalette extends StatefulWidget {
   final TileStamp? picked;
   final ValueChanged<TileStamp> onPick;
 
-  /// terrains is the terrain set whose tags are shown on the tiles, and
-  /// onTag -- while tagging -- what a click on a place of a tile does.
+  /// terrains is the terrain set whose tags show on the tiles; onTag, while
+  /// tagging, is what clicking a place of a tile does.
   final TerrainSet? terrains;
   final void Function(int tile, int place)? onTag;
   const TilePalette(
@@ -549,8 +544,8 @@ class TilePaletteState extends State<TilePalette> {
 
   final ScrollController _down = ScrollController(), _across = ScrollController();
 
-  /// _from is where a pick began, and _to where it has got to, as the
-  /// sheet's columns and rows; _last the last one picked, for a shift-click.
+  /// _from and _to are where a pick began and has reached, in sheet columns
+  /// and rows; _last the last one picked, for a shift-click.
   (int, int)? _from, _to, _last;
 
   @override
@@ -569,7 +564,7 @@ class TilePaletteState extends State<TilePalette> {
     );
   }
 
-  /// _block is the tiles from [a] to [b] on [s], a stamp.
+  /// _block is the tiles from [a] to [b] on [s]: a stamp.
   TileStamp _block(TileSource s, (int, int) a, (int, int) b) {
     var (c0, r0) = (math.min(a.$1, b.$1), math.min(a.$2, b.$2));
     var (c1, r1) = (math.max(a.$1, b.$1), math.max(a.$2, b.$2));
@@ -615,15 +610,15 @@ class TilePaletteState extends State<TilePalette> {
                   child: SingleChildScrollView(
                     controller: _across,
                     scrollDirection: Axis.horizontal,
-                    // The pointer itself, not a gesture: a drag across the
-                    // tiles picks them rather than scrolling.
+                    // The raw pointer, not a gesture: a drag across the tiles
+                    // picks them rather than scrolling.
                     child: Listener(
                       key: const ValueKey("tilePaletteSheet"),
                       onPointerDown: (d) {
                         var at = _cellOf(s, d.localPosition, k);
                         if (at == null) return;
                         if (widget.onTag case var tag?) {
-                          // Which ninth of the tile: a corner, a side, the middle.
+                          // Which ninth of the tile: corner, side or middle.
                           var r = s.tileRect(at.$2 * s.columns + at.$1);
                           var p = d.localPosition / k;
                           var zx = ((p.dx - r.left) / r.width * 3).floor().clamp(0, 2);
@@ -705,7 +700,7 @@ class _PalettePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..color = accent;
-    // Each tagged tile's terrains, a dot of each one's colour at its place.
+    // Each tagged tile's terrains, a dot of each colour at its place.
     if (terrains case var set?) {
       for (var e in set.tags.entries) {
         if (e.key >= s.count) continue;
@@ -754,9 +749,8 @@ class _PalettePainter extends CustomPainter {
       !identical(old.terrains, terrains);
 }
 
-/// TileSetAdder adds a tile set to the map: a sheet brought in -- a
-/// picture, or a Tiled tileset with its picture beside it -- or one of the
-/// sets in one of Kenney's packs.
+/// TileSetAdder adds a tile set: an imported sheet (picture or Tiled
+/// tileset) or a set from a Kenney pack.
 class TileSetAdder extends StatefulWidget {
   final CanvasController controller;
   final TileMapElement map;
@@ -767,7 +761,7 @@ class TileSetAdder extends StatefulWidget {
 }
 
 class TileSetAdderState extends State<TileSetAdder> {
-  /// pack is the Kenney pack looked at last, for this run of the app.
+  /// pack is the Kenney pack last looked at, for this run of the app.
   static String pack = "roguelikerpg-pack-1700-tiles";
 
   bool? _kept;
@@ -777,8 +771,7 @@ class TileSetAdderState extends State<TileSetAdder> {
   List<TileSheetOffer> _offers = const [];
   int _offer = 0;
 
-  /// _maps is the pack's own sample maps, Tiled's, and _sample the one
-  /// picked.
+  /// _maps is the pack's own Tiled sample maps, and _sample the picked one.
   List<String> _maps = const [];
   int _sample = 0;
 
@@ -846,8 +839,8 @@ class TileSetAdderState extends State<TileSetAdder> {
     if (file != null) await _open(p);
   }
 
-  /// _add adds [made] to the map as its newest set, picked: and, as its
-  /// first, sizes its cells for it.
+  /// _add adds [made] as the map's newest set, picked, and as its first,
+  /// sizes the cells for it.
   void _add(TileSource made) {
     var c = widget.controller;
     var m = c.document.elementById(widget.map.id);
@@ -855,7 +848,7 @@ class TileSetAdderState extends State<TileSetAdder> {
     var first = m.sources.isEmpty;
     var next = m.copyWith(
       sources: [...m.sources, made],
-      // Small tiles are pixel art, drawn twice their size; big ones as they are.
+      // Small tiles are pixel art, drawn at twice size; big ones as they are.
       cell: first ? (made.tileW <= 32 ? made.tileW * 2.0 : made.tileW.toDouble()) : null,
       pixelArt: first ? made.tileW <= 32 : null,
     );
@@ -867,7 +860,7 @@ class TileSetAdderState extends State<TileSetAdder> {
     c.tilePaint!.set(brush: TileRef.of(next.sources.length - 1, 0), tool: TileTool.paint);
   }
 
-  /// _openSample opens the pack's sample map picked, in place of the map.
+  /// _openSample opens the picked sample map in place of the map.
   Future<void> _openSample() async {
     var archive = _archive;
     if (archive == null || _maps.isEmpty) return;
@@ -899,9 +892,8 @@ class TileSetAdderState extends State<TileSetAdder> {
     if (made != null) _add(made);
   }
 
-  /// bringIn makes a set of the sheet at [file] -- or the sheet a Tiled
-  /// tileset there names -- sliced as its notes say, or by the gaps between
-  /// its tiles, or in 16s.
+  /// bringIn makes a set of the sheet at [file] (or a Tiled tileset's),
+  /// sliced by its notes, the gaps between tiles, or in 16s.
   Future<void> bringIn(String file) async {
     try {
       var picture = file;
@@ -1042,9 +1034,8 @@ class TileSetAdderState extends State<TileSetAdder> {
   }
 }
 
-/// TileLayersEditor is the map's layers, the top one first: each picked,
-/// shown or hidden, locked; added, taken out, moved up and down; and the
-/// picked one's name, how see-through it is, and its tint.
+/// TileLayersEditor is the map's layers, top first: pick, show, lock, add,
+/// remove, move; the picked one's name, opacity and tint.
 class TileLayersEditor extends StatelessWidget {
   final CanvasController controller;
   final TileMapElement map;
@@ -1256,9 +1247,8 @@ class TileLayersEditor extends StatelessWidget {
   }
 }
 
-/// _figuresGroup is the Sprite elements stood on objects layer [i]: drawn
-/// by the map among the things on it, by where their feet are -- behind a
-/// tree, in front of a fence -- wherever they walk.
+/// _figuresGroup is the Sprites stood on objects layer [i], drawn among its
+/// things by where their feet are (behind a tree, before a fence).
 Widget _figuresGroup(CanvasController controller, TileMapElement e, int i, void Function(TileMapElement) now) {
   var layer = e.layers[i];
   var elsewhere = {
@@ -1307,11 +1297,9 @@ Widget _figuresGroup(CanvasController controller, TileMapElement e, int i, void 
   );
 }
 
-/// TerrainsGroup is a tile set's terrain sets, as Godot's TileSet editor
-/// has them: a set's terrains -- grass, water -- and what it tells its
-/// tiles apart by; each tile's corners, sides and middle tagged with a
-/// terrain on the tiles above, or a block of them tagged from their
-/// colours; and a terrain picked to paint with.
+/// TerrainsGroup is a tile set's terrain sets, as in Godot's TileSet
+/// editor: terrains, tile parts tagged by hand or from colours, and a
+/// terrain to paint with.
 class TerrainsGroup extends StatelessWidget {
   final CanvasController controller;
   final TileMapElement map;
@@ -1396,7 +1384,7 @@ class TerrainsGroup extends StatelessWidget {
             label: "${x.name}${x.sample == null ? "" : " ·"}",
             here: i == t,
             onRemove: () {
-              // Its tags go with it; the ones after it move up one.
+              // Its tags go with it; those after it move up one.
               int moved(int v) => v == i ? -1 : (v > i ? v - 1 : v);
               write(ts.copyWith(
                 terrains: [...ts.terrains]..removeAt(i),
@@ -1468,7 +1456,7 @@ class TerrainsGroup extends StatelessWidget {
                     if (image == null) return;
                     var px = await SpritePixels.of(image);
                     if (px == null) return;
-                    // The sheet as measured, read off the picture as stored.
+                    // The sheet as measured, read off the stored picture.
                     var sx = image.width / src.sheetW, sy = image.height / src.sheetH;
                     write(tagByColour(ts, src, picked, (x, y) => px.at((x * sx).floor(), (y * sy).floor())));
                   },
@@ -1520,8 +1508,8 @@ class TerrainsGroup extends StatelessWidget {
   }
 }
 
-/// openTiledMap puts [read] -- a Tiled map read -- in place of map [id]'s
-/// tile sets and layers, its box the map's size: one change.
+/// openTiledMap puts [read], a Tiled map, in place of map [id]'s tile sets
+/// and layers, its box the map's size: one change.
 void openTiledMap(CanvasController c, String id, TiledRead read) {
   var m = c.document.elementById(id);
   if (m is! TileMapElement) return;
@@ -1542,9 +1530,8 @@ void openTiledMap(CanvasController c, String id, TiledRead read) {
   c.tilePaint?.set(tiles: true);
 }
 
-/// TileSceneGroup is the map as a scene: the light it is lit by, and that
-/// light turning to another over the scene -- day into night -- and the
-/// map to and from Tiled's own files.
+/// TileSceneGroup is the map as a scene: its light, that light turning to
+/// another over the scene (day into night), and Tiled file import/export.
 class TileSceneGroup extends StatefulWidget {
   final CanvasController controller;
   final TileMapElement map;
@@ -1594,7 +1581,7 @@ class TileSceneGroupState extends State<TileSceneGroup> {
     for (var (i, s) in e.sources.indexed) {
       var bytes = await CanvasAssets.load(s.sheet);
       if (bytes == null) continue;
-      // Written as a PNG, whatever it was stored as.
+      // Written as a PNG, whatever its stored format.
       var png = bytes.length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50
           ? bytes
           : (await (await (await ui.instantiateImageCodec(Uint8List.fromList(bytes))).getNextFrame())

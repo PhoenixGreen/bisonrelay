@@ -2,10 +2,9 @@ import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 
 // score_samples.dart holds a score to start from: "Ode to Joy" (Beethoven,
 // with Henry van Dyke's "Joyful, Joyful" words of 1907, both in the public
-// domain) for piano, violin and strummed guitar -- the Score Studio
-// prototype's lesson score, with something of everything: two staves and two
-// verses, chords and strums, dynamics, a hairpin, slurs, articulations, a
-// repeat with first and second endings, a rehearsal mark.
+// domain) for piano, violin and strummed guitar, with something of
+// everything: two staves and verses, chords and strums, dynamics, slurs,
+// articulations, repeat endings, a rehearsal mark.
 
 /// odeToJoy is the sample score, as [id].
 MusicScore odeToJoy([String id = "ode"]) {

@@ -39,17 +39,13 @@ import 'package:flutter_scene/scene.dart' hide Material;
 import 'package:flutter_vrm/flutter_vrm.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-// character_studio_3d.dart is the Character Studio: a bar of steps along the
-// top (Character base, Face, Move, Test), the parts down the left, the
-// character on a page in the middle with the views over it, and the open
-// part's settings on the right. It takes the whole page, in place of the
-// canvas.
-//
-// The character is drawn in 3D with Flutter GPU, from one of the VRoid
-// bodies (vroid_assets.dart), shaped (vrm_shape.dart) and dressed
-// (vrm_wear.dart). The Test step tries it in a scene, with the settings a
-// 3D character has on the canvas (character3d_settings.dart) and a timeline
-// to play them on.
+// character_studio_3d.dart is the Character Studio, taking the whole page in
+// place of the canvas: a bar of steps along the top (Character base, Face,
+// Move, Test), the parts down the left, the character in the middle, and
+// the open part's settings on the right. The character is drawn in 3D with
+// Flutter GPU from a VRoid body (vroid_assets.dart), shaped (vrm_shape.dart)
+// and dressed (vrm_wear.dart). The Test step tries it in a scene, with a 3D
+// character's canvas settings (character3d_settings.dart) and a timeline.
 
 /// studioBodyNames is the bodies, by the names the page gives them.
 const Map<String, String> studioBodyNames = {
@@ -72,11 +68,9 @@ enum StudioView {
   const StudioView(this.label, this.yaw);
 }
 
-/// CharacterStudio3D is the whole page.
 class CharacterStudio3D extends StatefulWidget {
-  /// onDone goes back to the canvas with the character as it was kept (null
-  /// where there was nothing to keep) and what the Test step left
-  /// [performance] as, where it was changed.
+  /// onDone goes back to the canvas with the character kept (null if none)
+  /// and the Test step's [performance] where it was changed.
   final void Function(CharacterDesign? kept, CharacterPerformance? performance)
       onDone;
 
@@ -84,8 +78,8 @@ class CharacterStudio3D extends StatefulWidget {
   final CharacterDesign? design;
 
   /// performance is what the character the Studio was opened for does in
-  /// its scene, for the Test step to try and change; null where it was
-  /// opened for none, and the Test step's changes are not kept.
+  /// its scene, for the Test step to try; null where it was opened for none,
+  /// and the Test step's changes are not kept.
   final CharacterPerformance? performance;
 
   /// gpuReady stands in for whether this app can draw in 3D, and designs for
@@ -133,13 +127,11 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   CharacterFace _face = const CharacterFace();
   String _facePart = faceParts.first.$1;
 
-  /// _line is the line last said, and how many have been, so saying the
-  /// same again says it again.
+  /// _line is the line last said and a count, so a repeat says it again.
   ({String text, int n})? _line;
   StudioView? _view = StudioView.front;
 
-  /// _own are the clothes the body on the stage comes with, once it is
-  /// there.
+  /// _own are the clothes the body on the stage comes with, once it is there.
   Set<WearSlot> _own = const {};
 
   @override
@@ -190,8 +182,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   /// _name is the body's name, for its own clothes ("Vivi's").
   String get _name => studioBodyNames[_id] ?? _id;
 
-  /// _designId is the saved character being changed, or null for a new
-  /// one; _title is what it is called.
+  /// _designId is the saved character changed, null for new; _title its name.
   String? _designId;
   final TextEditingController _title = TextEditingController();
 
@@ -200,9 +191,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
 
   // The Test step: what it does in the scene tried, and when.
 
-  /// _perf is what it does in the scene being tried. _test holds the
-  /// playhead, as a canvas would, for the settings; _testAt is the time,
-  /// in seconds, as the stage plays it.
+  /// _perf is what it does in the scene tried. _test holds the playhead for
+  /// the settings, as a canvas would; _testAt is the stage's time, seconds.
   late CharacterPerformance _perf =
       widget.performance ?? const CharacterPerformance();
   static const int _testFps = 24;
@@ -211,8 +201,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   final ValueNotifier<double> _testAt = ValueNotifier(0);
   bool _testPlaying = false;
 
-  /// _testLength is how long the timeline is: ten seconds, or as long as
-  /// what is on it and a second more.
+  /// _testLength is the timeline's length: ten seconds, or its content's +1.
   double get _testLength => [
         10.0,
         for (final c in _perf.clips) c.end + 1,
@@ -223,8 +212,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
               1,
       ].reduce(math.max);
 
-  /// _tried is the character in the scene being tried, as the canvas would
-  /// have it: what the settings show and change.
+  /// _tried is the character in the scene tried, as the canvas would have it.
   Character3dElement _tried() => Character3dElement(
       const ElementBase(id: "studioTest", width: 200, height: 400),
       design: _design(),
@@ -237,8 +225,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
         _testPlaying = !_testPlaying;
       });
 
-  // The playhead, kept in step both ways: as the stage plays it, and as
-  // the settings move it.
+  // The playhead, kept in step both ways: with the stage and the settings.
   void _testAtChanged() {
     final f = (_testAt.value * _testFps).round();
     if (_test.frame != f) _test.frame = f;
@@ -262,7 +249,6 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
     super.dispose();
   }
 
-  /// _design is the character as it is now.
   CharacterDesign _design() => CharacterDesign(
         id: _designId ?? CharacterDesigns.newId(),
         name: _title.text.trim().isEmpty ? _name : _title.text.trim(),
@@ -279,8 +265,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
         updated: DateTime.now(),
       );
 
-  /// _untouched is whether a new character is still as a body was made,
-  /// so there is nothing to keep.
+  /// _untouched is whether a new character is as made: nothing to keep.
   bool get _untouched =>
       _designId == null &&
       _title.text.trim().isEmpty &&
@@ -294,10 +279,9 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
       _face == const CharacterFace() &&
       _move == const CharacterMove();
 
-  /// _done keeps the character in the library, and goes back to the canvas.
+  /// _done keeps the character in the library and goes back to the canvas.
   Future<void> _done() async {
-    // The scene's settings, kept where they were changed for a character on
-    // the canvas.
+    // The scene's settings, kept where changed for a character on the canvas.
     final perf = widget.performance != null && _perf != widget.performance
         ? _perf
         : null;
@@ -313,14 +297,12 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
     widget.onDone(d, perf);
   }
 
-  /// _openDesign opens a saved character to change it, or with null starts a
-  /// new one.
+  /// _openDesign opens a saved character to change, or with null a new one.
   void _openDesign(CharacterDesign? d) => setState(() => _take(d));
 
   void _take(CharacterDesign? d) {
-    // A character with no id (read from a canvas that could not give it one)
-    // or an id that cannot name its files (a received canvas's, say) is kept
-    // as a new one.
+    // A character with no id, or an id that cannot name its files (a
+    // received canvas's, say), is kept as a new one.
     _designId = d == null || !CharacterDesigns.isId(d.id) ? null : d.id;
     _title.text = d?.name ?? "";
     if (d != null) _id = d.body;
@@ -561,9 +543,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
           ),
       };
 
-  /// _designsAt is the saved characters as listed at a revision of them:
-  /// the panel is built again at every change in the Studio, and every
-  /// design was read from disk each time.
+  /// _listed is the saved characters as listed at a revision, so a rebuild
+  /// at every change does not reread every design from disk.
   (int, Future<List<CharacterDesign>>)? _listed;
 
   Future<List<CharacterDesign>> _designsAt(int revision) {
@@ -684,21 +665,17 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   }
 }
 
-/// _TopBar is the character's name, the Studio's steps, and the ways out.
 class _TopBar extends StatelessWidget {
   final String name;
 
-  /// title is the character's own name, typed here; [name], the body's,
-  /// until one is.
+  /// title is the character's own name; [name], the body's, until one is typed.
   final TextEditingController title;
   final VoidCallback onStartAgain, onDone;
 
-  /// step is the step open, and onStep opens another.
   final int step;
   final ValueChanged<int> onStep;
 
-  /// playing is whether the motion plays, and onPlay plays or stops it:
-  /// here, for every step.
+  /// playing is whether the motion plays; onPlay plays or stops it, every step.
   final bool playing;
   final VoidCallback onPlay;
   const _TopBar(
@@ -843,8 +820,7 @@ class _Notice extends StatelessWidget {
   }
 }
 
-/// _Stage is the character in 3D on its page, the views over it, and a
-/// drag to turn it.
+/// _Stage is the character in 3D on its page, its views, and a drag to turn.
 class _Stage extends StatefulWidget {
   final String id;
   final CharacterShape shape;
@@ -853,9 +829,8 @@ class _Stage extends StatefulWidget {
   final List<CharacterDecal> decals;
   final List<SculptStroke> sculpt;
 
-  /// brush is the brush a drag on the stage shapes the body with, while
-  /// Touch up is open; onSculpt and onPaint are given the strokes as one
-  /// is drawn.
+  /// brush is what a drag on the stage shapes or paints with while Touch up
+  /// is open; onSculpt and onPaint are given the strokes as one is drawn.
   final TouchBrush? brush;
   final List<PaintStroke> paint;
   final ValueChanged<List<SculptStroke>> onSculpt;
@@ -866,8 +841,7 @@ class _Stage extends StatefulWidget {
   final ({String text, int n})? line;
 
   /// move is how it stands; with [onMove], its dots are on the stage to drag
-  /// (the hands, feet and hips moved, the head turned). [playing] is whether
-  /// its motion plays.
+  /// (hands, feet, hips, head). [playing] is whether its motion plays.
   final CharacterMove move;
   final bool playing;
   final ValueChanged<CharacterMove>? onMove;
@@ -916,9 +890,8 @@ class _Stage extends StatefulWidget {
 }
 
 class _StageState extends State<_Stage> {
-  /// _character is the character, drawn by vrm_character.dart; this is its
-  /// camera, its framing, and the gestures that turn, tilt, move and zoom
-  /// it.
+  /// _character is the character, drawn by vrm_character.dart; this state is
+  /// its camera, framing, and the gestures that turn, tilt, move and zoom it.
   late final CharacterScene _character =
       CharacterScene(loadDecal: loadDecalPicture)..addListener(_changed);
   final PerspectiveCamera _camera = PerspectiveCamera(
@@ -927,9 +900,9 @@ class _StageState extends State<_Stage> {
   vm.Vector3? _focus;
   double _distance = 3, _pitch = 0.06;
 
-  /// _tilt and _zoom are the viewer's own: a tilt up or down added to the
-  /// view's, and how much nearer or further, by dragging up and down and by
-  /// scrolling or pinching. A double-click, or another part, puts them back.
+  /// _tilt and _zoom are the viewer's own: a tilt added to the view's, by
+  /// dragging up and down, and how much nearer or further, by scrolling or
+  /// pinching. A double-click, or another part, puts them back.
   double _tilt = 0, _zoom = 1;
   double _zoomAtStart = 1;
 
@@ -960,8 +933,7 @@ class _StageState extends State<_Stage> {
   List<PaintStroke>? _paintBefore;
   PaintStroke? _painted;
 
-  /// _ring is the brush shown on the body under the pointer: where, and
-  /// how big on screen.
+  /// _ring is the brush shown on the body under the pointer: where, how big.
   ({Offset at, double radius})? _ring;
   DateTime _ringAt = DateTime(0);
 
@@ -977,10 +949,9 @@ class _StageState extends State<_Stage> {
     return ray == null ? null : _character.pick(ray.$1, ray.$2);
   }
 
-  /// _view is the camera's frame: which way it looks, the screen's left and
-  /// up, how wide it sees, and the stage's size. forward × up is the screen's
-  /// left in flutter_scene's view (a stroke aimed at one arm would otherwise
-  /// land on the other).
+  /// _view is the camera's frame: its heading, the screen's left and up, its
+  /// width of view and the stage's size. forward × up is the screen's left
+  /// in flutter_scene; the other way, a stroke at one arm hits the other.
   ({vm.Vector3 f, vm.Vector3 left, vm.Vector3 up, double t, Size size})?
       _view() {
     final box = context.findRenderObject() as RenderBox?;
@@ -1006,8 +977,7 @@ class _StageState extends State<_Stage> {
     return (_camera.position, v.f - v.left * x + v.up * y);
   }
 
-  /// _onStage is where [p], a point in the scene, is on the stage: the
-  /// other way from [_rayAt].
+  /// _onStage is where scene point [p] is on the stage: [_rayAt] reversed.
   Offset? _onStage(vm.Vector3 p) {
     final v = _view();
     if (v == null) return null;
@@ -1047,9 +1017,8 @@ class _StageState extends State<_Stage> {
     _moveAtStart = widget.move;
   }
 
-  /// _dotTo carries the dot being dragged to [global] on the screen, on a
-  /// plane facing the camera through where it started. The hands, feet and
-  /// hips move by as much, in the body's own space, and the pose keeps them
+  /// _dotTo carries the dragged dot to [global] on a plane facing the camera.
+  /// Hands, feet and hips move as much in body space, the pose keeping them
   /// where a body can be; the head turns toward it instead.
   void _dotTo(Offset global) {
     final k = _dragging, from = _dragFrom, m0 = _moveAtStart;
@@ -1084,8 +1053,7 @@ class _StageState extends State<_Stage> {
     onMove(m0.withOffset(k, [o[0] + d.x, o[1] + d.y, o[2] + d.z]));
   }
 
-  /// _showRing puts the brush ring where [p] is on the body, or takes it
-  /// away when it is off it.
+  /// _showRing puts the brush ring where [p] is on the body, or takes it away.
   void _showRing(Offset p, {bool now = false}) {
     final brush = widget.brush;
     if (brush == null) {
@@ -1110,9 +1078,8 @@ class _StageState extends State<_Stage> {
           ));
   }
 
-  /// _strokeFrom starts a stroke where [p] is on the body; false if it is
-  /// off it, when the drag turns the character instead. A paint stroke
-  /// starts only on the skin or the clothes.
+  /// _strokeFrom starts a stroke where [p] is on the body; false off it, so
+  /// the drag turns the character. Paint starts only on skin or clothes.
   bool _strokeFrom(Offset p) {
     final brush = widget.brush;
     final hit = brush == null ? null : _hitAt(p);
@@ -1147,8 +1114,7 @@ class _StageState extends State<_Stage> {
 
   bool get _stroking => _stroke != null || _painted != null;
 
-  /// _strokeTo carries the stroke on to [p], a point at a time a little
-  /// apart.
+  /// _strokeTo carries the stroke on to [p], a point at a time a little apart.
   void _strokeTo(Offset p) {
     _showRing(p);
     final hit = _hitAt(p);
@@ -1176,8 +1142,7 @@ class _StageState extends State<_Stage> {
     _paintBefore = null;
   }
 
-  /// _pointOf is [hit] as a stroke's point: where on the body as shaped,
-  /// or as [made].
+  /// _pointOf is [hit] as a stroke's point: on the body as shaped, or [made].
   static SculptPoint _pointOf(CharacterHit hit, {bool made = false}) {
     final at = made ? hit.made : hit.at;
     return SculptPoint(
@@ -1231,8 +1196,7 @@ class _StageState extends State<_Stage> {
     if (widget.line case final l? when l != old.line) _character.say(l.text);
   }
 
-  /// _ticks counts the stage's frames, for its shadow to be drawn again on
-  /// each.
+  /// _ticks counts the stage's frames, so its shadow is drawn again on each.
   final ValueNotifier<int> _ticks = ValueNotifier(0);
 
   @override
@@ -1244,8 +1208,7 @@ class _StageState extends State<_Stage> {
     super.dispose();
   }
 
-  /// _framing is where the camera looks and from how far, for the open
-  /// part.
+  /// _framing is where the camera looks and from how far, for the open part.
   (vm.Vector3, double, double) _framing(ShapedAvatar? a) {
     vm.Vector3? at(VrmHumanBone b) =>
         _character.restAt(b) ?? a?.avatar.humanoid.worldPosition(b);
@@ -1253,8 +1216,7 @@ class _StageState extends State<_Stage> {
     final tall = head.y;
     switch (widget.frame) {
       case ShapeFrame.head:
-        // The face: from the head bone up to the eyes, as far up as the
-        // head is now drawn.
+        // The face: from the head bone up to the eyes, as far as it is drawn.
         final rig = a?.rig,
             face = rig?.face,
             bone = rig?.data.bindPos['J_Bip_C_Head'];
@@ -1348,9 +1310,8 @@ class _StageState extends State<_Stage> {
     return Stack(children: [
       Positioned.fill(
         child: Listener(
-          // A drag with shift held moves the view rather than turning it; so does
-          // one with the right or middle button, which the gesture below never
-          // sees.
+          // A shift-drag moves the view rather than turning it; so does a
+          // right or middle button drag, which the gesture below never sees.
           onPointerDown: (e) =>
               _panning = HardwareKeyboard.instance.isShiftPressed,
           onPointerMove: (e) {
@@ -1398,8 +1359,7 @@ class _StageState extends State<_Stage> {
             },
             child: ColoredBox(
               color: Color(0xff000000 | widget.look.paperColour),
-              // Drawn once there is a body: an empty scene is a blank frame
-              // flutter_scene warns of.
+              // Drawn once there is a body: flutter_scene warns of empty ones.
               child: _character.avatar == null
                   ? const SizedBox.expand()
                   // Its shadow on the ground under it, drawn before it.
@@ -1560,11 +1520,9 @@ class _GroundShadow extends CustomPainter {
   bool shouldRepaint(_GroundShadow old) => old.character != character;
 }
 
-/// _TestNotes is the Test step's side: what it is for, and whether what is
-/// tried is kept.
+/// _TestNotes is the Test step's side: what it is for, and whether it is kept.
 class _TestNotes extends StatelessWidget {
-  /// kept is whether the Studio was opened for a character on the canvas,
-  /// whose scene Done keeps this in.
+  /// kept is whether the Studio was opened for a canvas character: kept.
   final bool kept;
   const _TestNotes({required this.kept});
 
@@ -1697,7 +1655,6 @@ class _TimelinePainter extends CustomPainter {
       )..layout(maxWidth: math.max(0, r.width - 8));
       tp.paint(canvas, Offset(r.left + 4, top + (high - tp.height) / 2));
     }
-    // The keys: a diamond at each, over the motions.
     for (final k in performance.keys) {
       final c = Offset(x(k.t), 8);
       canvas.drawPath(

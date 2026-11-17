@@ -12,8 +12,8 @@ import 'package:flutter/painting.dart';
 
 // character3d_painter.dart draws a 3D character on the canvas: its scene,
 // kept by the picture store (image_store.dart) as pictures are, drawn by
-// Flutter GPU into the element's box. Until it is there -- and wherever 3D
-// cannot be drawn, as in tests -- a figure stands in for it.
+// Flutter GPU into the element's box. Until it is there, and wherever 3D
+// cannot be drawn (tests), a figure stands in for it.
 
 /// CanvasCharacterSource keeps the 3D characters drawn on a canvas, one
 /// scene for each element, as CanvasImageSource keeps its pictures.
@@ -27,7 +27,7 @@ abstract interface class CanvasCharacterSource {
   bool get noCharacters3d;
 }
 
-/// paintCharacter3d draws [e] into [box] at [frame]: or, [staged] on a 3D
+/// paintCharacter3d draws [e] into [box] at [frame]; [staged] on a 3D
 /// stage, where the stage's camera sees it, [box] being where that is.
 void paintCharacter3d(
     ui.Canvas canvas, Rect box, Character3dElement e, int frame,
@@ -46,8 +46,8 @@ void paintCharacter3d(
             : scene?.error ?? "Drawing ${e.design.name}…");
     return;
   }
-  // As many pixels as the box covers: the canvas's own scale -- zoomed on
-  // the stage, scaled up in an export -- and the screen's.
+  // As many pixels as the box covers: the canvas's own scale (zoomed on
+  // the stage, scaled up in an export) times the screen's.
   final m = canvas.getTransform();
   final scale = math.sqrt(m[0] * m[0] + m[1] * m[1]);
   final screen = editing
@@ -109,7 +109,6 @@ void _standIn(ui.Canvas canvas, Rect box, Character3dElement e,
       }
     }
   }
-  // A head and a body, as tall as the box allows.
   final fill = Paint()..color = const Color(0x33888888);
   final tall = math.min(box.height * 0.7, box.width * 1.6);
   final c = box.center;
@@ -176,7 +175,6 @@ Future<(Uint8List, int, int)?> loadDecalPicture(String source) async {
     if (bytes == null) return null;
     return (Uint8List.sublistView(bytes), w, h);
   } finally {
-    // The pictures it read go with it.
     store.dispose();
   }
 }

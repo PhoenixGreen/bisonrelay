@@ -3,12 +3,11 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
-// transition_sound.dart is the sound a transition carries: picked from the
-// Audio library, and heard wherever the transition is. See
-// CanvasDocument.transitionSounds.
+// transition_sound.dart is the sound a transition carries, picked from the
+// Audio library: see CanvasDocument.transitionSounds.
 
-/// CanvasTransitionSound picks [value]'s sound, how loud it is and how early
-/// it starts -- and puts the same sound on every transition.
+/// CanvasTransitionSound picks [value]'s sound, how loud it is and how
+/// early it starts, and can put the same sound on every transition.
 class CanvasTransitionSound extends StatefulWidget {
   final SceneTransition value;
   final ValueChanged<SceneTransition> onChanged;
@@ -16,8 +15,8 @@ class CanvasTransitionSound extends StatefulWidget {
   /// onEvery puts [value]'s sound on every transition of the document.
   final ValueChanged<SceneTransition> onEvery;
 
-  /// onHear plays [value]'s sound on its own, or stops it -- [hearing]
-  /// while it plays -- to try it before keeping it.
+  /// onHear plays [value]'s sound on its own, or stops it ([hearing] while
+  /// it plays), to try it before keeping it.
   final VoidCallback? onHear;
   final bool hearing;
 

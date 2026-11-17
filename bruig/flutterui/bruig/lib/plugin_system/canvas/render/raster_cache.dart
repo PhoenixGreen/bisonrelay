@@ -6,17 +6,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'dart:math' as math;
 
-// raster_cache.dart keeps the pictures a layered picture is drawn through --
-// what an adjustment makes of the layers under it, a layer flattened for its
-// effects -- from one frame to the next.
-//
-// Rasters are kept by name (element id, layer id, size class), not against
-// the element object: every edit makes a new element, and the undo history
-// holds every old one, so keying by object both missed on every drag frame
-// and kept hundreds of megabytes alive. Beside each raster is what it was
-// drawn from; it is used again only while every part is identical or equal.
-// Position is not among them, so moving a picture keeps its rasters. The
-// whole is held to [rasterBudget], least recently drawn going first.
+// raster_cache.dart keeps the pictures a layered picture is drawn through
+// (what an adjustment makes of the layers under it, a layer flattened for
+// its effects) from one frame to the next. Rasters are kept by name
+// (element id, layer id, size class), not by element object: every edit
+// makes a new element and undo holds the old ones, so object keys miss on
+// every drag frame and pin hundreds of megabytes. A raster is reused only
+// while everything it was drawn from is equal; position is not among that,
+// so moving a picture keeps them. Held to [rasterBudget], LRU.
 
 /// rasterBudget is how many bytes of pixels the cache holds at most.
 const int rasterBudget = 384 << 20;
@@ -28,7 +25,6 @@ class _Kept {
   _Kept(this.from, this.image) : bytes = image.width * image.height * 4;
 }
 
-/// RasterCache is the kept rasters, least recently drawn first.
 class RasterCache {
   RasterCache._();
   static final RasterCache instance = RasterCache._();
@@ -43,11 +39,10 @@ class RasterCache {
   final LinkedHashMap<String, _Kept> _kept = LinkedHashMap();
   int _bytes = 0;
 
-  /// bytes is how much the cache holds now.
   int get bytes => _bytes;
   int get length => _kept.length;
 
-  /// keys is what is kept, by name, for the tests.
+  /// keys is what is kept, by name, for tests.
   Iterable<String> get keys => _kept.keys;
 
   /// get is the raster kept as [key], if it was drawn from [from].
@@ -74,19 +69,14 @@ class RasterCache {
     return kept.image;
   }
 
-  /// sized is the raster kept for the layer [key] -- drawn from [from] --
-  /// to draw at [w] by [h] pixels.
-  ///
-  /// Each size class keeps two at most: a full one and, while a gesture is
-  /// under way, a draft; keying by exact size filled the budget with sizes
-  /// passed through during a resize or zoom. While drafting, a full one
-  /// still good is used rather than drawing a draft.
-  ///
-  /// A full one [nearEnough] the size asked for is scaled to fit rather than
-  /// drawn again, so a sidebar sliding open (the canvas a few pixels smaller
-  /// each frame) does not redraw every adjusted layer. The size class keeps
-  /// the scenes-list thumbnail apart from the canvas raster, so the two do
-  /// not evict each other.
+  /// sized is the raster kept for layer [key], drawn from [from], to draw at
+  /// [w] by [h] pixels. Each size class keeps two at most: a full one and,
+  /// during a gesture, a draft; keying by exact size filled the budget with
+  /// sizes passed through in a resize or zoom. While drafting, a full one
+  /// still good is used rather than drawing a draft. A full one [nearEnough]
+  /// the size is scaled rather than redrawn, so a sidebar sliding open does
+  /// not redraw every adjusted layer each frame. Size classes keep the
+  /// scenes-list thumbnail and the canvas raster from evicting each other.
   ui.Image? sized(String key, List<Object?> from, int w, int h) {
     key = "$key|${_sizeClass(w, h)}";
     var full = get("$key|full", from);
@@ -122,11 +112,11 @@ class RasterCache {
     put("$key|${drafting ? "draft" : "full"}", from, image);
   }
 
-  /// drawn counts the rasters put, for the tests to tell a raster kept from
-  /// one drawn again.
+  /// drawn counts rasters put, for tests to tell a kept raster from a
+  /// redrawn one.
   int drawn = 0;
 
-  /// put keeps [image] as [key], drawn from [from]. The cache owns it now.
+  /// put keeps [image] as [key], drawn from [from]; the cache owns it.
   void put(String key, List<Object?> from, ui.Image image) {
     drawn++;
     CanvasPerf.count("rasterPut");
@@ -141,7 +131,6 @@ class RasterCache {
     }
   }
 
-  /// forget drops everything kept for the element [id].
   void forget(String id) {
     var keys = [
       for (var k in _kept.keys)
@@ -152,7 +141,6 @@ class RasterCache {
     }
   }
 
-  /// clear drops everything.
   void clear() {
     for (var kept in _kept.values) {
       kept.image.dispose();

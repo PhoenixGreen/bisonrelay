@@ -10,11 +10,8 @@ import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 
 // sampler.dart plays notes: a bank's samples where there is a bank (see
-// soundfont.dart), otherwise built-in piano, drum and plucked voices, so an
-// instrument sounds the moment it is added -- each shaped as the
-// instrument's InstrumentShape has it (instrument_shape.dart): its own
-// volume envelope, a filter with an envelope, an LFO, one voice or many,
-// gliding from note to note.
+// soundfont.dart), otherwise built-in voices, so an instrument sounds the
+// moment it is added. Each is shaped by its InstrumentShape.
 //
 // Generator meanings, and the 0.4 scale on initial attenuation, follow
 // FluidSynth, which MuseScore's bank was voiced for.
@@ -28,13 +25,13 @@ abstract class Voice {
   bool released = false;
   bool done = false;
 
-  /// pitch is the bend from the voice's key as a ratio (pitch bend plus mod
-  /// wheel vibrato). Plucked and drum voices ignore it.
+  /// pitch is the bend from the key as a ratio (bend plus mod wheel
+  /// vibrato). Plucked and drum voices ignore it.
   double pitch = 1;
 
-  /// heldAs is the key it answers to: [key], or where a legato note moved
-  /// it. offset is how far it plays from [key] there, in semitones, and
-  /// slide how far it still has to glide.
+  /// heldAs is the key it answers to: [key], or where legato moved it.
+  /// offset is how far it plays from [key], in semitones; slide, how far
+  /// it still has to glide.
   int heldAs;
   double offset = 0, slide = 0;
 
@@ -42,25 +39,21 @@ abstract class Voice {
   /// voices, a side each.
   int note = 0;
 
-  /// The instrument's own envelopes, where it has them, and its filter's
-  /// state, a side each.
+  /// The instrument's own envelopes, if any, and its filter's state.
   _Adsr? _envelope, _filterEnvelope;
   double _l1 = 0, _l2 = 0, _r1 = 0, _r2 = 0;
 
   Voice(this.key) : heldAs = key;
 
-  /// ending is whether its key is let go: it is dying away.
   bool get ending => released || (_envelope?.letGo ?? false);
 
   void release() => released = true;
 
-  /// render adds the next [n] frames of the voice to [l] and [r].
   void render(Float32List l, Float32List r, int n);
 }
 
 double _seconds(int timecents) => math.pow(2, timecents / 1200).toDouble();
 
-/// _SfVoice is a voice of a SoundFont zone.
 class _SfVoice extends Voice {
   final Int16List data;
   final int end, loopStart, loopEnd;
@@ -110,7 +103,6 @@ class _SfVoice extends Voice {
             (_seconds(z[Gen.holdVolEnv] + z[Gen.keyToVolEnvHold] * (60 - key)) *
                     mixRate)
                 .round(),
-        // Decay and release times are times to fall 100dB.
         _decayFactor = _fall(_seconds(
             z[Gen.decayVolEnv] + z[Gen.keyToVolEnvDecay] * (60 - key))),
         _sustain =
@@ -131,18 +123,16 @@ class _SfVoice extends Voice {
     return math.pow(2, cents / 1200) * z.sample.rate / mixRate;
   }
 
-  /// _gain is the zone's level at [velocity]: its initial attenuation (times
-  /// FluidSynth's 0.4) and the spec's default velocity modulator, which
-  /// comes to velocity squared.
+  /// _gain is the zone's level at [velocity]: initial attenuation (times
+  /// FluidSynth's 0.4) and the default velocity modulator, velocity squared.
   static double _gain(Zone z, int velocity) {
     var cb = z[Gen.attenuation].clamp(0, 1440) * 0.4;
     var v = velocity.clamp(1, 127) / 127;
     return math.pow(10, -cb / 200) * v * v;
   }
 
-  /// _filter is the zone's low-pass as biquad coefficients, or null for
-  /// none. The default modulator lowers it by up to two octaves for a soft
-  /// note.
+  /// _filter is the zone's low-pass as biquad coefficients, or null. The
+  /// default modulator lowers it up to two octaves for a soft note.
   static List<double>? _filter(Zone z, int velocity) {
     var cents = z[Gen.filterFc] - 2400 * (1 - velocity.clamp(1, 127) / 127);
     if (cents >= 13500) return null;
@@ -161,7 +151,6 @@ class _SfVoice extends Voice {
     ];
   }
 
-  /// _next is the envelope's next value.
   double _next() {
     if (!_enveloped) return 1;
     if (released) {
@@ -237,8 +226,8 @@ class _PianoVoice extends Voice {
       if (f > mixRate / 2.2) continue;
       _inc[k] = 2 * math.pi * f / mixRate;
       _amp[k] = math.pow(h, -(1.6 - bright * 0.7)).toDouble();
-      // Seconds for the partial to fall away: long for a low note's
-      // fundamental, short for a high note's upper partials.
+      // Seconds to fall away: long for a low fundamental, short for high
+      // partials.
       var life = (7.0 * math.pow(2, -(key - 40) / 24)) / (1 + k * 0.6);
       _decay[k] = math.exp(-1 / (life.clamp(0.2, 12.0) * mixRate / 6.9));
     }
@@ -280,8 +269,8 @@ class _DrumVoice extends Voice {
   final double _gain;
   double _phase = 0;
   int _t = 0;
-  // Per drum: tone start and end Hz, tone and noise lifetimes in seconds,
-  // tone and noise levels, and noise brightness.
+  // Per drum: tone start/end Hz, tone and noise lifetimes (s), tone and
+  // noise levels, noise brightness.
   late final double _f0, _f1, _toneLife, _noiseLife, _tone, _hiss, _bright;
   double _lp = 0, _hp = 0;
 
@@ -333,7 +322,6 @@ class _DrumVoice extends Voice {
       }
       if (_hiss > 0) {
         var x = _noise.nextDouble() * 2 - 1;
-        // Brighter by taking away more of the low end.
         _lp += (x - _lp) * (1 - _bright);
         _hp = x - _lp;
         v += _hp * math.exp(-t / _noiseLife) * _hiss;
@@ -393,11 +381,9 @@ class _PluckVoice extends Voice {
   }
 }
 
-/// _Patch is a built-in sound for a General MIDI family, played by a
-/// _SynthVoice: its wave, a second one detuned beside it, breath, its
-/// envelope, how open its filter is (times the note), how far the filter
-/// opens with the envelope, a vibrato, and -- for bells -- a frequency
-/// modulator's ratio and how much it bites, dying away.
+/// _Patch is a built-in sound for a General MIDI family: its wave, a
+/// detuned second wave, breath, envelope, filter opening (times the note)
+/// and envelope sweep, vibrato, and for bells an FM ratio and depth.
 class _Patch {
   final int wave; // 0 sine, 1 saw, 2 square, 3 triangle, 4 organ
   final double detune, noise;
@@ -421,9 +407,9 @@ class _Patch {
       this.level = 0.22});
 }
 
-/// _patches are the built-in sounds, by General MIDI family (program ~/ 8).
-/// Null for a family played by a voice of its own: pianos, guitars, basses
-/// and plucked ethnic instruments.
+/// _patches are the built-in sounds by General MIDI family (program ~/ 8).
+/// Families with a voice of their own (pianos, guitars, basses, plucked
+/// ethnic) are absent.
 const Map<int, _Patch> _patches = {
   // Chromatic percussion: bells, a struck bar's inharmonic ring.
   1: _Patch(
@@ -554,9 +540,8 @@ const Map<int, _Patch> _patches = {
       level: 0.22),
 };
 
-/// _SynthVoice plays a _Patch: band-limited waves (PolyBLEP), two of them
-/// detuned, through two one-pole low-passes that open with the touch and
-/// the envelope.
+/// _SynthVoice plays a _Patch: two detuned PolyBLEP waves through two
+/// one-pole low-passes that open with the touch and the envelope.
 class _SynthVoice extends Voice {
   final _Patch p;
   final double _f0, _gain, _bright;
@@ -641,10 +626,8 @@ class _SynthVoice extends Voice {
   }
 }
 
-/// _Adsr is an envelope: up in a straight line over its attack, down to its
-/// sustain over its decay, held there, then to silence over its release
-/// once let go -- each fall within a thousandth (60dB) of its end in the
-/// time it is given.
+/// _Adsr is an envelope: linear attack, decay to sustain, hold, release
+/// once let go; each fall reaches 60dB down in the time it is given.
 class _Adsr {
   final int _attack;
   final double _decay, _sustain, _release;
@@ -671,7 +654,6 @@ class _Adsr {
   }
 }
 
-/// Sampler is an instrument: a bank's preset, or a built-in voice.
 class Sampler {
   final SoundFont? font;
   final SfPreset? preset;
@@ -684,14 +666,13 @@ class Sampler {
   /// look picks the built-in voice used with no bank.
   final InstrumentLook look;
 
-  /// shape is how it plays: see instrument_shape.dart. Changed as it plays,
-  /// the next note has it, and the filter, LFO and bend at once.
+  /// shape is how it plays (instrument_shape.dart). A change reaches the
+  /// next note, and the filter, LFO and bend at once.
   InstrumentShape shape;
   final List<Voice> _voices = [];
 
-  /// patch is the synth patch it plays, where it plays one (see
-  /// patch_voice.dart): set as it plays, the next note has it -- and,
-  /// wired as before, the notes sounding hear a setting changed at once.
+  /// patch is the synth patch it plays, if any (patch_voice.dart). A change
+  /// reaches the next note; with the same wiring, sounding notes too.
   SynthPatch? get patch => _graph?.patch;
   set patch(SynthPatch? p) {
     if (p == null) {
@@ -737,28 +718,24 @@ class Sampler {
   /// until it is let up.
   final Set<int> _pedalled = {};
 
-  /// _held are the keys down, the last pressed last, with how hard each was
-  /// struck: where one voice plays, letting go of a note goes back to the
-  /// one held before it.
+  /// _held are the keys down, last pressed last: with one voice, letting go
+  /// returns to the note held before.
   final List<int> _held = [];
   final Map<int, int> _struck = {};
 
-  /// _notes counts the notes started, to tell one from another.
   int _notes = 0;
 
-  /// _time is how long it has played, for the vibrato's swing, and
-  /// _lfoPhase where the LFO is in its cycle.
+  /// _time drives the vibrato's swing; _lfoPhase is the LFO's place.
   double _time = 0, _lfoPhase = 0;
   double _gainL = 1, _gainR = 1;
   bool _rendered = false;
   Float32List _l = Float32List(0), _r = Float32List(0);
 
-  /// _step is how many frames are rendered together: the LFO, the filter's
-  /// envelope and a glide move between them.
+  /// _step is how many frames render together: the LFO, filter envelope
+  /// and glide move between steps.
   static const int _step = 64;
   final Float32List _vl = Float32List(_step), _vr = Float32List(_step);
 
-  /// control sets one of the channel's controllers, 0 to 1.
   void control(MidiControl c, double value) {
     _controls[c] = value.clamp(0.0, 1.0);
     if (c == MidiControl.sustain && value < 0.5) {
@@ -807,8 +784,8 @@ class Sampler {
     _start(key, velocity, from: from);
   }
 
-  /// _start sounds [key], gliding from [from] (a key, in semitones) where it
-  /// is given and the instrument glides.
+  /// _start sounds [key], gliding from [from] (in semitones) if the
+  /// instrument glides.
   void _start(int key, int velocity, {double? from}) {
     var started = <Voice>[];
     var f = font, p = preset;
@@ -821,8 +798,6 @@ class Sampler {
         started.add(_SfVoice(key, velocity, z, f.samples, enveloped: !own));
       }
     } else {
-      // Built in: the drum kit, or the program's family -- a piano, a
-      // plucked string, or one of the synth's patches.
       var family = program.clamp(0, 127) ~/ 8;
       started.add(look == InstrumentLook.drums || bank == 128
           ? _DrumVoice(key, velocity)
@@ -852,8 +827,7 @@ class Sampler {
     _trim();
   }
 
-  /// _moveTo moves [v] to [key] -- a legato note -- gliding there where the
-  /// instrument glides, else at once.
+  /// _moveTo moves [v] to [key] for legato, gliding if the instrument does.
   void _moveTo(Voice v, int key) {
     var now = v.offset + v.slide;
     v.offset = (key - v.key).toDouble();
@@ -861,7 +835,6 @@ class Sampler {
     v.heldAs = key;
   }
 
-  /// _end lets [v] go: its own release, or the instrument's.
   void _end(Voice v) {
     var amp = v._envelope;
     if (amp == null) {
@@ -872,9 +845,8 @@ class Sampler {
     v._filterEnvelope?.letGo = true;
   }
 
-  /// _trim cuts voices past the most there may be -- the oldest let-go note
-  /// first, then the oldest of all -- and notes past the instrument's
-  /// [InstrumentShape.voices].
+  /// _trim cuts voices past [maxVoices] (oldest let-go first, then oldest)
+  /// and notes past [InstrumentShape.voices].
   void _trim() {
     while (_voices.length > maxVoices) {
       var old = _voices.indexWhere((v) => v.ending);
@@ -930,8 +902,7 @@ class Sampler {
     }
   }
 
-  /// render adds the next [n] frames of everything sounding to [l] and [r],
-  /// through the controllers.
+  /// render adds the next [n] frames of everything sounding to [l] and [r].
   void render(Float32List l, Float32List r, int n) {
     if (_l.length < n) {
       _l = Float32List(n);
@@ -944,9 +915,8 @@ class Sampler {
     for (var at = 0; at < n; at += _step) {
       var m = math.min(_step, n - at);
       var lfo = shape.lfoDepth > 0 ? math.sin(_lfoPhase) * shape.lfoDepth : 0.0;
-      // The bend wheel bends as far as the instrument says; the mod wheel
-      // gives up to half a semitone of vibrato at 5.5Hz; the LFO, a
-      // semitone either way.
+      // Bend wheel: as far as the instrument says. Mod wheel: up to half a
+      // semitone of vibrato at 5.5Hz. LFO: a semitone either way.
       var bend =
           (_controls[MidiControl.pitchBend]! - 0.5) * 2 * shape.bendRange;
       var vibrato = _controls[MidiControl.modulation]! *
@@ -1000,8 +970,8 @@ class Sampler {
     var pan = _controls[MidiControl.pan]!;
     var toL = gain * (pan <= 0.5 ? 1 : (1 - pan) * 2);
     var toR = gain * (pan >= 0.5 ? 1 : pan * 2);
-    // Ramped across the block so a moving curve never steps, except the
-    // first block, which starts at the set level.
+    // Ramped across the block so a moving curve never steps; the first
+    // block starts at the set level.
     if (!_rendered) {
       _rendered = true;
       _gainL = toL;
@@ -1018,14 +988,12 @@ class Sampler {
     _gainR = toR;
   }
 
-  /// _shaped puts [v]'s [m] frames, in _vl and _vr, through the instrument's
-  /// filter and its own volume envelope. [lfo] is the LFO's swing now,
-  /// minus to plus its depth.
+  /// _shaped puts [v]'s [m] frames through the instrument's filter and
+  /// volume envelope. [lfo] is the LFO's swing, within its depth.
   void _shaped(Voice v, int m, double lfo) {
     var shape = this.shape;
     if (shape.filter != SynthFilter.off) {
-      // Its corner: up (or down) as far as the filter's envelope is open,
-      // and two octaves either way of the LFO.
+      // Corner: moved by the filter envelope, and two octaves by the LFO.
       var octaves = (v._filterEnvelope?.level ?? 0) * shape.filterEnvelope * 4 +
           (shape.lfoTarget == LfoTarget.filter ? lfo * 2 : 0);
       var hz = (shape.cutoff * math.pow(2, octaves))
@@ -1036,7 +1004,6 @@ class Sampler {
       var k = 1 / (math.sqrt1_2 * math.pow(28, shape.resonance));
       var a1 = 1 / (1 + g * (g + k)), a2 = g * a1, a3 = g * a2;
       var kind = shape.filter;
-      // A side at a time: its two states in, the filtered frames out.
       (double, double) side(Float32List x, double c1, double c2) {
         for (var i = 0; i < m; i++) {
           var input = x[i];

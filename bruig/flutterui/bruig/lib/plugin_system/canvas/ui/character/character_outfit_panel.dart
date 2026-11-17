@@ -7,15 +7,13 @@ import 'package:flutter/material.dart';
 // Character base step: the whole outfit's quick changes, and each piece (the
 // body's own, none, or one made to fit, with its cut, colour and pattern).
 
-/// CharacterOutfitControls are the settings of [part]: the outfit, or one
-/// piece of it (see wearPartId).
+/// CharacterOutfitControls are [part]'s settings: the outfit, or one piece.
 class CharacterOutfitControls extends StatelessWidget {
   final String part;
   final CharacterOutfit outfit;
   final ValueChanged<CharacterOutfit> onChanged;
 
-  /// bodyName is whose body it is ("Vivi"); [own] is the pieces that body
-  /// comes with.
+  /// bodyName is whose body it is ("Vivi"); [own] is the pieces it comes with.
   final String bodyName;
   final Set<WearSlot> own;
 

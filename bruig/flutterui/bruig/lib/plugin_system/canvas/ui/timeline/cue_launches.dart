@@ -3,10 +3,9 @@ import 'package:bruig/plugin_system/canvas/ui/mixer/slots_window.dart';
 import 'package:flutter/material.dart';
 
 // cue_launches.dart is a row of cue launches over the slots beside the
-// timeline's rows: the canvas shown's over its channels, and -- on a scene
-// with cues of its own (Ken, 2026-11-10: per-canvas cues) -- the master's
-// over its channels, in the All scenes heading. Each launches the whole
-// row of its canvas from the next bar.
+// timeline's rows: the canvas shown's over its channels and, on a scene with
+// cues of its own, the master's over its channels in the All scenes
+// heading. Each launches its canvas's whole row from the next bar.
 
 /// cueLaunchRow is a launch for each cue of the canvas shown -- or,
 /// [master], of the master -- scrolled with the slots under it.

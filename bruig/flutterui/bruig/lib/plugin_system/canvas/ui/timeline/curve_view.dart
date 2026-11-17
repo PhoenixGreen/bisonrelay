@@ -5,14 +5,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// curve_view.dart is what the two Curves editors share (Ken, 2026-11-14):
-// the clip's (motion_curves.dart) and an element's own keyframes'
-// (track_curves.dart). How far in on time and values they look, moved by
-// pinch, swipe and scroll; the playhead's cap; and an ease's handles.
-//
-// Time is a share of the whole the editor shows when fitted (0..1 across);
-// a value is a share of its line's range (0 at the foot, 1 at the top), so
-// one view moves every line together.
+// curve_view.dart is what the two Curves editors share, the clip's
+// (motion_curves.dart) and an element's own keyframes' (track_curves.dart):
+// the view, moved by pinch, swipe and scroll; the playhead's cap; and an
+// ease's handles. Time is a share of the fitted whole (0..1 across); a value
+// is a share of its line's range (0 at the foot, 1 at the top), so one view
+// moves every line together.
 
 /// CurveView is how far in, and where, a Curves graph is looking.
 class CurveView {

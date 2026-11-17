@@ -8,17 +8,14 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// presets_panel.dart is the canvases to start from, with a preview each: a
-// part of the Presets panel (see presets_library.dart).
-//
-// Each preview is drawn by the canvas renderer from the preset itself rather
-// than a stored picture, so it cannot go stale.
+// presets_panel.dart is the canvases to start from, a preview each, in the
+// Presets panel (presets_library.dart). Previews are drawn by the renderer
+// from the preset itself, not a stored picture, so they cannot go stale.
 
 class CanvasPresetsPanel extends StatefulWidget {
   final CanvasController controller;
 
-  /// onChoose is called with a fresh document built from the preset; see
-  /// CanvasPresetsSidebar.onChoose.
+  /// onChoose is given a fresh document built from the preset.
   final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
 
   /// query keeps only the presets whose names have it in them.
@@ -44,11 +41,9 @@ class CanvasPresetsPanel extends StatefulWidget {
 }
 
 class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
-  /// _thumbnails holds one built document per preset, for the previews.
-  ///
-  /// Built once, because some presets are costly to build (football lays out
-  /// twenty-two players). Never edited, so safe to share: a tap hands over a
-  /// newly built document, never this one.
+  /// _thumbnails holds one built document per preset, for the previews, built
+  /// once because some are costly (football lays out twenty-two players). Never
+  /// edited, so safe to share: a tap hands over a newly built document.
   late final Map<String, CanvasDocument> _thumbnails = {
     for (var preset in builtinPresets) preset.id: preset.build(),
   };
@@ -65,8 +60,7 @@ class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
                 preview: _thumbnails[preset.id],
                 onTap: () => widget.onChoose(preset, preset.build()),
               ),
-          // Saved ones under the built-in ones, so the start of the list never
-          // moves.
+          // Saved ones under the built-in, so the list's start never moves.
           if (widget.only == null)
             SavedCanvasPresets(
               controller: widget.controller,
@@ -94,8 +88,8 @@ class _PresetCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        // Its own Material inside the list: the sidebar's let the highlight
-        // spill over other sections and stay put when the list scrolled.
+        // Its own Material inside the list: the sidebar's would let the
+        // highlight spill over other sections and stay put on scroll.
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
@@ -168,8 +162,8 @@ class _PreviewPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     canvas.translate(offset.dx, offset.dy);
     canvas.scale(scale);
-    // No image source: a preset ships no pictures, and an element that had one
-    // would draw its placeholder rather than nothing at all.
+    // No image source: a preset ships no pictures, and an element that had
+    // one would draw its placeholder rather than nothing.
     paintCanvasDocument(canvas, document);
     canvas.restore();
   }

@@ -5,10 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
-/// BackgroundElement is a generated pattern in a rectangle: the generators
-/// the canvas's own background uses (see procedural_spec.dart), placed as an
-/// element instead of covering the document. Or, as [backdrop] says, a 3D
-/// stage (see [staged]) or parallax scenery (see [parallaxed]).
+/// BackgroundElement is a generated pattern (see procedural_spec.dart) as
+/// an element, or, by [backdrop], a 3D stage ([staged]) or scenery
+/// ([parallaxed]).
 class BackgroundElement extends CanvasElement {
   final ProceduralSpec spec;
 
@@ -18,19 +17,15 @@ class BackgroundElement extends CanvasElement {
   /// mask softens its edges and fades it out. See EdgeMask.
   final EdgeMask mask;
 
-  /// backdrop is whether this draws its pattern or its stage.
+  /// backdrop is whether this draws its pattern, its stage or its scenery.
   final BackdropKind backdrop;
 
-  /// stage is the stage's settings -- its camera, its set, its light -- or
-  /// null for one never made. Kept while the pattern is shown, so trying
-  /// the flat background and coming back does not lose the set.
-  ///
-  /// Only the settings: where it is, and the keys its camera moves on, are
-  /// this element's own. See [staged].
+  /// stage is the stage's settings, or null for none made; kept while the
+  /// pattern shows, so switching back keeps the set. See [staged].
   final StageElement? stage;
 
-  /// parallax is its parallax scenery, kept the same way, with its camera's
-  /// keys on this element's track too. See [parallaxed].
+  /// parallax is its parallax scenery, kept the same way, its camera's keys
+  /// on this element's track. See [parallaxed].
   final ParallaxElement? parallax;
 
   const BackgroundElement(
@@ -52,8 +47,8 @@ class BackgroundElement extends CanvasElement {
   @override
   Set<String> get assetIds => {...?parallax?.assetIds};
 
-  /// parallaxed is the scenery as this element draws it: in its box, on its
-  /// track. The parallax counterpart of [staged].
+  /// parallaxed is the scenery in this element's box, on its track: the
+  /// parallax counterpart of [staged].
   ParallaxElement get parallaxed =>
       (parallax ?? const ParallaxElement(ElementBase(id: ""))).rebase(base)
           as ParallaxElement;

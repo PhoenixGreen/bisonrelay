@@ -26,37 +26,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 
-// clip_editor.dart is the clip editor (Ableton's clip view): a clip in a
-// slot, double-clicked, opens here in the effects panel. Down the left, its
-// settings in columns: Clip (start, loop, colour), Launch (how a press plays
-// it, what its launch waits for, what it does when it has played), and Audio
-// (gain, reverse, crop) or Notes (pitch and time tools). On the right, what
-// it plays: an audio clip's sound with its start and loop on a ruler to
-// drag, or a MIDI clip's notes in the piano roll.
-//
-// Everything is in beats, as the clip is (see SessionClip). A warped audio
-// clip keeps the song's tempo (its sound rendered stretched, see warp.dart)
-// and its warp markers pin moments of the sound to beats. Its gain and pan
-// envelopes are drawn over its sound and rendered with it; a MIDI clip's
-// are its controllers' curves, in the piano roll.
-//
-// It is a device in the effects strip, first in the channel's chain: narrow,
-// one column of settings at a time; widened, all of them, and what it plays
-// as wide as the strip.
+// clip_editor.dart is the clip editor (Ableton's clip view), a device
+// first in the channel's chain: settings in columns on the left (Clip,
+// Launch, Audio or Notes), and on the right an audio clip's sound on a
+// ruler or a MIDI clip's notes in the piano roll. All in beats.
 
 const double _columnW = 220;
 
-/// _fadeInk is the fades and their grips, and the warp markers, amber as
-/// the prototype's.
+/// _fadeInk is the fades, their grips and the warp markers: amber.
 const _fadeInk = Color(0xFFE2B04A);
 
-/// _envelopeInk is an envelope drawn over the sound: the prototype's pink.
 const _envelopeInk = Color(0xFFF08BD0);
 
-/// EditorFrame is the clip editor's (or a part's piano roll's) place in the
-/// effects strip: a bar along the top with its name and buttons, as every
-/// device has, and the editor under it at the strip's height, given the
-/// room rather than scaled to it as a device is.
+/// EditorFrame is the clip editor's (or a part's piano roll's) place in
+/// the effects strip, given the room rather than scaled to it.
 class EditorFrame extends StatelessWidget {
   final String id;
   final String title;
@@ -67,7 +50,7 @@ class EditorFrame extends StatelessWidget {
   final VoidCallback onClose;
   final Widget child;
 
-  /// onResize is its right edge dragged, to the width it would be.
+  /// onResize is the width its dragged right edge asks for.
   final ValueChanged<double>? onResize;
 
   const EditorFrame({
@@ -137,7 +120,6 @@ class EditorFrame extends StatelessWidget {
     if (onResize case var resize?) {
       frame = Stack(children: [
         frame,
-        // Its right edge, dragged: no handle, only the cursor to say so.
         Positioned(
           right: 0,
           top: 0,
@@ -152,9 +134,9 @@ class EditorFrame extends StatelessWidget {
   }
 }
 
-/// _EdgeDrag is an editor's right edge, dragged: the width it had when the
-/// drag began plus how far the pointer has gone since, not each move added
-/// to the last, which loses moves that come between two frames.
+/// _EdgeDrag is an editor's right edge, dragged: the start width plus the
+/// pointer's travel since, not each move added to the last, which loses
+/// moves that come between two frames.
 class _EdgeDrag extends StatefulWidget {
   final double width;
   final ValueChanged<double> onResize;
@@ -188,16 +170,13 @@ class _EdgeDragState extends State<_EdgeDrag> {
 class ClipEditor extends StatefulWidget {
   final CanvasController controller;
 
-  /// wide is whether every column of settings shows, or one at a time.
   final bool wide;
 
-  /// part is whether it edits a MIDI channel's part (the piano roll's, opened
-  /// from its In) rather than a clip in a slot: its place on the timeline and
-  /// its notes' tools, and Play for the timeline.
+  /// part is whether it edits a MIDI channel's part (from the piano roll's
+  /// In) rather than a slot's clip.
   final bool part;
 
-  /// canWiden is whether there is room for every column: without it, one
-  /// at a time and no button to show them all.
+  /// canWiden is whether there is room for every column at once.
   final bool canWiden;
   const ClipEditor(
       {required this.controller,
@@ -226,10 +205,9 @@ class _ClipEditorState extends State<ClipEditor> {
     super.dispose();
   }
 
-  /// _changes tells the editor to be built again: on every change the
-  /// canvas tells of but the playhead moving on -- its waveform's playhead
-  /// moves by itself -- unless that took its clip from waiting to playing,
-  /// or from playing to stopped (Ken's systems review, 2026-11-08).
+  /// _changes rebuilds the editor on every canvas change but the playhead
+  /// moving (its waveform's playhead moves by itself), unless that took its
+  /// clip from waiting to playing, or playing to stopped.
   final ValueNotifier<int> _changes = ValueNotifier(0);
   Object? _stateWas;
 
@@ -246,8 +224,8 @@ class _ClipEditorState extends State<ClipEditor> {
     _changes.value++;
   }
 
-  /// _built is the editor as last built, handed back while nothing it
-  /// shows has changed: see CanvasMixer's.
+  /// _built is the editor as last built, handed back while nothing it shows
+  /// has changed: see CanvasMixer's.
   Widget? _built;
 
   @override
@@ -275,21 +253,18 @@ class _ClipEditorState extends State<ClipEditor> {
     _built = null;
   }
 
-  /// _said is what the last Reverse, Crop or Warp had to say, and _busy
-  /// whether one is still working.
+  /// _said is what the last Reverse, Crop or Warp said; _busy while working.
   String? _said;
   bool _busy = false;
 
-  /// _spectral is whether its sound is drawn as a spectrogram.
   bool _spectral = false;
 
-  /// _shown is the column of settings shown, narrow: 0 Clip, 1 Launch, 2
-  /// Audio or Notes.
+  /// _shown is the column shown when narrow: 0 Clip, 1 Launch, 2 Audio/Notes.
   int _shown = 0;
 
   /// _envelope is the key of the envelope drawn over an audio clip's sound
-  /// (its gain or pan, or a setting of its channel: see SessionClip.curveOf),
-  /// or null for its gain.
+  /// (its gain or pan, or a channel setting: see SessionClip.curveOf), or
+  /// null for its gain.
   String? _envelope;
   bool _envelopes = false;
 
@@ -326,14 +301,12 @@ class _ClipEditorState extends State<ClipEditor> {
             if (t == null || t.row != null || content == null || e == null) {
               return const SizedBox();
             }
-            // Straight to its toolbar, as the prototype's Notes: what it is
-            // is in the Chain's header, and Play is on the roll's bar.
+            // Straight to its toolbar: its name is in the Chain's header.
             return _layout(
                 look,
                 null,
-                // The columns a slot's clip has, in the same places: a part's place on
-                // the timeline, how it is launched (it is not, but a copy of it in a
-                // slot is) and its notes' tools.
+                // A slot clip's columns: a part's timeline place, its launch
+                // (for a copy in a slot) and its notes' tools.
                 [
                   ("Clip", _partColumn(look, e, content), "partColumn"),
                   (
@@ -348,12 +321,7 @@ class _ClipEditorState extends State<ClipEditor> {
           var t = c.clipEditing;
           var clip = c.editedClip;
           if (t == null || clip == null) return const SizedBox();
-          // An audio clip as the prototype's: a bar of tools over its sound,
-          // its settings in one column at the side, a line of help under.
           if (!clip.midi) return _audioEditor(look, t, clip);
-          // Its notes under one bar, as an audio clip's sound is: its Play
-          // first on the roll's own, next to the tools; no title row above
-          // (Ken, 2026-11-08: "an extra header row ... looks strange").
           return _layout(
               look,
               null,
@@ -366,7 +334,6 @@ class _ClipEditorState extends State<ClipEditor> {
         },
       );
 
-  // ---- An audio clip, as the prototype's.
 
   Widget _audioEditor(MixerLook look, PianoRollTarget t, SessionClip clip) {
     var shut = c.settingsShut("clip");
@@ -402,8 +369,7 @@ class _ClipEditorState extends State<ClipEditor> {
     ]);
   }
 
-  /// _tb is a button of the audio clip's bar: a word, an icon, or both; lit
-  /// where [on].
+  /// _tb is a button of the audio clip's bar: a word, an icon or both.
   Widget _tb(MixerLook look, String key, String label, VoidCallback? tap,
       {bool on = false, IconData? icon, String? tip, bool menu = false}) {
     var s = look.studio;
@@ -448,8 +414,7 @@ class _ClipEditorState extends State<ClipEditor> {
             style: TextStyle(fontSize: 11, color: look.studio.muted)),
       );
 
-  /// _tbReadout is a value on the bar, typed into on a double-click where
-  /// [onTyped] takes the number typed.
+  /// _tbReadout is a value on the bar, typed into on a double-click.
   Widget _tbReadout(MixerLook look, String key, String text,
       {ValueChanged<double>? onTyped}) {
     var style = TextStyle(
@@ -478,7 +443,6 @@ class _ClipEditorState extends State<ClipEditor> {
     );
   }
 
-  /// _tbMenu is a button of the bar opening [items] under it.
   Widget _tbMenu(MixerLook look, String key, String label, List<Widget> items,
           {IconData? icon, String? tip, bool enabled = true}) =>
       MenuAnchor(
@@ -694,7 +658,6 @@ class _ClipEditorState extends State<ClipEditor> {
                       ],
                       tip: "A setting of its channel, moved as it plays"),
               ]),
-              // A setting's envelope: the clip's length, or its own.
               if (setting) ...[
                 const SizedBox(width: 4),
                 SizedBox(
@@ -738,8 +701,6 @@ class _ClipEditorState extends State<ClipEditor> {
     );
   }
 
-  /// _slider is a setting of the clip's sound as the prototype draws it: a
-  /// name, a slider and its reading.
   Widget _slider(
       MixerLook look,
       String key,
@@ -781,7 +742,6 @@ class _ClipEditorState extends State<ClipEditor> {
             ),
           ),
         ),
-        // Its number, typed into on a double-click.
         SizedBox(
           width: 54,
           child: _TypedPlace(
@@ -957,9 +917,8 @@ class _ClipEditorState extends State<ClipEditor> {
     );
   }
 
-  /// _layout is the editor: its header over its columns of settings (every
-  /// one, wide; narrow, one at a time, picked above it) and what it plays
-  /// beside them.
+  /// _layout is the editor: its header over its settings columns, and what
+  /// it plays beside them.
   Widget _layout(MixerLook look, Widget? header,
       List<(String, List<Widget>, String)> settings, Widget editor) {
     var columns = [
@@ -972,16 +931,12 @@ class _ClipEditorState extends State<ClipEditor> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (header != null) header,
       Expanded(
-        // What it plays first, its settings at the right, as the
-        // prototype's inspector is.
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: editor),
           Container(width: 1, color: look.studio.edge),
           if (shut)
-            // Folded away: a strip naming them, to open them again.
             _shutStrip(look, settings.map((s) => s.$1).join(" · "), kind)
           else if (widget.wide) ...[
-            // Hidden, or folded to one column, for more of what it plays.
             Column(children: [
               const SizedBox(height: 4),
               _foldButton(look, kind),
@@ -1017,8 +972,6 @@ class _ClipEditorState extends State<ClipEditor> {
     ]);
   }
 
-  /// _shutStrip is the settings folded away: a narrow strip, their names
-  /// written down it, that opens them again.
   Widget _shutStrip(MixerLook look, String names, String kind) => Tooltip(
         message: "Show $names",
         child: InkWell(
@@ -1046,8 +999,6 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
-  /// _foldButton folds the settings away, for the most room for what it
-  /// plays.
   Widget _foldButton(MixerLook look, String kind) => Tooltip(
         message: "Hide the settings",
         child: InkWell(
@@ -1062,8 +1013,7 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
-  /// _columnsButton shows every column of settings, or folds them to one --
-  /// the one picked above it -- for more room for what it plays.
+  /// _columnsButton shows every settings column, or folds them to one.
   Widget _columnsButton(MixerLook look, {required bool wide}) => Tooltip(
         message: wide ? "Show one column" : "Show every column",
         child: InkWell(
@@ -1085,8 +1035,8 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
-  /// _partLaunchColumn is a part's Launch: it plays with the timeline, not
-  /// from a slot, but copied into one it is launched as any clip is.
+  /// _partLaunchColumn is a part's Launch: it plays with the timeline, but a
+  /// copy in a slot is launched as any clip is.
   List<Widget> _partLaunchColumn(MixerLook look, String channel) {
     var row = c.emptySlotOf(channel);
     return [
@@ -1112,9 +1062,8 @@ class _ClipEditorState extends State<ClipEditor> {
     ];
   }
 
-  /// _partColumn is where a part is: where it starts on the timeline, how
-  /// long the roll shows it, and the playhead's place in it (where a paste
-  /// goes and Play starts).
+  /// _partColumn is a part's timeline start, its length in the roll, and the
+  /// playhead's place in it (where a paste goes and Play starts).
   List<Widget> _partColumn(
       MixerLook look, AudioElement e, RollContent content) {
     var a = c.document.audio;
@@ -1156,7 +1105,6 @@ class _ClipEditorState extends State<ClipEditor> {
     ];
   }
 
-  // ---- The parts
 
   TextStyle _small(MixerLook look, [Color? colour]) =>
       TextStyle(fontSize: 11, color: colour ?? look.studio.text);
@@ -1192,7 +1140,6 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
-  /// _drop is a list to pick from, boxed as the prototype's selects are.
   Widget _drop<T>(MixerLook look, Key key, T value, List<(String, T)> items,
           ValueChanged<T> onChanged) =>
       Container(
@@ -1226,7 +1173,6 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
-  /// _row is a setting: its name, and what sets it.
   static String _seconds(double s) => s < 1
       ? "${(s * 1000).round()} ms"
       : "${s.toStringAsFixed(s < 10 ? 1 : 0)} s";
@@ -1244,7 +1190,6 @@ class _ClipEditorState extends State<ClipEditor> {
         ]),
       );
 
-  /// _stepper is a value with a step down and a step up either side.
   Widget _stepper(MixerLook look, String key, String value, VoidCallback? down,
       VoidCallback? up,
       {ValueChanged<String>? typed}) {
@@ -1286,8 +1231,7 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
-  /// _head is a heading of a column's, as the prototype's inspector has
-  /// them: small, uppercase, quiet -- and [end] at its right.
+  /// _head is a column's heading: small, uppercase, quiet, [end] at right.
   Widget _head(MixerLook look, String title, {String? end, Key? key}) {
     var style = TextStyle(
         fontSize: 10,
@@ -1339,8 +1283,7 @@ class _ClipEditorState extends State<ClipEditor> {
     ];
   }
 
-  /// _envelopeKey is the envelope shown: the one chosen, while its channel
-  /// still has it, else the clip's gain.
+  /// _envelopeKey is the chosen envelope while its channel has it, else gain.
   String _envelopeKey(SessionClip clip, PianoRollTarget t) {
     var key = _envelope;
     if (key != null && _envelopeChoices(clip, t).any((c) => c.$2 == key)) {
@@ -1349,8 +1292,7 @@ class _ClipEditorState extends State<ClipEditor> {
     return ClipEnvelope.gain.name;
   }
 
-  /// _envelopeRest is envelope [key]'s height with no points: the clip as it
-  /// is, or the setting where its channel has it.
+  /// _envelopeRest is envelope [key]'s height with no points.
   double _envelopeRest(String key, PianoRollTarget t) {
     for (var e in ClipEnvelope.values) {
       if (e.name == key) return e.rest;
@@ -1361,8 +1303,7 @@ class _ClipEditorState extends State<ClipEditor> {
     return what.height(what.own(lane.mix));
   }
 
-  /// _place is a place in a clip, as Ableton shows it: bar, beat, and
-  /// sixteenth, from one.
+  /// _place is a place in a clip as bar.beat.sixteenth, from one.
   String _place(double beats) {
     var bpb = c.document.audio.beatsPerBar;
     var bar = (beats / bpb).floor() + 1;
@@ -1371,9 +1312,9 @@ class _ClipEditorState extends State<ClipEditor> {
     return "$bar.$beat.$sixteenth";
   }
 
-  /// _secondsAt and _beatsAt turn a place in [clip], in beats, into how far
-  /// into its sound that is, in seconds, and back: by its warp map when
-  /// warped, else at the song's tempo (faster with its pitch).
+  /// _secondsAt and _beatsAt convert a place in [clip] in beats to seconds
+  /// into its sound and back: by its warp map when warped, else at the
+  /// song's tempo (faster with its pitch).
   double _secondsAt(SessionClip clip, double beats) {
     var spb = math.max(0.001, c.document.audio.secondsPerBeat);
     var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
@@ -1388,8 +1329,7 @@ class _ClipEditorState extends State<ClipEditor> {
 
   List<Widget> _clipColumn(MixerLook look, SessionClip clip) {
     var bpb = c.document.audio.beatsPerBar;
-    // A place typed as Ableton's are: "3", "3.2" or "3.2.3" (bar, beat,
-    // sixteenth). One that is not a place is left as it was.
+    // A place typed as "3", "3.2" or "3.2.3"; anything else is ignored.
     ValueChanged<String> typed(
             SessionClip Function(SessionClip x, double beats) change) =>
         (text) {
@@ -1406,7 +1346,6 @@ class _ClipEditorState extends State<ClipEditor> {
       ..sort();
     String barsText(double b) =>
         b == 1 ? "1 bar" : "${b == b.roundToDouble() ? b.round() : b} bars";
-    // Readouts, as the prototype's: each typed into once clicked.
     var readout = _small(look).copyWith(
         fontSize: 11, fontFeatures: const [FontFeature.tabularFigures()]);
     Widget place(String key, String value, ValueChanged<String> onTyped) =>
@@ -1420,8 +1359,8 @@ class _ClipEditorState extends State<ClipEditor> {
       _row(
           look,
           "Starts",
-          // Typed as a place, or a time ("0.18s", "180ms"): a sound's start
-          // is set by ear.
+          // A place or a time ("0.18s", "180ms"): a sound's start is set by
+          // ear.
           place(
               "clipStart",
               "${_place(clip.start)} · "
@@ -1452,7 +1391,6 @@ class _ClipEditorState extends State<ClipEditor> {
                   typed((x, b) => x.copyWith(loopStart: b))),
             ),
             Text(" – ", style: readout),
-            // Its end typed: the loop as long as that makes it.
             Flexible(
               child: place(
                   "clipEnds",
@@ -1462,7 +1400,6 @@ class _ClipEditorState extends State<ClipEditor> {
                       : x)),
             ),
             const SizedBox(width: 4),
-            // Round its loop until stopped, or once through.
             Tooltip(
               message: clip.loop
                   ? "Loops: round until it is stopped"
@@ -1606,8 +1543,8 @@ class _ClipEditorState extends State<ClipEditor> {
                   const [("From its start", false), ("Takes over", true)],
                   (v) => c.editClip((x) => x.copyWith(legato: v))),
             )),
-        // How much a pad's velocity (a Push's, launching it) sets how loud
-        // it plays. A click is full velocity.
+        // How much a pad's velocity (a Push launching it) sets the loudness; a
+        // click is full velocity.
         _row(
             look,
             "Velocity",
@@ -1690,12 +1627,9 @@ class _ClipEditorState extends State<ClipEditor> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// An audio clip's sound
-// ---------------------------------------------------------------------------
 
-/// _Sound is a stored sound as the editor draws it: the loudest of each of
-/// its slices, how long it is, and where it is struck.
+/// _Sound is a stored sound as drawn: the loudest of each slice, its
+/// length, and where it is struck.
 typedef _Sound = ({
   Float32List peaks,
   Float32List left,
@@ -1704,12 +1638,10 @@ typedef _Sound = ({
   List<double> hits
 });
 
-/// _soundsOf are each stored sound, worked out once.
 final Map<String, Future<_Sound?>> _soundsOf = {};
 
 const int _peakSlices = 4000;
 
-/// _spectraOf are each stored sound's spectrogram, made once.
 final Map<String, Future<ui.Image?>> _spectraOf = {};
 
 Future<ui.Image?> _spectrumOf(String assetId) =>
@@ -1733,19 +1665,18 @@ Future<ui.Image?> _spectrumOf(String assetId) =>
       return _spectraMade[assetId] = await done.future;
     }();
 
-/// _spectraMade are the spectrograms made, to draw at once.
 final Map<String, ui.Image> _spectraMade = {};
 
 Future<_Sound?> _soundOf(String assetId) => _soundsOf[assetId] ??= () async {
       var audio = await CanvasController.clipAudio(assetId);
-      // Not kept, unread: it is read again next time.
+      // Not kept, unread: read again next time.
       if (audio == null) {
         _soundsOf.remove(assetId);
         return null;
       }
       var (l, r) = audio;
-      // Off the app's own isolate: a whole song's peaks and hits there hold up
-      // the mixer's sound.
+      // Off the UI isolate: a whole song's peaks and hits there hold up the
+      // mixer's sound.
       return Isolate.run(() => _drawingOf(l, r));
     }();
 
@@ -1773,28 +1704,23 @@ _Sound _drawingOf(Float32List l, Float32List r) {
 enum _Handle { start, loop, length, marker, point, fadeIn, fadeOut }
 
 /// _SampleView is an audio clip's sound against the song's beats: its
-/// start's flag and its loop's bar on a ruler over it, to drag, and, when
-/// warped, its warp markers under the ruler.
+/// start's flag and loop's bar on a ruler, to drag, and any warp markers.
 class _SampleView extends StatefulWidget {
   final CanvasController controller;
   final SessionClip clip;
 
-  /// envelope is the key of the envelope drawn over its sound (see
-  /// SessionClip.curveOf), or null; envelopeRest is its height with no
-  /// points, and envelopeLength its own length in beats, or null for one that
-  /// goes with the clip.
+  /// envelope is the key of the envelope drawn over its sound, or null;
+  /// envelopeRest is its height with no points, and envelopeLength its own
+  /// length in beats, or null to follow the clip.
   final String? envelope;
   final double envelopeRest;
   final double? envelopeLength;
 
-  /// spectral draws its sound as a spectrogram, under its wave.
   final bool spectral;
 
-  /// onSay tells the editor something to show on its line of help.
   final ValueChanged<String?>? onSay;
 
-  /// envelopeName is a channel setting's envelope's name, written over the
-  /// sound.
+  /// envelopeName is a channel setting's envelope's name.
   final String? envelopeName;
   const _SampleView(
       {required this.controller,
@@ -1818,24 +1744,24 @@ class _SampleViewState extends State<_SampleView>
   _Handle? _dragging;
   int _marker = 0;
 
-  /// The last marker tapped and when, for a double-click taking it out.
+  /// For a double-click taking a marker out.
   int? _tappedMarker;
 
-  /// The last envelope point tapped, for a double-click taking it out.
+  /// For a double-click taking a point out.
   int? _tappedPoint;
   DateTime _tappedAt = DateTime(0);
   double _dragFrom = 0, _valueFrom = 0;
 
-  /// _zoom is how far in the sound is drawn (one: all of it in view), and
-  /// _scroll the beat at the view's left edge. Setting a start finer than a
-  /// beat needs the sound seen closer than a bar.
+  /// _zoom is how far in the sound is drawn (one: all in view), and _scroll
+  /// the beat at the view's left edge: setting a start finer than a beat
+  /// needs the sound seen closer than a bar.
   double _zoom = 1;
   double _scroll = 0;
   static const double _maxZoom = 256;
 
-  /// _step is what a drag snaps to, at [beatW] pixels a beat: the finest grid
-  /// (a beat, a half, down to 1/256) still eight pixels wide. With Alt held,
-  /// nothing.
+  /// _step is what a drag snaps to, at [beatW] pixels a beat: the finest
+  /// grid (a beat, a half, down to 1/256) still eight pixels wide; nothing
+  /// with Alt held.
   static double _step(double beatW) {
     if (HardwareKeyboard.instance.isAltPressed) return 0;
     var step = 1.0;
@@ -1848,7 +1774,6 @@ class _SampleViewState extends State<_SampleView>
   static double _snap(double v, double step) =>
       step <= 0 ? v : (v / step).roundToDouble() * step;
 
-  /// _zoomAbout zooms by [factor], keeping the beat under [x] where it is.
   void _zoomAbout(double factor, double x, double fit) {
     var was = fit * _zoom;
     var under = x / was + _scroll;
@@ -1862,8 +1787,8 @@ class _SampleViewState extends State<_SampleView>
   @override
   void initState() {
     super.initState();
-    // The playhead, while it plays: the ticker runs only then, as it asks
-    // for a frame on every screen refresh.
+    // The ticker runs only while playing: it asks for a frame on every
+    // refresh.
     _ticker = createTicker((_) {
       var at = c.clipPlayhead;
       if (at != _playhead) setState(() => _playhead = at);
@@ -1895,7 +1820,6 @@ class _SampleViewState extends State<_SampleView>
     var audio = c.document.audio;
     var bpb = audio.beatsPerBar;
     var spb = math.max(0.001, audio.secondsPerBeat);
-    // Its spectrogram, once made, when the Spectrum view is on.
     ui.Image? spectrum;
     if (widget.spectral && sound != null) {
       spectrum = _spectraMade[sound.assetId];
@@ -1917,7 +1841,6 @@ class _SampleViewState extends State<_SampleView>
                 ? sound.end
                 : (fileSeconds > 0 ? fileSeconds : sound.length);
         var length = math.max(0.0, playEnd - playStart);
-        // Where a moment of the sound falls, in beats, and back: see _secondsAt.
         var map = clip.warpMap;
         var speed =
             math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
@@ -1926,9 +1849,7 @@ class _SampleViewState extends State<_SampleView>
         double secondOf(double beat) =>
             clip.warp ? map.sourceAt(beat) : beat * spb * speed;
         var soundBeats = beatOf(length);
-        // In view: the sound, its loop, and a bar more.
-        // In view: the sound and its loop, edge to edge, as the
-        // prototype's.
+        // In view: the sound and its loop, edge to edge.
         var beats = [
           soundBeats,
           clip.loopEnd(bpb),
@@ -1936,7 +1857,7 @@ class _SampleViewState extends State<_SampleView>
         ].reduce(math.max);
         var fit = size.maxWidth / beats;
         var beatW = fit * _zoom;
-        // Kept in reach: never past the end, never before the start.
+        // Never past the end, never before the start.
         var shown = size.maxWidth / beatW;
         var scroll =
             _scroll.clamp(0.0, math.max(0.0, beats - shown)).toDouble();
@@ -1946,8 +1867,7 @@ class _SampleViewState extends State<_SampleView>
         var markers = clip.warp ? clip.markers : const <WarpMarker>[];
         var top = _rulerH + _markersH;
         var spbNow = math.max(0.001, c.document.audio.secondsPerBeat);
-        // The fades' grips, at the top of the sound: where the fade in
-        // ends and the fade out begins.
+        // The fades' grips: where the fade in ends and the fade out begins.
         var fadeInX = xOf(clip.start + clip.fadeIn / spbNow);
         var fadeOutX = xOf(clip.loopEnd(bpb) - clip.fadeOut / spbNow);
         return GestureDetector(
@@ -1955,11 +1875,10 @@ class _SampleViewState extends State<_SampleView>
           key: const ValueKey("clipRuler"),
           behavior: HitTestBehavior.opaque,
           dragStartBehavior: DragStartBehavior.down,
-          // A warp marker added, at a hit near where it was clicked; one
-          // right-clicked taken out.
+          // A click adds a warp marker at a nearby hit; a right-click removes
+          // one.
           onTapUp: (d) {
             var p = d.localPosition;
-            // An envelope's point, where the sound is.
             if (widget.envelope case var env? when p.dy > top) {
               if (_pointNear(clip, env, beatW, top, size.maxHeight,
                       p + Offset(scroll * beatW, 0))
@@ -2042,7 +1961,6 @@ class _SampleViewState extends State<_SampleView>
               c.beginInteraction();
               return;
             }
-            // The fades' grips.
             if (p.dy >= top && p.dy <= top + 14) {
               if ((p.dx - fadeInX).abs() <= 8) {
                 _dragging = _Handle.fadeIn;
@@ -2086,8 +2004,8 @@ class _SampleViewState extends State<_SampleView>
           onPanUpdate: (d) {
             var handle = _dragging;
             if (handle == null) return;
-            // To the finest grid still a few pixels wide (see _step), or, Alt held,
-            // to nothing.
+            // To the finest grid still a few pixels wide (see _step), or with
+            // Alt held, to nothing.
             var moved = (d.localPosition.dx - _dragFrom) / beatW;
             switch (handle) {
               case _Handle.fadeIn:
@@ -2127,7 +2045,6 @@ class _SampleViewState extends State<_SampleView>
                   var points = [...x.curveOf(env)];
                   if (_marker >= points.length) return x;
                   points[_marker] = (math.max(0.0, beat), value);
-                  // Kept in order, and the one dragged followed.
                   var moved = points[_marker];
                   points.sort((a, b) => a.$1.compareTo(b.$1));
                   _marker = points.indexOf(moved);
@@ -2149,8 +2066,8 @@ class _SampleViewState extends State<_SampleView>
             c.endInteraction();
           },
           child: Listener(
-            // Two fingers along, or a wheel: across the sound. Pinched, or with Cmd
-            // or Ctrl held: in or out, about the pointer.
+            // Two fingers along, or a wheel: across the sound. Pinched, or with
+            // Cmd or Ctrl held: zoom about the pointer.
             onPointerSignal: (e) {
               if (e is! PointerScrollEvent) return;
               var keys = HardwareKeyboard.instance;
@@ -2224,8 +2141,7 @@ class _SampleViewState extends State<_SampleView>
                   key: clip.warpSignature(spb),
                 ),
               ),
-              // Closer in, further out, and all of it: in the sound's lower
-              // corner, off the ruler.
+              // Zoom buttons in the sound's lower corner, off the ruler.
               Positioned(
                 right: 6,
                 bottom: 6,
@@ -2271,7 +2187,6 @@ class _SampleViewState extends State<_SampleView>
     );
   }
 
-  /// _pinchFrom is the zoom a pinch started from.
   double _pinchFrom = 1;
 
   Widget _zoomButton(
@@ -2295,8 +2210,8 @@ class _SampleViewState extends State<_SampleView>
         ),
       );
 
-  /// _valueAt is an envelope's value at height [y] in the sound, between
-  /// [top] and [bottom]: one at the top, nought at the bottom.
+  /// _valueAt is an envelope's value at height [y]: one at [top], nought at
+  /// [bottom].
   double _valueAt(double y, double top, double bottom) =>
       (1 - (y - top - 6) / math.max(1, bottom - top - 12)).clamp(0.0, 1.0);
 
@@ -2308,7 +2223,6 @@ class _SampleViewState extends State<_SampleView>
     return length == null ? beat : beat.clamp(0.0, length - 0.25);
   }
 
-  /// _pointNear is the envelope point within reach of [p], or null.
   int? _pointNear(SessionClip clip, String env, double beatW, double top,
       double bottom, Offset p) {
     for (var (i, (b, v)) in clip.curveOf(env).indexed) {
@@ -2318,7 +2232,6 @@ class _SampleViewState extends State<_SampleView>
     return null;
   }
 
-  /// _markerNear is the marker within reach of [x], or null.
   int? _markerNear(List<WarpMarker> markers, double beatW, double x) {
     for (var (i, m) in markers.indexed) {
       if ((m.beat * beatW - x).abs() <= 7) return i;
@@ -2329,12 +2242,10 @@ class _SampleViewState extends State<_SampleView>
 
 class _SamplePainter extends CustomPainter {
   /// scroll is the beat at the left edge, zoomed in; step the grid a drag
-  /// snaps to, drawn where it is finer than a beat (nought for none).
+  /// snaps to, drawn where finer than a beat (nought for none).
   final double scroll, step;
   final Float32List? peaks;
 
-  /// left and right are each side's peaks: drawn as two halves, as the
-  /// prototype's L and R.
   final Float32List? left, right;
   final double fileSeconds, playStart, playLength;
   final double Function(double beat) secondOf;
@@ -2346,25 +2257,22 @@ class _SamplePainter extends CustomPainter {
   final double? playhead;
   final StudioColors studio;
 
-  /// envelope is the envelope's points (a beat and a value each) drawn over
-  /// the sound, or null for none; envelopeRest is its value with none.
+  /// envelope is the points (beat, value) drawn over the sound, or null;
+  /// envelopeRest is its value with none.
   final List<ControlPoint>? envelope;
   final double envelopeRest;
 
-  /// envelopeLength is the envelope's own length in beats (drawn once, then
-  /// repeated fainter along the clip), or null.
+  /// envelopeLength is its own length in beats (drawn once, then repeated
+  /// fainter), or null.
   final double? envelopeLength;
 
-  /// key is what the sound's drawing depends on beyond the rest: when it
-  /// changes, it is drawn again.
+  /// key is what the sound's drawing depends on beyond the rest.
   final String key;
 
-  /// envelopeLabel names the envelope shown, written over the sound.
   final String envelopeLabel;
 
-  /// gainCurve and panCurve are the clip's own envelopes: the sound drawn
-  /// as they make it, shown or not, as the prototype's is (Ken: the
-  /// envelope did not change the look of the sound).
+  /// gainCurve and panCurve are the clip's own envelopes: the sound is drawn
+  /// as they shape it, shown or not.
   final List<ControlPoint> gainCurve, panCurve;
 
   _SamplePainter({
@@ -2405,12 +2313,10 @@ class _SamplePainter extends CustomPainter {
     this.spectrum,
   });
 
-  /// spectrum is its sound as a spectrogram (see spectrogram.dart), drawn
-  /// under its wave when the Spectrum view is on.
+  /// spectrum is its sound as a spectrogram, drawn under its wave.
   final ui.Image? spectrum;
 
-  /// fadeIn and fadeOut are its fades, in beats, and [fadeCurve] their
-  /// way: drawn as ramps over the sound.
+  /// fadeIn and fadeOut are in beats, [fadeCurve] their shape.
   final double fadeIn, fadeOut;
   final FadeCurve fadeCurve;
 
@@ -2420,12 +2326,10 @@ class _SamplePainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = studio.inset);
     canvas.drawRect(
         Rect.fromLTWH(0, 0, size.width, top), Paint()..color = studio.panel);
-    // Zoomed in: the whole of it drawn along, and the view moved over it.
     var left = scroll * beatW;
     canvas.clipRect(Offset.zero & size);
     canvas.translate(-left, 0);
     size = Size(math.max(size.width, beats * beatW), size.height);
-    // The grid a drag snaps to, finer than a beat, faint.
     if (step > 0 && step < 1) {
       var fine = Paint()..color = studio.edge.withValues(alpha: 0.18);
       var from = (scroll / step).floor();
@@ -2441,7 +2345,6 @@ class _SamplePainter extends CustomPainter {
     var first = (loop ? math.min(start, loopStart) : start) * beatW;
     canvas.drawRect(Rect.fromLTRB(0, top, first, h), dim);
     canvas.drawRect(Rect.fromLTRB(loopEnd * beatW, top, size.width, h), dim);
-    // The quarters of each beat, faint, where there is room.
     if (beatW >= 24) {
       var quarter = Paint()..color = studio.edge.withValues(alpha: 0.16);
       for (var q = 0; q <= beats * 4; q++) {
@@ -2450,7 +2353,6 @@ class _SamplePainter extends CustomPainter {
         canvas.drawLine(Offset(x, top), Offset(x, h), quarter);
       }
     }
-    // The beats and bars, the bars numbered.
     var label = TextPainter(textDirection: TextDirection.ltr);
     var every = beatW * beatsPerBar < 28 ? 4 : 1;
     for (var b = 0; b <= beats; b++) {
@@ -2478,7 +2380,6 @@ class _SamplePainter extends CustomPainter {
       var pin = Paint()..color = _fadeInk;
       for (var b in markers) {
         var x = b * beatW;
-        // A flag on its staff, as the prototype's.
         canvas.drawPath(
             Path()
               ..moveTo(x, rulerH + 1)
@@ -2491,8 +2392,7 @@ class _SamplePainter extends CustomPainter {
             Paint()..color = _fadeInk.withValues(alpha: 0.4));
       }
     }
-    // Its spectrum, where each moment of it falls: a column of the picture
-    // every two pixels.
+    // Its spectrum: a column of the picture every two pixels.
     if ((spectrum, fileSeconds) case (var image?, var seconds)
         when seconds > 0) {
       var shownTo = left + size.width;
@@ -2511,8 +2411,7 @@ class _SamplePainter extends CustomPainter {
             paint);
       }
     }
-    // The sound, where each moment of it falls: each side a half, as the
-    // prototype's L and R -- or, over its spectrum, both together.
+    // Each side a half -- or, over its spectrum, both together.
     var peaks = this.peaks;
     if (peaks != null && fileSeconds > 0) {
       var stereo = spectrum == null && this.left != null && right != null;
@@ -2527,8 +2426,7 @@ class _SamplePainter extends CustomPainter {
         ..color = const Color(0xFF4F8FD6).withValues(alpha: 0.35)
         ..strokeWidth = 1;
       var first = loop ? math.min(start, loopStart) : start;
-      // Only what is in view, a pixel at a time: zoomed in far, the whole of
-      // it is many windows wide.
+      // Only what is in view: zoomed far in, the whole is many windows wide.
       var shownTo = left + size.width;
       for (var (k0, side) in sides.indexed) {
         var mid = top + band * k0 + band / 2;
@@ -2585,7 +2483,6 @@ class _SamplePainter extends CustomPainter {
             Paint()..color = studio.edge);
       }
     }
-    // The loop's bar over the ruler, and its end's grip.
     var brace = Paint()
       ..color = (loop ? studio.on : studio.muted).withValues(alpha: 0.45);
     var loopGrip = Paint()..color = loop ? studio.on : studio.muted;
@@ -2593,7 +2490,6 @@ class _SamplePainter extends CustomPainter {
         Rect.fromLTRB(loopStart * beatW, 2, loopEnd * beatW, 8), brace);
     canvas.drawRect(Rect.fromLTWH(loopStart * beatW - 2, 1, 4, 9), loopGrip);
     canvas.drawRect(Rect.fromLTWH(loopEnd * beatW - 2, 1, 4, 9), loopGrip);
-    // The start's flag.
     var sx = start * beatW;
     canvas.drawPath(
         Path()
@@ -2604,8 +2500,7 @@ class _SamplePainter extends CustomPainter {
         Paint()..color = studio.text);
     canvas.drawLine(Offset(sx, 11), Offset(sx, h),
         Paint()..color = studio.text.withValues(alpha: 0.35));
-    // The envelope: a line through its points, held flat before the first
-    // and after the last, over the sound dimmed.
+    // The envelope: held flat before the first point and after the last.
     if (envelope case var points?) {
       double y(double v) => top + 6 + (1 - v) * math.max(1, h - top - 12);
       const colour = _envelopeInk;
@@ -2643,8 +2538,7 @@ class _SamplePainter extends CustomPainter {
       if (length == null || length <= 0) {
         canvas.drawPath(once(0, size.width), line);
       } else {
-        // Its own length, repeated along the clip, the first pass the one
-        // edited.
+        // Repeated along the clip, the first pass the one edited.
         var span = length * beatW;
         canvas.drawPath(once(0, span), line);
         var faint = Paint()
@@ -2661,8 +2555,7 @@ class _SamplePainter extends CustomPainter {
         canvas.drawCircle(Offset(b * beatW, y(v)), 4, Paint()..color = colour);
       }
     }
-    // Its fades: the level rising from its start (and its loop's) and
-    // falling to its loop's end, the faded part shaded.
+    // Its fades, the faded part shaded.
     void ramp(double from, double to, bool rising) {
       if (to <= from) return;
       var path = Path();
@@ -2687,8 +2580,6 @@ class _SamplePainter extends CustomPainter {
             ..color = _fadeInk);
     }
 
-    // The fades' grips, amber squares at the top of the sound: dragged,
-    // the fades are longer or shorter.
     var grip = Paint()..color = _fadeInk;
     canvas.drawRect(
         Rect.fromLTWH((start + fadeIn) * beatW - 4, top + 1, 8, 8), grip);
@@ -2736,8 +2627,8 @@ class _SamplePainter extends CustomPainter {
       old.studio != studio;
 }
 
-/// beatsOfPlace is a place typed as Ableton's are ("bar.beat.sixteenth",
-/// "bar.beat" or "bar", each counted from one) in beats from the start, at
+/// beatsOfPlace is a place typed as Ableton's ("bar.beat.sixteenth",
+/// "bar.beat" or "bar", each from one) in beats from the start at
 /// [beatsPerBar]; null for what is not one.
 double? beatsOfPlace(String text, int beatsPerBar) {
   var parts = text.trim().split(RegExp(r"[.:\s]+"));
@@ -2756,9 +2647,8 @@ double? beatsOfPlace(String text, int beatsPerBar) {
   return (bar - 1) * beatsPerBar + (beat - 1) + (sixteenth - 1) / 4;
 }
 
-/// typedNumber is the number typed at the front of [text] -- "-3", "+2.5
-/// dB", "−1" -- and the unit after it, lower case ("" for none); null
-/// where it starts with no number.
+/// typedNumber is the number at the front of [text] ("-3", "+2.5 dB",
+/// "−1") and its unit in lower case; null where there is no number.
 (double, String)? typedNumber(String text) {
   var m = RegExp(r"^\s*([+\-−]?\d*\.?\d+)\s*([a-zA-Z%]*)")
       .firstMatch(text.trim());
@@ -2776,9 +2666,8 @@ class _TypedPlace extends StatefulWidget {
   final TextAlign align;
   final ValueChanged<String> onTyped;
 
-  /// doubleClick is whether it is typed into on a double-click, as a
-  /// setting's number is (a click on it is the slider's, or nothing),
-  /// rather than on one.
+  /// doubleClick types into it on a double-click, as a setting's number is
+  /// (a click is the slider's).
   final bool doubleClick;
   const _TypedPlace(
       {required this.value,
@@ -2800,7 +2689,6 @@ class _TypedPlaceState extends State<_TypedPlace> {
   @override
   void initState() {
     super.initState();
-    // Clicked away: left as it was.
     _focus.addListener(() {
       if (!_focus.hasFocus && _typing) setState(() => _typing = false);
     });
@@ -2863,7 +2751,6 @@ class _TypedPlaceState extends State<_TypedPlace> {
   }
 }
 
-/// toolbarGroup is a run of an editor toolbar's buttons, boxed together.
 Widget toolbarGroup(MixerLook look, List<Widget> children) => Container(
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(

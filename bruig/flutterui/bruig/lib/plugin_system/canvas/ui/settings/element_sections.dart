@@ -9,10 +9,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// element_sections.dart is the sections every element's panel has: where it
-// is, how it arrives, and the designs saved of its kind, said the same way in
-// every panel (image_sections.dart set the pattern). Each section is
-// remembered open or shut per kind: "shape.position", not "position".
+// element_sections.dart is the sections every element's panel has: place,
+// arrival and saved designs, each remembered open or shut per kind
+// ("shape.position").
 
 /// elementKindKey is how [e]'s kind names its sections' remembered state.
 String elementKindKey(CanvasElement e) => e.kind.name;
@@ -43,8 +42,8 @@ Widget elementCueCard(CanvasController controller, CanvasElement e) =>
             ],
             onChanged: (v) => controller.cueTo(e.id, v.isEmpty ? null : v),
           ),
-          // Or straight onto a word, where the voice has been heard: a cue
-          // is made where the word is said, named by it.
+          // Or straight onto a word the voice has been heard saying: a cue
+          // is made there, named by it.
           if (controller.words.isNotEmpty) ...[
             const CanvasLineBreak(),
             CanvasTextField(
@@ -70,8 +69,8 @@ Widget elementCueCard(CanvasController controller, CanvasElement e) =>
           ],
         ]);
 
-/// section is one of an element's own sections: [icon], [title], a line
-/// saying how it is set, remembered as "kind.name".
+/// section is one of an element's sections: [icon], [title], a summary
+/// line, remembered as "kind.name".
 Widget section(CanvasElement e, String name,
         {required IconData icon,
         required String title,
@@ -112,15 +111,15 @@ String boxSummary(BoxSpec b) {
 String typeSummary(TextSpec t) =>
     "${t.fontFamily} · ${shortNumber(t.fontSize)}";
 
-/// expanderAsSection is expanderSection for a part of a panel that is not an
-/// element's -- the canvas's own background -- remembered under [prefix].
+/// expanderAsSection is expanderSection for a panel part that is not an
+/// element's (the canvas's background), remembered under [prefix].
 Widget expanderAsSection(IconData icon, Widget expander,
     {String? summary, List<Widget> extra = const [], String prefix = ""}) {
   var x = expander as CanvasExpander;
   var name = x.remember ?? x.label;
   return CanvasSection(
-      // The expander's own key, where it had one, so what found it still
-      // finds the part of the panel it was.
+      // The expander's own key where it has one, so finders still find this
+      // part of the panel.
       key: x.key ?? ValueKey("elementSection-$name"),
       icon: icon,
       title: x.label,
@@ -131,9 +130,8 @@ Widget expanderAsSection(IconData icon, Widget expander,
       children: [...x.children, ...extra]);
 }
 
-/// edgeMaskSection is [mask], the edges of [e]'s box softened and faded --
-/// for a video or a pattern, whose hard rectangle is so often what needs
-/// taking away.
+/// edgeMaskSection is [mask], [e]'s box edges softened and faded: for a
+/// video or a pattern, whose hard rectangle often needs taking away.
 Widget edgeMaskSection(CanvasElement e, EdgeMask mask,
     ValueChanged<EdgeMask> write, VoidCallback begin, VoidCallback commit) {
   void now(EdgeMask next) {

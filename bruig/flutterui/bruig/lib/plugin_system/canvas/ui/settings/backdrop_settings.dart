@@ -6,10 +6,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_settings.dart';
 import 'package:flutter/material.dart';
 
-// backdrop_settings.dart is the first choice in a background's Pattern
-// layers -- a flat pattern or a 3D stage -- and the stage's settings for
-// when it is a stage. Shared by the canvas's own background and the
-// Background element, which make the same choice.
+// backdrop_settings.dart is a background's first Pattern choice (flat or a
+// 3D stage) and the stage's settings, for canvas and Background element.
 
 /// backdropKindPicker chooses what a background draws.
 Widget backdropKindPicker(
@@ -32,10 +30,8 @@ Widget backdropKindPicker(
       ],
     );
 
-/// stageBackdropSettings is a background's settings while it is a stage: the
-/// Pattern layers section holding only the kind picker, then the stage's
-/// camera, set and light. [write] is handed the edited stage, its camera's
-/// keys on its track, to put back where the stage lives.
+/// stageBackdropSettings is a stage background's settings: the kind picker,
+/// then camera, set and light. [write] puts back the edited stage.
 List<Widget> stageBackdropSettings(
   BuildContext context,
   CanvasController controller,

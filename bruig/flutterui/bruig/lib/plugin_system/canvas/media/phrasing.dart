@@ -4,16 +4,13 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
-// phrasing.dart shapes a take's words after it is spoken, since the voice
-// cannot be told to raise or draw out one word. Each word's pitch is moved
-// by PSOLA (which keeps the voice its own), its length changed by laying
-// the same slices further apart or closer, its loudness by a gain. A word
-// left plain is copied as it was; pieces cross-fade over 10ms (two 5ms
-// margins) so nothing clicks where they meet.
+// phrasing.dart shapes a take's words after speaking, as a voice cannot be
+// told to raise or stretch one word: pitch by PSOLA, length by slice
+// spacing, loudness by gain. Pieces cross-fade over 10ms so joins do not
+// click.
 
-/// TakeReading is a take as the voice said it: its pitch every 20ms, as a
-/// MIDI note -- null where nothing is voiced -- each word's loudness in
-/// dB, and the voice's middle, the note it speaks about.
+/// TakeReading is a take as said: its pitch every 20ms as a MIDI note (null
+/// unvoiced), each word's loudness in dB, and the voice's middle note.
 class TakeReading {
   final List<double?> pitch;
   final List<double> levels;
@@ -23,15 +20,15 @@ class TakeReading {
   /// frame is how long each reading of [pitch] is, in seconds.
   static const frame = 0.02;
 
-  /// pitchOf is [word]'s pitch along it: the readings within it.
+  /// pitchOf is the readings within [word].
   List<double?> pitchOf(TimedWord word) {
     var from = (word.start / frame).round().clamp(0, pitch.length);
     var to = (word.end / frame).round().clamp(from, pitch.length);
     return pitch.sublist(from, to);
   }
 
-  /// meanOf is [word]'s pitch as a whole: the mean of its voiced readings,
-  /// or null for a word with none -- a whispered one, an "s".
+  /// meanOf is the mean of [word]'s voiced readings, or null for a word
+  /// with none (whispered, an "s").
   double? meanOf(TimedWord word) {
     var voiced = pitchOf(word).whereType<double>().toList();
     return voiced.isEmpty
@@ -40,9 +37,8 @@ class TakeReading {
   }
 }
 
-/// readTake reads [pcm] -- a take, mono, at [rate] -- and its [words]: the
-/// pitch heard every 20ms, at a third of the rate, where a voice's pitch
-/// still is and YIN costs a ninth.
+/// readTake reads [pcm] (mono, [rate]) and its [words]: pitch every 20ms at
+/// a third of the rate, where YIN costs a ninth.
 TakeReading readTake(Float32List pcm, List<TimedWord> words,
     {double rate = 48000}) {
   const down = 3;
@@ -86,9 +82,8 @@ TakeReading readTake(Float32List pcm, List<TimedWord> words,
   return TakeReading(pitch, levels, middle);
 }
 
-/// _Piece is a stretch of the take as shaped: [from] to [to] in the take
-/// as spoken, in samples, made [length] samples long -- or, with no
-/// source, a pause that long -- [word] the word it is, or -1 between.
+/// _Piece is a stretch of the shaped take: [from] to [to] samples of the
+/// original made [length] long (no source: a pause); [word], or -1 between.
 typedef _Piece = ({int from, int to, int length, int word, bool silent});
 
 List<_Piece> _pieces(
@@ -121,9 +116,8 @@ List<_Piece> _pieces(
   return out;
 }
 
-/// shapedWords is where [words] are once shaped by [shapes], in a take
-/// [seconds] long as spoken: what the panel lays its words out by, and the
-/// shaped take's words.
+/// shapedWords is where [words] fall once shaped by [shapes], in a take
+/// [seconds] long as spoken: the panel's layout and the shaped take's words.
 List<TimedWord> shapedWords(
     List<TimedWord> words, List<WordShape> shapes, double seconds,
     {double rate = 48000}) {
@@ -142,9 +136,8 @@ List<TimedWord> shapedWords(
   return out;
 }
 
-/// shapeTake is [pcm] -- a take, mono, at [rate], as spoken -- with its
-/// [words] shaped by [shapes], [reading] being what was heard of it: the
-/// sound, and its words where they are now.
+/// shapeTake is [pcm] (mono, [rate]) with its [words] shaped by [shapes]:
+/// the sound, and where its words now fall.
 ({Float32List sound, List<TimedWord> words}) shapeTake(Float32List pcm,
     List<TimedWord> words, List<WordShape> shapes, TakeReading reading,
     {double rate = 48000}) {
@@ -152,7 +145,7 @@ List<TimedWord> shapedWords(
   var pieces = _pieces(words, shapes, pcm.length, rate);
   var total = pieces.fold(0, (n, p) => n + p.length);
   // Laid from a margin before the start: each piece reaches a margin into
-  // its neighbours either side, and fades across both margins into them.
+  // its neighbours and fades across both margins.
   var out = Float32List(total + 2 * margin);
   var at = 0;
   for (var p in pieces) {
@@ -190,12 +183,9 @@ List<TimedWord> shapedWords(
   );
 }
 
-/// _psola is piece [p] of [pcm], with a margin either side, said as
-/// [shape] says: [mean] the word's own pitch, about which its rise and
-/// fall is made more or less of. Two-period slices of the take, each at a
-/// period of its voice from the last, are laid down a period of the new
-/// pitch apart, read through the word as fast as its new length says --
-/// so a slice may be laid twice, drawn out, or skipped, hurried.
+/// _psola is piece [p] of [pcm] with margins, said as [shape] says, its
+/// rise and fall scaled about [mean]. Two-period slices are laid a new
+/// period apart at the new length's pace, so a slice may repeat or skip.
 Float32List _psola(Float32List pcm, _Piece p, int margin, WordShape shape,
     double? mean, TakeReading reading, double rate) {
   var n = p.length + 2 * margin;
@@ -219,8 +209,8 @@ Float32List _psola(Float32List pcm, _Piece p, int margin, WordShape shape,
     return m == null ? null : 440 * math.pow(2, (m - 69) / 12).toDouble();
   }
 
-  // The take's own marks, a period of its voice apart -- or, unvoiced, a
-  // steady 120th of a second.
+  // The take's own marks, a voice period apart, or unvoiced, a steady
+  // 120th of a second.
   var marks = <int>[];
   var end = p.to + margin;
   for (var m = (p.from - margin).toDouble(); m < end;) {
@@ -238,8 +228,8 @@ Float32List _psola(Float32List pcm, _Piece p, int margin, WordShape shape,
     var period = k + 1 < marks.length
         ? (marks[k + 1] - marks[k]).toDouble()
         : rate / (hzAt(centre) ?? 120);
-    // Voiced, the pitch moved -- and its rise and fall about the word's
-    // own made more or less of; unvoiced, an "s" or a breath, left be.
+    // Voiced: the pitch moved, its rise and fall scaled about the word's
+    // own. Unvoiced (an "s", a breath): left be.
     var heard = hzAt(centre);
     var ratio = 1.0;
     if (heard != null) {

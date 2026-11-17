@@ -27,17 +27,11 @@ import 'package:provider/provider.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 
 // stock_panel.dart is the Stock section of the Assets sidebar: search Pixabay,
-// the Noun Project, Freesound and Jamendo, preview, and use what fits.
-//
-// Nothing connects until somebody searches: opening the sidebar or changing a
-// library or filter before then makes no request, so the app does not tell four
-// companies whenever it is opened. After a search, a filter change searches
-// again.
-//
-// A result is a preview until it is used: clicked (to the middle of the
-// canvas), dragged (where it is dropped, or onto a channel), or added with its
-// + (to the library only). Then it is fetched, stored and credited: see
-// stock_import.dart.
+// the Noun Project, Freesound and Jamendo, preview, and use what fits. Nothing
+// connects until somebody searches, so the app does not tell four companies
+// whenever it is opened; after a search, a filter change searches again. A
+// result is a preview until it is used (clicked, dragged, or added with its +);
+// then it is fetched, stored and credited: see stock_import.dart.
 
 const _sourceKey = "canvasStock.source";
 
@@ -53,8 +47,7 @@ class StockPanel extends StatefulWidget {
   final CanvasController controller;
   const StockPanel({required this.controller, super.key});
 
-  /// videoFrames decodes a video preview. ffmpeg, unless a test says
-  /// otherwise.
+  /// videoFrames decodes a video preview: ffmpeg, unless a test says otherwise.
   static FrameSource videoFrames = FfmpegFrames(ffmpegPath);
 
   @override
@@ -65,7 +58,7 @@ class _StockPanelState extends State<StockPanel> {
   StockSource _source = StockSource.pixabayPictures;
 
   /// _kenney is whether Kenney's free sprites are shown in place of a
-  /// library to search -- see kenney_browser.dart.
+  /// library to search (see kenney_browser.dart).
   bool _kenney = false;
   final Map<StockSource, Map<String, String>> _filters = {};
   final TextEditingController _search = TextEditingController();
@@ -79,8 +72,8 @@ class _StockPanelState extends State<StockPanel> {
   /// _licenceOpen is whether the licence button's panel is showing.
   bool _licenceOpen = false;
 
-  /// _query is the last search made, or null before the first, which decides
-  /// whether changing a filter searches again.
+  /// _query is the last search made, or null before the first, which
+  /// decides whether changing a filter searches again.
   StockQuery? _query;
   StockPage? _last;
   List<StockItem> _items = const [];
@@ -106,7 +99,7 @@ class _StockPanelState extends State<StockPanel> {
   }
 
   /// A hidden tab plays nothing: the sidebar turns its tickers off, and the
-  /// previews -- timers and a decoder, not tickers -- stop with them.
+  /// previews (timers and a decoder, not tickers) stop with them.
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -212,8 +205,7 @@ class _StockPanelState extends State<StockPanel> {
     });
   }
 
-  /// _run searches afresh; [more] fetches the next page of the last search
-  /// instead.
+  /// _run searches afresh, or with [more] fetches the next page.
   Future<void> _run({bool more = false}) async {
     var prefs = context.read<CanvasPreferences>();
     var last = _last;
@@ -235,9 +227,8 @@ class _StockPanelState extends State<StockPanel> {
       _loading = false;
       _last = page;
       if (page.worked) {
-        // A site's pages can overlap -- Pixabay's next page repeated a
-        // picture from the last -- and each tile is keyed by its item, so
-        // one shown twice threw. What is already showing is not added again.
+        // A site's pages can overlap, and each tile is keyed by its item, so
+        // one shown twice would throw: what is showing is not added again.
         var shown = {for (var i in _items) i.key};
         _items = [
           ..._items,
@@ -307,8 +298,7 @@ class _StockPanelState extends State<StockPanel> {
 
     if (_proxied == null) return const SizedBox.shrink();
 
-    // The two gates first: say why there is no search rather than show a
-    // box that can only answer "no".
+    // The two gates first: say why there is no search, not a box saying no.
     if (!prefs.allowFetching) {
       return ListView(padding: const EdgeInsets.all(8), children: [
         note(
@@ -487,8 +477,7 @@ class _StockPanelState extends State<StockPanel> {
       f.id == "license" || f.id == "limit_to_public_domain";
 
   /// _licencePanel is what the licence button opens: the library's licence
-  /// choice, where it has one, and what its licences ask of whoever uses a
-  /// result.
+  /// choice, if any, and what its licences ask of those using a result.
   Widget _licencePanel(ThemeNotifier theme, TextStyle muted,
           List<StockFilter> licence, Map<String, String> chosen) =>
       Container(
@@ -574,8 +563,8 @@ class _StockPanelState extends State<StockPanel> {
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: body),
         child: Material(
-          // Its own Material inside the list: the sidebar's let the highlight
-          // spill over other sections and stay put when the list scrolled.
+          // Its own Material inside the list: the sidebar's would let the
+          // highlight spill over other sections and stay put on scroll.
           type: MaterialType.transparency,
           child: InkWell(
             borderRadius: BorderRadius.circular(6),
@@ -607,8 +596,7 @@ class _StockPanelState extends State<StockPanel> {
               if (item.length > 0)
                 Positioned(
                     left: 4, bottom: 4, child: _Badge(clipLength(item.length))),
-              // A video can be watched first: a small copy, fetched when pressed and
-              // thrown away after.
+              // A video can be watched first: a small copy, then thrown away.
               if (item.kind == AssetKind.video && item.preview.isNotEmpty)
                 Positioned(
                   right: 3,
@@ -769,7 +757,7 @@ class _Pill extends StatelessWidget {
   }
 }
 
-/// _Hover is whether the pointer is over [builder]'s widget -- no Tooltip,
+/// _Hover is whether the pointer is over [builder]'s widget, without a Tooltip,
 /// which crashes inside a Draggable's row as its overlay is torn down.
 class _Hover extends StatefulWidget {
   final Widget Function(bool over) builder;
@@ -877,8 +865,7 @@ class _Previewer {
   /// than playing with nothing on screen to stop it.
   bool _gone = false;
 
-  /// toggle stops [item] if it is playing, or plays it; false when it could
-  /// not be.
+  /// toggle stops [item] if playing, or plays it; false when it could not.
   Future<bool> toggle(StockItem item,
       {required bool allowFetching, required bool proxied}) async {
     if (playing == item.key) {
@@ -951,7 +938,7 @@ class _Previewer {
 
 /// _VideoPreviewer plays one stock video at a time, small and silent, in its
 /// result's tile: the smallest rendition fetched to a temporary file, its
-/// frames decoded as they are shown. Forgotten when the sidebar closes.
+/// frames decoded as shown. Forgotten when the sidebar closes.
 class _VideoPreviewer {
   final VoidCallback changed;
   _VideoPreviewer(this.changed);
@@ -970,8 +957,7 @@ class _VideoPreviewer {
   /// decoding when another is asked for knows to give way.
   int _run = 0;
 
-  /// toggle stops [item] if it is playing, or plays it -- answering why not,
-  /// where it cannot.
+  /// toggle stops [item] if playing, or plays it, answering why not if not.
   Future<String?> toggle(StockItem item,
       {required bool allowFetching, required bool proxied}) async {
     if (playing == item.key || loading == item.key) {
@@ -993,8 +979,7 @@ class _VideoPreviewer {
         if (!got) return "The preview of ${item.title} could not be fetched.";
       }
       if (run != _run) return null;
-      // Twice the tile, for retina, and even on both sides, which the
-      // decoder's scaler needs.
+      // Twice the tile, for retina, and even each way for the decoder's scaler.
       var w = 192;
       var h = item.width > 0 && item.height > 0
           ? ((w * item.height / item.width).round() ~/ 2) * 2
@@ -1048,8 +1033,7 @@ class _VideoPreviewer {
   Timer? _tick;
   Completer<void>? _asleep;
 
-  /// _sleep waits [ms], cut short by a stop, so nothing is left waiting
-  /// after the preview has gone.
+  /// _sleep waits [ms], cut short by a stop, so nothing waits on after.
   Future<void> _sleep(int ms) {
     var done = Completer<void>();
     _asleep = done;

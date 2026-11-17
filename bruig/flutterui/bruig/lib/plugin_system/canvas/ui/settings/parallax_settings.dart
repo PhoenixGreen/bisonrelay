@@ -13,13 +13,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// parallax_settings.dart is a background's settings while it is parallax
-// scenery: its layers in Pattern layers, whole scenes to start from, the
-// camera that pans across them, and the picked layer's own settings --
-// what it is, and how far it moves when the camera does.
+// parallax_settings.dart is parallax scenery's settings: its layers,
+// starting scenes, the panning camera, and the picked layer's depth.
 
-/// ParallaxSettings edits [scenery], handing each edit to [write] for the
-/// caller to put back where the scenery lives.
+/// ParallaxSettings edits [scenery], handing each edit to [write] to put
+/// back where the scenery lives.
 class ParallaxSettings extends StatefulWidget {
   final CanvasController controller;
   final ParallaxElement scenery;
@@ -45,7 +43,7 @@ class ParallaxSettings extends StatefulWidget {
 }
 
 class _ParallaxSettingsState extends State<ParallaxSettings> {
-  /// picked is the layer being edited: the panel's to remember, not the
+  /// picked is the layer being edited, the panel's to remember, not the
   /// document's. Null for the front one.
   int? picked;
 
@@ -462,7 +460,7 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
                   now(layer.copyWith(assetId: id));
                 },
               ),
-              // From the library: its pictures, or its drawings drawn as pictures.
+              // From the library: its pictures, or its drawings as pictures.
               CanvasIconButton(
                 key: const ValueKey("parallaxFromPictures"),
                 icon: Icons.photo_library_outlined,

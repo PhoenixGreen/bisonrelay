@@ -21,10 +21,10 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
 import 'package:flutter/material.dart';
 
-// sidebar_panels.dart is every panel the Canvas sidebars can hold, by its
-// name (see sidebarPanelIds): its heading -- name, icon, help, count -- and
-// its body. Whichever sidebar a panel is in, it is this one panel; the
-// Design and Assets columns build theirs from here too.
+// sidebar_panels.dart is every panel the Canvas sidebars can hold, by name
+// (see sidebarPanelIds): its heading (name, icon, help, count) and its body.
+// Whichever sidebar a panel is in, it is this one panel; the Design and
+// Assets columns build theirs from here too.
 
 /// canvasSidebarPanel is panel [id] holding [body], headed as it is for
 /// what is open now, with [menu] behind its ⋯. Null for a name not known.
@@ -232,7 +232,6 @@ class SidebarPanelBodies {
   }
 }
 
-/// sidebarListenable is what a sidebar's headings follow: the canvas, the
-/// settings' layout, and the library.
+/// sidebarListenable is what headings follow: canvas, layout and library.
 Listenable sidebarListenable(CanvasController controller) =>
     Listenable.merge([controller, settingsAsMenu, CanvasLibrary.changes]);

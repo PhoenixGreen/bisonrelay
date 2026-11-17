@@ -5,34 +5,29 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
 
-// canvas_assets.dart keeps the pictures a canvas refers to.
-//
-// A document holds asset ids, never bytes (see ImageElement). The bytes live
-// once here, so a picture used many times is one copy and the document stays
-// small, readable JSON. The same arrangement as the post library's embeds,
-// but stored as raw bytes rather than base64, which is a third larger and
-// buys a canvas nothing.
+// canvas_assets.dart keeps the pictures a canvas refers to. A document holds
+// asset ids, never bytes (see ImageElement): the bytes live once here, so a
+// picture used many times is one copy and the document stays small JSON.
+// Stored raw, not base64, which is a third larger and buys nothing.
 
-/// _dirName is the folder inside the library: Pictures, visible, so its
-/// files can be found and used by hand.
+/// _dirName is the library's Pictures folder, visible, so its files can be
+/// found and used by hand.
 const _dirName = canvasPicturesFolder;
 
-/// _idPattern is what an id may look like: the start of a hash of the bytes,
-/// and a file extension (so the folder's files can be previewed and opened)
-/// where the format was recognised. See [CanvasAssets.save].
-///
-/// Checked before an id is ever joined onto a path: an id from a saved
-/// document is text from disk, and text from disk must not become an
-/// arbitrary path.
+/// _idPattern is what an id may look like: the start of a hash of the
+/// bytes, and a file extension where the format was recognised (so the
+/// files can be previewed and opened). Checked before an id is ever joined
+/// onto a path: an id from a saved document is text from disk, and must not
+/// become an arbitrary path.
 final _idPattern = RegExp(r"^[a-f0-9]{16}(\.[a-z0-9]{1,5})?$");
 
-/// sweepGrace is how new a stored file must be for a sweep to leave it,
-/// though nothing names it yet: a bundle's pictures are stored before the
-/// canvas that names them is saved, and another save's sweep can run between.
+/// sweepGrace is how new a stored file must be for a sweep to leave it
+/// though nothing names it: a bundle's pictures are stored before the
+/// canvas naming them is saved, and another save's sweep can run between.
 const Duration sweepGrace = Duration(minutes: 10);
 
 /// idMatches is whether [id] is the digest of [bytes], with or without an
-/// extension: off the UI isolate for anything big, which a video can be.
+/// extension; off the UI isolate for anything big, as a video can be.
 Future<bool> idMatches(String id, List<int> bytes) async {
   String digest(List<int> b) => sha256.convert(b).toString().substring(0, 16);
   var d = bytes.length > 4 * 1024 * 1024
@@ -41,20 +36,17 @@ Future<bool> idMatches(String id, List<int> bytes) async {
   return id == d || id.startsWith("$d.");
 }
 
-/// isMaskId is whether [id] is a subject mask rather than a picture. See
-/// CanvasAssets.saveMask.
+/// isMaskId is whether [id] is a subject mask (CanvasAssets.saveMask).
 bool isMaskId(String id) => id.endsWith(".mask");
 
-/// maxAssetBytes bounds one picture: generous, since photographs are
-/// dropped in, but bounded, because the whole library is read when the
-/// sidebar opens.
+/// maxAssetBytes bounds one picture: generous for photographs, but bounded,
+/// because the whole library is read when the sidebar opens.
 const int maxAssetBytes = 32 * 1024 * 1024;
 
-/// CanvasAssets reads and writes the pictures.
 class CanvasAssets {
-  /// _dir names the folder, creating it only when something is about to be
-  /// written there. Reading and sweeping must not create it: they run in the
-  /// background, possibly after the library above it has been removed.
+  /// _dir names the folder, creating it only before a write. Reading and
+  /// sweeping must not create it: they run in the background, possibly after
+  /// the library above it has been removed.
   static Future<String> _dir({bool create = false}) async {
     var dir = path.join(await CanvasStorage.libraryDir(), _dirName);
     if (create) await Directory(dir).create(recursive: true);
@@ -66,13 +58,10 @@ class CanvasAssets {
     return path.join(await _dir(create: create), id);
   }
 
-  /// save stores a picture and returns the id a document refers to it by, or
-  /// null when it could not be stored.
-  ///
-  /// The id is the start of a hash of the bytes, so the same photograph
-  /// dropped in twice, or into another canvas, finds the copy already there
-  /// and the elements share one file. The extension comes from what the bytes
-  /// are rather than the name they arrived under.
+  /// save stores a picture and returns its id, or null when it could not be
+  /// stored. The id is the start of a hash of the bytes, so the same picture
+  /// dropped in twice, or into another canvas, shares one file. The extension
+  /// comes from the bytes, not the name they arrived under.
   static Future<String?> save(List<int> bytes) async {
     if (bytes.isEmpty || bytes.length > maxAssetBytes) return null;
 
@@ -92,10 +81,9 @@ class CanvasAssets {
     }
   }
 
-  /// saveAs stores a picture under the id it already has, for a canvas
-  /// arriving from somewhere else (see canvas_bundle.dart), since every
-  /// reference depends on it. The id is still checked against [_idPattern]:
-  /// it really is text from somebody else's machine.
+  /// saveAs stores a picture under the id it already has, for a canvas from
+  /// elsewhere (canvas_bundle.dart), as every reference depends on it. The id
+  /// is still checked against [_idPattern]: it is text from another machine.
   static Future<bool> saveAs(String id, List<int> bytes) async {
     if (bytes.isEmpty || bytes.length > maxAssetBytes) return false;
     // The id must be these bytes' hash, or a sender could put their own
@@ -104,8 +92,8 @@ class CanvasAssets {
     if (file == null) return false;
     try {
       var handle = File(file);
-      // Already here (checked when it was stored): not hashed again, as a
-      // canvas previewed twice would have every picture hashed twice.
+      // Already here (checked when stored): not hashed again, or a canvas
+      // previewed twice would have every picture hashed twice.
       if (await handle.exists()) return true;
       if (!await idMatches(id, bytes)) return false;
       await writeWhole(file, bytes);
@@ -116,14 +104,14 @@ class CanvasAssets {
     }
   }
 
-  /// extensionForTest is [_extensionOf], which decides what a stored picture
-  /// is called and is worth checking without writing files.
+  /// extensionForTest exposes [_extensionOf], which names stored pictures, to
+  /// tests without writing files.
   @visibleForTesting
   static String extensionForTest(List<int> bytes) => _extensionOf(bytes);
 
-  /// _extensionOf sniffs the format from the first few bytes rather than the
-  /// file name it came in under (a ".jpg" that is really a PNG is common), so
-  /// the operating system can open the file.
+  /// _extensionOf sniffs the format from the first bytes rather than the file
+  /// name (a ".jpg" that is really a PNG is common), so the operating system
+  /// can open the file.
   static String _extensionOf(List<int> bytes) {
     if (bytes.length >= 8 &&
         bytes[0] == 0x89 &&
@@ -151,19 +139,16 @@ class CanvasAssets {
         bytes[11] == 0x50) {
       return ".webp";
     }
-    // A vector, which has no magic number: it is XML, so look for the tag
-    // near the top. The first few thousand bytes, since a drawing program's
-    // file can open with a declaration, a doctype, a licence comment and
-    // editor metadata before the tag.
+    // A vector has no magic number: it is XML, so look for the tag in the
+    // first few thousand bytes, past any declaration, doctype, licence comment
+    // and editor metadata.
     var head = String.fromCharCodes(bytes.take(4096)).toLowerCase();
     if (head.contains("<svg")) return ".svg";
 
-    // Something else. Left without one rather than guessed at, since a wrong
-    // extension is worse than none.
+    // Something else: no extension, as a wrong one is worse than none.
     return "";
   }
 
-  /// saveFile copies a picture in from wherever the user picked it.
   static Future<String?> saveFile(String sourcePath) async {
     try {
       var source = File(sourcePath);
@@ -175,9 +160,9 @@ class CanvasAssets {
     }
   }
 
-  /// saveMask keeps a picture's subject mask (see ImageMask.subject) in the
-  /// picture store, under its digest like any picture but with ".mask" for
-  /// its kind, so the lists of pictures to choose from leave it out.
+  /// saveMask keeps a picture's subject mask (ImageMask.subject) in the
+  /// picture store under its digest, with ".mask" for its kind so the lists
+  /// of pictures to choose from leave it out.
   static Future<String?> saveMask(List<int> bytes) async {
     if (bytes.isEmpty) return null;
     var id = "${sha256.convert(bytes).toString().substring(0, 16)}.mask";
@@ -191,9 +176,8 @@ class CanvasAssets {
     return where;
   }
 
-  /// exists is whether a picture is still in the store, without reading it:
-  /// the picture cache asks about every crest on every refresh, and a stat
-  /// call answers it.
+  /// exists checks the store without reading the picture: the picture cache
+  /// asks about every crest on every refresh, and a stat call answers it.
   static Future<bool> exists(String id) async {
     var file = await _pathFor(id);
     return file != null && await File(file).exists();
@@ -211,8 +195,7 @@ class CanvasAssets {
     }
   }
 
-  /// stored is every picture in the store, most recently added first, so a
-  /// picture can be used again.
+  /// stored is every picture in the store, most recently added first.
   static Future<List<String>> stored() async {
     try {
       var dir = Directory(await _dir());
@@ -226,15 +209,14 @@ class CanvasAssets {
       found.sort((a, b) => b.$2.compareTo(a.$2));
       return [for (var entry in found) entry.$1];
     } catch (_) {
-      // No folder yet, which means nothing stored.
+      // No folder yet: nothing stored.
       return const [];
     }
   }
 
-  /// sweep deletes stored pictures that no saved document refers to.
-  /// [liveIds] has to be every id in the whole library plus whatever is open
-  /// in the editor, since one picture can be referred to from several
-  /// canvases.
+  /// sweep deletes stored pictures no saved document refers to. [liveIds]
+  /// must be every id in the whole library plus whatever is open in the
+  /// editor, since one picture can be used by several canvases.
   static Future<int> sweep(Set<String> liveIds) async {
     var removed = 0;
     try {
@@ -255,7 +237,7 @@ class CanvasAssets {
         }
       }
     } catch (_) {
-      // No directory yet, which means nothing to sweep.
+      // No directory yet: nothing to sweep.
     }
     return removed;
   }

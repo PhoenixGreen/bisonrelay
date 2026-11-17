@@ -6,12 +6,11 @@ import 'package:bruig/plugin_system/canvas/ui/screen/transport_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// play_bar_settings.dart is the play bar's one settings button and the small
-// panel it opens: the panels under the canvas -- how many places, how they
-// are switched, the layouts -- and the timeline's own -- its tool, what it
-// does while playing, what it shows, its zoom, where the bar sits, a marker.
-// Pictures where a choice is about a shape, switches where it is on or off,
-// so it reads at a glance rather than as a list.
+// play_bar_settings.dart is the play bar's settings button and its panel:
+// the panels under the canvas (places, switching, layouts) and the
+// timeline's own (tool, playing, what shows, zoom, bar position, a marker).
+// Pictures for choices of shape, switches for on and off, to read at a
+// glance.
 
 /// PlayBarToggle is one of the timeline's switches: on the bar, lit, while
 /// it is on (see CanvasPlayBar), and here.
@@ -23,7 +22,6 @@ typedef PlayBarToggle = ({
   VoidCallback toggle,
 });
 
-/// PlayBarSettingsButton is the button, and the panel it opens.
 class PlayBarSettingsButton extends StatelessWidget {
   final CanvasController controller;
 
@@ -83,8 +81,8 @@ class _Panel extends StatelessWidget {
     required this.onCustomiseSidebars,
   });
 
-  /// _done closes the panel: after something that is done once, not a
-  /// switch, which stays to be seen.
+  /// _done closes the panel after a one-off action; a switch keeps it open
+  /// to be seen.
   void _done(BuildContext context) => MenuController.maybeOf(context)?.close();
 
   @override
@@ -316,8 +314,7 @@ class _Panel extends StatelessWidget {
   }
 }
 
-/// _Tile is a choice drawn as a picture over its name, outlined when it is
-/// the one chosen.
+/// _Tile is a choice drawn as a picture over its name, outlined if chosen.
 class _Tile extends StatelessWidget {
   final String label;
   final String tooltip;

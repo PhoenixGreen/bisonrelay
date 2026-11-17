@@ -27,17 +27,13 @@ import 'package:bruig/plugin_system/canvas/media/mix/mix_worker.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
     show soundBankPath;
 
-// dart_audio_engine.dart plays the editor's sound through the mix engine:
-// MixCore renders it a block at a time and one SoLoud stream carries it to
-// the sound card. The editor so hears the same arithmetic an export renders
-// with (see mix_render.dart), sends included.
-//
-// The stream is kept [lead] seconds ahead of the speakers. A voice's
-// position is where it has been heard to (rendered less what SoLoud has not
-// yet consumed), which keeps the playhead on the sound.
+// dart_audio_engine.dart plays the editor's sound through MixCore, one
+// SoLoud stream carrying it, so the editor hears an export's arithmetic
+// (mix_render.dart). The stream runs [lead] ahead; a voice's position is
+// rendered less what SoLoud still holds, keeping the playhead on the sound.
 
-/// _Track is a file the engine plays: decoded as it plays, or -- for one
-/// only ffmpeg can read -- held whole.
+/// _Track is a file the engine plays: decoded as it plays, or held whole
+/// where only ffmpeg can read it.
 class _Track extends AudioTrack {
   final String path;
   final int frames;
@@ -55,12 +51,11 @@ class _Track extends AudioTrack {
 }
 
 class _Voice extends AudioVoice {
-  /// core is the voice, where the mix runs here; id is its name in the
-  /// worker's, where it runs there.
+  /// core is the voice where the mix runs here; id its name in the worker.
   final CoreVoice? core;
   final int id;
 
-  /// at is where it was asked to start, and born when: what its position is
+  /// at and born are where and when it was asked to start: its position
   /// until the worker first reports it.
   final double at;
   final int born;
@@ -74,28 +69,26 @@ class _RemoteTrack extends AudioTrack {
   _RemoteTrack(this.id, this.frames);
 }
 
-/// sharedMixEngine is the one mix engine: one stream to the sound card,
+/// sharedMixEngine is the one mix engine and stream to the sound card,
 /// whichever canvas is open.
 final DartAudioEngine sharedMixEngine = DartAudioEngine();
 
-/// useMixWorker is whether the mix renders in an isolate of its own (see
-/// mix_worker.dart) rather than on the UI's, where a slow frame could leave
-/// the speakers waiting. Where the worker cannot start, the mix runs here.
+/// useMixWorker renders the mix in its own isolate (mix_worker.dart), so a
+/// slow UI frame cannot starve the speakers; failing that, it runs here.
 bool useMixWorker = true;
 
 class DartAudioEngine implements AudioEngine {
   SoLoud get _soloud => SoLoud.instance;
 
-  /// lead is how far ahead of the speakers the render keeps, in seconds:
-  /// enough for the pump to miss a few turns, and no more, since it is
-  /// also the delay before a sound played at a press is heard.
+  /// lead is how far ahead the render keeps, in seconds: enough for the pump
+  /// to miss a few turns, no more, as it delays every pressed sound.
   static const double lead = 0.05;
 
   /// block is how many frames are rendered at a time.
   static const int block = 512;
 
-  /// core is the mix, where it runs on this isolate. With the worker
-  /// running, it is idle: everything is sent there.
+  /// core is the mix when it runs on this isolate; idle while the worker
+  /// runs.
   final MixCore core = MixCore();
 
   AudioSource? _stream;
@@ -106,7 +99,7 @@ class DartAudioEngine implements AudioEngine {
   final Float32List _interleaved = Float32List(block * 2);
 
   /// _limitBytes is how much one stream may carry before a new one takes
-  /// over: a SoLoud stream ends once that much has been added to it.
+  /// over: a SoLoud stream ends once that much has been added.
   static const int _limitBytes = 1 << 30;
 
   // The worker, where it runs: where to send, and what it last said.
@@ -120,11 +113,8 @@ class DartAudioEngine implements AudioEngine {
   final Map<int, Completer<int?>> _opening = {};
   final Set<int> _seen = {}, _stopped = {};
 
-  /// _watching is each reading the worker has been asked for -- what, of
-  /// which channel -- and _askedAt when the editor last read it. One not
-  /// read for a while (its panel shut) is let go of (see _sweep): the worker
-  /// measured everything ever asked for, for as long as the app ran (Ken's
-  /// systems review, 2026-11-08).
+  /// _watching is each reading asked of the worker, and _askedAt when last
+  /// read; one unread a while is let go (see _sweep), or it runs for ever.
   final Map<String, (String, String?)> _watching = {};
   final Map<String, int> _askedAt = {};
   Timer? _sweeping;
@@ -154,8 +144,8 @@ class DartAudioEngine implements AudioEngine {
     }();
   }
 
-  /// _startWorker starts the mix in its own isolate, handing it the stream
-  /// to push to. Whether it could.
+  /// _startWorker starts the mix in its own isolate, handing it the stream.
+  /// Whether it could.
   Future<bool> _startWorker() async {
     var from = ReceivePort();
     try {
@@ -253,20 +243,18 @@ class DartAudioEngine implements AudioEngine {
   /// _ahead is how many frames are rendered and not yet heard.
   int get _ahead => _remote ? _snap.ahead : _pushed - _heard;
 
-  /// _quiet is how many frames have been rendered with nothing playing.
-  /// After a second of it the stream is left to run dry (SoLoud waits
-  /// silently) rather than fed silence for as long as the window is open.
+  /// _quiet is frames rendered with nothing playing: after a second the
+  /// stream runs dry (SoLoud waits silently) rather than fed silence.
   int _quiet = 0;
 
-  /// load is the eased share of each block's time spent rendering it:
-  /// over one when the engine cannot keep up.
+  /// load is the eased share of each block's time spent rendering it: over
+  /// one when the engine cannot keep up.
   double get load => _remote ? _snap.load : _load;
   double _load = 0;
   final Stopwatch _work = Stopwatch();
 
-  /// held is whether the mix is held still: nothing is rendered, so every
-  /// voice and its scheduled stops wait where they are. Used when a game
-  /// pauses.
+  /// held is whether the mix is held still, as when a game pauses: nothing
+  /// renders, so every voice and scheduled stop waits.
   bool get held => _held;
   bool _held = false;
   set held(bool on) {
@@ -275,9 +263,8 @@ class DartAudioEngine implements AudioEngine {
     if (!on) _wakeLocal();
   }
 
-  /// _wakeLocal sets the pump going again, mixing here rather than in the
-  /// worker: after a second of quiet it rests (see _fill), and anything
-  /// that may start a sound wakes it.
+  /// _wakeLocal restarts the local pump, which rests after a second of
+  /// quiet (see _fill); anything that may start a sound wakes it.
   void _wakeLocal() {
     if (_remote) return;
     _quiet = 0;
@@ -288,11 +275,11 @@ class DartAudioEngine implements AudioEngine {
     var stream = _stream;
     if (stream == null || _held) return;
     if (core.voices.every((v) => v.paused)) {
-      // Rested once its tails have rung out too, or after twenty seconds of
-      // one that never does: see the worker's _fill.
+      // Rested once tails have rung out, or after twenty seconds of one
+      // that never does: see the worker's _fill.
       if ((_quiet > mixRate && !core.graph.ringing) || _quiet > 20 * mixRate) {
-        // Rested: no timer on the editor's isolate while nothing sounds,
-        // and its meters to silence rather than where they last stood.
+        // Rested: no timer on the editor's isolate while silent, and the
+        // meters to silence rather than where they last stood.
         core.graph.quiet();
         _pump?.cancel();
         _pump = null;
@@ -437,8 +424,8 @@ class DartAudioEngine implements AudioEngine {
       _start(track,
           volume: volume, at: at, channel: channel, delay: delay, loop: loop);
 
-  /// _on is [voice] here, or null where it runs in the worker -- and then
-  /// [message] is sent there, with its id.
+  /// _on is [voice] here, or null where it runs in the worker, and then
+  /// [message] is sent there with its id.
   CoreVoice? _on(AudioVoice voice, List message) {
     var v = voice as _Voice;
     if (v.core case var c?) return c;
@@ -485,8 +472,8 @@ class DartAudioEngine implements AudioEngine {
   void setHear(SpeakerGroup group) =>
       _remote ? _send(["hear", group]) : core.graph.hear = group;
 
-  /// _live is each channel's instrument played live: a sampler always
-  /// sounding on the channel, as one more voice through its strip.
+  /// _live is each channel's live instrument: a sampler always sounding,
+  /// as one more voice through the channel's strip.
   final Map<String, (CoreVoice, LiveInstrument)> _live = {};
 
   /// _slicesSent are the instruments of slices whose banks the worker has.
@@ -496,9 +483,8 @@ class DartAudioEngine implements AudioEngine {
   void noteOn(String channel, InstrumentPart sound, int key, int velocity,
       {SoundFont? font}) {
     if (_remote) {
-      // What plays it, not what it plays: a part's notes and curves are
-      // not copied to the worker on every key pressed.
-      // An instrument of slices: its bank sent once, and kept there.
+      // What plays it, not what it plays: a part's notes and curves are not
+      // copied to the worker on every key. A slices bank is sent once.
       var kit = sound.sound == InstrumentSound.slices ? sound.slices : null;
       var send = kit != null && font != null && _slicesSent.add(kit.key);
       _send([
@@ -522,7 +508,7 @@ class DartAudioEngine implements AudioEngine {
       held = (core.play(instrument, volume: 1, channel: channel), instrument);
       _live[channel] = held;
     }
-    // Its shape as it is now: changed in its editor, the next note has it.
+    // Its shape as it is now, so an edit is heard on the next note.
     held.$2.sampler
       ..shape = sound.shape
       ..patch = sound.sound == InstrumentSound.patch ? sound.patch : null
@@ -700,8 +686,7 @@ class DartAudioEngine implements AudioEngine {
   }
 
   /// position is where the voice has been heard to: rendered less what is
-  /// still on its way, and never before where it last started. From the
-  /// worker, as last reported and on by the time since.
+  /// queued, never before its last start; from the worker, extrapolated.
   @override
   double position(AudioVoice voice) {
     var v = voice as _Voice;
@@ -757,8 +742,8 @@ class DartAudioEngine implements AudioEngine {
       Isolate.run(() => filePeaks(path, count));
 }
 
-/// filePeaks is the shape of the file at [path]: [count] values, nought to
-/// one, each the loudest moment in its share of the file.
+/// filePeaks is [count] values, nought to one, each the loudest moment in
+/// its share of the file at [path].
 Float32List? filePeaks(String path, int count) {
   var track = FileTrack.open(path);
   if (track == null || count <= 0) return null;

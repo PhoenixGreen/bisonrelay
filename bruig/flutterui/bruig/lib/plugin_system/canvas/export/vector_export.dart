@@ -12,13 +12,11 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:flutter/painting.dart';
 
-// vector_export.dart is a chart or a table saved as an SVG or a PDF that
-// stays sharp at any size and keeps its words as words (Ken, 2026-11-17,
-// the improvements report's vector export): drawn as it finally stands --
-// arrived, every step's words as the chart shows now -- by its own painter
-// onto a VectorCanvas.
+// vector_export.dart saves a chart or a table as an SVG or a PDF that stays
+// sharp at any size and keeps its words as words. It is drawn as it finally
+// stands, every step arrived, by its own painter onto a VectorCanvas.
 
-/// VectorFormat is what it is saved as.
+/// VectorFormat is the file format it is saved as.
 enum VectorFormat {
   svg("SVG", "svg"),
   pdf("PDF", "pdf");
@@ -27,8 +25,7 @@ enum VectorFormat {
   const VectorFormat(this.label, this.extension);
 }
 
-/// vectorOf is [e] drawn as [format]; null for an element that is neither
-/// a chart nor a table.
+/// vectorOf is [e] drawn as [format]; null unless a chart or a table.
 Future<Uint8List?> vectorOf(CanvasElement e, VectorFormat format,
     {CanvasImageSource? images, Color? ground}) async {
   var size = Size(e.width, e.height);
@@ -36,8 +33,7 @@ Future<Uint8List?> vectorOf(CanvasElement e, VectorFormat format,
   var v = VectorCanvas(size);
   try {
     var rect = Offset.zero & size;
-    // The canvas behind it, where it has no ground of its own: its words
-    // were set to read on that.
+    // The canvas behind it, without its own ground: its words suit that.
     if (ground != null && ground.a > 0) {
       v.drawRect(rect, Paint()..color = ground);
     }

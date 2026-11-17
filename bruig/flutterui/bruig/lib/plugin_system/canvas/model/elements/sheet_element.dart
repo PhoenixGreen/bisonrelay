@@ -5,10 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart' show BoxSpec;
 
 // sheet_element.dart is Sheet music: the part of the instrument it follows,
-// engraved (see notation.dart and sheet_painter.dart) with a playhead, and
+// engraved (notation.dart, sheet_painter.dart) with a playhead, and
 // practised against, each note marked right or wrong as it is played.
 
-/// PracticeMode is how a take goes.
 enum PracticeMode {
   /// listen plays the piece, the keys lit, and asks nothing.
   listen("Listen"),
@@ -39,75 +38,62 @@ enum PracticeHands {
       values.firstWhere((m) => m.name == name, orElse: () => both);
 }
 
-/// SheetElement is a score of one instrument's part, played through that
-/// instrument's sound.
+/// SheetElement is a score of one instrument's part, in its sound.
 class SheetElement extends CanvasElement {
   /// follows is the instrument whose part is shown, by element id.
   final String follows;
 
-  /// score and part are the score part it shows (see music_score.dart),
-  /// or "" for an instrument's own notes. Showing a score part, [follows]
-  /// is that part's channel.
+  /// score and part are the score part shown (music_score.dart), or "" for
+  /// an instrument's notes; then [follows] is that part's channel.
   final String score, part;
   final String title;
   final Color paper, ink;
 
-  /// mode, hands and tempo are how it is practised; tempo is its speed, a
-  /// share of the piece's own (see sheetSlowest), at which its playbar and
-  /// a take play it -- 1 is real time.
+  /// mode, hands and tempo are how it is practised; tempo a share of the
+  /// piece's speed (see sheetSlowest), 1 being real time.
   final PracticeMode mode;
   final PracticeHands hands;
   final double tempo;
 
   /// key is the key signature (sharps positive, flats negative), or null to
-  /// work it out: the instrument's Scale effect if it has one, else
-  /// keyFifthsOf its notes.
+  /// work it out: the instrument's Scale effect, else keyFifthsOf its notes.
   final int? key;
 
   /// lines is how many systems show at once (1 to 8), turned as a page when
   /// the playhead reaches the last.
   final int lines;
 
-  /// playhead is whether the playhead's line is drawn; off, the notes under
-  /// it are lit and that is all (Ken: "sometimes the highlight will be
-  /// enough").
+  /// playhead draws the playhead's line; off, only its notes are lit.
   final bool playhead;
 
   /// showTitle, showSubtitle, showComposer and showTempo are which of a
   /// score's heading it shows over the music (a score part only).
   final bool showTitle, showSubtitle, showComposer, showTempo;
 
-  /// playbar is whether a bar to play it by (to the start, a note back,
-  /// play, a note on, and how far it has got) is drawn over the music (a
-  /// score part only). Off for a video, where nothing can press it.
+  /// playbar draws a bar to play a score part by over the music; off for a
+  /// video, where nothing can press it.
   final bool playbar;
 
   /// showNames is whether the part's name is drawn at its staves' left: no
-  /// need, where the sheet shows one instrument.
+  /// need where the sheet shows one instrument.
   final bool showNames;
 
-  /// showMarks is whether its rehearsal marks are drawn.
   final bool showMarks;
 
-  /// showDiagrams is whether a guitar part's chords are drawn as chord
-  /// boxes under their symbols.
+  /// showDiagrams draws a guitar part's chords as boxes under symbols.
   final bool showDiagrams;
 
-  /// handColours lights a part of two staves (a piano's) in its
-  /// instrument's two colours: the right hand's notes, on the top staff, in
-  /// its Keys lit; the left's, below, in its Left hand (Ken, 2026-11-15).
+  /// handColours lights a two-staff part (a piano's) in its instrument's two
+  /// colours: Keys lit for the right hand, Left hand for the left.
   final bool handColours;
 
-  /// click sounds a metronome on the score's beat while the canvas plays,
-  /// at the speed it plays at (Ken, 2026-11-15).
+  /// click sounds a metronome on the beat while the canvas plays.
   final bool click;
 
-  /// box is its frame: corners, a border, and room round the music (its
-  /// fill is [paper]).
+  /// box is its frame: corners, border and room round the music.
   final BoxSpec box;
 
-  /// fromBar and toBar are the bars it shows and plays, from the first to
-  /// the last (Ken, 2026-11-14: "show bars 5 to 8"), counted from one;
+  /// fromBar and toBar are the bars it shows and plays, counted from one;
   /// nought for the score's own first or last.
   final int fromBar, toBar;
 
@@ -140,8 +126,7 @@ class SheetElement extends CanvasElement {
     this.toBar = 0,
   });
 
-  /// sheetBox is a sheet's frame as it starts: round corners, no border,
-  /// the music to its edges.
+  /// sheetBox is a new sheet's frame: round, borderless, music to edges.
   static const sheetBox = BoxSpec(borderRadius: 6, padding: 0);
 
   @override

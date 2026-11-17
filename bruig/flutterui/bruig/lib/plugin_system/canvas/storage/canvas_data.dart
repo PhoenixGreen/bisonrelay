@@ -9,32 +9,27 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_picture_cache.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:flutter/foundation.dart';
 
-// canvas_data.dart goes and gets what a data source describes.
-//
-// Two ways in. Reading a file is the ordinary one: whatever collects the
-// data (a browser, curl, a scheduled script) writes JSON somewhere and the
-// canvas reads it when asked. The other connects to the internet, which
-// nothing else in this app's interface does, and is refused unless the reader
-// has turned it on (see CanvasPreferences.allowFetching).
-//
-// Everything is on demand, with no polling or background refresh: a canvas
-// that connected to a server every few minutes would announce that its owner
-// was at their desk.
+// canvas_data.dart fetches what a data source describes. Reading a file is
+// the ordinary way: whatever collects the data writes JSON somewhere and
+// the canvas reads it when asked. Fetching from the internet, which nothing
+// else in the app's interface does, is refused unless the reader turned it
+// on (CanvasPreferences.allowFetching). Everything is on demand, never
+// polled: a canvas calling a server every few minutes would announce that
+// its owner was at their desk.
 
 /// DataResult is what came back, or why nothing did.
 class DataResult {
   final List<List<String>>? rows;
   final String? problem;
 
-  /// fields is every path that led to a value in the first record: what the
-  /// settings panel offers as "Available", so a column's path is chosen from
-  /// what is actually there.
+  /// fields is every path to a value in the first record: what the settings
+  /// panel offers as "Available", so a column's path is chosen from what is
+  /// there.
   final List<String> fields;
 
-  /// raw is the same rows with any date column left as the timestamp it
-  /// arrived as; empty when no column is a date. For a chart choosing its
-  /// points by date, which formatted cells ("Feb 26") cannot give. See
-  /// rowsFromJson.
+  /// raw is the same rows with date columns left as the timestamps they
+  /// arrived as, or empty when none is a date: for a chart choosing points by
+  /// date, which formatted cells ("Feb 26") cannot give. See rowsFromJson.
   final List<List<String>> raw;
 
   const DataResult.ok(this.rows, [this.fields = const [], this.raw = const []])
@@ -47,12 +42,11 @@ class DataResult {
   bool get worked => rows != null;
 }
 
-/// maxDataFileBytes is the most a data file can be.
 const int maxDataFileBytes = 20 * 1024 * 1024;
 
-/// DataFiles are the files this machine's owner has said a data source may
-/// read: chosen with the picker, or agreed to when asked. A canvas comes from
-/// other people, and its path would otherwise read whatever file it names.
+/// DataFiles are the files this machine's owner has let a data source read:
+/// picked, or agreed to when asked. A canvas comes from other people, and
+/// its path would otherwise read whatever file it names.
 class DataFiles {
   static const _key = "canvasDataFiles";
 
@@ -71,11 +65,10 @@ class DataFiles {
   }
 }
 
-/// DataHosts are the hosts this machine's owner has said a data source may
-/// fetch from: named here, or agreed to when asked. A received canvas's
-/// table naming its sender's server would otherwise tell that server who
-/// opened it, the moment its rows were refreshed (security review,
-/// 2026-11-17).
+/// DataHosts are the hosts this machine's owner has let a data source fetch
+/// from: named here, or agreed to when asked. Otherwise a received canvas
+/// naming its sender's server would tell that server who opened it as soon
+/// as its rows refreshed.
 class DataHosts {
   static const _key = "canvasDataHosts";
 
@@ -102,9 +95,9 @@ class DataHosts {
   }
 }
 
-/// JsonResult is a source's answer read and decoded, or why it could not
-/// be: what [loadData] maps, kept whole by the Data Studio's Connect data so
-/// its columns can be chosen and previewed without asking again.
+/// JsonResult is a source's answer read and decoded, or why not: what
+/// [loadData] maps, kept whole by Connect data so its columns can be chosen
+/// and previewed without asking again.
 class JsonResult {
   final dynamic json;
   final String? problem;
@@ -113,8 +106,7 @@ class JsonResult {
   bool get worked => problem == null;
 }
 
-/// loadJson reads [source] and decodes it, with the same switches as
-/// [loadData].
+/// loadJson reads and decodes [source], with [loadData]'s switches.
 Future<JsonResult> loadJson(
   DataSource source, {
   bool allowFetching = false,
@@ -128,9 +120,8 @@ Future<JsonResult> loadJson(
       return const JsonResult.failed("There is no data source.");
 
     case DataKind.file:
-      // Only a file picked here, or agreed to when asked: a path that came
-      // inside somebody else's canvas reads nothing on its own, whoever
-      // calls this (security review, 2026-11-17).
+      // Only a file picked here or agreed to when asked: a path inside somebody
+      // else's canvas reads nothing on its own, whoever calls this.
       if (!await DataFiles.allowed(source.where)) {
         return JsonResult.failed(
             "This canvas asks to read ${source.where}, which has not been "
@@ -142,7 +133,7 @@ Future<JsonResult> loadJson(
         if (type == FileSystemEntityType.notFound) {
           return JsonResult.failed("There is no file at ${source.where}.");
         }
-        // Not a device, a pipe or a folder, and not more than a table holds.
+        // Not a device, pipe or folder, and no bigger than a table holds.
         if (type != FileSystemEntityType.file) {
           return const JsonResult.failed("That is not a file.");
         }
@@ -161,9 +152,8 @@ Future<JsonResult> loadJson(
             "Fetching is switched off. Turn it on in Settings > Plugins > "
             "Canvas, or use a file instead.");
       }
-      // Refused rather than quietly bypassed: a reader using a SOCKS proxy has
-      // said how they want to reach the network, and this request would not
-      // go that way.
+      // Refused rather than quietly bypassed: a reader with a SOCKS proxy has
+      // said how to reach the network, and this request would not go that way.
       if (proxied) {
         return const JsonResult.failed(
             "This app is set to reach the network through a proxy, which a "
@@ -185,8 +175,8 @@ Future<JsonResult> loadJson(
 }
 
 /// loadData reads [source] and maps it into rows. [allowFetching] and
-/// [proxied] are handed in rather than read here, so the decision is
-/// testable and this file does not reach for the app's settings.
+/// [proxied] are passed in so the decision is testable and this file does
+/// not reach for the app's settings.
 Future<DataResult> loadData(
   DataSource source, {
   bool allowFetching = false,
@@ -198,8 +188,7 @@ Future<DataResult> loadData(
   return mapData(read.json, source);
 }
 
-/// mapData is [json] mapped by [source] into rows, as [loadData] does after
-/// reading it.
+/// mapData maps [json] by [source] into rows, as [loadData] does.
 DataResult mapData(dynamic json, DataSource source) {
   var rows = rowsFromJson(json, source);
   if (rows.isEmpty) {
@@ -210,22 +199,21 @@ DataResult mapData(dynamic json, DataSource source) {
   return DataResult.ok(
     rows,
     _fieldsIn(valueAtPath(json, source.rowsPath)),
-    // Only where there is a date to keep, since for everything else these are
-    // the same rows again.
+    // Only where there is a date to keep; otherwise these are the same rows.
     source.columns.any((c) => c.date.isNotEmpty)
         ? rowsFromJson(json, source, raw: true)
         : const [],
   );
 }
 
-/// fieldsAt is every field the records at [rowsPath] in [json] have: in
+/// fieldsAt is every field the records at [rowsPath] in [json] have; in
 /// their own order with [sorted] false, as a first mapping lays them out.
 List<String> fieldsAt(dynamic json, String rowsPath, {bool sorted = true}) =>
     _fieldsIn(valueAtPath(json, rowsPath), sorted: sorted);
 
-/// listsIn is every list of records inside [json] -- where a table's rows
-/// might be -- as (path, how many), the answer itself first if it is one.
-/// For Connect data's "which list is the rows".
+/// listsIn is every list of records inside [json], where a table's rows
+/// might be, as (path, count), the answer itself first if it is one. For
+/// Connect data's "which list is the rows".
 List<(String, int)> listsIn(dynamic json, {String prefix = "", int depth = 0}) {
   var out = <(String, int)>[];
   if (json is List) {
@@ -245,13 +233,10 @@ List<(String, int)> listsIn(dynamic json, {String prefix = "", int depth = 0}) {
   return out;
 }
 
-/// _fieldsIn is every dotted path a record has, whether or not it holds
-/// anything: a field that came back null is still a field, and leaving it out
-/// would mark a column mapped to it as missing.
-///
-/// The first record only, and a list by its first entry. A field missing
-/// from the first record but present in others cannot be seen, which is why
-/// the preset's own list is offered alongside this one.
+/// _fieldsIn is every dotted path a record has, even one holding null:
+/// leaving it out would mark a column mapped to it missing. Only the first
+/// record (and a list's first entry) is read, so a field absent there
+/// cannot be seen; hence the preset's own list is offered alongside.
 List<String> _fieldsIn(dynamic records,
     {String prefix = "", int depth = 0, bool sorted = true}) {
   if (records is List) {
@@ -277,19 +262,19 @@ List<String> _fieldsIn(dynamic records,
   return out;
 }
 
-/// _fetch is the request itself: a plain HttpClient, for one GET with one
-/// header. The key is read here from the machine's store rather than passed
-/// in, so no caller holds one and it cannot end up in a document.
+/// _fetch is one GET with one header on a plain HttpClient. The key is read
+/// here from the machine's store, so no caller holds it and it cannot end
+/// up in a document.
 Future<String?> _fetch(DataSource source) async {
   var client = canvasHttpClient();
   try {
-    // https only (see canvasGet): a key sent in a header over http is a key
-    // sent to whoever is between the two machines.
+    // https only (see canvasGet): a key sent in a header over http is sent to
+    // whoever is between the two machines.
     var address = Uri.tryParse(source.where);
     if (address == null) return null;
     var key = await CanvasApiKeys.read(address.host);
-    // football-data.org's header, which is also the commonest spelling of
-    // this among the APIs a table is likely to come from.
+    // football-data.org's header, also the commonest spelling among the APIs
+    // a table is likely to use.
     var response = await canvasGet(client, address,
         headers: {if (key.isNotEmpty) "X-Auth-Token": key});
     if (response?.statusCode != 200) {
@@ -306,10 +291,9 @@ Future<String?> _fetch(DataSource source) async {
   }
 }
 
-/// fetchJsonAt is one more request, for a source that needs a second look:
-/// whatever a preset asked for, which the preset knows how to read. Null on
-/// any failure, which the caller treats as "leave the rows alone". Behind the
-/// same switch as everything here, and refused when a proxy is configured.
+/// fetchJsonAt is a second request for a preset that needs one, which the
+/// preset knows how to read. Null on any failure, meaning "leave the rows
+/// alone". Behind the same switch, and refused when a proxy is configured.
 Future<dynamic> fetchJsonAt(
   String url, {
   bool allowFetching = false,
@@ -326,11 +310,10 @@ Future<dynamic> fetchJsonAt(
   }
 }
 
-/// collectPictures replaces the addresses in a table's picture columns with
-/// pictures stored on this machine. One request per distinct address, stored
-/// by content, so rows sharing a crest store one file. A picture that cannot
-/// be had is left as its address: a visible URL is more obviously wrong than
-/// an empty cell.
+/// collectPictures replaces addresses in a table's picture columns with
+/// pictures stored on this machine: one request per distinct address,
+/// stored by content, so rows sharing a crest share a file. A picture that
+/// cannot be had stays an address, more obviously wrong than an empty cell.
 Future<List<List<String>>> collectPictures(
   List<List<String>> rows,
   DataSource source, {
@@ -353,9 +336,8 @@ Future<List<List<String>>> collectPictures(
       var address = out[r][c].trim();
       if (!address.startsWith("https://")) continue;
 
-      // Three places to look before the network: this refresh, this
-      // machine's memory of earlier ones, and only then the address itself,
-      // so unchanged crests do not spend an API's allowance.
+      // Before the network: this refresh, then this machine's memory of earlier
+      // ones, so unchanged crests do not spend an API's allowance.
       var id = stored[address] ??
           await CanvasPictureCache.known(address) ??
           await _storePicture(address);

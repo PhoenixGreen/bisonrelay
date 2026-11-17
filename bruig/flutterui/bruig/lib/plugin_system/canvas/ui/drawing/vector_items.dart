@@ -211,8 +211,7 @@ Set<VectorPick> itemPicks(VectorElement e, Iterable<VectorItem> items) => {
               for (var n = 0; n < run.nodes.length; n++) VectorPick(i, p, n),
     };
 
-/// itemsOf is the items [picks] are points of: the shapes, or pieces, they
-/// make up.
+/// itemsOf is the items (shapes or pieces) that [picks] are points of.
 Set<VectorItem> itemsOf(VectorElement e, Iterable<VectorPick> picks) {
   var shapes = e.shapes ?? const <VectorShape>[];
   return {
@@ -236,8 +235,7 @@ Set<VectorItem> allItems(VectorElement e) {
   };
 }
 
-/// itemsIn is every item of [e] whose box, on the canvas, overlaps
-/// [canvasRect].
+/// itemsIn is every item of [e] whose canvas box overlaps [canvasRect].
 Set<VectorItem> itemsIn(VectorElement e, Rect canvasRect) {
   var space = VectorSpace(e);
   return {

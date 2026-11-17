@@ -6,34 +6,30 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:flutter/painting.dart';
 
-// stage_parts.dart is dragging a part of an element rather than the element: a
-// chart's title, description or key, a table's column rules, and which table
-// cell a point is in.
-//
-// These pieces are placed inside a box by the painters, so the questions are
-// asked of the same code that draws them (chartLabelPlaces, tableColumnWidths),
-// and a label is picked up exactly where it is seen. Nothing here touches the
-// controller or the widget: each function takes the element and its rectangle
-// and returns an answer or a new element; committing it stays with the stage.
+// stage_parts.dart is dragging part of an element: a chart's title,
+// description or key, a table's column rules, and finding a table's cells.
+// Places come from the painters' own code (chartLabelPlaces,
+// tableColumnWidths), so a part is picked up exactly where it is seen. Each
+// function takes the element and its rectangle and returns an answer or a
+// new element; committing it is the stage's job.
 
-/// ChartLabelGrab is which of a chart's three pieces of writing is being
-/// dragged, and whether by its body or by its corner.
+/// ChartLabelGrab is which of a chart's three labels is being dragged, and
+/// whether by its body or its corner.
 class ChartLabelGrab {
   final ChartLabelPart part;
   final bool resizing;
 
   /// grab is where in the label the pointer took hold, in document units, so
-  /// the label does not jump its own corner under the pointer.
+  /// the label does not jump under the pointer.
   final Offset grab;
 
   const ChartLabelGrab(this.part, this.resizing, this.grab);
 }
 
-/// chartLabelGrabAt is which of the three a document point lands on, if any.
-/// Corners before bodies, in reverse drawing order, so the one on top wins.
-/// The key is moved but not resized: its size comes from its setting and its
-/// words. [slop] is the corner's reach in document units (the stage's
-/// screen-pixel allowance over the zoom).
+/// chartLabelGrabAt is which label a document point lands on, if any, in
+/// reverse drawing order so the one on top wins. The key is moved but never
+/// resized: its size comes from its setting and words. [slop] is the
+/// corner's reach in document units.
 ChartLabelGrab? chartLabelGrabAt(
     ChartElement e, Rect bounds, Offset doc, double slop) {
   var rects = chartLabelPlaces(e, bounds);
@@ -53,7 +49,7 @@ ChartLabelGrab? chartLabelGrabAt(
 
 /// chartLabelDragged is [e] with the drag written onto the held label, in
 /// fractions of the chart's box so it stays put when the chart is resized.
-/// Null for a chart with no area, where every fraction divides by zero.
+/// Null for a chart with no area.
 ChartElement? chartLabelDragged(
     ChartElement e, Rect bounds, ChartLabelGrab grab, Offset doc) {
   if (bounds.width <= 0 || bounds.height <= 0) return null;
@@ -66,8 +62,8 @@ ChartElement? chartLabelDragged(
     return grownFor(e.copyWith(legend: e.legend.copyWith(x: x, y: y)), bounds);
   }
 
-  // Where it is drawn now (its own place or the chart's default), so a
-  // label dragged for the first time moves from where it is seen.
+  // From where it is drawn (its own place or the default), so a first drag
+  // starts where it is seen.
   var drawn = chartLabelPlaces(e, bounds)[grab.part]!;
   var box = (grab.part == ChartLabelPart.title ? e.titleBox : e.descriptionBox)
       .copyWith(
@@ -93,13 +89,10 @@ ChartElement? chartLabelDragged(
       bounds);
 }
 
-/// grownFor sizes the chart's box to exactly hold the chart and its placed
-/// labels, keeping everything where it looks to be, so a label dragged off
-/// the side stays inside the selection and moves with the chart.
-///
-/// It shrinks as well as grows, back to the chart's own rectangle once the
-/// labels are inside again. That is safe only because the chart's rectangle
-/// is its own (see ChartBody), so the plot does not follow the box.
+/// grownFor sizes the chart's box to hold the chart and its placed labels,
+/// leaving everything where it is on screen, so a label dragged off the side
+/// stays in the selection. It shrinks too, which is safe only because the
+/// plot has its own rectangle (ChartBody) and does not follow the box.
 ChartElement grownFor(ChartElement e, Rect bounds) {
   var rects = chartLabelPlaces(e, bounds);
   if (rects.isEmpty) return e;
@@ -111,7 +104,7 @@ ChartElement grownFor(ChartElement e, Rect bounds) {
   if (wanted == bounds) return e;
 
   /// refit rewrites a label's fractions against the new box, so it stays
-  /// exactly where it is on screen while the box moves under it.
+  /// put on screen.
   ChartLabel refit(ChartLabel label) {
     if (!label.hasPlace) return label;
     var rect = label.rectIn(bounds);
@@ -127,8 +120,7 @@ ChartElement grownFor(ChartElement e, Rect bounds) {
       .copyWith(
         titleBox: refit(e.titleBox),
         descriptionBox: refit(e.descriptionBox),
-        // The chart itself stays exactly where it is: a drag about the words
-        // must not resize the plot.
+        // Dragging a label must not move or resize the plot.
         body: ChartBody.fitting(e.body.rectIn(bounds), wanted),
       )
       .withBase(
@@ -140,8 +132,7 @@ ChartElement grownFor(ChartElement e, Rect bounds) {
 }
 
 /// tableColumnDividers is where a table's inner column rules fall, in
-/// document units. The outer two are the element's edges, which have resize
-/// handles already.
+/// document units; the outer edges have resize handles already.
 List<double> tableColumnDividers(TableElement e, Rect bounds) {
   var widths = tableColumnWidths(e, bounds);
   var out = <double>[];
@@ -153,10 +144,9 @@ List<double> tableColumnDividers(TableElement e, Rect bounds) {
   return out;
 }
 
-/// tableColumnAt is which divider a document point is on, if any, given the
-/// pointer's reach in document units. The reach is narrowed to a quarter of
-/// the thinner column either side, so narrow columns (a league table's GD)
-/// can still be clicked.
+/// tableColumnAt is which divider a document point is on, if any, within
+/// [slop] document units narrowed to a quarter of the thinner column either
+/// side, so narrow columns can still be clicked.
 int? tableColumnAt(TableElement e, Rect bounds, Offset doc, double slop) {
   if (!bounds.inflate(slop).contains(doc)) return null;
   var widths = tableColumnWidths(e, bounds);
@@ -173,14 +163,13 @@ int? tableColumnAt(TableElement e, Rect bounds, Offset doc, double slop) {
 }
 
 /// tableColumnDragged is [e] with the drag written onto the two columns
-/// either side of divider [at], leaving every other column where it is: a
-/// table fills its element, so widening one narrows its neighbour.
+/// either side of divider [at]: a table fills its element, so widening one
+/// narrows its neighbour and the rest stay put.
 TableElement? tableColumnDragged(
     TableElement e, Rect bounds, int at, Offset doc) {
   if (bounds.width <= 0) return null;
 
-  // Seeded from the measured widths, so a drag starts from the table as
-  // it looks rather than from equal columns.
+  // From the measured widths, so a drag starts from the table as it looks.
   var widths = tableColumnWidths(e, bounds);
   if (at + 1 >= widths.length) return null;
 
@@ -194,7 +183,7 @@ TableElement? tableColumnDragged(
   return e.copyWith(columnWidths: [for (var w in widths) w / bounds.width]);
 }
 
-/// tableCellAt is which cell of a table a document point is in.
+/// tableCellAt is the (row, column) a document point is in, or null.
 (int, int)? tableCellAt(TableElement e, Rect bounds, Offset doc) {
   if (!bounds.contains(doc) || e.rows.isEmpty) return null;
 
@@ -217,7 +206,7 @@ TableElement? tableColumnDragged(
   return (row, col);
 }
 
-/// tableCellRect is where that cell is, in document units.
+/// tableCellRect is a cell's rectangle, in document units.
 Rect tableCellRect(TableElement e, Rect bounds, int row, int col) {
   var widths = tableColumnWidths(e, bounds);
   var heights = tableRowHeights(e, bounds);

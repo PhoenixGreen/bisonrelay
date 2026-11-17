@@ -3,17 +3,13 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// studio_colors.dart is the palette the sound side of Canvas is drawn in: the
-// mixer, the effects, the timeline's channels and the instruments.
-//
-// Studio is a dark look of its own; Follow my theme asks the app's theme for
-// every role. Any role can be changed by hand in Settings > Plugins > Canvas,
-// kept there rather than among the app's theme areas because the theming
-// system is a separate submission that Canvas is stacked on.
-//
-// Only what a state means (on, solo, armed, the meter's bands, a device's
-// screen) has a colour of its own; everything else is a surface or text
-// level, asked for by role.
+// studio_colors.dart is the palette the sound side of Canvas is drawn in:
+// mixer, effects, timeline channels and instruments. Studio is a dark look
+// of its own; Follow my theme asks the app's theme for every role. Roles
+// are changed in Settings > Plugins > Canvas, not the app's theme areas,
+// since the theming system is a separate submission. Only what a state
+// means (on, solo, armed, meter bands, a device's screen) has its own
+// colour; the rest is a surface or text level, asked for by role.
 
 /// StudioRole is one colour of the studio palette.
 enum StudioRole {
@@ -182,13 +178,11 @@ class MixerLook {
   }
 }
 
-/// StudioScope draws [child] in the studio palette, as the mixer is drawn
-/// (Ken, 2026-11-09: "all 3 panels should have the studio theme applied"):
-/// under it the app's theme has its colours swapped for the studio's, so
-/// whatever asks the theme for a colour -- the timeline's rows and lanes,
-/// the Slots panel -- gets the studio's, and follows it as it is changed in
-/// Settings > Plugins > Canvas. Sizes, the text size and the rest stay the
-/// app's.
+/// StudioScope draws [child] in the studio palette, as the mixer is: under
+/// it the app's theme has its colours swapped for the studio's, so whatever
+/// asks the theme for a colour (the timeline's rows and lanes, the Slots
+/// panel) gets the studio's and follows Settings > Plugins > Canvas. Sizes
+/// and the text size stay the app's.
 class StudioScope extends StatefulWidget {
   final Widget child;
   const StudioScope({required this.child, super.key});

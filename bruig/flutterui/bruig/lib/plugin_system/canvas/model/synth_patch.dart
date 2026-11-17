@@ -1,12 +1,11 @@
 import 'dart:math' as math;
 
-// synth_patch.dart is a synth built of modules patched together (Ken,
-// 2026-11-14: "instrument components ... as separate, placeable canvas
-// elements ... chainable on the canvas with patch cables"): a keyboard, an
-// oscillator, an envelope, a filter, an LFO, an amp, a mixer and a speaker,
-// each with its settings, and each input taking a cable from another's
-// output. The speaker is an instrument: what it plays, the patch makes
-// (see media/synth/patch_voice.dart).
+// synth_patch.dart is a synth built of modules patched together as
+// separate canvas elements: a keyboard, an oscillator, an envelope, a
+// filter, an LFO, an amp, a mixer and a speaker, each with its settings,
+// each input taking a cable from another's output. The speaker is an
+// instrument: what it plays, the patch makes (see
+// media/synth/patch_voice.dart).
 
 /// SynthSignal is what a jack carries: sound, a control that moves
 /// something (an envelope, an LFO), a key held or not, and which key.
@@ -149,8 +148,7 @@ const synthChoices = <String, List<String>>{
   "type": ["lowpass", "highpass", "bandpass"],
 };
 
-/// SynthPlug is the output a cable comes from: a module's, by id, and its
-/// jack.
+/// SynthPlug is the output a cable comes from: a module id and its jack.
 typedef SynthPlug = ({String module, String port});
 
 /// SynthModule is one module in a patch: its kind, its settings, and the
@@ -223,8 +221,7 @@ class SynthModule {
   }
 }
 
-/// SynthPatch is the modules a speaker plays: everything its sound comes
-/// from, through the cables.
+/// SynthPatch is the modules a speaker plays, through the cables.
 class SynthPatch {
   final List<SynthModule> modules;
 
@@ -340,6 +337,5 @@ class SynthPatch {
   }
 }
 
-/// synthPlugFits is whether a cable from [from] can go into [to]: an
-/// output into an input carrying the same.
+/// synthPlugFits is whether a cable from [from] fits [to]: same signal.
 bool synthPlugFits(SynthPort from, SynthPort to) => from.signal == to.signal;

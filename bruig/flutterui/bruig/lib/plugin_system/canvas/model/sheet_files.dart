@@ -7,15 +7,11 @@ import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart'
     show generalNumber, serialOf;
 import 'package:xml/xml.dart';
 
-// sheet_files.dart is the Data Studio's files (Ken's plan, approved
-// 2026-11-15: "Import CSV, XLSX and ODS, and export CSV"): a spreadsheet
-// saved by Calc, Excel or Sheets read into sheets of the canvas -- its
-// values and its formulas, which the canvas works out itself -- and a sheet
-// written out as CSV for them to open.
-//
-// Values and formulas are read; styles, charts and pictures are not. Each
-// is read with packages the app already has (archive, xml): an XLSX or ODS
-// file is a zip of XML.
+// sheet_files.dart reads a Calc, Excel or Sheets spreadsheet (CSV, XLSX,
+// ODS) into the Data Studio's sheets -- values and formulas, which the
+// canvas works out itself; not styles, charts or pictures -- and writes a
+// sheet out as CSV. XLSX and ODS are zips of XML, read with archive and
+// xml, packages the app already has.
 
 /// ReadSheet is one sheet read from a file: its name and its cells.
 class ReadSheet {
@@ -24,7 +20,7 @@ class ReadSheet {
   const ReadSheet(this.name, this.cells);
 }
 
-/// readSheets reads the file [name] holding [bytes] -- by its ending, CSV
+/// readSheets reads the file [name] holding [bytes] by its ending -- CSV
 /// (or TSV, or text), XLSX or ODS -- or throws a FormatException saying
 /// why it can't.
 List<ReadSheet> readSheets(String name, List<int> bytes) {

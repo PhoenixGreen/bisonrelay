@@ -17,11 +17,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 // canvas_dock.dart is everything under the canvas: the play bar, and the
-// panels in their places (see dock_layout.dart) -- above, then main with
-// left beside it. Each place shows one panel; a place with none takes no
-// room. The places are as tall as they were dragged, kept in the
-// preferences, and made shorter where the window is, never pushing the
-// settings bar off the page (see panel_heights.dart).
+// panels in their places (dock_layout.dart) -- above, then main with left
+// beside it. Each place shows one panel; an empty place takes no room.
+// Places keep their dragged heights, shortened to fit the window without
+// pushing the settings bar off the page (panel_heights.dart).
 
 /// dockLowerDefault, dockAboveDefault and dockLeftDefault are the places'
 /// sizes before any is dragged.
@@ -30,11 +29,10 @@ const double dockLowerDefault = 280,
     dockLeftDefault = 420,
     dockLeftLeast = 220;
 
-/// dockBarHeight is the play bar as the dock draws it: with its padding and
-/// the line along its top.
+/// dockBarHeight is the play bar as drawn in the dock, with its padding and
+/// top line.
 const double dockBarHeight = playBarHeight + 9;
 
-/// CanvasDock is the panels under the canvas, and the play bar.
 class CanvasDock extends StatefulWidget {
   final CanvasController controller;
 
@@ -42,12 +40,10 @@ class CanvasDock extends StatefulWidget {
   /// what is under the settings bar, less what of the canvas stays in view.
   final double room;
 
-  /// fill is whether the top place takes the whole room: the canvas put
-  /// away.
+  /// fill is whether the top place takes the whole room: the canvas away.
   final bool fill;
 
-  /// onCustomiseSidebars opens the sidebars' settings, from the panels'
-  /// menu.
+  /// onCustomiseSidebars opens the sidebars' settings from the panels' menu.
   final VoidCallback? onCustomiseSidebars;
 
   const CanvasDock({
@@ -62,7 +58,6 @@ class CanvasDock extends StatefulWidget {
   State<CanvasDock> createState() => CanvasDockState();
 }
 
-/// _Row is one band of places across the dock.
 enum _Row { above, lower }
 
 class CanvasDockState extends State<CanvasDock> {
@@ -75,8 +70,8 @@ class CanvasDockState extends State<CanvasDock> {
   double _left = dockLeftDefault;
 
   /// _pull is how far the mixer's edge has been dragged past where it stops
-  /// (down at its least, or up at its smallest), so a drag has to mean it
-  /// before the mixer changes size step. See _mixerPulled.
+  /// (down at its least, up at its smallest), so a drag must mean it before
+  /// the mixer steps size. See _mixerPulled.
   double _pull = 0;
 
   @override
@@ -108,14 +103,12 @@ class CanvasDockState extends State<CanvasDock> {
 
   double _mixerLeast() => mixerLeastHeight(controller) * _textScale;
 
-  /// _panelLeast is the shortest [panel] goes.
   double _panelLeast(DockPanel panel) => switch (panel) {
         DockPanel.timeline || DockPanel.slots => timelineRowsLeast,
         DockPanel.mixer => _mixerLeast(),
         DockPanel.chain => effectsMinHeight,
       };
 
-  /// _open are the panels showing in [row].
   List<DockPanel> _open(_Row row) => [
         for (var place in _placesIn(row))
           if (controller.dockShownIn(place) case var p?) p
@@ -144,10 +137,10 @@ class CanvasDockState extends State<CanvasDock> {
     return (row, math.max(set, least), least, false);
   }
 
-  /// _shown is each row's height on screen: as set, where they fit; where
-  /// not, the top ones made shorter first, each to its least. What was set
-  /// is kept, for a window made taller again. With the canvas put away, the
-  /// top row that can grow takes the rest.
+  /// _shown is each row's height on screen: as set where they fit, else the
+  /// top ones shortened first, each to its least, keeping what was set for a
+  /// taller window. With the canvas away, the top row that can grow takes
+  /// the rest.
   Map<_Row, double> _shown(List<(_Row, double, double, bool)> rows) {
     var out = fitPanels(
         [for (var r in rows) r.$2], [for (var r in rows) r.$3], widget.room);
@@ -159,9 +152,8 @@ class CanvasDockState extends State<CanvasDock> {
     return {for (var (k, r) in rows.indexed) r.$1: math.max(0.0, out[k])};
   }
 
-  /// _resize is [row]'s top edge dragged so it would be [h] tall: taking
-  /// free room, then the room of the row over it, and never past the
-  /// settings bar.
+  /// _resize drags [row]'s top edge to make it [h] tall: taking free room,
+  /// then the row over it's, never past the settings bar.
   void _resize(_Row row, double h) => setState(() {
         var open = _open(row);
         if (open.length == 1 &&
@@ -196,10 +188,9 @@ class CanvasDockState extends State<CanvasDock> {
         }
       });
 
-  /// _mixerPulled steps the mixer between its sizes as its edge is dragged to
-  /// [h], on a band of its own: down past its least to its smallest (no
-  /// names, no rail) and up again; minimised, up out to its least. Returns
-  /// whether the drag goes on to size it.
+  /// _mixerPulled steps the mixer's size as its edge is dragged to [h] on a
+  /// band of its own: down past its least to its smallest and back up;
+  /// minimised, up to its least. Returns whether the drag goes on to size it.
   bool _mixerPulled(double h) {
     var tabs = _tabs ? DockPlaceTabs.height : 0.0;
     var least = mixerLeastHeight(controller, bare: false) * _textScale + tabs;
@@ -314,8 +305,7 @@ class CanvasDockState extends State<CanvasDock> {
         theme, left ? DockPlace.left : DockPlace.main, height, _Row.lower);
   }
 
-  /// _widthGrip is the line between left and main: dragged, left is wider
-  /// or narrower.
+  /// _widthGrip is the line between left and main, dragged to resize left.
   Widget _widthGrip(ThemeNotifier theme, double room) => MouseRegion(
         cursor: SystemMouseCursors.resizeLeftRight,
         child: GestureDetector(
@@ -337,8 +327,7 @@ class CanvasDockState extends State<CanvasDock> {
         ),
       );
 
-  /// _place is [place]: its tabs, with the tabs switcher, over the panel
-  /// open in it.
+  /// _place is [place]: its tabs and switcher over the panel open in it.
   Widget _place(ThemeNotifier theme, DockPlace place, double height, _Row row) {
     var panel = controller.dockShownIn(place);
     var tabs = _tabs ? DockPlaceTabs.height : 0.0;
@@ -361,8 +350,8 @@ class CanvasDockState extends State<CanvasDock> {
     return RepaintBoundary(
       key: ValueKey("dockPanel-${panel.name}"),
       child: switch (panel) {
-        // The timeline, the slots and the mixer in the studio palette --
-        // or the app's theme, as chosen in Settings (Ken, 2026-11-09).
+        // The timeline, slots and mixer in the studio palette, or the app's
+        // theme, as chosen in Settings.
         DockPanel.timeline => StudioScope(
             child: CanvasTimeline(
               controller: controller,
@@ -371,8 +360,7 @@ class CanvasDockState extends State<CanvasDock> {
               showBar: false,
             ),
           ),
-        // A clip launcher of its own (the approved design), not the
-        // timeline's rows with slots beside them.
+        // A clip launcher of its own, not the timeline's rows with slots.
         DockPanel.slots => StudioScope(
             child: CanvasSlotsPanel(
               controller: controller,

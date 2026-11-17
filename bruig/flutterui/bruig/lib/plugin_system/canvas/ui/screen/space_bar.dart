@@ -2,16 +2,13 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// space_bar.dart is the space bar playing and stopping the timeline from
-// anywhere on the Canvas page, and the few other keys the page answers wherever
-// the focus is: a cut at the playhead, the timeline's tools, and copy, paste,
-// undo and delete for what is selected.
-//
-// A FocusScope round the page hears whatever nothing inside has taken, before
-// the app's own shortcuts would (which would press the focused button). A text
-// field keeps its spaces, so typing needs no special case; dialogs, menus and
-// the chat beside the canvas are outside it. A scope rather than a plain Focus,
-// so focus falls back here when a field inside is left.
+// space_bar.dart has space play and stop the timeline anywhere on the Canvas
+// page, with the few other keys the page answers wherever the focus is: a
+// cut at the playhead, the timeline's tools, and copy, paste, undo and
+// delete. A FocusScope round the page hears what nothing inside took,
+// before the app's shortcuts would press the focused button. A text field
+// keeps its spaces; dialogs, menus and the chat are outside it. A scope, so
+// focus falls back here when a field inside is left.
 
 /// CanvasSpaceBar makes space play and stop [controller] anywhere in [child].
 class CanvasSpaceBar extends StatefulWidget {
@@ -34,8 +31,7 @@ class _CanvasSpaceBarState extends State<CanvasSpaceBar> {
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
-    // A game playing has the keys: Space jumps rather than plays the
-    // timeline. See CanvasController.gameKey.
+    // A game playing has the keys: Space jumps. See CanvasController.gameKey.
     if (widget.controller.gaming) return KeyEventResult.handled;
     if (_typing()) return KeyEventResult.ignored;
     var keys = HardwareKeyboard.instance;
@@ -51,9 +47,9 @@ class _CanvasSpaceBarState extends State<CanvasSpaceBar> {
     }
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
-    // What the canvas does with these when focused, for when it is not:
-    // after a click on the timeline, a picked sound is copied, pasted on
-    // its channel at the playhead, or deleted from here.
+    // For when the canvas is not focused: after a click on the timeline, a
+    // picked sound is copied, pasted on its channel at the playhead, or
+    // deleted from here.
     if (command) {
       switch (key) {
         case LogicalKeyboardKey.keyC:
@@ -94,13 +90,11 @@ class _CanvasSpaceBarState extends State<CanvasSpaceBar> {
     return KeyEventResult.handled;
   }
 
-  /// _claim brings the focus onto the page when a press lands on it while the
-  /// focus is elsewhere (the chat box, most often): an empty part of the
-  /// timeline takes no focus of its own. A field inside still takes the focus
-  /// after this.
-  ///
-  /// On the release, not the press: the chat box lets go of the focus on the
-  /// press, and that would land after a request made then.
+  /// _claim brings the focus to the page when a press lands on it while the
+  /// focus is elsewhere (often the chat box): an empty part of the timeline
+  /// takes none of its own. A field inside still takes it after this. On
+  /// the release, not the press: the chat box lets go of focus on the press,
+  /// which would land after a request made then.
   void _claim(PointerUpEvent _) {
     var now = FocusManager.instance.primaryFocus;
     if (now == _scope || (now != null && now.ancestors.contains(_scope))) {

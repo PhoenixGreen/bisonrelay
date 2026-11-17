@@ -5,7 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 // note_tools.dart is the clip editor's Notes tools (Ableton's pitch and time
 // utilities). Starts and lengths are in beats.
 
-/// NoteTool is one of the tools, with what its button says.
+/// NoteTool is one tool, with its button's label.
 enum NoteTool {
   up("+1"),
   down("−1"),
@@ -29,8 +29,8 @@ enum NoteTool {
   chance("Chance 50%"),
   always("Always"),
 
-  /// duplicate puts a copy of the notes after them, a grid step on from
-  /// where the last ends.
+  /// duplicate copies the notes after them, a grid step on from the last
+  /// end.
   duplicate("Duplicate"),
 
   /// swing pushes every second step of the grid a third of a step later.
@@ -39,23 +39,22 @@ enum NoteTool {
   /// arpeggiate spreads each chord's notes up the grid, lowest first.
   arpeggiate("Arpeggiate chords"),
 
-  /// rhythm lays five notes in every eight steps of the grid (Euclid's
-  /// spacing, as Bjorklund's) on the lowest key, from the first note to the
-  /// loop's end -- or on middle C from the start, with none.
+  /// rhythm lays five notes in every eight grid steps (Euclid's spacing) on
+  /// the lowest key, from the first note to the loop's end -- or on middle C
+  /// from the start, with none.
   rhythm("Rhythm 5 in 8"),
 
-  /// fillChords makes each note the root of the scale's chord on it: the
-  /// scale's third and fifth over it.
+  /// fillChords adds the scale's third and fifth over each note.
   fillChords("Fill chords");
 
   final String label;
   const NoteTool(this.label);
 }
 
-/// applyNoteTool is [notes] after [tool], on those at [picked] (all of them,
-/// with none picked). [scale] is the root and steps Fit to scale uses; [grid]
-/// the beats Quantise moves onto; [loopEnd] where Legato holds the last note
-/// to; [seed] seeds Humanise so a test gets the same result.
+/// applyNoteTool is [notes] after [tool] on those at [picked] (all, with
+/// none picked). [scale] is Fit to scale's root and steps, [grid] the beats
+/// Quantise moves onto, [loopEnd] where Legato holds the last note to;
+/// [seed] makes Humanise repeatable for tests.
 List<MidiNote> applyNoteTool(
   NoteTool tool,
   List<MidiNote> notes,
@@ -144,8 +143,7 @@ List<MidiNote> applyNoteTool(
         return n.copyWith(start: start, length: end - start);
       });
     case NoteTool.strum:
-      // A chord's notes each a little after the one under it, as a hand
-      // drawn across the strings.
+      // A chord's notes each a little after the one under it, like a strum.
       var under = <int, int>{};
       for (var (i, n) in notes.indexed) {
         if (!on(i)) continue;
@@ -275,8 +273,8 @@ List<MidiNote> applyNoteTool(
   }
 }
 
-/// _rhythm is [notes] with five notes in every eight grid steps on [key],
-/// from [from] to [to], where none of that key starts already.
+/// _rhythm adds five notes in every eight grid steps on [key], from [from]
+/// to [to], where none of that key starts already.
 List<MidiNote> _rhythm(
     List<MidiNote> notes, int key, double from, double to, double grid) {
   var step = grid <= 0 ? 0.25 : grid;

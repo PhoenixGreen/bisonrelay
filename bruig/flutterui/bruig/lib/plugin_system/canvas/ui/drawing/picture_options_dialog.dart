@@ -7,12 +7,10 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// picture_options_dialog.dart decides how big a picture on a canvas is going
-// to be: how wide to scale it, how hard to compress it, what to encode it as.
-// The controls are the app's own, shared with a post's embedded picture and a
-// site's, so the one pipeline answers the same way from every door. The width
-// usually matters most: scaling 4000 pixels down to 1600 throws away most of
-// the file before any compression happens.
+// picture_options_dialog.dart sets how big a picture on a canvas will be: its
+// width, compression and encoding. The controls are shared with posts and
+// sites, so one pipeline answers the same everywhere. Width matters most:
+// 4000 pixels scaled to 1600 sheds most of the file before compressing.
 
 /// showCanvasPictureOptions offers the size choices for one picture and
 /// returns the bytes to store, or null if it was cancelled.
@@ -38,9 +36,8 @@ class _PictureOptionsDialog extends StatefulWidget {
 }
 
 class _PictureOptionsDialogState extends State<_PictureOptionsDialog> {
-  /// _options are remembered between pictures: a width chosen for one canvas
-  /// picture is meant for them all. The default scales to 1600 wide but keeps
-  /// the encoding, leaving any re-encoding for the user to choose.
+  /// _options are remembered between pictures: a width chosen for one is
+  /// meant for all. The default scales to 1600 wide but keeps the encoding.
   static EmbedOptions _options = const EmbedOptions(maxWidth: 1600);
 
   PreparedEmbed? _prepared;
@@ -118,8 +115,8 @@ class _PictureOptionsDialogState extends State<_PictureOptionsDialog> {
       actions: [
         CancelButton(onPressed: () => Navigator.of(context).pop()),
         OutlinedButton(
-          // What the options make, once it is worked out: bytes from the
-          // options as they were would be stored under the ones chosen.
+          // Off while preparing, or bytes from older options would be
+          // stored under the ones chosen.
           onPressed: _preparing
               ? null
               : () =>

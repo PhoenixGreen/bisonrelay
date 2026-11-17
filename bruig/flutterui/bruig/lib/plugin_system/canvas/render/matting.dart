@@ -2,16 +2,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 // matting.dart is the fine work at a cut-out's edge, where a mask cannot be
-// simply in or out: hair, fur, a soft shoulder against the sky.
-//
-// Both jobs rest on one estimate: near an edge pixel, the mean colours of
-// surely-subject (F) and surely-background (B) pixels are what it is a mix
-// of. How far its colour C sits along the line from B to F is its alpha;
-// moving C towards F removes the background's share (decontamination).
-//
-// The means use summed-area tables, so a window of any size costs the same.
-//
-// Pure Dart over plain lists, so it runs in an isolate.
+// simply in or out: hair, fur, a soft shoulder. An edge pixel is a mix of
+// the mean surely-subject (F) and surely-background (B) colours near it:
+// where its colour sits from B to F is its alpha, and moving it towards F
+// removes the background's share. Summed-area tables make any window cost
+// the same. Pure Dart over plain lists, so it runs in an isolate.
 
 /// _Sums is a summed-area table of a weight and of the weighted colour, for
 /// the mean colour of whatever the weight picks in any rectangle.
@@ -49,8 +44,7 @@ class _Sums {
     return s;
   }
 
-  /// mean is the picked pixels' mean colour within [radius] of [x], [y], and
-  /// how many there were.
+  /// mean is the picked pixels' mean colour within [radius], and their count.
   (double, double, double, double) mean(int x, int y, int radius) {
     var x0 = math.max(0, x - radius), x1 = math.min(w, x + radius + 1);
     var y0 = math.max(0, y - radius), y1 = math.min(h, y + radius + 1);
@@ -67,10 +61,9 @@ class _Sums {
 }
 
 /// RefineJob is an edge to refine: [rgba] the picture's straight colour,
-/// [alpha] the mask as it is, and [band] how strongly each pixel was brushed
-/// with the refining brush -- all [width] x [height], [alpha] and [band] one
-/// byte a pixel. [radius] is how far, in these pixels, to look for what is
-/// surely subject and surely background.
+/// [alpha] the mask, and [band] how strongly each pixel was brushed with
+/// the refining brush, all [width] x [height], one byte a pixel for [alpha]
+/// and [band]. [radius] is how far to look for sure subject and background.
 class RefineJob {
   final Uint8List rgba;
   final Uint8List alpha;
@@ -82,12 +75,9 @@ class RefineJob {
 }
 
 /// refineAlpha is [job]'s mask with its alpha worked out afresh along its
-/// edge, wherever the band reaches, one byte a pixel.
-///
-/// Only within half the radius of where the mask changes from kept to
-/// hidden: the brush says where to look, the edge says what is in doubt.
-/// Changing everything brushed would wash out dark hair a stroke strayed
-/// into, measured against the face.
+/// edge where the band reaches, within half the radius of where the mask
+/// changes: the brush says where to look, the edge what is in doubt.
+/// Changing all brushed would wash out dark hair measured against a face.
 Uint8List refineAlpha(RefineJob job) {
   var w = job.width, h = job.height, n = w * h;
   var out = Uint8List.fromList(job.alpha);
@@ -111,9 +101,9 @@ Uint8List refineAlpha(RefineJob job) {
   }
 
   var nearEdge = within(zone);
-  // F and B are sampled from a thin ring (a third of the zone) just outside
-  // it, brushed or not, so F is the subject's colour at its edge (the hair)
-  // rather than its average (mostly face). A wider ring reaches the face.
+  // F and B are sampled from a thin ring just outside the zone, so F is the
+  // subject's colour at its edge (the hair) rather than its average (mostly
+  // face). A wider ring reaches the face.
   var ring = within(zone + math.max(2, zone ~/ 3));
   var fg = _Sums.of(
       job.rgba,
@@ -163,10 +153,9 @@ class DeconJob {
       this.rgba, this.alpha, this.width, this.height, this.amount, this.radius);
 }
 
-/// decontaminate is [job]'s picture with the background's colour taken out
-/// of its edge, as premultiplied RGBA, alpha untouched: every pixel the mask
-/// leaves partly showing is moved towards the subject's own colour near it,
-/// the further the more of it is hidden.
+/// decontaminate is [job]'s picture, premultiplied, with the background's
+/// colour taken out of its edge, alpha untouched: each partly shown pixel
+/// moved towards the subject's colour near it, the more the more hidden.
 Uint8List decontaminate(DeconJob job) {
   var w = job.width, h = job.height, n = w * h;
   var out = Uint8List(n * 4);

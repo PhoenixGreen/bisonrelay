@@ -15,9 +15,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// sprite_builder_settings.dart is building a Sprite element's figure from
-// Kenney's modular character pack: each piece chosen and seen as it is, and
-// its animations drawn into the sprite's sheet. See sprite_builder.dart.
+// sprite_builder_settings.dart builds a Sprite figure from Kenney's modular
+// character pack, drawing its animations into the sheet (sprite_builder.dart).
 
 /// modularPack is Kenney's modular character pack, among his packs.
 KenneyPack get modularPack => kenneyPacks.firstWhere((p) => p.slug == "modular-character-pack");
@@ -32,7 +31,7 @@ class SpriteBuilderGroup extends StatefulWidget {
 }
 
 class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
-  /// parts is the pack read, for the rest of the run of the app.
+  /// parts is the pack as read, kept for the app's run.
   static ModularParts? parts;
 
   bool _open = false;
@@ -44,8 +43,8 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
   int _height = 160;
   Map<String, ui.Image?> _pieces = const {};
 
-  /// _tuning is how each animation is drawn and played, where changed from
-  /// how it comes; _tuned the one being changed.
+  /// _tuning is each animation's drawing and playing where changed from its
+  /// default; _tuned the one being changed.
   Map<String, ModularTuning> _tuning = {};
   String _tuned = modularAnimations.first.name;
 
@@ -60,7 +59,7 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
       if (built["tuning"] case Map t) {
         _tuning = {for (var e in t.entries) "${e.key}": ModularTuning.fromJson(e.value)};
       }
-      // A speed changed since, in the Animations, is kept.
+      // A speed since changed in the Animations is kept.
       for (var a in widget.sprite.actions) {
         if (modularAnimations.any((m) => m.name == a.name)) {
           _tuning[a.name] = (_tuning[a.name] ?? const ModularTuning()).copyWith(fps: a.fps);
@@ -100,7 +99,7 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
   Future<void> _show() async {
     var p = parts, look = _look;
     if (p == null || look == null) return;
-    // Every mouth, for the animations that talk or shout: they are small.
+    // Every mouth, for talking or shouting animations: they are small.
     var pieces = await modularPieces(p, look, mouths: p.mouths.keys);
     if (mounted) setState(() => _pieces = pieces);
   }
@@ -165,7 +164,7 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
                 ]
               },
               fps: _tuning[a.name]?.fps ?? a.fps,
-              // Whether it loops, as it was set in the Animations, if it was.
+              // Looping as set in the Animations, if it was.
               loop: e.actionNamed(a.name)?.loop ?? a.loop),
       ],
       action: chosen.first.name,
@@ -224,8 +223,8 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
         ] else if (look != null) ...[
           SizedBox(
             key: const ValueKey("spriteBuilderPreview"),
-            // A line of its own: in the group's flow, a box with no width
-            // is no wider than nothing.
+            // Its own line: in the group's flow, a widthless box is no wider
+            // than nothing.
             width: double.infinity,
             height: 190,
             child: CustomPaint(painter: _FigurePainter(p, look, _pieces)),
@@ -269,9 +268,8 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
     );
   }
 
-  /// _tuningControls is one of the chosen animations picked, and how it is
-  /// drawn and played changed: in how many frames, how fast, how big -- and
-  /// its frames, drawn as they will be.
+  /// _tuningControls is one chosen animation picked, with how it is drawn
+  /// and played (frame count, speed, size) and its frames as they will be.
   List<Widget> _tuningControls(ModularParts p, ModularLook look) {
     var chosen = [for (var a in modularAnimations) if (_animations.contains(a.name)) a];
     var a = chosen.where((a) => a.name == _tuned).firstOrNull ?? chosen.first;
@@ -408,6 +406,6 @@ class _StripPainter extends CustomPainter {
   }
 
   @override
-  // Its frames are worked out afresh each build: a handful of small figures.
+  // Its frames are recomputed every build: a handful of small figures.
   bool shouldRepaint(_StripPainter old) => true;
 }

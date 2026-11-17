@@ -6,11 +6,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// structure_panel.dart is a sound document's sections (intro, verse, chorus),
-// each so many bars long, in the place a document of scenes has its scenes.
-// The sections map the one timeline rather than cut it: a sound running from
-// the verse into the chorus plays on. With no sections the piece is its master
-// structure.
+// structure_panel.dart is a sound document's sections (intro, verse,
+// chorus), so many bars each, where scenes would be. They map the one
+// timeline rather than cut it: a sound running from verse into chorus plays
+// on. With no sections the piece is its master structure.
 
 class CanvasStructurePanel extends StatelessWidget {
   final CanvasController controller;
@@ -50,8 +49,8 @@ class CanvasStructurePanel extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-            // One line where there is room; in a narrow sidebar or at a larger
-            // text size the bars and buttons go under the name.
+            // One line where there is room; in a narrow sidebar or at a
+            // larger text size the bars and buttons go under the name.
             child: LayoutBuilder(builder: (context, box) {
               var swatch = InkWell(
                 key: ValueKey("sectionColour-$i"),

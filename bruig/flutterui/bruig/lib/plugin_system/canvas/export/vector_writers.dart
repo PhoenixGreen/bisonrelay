@@ -8,10 +8,9 @@ import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 import 'package:flutter/painting.dart';
 
 // vector_writers.dart writes what a VectorCanvas recorded as SVG or as a
-// one-page PDF (Ken, 2026-11-17: the improvements report's vector export).
-// Shapes are paths; words are words, in the app's typefaces in an SVG and
-// in PDF's own standard faces in a PDF, each line stretched to the width it
-// had on screen so nothing moves; what had no vector form is a picture.
+// one-page PDF. Shapes are paths; words are words, in the app's typefaces in
+// an SVG and PDF's standard faces in a PDF, each line stretched to its
+// on-screen width so nothing moves; what had no vector form is a picture.
 
 String _n(double v) {
   if (v.isNaN || v.isInfinite) return "0";
@@ -124,9 +123,8 @@ Future<String> vectorSvg(VectorCanvas v) async {
 
 // ---------------------------------------------------------------- PDF
 
-/// _helvetica is the standard face's widths, a thousandth of its size, for
-/// the printable ASCII letters: what a line would be in it, so it can be
-/// stretched to the width it was on screen.
+/// _helvetica is the standard face's printable ASCII widths, in
+/// thousandths of its size, to stretch a line to its on-screen width.
 const _helvetica = [
   278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, //
   278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, //
@@ -137,8 +135,7 @@ const _helvetica = [
   278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
 ];
 
-/// _winAnsi is a letter's code in PDF's standard encoding, or "?" where it
-/// has none.
+/// _winAnsi is a letter's code in PDF's standard encoding, or "?".
 int _winAnsi(int code) {
   if (code >= 32 && code < 127) return code;
   if (code >= 0xA0 && code <= 0xFF) return code;

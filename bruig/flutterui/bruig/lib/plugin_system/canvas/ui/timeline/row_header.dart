@@ -4,17 +4,14 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// row_header.dart is a timeline row's header, one shape for every row (Ken,
-// 2026-11-08, "I'd like channels to have a more consistent look"; see
-// mixer-prototype's chanHead): the row's colour as an edge with a faint wash
-// of it; the name, with the motion, sound and solo buttons each in its own
-// place on the name's line, so they line up down the column whatever each
-// row has; under the name, on a tall row, its badges, what it is and its
-// tools; the bands' labels on the right, each level with its band; and a thin
-// meter beside what is heard. A short row is all one line.
+// row_header.dart is a timeline row's header, one shape for every row: the
+// row's colour as an edge with a faint wash; the name, with the motion,
+// sound and solo buttons each in its own place so they line up down the
+// column; under the name, on a tall row, its badges, kind and tools; the
+// bands' labels on the right, each level with its band; and a thin meter
+// beside what is heard. A short row is all one line.
 
-/// motionColour and soundColour are the motion's and the sound's, as the
-/// prototype has them.
+/// motionColour and soundColour mark a row's motion and its sound.
 const motionColour = Color(0xFF3FB08D);
 const soundColour = Color(0xFF4F8FD6);
 
@@ -150,7 +147,6 @@ class RowHeader extends StatelessWidget {
   final Widget name;
   final String kind;
 
-  /// fold is the row's fold arrow, where it has one.
   final Widget? fold;
 
   /// badges go after the name on a short row, before the kind on a tall one.
@@ -201,9 +197,9 @@ class RowHeader extends StatelessWidget {
     super.key,
   });
 
-  /// oneLine is whether the row is all one line: short, under two lines'
-  /// height -- the lines (20 + 2 + 18), their padding (3 + 3) and the
-  /// border under them (1). Any less, and a row 46.1 tall overflowed.
+  /// oneLine is whether the row is all one line: under two lines' height --
+  /// the lines (20 + 2 + 18), their padding (3 + 3) and the border (1) --
+  /// below which a tall row's two lines would overflow.
   bool get oneLine => height < 47;
 
   @override
@@ -228,9 +224,8 @@ class RowHeader extends StatelessWidget {
             return Row(children: [
               Flexible(child: name),
               // Beside the name on a short row: as wide as they are, the
-              // name having the rest -- split half and half, "Strings" was
-              // "Stri..." with room to spare (Ken, 2026-11-10). Where the
-              // row is too narrow for both, they give way as the name does.
+              // name having the rest (half and half cut short names that
+              // fitted). Too narrow for both, they give way as the name does.
               if (withChips && box.maxWidth >= 96)
                 chips
               else if (withChips)
@@ -280,8 +275,7 @@ class RowHeader extends StatelessWidget {
     var sb = bands.where((b) => b.dot == soundColour).firstOrNull;
     return Container(
       decoration: BoxDecoration(
-        // A faint wash of the row's colour by its edge: the edge is what says
-        // which row (Ken: "the gradient is too much").
+        // A faint wash of the row's colour by its edge, which says which row.
         gradient: selected
             ? null
             : LinearGradient(colors: [
@@ -315,8 +309,8 @@ class RowHeader extends StatelessWidget {
                   padding: EdgeInsets.fromLTRB(
                       width < 44 ? 1 : 2, oneLine ? 1 : 3, 6, oneLine ? 1 : 3),
                   // A row shorter than its line -- dragged down to a lane's
-                  // height, or folded -- has the line clipped, centred, not
-                  // overflowing (Ken's log, 2026-11-13: a 19.5 px header).
+                  // height, or folded -- has the line clipped and centred,
+                  // not overflowing.
                   child: oneLine
                       ? OverflowBox(
                           alignment: Alignment.center,
@@ -564,8 +558,7 @@ class RowFold extends StatelessWidget {
       );
 }
 
-/// rowPalette is the colours a row can be given or picked: the approved
-/// design's.
+/// rowPalette is the colours a row can be given or picked.
 const rowPalette = [
   Color(0xFFE2B04A),
   Color(0xFF5A9FA8),

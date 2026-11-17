@@ -4,15 +4,10 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
-// speech_engines.dart speaks a Speech device's script with voices of our
-// own, on this computer: Kokoro (kokoro_speech.dart) or the expressive
-// voices (qwen_speech.dart).
-//
-// Our own voices speak the script a piece at a time (see parseScript), and
-// the pieces are put end to end here as one take at the mix's rate, a pause
-// as silence. Word times come from speech_timing.dart.
+// speech_engines.dart speaks a Speech device's script with our own voices,
+// Kokoro or the expressive ones, a piece at a time (see parseScript), joined
+// here into one take at the mix rate. Word times come from speech_timing.
 
-/// SpeechVoice is a voice an engine can speak in.
 class SpeechVoice {
   final String id;
   final String name;
@@ -20,13 +15,12 @@ class SpeechVoice {
   /// about is what it sounds like: its accent or language, and how.
   final String about;
 
-  /// gender is "f" or "m" where the engine says, for the filter; "" where
-  /// it does not.
+  /// gender is "f" or "m" where the engine says, for the filter, else "".
   final String gender;
   const SpeechVoice(this.id, this.name, this.about, {this.gender = ""});
 }
 
-/// SpokenAudio is a take: the sound, at the mix rate, and its words.
+/// SpokenAudio is a take: the sound at the mix rate, and its words.
 class SpokenAudio {
   final Float32List l, r;
   final List<TimedWord> words;
@@ -51,8 +45,8 @@ class SpeechStopped extends SpeechException {
   const SpeechStopped() : super("Stopped.");
 }
 
-/// SpeechStop is Stop, for the engine speaking: whether it was pressed, and
-/// what is to be done when it is -- a program running to be ended.
+/// SpeechStop is Stop for the engine speaking: whether it was pressed, and
+/// what to do when it is (a running program to end).
 class SpeechStop {
   bool _stopped = false;
   final _then = <void Function()>{};
@@ -68,8 +62,8 @@ class SpeechStop {
     _then.clear();
   }
 
-  /// whenStopped does [f] when Stop is pressed -- now, if it was -- and
-  /// answers how to forget it, once it is no longer needed.
+  /// whenStopped does [f] when Stop is pressed (now, if it was) and returns
+  /// how to forget it.
   void Function() whenStopped(void Function() f) {
     if (_stopped) {
       f();
@@ -79,60 +73,53 @@ class SpeechStop {
     return () => _then.remove(f);
   }
 
-  /// check throws SpeechStopped once Stop is pressed: between one run and
-  /// the next.
+  /// check throws SpeechStopped once Stop is pressed: called between runs.
   void check() {
     if (_stopped) throw const SpeechStopped();
   }
 }
 
-/// SpeechEngine is one engine our own voices are spoken by.
 abstract class SpeechEngine {
-  /// stopper is Stop, for what this engine is speaking now: an engine
-  /// that runs a program ends it, and one that cannot be stopped part way
-  /// stops between its takes. Set by whoever asks it to speak.
+  /// stopper is Stop for what this engine speaks: a running program is
+  /// ended; an engine that cannot stop mid-way stops between takes.
   SpeechStop stopper = SpeechStop();
 
   Future<List<SpeechVoice>> voices();
   Future<SpokenAudio> speak(SpeechSpec spec);
 
-  /// speakLine speaks one of the device's lines as directed -- by default
-  /// as a script of its own, its direction the nearest cue the engine has.
+  /// speakLine speaks one line as directed, by default as its own script.
   /// Another [seed] is another take, where the engine can vary.
   Future<SpokenAudio> speakLine(SpeechSpec spec, SpeechLine line,
           {int seed = 1}) =>
       speak(spec.copyWith(script: lineScript(line), lines: const []));
 
-  /// batches is whether speakLines does better than one line at a time --
-  /// an engine that loads its voice for each call loads it once.
+  /// batches is whether speakLines beats one line at a time, as for an
+  /// engine that loads its voice on each call.
   bool get batches => false;
 
-  /// speakLines speaks [lines], a take of each, in order: by default one at
-  /// a time.
+  /// speakLines speaks a take of each of [lines] in order: by default one
+  /// at a time.
   Future<List<SpokenAudio>> speakLines(
           SpeechSpec spec, List<SpeechLine> lines) async =>
       [for (var l in lines) await speakLine(spec, l)];
 }
 
-/// lineScript is [line] as a script of its own: its direction as the
-/// nearest of our cues, then its words.
+/// lineScript is [line] as a script of its own: its direction as our
+/// nearest cue, then its words.
 String lineScript(SpeechLine line) =>
     "${line.direction.kokoro} ${line.text}".trim();
 
-/// speechRunsOn is whether a line of [words] words, said at [speed], that
-/// came out [seconds] long ran on or stopped short: far longer or shorter
-/// than its words should take, at about two and a half a second.
+/// speechRunsOn is whether a [words]-word line at [speed] that came out
+/// [seconds] long ran on or stopped short, at about 2.5 words a second.
 bool speechRunsOn(double seconds, int words, double speed) {
   var expected = words * 0.4 / speed.clamp(0.5, 2.0);
   return seconds > expected * 2.2 + 1.5 || seconds < expected * 0.35;
 }
 
-// ---------------------------------------------------------------------------
-// Putting a take together
-// ---------------------------------------------------------------------------
+// ---- Putting a take together ---------------------------------------------
 
-/// assembleTake puts [pieces] end to end, as one take: each the sound of a
-/// piece and its words in seconds from the piece's own start.
+/// assembleTake joins [pieces] into one take: each a piece's sound and its
+/// words in seconds from the piece's start.
 SpokenAudio assembleTake(
     List<(Float32List, Float32List, List<TimedWord>)> pieces,
     {bool exact = false}) {
@@ -152,7 +139,7 @@ SpokenAudio assembleTake(
   return SpokenAudio(l, r, words, exact: exact);
 }
 
-/// silence is a piece of [seconds] of quiet, for [assembleTake].
+/// silence is [seconds] of quiet, as a piece for [assembleTake].
 (Float32List, Float32List, List<TimedWord>) silence(double seconds) {
   var n = (seconds * mixRate).round();
   return (Float32List(n), Float32List(n), const []);
@@ -160,8 +147,8 @@ SpokenAudio assembleTake(
 
 const _halfTaps = 16;
 
-/// _between are the weights of the samples either side of a point halfway
-/// between two: a sinc, windowed by a Blackman window, summing to one.
+/// _between are the weights of the samples either side of a halfway point:
+/// a Blackman-windowed sinc, summing to one.
 final _between = () {
   var w = Float64List(_halfTaps * 2);
   for (var k = 0; k < _halfTaps * 2; k++) {
@@ -180,9 +167,8 @@ final _between = () {
   return w;
 }();
 
-/// upsample2x is [x] at twice its rate: its own samples, and between each
-/// two the sound's value there -- read from a windowed sinc, not a straight
-/// line, which would leave a hiss of mirrored highs over a voice.
+/// upsample2x is [x] at twice its rate, the new samples read from a
+/// windowed sinc: a straight line would leave a hiss of mirrored highs.
 Float32List upsample2x(Float32List x) {
   var n = x.length;
   var out = Float32List(n * 2);

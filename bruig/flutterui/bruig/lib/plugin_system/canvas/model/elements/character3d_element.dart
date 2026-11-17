@@ -3,15 +3,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
-// character3d_element.dart is a new 3D character on the canvas: one made in
-// the Character Studio (character_design.dart), drawn by Flutter GPU
-// (render/vrm/vrm_character.dart) inside its box, from the side and as close
-// as the element says.
-//
-// The design is kept in the element, whole, rather than looked up in the
-// library by its id: a canvas sent to somebody else, or published, has no
-// library to look in. The id is kept as well, so that changing the character
-// in the Studio changes every copy of it.
+// character3d_element.dart is a Character Studio character on the canvas,
+// drawn by Flutter GPU (render/vrm/vrm_character.dart). Its design is kept
+// whole, as a sent canvas has no library; its id too, so a Studio change
+// reaches every copy.
 
 /// Character3dFraming is how much of the character the box shows.
 enum Character3dFraming {
@@ -30,27 +25,23 @@ class Character3dElement extends CanvasElement {
   final CharacterDesign design;
   final Character3dFraming framing;
 
-  /// turn is which way round it is seen, -1 to 1: a half turn either way
-  /// from the front. tilt is from how far above, -0.5 (from below) to 1
-  /// (from overhead), as a share of a quarter turn.
+  /// turn is which way round it is seen, -1 to 1 (half a turn each way);
+  /// tilt how far above, -0.5 (below) to 1 (overhead), of a quarter turn.
   final double turn, tilt;
 
   /// zoom is how much closer than the framing, 0.5 to 3.
   final double zoom;
 
-  /// round is whether it is seen through a circle -- the round of its box --
-  /// rather than the whole box: a portrait in a ring, as a game's narrator
-  /// on its HUD, its shoulders not ending in a straight edge.
+  /// round is whether it is seen through its box's circle rather than the
+  /// whole box: a portrait in a ring, as a game's narrator on its HUD.
   final bool round;
 
-  /// performance is what it does in this scene: how it stands, the
-  /// motions it plays, its feeling, the line it says (character_
-  /// performance.dart).
+  /// performance is what it does in this scene: how it stands, its motions,
+  /// its feeling, its line (character_performance.dart).
   final CharacterPerformance performance;
 
-  /// expression is the expression it wears in this scene, by name -- one
-  /// of its face's -- or null for the one it was designed with: the
-  /// performance's feeling.
+  /// expression is the face expression it wears in this scene by name, or
+  /// null for the one it was designed with: the performance's feeling.
   String? get expression => performance.feeling;
 
   /// worn is the design in what the scene has it wear: one of the Studio's
@@ -82,8 +73,7 @@ class Character3dElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.character3d;
 
-  /// assetIds are the library pictures its decals are cut from; mediaIds
-  /// the vectors.
+  /// assetIds are its decals' library pictures; mediaIds the vectors.
   @override
   Set<String> get assetIds => design.pictureIds;
 
@@ -101,8 +91,7 @@ class Character3dElement extends CanvasElement {
       performance: performance,
       animation: animation);
 
-  /// wearing is this with expression [name] in this scene, or with null the
-  /// one it was designed with.
+  /// wearing is this with expression [name] here, or null for as designed.
   Character3dElement wearing(String? name) => Character3dElement(base,
       design: design,
       framing: framing,
@@ -115,7 +104,6 @@ class Character3dElement extends CanvasElement {
           feeling: name),
       animation: animation);
 
-  /// performing is this doing [p] in this scene.
   Character3dElement performing(CharacterPerformance p) =>
       Character3dElement(base,
           design: design,
@@ -158,8 +146,8 @@ class Character3dElement extends CanvasElement {
         "animation": animation.toJson(),
       };
 
-  /// fromJson reads what props wrote. A design that cannot be read is a
-  /// body as it was made: the box is kept, and can be given a character.
+  /// fromJson reads what props wrote. A design that cannot be read leaves a
+  /// plain body: the box is kept, and can be given a character.
   factory Character3dElement.fromJson(
           Map<String, dynamic> json, ElementBase b) =>
       Character3dElement(b,

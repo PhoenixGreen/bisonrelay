@@ -5,12 +5,12 @@ import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart' show keyAlter;
 
 // score_edit.dart is every change the Score Studio makes to a score, each a
-// score in, a score out: notes entered as MuseScore's note input enters
-// them (writing over what was there), notes deleted, lengthened, moved up
-// and down, marked, and the bars and parts themselves added and taken out.
+// score in and a score out: note input as MuseScore's (writing over what
+// was there), deleting, lengthening, moving and marking notes, and adding
+// and removing bars and parts.
 
-/// nextEvent is the event after [id] in its part's staff and voice, over
-/// the bar lines: the next note only, for [notes] (a lyric's next home), or
+/// nextEvent is the event after [id] in its part's staff and voice, across
+/// bar lines: the next note only for [notes] (a lyric's next home), else
 /// the next of anything. Null at the end.
 String? nextEvent(MusicScore s, String id, {bool notes = true}) {
   var at = s.find(id);
@@ -28,15 +28,15 @@ String? nextEvent(MusicScore s, String id, {bool notes = true}) {
   return null;
 }
 
-/// ScoreCursor is where note input writes next: a part's staff, a bar, a
-/// time in it, and a voice.
+/// ScoreCursor is where note input writes next: part's staff, bar, time in
+/// it, and voice.
 typedef ScoreCursor = ({String part, int staff, int bar, double at, int voice});
 
 /// EventPlace is where an event is: its part, staff, bar and index there.
 typedef EventPlace = ({String part, int staff, int bar, int index});
 
 /// _values are the written values, longest first, with their dots: what a
-/// length is broken into to be written.
+/// length is broken into.
 const _values = <(double, int)>[
   (4, 0),
   (2, 1),
@@ -65,10 +65,10 @@ List<(double, int)> valuesFor(double length) {
   return out;
 }
 
-/// restsFor are the rests from [start] to [end] quarters into a bar, as a
-/// player reads them: each starting where its value falls on the beat (a
-/// minim on beat one or three of 4/4, never across the middle), longest
-/// first. In a compound time ([compound]), dotted rests by the beat.
+/// restsFor are the rests from [start] to [end] quarters into a bar as a
+/// player reads them: each starting on its beat (a minim on beat one or
+/// three of 4/4, never across the middle), longest first. In [compound]
+/// time, dotted rests by the beat.
 List<(double, int)> restsFor(double start, double end,
     {bool compound = false}) {
   var out = <(double, int)>[];
@@ -96,8 +96,8 @@ List<(double, int)> restsFor(double start, double end,
 extension ScoreEdits on MusicScore {
   bool get _compound => beatUnit == 8 && beats % 3 == 0;
 
-  /// _rests are rests from [from] to [to] in [voice], as [restsFor] has them,
-  /// with their start times.
+  /// _rests are [restsFor]'s rests from [from] to [to] in [voice], with
+  /// their start times.
   List<(double, ScoreEvent)> _rests(
       double from, double to, int voice, String Function() id) {
     var out = <(double, ScoreEvent)>[];
@@ -145,7 +145,6 @@ extension ScoreEdits on MusicScore {
     return partById(at.part)!.staves[at.staff].bars[at.bar][at.index];
   }
 
-  /// timeOf is when event [id] starts in its bar.
   double timeOf(String id) {
     var at = find(id);
     if (at == null) return 0;
@@ -158,7 +157,6 @@ extension ScoreEdits on MusicScore {
     return t;
   }
 
-  /// withBar is this score with [part]'s [staff]'s [bar] as [events].
   MusicScore withBar(
           String part, int staff, int bar, List<ScoreEvent> events) =>
       copyWith(parts: [
@@ -176,7 +174,6 @@ extension ScoreEdits on MusicScore {
                 ])
       ]);
 
-  /// withEvent is this score with event [id] changed by [change].
   MusicScore withEvent(String id, ScoreEvent Function(ScoreEvent e) change) {
     var at = find(id);
     if (at == null) return this;
@@ -185,11 +182,10 @@ extension ScoreEdits on MusicScore {
     return withBar(at.part, at.staff, at.bar, bar);
   }
 
-  /// overwrite is this score with [made] written into [c]'s voice at its
-  /// time, as MuseScore's note input writes: what it covers goes, a note it
-  /// cuts into is cut short (or turned to rests where its new length cannot
-  /// be written), and the rest of what it covered becomes rests. It is cut
-  /// at the bar's end.
+  /// overwrite writes [made] into [c]'s voice at its time, as MuseScore's
+  /// note input does: what it covers goes, a note it cuts into is cut short
+  /// (or turned to rests where the new length cannot be written), and the
+  /// rest becomes rests. It is cut at the bar's end.
   MusicScore overwrite(ScoreCursor c, ScoreEvent made) {
     var p = partById(c.part);
     if (p == null || c.staff >= p.staves.length) return this;
@@ -248,10 +244,9 @@ extension ScoreEdits on MusicScore {
     return withBar(c.part, c.staff, c.bar, out);
   }
 
-  /// enter writes [pitches] (none for a rest) of [value] with [dots] at
-  /// [c], and is where the cursor goes next: just after it, into the next
-  /// bar at the bar's end. Answers the score, the new event's id and the
-  /// cursor.
+  /// enter writes [pitches] (none for a rest) of [value] with [dots] at [c],
+  /// returning the score, the new event's id and the next cursor: just after
+  /// it, or into the next bar at the bar's end.
   (MusicScore, String, ScoreCursor) enter(
       ScoreCursor c, List<Pitch> pitches, double value,
       {int dots = 0, bool slash = false, Strum? strum}) {
@@ -281,7 +276,7 @@ extension ScoreEdits on MusicScore {
     return (next, id, cur);
   }
 
-  /// addToChord puts [pitch] in event [id], a note added to its chord.
+  /// addToChord adds [pitch] to event [id]'s chord.
   MusicScore addToChord(String id, Pitch pitch) => withEvent(
       id,
       (e) => e.pitches.contains(pitch) || e.slash
@@ -290,8 +285,8 @@ extension ScoreEdits on MusicScore {
               pitches: [...e.pitches, pitch]
                 ..sort((a, b) => a.key.compareTo(b.key))));
 
-  /// deleteEvent turns event [id] into a rest as long (in voices past the
-  /// first, it goes, as MuseScore does).
+  /// deleteEvent turns event [id] into a rest as long; past the first voice
+  /// it goes, as in MuseScore.
   MusicScore deleteEvent(String id) {
     var e = event(id);
     if (e == null) return this;
@@ -322,8 +317,8 @@ extension ScoreEdits on MusicScore {
     ), e.copyWith(value: value, dots: dots, noTuplet: true));
   }
 
-  /// transposed moves event [id]'s notes: [steps] staff steps (each keeping
-  /// to the key), or [semitones], or [octaves].
+  /// transposed moves event [id]'s notes by [steps] staff steps (in key),
+  /// [semitones], or [octaves].
   MusicScore transposed(String id,
       {int steps = 0, int semitones = 0, int octaves = 0}) {
     var at = find(id);
@@ -341,8 +336,8 @@ extension ScoreEdits on MusicScore {
               q = q.withAlter(keyAlter(q.letter, fifths));
             }
             if (semitones != 0) {
-              // Spelled as the key has it; in C, sharps going up and flats
-              // going down, as a player expects.
+              // As the key spells it; in C, sharps going up and flats going
+              // down, as a player expects.
               q = Pitch.spelled(q.key + semitones,
                   fifths: fifths != 0 ? fifths : (semitones > 0 ? 1 : -1));
             }
@@ -360,7 +355,7 @@ extension ScoreEdits on MusicScore {
               ? ({...e.articulations}..remove(a))
               : {...e.articulations, a}));
 
-  /// setDynamic marks [id] with [d] (the same again takes it off).
+  /// setDynamic marks [id] with [d]; the same again takes it off.
   MusicScore setDynamic(String id, Dynamic? d) => withEvent(
       id,
       (e) => d == null || e.dyn == d
@@ -373,7 +368,7 @@ extension ScoreEdits on MusicScore {
           ? e.copyWith(noChord: true)
           : e.copyWith(chord: chord.trim()));
 
-  /// setLyric is event [id]'s syllable in [verse] (0-based).
+  /// setLyric sets event [id]'s syllable in [verse] (0-based).
   MusicScore setLyric(String id, int verse, String text) => withEvent(id, (e) {
         var l = [...e.lyrics];
         while (l.length <= verse) {
@@ -431,8 +426,8 @@ extension ScoreEdits on MusicScore {
           ScoreEvent(ids[i], v, dots: d)
       ];
 
-  /// insertBars puts [count] empty bars before bar [at] (at the end for
-  /// barCount), in the time in force there.
+  /// insertBars puts [count] empty bars before bar [at] (barCount for the
+  /// end), in the time signature in force there.
   MusicScore insertBars(int at, [int count = 1]) {
     at = at.clamp(0, barCount);
     var q = barQuarters(math.max(0, math.min(at, barCount - 1)));
@@ -466,7 +461,7 @@ extension ScoreEdits on MusicScore {
         ]);
   }
 
-  /// removeBars takes out [count] bars from [at] (never the last one).
+  /// removeBars takes out [count] bars from [at], never the last one.
   MusicScore removeBars(int at, [int count = 1]) {
     if (barCount - count < 1 || at < 0 || at + count > barCount) return this;
     bool inside(ScoreTime t) => t.bar >= at && t.bar < at + count;
@@ -558,8 +553,8 @@ extension ScoreEdits on MusicScore {
   MusicScore withSpanner(String id, Spanner Function(Spanner s) change) =>
       copyWith(spanners: [for (var s in spanners) s.id == id ? change(s) : s]);
 
-  /// resizedEventMark draws event [id]'s marking [kind] at [size] times its
-  /// own size (one puts it back).
+  /// resizedEventMark draws event [id]'s [kind] marking at [size] times its
+  /// own size; one puts it back.
   MusicScore resizedEventMark(String id, String kind, double size) =>
       withEvent(id, (e) {
         var sizes = {...e.sizes, kind: size.clamp(0.3, 4.0)}

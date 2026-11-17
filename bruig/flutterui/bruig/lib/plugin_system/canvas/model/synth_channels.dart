@@ -10,11 +10,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.d
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 
-// synth_channels.dart keeps what each synth speaker plays made from the
-// modules on the canvas and the cables between them: every change to a
-// module -- a knob, a cable, one added or taken away -- writes the patch the
-// speaker hears into its channel's part (see InstrumentPart.patch), so the
-// keyboard, the timeline, the mix and a video export all hear it. As
+// synth_channels.dart keeps each synth speaker's patch made from the modules
+// on the canvas and the cables between them: every module change writes the
+// patch the speaker hears into its channel's part (InstrumentPart.patch),
+// so the keyboard, timeline, mix and video export all hear it. As
 // score_channels.dart does for a score.
 
 /// synthPatchOf is the patch speaker [speaker] plays, of the modules in
@@ -28,8 +27,6 @@ SynthPatch synthPatchOf(List<CanvasElement> elements, String speaker) {
   return SynthPatch(all.heard, speaker);
 }
 
-/// samePatch is whether two patches are the same modules, settings and
-/// cables.
 bool samePatch(SynthPatch a, SynthPatch b) =>
     jsonEncode(a.toJson()) == jsonEncode(b.toJson());
 
@@ -38,9 +35,9 @@ bool samePatch(SynthPatch a, SynthPatch b) =>
 typedef SynthDesigned = CanvasElement Function(CanvasElement e, int frame);
 
 /// synthSynced is [doc] with each speaker's channel playing the patch it
-/// hears -- with [designedAt], its knobs keyed in the Chain's Design turning
-/// as it plays (see SynthPatch.lanes). A channel already so is left as it
-/// is, and a document with no modules is answered as it is.
+/// hears; with [designedAt], its knobs keyed in the Chain's Design turn as
+/// it plays (see SynthPatch.lanes). A channel already so, and a document
+/// with no modules, is left as it is.
 CanvasDocument synthSynced(CanvasDocument doc, {SynthDesigned? designedAt}) {
   List<SynthModuleElement>? speakers;
   for (var e in doc.elements) {
@@ -92,11 +89,10 @@ List<SynthModuleElement> synthSpeakersHearing(CanvasDocument doc, String id) =>
     ];
 
 /// synthCopied is [doc] with the synth parts of a copy made whole: [ids]
-/// maps each element copied to its copy, already in [doc]. A copy's cables
-/// from modules copied with it come from their copies (its start's too); a
-/// cable from one not copied stays where it was. A copied speaker gets a
-/// channel of its own, a copy of its original's; a copied task card is
-/// about the copied modules where they were copied with it.
+/// maps each element copied to its copy, already in [doc]. Cables from
+/// modules copied with it come from their copies; others stay. A copied
+/// speaker gets a copy of its original's channel; a copied task card is
+/// about the modules copied with it.
 CanvasDocument synthCopied(CanvasDocument doc, Map<String, String> ids) {
   SynthPlug plug(SynthPlug p) =>
       (module: ids[p.module] ?? p.module, port: p.port);
@@ -163,9 +159,9 @@ Set<String> synthKeyedKnobs(SynthModuleElement e) {
   };
 }
 
-/// _lanes keeps each module's lanes as last sampled, for as long as it
-/// and the document's frames are as they were: a knob is sampled once a
-/// frame, which is not done again at every edit of something else.
+/// _lanes keeps each module's lanes as last sampled while it and the
+/// document's frames are unchanged, so an edit elsewhere does not sample
+/// every knob again.
 final Expando<((int, int, int), Map<String, List<double>>)> _lanes =
     Expando("synthLanes");
 

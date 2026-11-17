@@ -13,12 +13,9 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// text_layers.dart is a text element's layers: its own words first, then
-// each piece added to the box (more words, or a picture), shown as a
-// picture's and a drawing's layers are (see ImageLayersList and
-// VectorLayersList). The layer picked is the one whose settings the panel
-// shows. In reading order, not front first: pieces in one slot stack in the
-// order of the list.
+// text_layers.dart is a text element's layers: its words, then each added
+// piece (words or a picture), as ImageLayersList shows layers. In reading
+// order, not front first: pieces in one slot stack in list order.
 
 /// TextLayersList is [element]'s layers. [onChanged] writes a change to the
 /// element as one step.
@@ -87,8 +84,8 @@ class _TextLayersListState extends State<TextLayersList> {
 
   void _duplicate(TextItem item) {
     var at = _indexOf(item);
-    // A copy of what it says and how, under a new id: the editor on the
-    // canvas holds a piece by its id, so two with one id would be one.
+    // A copy under a new id: the canvas editor holds a piece by id, so two
+    // with one id would be one.
     var copy = TextItem.fromJson({...item.toJson(), "id": newElementId()});
     var items = [...e.items]..insert(at + 1, copy);
     widget.onChanged(e.copyWith(items: items));
@@ -112,8 +109,7 @@ class _TextLayersListState extends State<TextLayersList> {
     _pick(item);
   }
 
-  /// _bodyName is what the element's own words are called: what they say,
-  /// cut short.
+  /// _bodyName is the element's own words' name: what they say, cut short.
   String get _bodyName {
     var words = e.displayText.trim().replaceAll(RegExp(r"\s+"), " ");
     if (words.isEmpty) return "Text";
@@ -127,8 +123,8 @@ class _TextLayersListState extends State<TextLayersList> {
     var muted = theme.colors.onSurfaceVariant;
     var picked = _picked;
 
-    // Backspace or Delete takes out the piece picked -- here, where the
-    // click that picked it put the keys. The element's own words stay.
+    // Backspace or Delete removes the picked piece, here, where the click
+    // that picked it put the keys. The element's own words stay.
     return Focus(
       debugLabel: "textLayers",
       onKeyEvent: (node, event) {
@@ -198,9 +194,8 @@ class _TextLayersListState extends State<TextLayersList> {
                           ),
                         ),
                       ),
-                      // The picked piece taken out, from the strip as well
-                      // as the list: a tablet has no Delete key.
-                      // A plain bin, as the prototype's.
+                      // A plain bin removing the picked piece, from the strip
+                      // as well as the list: a tablet has no Delete key.
                       Material(
                         type: MaterialType.transparency,
                         child: InkWell(
@@ -259,8 +254,8 @@ class _TextLayersListState extends State<TextLayersList> {
     );
   }
 
-  /// _thumb is a layer's picture: the piece's picture, or its words' face
-  /// in their colour.
+  /// _thumb is a layer's picture: the piece's picture, or its words' face in
+  /// their colour.
   Widget _thumb(TextItem? item, double w, double h, ThemeNotifier theme) {
     var muted = theme.colors.onSurfaceVariant;
     Widget inside;
@@ -302,10 +297,10 @@ class _TextLayersListState extends State<TextLayersList> {
     );
   }
 
-  /// _name is what [item] is called on its chip or row.
+  /// _name is [item]'s name on its chip or row.
   String _name(TextItem? item) => item == null ? _bodyName : item.says;
 
-  /// _detail is the second line of a row: what kind of layer, and where.
+  /// _detail is a row's second line: the layer's kind and place.
   String _detail(TextItem? item) {
     if (item == null) {
       return [
@@ -319,7 +314,6 @@ class _TextLayersListState extends State<TextLayersList> {
     ].join(" · ");
   }
 
-  /// _chip is one layer on the strip.
   Widget _chip(BuildContext context, ThemeNotifier theme, TextItem? item,
       bool on, String key) {
     var accent = theme.colors.primary;
@@ -372,8 +366,8 @@ class _TextLayersListState extends State<TextLayersList> {
     );
   }
 
-  /// _strip is the layers in a line, the element's own words first and
-  /// held there; the pieces after them can be dragged into another order.
+  /// _strip is the layers in a line, the element's words first and fixed;
+  /// the pieces after can be dragged into another order.
   Widget _strip(BuildContext context, ThemeNotifier theme, TextItem? picked) {
     var items = e.items;
     return SizedBox(
@@ -409,7 +403,7 @@ class _TextLayersListState extends State<TextLayersList> {
     );
   }
 
-  /// _rows is the layers down the panel, the element's own words at the top.
+  /// _rows is the layers down the panel, the element's words at the top.
   Widget _rows(BuildContext context, ThemeNotifier theme, TextItem? picked) {
     var items = e.items;
     return Padding(
@@ -434,8 +428,8 @@ class _TextLayersListState extends State<TextLayersList> {
     );
   }
 
-  /// _row is one layer in the list: [item] at [index], or the element's own
-  /// words with null -- which has no handle, eye or lock, being the element.
+  /// _row is one listed layer: [item] at [index], or with null the
+  /// element's own words, which have no handle, eye or lock.
   Widget _row(BuildContext context, ThemeNotifier theme, TextItem? item,
       int index, bool on) {
     var muted = theme.colors.onSurfaceVariant;
@@ -552,7 +546,7 @@ class _TextLayersListState extends State<TextLayersList> {
                     () => _change(item, (i) => i.copyWith(hidden: !i.hidden)),
                     label: item.hidden ? "Show" : "Hide"),
               ] else
-                // Level with the pieces' eye and lock below it.
+                // Level with the pieces' eye and lock below.
                 const SizedBox(width: 50),
             ]),
           ),
@@ -562,9 +556,8 @@ class _TextLayersListState extends State<TextLayersList> {
   }
 }
 
-/// freeTextSlot is where the next piece of [e] goes: the first slot nothing
-/// is in, so two pieces added one after another do not land on top of each
-/// other.
+/// freeTextSlot is where [e]'s next piece goes: the first empty slot, so
+/// two pieces added in turn do not land on each other.
 TextSlot freeTextSlot(TextElement e) {
   var taken = {for (var item in e.items) item.slot};
   for (var slot in const [

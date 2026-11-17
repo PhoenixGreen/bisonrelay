@@ -7,12 +7,11 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:flutter/animation.dart';
 import 'package:flutter/painting.dart';
 
-// chart_morph.dart is a chart arriving out of the one before it (Ken,
-// 2026-11-17, the improvements report's eighth item): bars become a pie,
-// one season becomes the next scene's -- each item travelling from where
-// the last chart drew it to where this one does, in its colour, so the eye
-// follows it; the chart itself coming up over them at the end. Items only
-// in this one grow from their places; those only in the last shrink away.
+// chart_morph.dart is a chart arriving out of the one before it: bars
+// become a pie, one season becomes the next scene's. Each item travels from
+// where the last chart drew it to where this one does, in its colour, so
+// the eye follows it, and the chart comes up over them at the end. Items
+// only in this one grow from their places; those only in the last shrink.
 
 /// morphFrom is the chart [e] arrives out of: in the scene before [doc]'s,
 /// a linked copy of it, else the first chart reading the same sheet. Null
@@ -88,7 +87,6 @@ List<Offset> _outline(Path path) {
   return [...pts.skip(start), ...pts.take(start)];
 }
 
-/// _between is the shape part-way, [t], from outline [a] to [b].
 Path _between(List<Offset> a, List<Offset> b, double t) {
   var path = Path();
   for (var i = 0; i < _points; i++) {
@@ -98,8 +96,7 @@ Path _between(List<Offset> a, List<Offset> b, double t) {
   return path..close();
 }
 
-/// paintMorph draws [e] in [rect] arriving out of [from] (drawn in
-/// [fromRect]), [reveal] of the way.
+/// paintMorph draws [e] in [rect] out of [from] (in [fromRect]), [reveal] on.
 void paintMorph(ui.Canvas canvas, Rect rect, ChartElement e, ChartElement from,
     Rect fromRect, double reveal) {
   var t = Curves.easeInOut.transform(reveal.clamp(0.0, 1.0));
@@ -120,8 +117,7 @@ void paintMorph(ui.Canvas canvas, Rect rect, ChartElement e, ChartElement from,
   }
   var tokens = 1 - settle;
   if (tokens <= 0) return;
-  // Each item's outline bent from its old shape to its new: a column into
-  // its slice.
+  // Each outline bent from its old shape to its new: a column into a slice.
   void token(List<Offset> a, List<Offset> b, Color ca, Color cb) {
     var c = Color.lerp(ca, cb, travel)!;
     canvas.drawPath(_between(a, b, travel),

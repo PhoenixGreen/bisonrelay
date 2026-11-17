@@ -7,17 +7,13 @@ import 'package:bruig/plugin_system/canvas/render/vrm/vrm_shape.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 // vrm_wear.dart makes clothes to fit a VRoid body from the body itself: the
-// skin where a garment covers it, cut along the garment's lines and stood
-// off the skin a little, bound to the same bones. So a garment fits whatever
-// shape the body is given and moves with it. A skirt is the one garment made
-// of its own shape: a cone falling from the waist, clear of the hips.
-//
-// Also here: the body's own sleeves and trouser legs cut shorter, the
-// patterns garments are drawn in, and the body's skin painted again where
-// clothes come off -- VRoid paints underwear, socks and even whole suits on
-// the skin under the clothes it models.
-//
-// Plain Dart, so it is tested without a GPU; vrm_scene.dart draws it.
+// skin a garment covers, cut along its lines, stood off a little and bound
+// to the same bones, so it fits any body shape and moves with it. A skirt
+// alone is its own shape: a cone falling from the waist, clear of the hips.
+// Also here: the body's own sleeves and legs cut shorter, garment patterns,
+// and the skin repainted where clothes come off (VRoid paints underwear,
+// socks and even whole suits on the skin). Plain Dart, tested without a
+// GPU; vrm_scene.dart draws it.
 
 /// BodyGroup is which part of the body a vertex is on, from the bone it
 /// follows most.
@@ -220,7 +216,7 @@ class GarmentMesh {
 class VrmWardrobe {
   final VrmShapeRig rig;
 
-  /// body is the mesh with the skin, and the body's own clothes.
+  /// body is the mesh with the skin and the body's own clothes.
   final VrmMeshNode body;
   final VrmVertices skin;
 
@@ -330,7 +326,6 @@ class VrmWardrobe {
 
   BodyGroup groupAt(int i) => BodyGroup.values[group[i]];
 
-  /// offset is how far [w] stands off the skin in [slot].
   double offset(WearSlot slot, Garment w) =>
       _layer[slot]! +
       (slot == WearSlot.top ? w.fit * 0.022 : 0) +
@@ -378,9 +373,8 @@ class VrmWardrobe {
       return hi;
     }
 
-    // Triangles partly inside are kept, and each point outside is drawn in
-    // to where the cut crosses its edges: a hem along the cut, not a
-    // saw-tooth along the triangles.
+    // Triangles partly inside are kept, each point outside drawn in to where
+    // the cut crosses its edges: a hem along the cut, not a saw-tooth.
     final out = <int>[];
     final pull = <int, List<double>>{};
     for (final p in body.primitives) {
@@ -606,9 +600,9 @@ class VrmWardrobe {
     return Uint32List.fromList(out);
   }
 
-  /// withoutFeet is [p]'s triangles -- the skin's, or socks' -- without
-  /// those on the feet, for when shoes are on: what is inside a shoe is not
-  /// drawn, so nothing can show through it however the foot is shaped.
+  /// withoutFeet is [p]'s triangles (the skin's or socks') without those on
+  /// the feet, for when shoes are on: nothing inside a shoe is drawn, so
+  /// nothing shows through however the foot is shaped.
   Uint32List withoutFeet(Uint32List idx) {
     bool foot(int i) => i < group.length && groupAt(i) == BodyGroup.foot;
     final out = <int>[];
@@ -757,11 +751,11 @@ List<int>? faceSkinColour(Uint8List rgba, int w, int h, VrmMeshData data) {
   return medianColour(samples);
 }
 
-/// bareSkin is the body's skin picture ([rgba], [w] by [h]) with whatever
-/// is painted on it taken off where clothes have come off: above the
-/// knees ([upper]) and below them ([lower]). Painted is anything not near
-/// the skin's own colour, found from the neck and hands -- or, where those
-/// are a painted suit too, from [face].
+/// bareSkin is the body's skin picture ([rgba], [w] by [h]) with what is
+/// painted on it taken off where clothes have come off: above the knees
+/// ([upper]) and below them ([lower]). Painted is anything not near the
+/// skin's own colour, found from the neck and hands, or from [face] where
+/// those are a painted suit too.
 Uint8List bareSkin(Uint8List rgba, int w, int h, VrmWardrobe wardrobe,
     {required bool upper, required bool lower, List<int>? face}) {
   final tris = wardrobe.skinTriangles();
@@ -804,8 +798,7 @@ double _dist(List<int> c, int r, int g, int b) =>
         .toDouble());
 
 /// _fillTriangle marks [value] in [mask] over a triangle given by its
-/// texture coordinates, and three pixels round it, so the seams
-/// between triangles are covered.
+/// texture coordinates, plus three pixels round it to cover the seams.
 void _fillTriangle(Uint8List mask, int w, int h, Float32List uv, int value) {
   final x = [uv[0] * w, uv[2] * w, uv[4] * w],
       y = [uv[1] * h, uv[3] * h, uv[5] * h];

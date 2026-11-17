@@ -7,16 +7,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 
 // chart_data.dart is the numbers a chart is drawn from: the series, the
-// categories they are indexed by, and the colours they arrive in. It is what
-// the data editor and the paste (tabular_text.dart) change; chart_element.dart
-// is the settings. ChartType is here because the data has to know it.
+// categories they are indexed by, and their colours. The data editor and
+// the paste (tabular_text.dart) change it; chart_element.dart holds the
+// settings. ChartType is here because the data has to know it.
 
-/// ChartLineStyle is what a line is drawn as: a stroke, a run of dashes, or a
-/// run of dots.
-///
-/// A property of the series, separate from the marking of an estimated year:
-/// a dotted series stays dotted across an estimated stretch, where faintness
-/// carries the estimate.
+/// ChartLineStyle is a line drawn as a stroke, dashes or dots: the series'
+/// own, apart from estimate marking, so a dotted series stays dotted across
+/// an estimated stretch, where faintness carries the estimate.
 enum ChartLineStyle {
   solid("Solid"),
   dashed("Dashed"),
@@ -30,9 +27,8 @@ enum ChartLineStyle {
         orElse: () => ChartLineStyle.solid,
       );
 
-  /// pattern is the on and off lengths, in multiples of the line's own
-  /// weight, or null for solid. A dot is a near-zero dash drawn with a round
-  /// cap.
+  /// pattern is the on and off lengths, in multiples of the line's weight, or
+  /// null for solid. A dot is a near-zero dash with a round cap.
   List<double>? get pattern => switch (this) {
         ChartLineStyle.solid => null,
         ChartLineStyle.dashed => const [2.6, 2.0],
@@ -40,14 +36,9 @@ enum ChartLineStyle {
       };
 }
 
-/// ChartBackdropGrow is where a bar's background grows from when it is a
-/// different size from the bar.
-///
-/// Left and right anchor it to that side of the bar, and grow it up from the
-/// axis. Bottom grows it up from the axis, centred across the bar; top hangs
-/// it down from the top of the chart; centre centres it both ways, about the
-/// middle of the chart. On a chart drawn sideways, "up" is along the bars
-/// and "left" is the edge nearer the top.
+/// ChartBackdropGrow is where a bar's differently sized background grows
+/// from: left or right, up from that side; bottom, up and centred; top,
+/// hung down; centre, both ways. Sideways, "up" is along the bars.
 enum ChartBackdropGrow {
   left("Left"),
   centre("Centre"),
@@ -64,16 +55,12 @@ enum ChartBackdropGrow {
       );
 }
 
-/// maxBackdropHeight is the tallest a bar's background is drawn, as a share
-/// of the chart's height.
+/// maxBackdropHeight is the tallest a bar's background, of chart height.
 const double maxBackdropHeight = 3;
 
-/// ChartBackdrop is a panel drawn behind every bar of one series: the track
-/// a progress bar fills, or a card each bar stands on.
-///
-/// [height] is a share of the plot along the value axis (1 is the whole
-/// chart); [width] is a share of the bar's thickness. Kept when switched off,
-/// so switching it back on finds it as it was.
+/// ChartBackdrop is a panel behind each of a series' bars (a progress
+/// track, a card): [height] a share of the plot, [width] of the bar's
+/// thickness. Kept when switched off.
 class ChartBackdrop {
   final bool on;
   final double height;
@@ -143,9 +130,8 @@ class ChartBackdrop {
   }
 }
 
-/// missingValue is a cell nobody filled in. A NaN rather than a nullable
-/// double, so a series' values stay a plain list of doubles; the places that
-/// care ask [ChartData.hasValueAt].
+/// missingValue is an empty cell: NaN, so a series stays a plain list of
+/// doubles. See [ChartData.hasValueAt].
 const double missingValue = double.nan;
 
 /// maxSeriesDelay is how far a series may be offset, in seconds either way:
@@ -183,15 +169,12 @@ enum ChartType {
   candlestick("Candlesticks", "Open, high, low and close for each period"),
   pie("Pie", "Shares of a whole"),
   donut("Donut", "Shares of a whole, with the middle open"),
-  // A hundred squares shared out by the values: a share read as so many in
-  // a hundred (Ken's privacy video: "no dot or waffle chart").
+  // A hundred squares shared out: a share as so many in a hundred.
   waffle("Waffle", "A hundred squares, shared out by the values"),
   radialBar("Radial bars", "Bars bent around a circle"),
   radar("Radar", "One axis per category, radiating from the centre"),
 
-  // The infographic types (Ken, 2026-11-13: "I'd like all 6 suggestions
-  // and any other infographic elements ... useful for building future
-  // infographics"). Drawn in chart_infographic.dart; none has axes.
+  // The infographic types, drawn in chart_infographic.dart; none has axes.
   gauge("Gauge", "The first value as a share of the whole, on a dial"),
   pictogram("Pictogram", "A row of icons, coloured by the shares"),
   sankey("Sankey", "Amounts flowing from one thing into others"),
@@ -204,8 +187,7 @@ enum ChartType {
   shareBar("Share bar", "One bar split into the shares"),
   lollipop("Lollipop", "A dot on a stick for each value"),
 
-  // The research's new kinds (Ken, 2026-11-17: "all" of them; prototype
-  // v7). Drawn in chart_extra.dart; none has axes either. Each has ways
+  // Drawn in chart_extra.dart, without axes. Each has ways
   // (ChartDesign.mode) its gallery designs pick between.
   diverging("Diverging bars", "Up or down from zero: winners and losers"),
   dumbbell("Dumbbell", "The gap between two values for each one"),
@@ -217,8 +199,7 @@ enum ChartType {
   tileMap("Tile map", "A square per place, shaded by its value"),
   pyramid("Pyramid", "Two sides mirrored, band by band"),
 
-  // The kinds analysis needs (Ken, 2026-11-17, the improvements report's
-  // ninth item). Drawn in chart_analysis.dart.
+  // The kinds analysis needs, drawn in chart_analysis.dart.
   boxPlot("Box plot", "How each column's numbers spread"),
   bump("Bump chart", "Places over many periods"),
   marimekko("Marimekko", "Each row's parts, sized by its total");
@@ -230,8 +211,8 @@ enum ChartType {
   static ChartType fromName(String? name) =>
       values.firstWhere((t) => t.name == name, orElse: () => ChartType.bar);
 
-  /// isCircular marks the types that have no x and y axis, so the settings
-  /// bar can stop offering axis labels for a pie.
+  /// isCircular marks the types with no x and y axis, so the settings bar
+  /// stops offering axis labels for a pie.
   bool get isCircular =>
       this == pie ||
       this == donut ||
@@ -247,17 +228,15 @@ enum ChartType {
   /// isCandles is the one type that reads four series as a single mark.
   bool get isCandles => this == candlestick;
 
-  /// startsAtZero is whether the value axis has to include zero. Bars are
-  /// read as lengths, so they must; a candlestick is read as a position, and
-  /// forcing it down to zero squeezes the month into a sliver.
+  /// startsAtZero is whether the value axis must include zero: bars are
+  /// lengths; a candle is a position, and zero would squash it flat.
   bool get startsAtZero => !isCandles;
 
-  /// isStacked is whether values accumulate, which changes how the axis
-  /// maximum is worked out.
+  /// isStacked is whether values accumulate, changing the axis maximum.
   bool get isStacked => this == stackedBar;
 
-  /// needsFourSeries is the candlestick's requirement, so the settings can
-  /// say so rather than draw nothing.
+  /// needsFourSeries is the candlestick's requirement, so the settings say
+  /// so rather than draw nothing.
   bool get needsFourSeries => isCandles;
 
   /// needsMultipleSeries is whether the type only differs from plain bars
@@ -267,11 +246,10 @@ enum ChartType {
   /// usesSmooth is whether curving between the points means anything.
   bool get usesSmooth => this == line || this == area || this == radar;
 
-  /// isCartesian is everything drawn against an x and a y axis.
   bool get isCartesian => !isCircular;
 
-  /// isBar and isLinear split the cartesian types by how they are drawn,
-  /// which is what an overlay of two kinds on one pair of axes needs to know.
+  /// isBar and isLinear split the cartesian types by how they are drawn, for
+  /// an overlay of two kinds on one pair of axes.
   bool get isBar =>
       this == bar ||
       this == groupedBar ||
@@ -299,57 +277,46 @@ class ChartSeries {
   final Color color;
   final List<double> values;
 
-  /// type draws this series differently from the rest of the chart, so a set
-  /// of bars can have a line over it, or null for the chart's own. Only
-  /// meaningful on cartesian types.
+  /// type draws this series unlike the rest of the chart (a line over bars),
+  /// or null for the chart's own. Cartesian types only.
   final ChartType? type;
 
-  /// numbers writes this series' values differently from the rest of the
-  /// chart (a price beside a market cap), or null for the chart's own. The
-  /// axis always keeps the chart's style.
+  /// numbers writes this series' values its own way (a price beside a market
+  /// cap), or null for the chart's. The axis keeps the chart's style.
   final ChartNumbers? numbers;
 
-  /// band fills the space between this line and the next one (by position,
-  /// so it survives reordering), fading from this series' colour into the
-  /// next one's.
+  /// band fills between this line and the next (by position, so it survives
+  /// reordering), fading from this series' colour into the next one's.
   final bool band;
 
-  /// lineStyle is whether this series is drawn as a stroke, a run of dashes
-  /// or a run of dots. Only meaningful where the series is drawn as a line.
+  /// lineStyle is stroke, dashes or dots, for a series drawn as a line.
   final ChartLineStyle lineStyle;
 
-  /// hidden takes this series off the chart without taking it out of the
-  /// table; toggled from its entry in the key. The axis re-scales to what is
-  /// left.
+  /// hidden takes this series off the chart but not the table; toggled from
+  /// its key entry. The axis re-scales to what is left.
   final bool hidden;
 
-  /// gradient draws this series in two colours instead of one, or null. Set
-  /// in the colour picker beside [color], so it has no on/off flag.
+  /// gradient draws this series in two colours, or null. Set in the colour
+  /// picker beside [color], so it has no on/off flag.
   final GradientSpec? gradient;
 
-  /// delay shifts this series' arrival in **seconds**: positive starts it
-  /// later, negative sooner. A shift in time, not a change of speed; see
-  /// chartSeriesReveal.
-  ///
-  /// Needed because presets stagger by item, and bars (one item per
-  /// category) and a line (one per series) on the same chart do not line up.
+  /// delay shifts this series' arrival in **seconds** (positive later), a
+  /// shift not a speed (chartSeriesReveal): presets stagger by item, so bars
+  /// and a line on one chart need it to line up.
   final double delay;
 
-  /// width overrides the chart's stroke for this series, or 0 for the
-  /// chart's own.
+  /// width is this series' stroke, or 0 for the chart's.
   final double width;
 
   /// corner, smooth, points, pointSize and pointColor are how this series is
-  /// drawn, or null to follow the chart (each has a meaningful zero, so null
-  /// is the only "unset").
+  /// drawn, or null to follow the chart (each has a meaningful zero).
   final double? corner;
   final bool? smooth;
   final bool? points;
   final double? pointSize;
   final Color? pointColor;
 
-  /// backdrop is the panel drawn behind each of this series' bars, or null
-  /// for none. Only drawn where the series is drawn as bars.
+  /// backdrop is the panel behind each of this series' bars, or null.
   final ChartBackdrop? backdrop;
 
   const ChartSeries({
@@ -372,12 +339,10 @@ class ChartSeries {
     this.backdrop,
   });
 
-  /// paint is the colour and the gradient as one thing, for the picker and
-  /// for the painters.
+  /// paint is the colour and gradient together, for the picker and painters.
   PaintSpec get paint => PaintSpec(color, gradient: gradient);
 
-  /// widthOn is how thick this series is drawn on a chart whose own stroke is
-  /// [chartWidth].
+  /// widthOn is this series' thickness on a chart stroked [chartWidth].
   double widthOn(double chartWidth) => width > 0 ? width : chartWidth;
 
   /// cornerOn and the four beside it are like [widthOn]: this series' own
@@ -413,9 +378,8 @@ class ChartSeries {
     bool writtenLikeChart = false,
     bool oneColour = false,
 
-    /// drawnLikeChart drops every override about how this series is drawn,
-    /// for the series that leads its kind of drawing: the panel writes its
-    /// settings to the chart, so an override would keep winning.
+    /// drawnLikeChart drops every drawing override, for the series leading
+    /// its kind: the panel writes those to the chart, where they must win.
     bool drawnLikeChart = false,
   }) =>
       ChartSeries(
@@ -512,8 +476,7 @@ class ChartSeries {
   }
 }
 
-/// Ohlc is one period of a candlestick chart: where the price opened, the
-/// highest and lowest it reached, and where it closed.
+/// Ohlc is one period of a candlestick chart: open, high, low and close.
 class Ohlc {
   final double open;
   final double high;
@@ -522,18 +485,14 @@ class Ohlc {
 
   const Ohlc(this.open, this.high, this.low, this.close);
 
-  /// rose is whether the period closed at or above where it opened, which
-  /// decides a candle's colour.
+  /// rose is whether the period closed at or above its open: its colour.
   bool get rose => close >= open;
 
-  /// top and bottom are the body's ends, which are the open and the close
-  /// whichever way round they came.
+  /// top and bottom are the body's ends: open and close, either way.
   double get top => math.max(open, close);
   double get bottom => math.min(open, close);
 }
 
-/// ChartData is the categories and the series together, and the parser that
-/// fills them in from pasted text.
 /// ChartPanel is one of a split chart's small charts: whose it is, its
 /// numbers, and the colour a highlight gives it (null, the chart's own).
 class ChartPanel {
@@ -553,54 +512,48 @@ class ChartPanel {
   int get hashCode => Object.hash(name, colour, data);
 }
 
+/// ChartData is the categories and the series together, and the parser that
+/// fills them in from pasted text.
 class ChartData {
   final List<String> categories;
   final List<ChartSeries> series;
 
-  /// estimated marks the rows (categories, not series: a year is sourced or
-  /// it is not) whose figures are worked out rather than looked up. Empty on
-  /// charts that do not mark them.
+  /// estimated marks the rows (categories: a year is sourced or not) whose
+  /// figures are worked out rather than looked up. Empty where unmarked.
   final List<bool> estimated;
 
-  /// marks are colours of the categories' own, where a chart's highlights or
-  /// colour-by give them one (null keeps the series' colour). Worked out
-  /// from its sheet by data_sync.dart, so never saved.
+  /// marks are the categories' own colours, where highlights or colour-by
+  /// give them one (null keeps the series' colour). Worked out from the sheet
+  /// by data_sync.dart, as are the fields below; none is saved.
   final List<Color?> marks;
 
   /// panels are the small charts of a chart split by a column (one per
-  /// team), drawn side by side on one scale; empty for one chart. Worked
-  /// out from the sheet, never saved, as [marks] are.
+  /// team), side by side on one scale; empty for one chart.
   final List<ChartPanel> panels;
 
-  /// named is which series have their names written at the ends of their
-  /// lines (a highlight's, or all of a few). Worked out, never saved.
+  /// named is which series have their names written at their lines' ends.
   final List<int> named;
 
-  /// at is the date a chart playing through dates shows, written large
-  /// behind it. Worked out, never saved.
+  /// at is the date a chart playing through dates shows, large behind it.
   final String at;
 
-  /// slots are where each category is drawn along the axis, in slots
-  /// counted from the first (its index, when empty): a ranked bar part-way
-  /// to its new place while the chart plays. Worked out, never saved.
+  /// slots are where each category is drawn along the axis, in slots (its
+  /// index, when empty): a ranked bar part-way to its new place in play.
   final List<double> slots;
 
-  /// whole is, for each series, whether its numbers are whole -- kept from
-  /// where a blend set off, so live words do not read 25.4 part-way.
+  /// whole is, for each series, whether its numbers are whole, kept from
+  /// where a blend set off so live words do not read 25.4 part-way.
   final List<bool> whole;
 
-  /// groups are the categories' words from the column they are coloured
-  /// by (SheetLink.colourBy), "" where there is none: what bubbles drawn
-  /// in groups gather by. Worked out, never saved.
+  /// groups are the categories' words from their colour-by column
+  /// (SheetLink.colourBy), "" where none: what grouped bubbles gather by.
   final List<String> groups;
 
   /// pointNames are the categories' own names where the categories are
-  /// numbers -- a scatter's clubs, its labels being their wage bills
-  /// (SheetLink.pointNames). Worked out, never saved.
+  /// numbers: a scatter's clubs, labelled by wage bill (SheetLink.pointNames).
   final List<String> pointNames;
 
-  /// sizes are each point's size, 0..1 by area, where a scatter is sized by
-  /// a third number (its "sized" way). Worked out, never saved.
+  /// sizes are each point's size, 0..1 by area, for a sized scatter.
   final List<double> sizes;
 
   const ChartData({
@@ -618,17 +571,14 @@ class ChartData {
     this.sizes = const [],
   });
 
-  /// pointNameAt is category [i]'s own name, or "".
   String pointNameAt(int i) =>
       i >= 0 && i < pointNames.length ? pointNames[i] : "";
 
-  /// groupAt is category [i]'s group word, or "".
   String groupAt(int i) => i >= 0 && i < groups.length ? groups[i] : "";
 
   /// slotAt is where category [i] is drawn, in slots from the first.
   double slotAt(int i) => i >= 0 && i < slots.length ? slots[i] : i.toDouble();
 
-  /// markAt is category [i]'s own colour, or null.
   Color? markAt(int i) => i >= 0 && i < marks.length ? marks[i] : null;
 
   bool get isEmpty => series.isEmpty || categories.isEmpty;
@@ -663,7 +613,7 @@ class ChartData {
       );
 
   /// withRowRemoved takes a row out of the categories, every series and the
-  /// estimate marks, keeping the three lists in step.
+  /// estimate marks, keeping them in step.
   ChartData withRowRemoved(int row) => ChartData(
         categories: [...categories]..removeAt(row),
         series: [
@@ -689,7 +639,7 @@ class ChartData {
   }
 
   /// isEstimated is whether [row]'s figures are worked out rather than looked
-  /// up. False for every row of a chart that does not mark them.
+  /// up; false on a chart that does not mark them.
   bool isEstimated(int row) =>
       row >= 0 && row < estimated.length && estimated[row];
 
@@ -705,13 +655,12 @@ class ChartData {
     return row >= 0 && row < v.length ? v[row] : 0;
   }
 
-  /// hasValueAt is whether there is a number there at all: an empty cell is
-  /// a gap, not a nought, and is drawn as one.
+  /// hasValueAt is whether there is a number there: an empty cell is a gap,
+  /// not a nought, and is drawn as one.
   bool hasValueAt(int seriesIndex, int row) => !valueAt(seriesIndex, row).isNaN;
 
-  /// ohlcAt is one period of a candlestick chart, or null when there are not
-  /// four series. The series are matched by name where the names say which
-  /// is which, else taken in open, high, low, close order.
+  /// ohlcAt is one candlestick period, or null without four series, matched
+  /// by name where the names say, else as open, high, low, close.
   Ohlc? ohlcAt(int row) {
     if (series.length < 4) return null;
     var at = _ohlcOrder ?? const [0, 1, 2, 3];
@@ -723,9 +672,8 @@ class ChartData {
     );
   }
 
-  /// _ohlcOrder is which series is the open, the high, the low and the close,
-  /// from their names, or null unless all four are found once each (half a
-  /// match would be silently wrong).
+  /// _ohlcOrder is the open, high, low and close series by name, or null
+  /// unless all four are found once each: half a match would be wrong.
   List<int>? get _ohlcOrder {
     var wanted = ["open", "high", "low", "close"];
     var found = <int>[];
@@ -743,8 +691,7 @@ class ChartData {
     return found;
   }
 
-  /// asText renders the data back into the format [parse] reads, for the
-  /// quick-entry box.
+  /// asText is the data written back in [parse]'s format, to edit.
   String asText() {
     var out = StringBuffer();
     out.writeln(["", ...series.map((s) => s.name)].join("\t"));
@@ -764,11 +711,9 @@ class ChartData {
           ? v.round().toString()
           : v.toString();
 
-  /// _yearsHeader is whether [row] names its series by year -- "2020" and
-  /// "2026", a slope's two ends -- rather than being the first row of
-  /// numbers: an empty corner, or a word over two or more different whole
-  /// years going up (Ken's infographic, 2026-11-13: a slope's "2020, 2026"
-  /// was read as a row of data, its categories one short).
+  /// _yearsHeader is whether [row] names its series by year ("2020", "2026",
+  /// a slope's two ends) rather than being the first row of numbers: an empty
+  /// corner, or a word over two or more different whole years going up.
   static bool _yearsHeader(List<String> row) {
     var rest = [for (var c in row.skip(1)) cellNumber(c)];
     if (rest.any((v) => v == null)) return false;
@@ -782,12 +727,9 @@ class ChartData {
   }
 
   /// parse reads a pasted table, split by [splitTable]. The first row is
-  /// series names if none of its cells after the first is a number.
-  /// Or, see _yearsHeader, if it names them by year.
-  ///
-  /// [keep] is the series this is replacing, if any: their settings are
-  /// carried across by position, so retyping the numbers keeps how each
-  /// series is drawn.
+  /// series names if no cell after the first is a number, or if it names them
+  /// by year (see _yearsHeader). [keep] is the series being replaced: their
+  /// settings carry across by position, so retyped numbers keep their look.
   static ChartData parse(String text,
       {List<Color>? colors, List<ChartSeries>? keep}) {
     var rows = splitTable(text);

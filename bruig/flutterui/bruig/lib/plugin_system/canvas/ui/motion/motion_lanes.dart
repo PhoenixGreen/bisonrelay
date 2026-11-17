@@ -31,22 +31,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // motion_lanes.dart is the elements' rows on the timeline: a group for each
-// element with clips (and the one picked, so a first clip can be made), a
-// lane for each layer it uses plus one to drop onto, and its own sound's
-// lane under them. Placed clips are bars coloured by what they are for, with
-// a loop's repeats, a stretched one's pace, and a dot on a pinned end.
-//
-// A click opens a clip in the Animation panel; a drag moves it, along or onto
-// another lane of its element, and its ends stretch it. With the knife out a
-// click cuts it. A double-click on an empty stretch makes a clip there from
-// the ready-made motions. Laid out as the channels under it are, since it
-// scrolls with them: see CanvasChannels.leading.
+// element with clips (and the one picked), a lane per layer used plus one
+// to drop onto, its sound's lane under them. Clips are bars coloured by
+// kind: clicked to open, dragged to move, stretched by their ends, cut by
+// the knife; a double-click on empty ground makes one. Laid out as the
+// channels under it, since it scrolls with them (CanvasChannels.leading).
 
 /// motionLaneHeight is one lane's height, before the text's size.
 const double motionLaneHeight = 22;
 
-/// MotionSlotDrag is a clip dragged from an element's slot: to another
-/// slot, or onto the timeline.
+/// MotionSlotDrag is a clip dragged from a slot: to a slot, or the timeline.
 class MotionSlotDrag {
   final String element;
   final int slot;
@@ -81,8 +75,7 @@ List<CanvasElement> motionRowsOf(CanvasController c) {
     for (var e in c.document.elements)
       if (!(e is AudioElement && e.clip.timed) &&
           (e.base.motion.channelled ||
-              // A Code panel's lesson: its typing and lit lines, a clip of
-              // its own on its row (Ken, 2026-11-15).
+              // A Code panel's lesson: a clip of its own on its row.
               (e is CodeElement && lessonSpan(e) != null) ||
               e.base.motion.instances != null ||
               owners.contains(e.id) ||
@@ -91,12 +84,9 @@ List<CanvasElement> motionRowsOf(CanvasController c) {
   ];
 }
 
-/// motionLanesOf are [e]'s lanes, top to bottom: its motion layers in use
-/// and one more. Folded, none. Its sound is a channel of its own, under
-/// them: see element_sound.dart.
-/// motionLayerName is what layer [l] of [m] is called -- on the mixer's
-/// chip, beside its band on the timeline: the clip on it, the first placed
-/// there or else the first made for it, or L1, L2 ...
+/// motionLayerName is what layer [l] of [m] is called, on the mixer's chip
+/// and beside its band on the timeline: the clip on it (the first placed
+/// there, else the first made for it), or L1, L2 ...
 String motionLayerName(ElementMotion m, int l) {
   for (var p in m.placed) {
     if (p.layer == l) {
@@ -123,11 +113,9 @@ List<int> motionLanesOf(CanvasElement e, {bool folded = false}) {
 }
 
 /// clipStacks is which stack each of [placed] is in, counted within its
-/// layer -- or across every layer, [together], for a folded row. A clip that
-/// starts before another in its stack has ended goes into the next stack
-/// down, so clips that overlap are drawn one under another and none hides
-/// another (Ken, 2026-11-11: an arrival, an exit and a loop drawn over each
-/// other, "very hard to see").
+/// layer, or across every layer with [together] for a folded row. A clip
+/// starting before another in its stack has ended goes into the next stack
+/// down, so overlapping clips are drawn one under another, none hidden.
 Map<String, int> clipStacks(List<ClipPlacement> placed, MotionTimes times,
     {bool together = false}) {
   var groups = <int, List<(ClipPlacement, ClipSpan)>>{};
@@ -154,13 +142,11 @@ Map<String, int> clipStacks(List<ClipPlacement> placed, MotionTimes times,
   return out;
 }
 
-/// MotionTrack is one lane of an unfolded row: a layer, and which of its
-/// stacks (see clipStacks).
+/// MotionTrack is one lane of an unfolded row: a layer and its stack.
 typedef MotionTrack = ({int layer, int stack});
 
-/// motionTracksOf are [e]'s lanes unfolded, top to bottom: for each of its
-/// layers (motionLanesOf) a lane for every stack its clips need -- what the
-/// row's arrow opens (Ken: "shouldn't this ... show the different layers?").
+/// motionTracksOf are [e]'s lanes unfolded, top to bottom: for each layer
+/// (motionLanesOf) a lane for every stack its clips need.
 List<MotionTrack> motionTracksOf(CanvasElement e, MotionTimes times) {
   var placed = e.base.motion.placed;
   var stacks = clipStacks(placed, times);
@@ -178,12 +164,10 @@ List<MotionTrack> motionTracksOf(CanvasElement e, MotionTimes times) {
 }
 
 /// motionClipRect is where placement [p] of a row is drawn, [left] to
-/// [right], the row starting [y] down and [rowHeight] tall: on its track's
-/// lane ([lane] tall) unfolded, a lane for each track; folded, its stacks
-/// laid over each other in the one band, each a step lower than the one
-/// before (Ken, 2026-11-12: small rows overlay, opened rows show their
-/// layers). The painter and the press both ask here, so a clip is pressed
-/// where it is drawn.
+/// [right], the row starting [y] down and [rowHeight] tall: unfolded, on
+/// its track's lane ([lane] tall); folded, its stacks laid over each other
+/// in one band, each a step lower than the one before. The painter and the
+/// press both ask here, so a clip is pressed where it is drawn.
 Rect? motionClipRect(
   ClipPlacement p, {
   required bool folded,
@@ -216,12 +200,11 @@ class MotionLanes extends StatefulWidget {
   final CanvasController controller;
   final TimelineView view;
 
-  /// only is the one element whose rows these are -- its sound channel
-  /// under them, as CanvasChannels lays them -- or null for every one.
+  /// only is the one element whose rows these are (its sound channel under
+  /// them, as CanvasChannels lays them), or null for every one.
   final String? only;
 
-  /// alt is a row of the timeline's every other, tinted (the approved
-  /// design's alternate rows).
+  /// alt is whether this is one of the timeline's tinted alternate rows.
   final bool alt;
 
   /// onBoxStart, onBox and onBoxEnd are a press on an empty lane dragged:
@@ -247,8 +230,7 @@ class MotionLanes extends StatefulWidget {
 
 enum _Grip { start, end, bar }
 
-/// _live are the motion lanes on screen, for the box: see
-/// motionPlacementsIn.
+/// _live are the motion lanes on screen, for the box: see motionPlacementsIn.
 final Set<_MotionLanesState> _live = {};
 
 /// motionPlacementsIn are the clips the box [global] (on screen) touches on
@@ -257,8 +239,7 @@ Set<(String, String)> motionPlacementsIn(Rect global) => {
       for (var lanes in _live) ...lanes._placementsIn(global),
     };
 
-/// _Hit is what a press landed on: an element's lane, and the placed clip
-/// there and which part of it, if any.
+/// _Hit is what a press landed on: a lane, and a clip and its part, if any.
 typedef _Hit = ({
   CanvasElement element,
   int layer,
@@ -269,11 +250,9 @@ typedef _Hit = ({
 class _MotionLanesState extends State<MotionLanes> {
   CanvasController get controller => widget.controller;
 
-  /// _paint is the lanes' drawing, for where they are on screen.
   final GlobalKey _paint = GlobalKey();
 
-  /// _boxing is whether the press under way is the box (begun on an empty
-  /// lane).
+  /// _boxing is whether the press under way is the box (from an empty lane).
   bool _boxing = false;
 
   /// _others are the other clips picked with the one dragged, and where
@@ -315,12 +294,10 @@ class _MotionLanesState extends State<MotionLanes> {
           if (widget.only == null || e.id == widget.only) e
       ];
 
-  /// _isFolded is whether [e]'s row is folded to one: see
-  /// CanvasController.rowFolded.
+  /// _isFolded is whether [e]'s row is folded (CanvasController.rowFolded).
   bool _isFolded(CanvasElement e) => controller.rowFolded(e.id);
 
-  /// _gripFrom and _gripHeight are where a row's bottom edge was pressed,
-  /// and how tall the row was then.
+  /// _gripFrom and _gripHeight are a row edge press's place and row height.
   double _gripFrom = 0, _gripHeight = 0;
 
   _Hit? _press;
@@ -339,8 +316,8 @@ class _MotionLanesState extends State<MotionLanes> {
   double get _lane =>
       motionLaneHeight * _scale * (controller.laneSize == 2 ? 1.6 : 1);
 
-  /// _rowHeight is [e]'s row: as tall as its bottom edge was dragged (Ken,
-  /// 2026-11-12), else a lane folded, and a lane a layer open.
+  /// _rowHeight is [e]'s row: as tall as its bottom edge was dragged, else
+  /// a lane folded, and a lane a layer open.
   double _rowHeight(CanvasElement e) {
     if (controller.laneHeights[motionRowKey(e.id)] case var h?) {
       return math.max(h, _least(e));
@@ -354,8 +331,7 @@ class _MotionLanesState extends State<MotionLanes> {
   double _least(CanvasElement e) =>
       _isFolded(e) ? 18 : _tracks(e).length * 14.0 + 4;
 
-  /// _laneOf is one of [e]'s lanes: its share of a row dragged taller or
-  /// shorter.
+  /// _laneOf is one of [e]'s lanes: its share of a row dragged taller.
   double _laneOf(CanvasElement e) {
     if (_isFolded(e) ||
         !controller.laneHeights.containsKey(motionRowKey(e.id))) {
@@ -369,8 +345,7 @@ class _MotionLanesState extends State<MotionLanes> {
   /// _tracks are [e]'s lanes unfolded: see motionTracksOf.
   List<MotionTrack> _tracks(CanvasElement e) => motionTracksOf(e, _times);
 
-  /// _clipRect is where placement [p] of [e] is drawn, its row starting [y]
-  /// down: see motionClipRect.
+  /// _clipRect is where placement [p] of [e] is drawn (motionClipRect).
   Rect? _clipRect(CanvasElement e, ClipPlacement p, double y, double width) {
     var s = _times.span(p.id);
     if (s == null) return null;
@@ -392,8 +367,8 @@ class _MotionLanesState extends State<MotionLanes> {
   double _seconds(double x, double width) =>
       widget.view.frameAt(x, width, 1 << 30) / _fps;
 
-  /// _snap is [s] on the timeline's beat grid -- a half beat -- unless Alt
-  /// is held; where the canvas has no tempo, a frame.
+  /// _snap is [s] on the timeline's beat grid (a half beat) unless Alt is
+  /// held; where the canvas has no tempo, a frame.
   double _snap(double s) {
     if (HardwareKeyboard.instance.isAltPressed) return s;
     var spb = controller.document.audio.secondsPerBeat;
@@ -436,9 +411,8 @@ class _MotionLanesState extends State<MotionLanes> {
     return null;
   }
 
-  /// _open picks placement [p]: in the Chain where the Chain is out, and
-  /// -- [show], a double-click -- bringing the Chain out to it. A single
-  /// click never opens it (Ken).
+  /// _open picks placement [p] in the Chain if out; with [show] (a
+  /// double-click) it brings the Chain out. A single click never opens it.
   void _open(CanvasElement e, ClipPlacement p, {bool show = false}) {
     controller.pickMotion(e.id, p.clip, placement: p.id);
     var out = controller.animationOpen || controller.effectsOpen;
@@ -579,9 +553,8 @@ class _MotionLanesState extends State<MotionLanes> {
       _dragged = true;
       controller.pause();
       controller.beginInteraction();
-      // One of several picked, moved by its bar: all of them go, together
-      // -- the other clips by as many seconds, the sounds by as many
-      // frames.
+      // One of several picked, moved by its bar: all of them go together,
+      // the other clips by as many seconds, the sounds by as many frames.
       var mine = (hit.element.id, p.id);
       var picks = controller.motionPicks;
       var together = hit.grip == _Grip.bar &&
@@ -639,7 +612,7 @@ class _MotionLanesState extends State<MotionLanes> {
             controller.placeTimedClip(e, clip, run + frames, transient: true);
           }
         }
-        // Linked: its sound by as much (Ken, 2026-11-10).
+        // Linked: its sound by as much.
         if (_linkFrom case (var l, var at)) {
           var fps = controller.document.frameRate;
           var moved = (math.max(0.0, to) - span.start) * fps;
@@ -688,8 +661,8 @@ class _MotionLanesState extends State<MotionLanes> {
   }
 
   /// _make is a double-click on a row: on a clip, that clip opened in the
-  /// Chain; on an empty spot, a short clip made there at once and picked --
-  /// double-clicked in turn, set up in the Chain (Ken: no list of options).
+  /// Chain; on an empty spot, a short clip made there at once and picked,
+  /// to be set up in the Chain with a further double-click.
   void _make(Offset local, double width) {
     // A Code panel's lesson bar is its settings', not a place for a clip.
     if (_codeAt(local, width) != null) return;
@@ -740,8 +713,7 @@ class _MotionLanesState extends State<MotionLanes> {
                   Positioned.fill(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      // The element, and its own channel with it, so the
-                      // mixer shows its strip (Ken, 2026-11-13).
+                      // The element and its own channel, for its mixer strip.
                       onTap: () {
                         controller.selectOnly(e.id);
                         var own = e is VideoElement && ownsChannel(e) ||
@@ -751,14 +723,13 @@ class _MotionLanesState extends State<MotionLanes> {
                         controller
                             .selectChannels(own == null ? const {} : {own});
                       },
-                      // Right-clicked: its row's colour (Ken, 2026-11-10).
+                      // Right-clicked: its row's colour.
                       onSecondaryTapUp: (d) =>
                           _colourMenu(context, e.id, d.globalPosition),
                       child: _header(e, colors, label),
                     ),
                   ),
-                  // Its bottom edge, dragged: the row taller or shorter, as
-                  // a sound's is (Ken, 2026-11-12).
+                  // Its bottom edge, dragged: the row's height, as a sound's.
                   Positioned(
                     left: 0,
                     right: 0,
@@ -768,10 +739,8 @@ class _MotionLanesState extends State<MotionLanes> {
                       cursor: SystemMouseCursors.resizeUpDown,
                       child: GestureDetector(
                         key: ValueKey("motionGrip-${e.id}"),
-                        // Not the trackpad: its two-finger scroll was taken
-                        // as a drag, and a row scrolled past was resized
-                        // (Ken, 2026-11-13). Pressed and dragged, as a
-                        // sound's edge is.
+                        // Not the trackpad: its two-finger scroll would
+                        // resize rows scrolled past.
                         supportedDevices: timelinePointers,
                         behavior: HitTestBehavior.opaque,
                         dragStartBehavior: DragStartBehavior.down,
@@ -809,9 +778,9 @@ class _MotionLanesState extends State<MotionLanes> {
           Expanded(
             child: LayoutBuilder(builder: (context, constraints) {
               var width = constraints.maxWidth;
-              // A clip dragged from a slot -- in the mixer, or beside the
-              // rows -- let go on a row: placed there, on the lane it is let
-              // go on. Another element's, copied to this one first.
+              // A clip dragged from a slot (in the mixer, or beside the
+              // rows) let go on a row: placed on the lane it is let go on.
+              // Another element's is copied to this one first.
               return DragTarget<Object>(
                 // A sound let go on its rows: on its own channel, there.
                 onWillAcceptWithDetails: (d) =>
@@ -863,11 +832,10 @@ class _MotionLanesState extends State<MotionLanes> {
     );
   }
 
-  /// _header is [e]'s row header (see row_header.dart): its name, what it
-  /// is, and the motion, sound and solo buttons -- the sound and the solo
-  /// its own sound's, whose rows follow as the same row (see canvas_rows.dart)
-  /// from the channel height M up; each motion layer's label level with its
-  /// lane, a bar of how much of it plays.
+  /// _header is [e]'s row header (row_header.dart): its name, what it is, and
+  /// the motion, sound and solo buttons (the sound and solo its own sound's,
+  /// whose rows follow as the same row from the channel height M up); each
+  /// motion layer's label level with its lane, a bar of how much of it plays.
   Widget _header(CanvasElement e, ColorScheme colors, TextStyle label) {
     var own = controller.soundChannelOf(e.id);
     var heard = own != null &&
@@ -942,8 +910,7 @@ class _MotionLanesState extends State<MotionLanes> {
                   layers > 1 ? "$layers layers" : "Motion", motionColour),
             ]
           : [
-              // A band for each lane: a layer's name on its first, its
-              // further stacks unnamed under it.
+              // A band each lane: a layer's name on its first, then unnamed.
               for (var (i, t) in _tracks(e).indexed)
                 RowBand(
                     2 + i * _laneOf(e),
@@ -956,9 +923,8 @@ class _MotionLanesState extends State<MotionLanes> {
     );
   }
 
-  /// _linkMenu is a clip's right-click menu: linked with a sound of its
-  /// element's own that is picked, the two move together (Ken, 2026-11-10);
-  /// or unlinked.
+  /// _linkMenu is a clip's right-click menu: linked with a picked sound of
+  /// its element's own, the two move together; or unlinked.
   Future<void> _linkMenu(
       BuildContext context, Offset local, Offset at, double width) async {
     var hit = _hit(local, width);
@@ -1101,9 +1067,9 @@ class _MotionLanesState extends State<MotionLanes> {
 }
 
 /// _RowSlots are an element's slots beside its rows, a cue each, as on its
-/// strip in the mixer: its triangle launches it -- an empty one stops the
-/// element's clips; its name, clicked, opens it in the Animation panel;
-/// dragged, it goes onto the timeline or into another slot.
+/// mixer strip: its triangle launches it (an empty one stops the element's
+/// clips); its name, clicked, opens it in the Animation panel; dragged, it
+/// goes onto the timeline or into another slot.
 class _RowSlots extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -1140,8 +1106,7 @@ class _RowSlots extends StatelessWidget {
         box = Stack(children: [
           Positioned.fill(
               child: SlotFace(side: SlotSide.motion, empty: launch)),
-          // Empty: double-clicked, a new clip in it, opened -- as the
-          // mixer's slots do.
+          // Empty: double-clicked, a new clip in it, opened, as in the mixer.
           Positioned(
             left: 20,
             top: 0,
@@ -1150,7 +1115,7 @@ class _RowSlots extends StatelessWidget {
             child: GestureDetector(
               key: ValueKey("rowSlotNew-${element.id}-$i"),
               behavior: HitTestBehavior.opaque,
-              // Double-clicked: a new clip in it, picked (Ken).
+              // Double-clicked: a new clip in it, picked.
               onDoubleTap: () {
                 var id = c.newClip(element.id,
                     kind: element is CameraElement
@@ -1174,9 +1139,8 @@ class _RowSlots extends StatelessWidget {
             playing: lit,
             seed: clip.id,
             go: launch,
-            // Clicked, it has the keyboard: Delete or Backspace empties the
-            // slot, not the canvas's selection (Ken: it took the element,
-            // and its channel with it).
+            // Clicked, it has the keyboard: Delete empties the slot, not
+            // the canvas's selection (the element and its channel).
             label: SlotFocus(
               key: ValueKey("rowSlotKeys-${element.id}-$i"),
               onDelete: () {
@@ -1278,8 +1242,7 @@ class _LanesPainter extends CustomPainter {
     // A clip starting before the frames shown, zoomed in, is drawn from
     // where it starts: kept to the lanes, not over the strips beside them.
     canvas.clipRect(Offset.zero & size);
-    // Every other row tinted, and a faint line at every second, as the
-    // sound lanes have (the approved design's grid).
+    // Every other row tinted, a faint line every second, as sound lanes are.
     if (alt) {
       canvas.drawRect(Offset.zero & size,
           Paint()..color = colors.onSurface.withValues(alpha: 0.025));
@@ -1320,7 +1283,6 @@ class _LanesPainter extends CustomPainter {
       // Folded, a stack over the next: drawn from the first up.
       var order = isFolded
           ? ([...m.placed]..sort((a, b) {
-              // A stack drawn over the one before it.
               var byStack = (stacks[a.id] ?? 0) - (stacks[b.id] ?? 0);
               return byStack != 0 ? byStack : a.layer - b.layer;
             }))
@@ -1355,9 +1317,8 @@ class _LanesPainter extends CustomPainter {
         _code(canvas, e, y, h, lane, tracks.length, isFolded, size.width);
       }
       // An element reused: where each copy's clips start, as short amber
-      // ticks along the top of its row (the approved design), from its first
-      // clip -- only with a clip on the timeline for them to start (Ken:
-      // without one, three blue lines that meant nothing).
+      // ticks along the top of its row from its first clip, only with a
+      // clip on the timeline for them to start.
       if (m.instances case var set? when set.count > 1) {
         var from = [
           for (var p in m.placed)
@@ -1437,11 +1398,9 @@ class _LanesPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// _unsettled shades the part of an arrival still going at [by] -- the
-  /// scene's end, or its leave starting -- the arrival never settling: its
-  /// bar the length it really is, with what is never seen finished marked
-  /// as such, a red edge where it is cut off (Ken: the arrive bar ran
-  /// the full length of a short scene).
+  /// _unsettled shades the part of an arrival still going at [by] (the
+  /// scene's end, or its leave starting): its bar the length it really is,
+  /// what is never seen finished marked so, and a red edge where it is cut.
   void _unsettled(
       Canvas canvas, Rect rect, ClipSpan s, double by, double width) {
     if (s.end <= by + 1e-6) return;
@@ -1471,8 +1430,7 @@ class _LanesPainter extends CustomPainter {
 
   void _clip(Canvas canvas, Rect rect, MotionClip c, ClipPlacement p,
       ClipSpan s, Color row) {
-    // As its slot is (the approved design): its corners cut, a teal edge,
-    // its curve drawn faint in it.
+    // As its slot is: corners cut, a teal edge, its curve drawn faint in it.
     var colour = Color.lerp(row, const Color(0xFF0E2A24), 0.22)!;
     var shape = cutCornersPath(rect, 4);
     canvas.drawPath(shape, Paint()..color = colour);
@@ -1505,11 +1463,9 @@ class _LanesPainter extends CustomPainter {
     var left = rect.left + (p.startPin != null ? 12 : 6);
     tp.paint(canvas, Offset(left, rect.center.dy - tp.height / 2));
     canvas.restore();
-    // Linked to a sound: its mark, top right.
     if (p.link.isNotEmpty && rect.width >= 30) {
       paintLinkMark(canvas, Offset(rect.right - 14, rect.top + 2), slotInk);
     }
-    // Picked: outlined, over its shape.
     if (picked.contains(p.id)) {
       canvas.drawPath(
           cutCornersPath(rect.inflate(1.5), 5),
@@ -1518,7 +1474,6 @@ class _LanesPainter extends CustomPainter {
             ..strokeWidth = 2
             ..color = colors.onSurface);
     }
-    // A dot at each pinned end.
     var dot = Paint()..color = slotInk;
     if (p.startPin != null) {
       canvas.drawCircle(Offset(rect.left + 5, rect.top + 5), 3, dot);

@@ -8,19 +8,12 @@ import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
-// chart_timelines.dart is the timeline's other ways (Ken, 2026-11-17: "more
-// designs for the timeline chart, please do some research"; the research is
-// in data-design-prototype/timeline-research/RESEARCH.md): spans from start
-// to end packed into rows, the same in a lane a group, eras as bands behind
-// the events, events numbered on a line of values, cards either side of a
-// spine, bubbles sized by a number in lanes, a line folded down the page,
-// and the past solid up to today with the future dashed.
-//
-// What they read: the first series is when each event starts; a second,
-// where a way has ends (spans, swimlanes, eras), is when it ends -- blank
-// for an event on one date; the last, where a way has numbers (the value
-// line, bubbles), is its number. Groups are the column it is coloured by,
-// and a card's words its row's point name (SheetLink.pointNames).
+// chart_timelines.dart is the timeline's other ways: spans packed into
+// rows, swimlanes, eras as bands, a value line, cards either side of a
+// spine, bubbles, a serpentine, progress to today and more. The first series
+// is when each event starts; a second, where a way has ends, is when it ends
+// (blank for one date); the last, where a way has numbers, is its number.
+// Groups are the column it is coloured by; a card's words its point name.
 
 /// timelineWays is the ways drawn here.
 const timelineWays = {
@@ -39,8 +32,7 @@ const timelineWays = {
   "aligned",
 };
 
-/// paintTimelineWay draws timeline [e] its [mode] way, answering whether
-/// it is one of these.
+/// paintTimelineWay draws timeline [e] its [mode] way, if it is one of these.
 bool paintTimelineWay(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, String mode) {
   var evs = _events(e);
@@ -80,8 +72,7 @@ bool paintTimelineWay(
 
 // ------------------------------------------------------------ shared bits
 
-/// _Ev is one event: its row, when it starts, and when it ends (null for
-/// one on a single date).
+/// _Ev is one event: its row, its start, and its end (null for a single date).
 class _Ev {
   final int i;
   final double start;
@@ -90,8 +81,7 @@ class _Ev {
   double get last => end ?? start;
 }
 
-/// _events is [e]'s events in order of when they start; those without a
-/// date left out.
+/// _events is [e]'s events by start; those without a date left out.
 List<_Ev> _events(ChartElement e) {
   var d = e.data;
   var out = <_Ev>[];
@@ -110,12 +100,10 @@ List<_Ev> _events(ChartElement e) {
   return out;
 }
 
-/// _years is whether [evs]' dates are years.
 bool _years(List<_Ev> evs) => evs.every((v) =>
     v.start == v.start.roundToDouble() && v.start > 1000 && v.start < 3000);
 
-/// _when writes a date: a year as itself (not "2,016"), else as its
-/// series is written.
+/// _when writes a date: a year as itself (not "2,016"), else as its series.
 String _when(ChartElement e, double v, [int s = 0]) =>
     v == v.roundToDouble() && v > 1000 && v < 3000
         ? "${v.round()}"
@@ -168,16 +156,14 @@ class _Scale {
         hi = hi > lo ? hi : lo + 1;
   double x(double v) => left + (v - lo) / (hi - lo) * (right - left);
 
-  /// knots are the dates an even scale spaces evenly; empty for one by
-  /// date.
+  /// knots are the dates an even scale spaces evenly; empty for one by date.
   List<double> get knots => const [];
 }
 
-/// _EvenScale spaces [knots] -- the events' dates, in order -- evenly
-/// across, a date between two of them part-way between: the timeline
-/// research's Even, for events bunched in one stretch and scattered in
-/// another. The time between neighbours is written in the gaps instead of
-/// ticks (see _axis).
+/// _EvenScale spaces [knots] (the events' dates, in order) evenly across, a
+/// date between two of them part-way between: for events bunched in one
+/// stretch and scattered in another. The time between neighbours is written
+/// in the gaps instead of ticks (see _axis).
 class _EvenScale extends _Scale {
   @override
   final List<double> knots;
@@ -208,8 +194,7 @@ class _EvenScale extends _Scale {
   }
 }
 
-/// _scaleOf is a scale over [evs] (and [also]) across [left] to [right],
-/// with a little room either end.
+/// _scaleOf is a scale over [evs] (and [also]), [left] to [right], with room.
 _Scale _scaleOf(List<_Ev> evs, double left, double right,
     {double? also, ChartElement? e}) {
   if (e != null && e.design.even) {
@@ -247,11 +232,9 @@ double _step(double span, int most, {bool whole = false}) {
   return whole ? math.max(1.0, step.roundToDouble()) : step;
 }
 
-/// _axisHeight is the room a date axis takes under a plot.
 double _axisHeight(ChartElement e) => e.labelSpec.fontSize * 1.9;
 
-/// _axis draws dates along [y] from [sc]'s left to right, ticked at round
-/// dates, their figures under it.
+/// _axis draws dates along [y] across [sc], ticked at round dates, figured.
 void _axis(ui.Canvas canvas, ChartElement e, _Scale sc, double y, bool years,
     double drawn) {
   var line = Paint()
@@ -300,8 +283,7 @@ void _axis(ui.Canvas canvas, ChartElement e, _Scale sc, double y, bool years,
   }
 }
 
-/// _gapWords is the time between two neighbours: "12 yrs", or the
-/// difference as its numbers are written.
+/// _gapWords is the time between two neighbours: "12 yrs", or as written.
 String _gapWords(double d, bool years, ChartElement e) {
   if (years) {
     var n = d.round();
@@ -310,9 +292,8 @@ String _gapWords(double d, bool years, ChartElement e) {
   return "+${formatSeries(e, 0, d)}";
 }
 
-/// _pack puts each of [spans] (left and right, in order of left) on the
-/// first row it fits, [gap] clear of the one before: each one's row, and
-/// how many rows.
+/// _pack puts each of [spans] (left, right; by left) on the first row it
+/// fits, [gap] clear: each one's row, and how many rows.
 (List<int>, int) _pack(List<(double, double)> spans, double gap) {
   var ends = <double>[];
   var rows = <int>[];
@@ -351,10 +332,9 @@ List<String> _groupsOf(ChartElement e, List<_Ev> evs) {
 
 // ------------------------------------------------------------ spans
 
-/// _spans is each event a bar from its start to its end -- Priestley's
-/// chart of lives, a Gantt chart -- packed into as few rows as fit, its name
-/// inside it where it fits, else just past it. One on a single date is a
-/// diamond.
+/// _spans is each event a bar from its start to its end (a Gantt chart),
+/// packed into as few rows as fit, its name inside it where it fits, else
+/// just past it. One on a single date is a diamond.
 void _spans(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var axisH = _axisHeight(e);
@@ -365,8 +345,7 @@ void _spans(
   _axis(canvas, e, sc, plot.bottom + 2, _years(evs), _drawn(e, reveal));
 }
 
-/// _spanRows draws [evs] as bars packed into rows in [band] on [sc]; [k0]
-/// of [n] for their arrival.
+/// _spanRows draws [evs] as bars packed into rows in [band]; [k0] of [n] on.
 void _spanRows(ui.Canvas canvas, ChartElement e, double reveal, Rect band,
     _Scale sc, List<_Ev> evs, int k0, int n) {
   var fs = e.labelSpec.fontSize;
@@ -485,10 +464,9 @@ void _lanes(
 
 // ------------------------------------------------------------ stems
 
-/// _stemmed puts [evs] as dots on a line at [y] across [band], each label
-/// on a stem at the first level, up or down, where it is clear of those
-/// placed before it (the research's stem levels: no label over another);
-/// one with no room left gets its dot alone. [hollow] draws some as rings.
+/// _stemmed puts [evs] as dots on a line at [y] across [band], each label on a
+/// stem at the first level, up or down, clear of those placed before it; one
+/// with no room left gets its dot alone. [hollow] draws some as rings.
 void _stemmed(ui.Canvas canvas, ChartElement e, double reveal, Rect band,
     double y, _Scale sc, List<_Ev> evs,
     {bool Function(_Ev)? hollow, int k0 = 0, int? n}) {
@@ -560,9 +538,8 @@ void _stemmed(ui.Canvas canvas, ChartElement e, double reveal, Rect band,
 
 // ------------------------------------------------------------ eras
 
-/// _eras is the events with an end drawn as bands behind -- periods, eras,
-/// reigns, a recession's grey bars -- their names along the top, and the
-/// rest as dots on a line in front.
+/// _eras is events with an end as bands behind (periods, reigns), named
+/// along the top, the rest as dots on a line in front.
 void _eras(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var eras = [
@@ -628,9 +605,8 @@ void _eras(
 
 // ------------------------------------------------------------ value line
 
-/// _valueLine is a line of the events' numbers over time with each event a
-/// numbered marker on it, and a key below saying what each number is: the
-/// story and the measure together, the markers small enough not to crowd.
+/// _valueLine is a line of the events' numbers over time, each event a
+/// numbered marker on it and a key below saying what each number is.
 void _valueLine(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var d = e.data;
@@ -686,7 +662,6 @@ void _valueLine(
           ..color = lineColour);
   }
   _axis(canvas, e, sc, plot.bottom + fs * 0.6, _years(evs), drawn);
-  // The markers, numbered, and the key.
   var r = math.max(7.0, fs * 0.72);
   var numSpec = _fig(e, size: r * 1.1).copyWith(weight: 800);
   var reached =
@@ -704,7 +679,6 @@ void _valueLine(
     if (p.size < 1) continue;
     _say(canvas, "${k + 1}", numSpec.copyWith(color: _ink(colour)),
         Rect.fromCircle(center: at, radius: r));
-    // Its line in the key.
     var col = k ~/ keyRows, row = k % keyRows;
     var cell = Rect.fromLTWH(area.left + col * (area.width / cols),
         area.bottom - keyH + row * rowH, area.width / cols, rowH);
@@ -727,9 +701,8 @@ void _valueLine(
 
 // ------------------------------------------------------------ cards
 
-/// _cards is each event a card -- its date large, its name, a line about it
-/// (the row's point name) -- either side of a spine down the middle, evenly
-/// spaced: the stepping stones of a story told in order.
+/// _cards is each event a card (its date large, its name, its point name)
+/// either side of a spine down the middle, evenly spaced.
 void _cards(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var n = evs.length;
@@ -828,9 +801,8 @@ void _cards(
 
 // ------------------------------------------------------------ bubbles
 
-/// _bubbles is each event a circle at its date, its area by its number --
-/// a lane a group -- so the big moments stand out; the largest named
-/// where there is room.
+/// _bubbles is each event a circle at its date, its area by its number, a
+/// lane a group; the largest named where there is room.
 void _bubbles(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var d = e.data;
@@ -915,8 +887,7 @@ void _bubbles(
 // ------------------------------------------------------------ serpentine
 
 /// _serpentine is the line folded down the page, a row at a time with a
-/// half circle at each turn -- a long story told in little room, the line
-/// drawing on as it plays and each event arriving as it reaches it.
+/// half circle at each turn, drawing on as it plays.
 void _serpentine(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var n = evs.length;
@@ -1013,10 +984,9 @@ double Function() timelineNow = () {
   return t.year + t.difference(start).inDays / days;
 };
 
-/// _progress is the line solid up to today and dashed after it, today
-/// marked, the events behind it filled and those ahead of it rings: a
-/// roadmap, "we are here". Dates that aren't years have no today; the
-/// latest event is where it is then.
+/// _progress is the line solid up to today and dashed after, today marked,
+/// past events filled and future ones rings. Dates that aren't years have
+/// no today; the latest event stands for it.
 void _progress(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var years = _years(evs);
@@ -1073,8 +1043,7 @@ void _progress(
 
 // ------------------------------------------------------------ zoom
 
-/// _window is the busiest stretch of [evs]: the third of their span with
-/// the most events in it.
+/// _window is the busiest third of [evs]' span: the most events in it.
 (double, double) _window(List<_Ev> evs) {
   var lo = evs.first.start, hi = evs.map((v) => v.last).reduce(math.max);
   var span = hi - lo;
@@ -1093,10 +1062,8 @@ void _progress(
   return (best.$1 - w * 0.08, best.$2 + w * 0.08);
 }
 
-/// _zoom is the whole story along a thin strip at the top, its busiest
-/// stretch lit, and that stretch drawn large under it with its events
-/// named: focus and context, so a crowded few years can be read without
-/// losing where they sit.
+/// _zoom is the whole story along a thin strip at the top, its busiest stretch
+/// lit and drawn large under it with its events named: focus and context.
 void _zoom(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var fs = e.labelSpec.fontSize;
@@ -1136,7 +1103,6 @@ void _zoom(
       Rect.fromLTWH(whole.left, y0 + 8, fs * 4, fs * 1.2));
   _say(canvas, _when(e, evs.map((v) => v.last).reduce(math.max)), small,
       Rect.fromLTWH(whole.right - fs * 4, y0 + 8, fs * 4, fs * 1.2));
-  // The stretch, large.
   var axisH = _axisHeight(e);
   var detail = Rect.fromLTRB(
       area.left, strip.bottom + fs * 1.6, area.right, area.bottom - axisH);
@@ -1175,9 +1141,8 @@ void _zoom(
 // ------------------------------------------------------------ spiral
 
 /// _spiral is time wound outwards from the middle, a turn every so many
-/// years: a long story in a square, its rhythm -- what comes round again --
-/// easier to see than its gaps (the research's caveat: it bends lengths,
-/// so it is for the look, not for comparing).
+/// years: its rhythm is easier to see than its gaps. It bends lengths, so
+/// it is for the look, not for comparing.
 void _spiral(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var lo = evs.first.start, hi = evs.map((v) => v.last).reduce(math.max);
@@ -1254,10 +1219,9 @@ void _spiral(
 
 // ------------------------------------------------------------ then and now
 
-/// _thenNow is the first event and the last side by side, large -- their
-/// dates, names, numbers and words -- with the time between them, and how
-/// much its number changed, on the line joining them; the events between
-/// as small marks on that line.
+/// _thenNow is the first event and the last side by side, large, with the
+/// time between and how much the number changed on the line joining them;
+/// the events between as small marks on that line.
 void _thenNow(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var d = e.data;
@@ -1364,9 +1328,8 @@ void _thenNow(
 // ------------------------------------------------------------ strip
 
 /// _strip is every event a thin tick along one line, with how crowded each
-/// stretch is drawn as a soft hill over it: for many events, where the
-/// pattern is the story. Only a few are named -- the first, the last and
-/// the largest by their number -- where there is room.
+/// stretch is drawn as a soft hill over it. Only the first, the last and
+/// the largest are named, where there is room.
 void _strip(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var d = e.data;
@@ -1469,10 +1432,8 @@ void _strip(
 
 // ------------------------------------------------------------ aligned
 
-/// _aligned is each group's events measured from that group's first, a
-/// lane a group, all starting together at nought: how long each took to
-/// get from its start to each step, not when (the research's "aligned at
-/// zero" -- careers, products, seasons compared).
+/// _aligned is each group's events from that group's first, a lane each,
+/// all starting at nought: how long each took to reach each step.
 void _aligned(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, List<_Ev> evs) {
   var groups = _groupsOf(e, evs);

@@ -8,20 +8,19 @@ import 'package:bruig/plugin_system/canvas/render/vrm/vrm_wear.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 // vrm_decal.dart makes a decal's shape: the triangles of the surface it lies
-// on (the skin, or a piece of clothing) that face it within its square, lifted
-// off the surface a hair, with the picture laid across them as if projected
-// from in front. Bound to the same bones as the surface, so it bends and
-// moves with it, and shaped with the body. Plain Dart, tested without a GPU.
+// on (skin or clothing) that face it within its square, lifted a hair off
+// the surface, with the picture projected across them from in front. Bound
+// to the surface's bones, so it bends, moves and is shaped with the body.
+// Plain Dart, tested without a GPU.
 
 /// DecalSurface is what a decal can lie on: vertices, their triangles, and
-/// whether the vertices are numbered as the skin's are -- so each is known
-/// to be on an arm, a leg, the body.
+/// whether the vertices are numbered as the skin's are, so each is known to
+/// be on an arm, a leg or the body.
 class DecalSurface {
   final VrmVertices vertices;
   final Uint32List triangles;
   final bool likeSkin;
 
-  /// lift is how far over the surface the decal lies.
   final double lift;
   const DecalSurface(this.vertices, this.triangles,
       {this.likeSkin = true, this.lift = 0.0008});
@@ -158,8 +157,8 @@ GarmentMesh? makeDecal(VrmWardrobe w, CharacterDecal d, DecalSurface s) {
   final t = s.triangles;
   for (var k = 0; k + 2 < t.length; k += 3) {
     // Any triangle reaching into the square, not only those wholly in it:
-    // where the surface curves away, a triangle with a corner outside left
-    // a gap in the picture. What lies past the picture is clear.
+    // where the surface curves away, leaving out a triangle with a corner
+    // outside leaves a gap in the picture. What lies past it is clear.
     final a = t[k], b = t[k + 1], c = t[k + 2];
     if ((keep[a] == 1 || keep[b] == 1 || keep[c] == 1) &&
         may[a] == 1 &&

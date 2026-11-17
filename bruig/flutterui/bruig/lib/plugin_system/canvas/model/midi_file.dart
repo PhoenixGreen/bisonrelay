@@ -4,11 +4,11 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
 // midi_file.dart reads a Standard MIDI File (formats 0 and 1) into notes an
-// instrument can play. Ticks become seconds through every tempo change in
-// turn. MIDI's tenth channel (drums, by convention) is left out.
+// instrument can play. Ticks become seconds through every tempo change.
+// MIDI's tenth channel (drums, by convention) is left out.
 
-/// MidiImport is what a file held: its notes, and the sound its first
-/// instrument asked for.
+/// MidiImport is a file's notes and the sound its first instrument asked
+/// for.
 class MidiImport {
   final List<MidiNote> notes;
   final int? program;
@@ -115,12 +115,12 @@ MidiImport _readMidiFile(Uint8List bytes) {
     }
   }
 
-  // Ticks to seconds, through the tempo changes.
-  // The file's own tempo at tick nought after the default, so it wins.
+  // Ticks to seconds. The file's own tempo at tick nought sorts after the
+  // default, so it wins.
   tempos = _stable(tempos, (t) => t.$1);
-  // Each change's tick, the seconds to it, and the tempo after it, worked
-  // out once: a note's time is then a search, not a walk through every
-  // change (a file of a hundred thousand of each was billions of steps).
+  // Each change's tick, seconds to it and tempo after, worked out once: a
+  // note's time is then a search, not a walk through every change, which is
+  // billions of steps for a file with a hundred thousand of each.
   var marks = <(int, double, int)>[(0, 0.0, 500000)];
   for (var (t, us) in tempos) {
     var (from, s, tempo) = marks.last;

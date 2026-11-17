@@ -7,17 +7,15 @@ import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:flutter/painting.dart';
 
-// quick_fill.dart is the paint bucket: a click inside an area that lines
-// close round, from any number of strokes, fills it with a shape of its own
-// laid under them. As in a painting program, the lines are drawn into a
-// picture, flooded from the click, and the flood's edge traced back into a
-// shape. Lines that stop short within the gap allowed count as meeting.
+// quick_fill.dart is the paint bucket: a click inside an area closed by any
+// number of strokes fills it with a shape of its own, laid under them. The
+// lines are drawn into a picture, flooded from the click, and the flood's
+// edge traced back into a shape.
 
 /// quickFilled is [e] with the area round [canvasPoint] filled with
 /// [colour], or null where no lines close round it. [gap] is the widest
 /// opening, in the drawing's units, still counted as closed. The fill goes
-/// under every shape with a line and over the fills without: under the ink,
-/// over a background.
+/// under the first shape with a line, so under the ink and over a background.
 Future<VectorElement?> quickFilled(
     VectorElement e, Offset canvasPoint, Color colour,
     {double gap = 0}) async {
@@ -29,10 +27,9 @@ Future<VectorElement?> quickFilled(
   ];
   if (lined.isEmpty) return null;
 
-  // The grid: everything drawn plus a margin, about 1200 cells across its
-  // longer side. Everything drawn, not the drawing's box: while editing, the
-  // box is not yet fitted round the strokes, and a box cutting through a shape
-  // would let the flood out.
+  // The grid: everything drawn plus a margin, about 1200 cells across. Not
+  // the drawing's box: while editing it may not yet fit round the strokes,
+  // and a box cutting through a shape would let the flood out.
   Rect? reach;
   for (var d in lined) {
     var b = d.combined ? d.outline.getBounds() : shapeExtent(d.style);
@@ -106,8 +103,8 @@ Future<VectorElement?> quickFilled(
     }
   }
 
-  // Grown back out by the gap and two cells more, so the fill tucks under the
-  // lines it met rather than stopping a hair short of them.
+  // Grown by the gap and two cells more, so the fill tucks under the lines
+  // rather than stopping a hair short of them.
   var grow = (gap * scale).ceil() + 2;
   for (var k = 0; k < grow; k++) {
     var next = Uint8List.fromList(region);
@@ -144,8 +141,8 @@ Future<VectorElement?> quickFilled(
   if (runs.isEmpty) return null;
 
   var fill = VectorShape(paths: runs, fill: colour, evenOdd: true);
-  // Under the lines: before the first shape with one -- and before any run
-  // of shapes combined into it, which goes with it.
+  // Before the first shape with a line, and before any shapes combined
+  // into it.
   var under =
       shapes.indexWhere((s) => (s.stroke?.a ?? 0) > 0 && s.strokeWidth > 0);
   if (under < 0) under = shapes.length;
@@ -158,9 +155,8 @@ Future<VectorElement?> quickFilled(
 }
 
 /// _traced is the edges of the cells set in [region] (w by h), as closed
-/// loops of cell corners -- the outside of the area and the edge of every
-/// hole in it. Each cell edge between a set cell and an unset one is one
-/// step, all of them taken the same way round, and joined end to end.
+/// loops of cell corners: the outside and every hole. Each edge between a
+/// set and an unset cell is one step, all taken the same way round.
 List<List<Offset>> _traced(Uint8List region, int w, int h) {
   bool set(int x, int y) =>
       x >= 0 && y >= 0 && x < w && y < h && region[y * w + x] == 1;
@@ -198,10 +194,9 @@ List<List<Offset>> _traced(Uint8List region, int w, int h) {
   return loops;
 }
 
-/// _thinned is [loop] with the points it does not need, within [tolerance]
-/// (in cells), taken out: the staircase of cell corners straightened into
-/// the edge it stands for. Douglas and Peucker's, on a closed loop split at
-/// its two farthest-apart points.
+/// _thinned straightens [loop]'s staircase of cell corners within
+/// [tolerance] cells: Douglas-Peucker, on the loop split at its first point
+/// and the point farthest from it.
 List<Offset> _thinned(List<Offset> loop, double tolerance) {
   if (loop.length < 4) return loop;
   var far = 0;

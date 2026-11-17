@@ -17,23 +17,17 @@ import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:flutter/painting.dart';
 import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
-// paint_util.dart is the drawing every element does the same way: laying out
-// a string, filling a box, and turning a shape's name into a path.
-//
-// Every text drawer (text elements, labels, buttons, chart axes, table
-// cells) goes through layoutText, so outline, shadow, spacing and line height
-// are implemented once.
-//
-// Nothing here touches a BuildContext or a theme: the same code paints the
-// stage and the export, and an export must not depend on the app's theme.
+// paint_util.dart is the drawing every element does the same way: laying
+// out a string, filling a box, turning a shape's name into a path. Every
+// text drawer goes through layoutText, so outline, shadow, spacing and line
+// height are implemented once. Nothing here touches a BuildContext or a
+// theme: an export must not depend on the app's theme.
 
-// _layouts memoises laid-out paragraphs, the most expensive thing this file
-// does and repeated every frame for unchanged text.
-//
-// The key is every input that can change the result, so nothing has to
-// remember to clear it. Painters are only read from, so sharing one between
-// callers is safe; evicted ones are dropped, not disposed, as a caller may
-// still hold one from an earlier frame.
+// _layouts memoises laid-out paragraphs, the most expensive thing here and
+// repeated every frame for unchanged text. The key is every input that can
+// change the result, so nothing has to clear it. Painters are only read
+// from, so sharing is safe; evicted ones are dropped, not disposed, as a
+// caller may still hold one from an earlier frame.
 typedef _LayoutKey = (
   String,
   TextSpec,
@@ -43,9 +37,8 @@ typedef _LayoutKey = (
   bool,
   bool,
   bool,
-  // The size of the box a fading colour runs across. Not its place: the
-  // shader is in paragraph coordinates. The height matters and nothing else
-  // in the key carries it.
+  // The size of the box a fading colour runs across, not its place: the
+  // shader is in paragraph coordinates, and nothing else carries the height.
   Size?,
   // The parts, written out.
   String,
@@ -65,11 +58,9 @@ void clearTextLayouts() {
 /// hundred cells); the oldest inserted go first.
 const _layoutCap = 512;
 
-/// layoutText builds a laid-out paragraph from a [TextSpec].
-///
-/// The outline is a second painter ([outline]) drawn behind, not a stroke on
-/// the letters: a stroke is centred on the glyph edge and would thin the
-/// letterform by half its width.
+/// layoutText builds a laid-out paragraph from a [TextSpec]. The outline is
+/// a second painter ([outline]) drawn behind, not a stroke: a stroke is
+/// centred on the glyph edge and would thin the letterform.
 TextPainter layoutText(
   String text,
   TextSpec spec, {
@@ -83,16 +74,15 @@ TextPainter layoutText(
   bool soft = false,
 
   /// fillWidth lays the paragraph out at exactly [maxWidth] rather than its
-  /// intrinsic width. A TextPainter aligns within its own width, so without
-  /// this every alignment looks like left; measuring wants it off.
+  /// intrinsic width: a TextPainter aligns within its own width, so without
+  /// this every alignment looks like left. Measuring wants it off.
   bool fillWidth = false,
 
-  /// parts are the runs of the text that are drawn differently -- a word in
-  /// another colour, a phrase in bold. Empty for almost every paragraph.
+  /// parts are the runs of the text drawn differently (a word in another
+  /// colour, a phrase in bold); empty for almost every paragraph.
   List<TextPart> parts = const [],
 
-  /// over is the box the words are drawn in, for a colour that fades. See
-  /// textStyleOf.
+  /// over is the box the words are drawn in, for a fade (see textStyleOf).
   Rect? over,
 }) {
   var key = (
@@ -138,8 +128,7 @@ TextPainter _layoutText(
   bool fillWidth = false,
   List<TextPart> parts = const [],
 }) {
-  // The case transform is applied here so no caller can forget it. It is
-  // idempotent, so a caller that also applies it does no harm.
+  // The case transform is idempotent and applied here, so none can forget it.
   text = spec.textCase.apply(text);
 
   var style = textStyleOf(spec,
@@ -163,15 +152,12 @@ TextPainter _layoutText(
   return painter;
 }
 
-/// paintThroughText draws [fill] and cuts it to the shape of the letters.
-///
-/// Two layers: the words, then the fill composited onto them with srcIn. A
-/// shader on the text paint could not draw a pattern made of many strokes.
-/// The fill spans the whole box, not each letter, so it runs through the word.
-///
-/// [animation] and [reveal] are what the words are doing, for a fill locked
-/// to them (TextFill.locked). [moving] is the paragraph's own box, which the
-/// motions are fractions of, so the fill travels exactly as the letters do.
+/// paintThroughText draws [fill] cut to the shape of the letters: the words,
+/// then the fill composited onto them with srcIn, since a shader on the
+/// text paint could not draw a pattern of many strokes. The fill spans the
+/// whole box, so it runs through the word. [animation] and [reveal] are
+/// what the words are doing, for a fill locked to them (TextFill.locked);
+/// [moving] is the paragraph's box, so the fill travels as the letters do.
 void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
     CanvasImageSource? images, void Function() words,
     {TextAnimation? animation, double reveal = 1, Rect? moving}) {
@@ -180,17 +166,16 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
     return;
   }
 
-  // Room for wherever the letters go outside their box -- shadow, outline,
-  // and anywhere the animation takes them (motionRoom) -- or the fill is
-  // clipped while the outline, drawn outside this layer, is not.
+  // Room for wherever the letters go (shadow, outline, motionRoom), or the
+  // fill is clipped while the outline, drawn outside this layer, is not.
   var area = (animation == null || moving == null
           ? box
           : box.expandToInclude(motionRoom(moving, animation)))
       .inflate(box.shortestSide * 0.5 + 8);
   canvas.saveLayer(area, Paint());
   words();
-  // srcIn cuts what is drawn here to the letters. The opacity is on the layer,
-  // not each draw, so a pattern's ground and ink fade together.
+  // srcIn cuts what is drawn here to the letters. The opacity is on the
+  // layer, so a pattern's ground and ink fade together.
   var through = fill.opacity.clamp(0.0, 1.0);
   canvas.saveLayer(
       area,
@@ -198,8 +183,8 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
         ..blendMode = ui.BlendMode.srcIn
         ..color = ui.Color.fromRGBO(0, 0, 0, through));
 
-  // Zoomed about the middle: 1 fits what is drawn across the words, 2 shows a
-  // quarter of it at twice the size.
+  // Zoomed about the middle: 1 fits what is drawn across the words, 2 shows
+  // a quarter of it at twice the size.
   var zoom = fill.zoom <= 0 ? 1.0 : fill.zoom;
   var frame = Rect.fromCenter(
       center: box.center, width: box.width * zoom, height: box.height * zoom);
@@ -224,9 +209,8 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
 
   switch (fill.kind) {
     case TextFillKind.pattern:
-      // The pattern's ground under the whole reach, so a letter outside the
-      // frame is not hollow. The pattern keeps the frame: drawn across the
-      // changing reach it would resize every frame.
+      // The pattern's ground under the whole reach, so no letter outside the
+      // frame is hollow; the pattern keeps the frame, or it would resize.
       if (reach != frame) {
         canvas.drawRect(reach, Paint()..color = fill.pattern.background);
       }
@@ -234,15 +218,13 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
     case TextFillKind.image:
       var image = images?.resolve(fill.assetId, const BackgroundRemoval());
       if (image != null) {
-        // The same named look and the same two sliders a picture element
-        // has, as one matrix -- see image_look.dart.
+        // A picture element's look and two sliders as one matrix (image_look).
         var matrix = combineMatrices(presetMatrix(fill.filter),
             colorMatrix(fill.saturation, fill.brightness));
         _paintFillImage(canvas, reach, frame, image, fill.tile,
             matrix == null ? null : ColorFilter.matrix(matrix));
 
-        // The overlay, inside this layer so it blends only with the picture
-        // and not with everything already on the canvas.
+        // The overlay, inside this layer so it blends only with the picture.
         if (fill.blend != OverlayBlend.none &&
             (fill.overlay.a > 0 || fill.overlayFade != null)) {
           canvas.drawRect(
@@ -263,18 +245,16 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
   canvas.restore();
 }
 
-/// _paintFillImage covers the words with a picture, or tiles it across them.
-///
-/// [reach] is everywhere that has to be covered -- the frame the picture is
-/// sized to, grown to take in wherever the words go while they arrive.
+/// _paintFillImage covers the words with a picture, or tiles it. [reach] is
+/// everywhere to cover: the frame the picture is sized to, grown to take in
+/// wherever the words go while they arrive.
 void _paintFillImage(ui.Canvas canvas, Rect reach, Rect frame, ui.Image image,
     bool tile, ColorFilter? look) {
   var size = Size(image.width.toDouble(), image.height.toDouble());
   if (size.isEmpty) return;
 
   if (tile) {
-    // A repeating fill is drawn by a shader rather than in a loop, so the
-    // number of copies costs nothing.
+    // A repeating fill is a shader, not a loop, so copies cost nothing.
     var scale = frame.width / size.width;
     canvas.drawRect(
         reach,
@@ -295,9 +275,8 @@ void _paintFillImage(ui.Canvas canvas, Rect reach, Rect frame, ui.Image image,
     return;
   }
 
-  // Covering: the frame filled, overspill cropped, aspect kept. A clamped
-  // shader rather than drawImageRect, so a letter out past the picture is
-  // filled with its edge rather than nothing.
+  // Covering: frame filled, overspill cropped, aspect kept. A clamped shader,
+  // not drawImageRect, so a letter past the picture takes its edge.
   var scale = math.max(frame.width / size.width, frame.height / size.height);
   var wide = size.width * scale, tall = size.height * scale;
   var left = frame.center.dx - wide / 2, top = frame.center.dy - tall / 2;
@@ -327,9 +306,8 @@ bool _usable(Size size) =>
     size.width > 0 &&
     size.height > 0;
 
-/// paintTextIcon draws the picture a text element carries.
-///
-/// A vector where the asset is one, so it is sharp at any size.
+/// paintTextIcon draws the picture a text element carries: a vector where
+/// the asset is one, so it is sharp at any size.
 void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
     CanvasImageSource? images, TextSpec spec) {
   if (!icon.on || box.width <= 0 || box.height <= 0) return;
@@ -338,9 +316,8 @@ void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
   var inner = icon.box.inner(box);
   if (inner.width <= 0 || inner.height <= 0) return;
 
-  // The drawing where the asset is one, else the rasterised copy. A drawing
-  // with no usable size (an .svg with no width, height or viewBox) cannot be
-  // scaled, so it falls back to the raster too.
+  // The drawing where the asset is one, else the raster, also for a drawing
+  // with no usable size (an .svg with no width, height or viewBox).
   var vector = images?.resolveVector(icon.assetId);
   if (vector != null && !_usable(vector.size)) vector = null;
   var bitmap = vector == null
@@ -402,10 +379,9 @@ void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
   }
 }
 
-/// marksRoom is how far outside the words the parts' own marks reach, the
-/// largest of each side over every part, for a clip to grow by. Without it a
-/// highlight's padding is clipped off at the box edge of a left- or
-/// right-aligned line.
+/// marksRoom is how far outside the words the parts' marks reach, per side,
+/// for a clip to grow by: otherwise a highlight's padding is clipped at the
+/// box edge of a left- or right-aligned line.
 EdgeInsets marksRoom(List<TextPart> parts) {
   var room = EdgeInsets.zero;
   for (var part in parts) {
@@ -427,17 +403,11 @@ EdgeInsets marksRoom(List<TextPart> parts) {
   return room;
 }
 
-/// paintPartMarks draws the highlights behind, or the underlines under, the
-/// element's parts.
-///
-/// Called twice: [behind] for highlights before the words, then underlines
-/// after them so a descender does not sit on top of the line. Rectangles are
-/// the paragraph's selection boxes, so a part across a line break is marked
-/// per line.
-///
-/// [timings] says how much of each mark has been drawn on, from its start.
-/// [moving] and [at] are the element's animation and how far through it is:
-/// a mark arrives and leaves with its words.
+/// paintPartMarks draws highlights behind, or underlines under, the parts:
+/// called with [behind] before the words, then after, so a descender does
+/// not sit on the line. Marks follow the selection boxes, so a part across
+/// a line break is marked per line. [timings] is how much of each is drawn
+/// on; [moving] and [at] the animation, so a mark moves with its words.
 void paintPartMarks(
   ui.Canvas canvas,
   TextPainter painter,
@@ -618,10 +588,8 @@ Path _straight(double from, double to, double y) => Path()
   ..moveTo(from, y)
   ..lineTo(to, y);
 
-/// _wobble is a line that is not quite straight.
-///
-/// Two sines of different lengths, so it wanders rather than waves; [tilt]
-/// leans the whole line.
+/// _wobble is a line not quite straight: two sines of different lengths, so
+/// it wanders rather than waves; [tilt] leans the whole line.
 Path _wobble(double from, double to, double y,
     {required double amplitude,
     required double wavelength,
@@ -647,8 +615,7 @@ Path _wobble(double from, double to, double y,
   return path;
 }
 
-/// _brush is a marker stroke: a filled shape whose thickness varies and whose
-/// ends taper away to nothing.
+/// _brush is a marker stroke: a filled shape, its thickness varying, tapered.
 Path _brush(double from, double to, double y, double thick, double phase) {
   var span = to - from;
   if (span <= 0) return Path();
@@ -676,12 +643,10 @@ Path _brush(double from, double to, double y, double thick, double phase) {
   return path..close();
 }
 
-/// textOffsetIn is where a laid-out paragraph is drawn inside [box].
-///
-/// Only the vertical alignment moves it: the painter (laid out with
-/// fillWidth) has already aligned horizontally. Public so things that move
-/// with the words (an icon, a locked fill) use the same paragraph rectangle
-/// the motions are fractions of.
+/// textOffsetIn is where a laid-out paragraph is drawn inside [box]. Only
+/// the vertical alignment moves it: the painter (laid out with fillWidth)
+/// has aligned horizontally. Public so things moving with the words use
+/// the same paragraph rectangle the motions are fractions of.
 Offset textOffsetIn(Rect box, TextPainter painter, TextSpec spec) {
   var dy = switch (spec.verticalAlign) {
     VerticalAlignSpec.top => box.top,
@@ -691,14 +656,10 @@ Offset textOffsetIn(Rect box, TextPainter painter, TextSpec spec) {
   return Offset(box.left, dy);
 }
 
-/// outlineSpecFor is the type a paragraph's outline is drawn in, or null where
-/// there is no outline to draw.
-///
-/// Shared by every text layout (box, columns, wrap, curve) so they agree. It
-/// is the type's own outline where it has one; for a stroke-on (draw the
-/// outline) arrival, a stroke in the colour the animation's draw settings
-/// give; or the paragraph spec where only a part asks for an outline. It
-/// never invents a colour: with none given there is nothing to draw.
+/// outlineSpecFor is the type a paragraph's outline is drawn in, or null for
+/// none; shared by every text layout so they agree. The type's own outline;
+/// for a stroke-on arrival, a stroke in the animation's draw colour; or the
+/// paragraph spec where only a part asks for one. It never invents a colour.
 TextSpec? outlineSpecFor(TextSpec spec,
     {List<TextPart> parts = const [],
     TextAnimation? animation,
@@ -713,8 +674,8 @@ TextSpec? outlineSpecFor(TextSpec spec,
         outlineWidth: math.max(1.5, spec.fontSize * 0.06),
         outlineColor: animation.draw.color);
   }
-  // A part may want an outline in a paragraph that has none: the paragraph
-  // is stroked with nothing and only the part's run has a width.
+  // A part may want an outline in a paragraph without one: the paragraph is
+  // stroked with nothing and only the part's run has a width.
   return partsOutline(parts) ? spec : null;
 }
 
@@ -736,11 +697,8 @@ TextPainter? outlineFor(String text, TextSpec spec,
       parts: parts);
 }
 
-/// softFor lays out the shadow and the glow on their own, or returns null
-/// where the type has neither.
-///
-/// The same paragraph as the words with clear glyphs, so it lines up exactly.
-/// See textStyleOf's soft for why.
+/// softFor lays out the shadow and glow alone (the words with clear glyphs,
+/// so it lines up), or null with neither. See textStyleOf's soft.
 TextPainter? softFor(String text, TextSpec spec,
     {required double maxWidth,
     double scale = 1,
@@ -756,11 +714,8 @@ TextPainter? softFor(String text, TextSpec spec,
 }
 
 /// paintTextInBox lays [text] out inside [box] and draws it, honouring both
-/// alignments and the outline.
-///
-/// Returns the height the text took, for the chart and table to lay out the
-/// rest. [animation] and [reveal] draw it part way through arriving (see
-/// text_animator.dart).
+/// alignments and the outline, and returns the height it took. [animation]
+/// and [reveal] draw it part way through arriving (text_animator.dart).
 double paintTextInBox(
   ui.Canvas canvas,
   String text,
@@ -773,12 +728,10 @@ double paintTextInBox(
   double reveal = 1,
   List<TextPart> parts = const [],
 
-  /// timings are where each part has got to, for parts that arrive on their
-  /// own account. See TextPartAnimation.
+  /// timings are where each part arriving alone has got (TextPartAnimation).
   List<PartTiming> timings = const [],
 
-  /// asOne makes the parts arrive with everything else, as on the way out.
-  /// See paintAnimatedText.
+  /// asOne makes the parts arrive with everything, as on the way out.
   bool asOne = false,
 
   /// images is where a picture used as a fill comes from. See TextFill.
@@ -824,11 +777,10 @@ double paintTextInBox(
       moving: marksMove ? animation : null,
       at: reveal);
 
-  // words draws the paragraph, through the animator (with its outline and
-  // soft passes) whenever anything moves: an arrival under way, a motion that
-  // [keeps] something, or a part arriving on its own. A closure because a
-  // filled paragraph is drawn twice, once per TextDrawPhase, by the same
-  // code so the two passes stay in register.
+  // words draws the paragraph, through the animator whenever anything moves
+  // (an arrival under way, a motion that [keeps] something, a part arriving
+  // on its own). A closure because a filled paragraph is drawn twice, once
+  // per TextDrawPhase, by the same code so the passes stay in register.
   void words({TextDrawPhase phase = TextDrawPhase.all}) {
     if (animation != null &&
         ((animation.on && (reveal < 1 || animation.keeps)) ||
@@ -851,8 +803,7 @@ double paintTextInBox(
   if (!spec.fill.on) {
     words();
   } else {
-    // The outline and soft passes first, outside the layer the fill is cut
-    // to, so they keep their own colours rather than taking the fill's.
+    // Outline and soft passes first, outside the fill's layer: own colours.
     words(phase: TextDrawPhase.behind);
     paintThroughText(canvas, box, spec.fill, images,
         () => words(phase: TextDrawPhase.letters),
@@ -869,11 +820,9 @@ double paintTextInBox(
   return painter.height;
 }
 
-/// fitFontSize is the largest size at which [text] fits inside [box], for a
-/// text element with autoSize on.
-///
-/// A bisection, since wrapped height steps as words change lines. [columns]
-/// is how many columns the text is flowed into; [box] is one column's box.
+/// fitFontSize is the largest size at which [text] fits inside [box], for
+/// autoSize: a bisection, since wrapped height steps as words change lines.
+/// [columns] is how many columns it flows into; [box] is one column's box.
 double fitFontSize(String text, TextSpec spec, Size box, {int columns = 1}) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return spec.fontSize;
   var count = math.max(1, columns);
@@ -897,11 +846,8 @@ double fitFontSize(String text, TextSpec spec, Size box, {int columns = 1}) {
   return low;
 }
 
-/// _partedSpan builds the paragraph out of runs, so a few words in it can be
-/// a different colour or weight from the rest.
-///
-/// One span per run of characters with the same part (see partAt), not one
-/// per letter.
+/// _partedSpan builds the paragraph from runs, so a few words can differ:
+/// one span per run with the same part (see partAt), not one per letter.
 TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
     TextStyle style, Color? colorOverride, double scale) {
   var children = <TextSpan>[];
@@ -910,8 +856,8 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
 
   TextStyle styleFor(TextPart? part) {
     // An outline paragraph has a foreground paint, and a TextStyle cannot
-    // carry both that and a colour (it throws): take the part's size, family,
-    // weight and slant and its own stroke, and never set color.
+    // carry that and a colour (it throws): take the part's size, family,
+    // weight, slant and stroke, and never set color.
     if (style.foreground != null) {
       var width = part?.outlineWidth ?? spec.outlineWidth;
       var out = part == null
@@ -929,8 +875,7 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
                   ? style.fontStyle
                   : (part.italic! ? FontStyle.italic : FontStyle.normal),
             );
-      // A width of zero is drawn transparent: a zero-width stroke is a
-      // hairline.
+      // A zero width is drawn transparent: a zero-width stroke is a hairline.
       return out.copyWith(
         foreground: Paint()
           ..style = PaintingStyle.stroke
@@ -943,8 +888,7 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
     }
     if (part == null) return style;
     return style.copyWith(
-      // colorOverride wins, so a one-colour preview (a ghost) has no
-      // coloured words.
+      // colorOverride wins, so a one-colour preview (a ghost) has no colours.
       color: colorOverride ?? part.color ?? style.color,
       fontFamily: part.family ?? style.fontFamily,
       fontSize: part.scale == null
@@ -979,9 +923,8 @@ void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
   paintBoxBorder(canvas, rect, box);
 }
 
-/// paintBoxFill is the inside of a box -- its colour, and a picture or a
-/// pattern over that -- without its border, for an element that draws
-/// between the two. See paintBoxBorder.
+/// paintBoxFill is the inside of a box (its colour, and a picture or pattern
+/// over that) without its border, for an element drawing between the two.
 void paintBoxFill(ui.Canvas canvas, Rect rect, BoxSpec box,
     [CanvasImageSource? images]) {
   if (rect.width <= 0 || rect.height <= 0) return;
@@ -989,8 +932,7 @@ void paintBoxFill(ui.Canvas canvas, Rect rect, BoxSpec box,
   if (filled.shows) {
     canvas.drawRRect(box.rounded(rect), filled.into(Paint(), rect));
   }
-  // A picture or pattern over that, cut to the box's shape as paintThroughText
-  // cuts it to letters.
+  // A picture or pattern over that, cut to the box as paintThroughText does.
   if (box.painted.on) {
     paintThroughText(canvas, rect, box.painted, images,
         () => canvas.drawRRect(box.rounded(rect), Paint()));
@@ -1019,8 +961,7 @@ void paintBoxBorder(ui.Canvas canvas, Rect rect, BoxSpec box) {
   }
 
   // Uneven sides are four strips inside the bounds, square where they meet:
-  // two widths meeting at a rounded corner have no agreed shape, so the
-  // corner radius is left to the fill.
+  // two widths at a rounded corner have no agreed shape.
   var sides = box.borders;
   paint.style = PaintingStyle.fill;
   if (sides.top > 0) {
@@ -1045,17 +986,14 @@ void paintBoxBorder(ui.Canvas canvas, Rect rect, BoxSpec box) {
   }
 }
 
-/// shapePath turns a [ShapeKind] into a path filling [rect].
-///
-/// Each shape is built in [rect] itself rather than a scaled unit square, so
-/// a stroke on a stretched shape stays even.
+/// shapePath turns a [ShapeKind] into a path filling [rect], built in [rect]
+/// itself rather than a scaled unit square, so a stretched stroke stays even.
 Path shapePath(ShapeKind kind, Rect rect,
     {int points = 5,
     double inner = 0.42,
     double cornerRadius = 0,
 
-    /// corners rounds each corner on its own; null means [cornerRadius] for
-    /// all four.
+    /// corners rounds each corner alone; null means [cornerRadius] for all.
     Corners? corners,
     SpeechBubbleSpec bubble = const SpeechBubbleSpec()}) {
   var path = Path();
@@ -1172,12 +1110,11 @@ Path dashPath(Path source, double on, double off) {
 }
 
 /// arrowSpread is the half-angle between an arrowhead's axis and each barb
-/// (radians), shared with the line ends in scene_renderer.dart. LineEnd.cover
+/// (radians), shared with scene_renderer.dart's line ends: LineEnd.cover
 /// trims the stroke back to where the barbs meet, assuming this value.
 const double arrowSpread = 0.42;
 
-/// arrowHead is a filled (or, with [filled] false, stroked) triangle at
-/// [tip], pointing along [angle].
+/// arrowHead is a triangle at [tip] along [angle], stroked if not [filled].
 void arrowHead(
     ui.Canvas canvas, Offset tip, double angle, double size, Paint paint,
     {bool filled = true}) {
@@ -1200,19 +1137,14 @@ void arrowHead(
 }
 
 /// _capHeightRatio is how much of a font's size the capitals and digits
-/// actually occupy, measured from the baseline.
-///
-/// A constant because Flutter does not expose cap height; the faces offered
-/// all fall between 0.70 and 0.73, close enough for centring a squad number.
+/// occupy above the baseline. Flutter does not expose cap height; the faces
+/// offered all fall between 0.70 and 0.73.
 const double _capHeightRatio = 0.71;
 
-/// paintCentredGlyphs draws [text] with its *ink* centred on [center].
-///
-/// Not the laid-out box, which grows with line height: a team's numbers and
-/// names share one TextSpec (TeamElement.labelSpec), so a line height set for
-/// the names would slide the number out of its dot. Digits and capitals sit
-/// between the baseline and one cap height above it, so
-/// `baseline - capHeight / 2` is put on the centre.
+/// paintCentredGlyphs draws [text] with its ink centred on [center], not
+/// its laid-out box, which grows with line height: a team's numbers and
+/// names share one TextSpec, so a line height set for the names would slide
+/// the number out of its dot. `baseline - capHeight / 2` goes on the centre.
 void paintCentredGlyphs(
   ui.Canvas canvas,
   String text,
@@ -1244,13 +1176,11 @@ void paintCentredGlyphs(
   paintTp(painter, canvas, at);
 }
 
-/// lineEdges is where one line of a laid-out paragraph gives way to the next,
-/// with an entry for the top of the first and the bottom of the last.
-///
-/// Not the line boxes' boundaries: with tight line height the descenders of
-/// one line hang into the next line's box, and a column cut there starts with
-/// a sliver of the line before. So the edge is the later of the box boundary
-/// and the bottom of the ink above.
+/// lineEdges is where each line of a laid-out paragraph gives way to the
+/// next, plus the top of the first and bottom of the last. Not the line box
+/// boundaries: with tight line height a descender hangs into the next box,
+/// and a column cut there starts with a sliver of the line before. So the
+/// edge is the later of the boundary and the bottom of the ink above.
 List<double> lineEdges(List<ui.LineMetrics> metrics) {
   var edges = <double>[0];
   var at = 0.0;
@@ -1273,11 +1203,9 @@ List<double> lineEdges(List<ui.LineMetrics> metrics) {
 }
 
 /// columnRuns is which lines of a laid-out paragraph go in which column, as
-/// (first, end) line ranges. Whole lines only, measured from the line metrics
-/// (lines differ in height); a line that does not fit goes to the next column.
-///
-/// [noBlankStart] drops a blank (zero-width) line that would begin a column
-/// after the first, such as the gap between two paragraphs.
+/// (first, end) ranges: whole lines, from the line metrics; a line that
+/// does not fit goes to the next column. [noBlankStart] drops a blank line
+/// that would begin a later column, such as the gap between paragraphs.
 List<(int, int)> columnRuns(
     List<ui.LineMetrics> metrics, double height, int columns,
     {bool noBlankStart = false}) {
@@ -1310,13 +1238,10 @@ List<(int, int)> columnRuns(
   return runs;
 }
 
-/// paintTextInColumns flows one paragraph across [columns] columns of [box].
-///
-/// The paragraph is laid out once at a column's width, then drawn once per
-/// column, clipped to it and shifted up by the lines already used (see
-/// columnRuns). [animation] and [reveal] draw it part way through arriving;
-/// the pieces are worked out for the whole paragraph, so a stagger runs on
-/// across columns rather than restarting in each.
+/// paintTextInColumns flows one paragraph across [columns] columns of [box]:
+/// laid out once at a column's width, then drawn per column, clipped and
+/// shifted up by the lines already used (columnRuns). The arrival's pieces are
+/// worked out for the whole paragraph, so a stagger runs on across columns.
 void paintTextInColumns(
   ui.Canvas canvas,
   String text,
@@ -1357,7 +1282,7 @@ void paintTextInColumns(
   double top(int line) => tops[line.clamp(0, tops.length - 1)];
 
   // A whole-paragraph arrival is applied once, around every column, so the
-  // per-column clips travel with the motion rather than cutting it off.
+  // per-column clips travel with the motion.
   var moving =
       animation != null && animation.on && (reveal < 1 || animation.keeps);
   var asBlock = moving && movesAsOneBlock(animation);
@@ -1393,8 +1318,8 @@ void paintTextInColumns(
     };
 
     canvas.save();
-    // Room at the ends for highlights (marksRoom), at most half the gutter.
-    // None above or below: that edge keeps the column to its own lines.
+    // Room at the ends for highlights (marksRoom), at most half the gutter;
+    // none above or below, which keep the column to its own lines.
     var room = marksRoom(parts);
     var ends = math.min(columns.gap / 2, math.max(room.left, room.right));
     canvas.clipRect(
@@ -1411,8 +1336,7 @@ void paintTextInColumns(
 
     // words draws this column's share, a closure as in paintTextInBox.
     void words({TextDrawPhase phase = TextDrawPhase.all}) {
-      // A block motion is already applied outside; parts arriving on their
-      // own still animate here.
+      // A block motion is applied outside; parts arriving alone animate here.
       var animating = (!asBlock && moving) || (!asOne && partsAnimate(parts));
       if (animating) {
         // Only the pieces whose lines fall in this column; their places in
@@ -1526,14 +1450,12 @@ void _paintColumnRules(ui.Canvas canvas, Rect box, TextColumns columns,
 class PlacedGlyph {
   final String glyph;
 
-  /// at is where the glyph's baseline centre sits, and angle is the heading of
-  /// the curve there.
+  /// at is the glyph's baseline centre, and angle the curve's heading there.
   final Offset at;
   final double angle;
   final Size size;
 
-  /// index is where this glyph starts in the text it came from, so the
-  /// parts covering it can be found.
+  /// index is where this glyph starts in its text, to find its parts.
   final int index;
 
   /// spec is what this glyph is drawn in, the element's own unless a part
@@ -1544,12 +1466,9 @@ class PlacedGlyph {
       {this.index = 0, this.spec = const TextSpec()});
 }
 
-/// placeTextOnPath works out where every letter of [text] goes along [curve].
-///
-/// Separate from the drawing so the selection box and the painter agree on
-/// where the letters are. [curve] is a polyline in document space, sampled
-/// finely enough to walk in straight steps (see scene_renderer.dart's
-/// _curveSamplesPerSegment).
+/// placeTextOnPath works out where every letter of [text] goes along [curve],
+/// apart from drawing so the selection box and the painter agree. [curve] is a
+/// polyline in document space, sampled finely enough to walk in straight steps.
 List<PlacedGlyph> placeTextOnPath(
   String text,
   TextSpec spec,
@@ -1563,8 +1482,7 @@ List<PlacedGlyph> placeTextOnPath(
 }) {
   if (text.isEmpty || curve.length < 2) return const [];
 
-  // Cumulative distance along the polyline, so a position in length can be
-  // turned into a point and a direction.
+  // Distance along the polyline, to turn a length into a point and heading.
   var lengths = <double>[0];
   var total = 0.0;
   for (var i = 1; i < curve.length; i++) {
@@ -1606,8 +1524,8 @@ List<PlacedGlyph> placeTextOnPath(
   for (var i = 0; i < glyphs.length; i++) {
     var centre = at + widths[i] / 2;
     at += widths[i];
-    // Past the ends of the line the letters carry straight on rather than
-    // being dropped, so a slide travels off the line -- see _alongPolyline.
+    // Past the ends the letters carry straight on rather than being dropped,
+    // so a slide travels off the line (see _alongPolyline).
     var (point, angle) = _alongPolyline(curve, lengths, centre);
     out.add(PlacedGlyph(
         glyphs[i], point, angle, Size(painters[i].width, painters[i].height),
@@ -1616,8 +1534,7 @@ List<PlacedGlyph> placeTextOnPath(
   return out;
 }
 
-/// _animatedPartAt is which part arriving on its own account covers the
-/// character at [index], or -1 for none.
+/// _animatedPartAt is the part arriving alone over [index], or -1 for none.
 int _animatedPartAt(String text, List<TextPart> parts, int index) {
   var found = -1;
   for (var (i, part) in parts.indexed) {
@@ -1641,9 +1558,7 @@ TextSpec _specForPart(TextSpec spec, TextPart? part) {
   );
 }
 
-/// textOnPathBounds is the rectangle the placed letters occupy.
-///
-/// Round every glyph's four turned corners, not just the points they sit on.
+/// textOnPathBounds is the placed letters' box, round every turned corner.
 Rect? textOnPathBounds(List<PlacedGlyph> glyphs, TextOnCurve on) {
   if (glyphs.isEmpty) return null;
   double? left, top, right, bottom;
@@ -1669,12 +1584,9 @@ Rect? textOnPathBounds(List<PlacedGlyph> glyphs, TextOnCurve on) {
   return Rect.fromLTRB(left!, top!, right!, bottom!);
 }
 
-/// paintTextOnPath lays [text] out along [curve], one glyph at a time.
-///
-/// Glyph by glyph so each letter turns with the line. [animation] and
-/// [reveal] draw it part way through arriving: the paragraph motions (see
-/// applyMotion) applied in each glyph's turned frame, so a letter on a bend
-/// rises along the line.
+/// paintTextOnPath lays [text] along [curve] glyph by glyph, so each letter
+/// turns with the line. [animation] and [reveal] apply the motions in each
+/// glyph's turned frame, so a letter on a bend rises along the line.
 void paintTextOnPath(
   ui.Canvas canvas,
   String text,
@@ -1698,8 +1610,8 @@ void paintTextOnPath(
       placeTextOnPath(text, spec, curve, on, scale: scale, parts: parts);
   if (glyphs.isEmpty) return;
 
-  // The line as a window: whatever has slid off its ends is cut off by a
-  // ribbon round the polyline (not a box), so a bend masks along the bend.
+  // The line as a window: whatever slides off its ends is cut off by a
+  // ribbon round the polyline, so a bend masks along the bend.
   var masked = on.mask;
   if (masked) {
     canvas.save();
@@ -1821,12 +1733,11 @@ void paintTextOnPath(
             from: anim.spec.from, seed: g.index);
 
     // A mark is drawn a letter at a time in each letter's frame, so it
-    // follows the curve. It sweeps in letter order whatever the scope, or a
+    // follows the curve, sweeping in letter order whatever the scope, or a
     // block underline would grow under every letter at once.
     var sweep =
         anim == null ? 1.0 : (p * glyphs.length - i).clamp(0.0, 1.0).toDouble();
-    // Only on the pass outside the fill's layer, so a translucent band is
-    // laid once and in its own colour.
+    // Only on the pass outside the fill's layer: a band laid once, own colour.
     if (anim != null &&
         anim.preset.motion == TextMotion.highlight &&
         !fillOnly) {
@@ -1843,9 +1754,8 @@ void paintTextOnPath(
     }
 
     // Stroke-on: the outline is written letter after letter (applyMotion
-    // leaves opacity alone, so it is done here). The letters are already
-    // there unless TextDrawStart.fadeText brings them in with it. The outline
-    // colour comes from outlineSpecFor.
+    // leaves opacity alone). The letters are already there unless
+    // TextDrawStart.fadeText brings them in with it.
     var strokeOn = anim != null && anim.preset.motion == TextMotion.strokeOn;
     double? outlineAlpha, fillAlpha;
     if (strokeOn) {
@@ -1871,11 +1781,8 @@ void paintTextOnPath(
   }
 }
 
-/// _curveRibbon is a band of width [thick] following [curve], used as the mask
-/// that keeps a sliding caption inside its line.
-///
-/// Built from the polyline's normals, giving a fill shape to clip with.
-/// Self-crossing on a tight bend is harmless under the non-zero rule.
+/// _curveRibbon is a band [thick] wide along [curve], masking a sliding
+/// caption to its line. Self-crossing is harmless under the non-zero rule.
 Path _curveRibbon(List<Offset> curve, double thick) {
   var path = Path();
   if (curve.length < 2) return path;
@@ -1970,8 +1877,7 @@ void _paintGlyph(
   if (faded) canvas.restore();
 }
 
-/// _paintCurveMark is an underline or a highlight under one letter of a
-/// curve, [sweep] of the way drawn.
+/// _paintCurveMark is a mark under one letter of a curve, [sweep] drawn.
 void _paintCurveMark(ui.Canvas canvas, Rect local, TextDrawSpec mark,
     TextSpec spec, double sweep,
     {required bool under}) {
@@ -2047,9 +1953,8 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
   }
 }
 
-/// _alongPolyline is the point and heading at [distance] along [curve].
-/// Before the start and past the end it carries on along the heading there
-/// rather than clamping, so a caption slid off the line keeps travelling.
+/// _alongPolyline is the point and heading at [distance] along [curve],
+/// carrying on past either end, so a caption slid off keeps travelling.
 (Offset, double) _alongPolyline(
     List<Offset> curve, List<double> lengths, double distance) {
   for (var i = 1; i < lengths.length; i++) {
@@ -2071,10 +1976,8 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
   return (curve.last + last / length * beyond, heading);
 }
 
-/// bubbleBodyRect is the part of a speech bubble the words go in.
-///
-/// The box holds the tail too, so the body gives up room only on the sides
-/// the tail points towards.
+/// bubbleBodyRect is the part of a speech bubble the words go in. The box
+/// holds the tail too, so the body gives up room only on the tail's side.
 Rect bubbleBodyRect(Rect rect, SpeechBubbleSpec bubble) {
   if (bubble.tail == BubbleTail.none) return rect;
   var radians = bubble.tailAngle * math.pi / 180;
@@ -2089,10 +1992,8 @@ Rect bubbleBodyRect(Rect rect, SpeechBubbleSpec bubble) {
   );
 }
 
-/// bubblePath is a speech bubble as one outline.
-///
-/// Body and tail are unioned (Path.combine) so a stroke draws one boundary,
-/// with no line across the join.
+/// bubblePath is a speech bubble as one outline: body and tail unioned, so
+/// a stroke draws one boundary with no line across the join.
 Path bubblePath(Rect rect, SpeechBubbleSpec bubble, double cornerRadius) {
   var body = bubbleBodyRect(rect, bubble);
   var shape = _bubbleBody(body, bubble.body, cornerRadius);
@@ -2112,8 +2013,7 @@ Path bubblePath(Rect rect, SpeechBubbleSpec bubble, double cornerRadius) {
     var trail = Path();
     var count = 3;
     var unit = rect.shortestSide / 2 * bubble.tailWidth * 0.5;
-    // From the body's rectangle edge, not the ellipse the pointer uses, which
-    // most bodies reach past, so the dots do not weld to the body.
+    // From the body's rectangle edge, not the ellipse, so dots do not weld.
     var edge = _rayToRect(body, out);
     for (var i = 0; i < count; i++) {
       var t = i / (count - 1);
@@ -2147,8 +2047,7 @@ Path bubblePath(Rect rect, SpeechBubbleSpec bubble, double cornerRadius) {
   return Path.combine(PathOperation.union, shape, tail);
 }
 
-/// _rayToRect is where a ray from [rect]'s centre in direction [out] crosses
-/// its edge.
+/// _rayToRect is where a ray from [rect]'s centre along [out] meets its edge.
 Offset _rayToRect(Rect rect, Offset out) {
   var half = Offset(rect.width / 2, rect.height / 2);
   var scaleX = out.dx == 0 ? double.infinity : (half.dx / out.dx).abs();
@@ -2199,11 +2098,9 @@ Path _bubbleBody(Rect body, BubbleBody kind, double cornerRadius) {
   return path;
 }
 
-/// textRunBox is where a stretch of [text] lands inside [box], laid out and
-/// aligned exactly as paintTextInBox would lay it out.
-///
-/// For drawing something behind part of a line, such as a table chip, from
-/// the glyphs' own boxes. Null when the range is empty or outside the text.
+/// textRunBox is where a stretch of [text] lands inside [box], laid out as
+/// paintTextInBox would, for drawing something behind part of a line (a
+/// table chip). Null when the range is empty or outside the text.
 Rect? textRunBox(String text, TextSpec spec, Rect box, int start, int end) {
   var shown = spec.textCase.apply(text);
   if (start < 0 || end > shown.length || end <= start || box.width <= 0) {
@@ -2229,9 +2126,8 @@ Rect? textRunBox(String text, TextSpec spec, Rect box, int start, int end) {
   return out.translate(box.left, box.top + dy);
 }
 
-/// _fades is whether the letters are painted with a gradient rather than one
-/// colour: one is set, there is a box to run it across, and no override
-/// colour has claimed them.
+/// _fades is whether the letters are painted with a gradient: one is set,
+/// there is a box to run it across, and no override colour claims them.
 bool _fades(TextSpec spec, Color? colorOverride, Rect? over) =>
     spec.fade != null && colorOverride == null && over != null && !over.isEmpty;
 
@@ -2243,14 +2139,12 @@ TextStyle textStyleOf(
   Color? colorOverride,
   bool outline = false,
 
-  /// over is the box the words are drawn in, for a colour that fades across
-  /// the whole box (a style is built before layout, so the letters have no
-  /// bounds yet). Null gives a flat colour.
+  /// over is the box the words are drawn in, for a colour fading across it
+  /// (a style is built before layout); null gives a flat colour.
   Rect? over,
 
-  /// soft draws the shadow and the glow with clear glyphs. A pass of its own
-  /// so the order is shadow, outline, words, and so a fill layer does not
-  /// recolour the glow.
+  /// soft draws the shadow and glow with clear glyphs, a pass of its own: the
+  /// order is shadow, outline, words, and a fill layer leaves the glow be.
   bool soft = false,
 }) =>
     TextStyle(
@@ -2263,9 +2157,8 @@ TextStyle textStyleOf(
       decorationColor: colorOverride ?? spec.color,
       letterSpacing: spec.letterSpacing * scale,
       height: spec.lineHeight,
-      // A fade is a foreground shader, the slot the outline uses, so the
-      // outline wins; an override colour wins too. A TextStyle cannot have
-      // both color and foreground.
+      // A fade is a foreground shader, the outline's slot, so the outline
+      // wins, as does an override: a TextStyle can't have color and both.
       color: soft
           ? const Color(0x00000000)
           : (outline || _fades(spec, colorOverride, over)
@@ -2287,8 +2180,7 @@ TextStyle textStyleOf(
       shadows: soft ? softShadows(spec, scale) : null,
     );
 
-/// softShadows is what falls behind the letters: the glow first, then the
-/// shadow over it.
+/// softShadows is what falls behind the letters: the glow, then the shadow.
 List<Shadow> softShadows(TextSpec spec, double scale) => [
       if (spec.glowBlur > 0)
         Shadow(
@@ -2303,11 +2195,9 @@ List<Shadow> softShadows(TextSpec spec, double scale) => [
         ),
     ];
 
-/// paintRunsInBox draws one line made of stretches of differently styled
-/// text, laid out and aligned as paintTextInBox would lay out one stretch.
-///
-/// One paragraph of spans, not pieces placed by adding widths, so the line
-/// still aligns as a whole. Used by table cells whose rules style parts.
+/// paintRunsInBox draws one line of differently styled stretches, laid out
+/// and aligned as paintTextInBox would: one paragraph of spans, so the line
+/// aligns as a whole. Used by table cells whose rules style parts.
 double paintRunsInBox(
   ui.Canvas canvas,
   List<(String, TextSpec)> runs,

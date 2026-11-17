@@ -10,14 +10,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 // canvas_preferences.dart is what the reader has decided about the Canvas
-// feature: whether it exists at all, and where the editor was left.
-//
-// Off by default: it costs a nav slot most readers of a messaging app will
-// never use. It is a preference, not a plugin capability as the writing tools
-// are, because Canvas consumes no service a plugin provides; it is the app's
-// own code, like notes.
+// feature: whether it exists at all, and where the editor was left. Off by
+// default: it costs a nav slot most readers will never use. A preference,
+// not a plugin capability, because Canvas consumes no plugin service.
 
-/// CanvasPreferences is the Canvas feature's saved settings.
 class CanvasPreferences extends ChangeNotifier {
   static const _enabledKey = "canvasEnabled";
   static const _panelKey = "canvasSidebarPanel";
@@ -28,13 +24,12 @@ class CanvasPreferences extends ChangeNotifier {
   static const _timelineKey = "canvasTimeline";
   static const _filesFolderKey = "canvasFilesFolder";
 
-  /// _elevenLabsKeyKey is where an ElevenLabs API key was kept, to be
-  /// deleted: see load.
+  /// _elevenLabsKeyKey held a removed engine's API key; load deletes it.
   static const _elevenLabsKeyKey = "canvasElevenLabsKey";
   static const _publishKey = "canvasPublish";
   static const _timelineHeightKey = "canvasTimelineHeight";
 
-  /// _keyframesShownKey was the timeline's keyframe row shown: only deleted.
+  /// _keyframesShownKey is an obsolete setting; load deletes it.
   static const _keyframesShownKey = "canvasKeyframesShown";
   static const _cuesShownKey = "canvasCuesShown";
   static const _studioLookKey = "canvasStudioLook";
@@ -52,17 +47,14 @@ class CanvasPreferences extends ChangeNotifier {
   static const _dockAboveKey = "canvasDockAbove";
   static const _dockLeftKey = "canvasDockLeft";
 
-  /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
   bool _enabled = false;
 
-  /// panel is which sidebar tab was last open, as an index into CanvasPanel;
-  /// readers bounds-check it.
+  /// panel is the last sidebar tab open, a CanvasPanel index; bounds-checked.
   int get panel => _panel;
   int _panel = 0;
 
-  /// lastFolder and lastName are the canvas that was open when the page was
-  /// last left, reopened on return.
+  /// lastFolder and lastName are the canvas last open, reopened on return.
   String get lastFolder => _lastFolder;
   String _lastFolder = "";
 
@@ -76,15 +68,14 @@ class CanvasPreferences extends ChangeNotifier {
   bool get allowFetching => _allowFetching;
   bool _allowFetching = false;
 
-  /// fetchingAllowed is the fetching switch as saved, for what has no
+  /// fetchingAllowed is the fetching switch as saved, for callers with no
   /// preferences to hand (a character drawn on the stage).
   static Future<bool> fetchingAllowed() =>
       StorageManager.readBool(_allowFetchingKey, defaultVal: false);
 
-  /// fit is how the canvas is framed -- the whole of it, or the full width.
-  /// A preference, not part of the document, because it is about the
-  /// reader's screen. Stored as the enum's name so reordering the fits does
-  /// not change an old preference.
+  /// fit is how the canvas is framed: the whole of it, or the full width.
+  /// A preference because it is about the reader's screen. Stored by name so
+  /// reordering the fits does not change a saved one.
   String get fit => _fit;
   String _fit = "";
 
@@ -124,8 +115,7 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_filesFolderKey, value);
   }
 
-  /// timelineHeight is how tall the timeline was dragged to, or nought for
-  /// its least.
+  /// timelineHeight is the timeline's dragged height, or nought for its least.
   double get timelineHeight => _timelineHeight;
   double _timelineHeight = 0;
 
@@ -136,8 +126,8 @@ class CanvasPreferences extends ChangeNotifier {
   }
 
   /// _saveSoon writes [value] under [key] once it has stopped changing for
-  /// a moment: a panel's edge dragged sets its height at every step, and
-  /// each write is a round trip to the platform's preferences.
+  /// a moment: a dragged panel edge sets its height at every step, and each
+  /// write is a round trip to the platform's preferences.
   void _saveSoon(String key, String value) {
     _unsaved[key] = value;
     _saveTimer?.cancel();
@@ -163,8 +153,7 @@ class CanvasPreferences extends ChangeNotifier {
   }
 
   /// menuHidden is whether the app's sidebar and header are put away while
-  /// the canvas is open. The Bison Relay logo toggles it, and sits at the
-  /// start of the canvas's own bar while the menu is away.
+  /// the canvas is open. The Bison Relay logo toggles it.
   bool get menuHidden => _menuHidden;
   bool _menuHidden = false;
   set menuHidden(bool value) {
@@ -174,9 +163,8 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// mixerBands is how each of the mixer's bands was left (shown, minimised
-  /// or hidden, by name), and returnsShown whether the returns were. Empty
-  /// for as they start.
+  /// mixerBands is how each mixer band was left (shown, minimised or
+  /// hidden, by name), and returnsShown whether the returns were.
   List<String> get mixerBands => _mixerBands;
   List<String> _mixerBands = const [];
   set mixerBands(List<String> value) {
@@ -185,8 +173,7 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_mixerBandsKey, value.join(","));
   }
 
-  /// mixerLook is the rest of how the mixer and the Slots panel were left:
-  /// see CanvasController.mixerLook. Empty for as they start.
+  /// mixerLook is the rest of how mixer and Slots were left (see mixerLook).
   String get mixerLook => _mixerLook;
   String _mixerLook = "";
   set mixerLook(String value) {
@@ -224,9 +211,8 @@ class CanvasPreferences extends ChangeNotifier {
     _saveSoon(_sidebarAboveWidthKey, value.toStringAsFixed(1));
   }
 
-  /// dock is where the panels under the canvas open, how many places there
-  /// are, how they are switched and the reader's own layouts. See
-  /// dock_layout.dart.
+  /// dock is where the panels under the canvas open, how many places there are,
+  /// how they are switched and the reader's own layouts. See dock_layout.dart.
   DockLayout get dock => _dock;
   DockLayout _dock = const DockLayout();
   set dock(DockLayout value) {
@@ -235,9 +221,8 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_dockKey, jsonEncode(value.toJson()));
   }
 
-  /// dockLower and dockAbove are how tall the bottom places and the one
-  /// above them are, and dockLeft how wide the left place is; nought until
-  /// set.
+  /// dockLower and dockAbove are the heights of the bottom places and the
+  /// one above them, and dockLeft the left place's width; nought until set.
   double get dockLower => _dockLower;
   double _dockLower = 0;
   set dockLower(double value) {
@@ -263,7 +248,7 @@ class CanvasPreferences extends ChangeNotifier {
   }
 
   /// panels is how the panels under the canvas were left, whatever canvas
-  /// is open -- see CanvasController.panelState. Empty for as they start.
+  /// is open: see CanvasController.panelState.
   Map<String, dynamic> get panels => _panels;
   Map<String, dynamic> _panels = const {};
   set panels(Map<String, dynamic> value) {
@@ -295,8 +280,7 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_canvasViewsKey, jsonEncode(_canvasViews));
   }
 
-  /// cuesShown is whether the cues were marked on the timeline's ruler.
-  /// Shown to begin with.
+  /// cuesShown is whether the cues are marked on the timeline's ruler.
   bool get cuesShown => _cuesShown;
   bool _cuesShown = true;
   set cuesShown(bool value) {
@@ -335,16 +319,14 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// clearStudioColours puts every role back.
   void clearStudioColours() {
     _studioOverrides = const {};
     StorageManager.saveString(_studioOverridesKey, "");
     notifyListeners();
   }
 
-  /// publish is how the publish sheet was last set when something was
-  /// published, so the next one opens the same way. Kept as the sheet writes
-  /// it; the sheet reads back only what it still recognises.
+  /// publish is how the publish sheet was last set, so the next one opens
+  /// the same way. The sheet reads back only what it still recognises.
   Map<String, dynamic> get publish => _publish;
   Map<String, dynamic> _publish = const {};
 
@@ -353,8 +335,7 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_publishKey, jsonEncode(value));
   }
 
-  /// load reads what was saved, once at startup; the defaults are in force
-  /// until it returns.
+  /// load reads what was saved, once at startup; defaults hold until then.
   Future<void> load() async {
     _enabled = await StorageManager.readBool(_enabledKey, defaultVal: false);
     _panel = int.tryParse(await StorageManager.readString(_panelKey)) ?? 0;
@@ -365,12 +346,11 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
-    // A stored ElevenLabs API key from a removed engine: delete it.
+    // An obsolete ElevenLabs API key: delete it.
     if (await StorageManager.exists(_elevenLabsKeyKey)) {
       await StorageManager.deleteData(_elevenLabsKeyKey);
     }
-    // The timeline's keyframe row is gone (keyframing is the Chain's,
-    // 2026-11-09): whether it was shown, deleted.
+    // An obsolete setting (keyframing belongs to the Chain): delete it.
     if (await StorageManager.exists(_keyframesShownKey)) {
       await StorageManager.deleteData(_keyframesShownKey);
     }
@@ -398,7 +378,7 @@ class CanvasPreferences extends ChangeNotifier {
         // Unreadable: the sidebars as they start.
       }
     } else {
-      // Kept before the sidebars could be set out: on the tab last open.
+      // Saved before the sidebars could be set out: open on that tab.
       const tabs = ["files", "files", "design", "assets", "game"];
       _sidebars = SidebarLayout(
           current:

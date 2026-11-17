@@ -18,10 +18,8 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 
-// play_settings.dart is what an element does when the canvas is played as
-// a game -- see play.dart and canvas_game.dart -- as the Game panel lays it
-// out: what it is, as a grid of cards, then sections that fold, each saying
-// in a line how it is set, as the Design tab's do.
+// play_settings.dart is an element's part when the canvas plays as a game
+// (play.dart, canvas_game.dart): kind cards, then summarised sections.
 
 /// playIcons are each way of being played, drawn.
 const playIcons = <PlayAs, IconData>{
@@ -34,8 +32,8 @@ const playIcons = <PlayAs, IconData>{
   PlayAs.hazard: Icons.warning_amber_rounded,
 };
 
-/// _cardLabels are the cards' words: shorter than the labels, which read
-/// in a sentence.
+/// _cardLabels are the cards' words, shorter than the labels, which read in
+/// a sentence.
 const _cardLabels = <PlayAs, String>{
   PlayAs.none: "Still",
   PlayAs.platformer: "Platformer",
@@ -46,9 +44,8 @@ const _cardLabels = <PlayAs, String>{
   PlayAs.hazard: "Hazard",
 };
 
-/// gameElementSettings are [e]'s game settings: what it is when played,
-/// as cards; then how it moves, what touching it does, which of its layers
-/// are ground, and what presses it -- each a section that folds.
+/// gameElementSettings are [e]'s game settings: kind cards, then movement,
+/// touch, ground layers and presses.
 List<Widget> gameElementSettings(CanvasController controller, CanvasElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var doc = controller.document;
@@ -75,8 +72,8 @@ List<Widget> gameElementSettings(CanvasController controller, CanvasElement e,
         onPick: (p) => p.touched && spec.touched.does == GameDoes.nothing
             ? _touchable(controller, e, p, write, begin, commit)
             : set(_feltAs(spec, p)),
-        // Pressed: still, but pressed -- a lever, a switch -- by the action
-        // key, with a player beside it.
+        // Pressed: still, but pressed (a lever, a switch) by the action key
+        // with a player beside it.
         onPressed: () {
           var act = doc.controlsNow.where((a) => a.id == "act").firstOrNull ??
               doc.controlsNow.firstOrNull;
@@ -180,8 +177,8 @@ List<Widget> gameElementSettings(CanvasController controller, CanvasElement e,
                       value: spec.follow,
                       onChanged: (v) => set(spec.copyWith(follow: v)),
                     ),
-                  // How close the view follows, and how far it draws back
-                  // as it moves.
+                  // How closely the view follows, and how far it draws back
+                  // while moving.
                   if (spec.as != PlayAs.camera && spec.follow) ...[
                     CanvasNumberField(
                       key: const ValueKey("playZoom"),
@@ -233,8 +230,8 @@ List<Widget> gameElementSettings(CanvasController controller, CanvasElement e,
                 spec: spec,
                 onChanged: (next) => set(next)),
           ]),
-    // Punched or kicked (Ken, 2026-11-10): anything but a player -- a foe,
-    // a crate, a wall to break.
+    // Punched or kicked: anything but a player (a foe, a crate, a wall to
+    // break).
     if (!spec.as.moves && spec.as != PlayAs.camera)
       GameSection(
           key: const ValueKey("gameSection-hit"),
@@ -307,9 +304,8 @@ List<Widget> gameElementSettings(CanvasController controller, CanvasElement e,
   ];
 }
 
-/// gameSoundOptions are what a game can play when something happens: each
-/// mixer slot, by its channel; a Stop for each channel with slots; and the
-/// sounds on the canvas -- as a game keeps each (see gameSoundOf), and named.
+/// gameSoundOptions are what a game can play: mixer slots, a Stop per
+/// channel, and canvas sounds (keyed as gameSoundOf keeps them).
 List<(String, String)> gameSoundOptions(CanvasController controller,
     {String none = "no sound"}) {
   var doc = controller.document;
@@ -330,7 +326,7 @@ List<(String, String)> gameSoundOptions(CanvasController controller,
       if (session.slots[ch.key]?.any((c) => c != null) ?? false)
         (gameSoundStop(ch.key), "Stop ${ch.name}"),
     ],
-    // Said apart from the slots: a channel's own sound is often named as
+    // Named apart from the slots: a channel's own sound is often named as
     // the channel is.
     for (var a in canvas)
       (a.id, "On the canvas · ${a.name.isEmpty ? "a sound" : a.name}"),
@@ -342,8 +338,8 @@ List<(String, String)> gameSoundOptions(CanvasController controller,
 String _controlsLine(CanvasDocument doc, int player) =>
     "Player $player · ${gameControlsLine(doc.controlsFor(player))}";
 
-/// gameControlsLine is [actions] said in a line: the keys that move first,
-/// then each other action's first key.
+/// gameControlsLine is [actions] in a line: the moving keys first, then each
+/// other action's first key.
 String gameControlsLine(List<ControlAction> actions) {
   const moving = {"left", "right", "up", "down"};
   var keys = {
@@ -376,9 +372,8 @@ String gameControlsLine(List<ControlAction> actions) {
   ].join(" · ");
 }
 
-/// GameSection is one of the Game panel's sections: no box round it, a
-/// line above it, its name, how it is set in a few words, and a control of
-/// its own beside them.
+/// GameSection is one of the Game panel's sections: no box, a line above,
+/// its name, a short summary, and a control of its own beside them.
 class GameSection extends StatelessWidget {
   final String title;
   final String summary;
@@ -407,8 +402,8 @@ class GameSection extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Divider(height: 1, color: colors.outlineVariant.withValues(alpha: 0.6)),
         const SizedBox(height: 10),
-        // With a control of its own on the line, how it is set goes under
-        // its name, where there is room to say it all.
+        // With a control on the line, the summary goes under the name, where
+        // there is room for all of it.
         if (action == null)
           Row(children: [
             Flexible(child: titleText),
@@ -444,8 +439,8 @@ class GameSection extends StatelessWidget {
   }
 }
 
-/// JumpArc is the jump a platformer makes, drawn to scale: up at its jump,
-/// across at its speed, down at its gravity -- and said in tiles.
+/// JumpArc is a platformer's jump drawn to scale (up at its jump, across at
+/// its speed, down at its gravity) and said in tiles.
 class JumpArc extends StatelessWidget {
   final double speed;
   final double jump;
@@ -456,7 +451,7 @@ class JumpArc extends StatelessWidget {
       required this.gravity,
       super.key});
 
-  /// across is how far it goes in one jump, landing where it started from.
+  /// across is how far one jump goes, landing at its starting height.
   double get across {
     if (gravity <= 0 || jump <= 0) return 0;
     var up = math.sqrt(2 * gravity * jump);
@@ -506,7 +501,7 @@ class _ArcPainter extends CustomPainter {
     var base = size.height - 8;
     canvas.drawLine(
         Offset(0, base), Offset(size.width, base), Paint()..color = ground);
-    // A tile a mark along the ground, to read the arc against.
+    // A tile mark along the ground, to read the arc against.
     var k = math.min(
         20 / 64,
         math.min(across > 0 ? (size.width - 28) / across : 1.0,
@@ -521,7 +516,7 @@ class _ArcPainter extends CustomPainter {
     for (var i = 0; i <= 40; i++) {
       var t = i / 40;
       var x = 12 + across * t * k;
-      // Up and down, a parabola: highest half way.
+      // A parabola, highest half way.
       var y = base - 5 - jump * 4 * t * (1 - t) * k;
       i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
     }
@@ -538,8 +533,8 @@ class _ArcPainter extends CustomPainter {
       old.jump != jump || old.across != across || old.ground != ground;
 }
 
-/// TouchAreaChoice is what of a sprite a game touches: where it is drawn,
-/// or its whole box -- the two drawn small, with the line the canvas shows.
+/// TouchAreaChoice is what of a sprite a game touches: where it is drawn or
+/// its whole box, both drawn small with the canvas's line.
 class TouchAreaChoice extends StatelessWidget {
   final SpriteElement sprite;
   final bool whole;
@@ -629,8 +624,8 @@ class _AreaPainter extends CustomPainter {
   bool shouldRepaint(_AreaPainter old) => old.area != area;
 }
 
-/// _feltAs is [spec] played as [as]: a platformer never yet set moving takes
-/// the Normal feel, whose jump reaches a ledge three tiles up.
+/// _feltAs is [spec] played as [as]: a platformer never set moving takes the
+/// Normal feel, whose jump reaches a ledge three tiles up.
 PlaySpec _feltAs(PlaySpec spec, PlayAs as) {
   const fresh = PlaySpec();
   var untouched = spec.speed == fresh.speed &&
@@ -646,17 +641,15 @@ extension on String {
   String ifEmpty(String other) => isEmpty ? other : this;
 }
 
-/// gameShowables are what a game can show or hide: this scene's elements
-/// and the HUD's on the master -- not its sounds or its backdrop -- as id
-/// and name.
+/// gameShowables are what a game can show or hide, as id and name: this
+/// scene's elements and the master's HUD, not its sounds or backdrop.
 List<(String, String)> gameShowables(CanvasDocument doc) => [
       for (var e in [...doc.elements, ...?doc.master?.elements])
         if (e is! AudioElement && e is! BackgroundElement)
           (e.id, e.name.isEmpty ? e.kind.label : e.name),
     ];
 
-/// _showableName is [id]'s name, for a summary: "something" where it has
-/// gone.
+/// _showableName is [id]'s name for a summary, or "something" where gone.
 String _showableName(CanvasDocument doc, String id) =>
     gameShowables(doc).where((s) => s.$1 == id).firstOrNull?.$2 ?? "something";
 
@@ -682,15 +675,14 @@ String _touchSummary(CanvasController controller, PlaySpec spec) {
   return [does, if (then.isNotEmpty) then].join(" · ");
 }
 
-/// PlayKindCards are the ways of being played, as a grid of cards: what an
-/// element is in the game is the first thing set, and seeing them all says
-/// what the game can do.
+/// PlayKindCards are the ways of being played: set first, and all shown so
+/// the game's range is seen.
 class PlayKindCards extends StatelessWidget {
   final PlayAs value;
   final ValueChanged<PlayAs> onPick;
 
-  /// pressed is whether it is the eighth card, Pressed: still, but pressed
-  /// by an action -- picked with [onPressed].
+  /// pressed is whether the eighth card, Pressed, is on: still, but pressed
+  /// by an action, picked with [onPressed].
   final bool pressed;
   final VoidCallback? onPressed;
   const PlayKindCards(
@@ -760,9 +752,8 @@ class PlayKindCards extends StatelessWidget {
   }
 }
 
-/// TouchSentence is what touching a pickup or a hazard does, written as a
-/// sentence whose words are its controls: "Add 1 to Coins, play coin.ogg
-/// and vanish".
+/// TouchSentence is touching's effect as a sentence of controls: "Add 1 to
+/// Coins, play coin.ogg and vanish".
 class TouchSentence extends StatelessWidget {
   final CanvasController controller;
   final PlaySpec spec;
@@ -842,8 +833,8 @@ class _Plain extends StatelessWidget {
           color: ThemeNotifier.of(context).colors.onSurfaceVariant));
 }
 
-/// WordChoice is one word of a sentence that is a dropdown: chosen from
-/// [options], drawn as a chip in the line.
+/// WordChoice is a dropdown word in a sentence: chosen from [options],
+/// drawn as a chip in the line.
 class WordChoice<T> extends StatelessWidget {
   final T value;
   final List<(T, String)> options;
@@ -866,15 +857,15 @@ class WordChoice<T> extends StatelessWidget {
         border: Border.all(color: colors.outlineVariant),
         borderRadius: BorderRadius.circular(6),
       ),
-      // As wide as its words: a dropdown's items fill whatever width they
-      // are offered, and in a sentence that wraps that is the whole line.
+      // As wide as its words: a dropdown's items fill the width offered,
+      // which in a wrapping sentence is the whole line.
       child: IntrinsicWidth(
           child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: shown,
           isDense: true,
-          // Filling the width it is given -- its own words', or the line's
-          // where they are longer, cut short with an ellipsis.
+          // Fills the width given (its words', or the line's where longer,
+          // ellipsised).
           isExpanded: true,
           iconSize: 16,
           focusColor: Colors.transparent,
@@ -959,10 +950,8 @@ class _NumberWordState extends State<NumberWord> {
   }
 }
 
-/// _touchable makes [e] a pickup or a hazard ready to use: a pickup adding
-/// one to Coins, a hazard taking one from Lives -- three of them, the game
-/// starting again when they are gone -- each count made if the game has
-/// none of that name yet. One undo step.
+/// _touchable makes [e] a ready pickup (+1 Coins) or hazard (-1 of three
+/// Lives), making missing counts. One undo step.
 void _touchable(CanvasController controller, CanvasElement e, PlayAs as,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var doc = controller.document;
@@ -987,8 +976,8 @@ void _touchable(CanvasController controller, CanvasElement e, PlayAs as,
   commit();
 }
 
-/// gameEffectControls set [effect]: what happens, and to which count by
-/// how many, or to which scene. [key] starts each control's key.
+/// gameEffectControls set [effect]: what happens, to which count by how
+/// much, or to which scene. [key] prefixes each control's key.
 List<Widget> gameEffectControls(CanvasController controller, GameEffect effect,
     void Function(GameEffect next) set, VoidCallback commit,
     {required String key, required String label, bool counts = true}) {
@@ -1047,8 +1036,8 @@ List<Widget> gameEffectControls(CanvasController controller, GameEffect effect,
         ],
         onChanged: (id) => set(effect.copyWith(element: id)),
       ),
-    // Held by id, as a button's scene is: moving the scenes about does
-    // not point it at another.
+    // Held by id, as a button's scene is, so reordering scenes does not
+    // retarget it.
     if (effect.does == GameDoes.scene)
       CanvasDropdown<String>(
         key: ValueKey("$key-scene"),
@@ -1064,8 +1053,8 @@ List<Widget> gameEffectControls(CanvasController controller, GameEffect effect,
   ];
 }
 
-/// _soundDropdown is "Plays": what is heard as it happens -- a slot, a
-/// channel stopped, a sound on the canvas.
+/// _soundDropdown is "Plays": what is heard as it happens (a slot, a
+/// channel stopped, a canvas sound).
 Widget _soundDropdown(CanvasController controller, String key, String value,
     ValueChanged<String> onChanged) {
   var options = gameSoundOptions(controller, none: "Nothing");
@@ -1079,15 +1068,14 @@ Widget _soundDropdown(CanvasController controller, String key, String value,
   );
 }
 
-/// gameSoundDropdown is the "Plays" dropdown for [effect]: what is heard as
-/// it happens. [key] starts its key.
+/// gameSoundDropdown is [effect]'s "Plays" dropdown. [key] prefixes its key.
 Widget gameSoundDropdown(CanvasController controller, GameEffect effect,
         void Function(GameEffect next) set, {required String key}) =>
     _soundDropdown(controller, "$key-sound", effect.sound,
         (ref) => set(effect.copyWith(sound: ref)));
 
-/// _reaches are how near a player has to be to press something: anywhere,
-/// touching, beside it, near it -- in canvas units.
+/// _reaches are how near a player must be to press something, in canvas
+/// units: anywhere, touching, beside, near.
 const _reaches = <(double, String)>[
   (0, "Anywhere"),
   (8, "A player touching it"),
@@ -1095,8 +1083,8 @@ const _reaches = <(double, String)>[
   (160, "A player near it"),
 ];
 
-/// _pressControls are an action pressing [e] while the game plays: which
-/// action, from how near, and what it does -- a Button its own action.
+/// _pressControls are an action pressing [e] during play: which action,
+/// from how near, and what it does (a Button its own action).
 List<Widget> _pressControls(
     CanvasController controller,
     CanvasElement e,
@@ -1147,9 +1135,8 @@ List<Widget> _pressControls(
   ];
 }
 
-/// effectWords are what a game does, as words to choose in a sentence --
-/// "Add 1 to Coins", "Show the gate", "Go to Caves" -- keyed by [prefix]:
-/// a touch's, a defeat's.
+/// effectWords are a game effect as sentence words ("Add 1 to Coins", "Go
+/// to Caves"), keyed by [prefix].
 List<Widget> effectWords(CanvasDocument doc, GameEffect effect,
     ValueChanged<GameEffect> setEffect, String prefix) {
   var scenes = doc.allScenes;
@@ -1207,8 +1194,8 @@ List<Widget> effectWords(CanvasDocument doc, GameEffect effect,
   ];
 }
 
-/// HitSentence is what punching or kicking it does (Ken, 2026-11-10), as a
-/// sentence: "Beaten by two hits: Add 1 to Foes, each hit plays Thud."
+/// HitSentence is what punching or kicking it does, as a sentence: "Beaten
+/// by two hits: Add 1 to Foes, each hit plays Thud."
 class HitSentence extends StatelessWidget {
   final CanvasController controller;
   final PlaySpec spec;

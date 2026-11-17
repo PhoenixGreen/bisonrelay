@@ -16,19 +16,17 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/video_settings.dart';
 import 'package:flutter/material.dart';
 
-// background_media_settings.dart is the picture, video and sound a
-// background can carry, under its pattern's settings. Each is its own
-// element's settings less what means nothing on a backdrop: pressing, a box
-// of its own, an arrival. See CanvasBackground.picture.
+// background_media_settings.dart is a background's picture, video and
+// sound: each its element's settings less what means nothing on a backdrop
+// (pressing, a box, an arrival). See CanvasBackground.picture.
 
 List<Widget> backgroundMediaSettings(
     BuildContext context, CanvasController controller) {
   var bg = controller.document.editedBackground;
   var page = controller.document.size.size;
 
-  // Read at the moment of writing rather than when the panel was built, so a
-  // setting written after a file dialog does not put back what was there
-  // before the dialog opened.
+  // Read when writing, not when the panel was built, so a setting written
+  // after a file dialog does not restore what was there before it.
   CanvasBackground current() => controller.document.editedBackground;
   void write(CanvasBackground next) {
     controller.beginInteraction();
@@ -114,8 +112,8 @@ List<Widget> backgroundMediaSettings(
         ],
       ),
     ),
-    // A drawing behind everything: an .svg, kept a drawing, sharp at any
-    // size. Over the picture and under the video.
+    // A drawing behind everything: an .svg, kept sharp at any size. Over
+    // the picture and under the video.
     expanderAsSection(
       Icons.draw_outlined,
       CanvasExpander(
@@ -204,8 +202,8 @@ List<Widget> backgroundMediaSettings(
                     onPressed: () async {
                       var source = await pickCanvasVideo(context, controller);
                       if (source == null) return;
-                      // Going by itself and round again, which is what a
-                      // backdrop that moves is for; and nothing to press.
+                      // Playing by itself and looping, as a moving backdrop
+                      // should; nothing to press.
                       now(current().copyWith(
                           video: VideoElement(fresh("Background video"),
                               controls: const [],
@@ -238,8 +236,8 @@ List<Widget> backgroundMediaSettings(
         ],
       ),
     ),
-    // A background sound already there can be changed or taken off here, but a
-    // new one is not offered: soundtracks go on the timeline's channels.
+    // An existing background sound can be changed or removed here, but none
+    // is offered: soundtracks go on the timeline's channels.
     if (sound != null)
       expanderAsSection(
         Icons.library_music_outlined,

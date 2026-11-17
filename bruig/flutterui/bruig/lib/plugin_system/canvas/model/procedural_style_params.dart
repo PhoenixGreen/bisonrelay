@@ -27,8 +27,8 @@ List<StyleParam> paramsOf(ProceduralStyle style) => switch (style) {
       _ => const [],
     };
 
-/// BlockchainMode is what [ProceduralStyle.blockchain] draws, as the index
-/// of its "mode" setting.
+/// BlockchainMode is what [ProceduralStyle.blockchain] draws: the index of
+/// its "mode" setting.
 abstract final class BlockchainMode {
   static const chain = 0;
   static const network = 1;
@@ -133,12 +133,9 @@ const List<StyleParam> blockchainParams = [
   }),
 ];
 
-// --------------------------------------------------------------------------
-// Grids & tech
-//
-// The defaults are what each style drew before it had settings, so older
+// ---------- Grids & tech ----------
+// Defaults are what each style drew before it had settings, so older
 // documents draw the same.
-// --------------------------------------------------------------------------
 
 const _dots = {
   "dotKind": [0]
@@ -227,9 +224,7 @@ const List<(String, String)> glyphSets = [
   ("Blocks", "\u2580\u2584\u2588\u258c\u2590\u2591\u2592\u2593\u25a0\u25a1"),
 ];
 
-// --------------------------------------------------------------------------
-// Gradient & light
-// --------------------------------------------------------------------------
+// ---------- Gradient & light ----------
 
 const _meshOnly = {
   "meshKind": [1]
@@ -271,9 +266,7 @@ const List<StyleParam> starParams = [
   StyleParam.toggle("warp", "Warp speed"),
 ];
 
-// --------------------------------------------------------------------------
-// Organic
-// --------------------------------------------------------------------------
+// ---------- Organic ----------
 
 const List<StyleParam> contourParams = [
   StyleParam.choice("contourKind", "Kind", ["Lines", "Terrain"]),
@@ -287,9 +280,7 @@ const List<StyleParam> flameParams = [
   StyleParam("embers", "Embers", initial: 0),
 ];
 
-// --------------------------------------------------------------------------
-// Graphic & comic
-// --------------------------------------------------------------------------
+// ---------- Graphic & comic ----------
 
 const List<StyleParam> halftoneParams = [
   StyleParam.choice(
@@ -324,9 +315,7 @@ const List<StyleParam> splatParams = [
       ["Blobs", "Drips", "Spray", "Splash", "Watercolour"]),
 ];
 
-// --------------------------------------------------------------------------
-// Surfaces
-// --------------------------------------------------------------------------
+// ---------- Surfaces ----------
 
 const List<StyleParam> surfaceParams = [
   StyleParam.choice("surfaceKind", "Kind", [
@@ -357,9 +346,7 @@ const List<StyleParam> surfaceParams = [
   }),
 ];
 
-// --------------------------------------------------------------------------
-// Sport
-// --------------------------------------------------------------------------
+// ---------- Sport ----------
 
 /// PitchViewKind is [ProceduralStyle.pitch]'s "view" setting.
 abstract final class PitchViewKind {
@@ -368,8 +355,7 @@ abstract final class PitchViewKind {
   static const broadcast = 2;
 }
 
-/// PitchSurface is its "surface" setting. Auto is whatever the sport is
-/// usually played on.
+/// PitchSurface is its "surface" setting; Auto is the sport's usual surface.
 abstract final class PitchSurface {
   static const auto = 0;
   static const stripes = 1;
@@ -385,8 +371,7 @@ const List<StyleParam> pitchParams = [
   StyleParam.choice("area", "Show", ["Whole", "Half"]),
   StyleParam.choice("runs", "Runs", ["Across", "Up the page"]),
   StyleParam.choice("surround", "Surround", ["Plain", "Stadium", "Track"]),
-  // A starting point for the camera: choosing one sets the camera settings
-  // beside it.
+  // A starting point for the camera: choosing one sets the camera settings.
   StyleParam.choice(
       "view", "View", ["Flat", "Isometric", "Broadcast", "End on"],
       group: "Camera",
@@ -474,8 +459,8 @@ const List<StyleParam> pitchParams = [
       initial: true, group: "Track", onlyWhen: _track),
 ];
 
-/// PitchShot is one of the camera positions a View offers: its name and
-/// the camera settings it sets ("zoom" is the spec's Size).
+/// PitchShot is one camera position a View offers: its name and settings
+/// ("zoom" is the spec's Size).
 typedef PitchShot = (String, Map<String, double>);
 
 Map<String, double> _shot(double tiltV, double turn, double perspective,
@@ -490,8 +475,8 @@ Map<String, double> _shot(double tiltV, double turn, double perspective,
       "zoom": zoom,
     };
 
-/// pitchShots is, for each View, the five shots it offers: where a camera
-/// usually is for that kind of picture. The first is the View's own.
+/// pitchShots is each View's five usual camera positions; the first is the
+/// View's own.
 final Map<int, List<PitchShot>> pitchShots = {
   0: [
     ("Whole pitch", _shot(0, 0, 0)),
@@ -556,8 +541,7 @@ const List<StyleParam> metalParams = [
   ]),
 ];
 
-/// pitchCameraParams is [params] with the pitch's camera settings filled in
-/// from its View where they have not been set.
+/// pitchCameraParams is [params] with unset camera settings from its View.
 Map<String, double> pitchCameraParams(Map<String, double> params) {
   if (params.containsKey("tiltV")) return params;
   var view = (params["view"] ?? 0).round().clamp(0, 3);

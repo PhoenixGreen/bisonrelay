@@ -61,16 +61,14 @@ part 'mixer_listeners.dart';
 part 'mixer_motion.dart';
 
 // mixer_plugins.dart is a strip's effects as devices in a chain, as in
-// Ableton: the Channel EQ and Compressor as Logic has them, a limiter and
-// meters, in the order the sound goes through them. Each folds to its
-// switch, its name and a meter. A device keeps its own colours whatever the
+// Ableton, in the order the sound goes through them; each folds to its
+// switch, name and a meter. A device keeps its own colours whatever the
 // app's theme, as a hardware unit does, and is drawn at deviceHeight and
 // scaled to the chain's room, never laid out again.
 
-/// dragPointers are what may drag a value -- a fader, a dial, a knob: the
-/// mouse, a finger, a pen; never the trackpad. A drag recognizer takes a
-/// trackpad's two-finger swipe as a drag, so swiping past a fader moved it.
-/// Clicked and dragged on a trackpad is the mouse's, and still works.
+/// dragPointers may drag a value (fader, dial, knob): mouse, finger, pen;
+/// never the trackpad, whose two-finger swipe a recognizer takes as a
+/// drag. A trackpad click-and-drag is the mouse's, and still works.
 const Set<PointerDeviceKind> dragPointers = {
   PointerDeviceKind.mouse,
   PointerDeviceKind.touch,
@@ -79,14 +77,11 @@ const Set<PointerDeviceKind> dragPointers = {
   PointerDeviceKind.unknown,
 };
 
-/// deviceHeight is the height every device is drawn at, before it is scaled
-/// to the chain.
+/// deviceHeight is the height every device is drawn at before scaling.
 const double deviceHeight = 320;
 
-/// deviceFoldedWidth is a folded device's width, before scaling.
 const double deviceFoldedWidth = 34;
 
-/// DeviceSkin is a device's colours.
 class DeviceSkin {
   final Decoration body;
   final Color header;
@@ -140,9 +135,8 @@ class DeviceSkin {
       );
 }
 
-/// DeviceTier is how much a device shows at the height the chain gives it:
-/// everything when tall, less as the panel is made shorter -- the knobs on
-/// one row, then only a line saying what it is set to. See DeviceFrame.
+/// DeviceTier is how much a device shows at the chain's height: everything
+/// tall, then knobs on one row, then one line of what it is set to.
 enum DeviceTier {
   large,
   medium,
@@ -158,12 +152,10 @@ enum DeviceTier {
               : strip;
 }
 
-/// ChainPanelStyle draws the cards under it -- the Chain's Motion view --
-/// in the settings panel's style, as the approved chain prototype has them
-/// (Ken, 2026-11-12: "the design differs between panels"): a plain card
-/// with its name in a header, its settings two or three to a row as
-/// steppers and selects, and any screen kept small over them. The Sound
-/// view keeps the studio's knobs.
+/// ChainPanelStyle draws the cards under it (the Chain's Motion view) in
+/// the settings panel's style, so every panel matches: name in a header,
+/// settings two or three to a row as steppers and selects, any screen kept
+/// small. The Sound view keeps the studio's knobs.
 class ChainPanelStyle extends InheritedWidget {
   const ChainPanelStyle({required super.child, super.key});
 
@@ -189,10 +181,8 @@ double? paramStep(DeviceParam p) {
   };
 }
 
-/// ChainGroupColour marks the cards under it as one clip's -- its style,
-/// timing, launch, place and what it plays -- by a line of the clip's
-/// colour along their tops (Ken, 2026-11-12: which preset they belong to
-/// was not clear).
+/// ChainGroupColour marks the cards under it as one clip's by a line of
+/// its colour along their tops, so which preset they belong to is clear.
 class ChainGroupColour extends InheritedWidget {
   final Color colour;
   const ChainGroupColour({required this.colour, required super.child, super.key});
@@ -206,12 +196,10 @@ class ChainGroupColour extends InheritedWidget {
       oldWidget.colour != colour;
 }
 
-/// midiColour is the colour of what carries notes: a MIDI channel's
-/// effects, its In and its instrument, as the prototype has them.
+/// midiColour marks what carries notes: MIDI effects, In and instrument.
 const midiColour = Color(0xFFD08F3E);
 
-/// deviceGroupLook is a family of devices' mark: its icon in a device's bar
-/// and the colour of the stripe along its top.
+/// deviceGroupLook is a device family's mark: bar icon and top stripe colour.
 (IconData, Color) deviceGroupLook(DeviceGroup group) => switch (group) {
       DeviceGroup.space => (Icons.blur_circular, const Color(0xFF6FA8E8)),
       DeviceGroup.dynamics => (Icons.compress, const Color(0xFFE0A84F)),
@@ -228,9 +216,8 @@ const midiColour = Color(0xFFD08F3E);
       DeviceGroup.modulators => (Icons.swap_vert, modulationColour),
     };
 
-/// deviceMoveButtons are the arrows in a device's bar that move it a place
-/// along strip [owner]'s chain, keyed deviceLeft-[index] and
-/// deviceRight-[index]; an arrow that has nowhere to go is greyed out.
+/// deviceMoveButtons are a device bar's arrows moving it along [owner]'s
+/// chain, keyed deviceLeft-[index] and deviceRight-[index]; greyed at ends.
 List<Widget> deviceMoveButtons(
     CanvasController c, String owner, int index, Color ink) {
   var devices = c.devicesOf(owner);
@@ -258,11 +245,8 @@ List<Widget> deviceMoveButtons(
   ];
 }
 
-/// MacroPanel is a chain's Macros (Ken, 2026-11-08: "it's not obvious how
-/// to set up the macros -- Macro 1, what is it set to, what can it be set
-/// to, and how can it be set?"): eight knobs, each saying what it turns
-/// under it; one picked, what it turns listed, each with how far, and any
-/// knob of the chain to add to it.
+/// MacroPanel is a chain's Macros: eight knobs, each saying what it turns;
+/// the one picked lists its targets and amounts, and any knob to add.
 class MacroPanel extends StatefulWidget {
   final int index;
   final MixDevice device;
@@ -309,7 +293,6 @@ class _MacroPanelState extends State<MacroPanel> {
     var mods = device.mods;
     var picked = _picked.clamp(0, macroKnobs - 1);
     var accent = widget.accent;
-    // What each turns, by knob.
     List<(int, ModTarget)> turnedBy(int k) => [
           for (var (j, m) in mods.indexed)
             if (m.from == k) (j, m),
@@ -353,7 +336,6 @@ class _MacroPanelState extends State<MacroPanel> {
               onCommit: widget.onCommit,
             ),
             const SizedBox(height: 2),
-            // What it turns, in a word: the first, and how many more.
             Text(
                 turns.length > 1 ? "$short +${turns.length - 1}" : short,
                 key: ValueKey("macroTurns-$index-$k"),
@@ -374,7 +356,6 @@ class _MacroPanelState extends State<MacroPanel> {
       for (var k in widget.knobs)
         if (!turns.any((t) => t.$2.device == k.$1 && t.$2.param == k.$2)) k,
     ];
-    // The chain's knobs, by device: what the picked macro can be given.
     var byDevice = <String, List<(String, String, String)>>{};
     for (var k in free) {
       var cut = k.$3.lastIndexOf(" · ");
@@ -436,8 +417,7 @@ class _MacroPanelState extends State<MacroPanel> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Onto more rows where it is narrower than all of them (Ken's
-            // log: 278 pixels past a 170-wide card).
+            // Onto more rows where it is narrower than all of them.
             Wrap(
                 alignment: WrapAlignment.spaceBetween,
                 runSpacing: 6,
@@ -445,7 +425,6 @@ class _MacroPanelState extends State<MacroPanel> {
                   for (var k = 0; k < macroKnobs; k++) column(k),
                 ]),
             const SizedBox(height: 6),
-            // The picked one: what it turns, and how far each.
             Container(
               key: ValueKey("macroTurnsPanel-$index"),
               padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
@@ -458,8 +437,7 @@ class _MacroPanelState extends State<MacroPanel> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Its add button under its name where the card is
-                    // narrow.
+                    // Its add button under its name where the card is narrow.
                     Wrap(
                         alignment: WrapAlignment.spaceBetween,
                         crossAxisAlignment: WrapCrossAlignment.center,
@@ -504,7 +482,6 @@ class _MacroPanelState extends State<MacroPanel> {
                                   style: TextStyle(
                                       fontSize: 11, color: studio.text)),
                             ),
-                            // How far it turns it: either way.
                             SizedBox(
                               width: 120,
                               child: SliderTheme(
@@ -561,9 +538,7 @@ class _MacroPanelState extends State<MacroPanel> {
   }
 }
 
-/// DashedAddButton is a narrow dashed "+" where something can go, added at
-/// once on a click: the Macros zone of a chain with none (Ken: narrow, not
-/// an "Add macros" card).
+/// DashedAddButton is a narrow dashed "+" that adds at once on a click.
 class DashedAddButton extends StatelessWidget {
   final String tip;
   final double height;
@@ -597,9 +572,8 @@ class DashedAddButton extends StatelessWidget {
   }
 }
 
-/// _PresetPicker is a card's preset on its bar, as the prototype's
-/// "Default ▾": the saved presets of its kind to put on it, Default to
-/// start again from, and Save.
+/// _PresetPicker is a card's preset on its bar ("Default ▾"): the saved
+/// presets of its kind, Default to start again from, and Save.
 class _PresetPicker extends StatefulWidget {
   final DeviceKind kind;
   final String? name;
@@ -670,9 +644,8 @@ class _PresetPickerState extends State<_PresetPicker> {
   }
 }
 
-/// _FoldedLevel is a folded device's level as the sound leaves it -- the
-/// join after it, [at] -- as a slim meter at the foot of its card, as the
-/// prototype's folded cards have.
+/// _FoldedLevel is a folded device's level as the sound leaves it (the
+/// join after it, [at]), a slim meter at the foot of its card.
 class _FoldedLevel extends StatefulWidget {
   final CanvasController controller;
   final String owner;
@@ -778,9 +751,8 @@ Widget _presetLabel(BuildContext context, String name, StudioColors studio) {
   );
 }
 
-/// worksOnMenu is a card's ⋯ "Works on": the whole sound, only its
-/// middle (what both sides share) or only its sides (where they differ),
-/// as [value] says -- for a device, and a strip's EQ and compressor.
+/// worksOnMenu is a card's ⋯ "Works on": the whole sound, its middle
+/// (what both sides share) or its sides (where they differ).
 Widget worksOnMenu(MixerLook look,
         {required String id,
         required int value,
@@ -805,16 +777,14 @@ Widget worksOnMenu(MixerLook look,
           "Works on: ${const ["both sides", "mid", "side"][value.clamp(0, 2)]}"),
     );
 
-/// _stripKept are the saved presets of a strip's [part], by name.
 List<(String, Map<String, dynamic>)> _stripKept(StripPart part) => [
       for (var p in devicePresets.presets)
         if (stripPresetOf(p.data) case (var of, var value) when of == part)
           (p.name, value),
     ];
 
-/// _StripPresetPicker is the Presets ▾ of a strip's own card -- its EQ,
-/// compressor, limiter or Ducker -- as a device's: Default, the starting
-/// points it comes with, the ones saved, and Save.
+/// _StripPresetPicker is the Presets ▾ of a strip's own card (EQ,
+/// compressor, limiter, Ducker): Default, built-ins, saved ones, Save.
 class _StripPresetPicker extends StatefulWidget {
   /// label is what it is the presets of: "EQ", "Wiggle".
   final String label;
@@ -892,9 +862,8 @@ class _StripPresetPickerState extends State<_StripPresetPicker> {
   }
 }
 
-/// _GainBadge is what a device does to the level, read between it and the
-/// one before while sound passes -- "+2.2" warm, "−4.1" cool -- as the
-/// prototype's gain-change badge; nothing while it is quiet.
+/// _GainBadge is a device's level change, read between it and the one
+/// before while sound passes ("+2.2" warm, "−4.1" cool).
 class _GainBadge extends StatefulWidget {
   final CanvasController controller;
   final String channel;
@@ -1075,8 +1044,7 @@ class _NoteJoinState extends State<NoteJoin>
   }
 }
 
-/// _ReadingBadge is a card's reading in its bar, as _GainBadge's: a turn
-/// down, cool.
+/// _ReadingBadge is a card's reading in its bar, a cool turn down.
 class _ReadingBadge extends StatelessWidget {
   final String text;
   const _ReadingBadge({required this.text, super.key});
@@ -1152,7 +1120,6 @@ class _MacroTools extends StatelessWidget {
       required this.onChanged,
       super.key});
 
-  /// _now is the knobs' settings as they are.
   Map<String, double> get _now => {
         for (var p in macroParams) p.id: device.value(p.id),
       };
@@ -1306,8 +1273,7 @@ void resetDevice(CanvasController c, String owner, int index) {
   c.endInteraction();
 }
 
-/// chainMenuStyle is a menu of the Chain's, as the prototype draws them:
-/// a dark panel with a fine edge, rounded, close-set.
+/// chainMenuStyle is a Chain menu: dark, rounded, close-set, fine-edged.
 MenuStyle chainMenuStyle(MixerLook look) => MenuStyle(
       backgroundColor: WidgetStatePropertyAll(Color.alphaBlend(
           look.colors.primary.withValues(alpha: 0.07), look.studio.raised)),
@@ -1320,8 +1286,7 @@ MenuStyle chainMenuStyle(MixerLook look) => MenuStyle(
       shadowColor: const WidgetStatePropertyAll(Color(0xAA000000)),
     );
 
-/// chainMenuItemStyle is one line of such a menu: small text, lit in the
-/// accent under the pointer.
+/// chainMenuItemStyle is a menu line: small text, lit in the accent on hover.
 ButtonStyle chainMenuItemStyle(MixerLook look) => ButtonStyle(
       textStyle: const WidgetStatePropertyAll(
           TextStyle(fontSize: 12, fontWeight: FontWeight.w400)),
@@ -1348,8 +1313,7 @@ ButtonStyle chainMenuItemStyle(MixerLook look) => ButtonStyle(
               : look.studio.text),
     );
 
-/// chainMenuItem is a line of a Chain menu: [text], and [hint] small at
-/// its right.
+/// chainMenuItem is a Chain menu line: [text], and [hint] small at right.
 Widget chainMenuItem(MixerLook look,
         {Key? key,
         required String text,
@@ -1377,7 +1341,6 @@ Widget chainMenuItem(MixerLook look,
       child: Text(text),
     );
 
-/// chainMenuHeading is a small capital heading in a Chain menu.
 Widget chainMenuHeading(MixerLook look, String text) => Padding(
       padding: const EdgeInsets.fromLTRB(8, 5, 8, 3),
       child: Text(text.toUpperCase(),
@@ -1388,7 +1351,6 @@ Widget chainMenuHeading(MixerLook look, String text) => Padding(
               color: look.studio.muted)),
     );
 
-/// chainMenuDivider is a fine line between a Chain menu's groups.
 Widget chainMenuDivider(MixerLook look) => Divider(
     height: 9, thickness: 1, indent: 2, endIndent: 2, color: look.studio.edge);
 
@@ -1429,8 +1391,7 @@ class DeviceFrame extends StatelessWidget {
   /// of it is about (the Motion clips card's own arrival, loop and leaving).
   final List<Widget> lead;
 
-  /// display is what the device is doing, drawn over its knobs: it takes
-  /// the height left over.
+  /// display is what the device is doing, over its knobs in the height left.
   final Widget? display;
   final List<Widget> footer;
   final String summary;
@@ -1443,23 +1404,20 @@ class DeviceFrame extends StatelessWidget {
   /// clicked: the Chain shows no tips on hover. Empty for none.
   final String help;
 
-  /// glows is whether it is what makes the sound -- an instrument, the
-  /// Generator -- drawn as the prototype does: its edge and a glow in its
-  /// colour.
+  /// glows is whether it makes the sound (an instrument, the Generator):
+  /// its edge and a glow in its colour.
   final bool glows;
 
-  /// onDuplicate and onReset, given, are its ⋯ menu's Duplicate and Reset
-  /// every setting, as the prototype's: a copy after it, and its settings
-  /// as a new one's.
+  /// onDuplicate and onReset, given, are its ⋯ menu's Duplicate (a copy
+  /// after it) and Reset every setting (its settings as a new one's).
   final VoidCallback? onDuplicate;
   final VoidCallback? onReset;
 
-  /// onSavePreset, given, is its ⋯ menu's Save as a preset: it and its
-  /// settings, kept with the canvas's presets.
+  /// onSavePreset, given, is its ⋯ menu's Save as a preset.
   final VoidCallback? onSavePreset;
 
   /// onAB, given, is its bar's A|B: its settings swapped with a second set
-  /// to compare by ear, as the prototype's; [showingB] which is heard.
+  /// to compare by ear; [showingB] which is heard.
   final VoidCallback? onAB;
   final bool showingB;
 
@@ -1467,8 +1425,7 @@ class DeviceFrame extends StatelessWidget {
   /// settings that are not knobs (Oversample, Works on, Listens to).
   final List<Widget> Function(MixerLook look)? extraMenu;
 
-  /// barExtras sit on its bar before A|B: its preset, and what it does to
-  /// the level.
+  /// barExtras sit on its bar before A|B: its preset and its level change.
   final List<Widget> barExtras;
 
   /// frozen is whether it is in the part of its chain frozen into the
@@ -1479,10 +1436,9 @@ class DeviceFrame extends StatelessWidget {
   final VoidCallback? onFreeze;
   final VoidCallback? onUnfreeze;
 
-  /// besideDisplay, given, is how wide its display is on a short card --
-  /// beside its settings, the full height -- and besideSettings how wide
-  /// those settings are, packed rather than in one row that scrolls (Ken,
-  /// 2026-11-08: the motion devices' displays wide, as the prototype's).
+  /// besideDisplay, given, is how wide its display is on a short card
+  /// (beside its settings, the full height), and besideSettings how wide
+  /// those settings are, packed rather than in one row that scrolls.
   final double? besideDisplay;
   final double besideSettings;
 
@@ -1572,15 +1528,13 @@ class DeviceFrame extends StatelessWidget {
     );
   }
 
-  /// _card is the Chain's card round [header] and [inside], as the
-  /// prototype draws every device: the studio's raised card, a line round
-  /// it, its family's colour along its top, faded while it is switched off.
+  /// _card is the Chain's card round [header] and [inside]: raised, a line
+  /// round it, its family's colour on top, faded while switched off.
   Widget _card(BuildContext context, Widget header, Widget inside) {
     var studio = MixerLook.of(context).studio;
     var off = on == false;
     if (ChainPanelStyle.on(context)) {
-      // As the settings panel's cards: plain, a line round it, its
-      // settings faded while it is switched off.
+      // As the settings panel's cards: plain, outlined, faded while off.
       var group = ChainGroupColour.of(context);
       return Container(
         decoration: BoxDecoration(
@@ -1606,8 +1560,8 @@ class DeviceFrame extends StatelessWidget {
         ),
       );
     }
-    // The line round it and the colour along its top are drawn over it, as
-    // the prototype's are, taking none of the room its insides had.
+    // The line round it and the colour along its top are drawn over it,
+    // taking none of the room its insides had.
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -1706,9 +1660,9 @@ class DeviceFrame extends StatelessWidget {
         k.contains("Remove");
   }
 
-  /// _menuItems are its ⋯ menu, as the prototype's: its name; moving it,
-  /// a copy and its settings reset; what else [actions] keeps there; what
-  /// it does; and, last, taking it out. The actions keep their keys.
+  /// _menuItems are its ⋯ menu: its name; moving it, a copy and its
+  /// settings reset; what else [actions] keeps there; what it does; and,
+  /// last, taking it out. The actions keep their keys.
   List<Widget> _menuItems(MixerLook look) {
     var moves = <Widget>[], others = <Widget>[], removes = <Widget>[];
     String? hintOf(VoidCallback? onPressed, bool left) =>
@@ -1918,8 +1872,7 @@ class DeviceFrame extends StatelessWidget {
             ),
           ),
         ),
-        // A strip is too narrow for its buttons: they are for a taller
-        // panel.
+        // A strip is too narrow for its buttons: they are for a taller panel.
         if (full) ...[
           // Its reading, its presets and A|B; what the bar has no room for
           // left off, in this order: the help (its ⋯ says what it does),
@@ -1983,8 +1936,7 @@ class DeviceFrame extends StatelessWidget {
     );
   }
 
-  /// _foldedInside is a folded card, as the prototype's: a slim column of
-  /// its family's mark and its name down it, pressed to open it.
+  /// _foldedInside is a folded card: mark and name down a slim column.
   Widget _foldedInside(BuildContext context) {
     var studio = MixerLook.of(context).studio;
     return Tooltip(
@@ -1993,11 +1945,9 @@ class DeviceFrame extends StatelessWidget {
         key: ValueKey("deviceFold-$id"),
         behavior: HitTestBehavior.opaque,
         onTap: onFold,
-        // What it shows folded -- a meter, a curve -- at its foot, as the
-        // prototype's level does: as much of the card as is left over its
-        // name, up to 90. Measured from the card itself: a LayoutBuilder in
-        // the column is told nothing of its height, and took 80 a short
-        // card did not have.
+        // What it shows folded (a meter, a curve) at its foot: as much of the
+        // card as is left over its name, up to 90. Measured from the card
+        // itself: a LayoutBuilder in the column is told nothing of its height.
         child: LayoutBuilder(builder: (context, box) {
           var room = box.maxHeight.isFinite ? box.maxHeight : 200.0;
           var fixed = (icon != null ? 18.0 : 0) + 8 + 6;
@@ -2034,7 +1984,6 @@ class DeviceFrame extends StatelessWidget {
     );
   }
 
-  /// _isKnob is whether [w] takes a knob's cell on the card's grid.
   static bool _isKnob(Widget w) => w is _Knob || w is DeviceKnob;
 
   /// _isCell is whether [w] takes a cell of a ChainPanelStyle card: a knob,
@@ -2043,8 +1992,7 @@ class DeviceFrame extends StatelessWidget {
       _isKnob(w) ||
       (w is Stack && w.children.isNotEmpty && _isKnob(w.children.first));
 
-  /// _besideDisplay is how wide a short card's display is, beside its
-  /// knobs.
+  /// _besideDisplay is how wide a short card's display is, beside its knobs.
   static const double _besideDisplay = 170;
 
   /// _titled is a card's name as the settings panel writes one: its first
@@ -2152,7 +2100,6 @@ class DeviceFrame extends StatelessWidget {
     );
   }
 
-  /// _tiered is the device laid out for [height]: see DeviceTier.
   Widget _tiered(BuildContext context) {
     if (ChainPanelStyle.on(context)) return _panelLaid(context);
     var tier = DeviceTier.of(height);
@@ -2164,8 +2111,7 @@ class DeviceFrame extends StatelessWidget {
         ? 0
         : controls!(tier).where(_isKnob).length;
     var oneRow = 14.0 + 58 * math.min(knobCount, 9);
-    // Short, its display goes beside its knobs rather than over them: the
-    // card wider, the display still a picture worth looking at.
+    // Short, its display goes beside its knobs, not over them.
     var beside = display != null &&
         (tier == DeviceTier.small ||
             (displayBeside && tier != DeviceTier.strip));
@@ -2233,7 +2179,6 @@ class DeviceFrame extends StatelessWidget {
                     // needs, in a row that scrolls.
                     _isKnob(k)
                         ? SizedBox(width: 50, child: k)
-                        // A split's branches are the card: all of it.
                         : SizedBox(
                             width: k is SplitBranches
                                 ? SplitBranches.width - 16
@@ -2313,8 +2258,7 @@ class DeviceFrame extends StatelessWidget {
             ),
             Expanded(
               child: Align(
-                // Beside a list, from its top; beside a picture, level with
-                // its middle.
+                // Beside a list, from its top; beside a picture, centred.
                 alignment:
                     displayBeside ? Alignment.topLeft : Alignment.centerLeft,
                 child: SingleChildScrollView(
@@ -2363,8 +2307,6 @@ class _Power extends StatelessWidget {
           child: CanvasSwitch(key: powerKey, value: on, onChanged: onPower))
       : Tooltip(
         message: on ? "On: click to bypass" : "Bypassed: click to switch on",
-        // A lit dot, as the prototype's: green and glowing while on, grey
-        // while bypassed.
         child: GestureDetector(
           key: powerKey,
           behavior: HitTestBehavior.opaque,
@@ -2393,8 +2335,7 @@ class _Power extends StatelessWidget {
       );
 }
 
-/// DeviceMove is the pair of arrows on a device that moves it along its
-/// chain (in its ⋯ menu as Move left and Move right).
+/// DeviceMove is a device's arrows moving it along its chain.
 class DeviceMove extends StatelessWidget {
   final bool canLeft, canRight;
   final Color ink;
@@ -2437,8 +2378,7 @@ class _Strip {
       ? null
       : controller.timelineChannels.where((l) => l.key == channel).firstOrNull;
 
-  /// _return is the return this strip is, where it is one rather than a
-  /// channel of sounds.
+  /// _return is the return this strip is, if it is one.
   ReturnChannel? get _return => controller.returnOf(channel);
 
   /// _scene is whether it is the scene's bus (see CanvasScene.bus).
@@ -2542,9 +2482,8 @@ class _Range {
   }
 }
 
-/// _Dragged is a value changed by dragging up and down on it -- a knob, a
-/// readout -- a hundred and fifty pixels for its whole travel, and put back
-/// to [initial] with a double-click.
+/// _Dragged is a value (a knob, a readout) dragged up and down, 150 px
+/// for its whole travel, back to [initial] on a double-click.
 class _Dragged extends StatelessWidget {
   final double value;
   final double initial;
@@ -2553,7 +2492,6 @@ class _Dragged extends StatelessWidget {
   final VoidCallback onCommit;
   final Widget child;
 
-  /// menu is its right-click's choices: see _Knob.menu.
   final List<(String, VoidCallback)> menu;
 
   const _Dragged({
@@ -2569,7 +2507,6 @@ class _Dragged extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (menu.isEmpty) return _knob();
-    // Its right-click's menu, anchored on the knob where it was clicked.
     return _KnobMenu(menu: menu, child: _knob());
   }
 
@@ -2632,8 +2569,7 @@ String _hz(double f) => f >= 1000
 String _signed(double db) =>
     "${db > 0.05 ? "+" : db < -0.05 ? "−" : ""}${db.abs().toStringAsFixed(1)}";
 
-/// _Metered is a plugin window's ticker: about thirty times a second it
-/// rebuilds, for the meters and the analyzer.
+/// _Metered is a device window's ticker, rebuilding ~30 times a second.
 mixin _Metered<T extends StatefulWidget>
     on State<T>, SingleTickerProviderStateMixin<T> {
   late final Ticker _ticker;
@@ -2641,7 +2577,6 @@ mixin _Metered<T extends StatefulWidget>
 
   void tick();
 
-  /// meteredBy is the canvas whose sound the device shows.
   CanvasController get meteredBy;
 
   /// metering is whether it reads the sound at all: a display switched off
@@ -2653,10 +2588,9 @@ mixin _Metered<T extends StatefulWidget>
     if (metering) _wake();
   }
 
-  /// The device's readings move only while there is sound: a ticker asks
-  /// for a frame on every screen refresh, so it rests after a second and a
-  /// half of quiet (the needles fallen), and a slow check -- no frames --
-  /// wakes it.
+  /// Readings move only while there is sound, and a ticker asks for a
+  /// frame every refresh, so it rests after 1.5 s of quiet (needles fallen)
+  /// and a slow check, with no frames, wakes it.
   int _quietTicks = 0;
   Timer? _resting;
 
@@ -2672,9 +2606,8 @@ mixin _Metered<T extends StatefulWidget>
     _resting = null;
     _quietTicks = 0;
     if (_ticker.isActive) return;
-    // A ticker's time starts again from nought each start: the last read,
-    // from the run before, would hold every frame back until this run had
-    // lasted as long.
+    // A ticker's time restarts from nought each start: the last read, from
+    // the run before, would hold every frame back until this run caught up.
     _last = Duration.zero;
     _ticker.start();
   }
@@ -2712,8 +2645,7 @@ mixin _Metered<T extends StatefulWidget>
 
 // ---- Packed settings
 
-/// PackWide marks a setting of a DevicePack that takes the whole row: a
-/// list of chips, a line of text.
+/// PackWide marks a DevicePack setting that takes the whole row (chips, text).
 class PackWide extends StatelessWidget {
   final Widget child;
   const PackWide(this.child, {super.key});
@@ -2722,19 +2654,15 @@ class PackWide extends StatelessWidget {
   Widget build(BuildContext context) => child;
 }
 
-/// DevicePack lays a card's settings out as the chain prototype does (Ken,
-/// 2026-11-08: the motion devices as the audio ones, their displays big):
-/// knobs a cell each and the rest in columns -- two on a narrow card,
-/// three on a wide one -- side by side and wrapping, rather than one to a
-/// row. The settings then take a few short rows, and the display above
-/// them keeps the card's height.
+/// DevicePack lays a card's settings out as the audio devices do: knobs a
+/// cell each, the rest two or three columns across, wrapping, so they take
+/// a few short rows and the display above keeps its height.
 class DevicePack extends StatelessWidget {
   final List<Widget> children;
   const DevicePack({required this.children, super.key});
 
   static const double knobWidth = 54, gap = 8;
 
-  /// columns is how many settings sit across [room].
   static int columns(double room, double scale) => room >= 370 * scale ? 3 : 2;
 
   @override
@@ -2758,10 +2686,8 @@ class DevicePack extends StatelessWidget {
       });
 }
 
-/// SplitBranches is a split's branches, a column each: its name, how loud
-/// it comes back and whether it is heard, its devices -- each with its
-/// switch, its knobs and a way to take it out -- and a way to add one; in
-/// parallel, a way to add a branch and take one away.
+/// SplitBranches is a split's branches, a column each: name, return level,
+/// mute, its devices and an add; in parallel, adding and removing branches.
 class SplitBranches extends StatefulWidget {
   final MixDevice device;
 
@@ -2803,10 +2729,8 @@ class SplitBranches extends StatefulWidget {
   State<SplitBranches> createState() => _SplitBranchesState();
 }
 
-/// _SplitBranchesState is the prototype's Split (Ken, 2026-11-08: "the split
-/// device visuals need improving"): the sound drawn dividing into its
-/// branches, how it divides, a row for each branch -- its level, its name,
-/// what is on it -- and the branch picked open beside them, to change.
+/// _SplitBranchesState draws the sound dividing, how, a row a branch, and
+/// the picked branch open beside them.
 class _SplitBranchesState extends State<SplitBranches> {
   int _open = 0;
 
@@ -2848,7 +2772,6 @@ class _SplitBranchesState extends State<SplitBranches> {
             border: Border.all(color: on ? accent : studio.edge),
           ),
           child: Row(children: [
-            // Its level: how loud it is put back.
             Container(
               width: 5,
               height: 18,
@@ -3070,7 +2993,6 @@ class _SplitBranchesState extends State<SplitBranches> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // The sound dividing into its branches, and meeting again.
           Container(
             height: 54,
             decoration: BoxDecoration(
@@ -3093,7 +3015,6 @@ class _SplitBranchesState extends State<SplitBranches> {
             ),
           ),
           const SizedBox(height: 6),
-          // How it divides.
           DeviceChoices(
             key: const ValueKey("splitMode"),
             options: [
@@ -3157,7 +3078,6 @@ class _SplitBranchesState extends State<SplitBranches> {
       child: LayoutBuilder(
         builder: (context, box) =>
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Half each, its rows at most 240 across.
           SizedBox(width: math.min(240.0, (box.maxWidth - 8) / 2), child: left),
           const SizedBox(width: 8),
           Expanded(
@@ -3175,8 +3095,7 @@ class _SplitBranchesState extends State<SplitBranches> {
   }
 }
 
-/// _RowButton is a small boxed button of a split's rows: a letter, a word,
-/// or an icon; lit where [on].
+/// _RowButton is a small boxed button on a split's rows, lit where [on].
 class _RowButton extends StatelessWidget {
   final String? label;
   final IconData? icon;

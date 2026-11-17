@@ -8,7 +8,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 // a cue keeps its timing relative to it, so moving the cue moves the clip
 // placements and keyframes that arrive on it, in whichever scene they are.
 
-/// TimelineCue is one named moment, in frames of the whole run.
 class TimelineCue {
   final String id;
   final String name;
@@ -37,11 +36,9 @@ class TimelineCue {
 }
 
 /// SpokenWord is one word of a voice-over as a transcription heard it, in
-/// frames of the whole run like a cue: used to name cues by what is said and
-/// to put an element on its word.
-///
-/// [from] is the clip it was heard on, `voice:<id>` as that clip's cues are
-/// tagged, so hearing the clip again replaces only its own words.
+/// frames of the whole run: to name cues by what is said, and to put an
+/// element on its word. [from] is the clip it was heard on, `voice:<id>`,
+/// so hearing the clip again replaces only its own words.
 class SpokenWord {
   final String text;
   final int frame;
@@ -75,12 +72,10 @@ class SpokenWord {
 }
 
 /// saidBetween is what [words] say from frame [from] up to [to], cut to
-/// about [most] characters at a word's end -- a cue's name, read off the
-/// voice. Empty where nothing is said there.
-///
-/// A word starting up to [lead] frames before a cue is that cue's: a cue
-/// found at a pause lands a moment after the voice has started again, and
-/// would otherwise lose its first word.
+/// about [most] characters at a word's end: a cue's name, or empty. A word
+/// starting up to [lead] frames before a cue is that cue's: a cue found at a
+/// pause lands just after the voice starts again, and would lose its first
+/// word.
 String saidBetween(List<SpokenWord> words, int from, int to,
     {int most = 34, int lead = 2}) {
   var out = StringBuffer();
@@ -107,11 +102,9 @@ String newCueId() =>
     "_${_cueCounter++}";
 
 /// speechStarts is where somebody starts speaking after a pause, in seconds
-/// from the start of a recording whose shape is [peaks] -- evenly spaced
-/// loudness from nought to one across [seconds].
-///
-/// A pause is at least [gap] seconds quieter than [floor] of the recording's
-/// loudest; the first sound in the file counts too.
+/// into a recording whose shape is [peaks] (evenly spaced loudness, nought
+/// to one, across [seconds]). A pause is at least [gap] seconds quieter than
+/// [floor] of the loudest; the first sound in the file counts too.
 List<double> speechStarts(Float32List peaks, double seconds,
     {double gap = 0.35, double floor = 0.08}) {
   if (peaks.isEmpty || seconds <= 0) return const [];

@@ -3,21 +3,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 
-// synth_task_element.dart is a task card beside a synth rack (the
-// prototype's "Make a soft, slow pad", Ken approved 2026-11-14): what to
-// make, a button to hear the teacher's sound, and a list of checks ticked
-// as the student's patch meets them.
-//
-// The teacher doesn't write the checks: they build the sound on the rack
-// and set it as the target, and the card keeps that patch (to be heard)
-// and makes a check of every cable and setting that differs from the
-// rack's starting point -- each worded, its range widened or taken out
-// after, as the teacher likes.
+// synth_task_element.dart is a task card beside a synth rack: what to make,
+// a button to hear the teacher's sound, and checks ticked as the student's
+// patch meets them. The teacher builds the sound on the rack and sets it as
+// the target; the card keeps that patch and makes a check of every cable
+// and setting that differs from the rack's starting point, each editable.
 
 /// SynthCheckKind is what a check looks at: a cable, a knob, a choice.
 enum SynthCheckKind { cable, value, choice }
 
-/// SynthCheck is one thing the student's patch must do.
 class SynthCheck {
   final SynthCheckKind kind;
   final String label;
@@ -54,8 +48,7 @@ class SynthCheck {
           max: max ?? this.max,
           choice: choice);
 
-  /// remapped is it about the modules [ids] maps to, where it does: a
-  /// task card copied with its rack.
+  /// remapped is it about the modules [ids] maps to: copied with a rack.
   SynthCheck remapped(Map<String, String> ids) => SynthCheck(kind, label,
       module: ids[module] ?? module,
       input: input,
@@ -178,11 +171,10 @@ class SynthTaskElement extends CanvasElement {
           ]);
 }
 
-/// synthChecksFor are the checks of making [target] from the rack's
-/// modules as they start ([modules]' starting points): every cable in it
-/// that is not there at the start, every choice that differs, and every
-/// knob that is turned -- each a range about the target, a fifth of a
-/// turn wide, or up to the end it is near.
+/// synthChecksFor are the checks of making [target] from [modules]'
+/// starting points: every cable not there at the start, every choice that
+/// differs, and every knob turned, each a range a fifth of a turn wide
+/// about the target, or up to the end it is near.
 List<SynthCheck> synthChecksFor(
     SynthPatch target, List<SynthModuleElement> modules) {
   var byId = {for (var m in modules) m.id: m};

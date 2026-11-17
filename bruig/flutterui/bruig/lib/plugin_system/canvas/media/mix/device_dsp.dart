@@ -6,12 +6,9 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show dbToGain;
 
-// device_dsp.dart is the chain devices other than reverb and delay: gate,
-// auto filter, chorus, flanger, phaser, auto-pan, three drives, bit crusher
-// and utility. [Tunable.tune] rereads settings (as automation moves them)
-// without resetting state such as delay lines, LFO phase or filter memory.
-//
-// All at the mix rate, 48kHz.
+// device_dsp.dart is the chain devices other than reverb and delay, at
+// 48kHz. [Tunable.tune] rereads settings (as automation moves them) without
+// resetting delay lines, LFO phase or filter memory.
 
 const double _rate = 48000;
 
@@ -36,17 +33,16 @@ class _Lfo {
   }
 }
 
-/// Gate lets a sound through only while it is louder than the threshold:
-/// it opens over the attack, stays open for the hold, and closes over the
-/// release down to the floor level. With a [source] it opens to another
-/// channel's sound instead -- a pad chopped by the drums.
+/// Gate passes sound only over the threshold, opening over the attack,
+/// holding, and closing over the release. With a [source] it opens to
+/// another channel (a pad chopped by the drums).
 class Gate implements Sidechained, Tunable, Readable {
   late double _threshold, _attack, _release, _floor;
   late int _hold;
   double _env = 0, _gain = 0;
 
   /// reading is how open it is (nought shut, one open) and the level it
-  /// hears, as the last stretch ended: what its screen draws.
+  /// last heard, for its screen.
   @override
   Float32List get reading =>
       Float32List.fromList([_floor + (1 - _floor) * _gain, _env]);
@@ -63,7 +59,7 @@ class Gate implements Sidechained, Tunable, Readable {
   @override
   void feed(Float32List l, Float32List r, int n) => _key.feed(l, r, n);
 
-  /// silence is its key channel there with nothing on it this block.
+  /// silence is its key channel being empty this block.
   void silence(int n) => _key.silence(n);
 
   @override
@@ -97,15 +93,13 @@ class Gate implements Sidechained, Tunable, Readable {
   }
 }
 
-/// Follower is a follower's ear: the sound passes through it as it was,
-/// and it keeps how loud it is -- its own sound where it stands, or its
-/// source channel's -- rising over its attack and falling over its
-/// release, for the strip to move knobs by (see StripProcessor).
+/// Follower passes the sound unchanged and tracks how loud it, or its
+/// source channel, is, for the strip to move knobs by (see StripProcessor).
 class Follower implements Sidechained, Tunable {
   late double _attack, _release, _gain;
   double _env = 0;
 
-  /// level is how loud, nought to one, as it last heard.
+  /// level is how loud, nought to one, as last heard.
   double get level => (_env * _gain).clamp(0.0, 1.0);
 
   @override
@@ -126,7 +120,7 @@ class Follower implements Sidechained, Tunable {
   @override
   void feed(Float32List l, Float32List r, int n) => _key.feed(l, r, n);
 
-  /// silence is its source channel there with nothing on it this block.
+  /// silence is its source channel being empty this block.
   void silence(int n) => _key.silence(n);
 
   @override
@@ -139,8 +133,8 @@ class Follower implements Sidechained, Tunable {
   }
 }
 
-/// _Svf is a trapezoidal state-variable filter, which stays stable while
-/// its frequency is swept, giving low-, band- and high-pass at once.
+/// _Svf is a trapezoidal state-variable filter, stable while swept, giving
+/// low-, band- and high-pass at once.
 class _Svf {
   double _ic1 = 0, _ic2 = 0;
   double _a1 = 0, _a2 = 0, _a3 = 0, _k = 1;
@@ -153,7 +147,6 @@ class _Svf {
     _a3 = g * _a2;
   }
 
-  /// run filters [x], returning (low, band, high).
   (double, double, double) run(double x) {
     var v3 = x - _ic2;
     var v1 = _a1 * _ic1 + _a2 * v3;
@@ -208,8 +201,8 @@ class AutoFilter implements DeviceProcessor, Tunable {
   }
 }
 
-/// _ModDelay is a delay line read at a moving point between samples: the
-/// heart of a chorus and a flanger.
+/// _ModDelay is a delay line read between samples at a moving point: the
+/// heart of chorus and flanger.
 class _ModDelay {
   final Float32List _buffer;
   int _at = 0;
@@ -232,12 +225,12 @@ class _ModDelay {
   }
 }
 
-/// _Modulated is Chorus and Flanger: a sound mixed with a copy of itself
-/// delayed by a moving amount (longer for a chorus, short with feedback for
-/// a flanger). The two sides' LFOs are a quarter turn apart, for width.
+/// _Modulated is Chorus and Flanger: the sound plus a copy at a moving
+/// delay (longer for chorus, short with feedback for flanger), LFOs a
+/// quarter turn apart for width.
 abstract class _Modulated implements DeviceProcessor, Tunable {
   /// _longest is the longest delay, in milliseconds. The lines are always
-  /// this long, so retuning never has to reallocate them.
+  /// this long, so retuning never reallocates them.
   static const double _longest = 40;
 
   late double _base, _swing, _feedback, _mix;
@@ -296,8 +289,8 @@ class Flanger extends _Modulated {
       (d.value("delay") * 0.2, d.value("delay") * d.value("depth"));
 }
 
-/// Phaser is a sound mixed with itself through a row of all-pass stages
-/// whose turning point an LFO sweeps: notches that move up and down.
+/// Phaser mixes a sound with itself through all-pass stages whose turning
+/// point an LFO sweeps: moving notches.
 class Phaser implements DeviceProcessor, Tunable {
   late int _stages;
   late double _depth, _feedback, _mix;
@@ -352,8 +345,8 @@ class Phaser implements DeviceProcessor, Tunable {
   }
 }
 
-/// AutoPan moves a sound from side to side: each side turned down as the
-/// LFO swings to the other, as far as the amount.
+/// AutoPan moves a sound side to side, turning each side down as the LFO
+/// swings to the other, as far as the amount.
 class AutoPan implements DeviceProcessor, Tunable {
   late double _amount;
   late int _shape;
@@ -379,14 +372,9 @@ class AutoPan implements DeviceProcessor, Tunable {
   }
 }
 
-/// Saturator drives a sound into a curve: soft (a hyperbolic tangent),
-/// warm (the same, a little lopsided, as valves are), or hard (clipped).
-/// Oversampler runs a shaping [factor] times as fast as the sound, so the
-/// harmonics it makes above half the rate are filtered away rather than
-/// folding back down as harshness: the prototype's Oversample. Each sound
-/// in is filled out to [factor] (a windowed-sinc low-pass), shaped, and
-/// filtered back down. It delays what it makes by [latency] samples, which
-/// the dry sound beside it is delayed by too (see [dry]).
+/// Oversampler shapes [factor] times faster so harmonics above half the rate
+/// are filtered, not folded back; its output is [latency] samples late, and
+/// [dry] delays the dry sound to match.
 class Oversampler {
   final int factor;
   final Float64List _h;
@@ -394,7 +382,7 @@ class Oversampler {
   final Float64List _made;
   int _inAt = 0, _madeAt = 0;
 
-  /// _dry delays the sound as it was by [latency], to mix with it.
+  /// _dry delays the unshaped sound by [latency], to mix with it.
   final Float64List _dry = Float64List(latency);
   int _dryAt = 0;
 
@@ -427,7 +415,7 @@ class Oversampler {
     return h;
   }
 
-  /// run is [x] shaped by [shape], oversampled: [latency] samples late.
+  /// run is [x] shaped by [shape], oversampled, [latency] samples late.
   double run(double x, double Function(double) shape) {
     var n = _in.length, taps = _h.length;
     _inAt = (_inAt + 1) % n;
@@ -456,8 +444,8 @@ class Oversampler {
   }
 }
 
-/// _oversamplers are a left and a right for [d]'s Oversample, or null for
-/// none: kept where the factor is the same, made afresh where not.
+/// _oversamplers are a left and right for [d]'s Oversample, or null: kept
+/// while the factor is unchanged.
 (Oversampler, Oversampler)? _oversamplers(
     MixDevice d, (Oversampler, Oversampler)? was) {
   var k = d.value("oversample").round();
@@ -467,6 +455,8 @@ class Oversampler {
   return (Oversampler(factor), Oversampler(factor));
 }
 
+/// Saturator drives a sound into a curve: soft (tanh), warm (lopsided tanh)
+/// or hard (clipped).
 class Saturator implements DeviceProcessor, Tunable {
   late double _drive, _out, _mix;
   late int _type;
@@ -517,8 +507,8 @@ double _tanh(double x) {
   return (e - 1) / (e + 1);
 }
 
-/// Overdrive is an amplifier pushed past its limit: a great deal of gain
-/// into a rounded clip, then a tone control taking off the fizz.
+/// Overdrive is an amplifier pushed past its limit: heavy gain into a
+/// rounded clip, then a tone control taking off the fizz.
 class Overdrive implements DeviceProcessor, Tunable {
   late double _gain, _lp, _out, _mix;
   double _fl = 0, _fr = 0;
@@ -542,8 +532,8 @@ class Overdrive implements DeviceProcessor, Tunable {
   void process(Float32List l, Float32List r, int n) {
     var os = _os;
     for (var i = 0; i < n; i++) {
-      // The clip oversampled where asked; its tone after, at the sound's
-      // own rate, as it was set for.
+      // The clip oversampled where asked; the tone after, at the sound's
+      // own rate.
       var yl = os == null ? _clip(l[i]) : os.$1.run(l[i], _clip);
       var yr = os == null ? _clip(r[i]) : os.$2.run(r[i], _clip);
       if (os != null) {
@@ -558,8 +548,8 @@ class Overdrive implements DeviceProcessor, Tunable {
   }
 }
 
-/// BitCrusher makes a sound cruder: fewer steps of loudness (bits), and
-/// each sample held for several (downsample).
+/// BitCrusher makes a sound cruder: fewer loudness steps (bits), and each
+/// sample held for several (downsample).
 class BitCrusher implements DeviceProcessor, Tunable {
   late double _steps, _mix;
   late int _hold;

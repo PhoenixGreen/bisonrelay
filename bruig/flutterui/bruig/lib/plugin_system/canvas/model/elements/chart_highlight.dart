@@ -3,18 +3,15 @@ import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:flutter/foundation.dart';
 
-// chart_highlight.dart is a chart's highlights (the Data Studio's Charts
-// tab, prototype v5): marks lit in a colour of their own, made as a table's
-// styles are -- what it picks out, then its look. They follow the numbers:
-// "top 4 by Points" picks out whoever is in the top four after a refresh.
+// chart_highlight.dart is a chart's highlights: marks lit in their own
+// colour, made as a table's styles are. They follow the numbers: "top 4 by
+// Points" picks out whoever is top four after a refresh.
 
-/// ChartReach is what a highlight picks out.
 enum ChartReach {
   /// one is the mark whose label is [ChartHighlight.who].
   one("One"),
 
-  /// top and bottom are the [ChartHighlight.n] largest or smallest by a
-  /// column.
+  /// top and bottom are the [ChartHighlight.n] largest or smallest.
   top("Top"),
   bottom("Bottom"),
 
@@ -164,10 +161,9 @@ class ChartHighlight {
       Object.hash(name, reach, who, n, by, op, value, colour, fade, named, off);
 }
 
-/// picksOut is which of [labels] a set of [highlights] lights, and in what
-/// colour: [valuesOf] gives the numbers of a column (by), one per label.
-/// Later highlights win. Null where none reaches a mark; the faded colour
-/// where one fades the rest; [base] is what a faded mark was.
+/// marksOf is each of [labels]' colour from [highlights], later winning;
+/// [valuesOf] gives a column's numbers. Null where none reaches, faded
+/// where one fades the rest; [base] is a faded mark's colour.
 List<Color?> marksOf(List<ChartHighlight> highlights, List<String> labels,
     List<double> Function(int by) valuesOf, Color Function(int i) base) {
   var out = List<Color?>.filled(labels.length, null);
@@ -235,18 +231,14 @@ Set<int> _reached(ChartHighlight h, List<String> labels,
   }
 }
 
-/// ChartNoteKind is what a note on a chart is: a line across it at a value
-/// (or the average), a band behind some places (a drop zone), a word over
-/// one mark -- or, bound to the data by name (Ken, 2026-11-17, the
-/// improvements report's fourth item), a callout on a leader line, words
-/// with an arrow to a mark, or a bracket between two marks saying the gap.
-/// Each follows its mark when the data refreshes or re-sorts, and draws on
-/// once the chart has arrived.
+/// ChartNoteKind is a note on a chart: a line at a value or the average, a
+/// band behind places, a word over a mark, or, bound by name, a callout, an
+/// arrow, or a bracket saying a gap. Each follows its mark through
+/// refreshes and draws on once the chart has arrived.
 enum ChartNoteKind { line, band, label, callout, arrow, bracket }
 
-/// ChartNote is something written or drawn on a chart beside its data
-/// (prototype v5's notes): an average line, a band behind 18th to 20th, a
-/// word over a bar.
+/// ChartNote is something written or drawn on a chart beside its data: an
+/// average line, a band behind 18th to 20th, a word over a bar.
 @immutable
 class ChartNote {
   final ChartNoteKind kind;
@@ -257,8 +249,7 @@ class ChartNote {
   /// value is where a line crosses; NaN, the average of the first series.
   final double value;
 
-  /// from and to are the places a band lies behind, counting from 1 along
-  /// the chart as it shows them.
+  /// from and to are the places a band lies behind, from 1, as shown.
   final int from, to;
 
   /// who is the label of the mark a label is written over (a callout's or
@@ -354,10 +345,8 @@ class ChartNote {
       kind, text, value.isNaN ? -1 : value, from, to, who, whom, colour, off);
 }
 
-/// ChartStep is one step of a chart told in parts (prototype v6's steps):
-/// its own title, highlights, notes and date, the rest of the chart shared.
-/// On the timeline the chart moves from step to step (ChartElement.play
-/// seconds each), easing between them.
+/// ChartStep is one step of a chart told in parts: its own title,
+/// highlights, notes and date; the chart eases from step to step.
 @immutable
 class ChartStep {
   final String name;
@@ -365,8 +354,7 @@ class ChartStep {
   final List<ChartHighlight> highlights;
   final List<ChartNote> notes;
 
-  /// at is the date it shows, for a chart playing through dates; empty, the
-  /// last.
+  /// at is the date it shows, playing through dates; empty, the last.
   final String at;
 
   const ChartStep({

@@ -3,44 +3,39 @@ import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // procedural_light.dart is the light thrown across a generated background.
-//
-// It is drawn over the finished pattern rather than known to each generator,
-// so it works on every style and a new style needs no lighting code.
+// It is drawn over the finished pattern, so it works on every style and a
+// new style needs no lighting code.
 
 /// LightSpec is one light (a spotlight) over a background.
 class LightSpec {
-  /// on is whether there is a light at all. Off by default.
+  /// on is whether there is a light at all; off by default.
   final bool on;
 
   /// color is the colour of the light itself, not the surface.
   final Color color;
 
-  /// brightness is how strong it is. Past one it burns towards white.
+  /// brightness is how strong it is; past one it burns towards white.
   final double brightness;
 
   /// size is the pool's radius as a fraction of the longer side, so it holds
   /// at any export width.
   final double size;
 
-  /// falloff is how sharply the light stops: 0 is a pool that fades all the
-  /// way out from the middle, 1 is a hard-edged circle of light.
+  /// falloff is how sharply the light stops: 0 fades out from the middle, 1
+  /// is a hard-edged circle.
   final double falloff;
 
-  /// x and y are where it is, from 0 at the left and top to 1 at the right
-  /// and bottom.
+  /// x and y are where it is, 0 to 1 from the left and top.
   final double x;
   final double y;
 
-  /// direction is which way the light is thrown, as a compass bearing in
-  /// degrees (0 up the page, 90 to the right). It shows only with [reach]: a
-  /// light shone straight on lands as a circle whichever way it points.
+  /// direction is the compass bearing the light is thrown along, in degrees
+  /// (0 up, 90 right). It shows only with [reach]: straight on is a circle.
   final double direction;
 
-  /// reach is how far the light rakes: 0 is straight on and lands as a round
-  /// pool, 1 is almost along the surface and throws a long one.
-  ///
-  /// The pool is thrown forward from [x], [y] rather than growing both ways,
-  /// so those place the near edge of the light, not its middle.
+  /// reach is how far the light rakes: 0 is straight on (a round pool), 1
+  /// almost along the surface (a long one). The pool is thrown forward from
+  /// [x], [y], so they place its near edge, not its middle.
   final double reach;
 
   const LightSpec({
@@ -103,13 +98,12 @@ class LightSpec {
       );
 }
 
-/// MetalSpec is the Metal texture background's own settings.
-///
-/// The colours are the shared ones: the base colour is the metal, the main
-/// colour the sheen along the brushing, and the accent the rust.
+/// MetalSpec is the Metal background's own settings. The shared colours
+/// are the metal (base), the sheen along the brushing (main) and the rust
+/// (accent).
 class MetalSpec {
-  /// roughness is how coarse the brushing is: 0 is a poured, almost glassy
-  /// sheet and 1 is heavily ground.
+  /// roughness is how coarse the brushing is: 0 almost glassy, 1 heavily
+  /// ground.
   final double roughness;
 
   /// rust is how far the corrosion has spread, from none to eaten through.
@@ -118,8 +112,7 @@ class MetalSpec {
   /// damage is the knocks: scratches across the grain and dents in it.
   final double damage;
 
-  /// shine is polished against matt: the width and strength of the highlight
-  /// along the sheet.
+  /// shine is polished against matt: the highlight's width and strength.
   final double shine;
 
   const MetalSpec({

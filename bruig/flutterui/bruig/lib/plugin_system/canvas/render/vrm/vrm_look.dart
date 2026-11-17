@@ -9,10 +9,9 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 // vrm_look.dart draws a new 3D character in its CharacterLook: the
 // materials' shading, shadow colour and highlights set for the look, and a
-// finish over the whole picture (shaders/studio_finish.frag) that draws the
-// lines from the character's depth and normals, grades its colour, lays it
-// on paper, and gives it the look's finish -- manga, pencil, watercolour,
-// painterly, comic or ink sketch.
+// finish over the whole picture (shaders/studio_finish.frag) that draws
+// lines from depth and normals, grades colour, lays it on paper, and gives
+// the look's finish -- manga, pencil, watercolour, painterly, comic or ink.
 
 /// StudioFinishPass is the finish, run on the picture as it is seen.
 class StudioFinishPass extends CustomRenderPass {
@@ -32,7 +31,7 @@ class StudioFinishPass extends CustomRenderPass {
 
   static Future<gpu.Shader?>? _shader;
 
-  /// load is the finish's shader, once: null where it could not be loaded.
+  /// load is the finish's shader, loaded once; null where it could not be.
   static Future<gpu.Shader?> load() => _shader ??= () async {
         try {
           final lib = await gpu.loadShaderLibraryAsync(
@@ -181,7 +180,7 @@ void styleMaterial(PreprocessedMaterial m, VrmPart? part, CharacterLook l,
 Texture2D? _gloss;
 
 /// glossTexture is the shine a glossy look lays on: a soft white spot high
-/// on the left of a black ground, seen as the surface turns to the light.
+/// on the left of a black ground.
 Texture2D glossTexture() => _gloss ??= () {
       const n = 128;
       final px = Uint8List(n * n * 4);

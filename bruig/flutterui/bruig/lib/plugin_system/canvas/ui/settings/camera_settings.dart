@@ -12,17 +12,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:flutter/material.dart';
 
-// camera_settings.dart is a 2D Camera's framing and lens (Ken, 2026-11-14:
-// "it would be nice if the camera had other useful camera settings like
-// depth of field"): how close and how rolled, at the playhead; what is in
-// focus and how soft the rest; parallax; a vignette and motion blur.
-//
-// Focus, blur and vignette can be keyed: the ◆ beside one puts a key at the
-// playhead, and once keyed, changing it keys it at the playhead (a focus
-// pull). Zoom and roll are keyed as dragging the camera is: on a frame of a
-// camera that moves, they are its pose there.
+// camera_settings.dart is a 2D Camera's framing and lens: zoom, roll,
+// focus, depth of field, parallax, vignette, motion blur. Focus, blur and
+// vignette key with ◆, and once keyed a change keys the playhead (a focus
+// pull); zoom and roll are the moving camera's pose, as a drag is.
 
-/// cameraLensGroups are [e]'s framing and lens settings.
 List<Widget> cameraLensGroups(
     CanvasController controller,
     CameraElement e,
@@ -38,7 +32,7 @@ List<Widget> cameraLensGroups(
   var look = cameraLookAt(e, frame, doc);
   var track = e.track ?? ElementTrack.empty;
 
-  /// keyed is whether [channel] is pinned by any of its keyframes.
+  /// keyed is whether [channel] has any keyframes.
   bool keyed(String channel) =>
       track.keys.any((k) => k.values.containsKey(channel));
 
@@ -60,8 +54,8 @@ List<Widget> cameraLensGroups(
     write(keyed(channel) ? keyHere(cam, channel, v) : rest(cam));
   }
 
-  /// keyButton keys [channel] at the playhead, holding [v] -- lit where a
-  /// key already stands there.
+  /// keyButton keys [channel] at the playhead, holding [v]; lit where a key
+  /// already stands.
   Widget keyButton(String channel, double v) => CanvasIconButton(
         key: ValueKey("cameraKey-$channel"),
         icon: Icons.diamond_outlined,
@@ -219,8 +213,7 @@ List<Widget> cameraLensGroups(
             onCommit: commit,
           ),
         ]),
-    // Part of a chart framed, followed through a race (Ken, 2026-11-17:
-    // the improvements report's sixth item). camera_aim.dart.
+    // Part of a chart framed and followed through a race (camera_aim.dart).
     CanvasControlGroup(
         key: const ValueKey("cameraAim"),
         label: "Aim at a chart",
@@ -287,8 +280,7 @@ List<Widget> cameraLensGroups(
                 suffix: "%",
                 width: 104,
                 onChanged: (v) => set("aim", v / 100, (cam) {
-                  // Not keyed: all the way, as unkeyed; keyed, at the
-                  // playhead.
+                  // Unkeyed: all the way; keyed: at the playhead.
                   return keyHere(cam, "aim", v / 100);
                 }),
                 onCommit: commit,

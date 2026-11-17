@@ -24,40 +24,35 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:flutter/material.dart';
 
-/// freshOf is [e] as the document has it now, or null where it has gone:
-/// after waiting on something, the element read before may be out of date,
-/// and writing it back would undo what changed meanwhile.
+/// freshOf is [e] as the document has it now, or null: after an await the
+/// old read may be stale, and writing it back would undo changes.
 T? freshOf<T extends CanvasElement>(CanvasController controller, T e) {
   var now = controller.document.elementById(e.id);
   return now is T ? now : null;
 }
 
-// settings_shared.dart is what every element's settings are made of: where it
-// is, what type it is set in, and the box round it. Shared because they are
-// the same controls everywhere, and nine copies would drift apart.
+// settings_shared.dart is the controls every element shares (place, type,
+// box), kept once so copies cannot drift.
 
 typedef SettingsWrite = void Function(CanvasElement);
 
-/// positionGroup is what every element has: where it is, how big, how turned,
-/// and whether it can be touched -- laid out as the rebuilt panels' prototype
-/// has it. Its keyframes are the Chain's to make and ease (Ken, 2026-11-11).
+/// positionGroup is what every element has: place, size, turn, and whether
+/// it can be touched. Its keyframes are the Chain's to make and ease.
 Widget positionGroup(CanvasController controller, CanvasElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   // No lock, hide or bring-to-front here: they belong to the layer, and the
-  // layers list shows them on the element's row, usable without selecting it.
+  // layers list shows them on the element's row, usable unselected.
 
   var frame = controller.frame;
   var pose = e.poseAt(frame);
   var box = e.boundsAt(frame);
 
-  /// posing is whether these fields are editing a keyframe rather than the
-  /// element's resting position. The same question the stage asks of a drag,
-  /// so a number typed here and a pixel dragged there mean the same thing.
+  /// posing is whether these fields edit a keyframe, not the resting place:
+  /// the stage's question for a drag, so typing and dragging agree.
   var posing = controller.posesRatherThanMoves(e);
 
-  /// moveTo writes a position, as a pose while animating and as the resting
-  /// position otherwise; the fields show the posed value, where the element is
-  /// seen.
+  /// moveTo writes a position, as a pose while animating, else the resting
+  /// position; the fields show the posed value, where the element is seen.
   void moveTo({double? x, double? y}) {
     begin();
     if (!posing) {
@@ -75,13 +70,11 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     ));
   }
 
-  /// resize writes a new width or height, holding the proportions where the
-  /// element asks (see ElementBase.lockAspect) by scaling the other side, never
-  /// by refusing. Both numbers show what is on screen (the resting size times
-  /// the pose's scale) but edit the resting size: a pose scales evenly.
+  /// resize writes width or height, keeping proportions where asked
+  /// (ElementBase.lockAspect) by scaling the other side. Fields show the
+  /// posed size but edit the resting one: a pose scales evenly.
   void resize({double? width, double? height}) {
-    // The undo step, as moveTo opens one. Typing into a field is an edit like
-    // any other, and without this a resize is not undoable.
+    // The undo step, as moveTo opens one.
     begin();
     var scale = pose.scale == 0 ? 1.0 : pose.scale;
     if (!e.base.lockAspect) {
@@ -92,8 +85,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
       return;
     }
 
-    // The factor the edited side moved by, applied to both; guarded against
-    // a zero side, which has no proportions to keep.
+    // The edited side's factor applied to both, guarding a zero side.
     var by = width != null
         ? (box.width <= 0 ? 1 : width / box.width)
         : (box.height <= 0 ? 1 : height! / box.height);
@@ -105,10 +97,8 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     ));
   }
 
-  // Text riding a line has no position or angle of its own: they are the
-  // line's, and nudging the fields would move the words off it. Only while
-  // the line is still there: without it the text falls back to its own box
-  // (see _curveFor).
+  // Text riding a line takes its place and angle from the line, so the
+  // fields would move the words off it; without the line, its own box.
   if (e is TextElement &&
       e.curve != null &&
       controller.document.elementById(e.curve!.elementId) != null) {
@@ -145,9 +135,8 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
   var xField = CanvasStepper(
     key: const ValueKey("elementX"),
     label: "X",
-    // Two to a line -- across beside down, wide beside high -- held so
-    // by the breaks, not by the width, which only has to leave the
-    // arrows room.
+    // Two to a line (across beside down, wide beside high), held so by the
+    // breaks, not the width, which only leaves the arrows room.
     width: 104,
     value: box.left,
     onChanged: (v) => moveTo(x: v),
@@ -185,8 +174,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     value: e.rotationAt(frame),
     min: -3600,
     max: 3600,
-    // The same least width as X above it, so Angle and Opacity fall in
-    // X's and Y's columns.
+    // X's least width, so Angle and Opacity line up under X and Y.
     width: 104,
     step: 15,
     dragStep: 1,
@@ -240,8 +228,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     active: e.base.lockAspect,
     onPressed: () {
       begin();
-      // A picture let go of squashes rather than trims -- see
-      // ImageElement.withProportionsKept.
+      // A picture let go squashes (ImageElement.withProportionsKept).
       write(e is ImageElement
           ? e.withProportionsKept(!e.base.lockAspect)
           : e.withBase(lockAspect: !e.base.lockAspect));
@@ -251,17 +238,16 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
 
   return CanvasControlGroup(
       label: e.kind.label,
-      // The settings are already headed with the element's own name.
+      // The settings are already headed with the element's name.
       hideCaption: true,
       children: [
-        // Where it is and how it is turned on one line, how big and how
-        // solid on the next.
+        // Place and turn on one line, size and opacity on the next.
         panelRow([cell(xField), cell(yField), cell(turnField)]),
         panelRow([cell(wField), cell(hField), cell(opacityField)]),
         lockButton,
         anchorButtons(controller, e, write, begin, commit),
-        // How it is slanted, after how it is turned -- and the switch that
-        // makes the side handles slant it, for a screen with no keys to hold.
+        // Slant after turn, and the switch making side handles slant it, for
+        // a screen with no keys to hold.
         const CanvasLineBreak(),
         for (var (key, label, value, across) in [
           ("elementSkewX", "Skew X", e.base.skewX, true),
@@ -293,8 +279,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         const CanvasHint("Skew X leans the sides, Skew Y the top and bottom. "
             "On the canvas, hold Command and drag a side handle -- or switch "
             "Skew on and drag one without a key."),
-        // How far from the scene's Camera it is, for its depth of field and
-        // parallax (Ken, 2026-11-14): only where there is a camera to see.
+        // Distance from the scene's Camera, for depth of field and parallax.
         if (e is! CameraElement && cameraOf(controller.document) != null) ...[
           const CanvasLineBreak(gap: 8),
           CanvasStepper(
@@ -318,8 +303,8 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
               "field blurs what is away from its focus, and its parallax moves "
               "the far less and the near more."),
         ],
-        // A counter on a document of pages can be the page number, said here
-        // beside "Own on A4": both are what the element does on its leaf.
+        // A counter in a document of pages can be the page number, offered
+        // beside "Own on A4": both are what it does on its leaf.
         if (e is CounterElement && controller.document.isPages) ...[
           const CanvasLineBreak(gap: 8),
           CanvasToggle(
@@ -333,8 +318,8 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
               commit();
             },
           ),
-          // And which edge it sits against, for the page number that belongs
-          // on the outside of the leaf. See CounterElement.mirrored.
+          // And which edge it sits against, for a page number on the leaf's
+          // outside. See CounterElement.mirrored.
           if (e.isPageNumber)
             CanvasToggle(
               key: const ValueKey("counterMirrored"),
@@ -360,18 +345,14 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
                   "it is drawn on instead of counting. Put one on the master "
                   "canvas and every page wears it."),
         ],
-        // What this element does on this shape of page, for a document being
-        // laid out for several. Only then: on a canvas made for one shape
-        // there is one design and nothing to say about it.
+        // What this element does on this page shape, for a document laid out
+        // for several; a canvas made for one shape has one design.
         if (controller.document.targets.length > 1) ...[
-          // Air, not just a break: what follows is about this ratio, not the
-          // element's position.
+          // Air, not just a break: what follows is about this ratio.
           const CanvasLineBreak(gap: 8),
-          // How big everything inside the box is on this shape: the box stays
-          // and its contents scale (type, spacing, padding), as a headline that
-          // fills a banner but is a word on a line in a feed needs. See
-          // ElementBase.typeScale. Only where it does something: a picture's,
-          // shape's or chart's contents are already fractions of the box.
+          // How big the contents are on this shape: the box stays and type,
+          // spacing and padding scale, as a banner headline is a feed line
+          // (ElementBase.typeScale). Pictures, shapes and charts scale already.
           if (e.scalesInside) ...[
             CanvasStepper(
               key: const ValueKey("elementTypeScale"),
@@ -404,16 +385,14 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
                 "the room round it together, which is what keeps a design "
                 "looking like itself at another size."),
           ],
-          // And the way out of sharing altogether, for the element the one
-          // design cannot carry.
+          // And the way out of sharing, for an element it cannot carry.
           CanvasToggle(
             key: const ValueKey("elementOwnDesign"),
             label: "Own on ${shapeShort(shapeKey(controller.document.size))}",
             value: e.base.ownDesign,
             onChanged: (v) {
               begin();
-              // The shared design is kept aside as this one is detached, and
-              // put back the moment it is not -- see detachedHere.
+              // The shared design is kept aside while detached.
               write(v ? detachedHere(e) : sharedAgain(e));
               commit();
             },
@@ -434,8 +413,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
       ]);
 }
 
-/// typeGroups is the shared type controls, used by every element that draws
-/// words.
+/// typeGroups is the shared type controls for elements that draw words.
 List<Widget> typeGroups(
   TextSpec spec,
   ValueChanged<TextSpec> onChanged,
@@ -444,73 +422,60 @@ List<Widget> typeGroups(
   String label = "Type",
   bool includeCase = true,
 
-  /// hideCaption drops the first group's caption in a sidebar, for the
-  /// callers that have already headed a section with the same word.
+  /// hideCaption drops the first caption where the section says it already.
   bool hideCaption = false,
 
-  /// fill offers a picture or a pattern showing through the letters: a text
-  /// element's only. [context] is what a picture is chosen with, so it is
-  /// required wherever this is on.
+  /// fill offers a picture or pattern through the letters (text elements
+  /// only); [context] is then required to choose it.
   bool fill = false,
   BuildContext? context,
 
-  /// remember prefixes the two buttons' open state, so that a panel carrying
-  /// three sets of these -- a counter has one for the number, one for the
-  /// words and one for the buttons -- does not open all three at once.
+  /// remember prefixes the two buttons' open state, so a panel with three
+  /// sets (a counter's number, words and buttons) does not open all three.
   String remember = "type",
 
-  /// rule draws the line under each of these groups; off where they run on
-  /// into what follows as one subject (a text element's face, colour and box).
+  /// rule draws the line under each group; off where they run on into what
+  /// follows as one subject (a text element's face, colour and box).
   bool rule = true,
 
-  /// extraMore is put behind the first button, under the spacing settings: a
-  /// text element's marks.
+  /// extraMore goes behind the first button: a text element's marks.
   List<Widget> extraMore = const [],
 
-  /// fitted is whether the size is worked out from the box (a text's Fit to
-  /// box), so the Size field says so: a typed size there did nothing that
-  /// could be seen (Ken's privacy video, 2026-11-11). The caller turns the
-  /// fitting off when a size is typed.
+  /// fitted is whether the size comes from the box (Fit to box), so the
+  /// field says so; the caller stops fitting when a size is typed.
   bool fitted = false,
 
-  /// colourInMore puts the colour settings behind the type button instead of
-  /// on a row of their own, so one piece of writing is one line and one button:
-  /// for a text element's several pieces. Elsewhere the swatch keeps its row.
+  /// colourInMore puts colour behind the type button, so a text piece is
+  /// one line and one button; elsewhere the swatch keeps its row.
   bool colourInMore = false,
 
-  /// rowBefore is put at the front of the type row, before the face: what
-  /// tells one row from the next (a text item's slot and its remove button).
+  /// rowBefore goes at the front of the type row: what tells rows apart (a
+  /// text item's slot and remove button).
   List<Widget> rowBefore = const [],
 
-  /// captions draws the controls' own captions: off for the second and later
-  /// of a run of these. The room is still reserved, so the rows line up. See
-  /// _labelled.
+  /// captions draws the controls' captions: off for the second and later of
+  /// a run of these. The room is kept, so rows line up. See _labelled.
   bool captions = true,
 
   /// includeAlign offers the two alignment dropdowns behind the button: off
-  /// for a piece whose place its slot decides.
+  /// for a piece placed by its slot.
   bool includeAlign = true,
 
   /// includeUnderline offers the underline switch: off where a drawn
-  /// underline (a text element's marks) does the job, so there are not two
-  /// switches called Underline.
+  /// underline (a text's marks) does it, so there are not two.
   bool includeUnderline = true,
 
-  /// onRename makes the group's caption a name that can be typed into, for
-  /// the callers whose caption is a name rather than a heading: a text
-  /// element's pieces, and the element itself.
+  /// onRename makes the caption a typable name, for callers whose caption
+  /// is a name: a text element's pieces, and the element itself.
   ValueChanged<String>? onRename,
 
-  /// looks offers the type's own outline, shadow and glow: off for a text
-  /// element, whose words and pieces have them as looks in the Chain, kept
-  /// in one place (see text_looks.dart).
+  /// looks offers the type's outline, shadow and glow: off for a text
+  /// element, whose looks live in the Chain (see text_looks.dart).
   bool looks = true,
 }) {
   String cap(String name) => captions ? name : "";
-  // The colour settings, built once for a row of their own or behind the
-  // type button. The swatch alone: folded in, it goes on the row, since the
-  // words' colour is the first thing changed and should not be behind a
-  // button.
+  // The colour settings, for their own row or behind the type button; the
+  // swatch stays on the row either way, as colour is changed first.
   var swatch = CanvasColorButton(
     label: "Colour",
     color: spec.color,
@@ -528,8 +493,8 @@ List<Widget> typeGroups(
     },
   );
 
-  // Italic and underline: on the row where the colour is not, and behind the
-  // button where it is.
+  // Italic and underline: on the row where colour is not, behind the button
+  // where it is.
   var slanted = <Widget>[
     CanvasIconButton(
       icon: Icons.format_italic,
@@ -555,9 +520,8 @@ List<Widget> typeGroups(
   ];
 
   var colourRow = <Widget>[
-    // What the letters are painted with. The colour is the usual answer
-    // and stays first; a picture or a pattern replaces it, and the
-    // outline and shadow settings under it go on meaning what they mean.
+    // What the letters are painted with: colour first, or a picture or
+    // pattern, under which outline and shadow keep their meaning.
     if (fill && context != null) ...[
       CanvasDropdown<TextFillKind>(
         key: const ValueKey("textFillKind"),
@@ -571,17 +535,16 @@ List<Widget> typeGroups(
           commit();
         },
       ),
-      // What that answer needs, on its line: choosing a picture comes next.
+      // What that answer needs, on its line: choosing a picture is next.
       if (spec.fill.kind != TextFillKind.color)
         ...fillBits(context, spec.fill,
             (f) => onChanged(spec.copyWith(fill: f)), begin, commit),
-      // The outline starts a line of its own either way, so that what is on
-      // the first line is always "what are these letters painted with".
+      // The outline always starts its own line, so the first line is always
+      // "what are these letters painted with".
       const CanvasLineBreak(),
     ],
-    // The swatch can fade the words from one colour to another across their
-    // box, except where outlined or filled with a picture or a pattern. See
-    // TextSpec.fade.
+    // The swatch can fade the words between two colours across their box,
+    // unless outlined or filled with a picture or pattern. See TextSpec.fade.
     if (!colourInMore) swatch,
     if (looks) ...[
       CanvasNumberField(
@@ -594,7 +557,7 @@ List<Widget> typeGroups(
         onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
         onCommit: commit,
       ),
-      // No caption of its own: it is the outline's colour, beside its thickness.
+      // No caption: it is the outline's colour, beside its thickness.
       CanvasColorButton(
         color: spec.outlineColor,
         onChanged: (c) {
@@ -603,8 +566,8 @@ List<Widget> typeGroups(
           commit();
         },
       ),
-      // The shadow's amount and colour with them: four controls, two of each,
-      // and the same shape twice reads as one line rather than as four things.
+      // The shadow's amount and colour with them: two of each in the same
+      // shape read as one line rather than four things.
       CanvasNumberField(
         label: "Shadow",
         value: spec.shadowBlur,
@@ -626,8 +589,8 @@ List<Widget> typeGroups(
   ];
   var colourMore = <Widget>[
     if (looks) ...[
-      // Where the light is, not where the shadow goes: one light for a
-      // scene, and the same two numbers on every element in it.
+      // Where the light is, not where the shadow goes: one light for a scene,
+      // the same two numbers on every element in it.
       CanvasNumberField(
         key: const ValueKey("textShadowAngle"),
         label: "Direction",
@@ -697,9 +660,8 @@ List<Widget> typeGroups(
           CanvasDropdown<String>(
             label: cap("Font"),
             value: spec.fontFamily,
-            // The least these three will be, not their width: six things share
-            // the line, and wider minimums pushed the switches onto a line of
-            // their own in a narrow sidebar. They grow into a wide one.
+            // Least widths, not widths: six things share the line, and
+            // wider minimums push the switches down in a narrow sidebar.
             width: 60,
             options: [for (var f in canvasFonts) (f, f)],
             onChanged: (v) {
@@ -738,18 +700,16 @@ List<Widget> typeGroups(
               commit();
             },
           ),
-          // The colour, where it has been folded in behind the button: what
-          // colour the words are belongs on the line with the face and the
-          // size, not behind anything.
+          // The colour, where folded in: it belongs on the line with the
+          // face and size, not behind anything.
           if (colourInMore) swatch,
           if (!colourInMore) ...slanted,
         ],
         more: [
-          // The colour first, because it is the most of what is back here.
+          // The colour first, as it is most of what is back here.
           if (colourInMore) ...[
             ...colourRow,
-            // The shadow and the glow on a line of their own, under the colour
-            // and the outline.
+            // Shadow and glow on their own line, under colour and outline.
             if (colourMore.isNotEmpty) ...[
               const CanvasLineBreak(),
               ...colourMore,
@@ -812,8 +772,8 @@ List<Widget> typeGroups(
                 commit();
               },
             ),
-          // The two switches at the end of the line the spacing is on, where
-          // the colour has taken their place on the row above.
+          // The two switches end the spacing line, where the colour took
+          // their place on the row above.
           if (colourInMore) ...slanted,
           ...extraMore,
         ]),
@@ -828,12 +788,9 @@ List<Widget> typeGroups(
   ];
 }
 
-/// boxGroup is the shared frame controls: the background, the border, the
-/// corners and the room inside. [fillLabel] names the background swatch: a
-/// picture's is what shows behind it, not a fill. [onPadding] takes a change
-/// to the room inside for an element that does more than store it (a
-/// picture grows its box); left out, padding is written like everything
-/// else.
+/// boxGroup is the shared frame controls: background, border, corners and
+/// padding. [fillLabel] names the background swatch; [onPadding] takes
+/// padding for an element that does more than store it (a picture grows).
 Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         VoidCallback begin, VoidCallback commit,
         {String label = "Box",
@@ -842,26 +799,23 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         bool rule = true,
         ValueChanged<BoxSpec>? onPadding,
 
-        /// fill offers a picture or a pattern behind the box instead of a
-        /// colour, the same three answers the letters have. [context] is what
-        /// a picture is chosen with, so it is required wherever this is on.
+        /// fill offers a picture or pattern behind the box, as for letters;
+        /// [context] is then required.
         bool fill = false,
         BuildContext? context,
 
-        /// compact lays it out as a rebuilt panel's (the prototype's): the
-        /// fill and the border's colour side by side, each with its code,
-        /// and the corners called Corners.
+        /// compact lays it out as element panels do: fill and border colour
+        /// side by side with their codes, the corners called Corners.
         bool compact = false}) =>
-    // The colours and one number each for the border, the corners and the
-    // room inside, each splitting into its four by its link: see
-    // CanvasSidesField.
+    // The colours and one number each for border, corners and room inside,
+    // each splitting into four by its link: see CanvasSidesField.
     CanvasMoreGroup(
         label: label,
         rule: rule,
         remember: "${remember}Box",
         tooltip: "Each side and each corner on its own",
         row: [
-          // Only where the box is painted with a colour: a picture or a pattern
+          // Only where the box is painted a colour: a picture or pattern
           // covers it.
           if (compact)
             panelRow([
@@ -957,13 +911,12 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
               "cannot round the same corner."),
         ],
         more: [
-          // What the box is painted with, where the caller offers the choice:
-          // the letters' three answers, behind the button as theirs are. The
-          // colour keeps its swatch either way: a picture is drawn over it.
+          // The box's paint where offered, as the letters' is; the colour
+          // keeps its swatch, as a picture is drawn over it.
           if (fill && context != null) ...[
             CanvasDropdown<TextFillKind>(
               key: ValueKey("${remember}BoxFillKind"),
-              // Beside the letters' own in a rebuilt panel: said which.
+              // Beside the letters' own in a dense panel: say which.
               label: compact ? "Box painted with" : "Painted with",
               value: box.painted.kind,
               width: 118,
@@ -974,16 +927,16 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
                 commit();
               },
             ),
-            // Asked by the kind, not by whether the fill is on: a picture is not
-            // on until chosen, and these buttons choose it.
+            // By the kind, not whether the fill is on: a picture is not on
+            // until chosen, and these buttons choose it.
             if (box.painted.kind != TextFillKind.color)
               ...fillBits(context, box.painted,
                   (f) => onChanged(box.copyWith(painted: f)), begin, commit,
                   keyPrefix: "${remember}Box"),
             const CanvasLineBreak(),
           ],
-          // Each side and corner on its own: nothing now, since the row's fields
-          // split into their four (see SidePart).
+          // Nothing for each side and corner alone: the row's fields split
+          // into four (see SidePart).
           ...roomFields(
               box.borders, (r) => onChanged(box.withBorders(r)), commit,
               label: "Border",
@@ -1000,11 +953,8 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
               part: SidePart.sides),
         ]);
 
-/// valueDot is the diamond beside one animatable property.
-///
-/// Its own control rather than part of the pose diamond, because these are
-/// real channels: a keyframe can pin a caption's slide without pinning where
-/// its box sits, and the two are asked for at different moments.
+/// valueDot is the diamond beside an animatable property: a real channel,
+/// so a key can pin a caption's slide without pinning its box.
 Widget valueDot(CanvasController controller, CanvasElement e, String channel,
     String what, double value) {
   var animated = controller.document.isAnimated;
@@ -1029,8 +979,8 @@ Widget valueDot(CanvasController controller, CanvasElement e, String channel,
   );
 }
 
-/// curveOptions is every line and path on the canvas, for text to ride:
-/// both, since to a reader both are lines.
+/// curveOptions is every line and path on the canvas for text to ride: to
+/// a reader both are lines.
 List<(String, String)> curveOptions(CanvasController controller) => [
       ("", "Nothing"),
       for (var element in controller.document.elements)
@@ -1038,32 +988,29 @@ List<(String, String)> curveOptions(CanvasController controller) => [
           (element.id, element.name),
     ];
 
-/// boxed draws a rule around a section and leaves a gap after it: for a
-/// section that is a panel (a table with its own scrollbars), which needs an
-/// edge among the captioned groups.
+/// boxed draws a rule and a gap round a section that is a panel (a table
+/// with scrollbars), giving it an edge among captioned groups.
 Widget boxed(BuildContext context, Widget child) => Builder(
-    // Asked where it is drawn, not of [context], which is the settings'
-    // own and above any section: in a section the box is the card the
-    // expander draws itself as.
+    // Asked where drawn, not of [context], which is above any section: in a
+    // section the box is the card the expander draws itself as.
     builder: (context) =>
         CanvasCards.on(context) ? child : _boxed(context, child));
 
 Widget _boxed(BuildContext context, Widget child) {
   var theme = ThemeNotifier.of(context);
   return Padding(
-    // The same gap a group leaves under itself, so a boxed section and a
-    // captioned group are the same distance from what follows them.
+    // A group's own gap below, so boxed sections and captioned groups space
+    // alike.
     padding: const EdgeInsets.only(bottom: canvasGroupGap),
-    // Builder, because the context these settings are built with comes from
-    // *above* the CanvasControlScope that says whether this is a column or a
-    // band -- so asking it directly always answered "band".
+    // Builder, because the settings' context is above the CanvasControlScope
+    // that says column or band, so asking it directly always says "band".
     child: Builder(
       builder: (context) => Container(
-        // The full width of the column, open or closed: left to size itself,
-        // a closed section shrank to its heading and read as a stray button.
+        // Full column width, open or shut: sized to itself, a shut section
+        // shrinks to its heading and reads as a stray button.
         width: double.infinity,
-        // The same above and below, so a heading's button is not hard
-        // against the top edge.
+        // Equal above and below, so a heading's button is not hard against
+        // the top.
         padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(6),
@@ -1076,17 +1023,16 @@ Widget _boxed(BuildContext context, Widget child) {
   );
 }
 
-/// fillBits are the controls one kind of fill needs: the two buttons that
-/// choose a picture, or the pattern's own style and colours (an ordinary
-/// generated background). Public, for the letters, a box and a shape.
+/// fillBits are one fill kind's controls: picture buttons, or a pattern's
+/// style and colours. For letters, boxes and shapes.
 List<Widget> fillBits(
   BuildContext context,
   TextFill fill,
   ValueChanged<TextFill> onChanged,
   VoidCallback begin,
   VoidCallback commit, {
-  /// keyPrefix names the controls, since a panel can now carry two sets of
-  /// them: what the letters are painted with and what their box is.
+  /// keyPrefix names the controls, as a panel can carry two sets: the
+  /// letters' paint and their box's.
   String keyPrefix = "text",
 }) {
   void now(TextFill next) {
@@ -1125,9 +1071,8 @@ List<Widget> fillBits(
           value: fill.tile,
           onChanged: (v) => now(fill.copyWith(tile: v)),
         ),
-        // What a picture element calls its Look (the named filter and the
-        // overlay), with the same names in the same order; then the two
-        // sliders a picture keeps beside its Fit.
+        // A picture element's Look (filter, overlay), same names and order;
+        // then the two sliders a picture keeps beside Fit.
         CanvasDropdown<ImageFilterPreset>(
           key: ValueKey("${keyPrefix}FillLook"),
           label: "Filter",
@@ -1150,7 +1095,7 @@ List<Widget> fillBits(
             label: "Colour",
             color: fill.overlay,
             // And two colours to fade between, as every swatch has: how a
-            // photograph is faded into a ground.
+            // photograph fades into a ground.
             gradient: fill.overlayFade,
             onChanged: (c) => now(fill.copyWith(overlay: c)),
             onGradientChanged: (g) => now(g == null
@@ -1182,8 +1127,8 @@ List<Widget> fillBits(
       ],
     ],
     if (fill.kind == TextFillKind.pattern) ...[
-      // The three choices a background starts from (style, look, colours),
-      // since a pattern in a word is the same pattern.
+      // The three choices a background starts from (style, look, colours):
+      // a pattern in a word is the same pattern.
       patternStyleDropdown(
         key: ValueKey("${keyPrefix}FillPattern"),
         width: 138,
@@ -1270,7 +1215,7 @@ List<Widget> fillBits(
         onPressed: () => now(fill.copyWith(
             pattern: fill.pattern.copyWith(seed: fill.pattern.seed + 1))),
       ),
-      // Back to the settings the style arrives with, keeping the style.
+      // Back to the style's own settings, keeping the style.
       CanvasIconButton(
         key: ValueKey("${keyPrefix}FillReset"),
         icon: Icons.restart_alt,
@@ -1282,8 +1227,8 @@ List<Widget> fillBits(
         })),
       ),
     ],
-    // How much of it lands, for both kinds: knocked back, it is a ground
-    // rather than competing with the words. A colour has its own alpha.
+    // How much of it lands, for both kinds: knocked back, it is a ground, not
+    // competing with the words. A colour has its own alpha.
     if (fill.on)
       CanvasNumberField(
         key: ValueKey("${keyPrefix}FillOpacity"),
@@ -1321,9 +1266,8 @@ List<Widget> fillBits(
           "the words rather than restarting inside each one. Zoom sizes it "
           "against them: 1 fits it across the words, 2 shows a quarter of it "
           "at twice the size."),
-    // The rest of what the pattern's style can be told (its own settings
-    // and the effects), behind a heading: a background's controls, less
-    // what is on the row above.
+    // The rest of the pattern style's settings and effects, behind a
+    // heading: a background's controls less those on the row above.
     if (fill.kind == TextFillKind.pattern) ...[
       const CanvasLineBreak(),
       CanvasFill(
@@ -1356,14 +1300,13 @@ List<Widget> fillBits(
   ];
 }
 
-/// anchorButtons are an element's anchor point: shown on the stage, where
-/// it can be dragged, or hidden and so left where it is; and, while it is
-/// shown, locked there, or put back in the middle. See ElementBase.anchorX.
+/// anchorButtons are the anchor point: shown on stage to drag, or hidden;
+/// while shown, locked or re-centred. See ElementBase.anchorX.
 Widget anchorButtons(CanvasController controller, CanvasElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var shown = controller.anchorShown(e.id);
   var locked = e.base.anchorLocked;
-  // One cluster: three buttons about one thing, kept together on the line.
+  // One cluster: three buttons about one thing, kept together.
   return Row(
       key: const ValueKey("elementAnchor"),
       mainAxisSize: MainAxisSize.min,
@@ -1403,8 +1346,8 @@ Widget anchorButtons(CanvasController controller, CanvasElement e,
       ]);
 }
 
-/// previewButton plays [element]'s animation alone, once -- or, while it
-/// is, stops it. See CanvasController.previewElement.
+/// previewButton plays [element]'s animation alone, once, or stops it while
+/// playing. See CanvasController.previewElement.
 Widget previewButton(CanvasController controller, CanvasElement element) {
   var going = controller.previewing?.id == element.id;
   return CanvasIconButton(
@@ -1419,10 +1362,9 @@ Widget previewButton(CanvasController controller, CanvasElement element) {
   );
 }
 
-/// effectBits are the settings a cutting preset has: how many pieces, how far
-/// they are thrown, how much they turn. Shared by the element's and the text
-/// element's animation sections. [scatters] is false where the pieces stay
-/// put (a mosaic's blocks, a glitch's slices), leaving out the throwing ones.
+/// effectBits are a cutting preset's settings (pieces, throw, turn), for
+/// element and text animations; [scatters] false hides throwing where
+/// pieces stay put (mosaic, glitch).
 List<Widget> effectBits(
   EffectSpec effect,
   bool scatters,
@@ -1504,21 +1446,19 @@ List<Widget> effectBits(
       ]),
     ];
 
-/// SidePart is which half of these to build: the one number that sets all
-/// of them, the four that set one each, or both. One CanvasSidesField now
-/// holds the four, so [SidePart.sides] builds nothing.
+/// SidePart is which half to build: the all-sides number, the four, or
+/// both. One CanvasSidesField holds the four, so [SidePart.sides] is empty.
 enum SidePart { all, sides, both }
 
-/// cornerFields is the corners as one control: a number for all four and a
-/// link that splits them, shared by an element's frame and a rectangle shape.
+/// cornerFields is the corners as one control (a number for all four and a
+/// splitting link), shared by an element's frame and a rectangle shape.
 List<Widget> cornerFields(
         Corners corners, ValueChanged<Corners> onChanged, VoidCallback commit,
         {String label = "Radius",
         String prefix = "box",
         SidePart part = SidePart.both}) =>
-    // One control for the four: a stepper for all of them and a link that
-    // splits it into one each -- see CanvasSidesField. Asked for the sides
-    // alone, there is nothing more to give: they are in it.
+    // One control for the four (see CanvasSidesField). Asked for the sides
+    // alone, there is nothing more: they are in it.
     part == SidePart.sides
         ? const []
         : [
@@ -1547,14 +1487,14 @@ List<Widget> cornerFields(
             ),
           ];
 
-/// roomFields is the four sides of a room -- a border, a padding -- as one
-/// control. See cornerFields, which is the same idea for the corners.
+/// roomFields is a room's four sides (a border, a padding) as one control,
+/// as cornerFields is for corners.
 List<Widget> roomFields(
         Room room, ValueChanged<Room> onChanged, VoidCallback commit,
         {String label = "Padding",
         String prefix = "box",
-        // What the keys are called, so a second set in the same panel (the
-        // border's, beside the padding's) is findable by what it is.
+        // The keys' name, so a second set in one panel (border beside
+        // padding) is findable by what it is.
         String allKey = "Padding",
         String sideKey = "Pad",
         SidePart part = SidePart.both}) =>
@@ -1582,9 +1522,8 @@ List<Widget> roomFields(
             ),
           ];
 
-/// easeDropdown is a choice of easing, each drawn as its curve beside its
-/// name -- what it does to a thing over its time, seen before it is picked.
-/// [curve] is the easing as a function of 0..1.
+/// easeDropdown is a choice of easing, each drawn as its curve; [curve] is
+/// the easing over 0..1.
 Widget easeDropdown<T>({
   Key? key,
   String label = "Curve",
@@ -1607,8 +1546,8 @@ Widget easeDropdown<T>({
       onChanged: onChanged,
     );
 
-/// EaseCurve is a small drawing of an easing: time along, progress up, with
-/// the start and the end level marked, so an overshoot is seen to overshoot.
+/// EaseCurve is a small drawing of an easing: time along, progress up, the
+/// start and end levels marked so an overshoot shows.
 class EaseCurve extends StatelessWidget {
   final double Function(double) curve;
   const EaseCurve(this.curve, {super.key});
@@ -1663,7 +1602,7 @@ class _EaseCurvePainter extends CustomPainter {
       old.curve != curve || old.ink != ink || old.guide != guide;
 }
 
-/// shortNumber is [v] as a summary line writes it: whole where it is whole,
-/// to one place where it is not.
+/// shortNumber is [v] as a summary writes it: whole where whole, else to
+/// one place.
 String shortNumber(double v) =>
     v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);

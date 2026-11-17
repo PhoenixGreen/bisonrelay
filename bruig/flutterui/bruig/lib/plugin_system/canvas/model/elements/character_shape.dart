@@ -1,14 +1,11 @@
-// character_shape.dart is how a new 3D character is shaped from the VRoid
-// body it starts from: every setting a number, nought as the body was made,
-// and the presets last picked. What the numbers do to the body is in
-// render/vrm/vrm_shape.dart; which settings there are, and how they are
-// grouped for the page, is [characterShapeParts] below.
+// character_shape.dart is how a 3D character is shaped from its VRoid body:
+// every setting a number, nought as the body was made, and the presets last
+// picked. What the numbers do is in render/vrm/vrm_shape.dart; the settings
+// and their grouping for the page are [characterShapeParts] below.
 
-/// CharacterShape is one character's shaping. Immutable: each change is a
-/// new one.
+/// CharacterShape is one character's shaping. Immutable.
 class CharacterShape {
-  /// values are the settings changed from their defaults, by path
-  /// ("eyes.size").
+  /// values are the settings moved from default, by path ("eyes.size").
   final Map<String, double> values;
 
   /// choices are the named settings: presets ("shapes.face": "Round") and
@@ -33,7 +30,6 @@ class CharacterShape {
   /// defaultOf is what [path] is before anything is changed.
   static double defaultOf(String path) => _defaults[path] ?? 0;
 
-  /// get is [path]'s setting.
   double get(String path) => values[path] ?? defaultOf(path);
 
   /// choice is [path]'s named setting: a preset's name, or "As made".
@@ -56,7 +52,7 @@ class CharacterShape {
   }
 
   /// withChoice sets [path] to [v]. A hair source picked by hand is no
-  /// longer the hairstyle it was started from.
+  /// longer the hairstyle it started from.
   CharacterShape withChoice(String path, String v) =>
       CharacterShape(values: values, choices: {
         for (final e in choices.entries)
@@ -66,8 +62,7 @@ class CharacterShape {
       });
 
   /// withPreset picks [name] from [c]: the settings the preset is about go
-  /// back to their defaults, then take the preset's values, and go on from
-  /// there.
+  /// back to their defaults, then take the preset's values.
   CharacterShape withPreset(ShapePresets c, String name) {
     final next = Map<String, double>.of(values);
     for (final p in c.paths) {
@@ -195,9 +190,8 @@ class CharacterShape {
       a.entries.every((e) => b.containsKey(e.key) && b[e.key] == e.value);
 }
 
-/// ageShift is what the years do, added to what is set: from a young adult
-/// (rounder face, bigger eyes) to old age (longer nose and ears, thinner
-/// lips, a lower brow, a softer, more stooped body).
+/// ageShift is what the years add: from a young adult (rounder face, bigger
+/// eyes) to old age (longer nose and ears, thinner lips, stooped body).
 Map<String, double> ageShift(double age) {
   final y = ((25 - age) / 7).clamp(0.0, 1.0);
   final o = ((age - 35) / 50).clamp(0.0, 1.0);
@@ -230,7 +224,6 @@ Map<String, double> ageShift(double age) {
   };
 }
 
-/// ShapeControl is one control on a part's page.
 sealed class ShapeControl {
   const ShapeControl();
 }
@@ -246,8 +239,7 @@ class ShapeSlider extends ShapeControl {
       {this.min = -1, this.max = 1, this.whole = false});
 }
 
-/// ShapePresets is a list of starting points, each setting the sliders it
-/// names.
+/// ShapePresets is starting points, each setting the sliders it names.
 class ShapePresets extends ShapeControl {
   final String key, label;
   final Map<String, Map<String, double>> presets;
@@ -256,8 +248,7 @@ class ShapePresets extends ShapeControl {
   /// puts back every setting under it, not only those some preset names.
   final String? group;
 
-  /// groupPaths are the settings under [group], for the presets that own
-  /// one.
+  /// groupPaths are the settings under [group].
   final List<String> groupPaths;
   const ShapePresets(this.key, this.label, this.presets,
       {this.group, this.groupPaths = const []});
@@ -267,23 +258,20 @@ class ShapePresets extends ShapeControl {
       group != null ? groupPaths : {for (final p in presets.values) ...p.keys};
 }
 
-/// ShapeChoice is one of a few named options.
 class ShapeChoice extends ShapeControl {
   final String key, label;
   final List<(String, String)> options;
   const ShapeChoice(this.key, this.label, this.options);
 }
 
-/// ShapeColour is a colour picked from [palette], 0xRRGGBB, or the colour
-/// as made.
+/// ShapeColour is a colour from [palette], 0xRRGGBB, or as made.
 class ShapeColour extends ShapeControl {
   final String key, label;
   final List<int> palette;
   const ShapeColour(this.key, this.label, this.palette);
 }
 
-/// hairPalette, skinPalette and eyePalette are the colours offered, as
-/// 0xRRGGBB.
+/// hairPalette, skinPalette and eyePalette are the colours, 0xRRGGBB.
 const List<int> hairPalette = [
   0x17120f, 0x3f2a1e, 0x6a4128, 0x9a6e45, 0xddbb7c, 0xede3c9, //
   0x9c9a98, 0x8a3b22, 0x5a2e5e, 0x1f6f75, 0xd978a0, 0x4a6fd0,
@@ -313,9 +301,8 @@ const List<String> hairChoiceKeys = [
   "hair.tails"
 ];
 
-/// hairSources are the characters whose hair can be worn: the four bodies,
-/// and four kept only for their hair (vroid_assets.dart), by their ids
-/// there, with what their hair is.
+/// hairSources are the characters whose hair can be worn (the four bodies
+/// and four kept for hair, vroid_assets.dart), by id, with their hair.
 const List<(String, String)> hairSources = [
   ("Vivi", "Bob with buns"),
   ("Victoria_Rubin", "Long, side tails"),
@@ -384,8 +371,7 @@ class ShapePart {
       this.id, this.group, this.name, this.says, this.frame, this.controls);
 }
 
-/// figureShapes are the kinds of figure: how many heads tall, how big its
-/// eyes, how long its limbs.
+/// figureShapes are the kinds of figure: heads tall, eye size, limbs.
 const Map<String, Map<String, double>> figureShapes = {
   "As made": {},
   "Realistic": {
@@ -700,8 +686,7 @@ const List<String> _musclePaths = [
   "muscle.quads", "muscle.calves",
 ];
 
-/// characterShapeParts are the page's parts, in its order, under their
-/// headings.
+/// characterShapeParts are the page's parts, in order, under headings.
 const List<ShapePart> characterShapeParts = [
   ShapePart(
       "age",

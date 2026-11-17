@@ -9,11 +9,10 @@ import 'package:flutter/scheduler.dart';
 // --dart-define=CANVAS_PERF_LOG=<file>; then one line a second of frame
 // build and raster times and counts of the costly steps.
 
-/// CanvasPerf counts and times the costly parts of drawing the canvas.
 class CanvasPerf {
   static const _path = String.fromEnvironment("CANVAS_PERF_LOG");
 
-  /// on is whether the log is being kept at all.
+  /// on is whether the log is kept at all.
   static bool get on => _path.isNotEmpty;
 
   static final Map<String, int> _counts = {};
@@ -22,7 +21,6 @@ class CanvasPerf {
   static DateTime _since = DateTime.now();
   static bool _started = false;
 
-  /// count notes [what] happening [n] times.
   static void count(String what, [int n = 1]) {
     if (!on) return;
     _start();
@@ -30,7 +28,6 @@ class CanvasPerf {
     _flush();
   }
 
-  /// time is [run], timed as [what].
   static T time<T>(String what, T Function() run) {
     if (!on) return run();
     var watch = Stopwatch()..start();

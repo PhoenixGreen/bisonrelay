@@ -17,14 +17,10 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart';
 import 'package:flutter/foundation.dart';
 
-// audio_runtime.dart decides what is playing: which file of a playlist, from
-// where to where, how it fades, whether it goes round again, and which sounds
-// survive the page being turned.
-//
-// Session state: the document says how a sound is meant to play; this says
-// how it is playing for this reader, who may have muted it or turned it
-// down. None of that is written back, so a published canvas opens the way
-// its author set it up.
+// audio_runtime.dart decides what is playing: which playlist file, what
+// range, fades, loops, and which sounds survive a page turn. Session state
+// only: a reader's mutes are never written back, so a canvas opens as its
+// author set it.
 
 /// AudioView is what the element should look like right now.
 class AudioView {
@@ -39,7 +35,6 @@ class AudioView {
   });
 }
 
-/// _Playing is one element's sound.
 class _Playing {
   AudioElement element;
 
@@ -51,7 +46,7 @@ class _Playing {
   /// puts it through another once that is known.
   String? routedTo;
 
-  /// playing is false while paused, and once the list has run out.
+  /// playing is false while paused and once the list has run out.
   bool playing = false;
   bool muted;
   double volume;
@@ -59,24 +54,21 @@ class _Playing {
   /// end is where the current file's range stops, in seconds into the file.
   double end = 0;
 
-  /// fadingOut is set once the fade at the end of the range has begun, so it
-  /// is begun once rather than on every tick after.
+  /// fadingOut is set once the end-of-range fade has begun, so it is begun
+  /// only once.
   bool fadingOut = false;
 
-  /// generation goes up whenever what this should be playing changes, so an
-  /// open that finishes after the reader has pressed stop does not start a
-  /// sound nobody wants any more.
+  /// generation goes up whenever what this should play changes, so an open
+  /// that finishes after the reader pressed stop starts nothing.
   int generation = 0;
 
-  /// missing is when file [missingIndex] of its list was last found not to
-  /// be there: not asked for again on every frame (each try told the whole
-  /// editor of it, twice), but after a while, in case it has come.
+  /// missing is when file [missingIndex] was last found missing: asked for
+  /// again only after a while, not every frame, in case it has come.
   Stopwatch? missing;
   int missingIndex = -1;
 
-  /// timed is a sound the playhead drives -- see AudioRuntime.cue -- which
-  /// never moves itself on, and gain its fade at the moment the playhead is
-  /// at.
+  /// timed is a sound the playhead drives (see AudioRuntime.cue): it never
+  /// moves itself on, and gain is its fade at the playhead.
   bool timed = false;
   double gain = 1;
 
@@ -84,8 +76,8 @@ class _Playing {
   /// in the meantime do not open it again.
   bool starting = false;
 
-  /// sent is the volume last put on the voice, so the same one is not put
-  /// on it again every frame -- see AudioRuntime._heard.
+  /// sent is the volume last put on the voice, so it is not set again every
+  /// frame (see AudioRuntime._heard).
   double? sent;
 
   _Playing(this.element)
@@ -100,14 +92,12 @@ class _Playing {
 /// rise to its level: too short to hear as a fade, long enough not to click.
 const double declickSeconds = 0.015;
 
-/// glideSeconds is how long a sound on the timeline takes to reach a new
-/// volume: a fade set outright every frame is a staircase, heard as a buzz,
-/// and cuts short the rise a sound starts with.
+/// glideSeconds is how long a timeline sound takes to reach a new volume: a
+/// fade set outright every frame is a staircase, heard as a buzz.
 const double glideSeconds = 0.03;
 
-/// driftSeconds is how far a sound on the timeline may be from where the
-/// playhead says before it is moved there. Positions are reported in steps
-/// of the buffer, and moving a playing sound is a heard jump.
+/// driftSeconds is how far a timeline sound may stray from the playhead
+/// before it is moved. Positions come in buffer steps, and a move is heard.
 const double driftSeconds = 0.3;
 
 /// AudioRuntime plays the open canvas's sounds: see the file comment.
@@ -135,8 +125,8 @@ class AudioRuntime extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  /// unavailable is set once the engine has said there is no sound to be
-  /// had, so the settings can say so rather than the speaker doing nothing.
+  /// unavailable is set once the engine has said there is no sound, so the
+  /// settings can say so.
   bool get unavailable => _unavailable;
   bool _unavailable = false;
 
@@ -144,13 +134,9 @@ class AudioRuntime extends ChangeNotifier {
   /// canvas's, and each Metronome element's of its own.
   final Map<String, _Click> _clicks = {};
 
-  /// metronome is the click [key] as it should be now: sounding from [at]
-  /// seconds, a beat every [secondsPerBeat] in bars of [beatsPerBar], or --
-  /// not [on] -- silent. Called whenever the playhead moves, as cue is: a
-  /// click that has drifted from [at] by more than a little is moved back
-  /// to it, so a loop's jump back or a seek takes the click with it. Each
-  /// key is a click of its own: the canvas's ("canvas"), and a Metronome
-  /// element's beside it.
+  /// metronome sets click [key] ("canvas", or a Metronome element's): from
+  /// [at] seconds, a beat every [secondsPerBeat], [beatsPerBar] to a bar, or
+  /// silent. Called as the playhead moves; a drifted click is moved back.
   void metronome(
       {required bool on,
       double at = 0,
@@ -185,14 +171,13 @@ class AudioRuntime extends ChangeNotifier {
     }();
   }
 
-  /// noteOn sounds [key] on channel [channel]'s instrument, live -- the
-  /// bank read first, where the part is played on it and it is there.
+  /// noteOn sounds [key] on channel [channel]'s instrument, live, reading
+  /// the bank first where the part needs it.
   Future<void> noteOn(
       String channel, InstrumentPart part, int key, int velocity) async {
     var down = _down.putIfAbsent(channel, () => {})..add(key);
     var press = _presses[(channel, key)] = ++_pressed;
-    // Started, and the bank read if it is wanted: straight to the engine,
-    // with nothing awaited between the key and the sound.
+    // Nothing awaited between the key and the sound, unless a bank is read.
     var kit = part.sound == InstrumentSound.slices ? part.slices : null;
     if (_started && !_disposed) {
       var bank = part.sound == InstrumentSound.bank;
@@ -212,9 +197,8 @@ class AudioRuntime extends ChangeNotifier {
         : part.sound == InstrumentSound.bank
             ? await loadSoundBank()
             : null;
-    // Let go while the bank was being read: not started at all, or it
-    // would never be stopped. Pressed again meanwhile, that press is the
-    // one heard: two would sound for the one let-go to come.
+    // Let go while the bank was read: not started, or it would never stop.
+    // Pressed again meanwhile, only that later press is heard.
     if (_disposed || !down.contains(key) || _presses[(channel, key)] != press) {
       return;
     }
@@ -231,9 +215,7 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// control sets a controller of channel [channel]'s instrument, live.
-  ///
-  /// Moved before the engine has started -- the pedal down before the first
-  /// key of a page -- it is kept, and set as the engine starts.
+  /// Moved before the engine has started, it is kept and set at the start.
   void control(String channel, MidiControl control, double value) {
     if (_started) {
       engine.control(channel, control, value);
@@ -243,8 +225,7 @@ class AudioRuntime extends ChangeNotifier {
     _ready();
   }
 
-  /// livePatch sets the synth patch channel [channel] plays, live; before
-  /// the engine has started there is nothing sounding to change.
+  /// livePatch sets the synth patch channel [channel] plays, live.
   void livePatch(String channel, SynthPatch patch) {
     if (_started) engine.livePatch(channel, patch);
   }
@@ -255,7 +236,6 @@ class AudioRuntime extends ChangeNotifier {
   /// _down is the keys held on each channel, live.
   final Map<String, Set<int>> _down = {};
 
-  /// view is how [e] is doing now.
   AudioView view(AudioElement e) {
     var p = _sounds[e.id];
     if (p == null) {
@@ -266,7 +246,6 @@ class AudioRuntime extends ChangeNotifier {
 
   bool isPlaying(String id) => _sounds[id]?.playing ?? false;
 
-  /// playingIds is every element whose sound is going.
   Set<String> get playingIds => {
         for (var e in _sounds.entries)
           if (e.value.playing) e.key,
@@ -303,8 +282,8 @@ class AudioRuntime extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// toggle pauses [e] if it is going and plays it if not. The pause is done
-  /// before this returns, so the press never reads as missed.
+  /// toggle pauses or plays [e]. The pause is done before this returns, so
+  /// the press never reads as missed.
   Future<void> toggle(AudioElement e) {
     if (!isPlaying(e.id)) return play(e);
     pause(e.id);
@@ -321,13 +300,10 @@ class AudioRuntime extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ------------------------------------------------------------------------
-  // The mixer
-  // ------------------------------------------------------------------------
+  // ---- The mixer ---------------------------------------------------------
 
-  /// _channels is what each mixer channel was last set to, and _master the
-  /// master, so the same mix set again every frame costs a comparison
-  /// rather than calls into the engine.
+  /// _channels and _master are the mix last set, so setting the same mix
+  /// every frame costs a comparison, not engine calls.
   final Map<String, ChannelMix> _channels = {};
 
   /// _routes is the channel each sound plays through -- see setMix.
@@ -346,16 +322,10 @@ class AudioRuntime extends ChangeNotifier {
   String _masterSignature = "";
   bool _started = false;
 
-  /// setMix is the mixer as it stands: a strip for each channel, which of
-  /// them are soloed, and the master.
-  ///
-  /// Solo is worked in here, as nought for every channel not soloed while
-  /// any is. It is for listening only: an export plays every unmuted channel.
-  ///
-  /// [channels] is keyed by mixer channel; [routes] maps a sound's element
-  /// id to its channel. One strip per channel, not per sound: each strip is
-  /// an always-playing bus voice. A sound with no route plays through the
-  /// strip of its own id, if there is one.
+  /// setMix is the mixer: a strip per channel, the soloes, and the master.
+  /// Solo is listening only (an export plays every unmuted channel).
+  /// [routes] maps element id to channel; a sound with no route uses the
+  /// strip of its own id. Each strip is a bus voice.
   void setMix(Map<String, ChannelMix> channels,
       {Map<String, String> routes = const {},
       Set<String> solo = const {},
@@ -366,9 +336,8 @@ class AudioRuntime extends ChangeNotifier {
       SpeakerLayout speakers = SpeakerLayout.stereo,
       SpeakerGroup hear = SpeakerGroup.all,
       Map<String, Heard> placements = const {}}) {
-    // Another runtime on the same engine -- a canvas previewed from the
-    // Files -- has set the mix since: all of this one's is sent again, not
-    // only what changed, or it would play through the other's.
+    // Another runtime on the same engine (a canvas previewed from Files)
+    // set the mix since: send all of this one's, or it plays through theirs.
     if (_mixOwners[engine] != this) {
       _mixOwners[engine] = this;
       _channelSignature.clear();
@@ -387,8 +356,8 @@ class AudioRuntime extends ChangeNotifier {
       _hear = hear;
       if (_started) engine.setHear(hear);
     }
-    // Where each placed sound's channel is heard from, on this frame; a
-    // channel no longer placed goes back to its own pan.
+    // Where each placed channel is heard from; an unplaced one goes back to
+    // its own pan.
     for (var key in [..._placements.keys]) {
       if (placements.containsKey(key)) continue;
       _placements.remove(key);
@@ -418,8 +387,8 @@ class AudioRuntime extends ChangeNotifier {
       ..clear()
       ..addAll(routes);
     var soloing = solo.any(channels.containsKey);
-    // Channels gone from the canvas are let go of: kept, their strips and
-    // buses ran for as long as the engine lived.
+    // Channels gone from the canvas are let go of, or their strips and
+    // buses run for as long as the engine lives.
     for (var key in [..._channels.keys]) {
       if (channels.containsKey(key)) continue;
       _channels.remove(key);
@@ -430,16 +399,14 @@ class AudioRuntime extends ChangeNotifier {
       var mix = entry.value;
       var silent = mix.mute || (soloing && !solo.contains(entry.key));
       var sound = silent ? mix.copyWith(mute: true) : mix;
-      // The whole strip: a send, a surround pan or the LFE changed alone is
-      // a change the engine has to hear of too.
+      // The whole strip: a send, surround pan or LFE change alone counts.
       var signature = "$silent|${mix.toJson()}";
       _channels[entry.key] = sound;
       if (_channelSignature[entry.key] == signature) continue;
       _channelSignature[entry.key] = signature;
       if (_started) engine.setChannel(entry.key, sound);
     }
-    // Never brought to a target while playing: that is measured over the
-    // whole mix, which the editor has not heard yet.
+    // Never normalised while playing: that is measured over the whole mix.
     var sound = master.copyWith(normalise: false);
     var signature = master.toJson().toString();
     _master = sound;
@@ -447,10 +414,8 @@ class AudioRuntime extends ChangeNotifier {
       _masterSignature = signature;
       if (_started) engine.setMaster(sound);
     }
-    // A sound started before its channel was known -- straight to the
-    // master, round its chain -- goes through it now, rather than until it
-    // is stopped and started again (Ken's "sometimes the signal does not
-    // come through the chain").
+    // A sound started before its channel was known goes through the chain
+    // now, not only after it is stopped and started again.
     if (_started) {
       for (var p in _sounds.values) {
         var voice = p.voice;
@@ -472,16 +437,14 @@ class AudioRuntime extends ChangeNotifier {
   SpeakerGroup _hear = SpeakerGroup.all;
   final Map<String, Heard> _placements = {};
 
-  /// placements are where each placed channel is heard from now, for tests
-  /// and the strip's own display.
+  /// placements are where each placed channel is heard from now.
   Map<String, Heard> get placements => Map.unmodifiable(_placements);
 
   /// levels is how loud [channel] -- or the master -- is right now.
   (double, double) levels([String? channel]) =>
       _started ? engine.levels(channel) : (0, 0);
 
-  /// deviceLevels is [channel]'s levels at each step of its strip -- see
-  /// AudioEngine.deviceLevels.
+  /// deviceLevels: see AudioEngine.deviceLevels.
   List<(double, double)> deviceLevels(String channel) =>
       _started ? engine.deviceLevels(channel) : const [];
 
@@ -500,12 +463,11 @@ class AudioRuntime extends ChangeNotifier {
   /// reduction is [channel]'s compressor's reduction now, in decibels.
   double reduction(String channel) => _started ? engine.reduction(channel) : 0;
 
-  /// spectrum is what [channel], or the master, is playing now -- see
-  /// AudioEngine.spectrum.
+  /// spectrum: see AudioEngine.spectrum.
   Float32List? spectrum([String? channel]) =>
       _started ? engine.spectrum(channel) : null;
 
-  /// pitch is what a tuner on [channel] hears now -- see AudioEngine.pitch.
+  /// pitch: see AudioEngine.pitch.
   PitchReading? pitch([String? channel]) =>
       _started ? engine.pitch(channel) : null;
 
@@ -528,13 +490,9 @@ class AudioRuntime extends ChangeNotifier {
     return _channels.containsKey(key) ? key : null;
   }
 
-  /// cue puts [e] where the playhead says it is: [moment] into its playlist,
-  /// playing or held. Null is the playhead outside the sound's span, which is
-  /// silence.
-  ///
-  /// A cued sound keeps no time of its own: it is moved back into step once
-  /// it drifts past [driftSeconds], and never moves on to its next file by
-  /// itself; the next cue says which file it is on.
+  /// cue puts [e] where the playhead says: [moment] into its playlist, or
+  /// silent with null. It keeps no time of its own: moved back past
+  /// [driftSeconds], and told its file by the next cue.
   void cue(AudioElement e, ClipMoment? moment, {required bool playing}) {
     var p = _for(e);
     p.timed = true;
@@ -555,8 +513,8 @@ class AudioRuntime extends ChangeNotifier {
     var voice = p.voice;
     var alive = voice != null && engine.alive(voice);
     if (!playing) {
-      // Brought down and stopped, not paused: a pause cuts mid-swing and
-      // clicks. It is started afresh, rising from nothing, on the next move.
+      // Faded and stopped, not paused, as a pause clicks. It restarts rising
+      // from nothing on the next move.
       if (alive && p.playing) {
         p.generation++;
         _silence(p);
@@ -575,8 +533,8 @@ class AudioRuntime extends ChangeNotifier {
       return;
     }
     if (!p.playing) {
-      // Moved into place and silenced before it is heard again, or a moment
-      // of the old place at the old level is heard as a spike.
+      // Moved and silenced before it is heard again, or the old place at the
+      // old level is heard as a spike.
       if ((engine.position(voice) - moment.time).abs() > 0.02) {
         engine.seek(voice, moment.time);
       }
@@ -595,8 +553,7 @@ class AudioRuntime extends ChangeNotifier {
     _heard(p);
   }
 
-  /// setGain is a fade applied from outside -- a video's picture fading, and
-  /// its sound with it.
+  /// setGain is a fade from outside, as a video's sound follows its picture.
   void setGain(String id, double gain) {
     var p = _sounds[id];
     if (p == null) return;
@@ -604,17 +561,15 @@ class AudioRuntime extends ChangeNotifier {
     _heard(p);
   }
 
-  /// positionOf is how far into its file [id]'s sound has got, in seconds,
-  /// or null where nothing is sounding -- which is what a video keeps time
-  /// by, so the picture follows the sound rather than drifting from it.
+  /// positionOf is how far into its file [id]'s sound is, in seconds, or
+  /// null: a video keeps time by it, so the picture follows the sound.
   double? positionOf(String id) {
     var voice = _sounds[id]?.voice;
     if (voice == null || !engine.alive(voice)) return null;
     return engine.position(voice);
   }
 
-  /// indexOf is which file of [id]'s playlist is sounding, or null where
-  /// none is.
+  /// indexOf is which file of [id]'s playlist is sounding, or null.
   int? indexOf(String id) {
     var p = _sounds[id];
     var voice = p?.voice;
@@ -632,8 +587,8 @@ class AudioRuntime extends ChangeNotifier {
     _heard(p);
   }
 
-  /// setVolume sets how loud [e] is, up to [most]: full for a reader's
-  /// speaker, and over it for a clip on the timeline turned up there.
+  /// setVolume sets how loud [e] is, up to [most]: over full for a clip
+  /// turned up on the timeline.
   void setVolume(AudioElement e, double volume, {double most = 1}) {
     var p = _for(e);
     p.volume = volume.clamp(0.0, most);
@@ -650,11 +605,8 @@ class AudioRuntime extends ChangeNotifier {
 
   void toggleMute(AudioElement e) => setMuted(e, !view(e).muted);
 
-  /// keepOnly stops and forgets every sound [keep] says no to -- what turning
-  /// the page does to everything that was on the page left behind.
-  ///
-  /// Forgotten rather than only stopped, so coming back to a page finds its
-  /// speaker as the author left it rather than muted from last time.
+  /// keepOnly stops and forgets every sound [keep] refuses, as a page turn
+  /// does, so a page revisited plays as its author left it.
   void keepOnly(bool Function(String id) keep) {
     var gone = [
       for (var id in _sounds.keys)
@@ -671,8 +623,8 @@ class AudioRuntime extends ChangeNotifier {
 
   void stopAll() => keepOnly((_) => false);
 
-  /// autoplay starts every sound in [elements] that says it starts by itself
-  /// and is not already going.
+  /// autoplay starts each sound in [elements] that starts by itself and is
+  /// not already going.
   void autoplay(Iterable<AudioElement> elements) {
     for (var e in elements) {
       if (!e.clip.autoplay || e.clip.isEmpty) continue;
@@ -683,16 +635,15 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// measure is how long a stored file is, in seconds, or null where it
-  /// cannot be opened. For writing the length down when a file is added.
+  /// cannot be opened.
   Future<double?> measure(String assetId) async {
     if (!await _ready()) return null;
     var track = await _track(assetId);
     return track == null ? null : engine.lengthOf(track);
   }
 
-  /// tick moves every sound on: begins a fade that is due, and goes to the
-  /// next file where one has finished. Run by a timer while anything plays;
-  /// called directly by tests.
+  /// tick moves every sound on: starts due fades and next files. Run by a
+  /// timer while anything plays.
   @visibleForTesting
   void tick() {
     for (var p in _sounds.values.toList()) {
@@ -709,9 +660,8 @@ class AudioRuntime extends ChangeNotifier {
         engine.volume(voice, 0, fade: math.max(0.01, p.end - at));
         p.sent = 0;
       }
-      // A little early rather than exactly on it: a tick lands anywhere
-      // inside forty milliseconds, and the few samples past the range are
-      // the start of whatever was cut off.
+      // A little early: a tick lands anywhere within 40 ms, and samples past
+      // the range belong to whatever was cut off.
       if (at >= p.end - 0.02) _next(p);
     }
     if (_sounds.values.every((p) => !p.playing)) {
@@ -749,12 +699,10 @@ class AudioRuntime extends ChangeNotifier {
     return ok;
   }
 
-  /// ready starts the engine, as a first play does: false where there is no
-  /// sound to be had.
+  /// ready starts the engine: false where there is no sound to be had.
   Future<bool> ready() => _ready();
 
-  /// trackOf is the stored file [assetId], opened -- once, and kept -- or
-  /// null where it is not there.
+  /// trackOf is stored file [assetId], opened once and kept, or null.
   Future<AudioTrack?> trackOf(String assetId) => _track(assetId);
 
   Future<AudioTrack?> _track(String assetId) async {
@@ -768,8 +716,7 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// _start plays file [index] of [p]'s list from the start of its range.
-  /// [asked] times how long the file took to open, so a sound on the
-  /// timeline starts where the playhead has got to, not behind it.
+  /// [asked] times the open, so a timeline sound starts at the playhead.
   Future<void> _start(_Playing p, int index,
       {double? from, bool fades = true, Stopwatch? asked}) async {
     var list = p.clip.playlist;
@@ -778,8 +725,8 @@ class AudioRuntime extends ChangeNotifier {
     _silence(p);
     p.index = index.clamp(0, list.length - 1);
     p.starting = true;
-    // Playing from the press, not from the open: a speaker slow to light
-    // up gets pressed again, which is stop.
+    // Playing from the press, not the open, or a slow speaker is pressed
+    // again, which stops it.
     p.playing = true;
     notifyListeners();
 
@@ -814,8 +761,8 @@ class AudioRuntime extends ChangeNotifier {
       from = math.min(from + asked.elapsedMicroseconds / 1e6, p.end);
     }
     var fadeIn = fades ? p.clip.fadeIn : 0.0;
-    // Started part way through, it rises over a few milliseconds: a wave
-    // cut into mid-swing clicks.
+    // Started part way, it rises over a few milliseconds: a wave cut
+    // mid-swing clicks.
     var at = from ?? source.start;
     if (fadeIn <= 0 && at > source.start + 0.001) fadeIn = declickSeconds;
     var through = _channelFor(p.element.id);
@@ -864,12 +811,8 @@ class AudioRuntime extends ChangeNotifier {
     }
   }
 
-  /// _heard puts the volume the reader chose onto the sound, unless a fade
-  /// is under way -- moving the volume mid-fade would snap it back up.
-  ///
-  /// Only when it has changed, since it is asked every frame and setting it
-  /// again cuts off the rise a sound starts with; on the timeline by a
-  /// short glide (see glideSeconds).
+  /// _heard puts the reader's volume on the sound unless fading, and only
+  /// when changed, as setting it cuts a sound's rise (see glideSeconds).
   void _heard(_Playing p) {
     var voice = p.voice;
     if (voice == null || p.fadingOut) return;
@@ -879,9 +822,8 @@ class AudioRuntime extends ChangeNotifier {
     engine.volume(voice, to, fade: p.timed ? glideSeconds : 0);
   }
 
-  /// _silence stops [p]'s voice: brought down over a few milliseconds where
-  /// it is sounding, since stopped outright it clicks. [softly] off is for
-  /// going away altogether, when there is no time for the fade.
+  /// _silence stops [p]'s voice, faded over a few milliseconds where it is
+  /// sounding. [softly] off is for going away when there is no time to fade.
   void _silence(_Playing p, {bool softly = true}) {
     var voice = p.voice;
     if (voice != null) {
@@ -907,8 +849,8 @@ class AudioRuntime extends ChangeNotifier {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
-    // Its strips go with it, from an engine others go on using: left, they
-    // went on being mixed. Whoever sets the mix next sends theirs whole.
+    // Its strips go too, or the shared engine goes on mixing them. Whoever
+    // sets the mix next sends theirs whole.
     if (_started) {
       for (var key in _channels.keys) {
         engine.removeChannel(key);
@@ -927,8 +869,7 @@ class AudioRuntime extends ChangeNotifier {
   }
 }
 
-/// _Click is one click: its track, the voice playing it, its metre, and
-/// which start is the latest.
+/// _Click is one click: track, voice, metre, and latest start.
 class _Click {
   AudioTrack? track;
   AudioVoice? voice;

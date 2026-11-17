@@ -12,13 +12,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:path/path.dart' as path;
 
-// kenney_packs.dart is Kenney's free sprite packs, for the Sprite element: a
-// chosen few of the hundreds he has made -- figures, animals, effects,
-// items and tiles -- each fetched from where he put it on OpenGameArt the
-// first time it is wanted, and kept. Every one is CC0: free for anything,
-// no credit asked. A pack's pictures are found in it and grouped -- a run
-// of numbered frames is an animation, the rest of a folder its frames --
-// and a group is made into a sprite sheet of its own.
+// kenney_packs.dart is Kenney's CC0 sprite packs for the Sprite element, a
+// chosen few fetched from OpenGameArt when first wanted and kept. Pictures
+// are grouped (numbered runs are animations, a folder's rest a set) and
+// each group made into its own sprite sheet.
 
 /// KenneyKind is what a pack is mostly of.
 enum KenneyKind {
@@ -31,15 +28,13 @@ enum KenneyKind {
   const KenneyKind(this.label);
 }
 
-/// KenneyPack is one of Kenney's packs: its name, what it is of, and
-/// where it is.
+/// KenneyPack is one of Kenney's packs: name, kind, and where it is.
 class KenneyPack {
   final String slug;
   final String title;
   final KenneyKind kind;
 
-  /// zip is the pack as Kenney put it on OpenGameArt, and page its page
-  /// there.
+  /// zip is the pack on OpenGameArt, and page its page there.
   final String zip;
   String get page => "https://opengameart.org/content/$slug";
 
@@ -48,7 +43,7 @@ class KenneyPack {
 
 const _oga = "https://opengameart.org/sites/default/files";
 
-/// kenneyPacks is the packs offered: each checked to be Kenney's own, on
+/// kenneyPacks are the packs offered, each checked to be Kenney's own, on
 /// OpenGameArt, under CC0.
 const List<KenneyPack> kenneyPacks = [
   KenneyPack("platformer-art-deluxe", "Platformer deluxe", KenneyKind.figures,
@@ -91,16 +86,16 @@ const List<KenneyPack> kenneyPacks = [
   KenneyPack("sokoban-100-tiles", "Sokoban", KenneyKind.tiles, "$_oga/kenney_sokobanPack.zip"),
 ];
 
-/// kenneyMaxBytes is the most a pack is fetched to.
+/// kenneyMaxBytes caps a pack's download size.
 const int kenneyMaxBytes = 64 << 20;
 
-/// kenneyFile is where [pack] is kept once fetched: beside the library,
-/// dotted so the library's listing passes it by.
+/// kenneyFile is where [pack] is kept once fetched: beside the library, in
+/// a dotted name its listing skips.
 Future<File> kenneyFile(KenneyPack pack) async =>
     File(path.join(await CanvasStorage.libraryDir(), ".stock", "kenney", "${pack.slug}.zip"));
 
-/// kenneyFetch is [pack], fetched if it is not kept already -- or null when
-/// it cannot be: fetching not allowed, through a proxy, or failed.
+/// kenneyFetch is [pack], fetched if not kept already, or null when it
+/// cannot be: fetching off, through a proxy, or failed.
 Future<File?> kenneyFetch(KenneyPack pack, {required bool allowFetching, required bool proxied}) async {
   var file = await kenneyFile(pack);
   if (await file.exists()) return file;
@@ -110,13 +105,13 @@ Future<File?> kenneyFetch(KenneyPack pack, {required bool allowFetching, require
   return ok ? file : null;
 }
 
-/// SpriteGroup is pictures of a pack that make one sprite: a run of
-/// numbered frames -- a walk, a flicker -- or the rest of a folder.
+/// SpriteGroup is a pack's pictures making one sprite: a numbered run (a
+/// walk, a flicker) or the rest of a folder.
 class SpriteGroup {
   final String name;
   final String folder;
 
-  /// files are its pictures' places in the pack, in the order they play.
+  /// files are its pictures' places in the pack, in playing order.
   final List<String> files;
 
   /// sequence is whether it is a numbered run: an animation, not a set.
@@ -124,14 +119,14 @@ class SpriteGroup {
   const SpriteGroup(this.name, this.folder, this.files, this.sequence);
 }
 
-/// _skipped is what a pack's pictures are not taken from: its previews,
-/// its own sheets -- the frames are taken one by one -- and its drawings.
+/// _skipped is what pictures are not taken from: previews, the pack's own
+/// sheets (frames are taken one by one) and drawings.
 final RegExp _skipped =
     RegExp(r"(^|/)(__MACOSX|vector|spritesheets?|sheets?|preview|sample|unity)(/|$)|preview|sample|sheet",
         caseSensitive: false);
 
-/// spriteGroups is the sprites to be had from a pack's [names] -- the
-/// files in it: numbered runs first, then folders, by name.
+/// spriteGroups is the sprites in a pack's file [names]: numbered runs
+/// first, then folders, by name.
 List<SpriteGroup> spriteGroups(Iterable<String> names) {
   var number = RegExp(r"^(.*?)[ _-]?(\d+)$");
   var runs = <String, List<(int, String)>>{};
@@ -172,13 +167,12 @@ String _pretty(String s) {
   return words.isEmpty ? "Sprite" : words[0].toUpperCase() + words.substring(1);
 }
 
-/// kenneyGroups reads the pack in [zip]: its groups, and the files it has.
+/// kenneyGroups reads the pack in [zip]: its groups and its files.
 Future<(List<SpriteGroup>, Archive)> kenneyGroups(File zip) async {
   var archive = ZipDecoder().decodeBytes(await zip.readAsBytes());
   return (spriteGroups([for (var f in archive.files) if (f.isFile) f.name]), archive);
 }
 
-/// groupFrame is picture [file] of [archive], read.
 Future<ui.Image?> groupFrame(Archive archive, String file) async {
   var entry = archive.files.where((f) => f.isFile && f.name == file).firstOrNull;
   if (entry == null) return null;
@@ -190,10 +184,8 @@ Future<ui.Image?> groupFrame(Archive archive, String file) async {
   }
 }
 
-/// spriteFromGroup is [e] made of [group] of [archive]: its pictures laid
-/// out on a sheet of their own -- each in a cell as big as the biggest,
-/// standing on its bottom -- stored, and played as one animation: a run in
-/// order, a set one frame after another.
+/// spriteFromGroup is [e] made of [group]: its pictures on their own sheet,
+/// each standing in a cell as big as the biggest, played as one animation.
 Future<SpriteElement?> spriteFromGroup(SpriteElement e, SpriteGroup group, Archive archive,
     {int most = 64}) async {
   var frames = <ui.Image>[];
@@ -247,8 +239,8 @@ Future<SpriteElement?> spriteFromGroup(SpriteElement e, SpriteGroup group, Archi
       drawn: await spriteDrawnPart(sheet, [for (var i = 0; i < count; i++) made.frameRect(i)]));
 }
 
-/// _onBlack is whether [img] is drawn on black, not on nothing: its corners
-/// solid and dark -- a particle, to be laid on as light.
+/// _onBlack is whether [img] is drawn on black, not transparent: solid dark
+/// corners, a particle to be laid on as light.
 Future<bool> _onBlack(ui.Image img) async {
   var data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
   if (data == null) return false;

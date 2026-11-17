@@ -7,16 +7,12 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-// stage_scene.dart is a 3D stage's set drawn by Flutter GPU: its floor, laid
-// with what it is made of, and its back wall with a skirting board, in a
-// scene of their own seen through the stage's camera. The sky behind and
-// the light's colour over everything are laid on the canvas, as they are
-// over the flats and characters standing on the stage, so all of it is lit
-// alike.
-//
-// The floor and the wall are drawn in the colours picked for them, as they
-// are picked: unlit, rather than shaded by a light that would make the
-// colour on the stage another colour than the one in its settings.
+// stage_scene.dart is a 3D stage's set drawn by Flutter GPU: its floor and
+// its back wall with a skirting board, in a scene of their own seen through
+// the stage's camera. The sky and the light's colour are laid on the
+// canvas, as over the flats and characters on the stage, so all of it is
+// lit alike. Floor and wall are unlit, so their colour on the stage is the
+// one in their settings.
 
 /// CanvasStageSource keeps the stages drawn on a canvas in 3D, one scene for
 /// each, as CanvasCharacterSource keeps the characters.
@@ -27,7 +23,6 @@ abstract interface class CanvasStageSource {
   StageScene? resolveStage(StageElement stage);
 }
 
-/// StageScene is one stage's set, in its own scene.
 class StageScene {
   final Scene scene = Scene();
 
@@ -95,7 +90,6 @@ class StageScene {
   /// [box], with [pixelRatio] pixels to each of the canvas's points.
   void paint(ui.Canvas canvas, ui.Rect box, StageElement stage, int frame,
       {double pixelRatio = 1}) {
-    // Let go of (see dispose), it draws nothing.
     if (_disposed) return;
     if (box.width < 1 || box.height < 1) return;
     show(stage);
@@ -179,9 +173,9 @@ class StageScene {
   return (px, n, n);
 }
 
-/// wallTexture is a wall of colour [argb], three metres high, with its
-/// skirting board along the bottom twelve centimetres: as RGBA pixels and
-/// their width and height, top first -- as the wall's plane is stood up.
+/// wallTexture is a wall of colour [argb], three metres high, with a
+/// skirting board along its bottom twelve centimetres: RGBA pixels and
+/// their width and height, top first, as the wall's plane is stood up.
 (Uint8List, int, int) wallTexture(int argb) {
   const w = 4, h = 300;
   final px = Uint8List(w * h * 4);

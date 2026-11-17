@@ -6,15 +6,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart' as notation;
 
-// music_score.dart is a score as it is written (Ken, 2026-11-14: "the score
-// is the source"): parts of staves of bars of notes, with everything a
-// player reads -- dynamics, articulations, lyrics, chord symbols, repeats,
-// endings, D.C. and D.S. -- and what is played from it: each part's notes
-// through the repeats, at the tempo, as loud and as long as marked, for the
-// instrument channel that part plays on.
-//
-// Times are in quarter notes throughout, as in notation.dart; a bar's events
-// start at nought and run its length.
+// music_score.dart is a score as written, and the source of what is played:
+// parts of staves of bars of notes, with everything a player reads
+// (dynamics, articulations, lyrics, chord symbols, repeats, endings, D.C.
+// and D.S.), played through the repeats at the tempo, as loud and long as
+// marked, on each part's instrument channel. Times are in quarter notes, as
+// in notation.dart; a bar's events start at nought.
 
 /// _grid rounds [quarters] to a 48th of a quarter: thirds and sixteenths
 /// alike, so a time worked out two ways is one number.
@@ -41,14 +38,13 @@ class Pitch {
     return Pitch(s.letter, s.octave, s.alter);
   }
 
-  /// up is this pitch [steps] staff steps higher, keeping its alteration
-  /// out: the natural of the new letter.
+  /// up is this pitch [steps] staff steps higher, as the new letter's natural.
   Pitch up(int steps) {
     var s = step + steps;
     return Pitch(s % 7, s ~/ 7 - 1);
   }
 
-  /// withAlter is the same letter and octave, sharpened or flattened.
+  /// withAlter is the same letter and octave with alteration [alter].
   Pitch withAlter(int alter) => Pitch(letter, octave, alter.clamp(-2, 2));
 
   /// name is how it is saved and shown: "C4", "F#5", "Bb3", "Ebb2".
@@ -115,8 +111,7 @@ enum Dynamic {
   final int velocity;
   const Dynamic(this.velocity);
 
-  /// lasting is whether it holds until the next: sfz and fp mark one note
-  /// and drop back.
+  /// lasting is whether it holds until the next: sfz and fp mark one note.
   bool get lasting => this != sfz && this != fp;
 
   static Dynamic? fromName(String? name) =>
@@ -142,8 +137,7 @@ enum Articulation {
 /// Strum is a strum's direction: down (low strings first) or up.
 enum Strum { down, up }
 
-/// Tuplet is a group played in the time of fewer: three in the time of two
-/// (a triplet) and so on.
+/// Tuplet is a group played in the time of fewer (three in two: a triplet).
 class Tuplet {
   final int actual, normal;
   const Tuplet(this.actual, this.normal);
@@ -167,9 +161,8 @@ class Tuplet {
   int get hashCode => Object.hash(actual, normal);
 }
 
-/// MarkKind names a marking that can be dragged away from where it is
-/// drawn, each kept as its own offset ([ScoreEvent.offsets],
-/// [BarInfo.offsets], [MusicScore.offsets]).
+/// MarkKind names a marking that can be dragged from where it is drawn, its
+/// offset kept ([ScoreEvent.offsets], [BarInfo.offsets], [MusicScore.offsets]).
 abstract final class MarkKind {
   static const chord = "ch",
       dynamic = "dyn",
@@ -199,11 +192,10 @@ Map<String, List<double>> _offsetsToJson(Map<String, Offset> o) => {
         if (e.value != Offset.zero) e.key: [e.value.dx, e.value.dy],
     };
 
-/// ScoreEvent is one thing on a staff in a bar: a note or chord, a rest,
-/// or a strum (a slash).
+/// ScoreEvent is one thing on a staff in a bar: a note or chord, a rest, or
+/// a strum (a slash).
 class ScoreEvent {
-  /// id names it across edits: what lights when it plays, what a practice
-  /// marks right or wrong.
+  /// id names it across edits: what lights as it plays, what practice marks.
   final String id;
 
   /// value is its written value in quarters without dots (4 a whole note,
@@ -212,7 +204,7 @@ class ScoreEvent {
   final int dots;
   final Tuplet? tuplet;
 
-  /// pitches are what it sounds as written, lowest first. Empty is a rest,
+  /// pitches are what it sounds as written, lowest first. Empty is a rest
   /// unless [slash].
   final List<Pitch> pitches;
 
@@ -230,25 +222,21 @@ class ScoreEvent {
   final Dynamic? dyn;
   final Set<Articulation> articulations;
 
-  /// lyrics are its syllable in each verse; a syllable ending "-" carries on
-  /// into the next word's next syllable.
+  /// lyrics are its syllable per verse; one ending "-" carries on.
   final List<String> lyrics;
 
   /// grace is a quick note before the beat, of no length of its own.
   final bool grace;
 
-  /// velocity is how hard it is played where that was set by hand (drawn
-  /// in the piano roll), in place of what its dynamic says; null for the
-  /// dynamic's. The printed dynamic is not changed by it.
+  /// velocity is a hand-set loudness (drawn in the piano roll) in place of
+  /// its dynamic's, or null. The printed dynamic is unchanged.
   final int? velocity;
 
-  /// shape is which guitar position its chord symbol is played in, by its
-  /// place in guitarChordShapes: null for the common one -- the open chord
-  /// where there is one (Ken, 2026-11-14).
+  /// shape is the guitar position its chord symbol plays in, an index into
+  /// guitarChordShapes, or null for the common one (the open chord if any).
   final int? shape;
 
-  /// sizes are markings drawn bigger or smaller than their own size, by
-  /// kind (see MarkKind): a dynamic resized by its handle.
+  /// sizes scale markings by kind (see MarkKind).
   final Map<String, double> sizes;
 
   final Map<String, Offset> offsets;
@@ -273,7 +261,7 @@ class ScoreEvent {
 
   bool get isRest => pitches.isEmpty && !slash;
 
-  /// sizeOf is how big marking [kind] is drawn, one its own size.
+  /// sizeOf is how big marking [kind] is drawn, 1 its own size.
   double sizeOf(String kind) => sizes[kind] ?? 1;
 
   /// quarters is how long it lasts: its value, dotted, in its tuplet.
@@ -329,8 +317,7 @@ class ScoreEvent {
           sizes: sizes ?? this.sizes,
           offsets: offsets ?? this.offsets);
 
-  /// movedMark is this event with marking [kind] dragged to [to] from
-  /// where it is drawn; Offset.zero puts it back.
+  /// movedMark is this with [kind] dragged to [to]; Offset.zero resets it.
   ScoreEvent movedMark(String kind, Offset to) => copyWith(
       offsets: {...offsets, kind: to}..removeWhere((_, o) => o == Offset.zero));
 
@@ -393,8 +380,8 @@ class ScoreEvent {
   }
 }
 
-/// ScoreStaff is one staff of a part: its clef and its bars' events, each
-/// bar's events in the order they are written (voice by voice).
+/// ScoreStaff is one staff of a part: its clef and each bar's events in
+/// written order (voice by voice).
 class ScoreStaff {
   final Clef clef;
   final List<List<ScoreEvent>> bars;
@@ -423,8 +410,8 @@ class ScoreStaff {
       ]);
 }
 
-/// ScoreInstrument is an instrument a part can be written for: its name,
-/// the General MIDI sound it plays with, its staves and how it is written.
+/// ScoreInstrument is an instrument a part can be written for: name, General
+/// MIDI sound, staves and how it is written.
 class ScoreInstrument {
   final String id, name, short;
   final int program, bank;
@@ -446,7 +433,6 @@ class ScoreInstrument {
       this.look = InstrumentLook.keyboard});
 }
 
-/// scoreInstruments are the instruments a part can be written for.
 const scoreInstruments = <ScoreInstrument>[
   ScoreInstrument("piano", "Piano", "Pno.", 0, clefs: [Clef.treble, Clef.bass]),
   ScoreInstrument("organ", "Organ", "Org.", 19,
@@ -482,8 +468,7 @@ const scoreInstruments = <ScoreInstrument>[
 ScoreInstrument scoreInstrument(String id) => scoreInstruments
     .firstWhere((i) => i.id == id, orElse: () => scoreInstruments.first);
 
-/// ScorePart is one instrument's part: its staves, and the instrument
-/// channel it plays on.
+/// ScorePart is one instrument's part: its staves and instrument channel.
 class ScorePart {
   final String id, name, short;
 
@@ -491,8 +476,8 @@ class ScorePart {
   final String instrument;
   final List<ScoreStaff> staves;
 
-  /// channel is the instrument channel element that plays it ("" for none
-  /// yet), its clip made from this part.
+  /// channel is the instrument channel element that plays it ("" for none),
+  /// its clip made from this part.
   final String channel;
 
   const ScorePart(this.id, this.name, this.instrument, this.staves,
@@ -532,8 +517,7 @@ class ScorePart {
       channel: jsonString(j["channel"], ""));
 }
 
-/// Jump is a bar's direction to go elsewhere, taken once, the second time
-/// it is reached is never.
+/// Jump is a bar's direction to go elsewhere, taken the first time only.
 enum Jump {
   none(""),
   dc("D.C."),
@@ -557,18 +541,17 @@ enum Jump {
 /// BarBreak is a break after a bar: a new system, or a new page.
 enum BarBreak { none, system, page }
 
-/// BarInfo is what a bar says for every part: its rehearsal mark, repeats,
+/// BarInfo is what a bar says for every part: rehearsal mark, repeats,
 /// endings, jumps and changes of time, key and tempo.
 class BarInfo {
   final String mark;
 
   /// repeatStart and repeatEnd are its repeat signs; repeatEnd is how many
-  /// times the passage plays in all (2 for a plain repeat), nought for none.
+  /// times the passage plays (2 for a plain repeat), nought for none.
   final bool repeatStart;
   final int repeatEnd;
 
-  /// endings are the passes this bar is played on, 1-based; empty plays
-  /// every time. A bracket with 1 is a first-time bar.
+  /// endings are the 1-based passes this bar plays on; empty is every pass.
   final List<int> endings;
 
   final Jump jump;
@@ -585,8 +568,8 @@ class BarInfo {
   final BarBreak breakAfter;
   final Map<String, Offset> offsets;
 
-  /// width is how much wider (or narrower) than its notes ask the bar is
-  /// drawn: its bar line dragged in the Studio. The line is still filled.
+  /// width is how much wider or narrower than its notes ask the bar is drawn
+  /// (its bar line dragged in the Studio). The line is still filled.
   final double width;
 
   const BarInfo(
@@ -711,7 +694,7 @@ class Spanner {
   final int staff;
   final ScoreTime from, to;
 
-  /// offset is where it was dragged from where it is drawn.
+  /// offset is how far it was dragged from where it is drawn.
   final Offset offset;
   const Spanner(this.id, this.kind, this.part, this.staff, this.from, this.to,
       {this.offset = Offset.zero});
@@ -747,33 +730,29 @@ class Spanner {
   }
 }
 
-/// PlayedBar is one bar as it is played: which written bar, which time
-/// round, and when it starts, in quarters from the start of the playing.
+/// PlayedBar is one bar as played: which written bar, which pass, and its
+/// start in quarters from the start of the playing.
 typedef PlayedBar = ({int bar, int pass, double start});
 
-/// ScoreNote is a note as played: the MIDI note (seconds) and the event it
-/// came from, with where it was in the play order.
+/// ScoreNote is a note as played (seconds), its event and play-order place.
 typedef ScoreNote = ({MidiNote note, String event, int played});
 
-/// MusicScore is a score: the source of every part's notes.
 class MusicScore {
   final String id;
   final String title, subtitle, composer, lyricist;
 
-  /// tempo is quarter notes a minute at the start; tempoText its word
-  /// ("Allegro").
+  /// tempo is quarter notes a minute at the start; tempoText its word.
   final double tempo;
   final String tempoText;
 
   /// beats and beatUnit are the time signature at the start; fifths the key.
   final int beats, beatUnit, fifths;
 
-  /// bars are what each bar says for every part. Its length is the score's.
+  /// bars are what each bar says for every part; their count is the score's.
   final List<BarInfo> bars;
   final List<ScorePart> parts;
   final List<Spanner> spanners;
 
-  /// verses is how many verses of lyrics the score has.
   final int verses;
 
   final Map<String, Offset> offsets;
@@ -794,7 +773,6 @@ class MusicScore {
       this.verses = 1,
       this.offsets = const {}});
 
-  /// blank is a new score of [bars] empty bars for [instruments].
   factory MusicScore.blank(String id,
       {String title = "Untitled score",
       List<String> instruments = const ["piano"],
@@ -833,7 +811,6 @@ class MusicScore {
 
   ScorePart? partById(String id) => parts.where((p) => p.id == id).firstOrNull;
 
-  /// timeAt is the time signature in force in [bar].
   (int, int) timeAt(int bar) {
     var t = (beats, beatUnit);
     for (var i = 0; i <= bar && i < bars.length; i++) {
@@ -842,13 +819,11 @@ class MusicScore {
     return t;
   }
 
-  /// barQuarters is how long [bar] is, in quarters.
   double barQuarters(int bar) {
     var (b, u) = timeAt(bar);
     return b * 4 / u;
   }
 
-  /// keyAt is the key signature in force in [bar].
   int keyAt(int bar) {
     var k = fifths;
     for (var i = 0; i <= bar && i < bars.length; i++) {
@@ -857,7 +832,6 @@ class MusicScore {
     return k;
   }
 
-  /// tempoAt is the tempo in force in [bar].
   double tempoAt(int bar) {
     var t = tempo;
     for (var i = 0; i <= bar && i < bars.length; i++) {
@@ -866,12 +840,11 @@ class MusicScore {
     return t;
   }
 
-  /// playOrder is the bars as played: through repeats (each repeat sign
-  /// played as many times as it says, its endings on their passes, an end
-  /// with no start going back to the last finished repeat or the top), then
-  /// any D.C. or D.S., taken once, after which repeats are not taken again
-  /// and only the last ending plays -- as players and MuseScore do -- on to
-  /// Fine, or by the Coda.
+  /// playOrder is the bars as played: through repeats (each played as many
+  /// times as it says, endings on their passes, an end with no start going
+  /// back to the last finished repeat or the top), then any D.C. or D.S.,
+  /// taken once, after which repeats are not retaken and only the last
+  /// ending plays (as players and MuseScore do), on to Fine or by the Coda.
   List<PlayedBar> playOrder() {
     var out = <PlayedBar>[];
     var at = 0.0;
@@ -881,7 +854,7 @@ class MusicScore {
     var done = <int>{};
     for (var guard = 0; i < bars.length && guard < 20000; guard++) {
       var b = bars[i];
-      // Out of a block of endings, stepping on: the first time round again.
+      // Leaving a block of endings: the first time round again.
       if (stepped &&
           jumped == null &&
           b.endings.isEmpty &&
@@ -932,8 +905,7 @@ class MusicScore {
     return out;
   }
 
-  /// _lastEnding is the highest pass number in the block of endings that
-  /// [bar] is in.
+  /// _lastEnding is the highest pass in the block of endings [bar] is in.
   int _lastEnding(int bar) {
     var best = 1;
     for (var j = bar; j >= 0 && bars[j].endings.isNotEmpty; j--) {
@@ -945,8 +917,7 @@ class MusicScore {
     return best;
   }
 
-  /// secondsAt is how many seconds into the playing [quarters] is, through
-  /// the tempo changes of [order].
+  /// secondsAt is seconds into [order] at [quarters], through tempo changes.
   double secondsAt(List<PlayedBar> order, double quarters) {
     var s = 0.0;
     for (var p in order) {
@@ -958,9 +929,8 @@ class MusicScore {
     return s;
   }
 
-  /// placeAt is where [seconds] into the playing of [order] is: which
-  /// played bar (by index in [order]), its bar, and how many quarters into
-  /// it; null before the start and past the end.
+  /// placeAt is where [seconds] into [order] is: the played bar's index, its
+  /// bar, and quarters into it; null outside the playing.
   ({int played, int bar, double at})? placeAt(
       List<PlayedBar> order, double seconds) {
     if (seconds < 0) return null;
@@ -976,17 +946,15 @@ class MusicScore {
     return null;
   }
 
-  /// lengthQuarters is how long the playing is.
   double lengthQuarters([List<PlayedBar>? order]) {
     var o = order ?? playOrder();
     return o.isEmpty ? 0 : o.last.start + barQuarters(o.last.bar);
   }
 
-  /// partNotes is [part] as played, in seconds: every staff's notes
-  /// through [playOrder], ties joined, as loud as the dynamics and hairpins
-  /// in force and as long as the articulations say; a strum is the chord
-  /// symbol in force voiced for guitar, its strings a moment apart, low to
-  /// high down and high to low up. Each note knows its event.
+  /// partNotes is [part] as played, in seconds: every staff through
+  /// [playOrder], ties joined, as loud as the dynamics and hairpins and as
+  /// long as the articulations say. A strum is the chord in force voiced for
+  /// guitar, strings a moment apart, low first down, high first up.
   List<ScoreNote> partNotes(String part, {List<PlayedBar>? order}) {
     var p = partById(part);
     if (p == null) return const [];
@@ -997,8 +965,8 @@ class MusicScore {
       var dyn = Dynamic.mf;
       String? chord;
       int? shape;
-      // Ties: in each voice, the keys held on from its last event, and
-      // their notes' places in out.
+      // Ties: per voice, the keys held on from its last event, and their
+      // notes' places in out.
       var held = <int, Map<int, int>>{};
       for (var (n, pb) in o.indexed) {
         var spq = 60 / tempoAt(pb.bar);
@@ -1036,9 +1004,8 @@ class MusicScore {
           var len = e.quarters * spq * hold;
           var v = (e.velocity ?? vel.round()).clamp(1, 127);
           if (e.slash) {
-            // A guitar holds the chord's shape (the one chosen, or the
-            // common one); a bass plays its bass; anything else the chord's
-            // notes in a guitar's range.
+            // A guitar holds the chord's shape (chosen or common); a bass
+            // plays its bass; anything else the chord in a guitar's range.
             var keys = switch (p.kind.look) {
               InstrumentLook.guitar =>
                 guitarChord(chord ?? "C", shape)?.keysOn(guitarStrings) ??
@@ -1089,9 +1056,8 @@ class MusicScore {
     return out;
   }
 
-  /// _hairpin is how much a hairpin swells or fades a note [at] quarters
-  /// into [bar]: by the end of a crescendo a third louder, a diminuendo a
-  /// third softer.
+  /// _hairpin is how much a hairpin changes a note [at] quarters into [bar]:
+  /// a third louder by a crescendo's end, a third softer by a diminuendo's.
   double _hairpin(String part, int staff, int bar, double at) {
     double pos(ScoreTime t) {
       var q = 0.0;
@@ -1199,9 +1165,9 @@ class MusicScore {
   }
 }
 
-/// chordKeys is chord symbol [symbol] voiced as a guitar strums it: the
-/// root low (or the bass after a slash), the chord's notes above it, six
-/// strings' worth between E2 and E4. An unreadable symbol is C major.
+/// chordKeys is [symbol] voiced as a guitar strums it: root low (or the
+/// slash bass), the chord's notes above, six strings' worth between E2 and
+/// E4. An unreadable symbol is C major.
 List<int> chordKeys(String symbol) {
   var m = RegExp(r"^\s*([A-G])([#b♯♭]?)([^/]*)(?:/([A-G])([#b♯♭]?))?\s*$")
       .firstMatch(symbol);
@@ -1251,9 +1217,9 @@ List<int> chordKeys(String symbol) {
   return keys;
 }
 
-/// scoreFromNotes writes [notes] (in seconds, at [tempo]) out as a score of
-/// one part, spelled, voiced and tied as notation.dart writes them: the way
-/// a MIDI file, a MusicXML file or an instrument's own notes become a score.
+/// scoreFromNotes writes [notes] (seconds, at [tempo]) as a one-part score,
+/// spelled, voiced and tied as notation.dart writes them: how a MIDI file,
+/// MusicXML or an instrument's notes become a score.
 MusicScore scoreFromNotes(String id, List<MidiNote> notes,
     {String title = "",
     String instrument = "piano",
@@ -1264,8 +1230,8 @@ MusicScore scoreFromNotes(String id, List<MidiNote> notes,
   var key = fifths ?? notation.keyFifthsOf(notes);
   var inst = scoreInstrument(instrument);
   var two = inst.clefs.length > 1;
-  // One staff: lifted whole octaves above middle C, so notation.dart keeps
-  // every note on the staff it writes, then put back.
+  // One staff: lifted whole octaves above middle C so notation.dart keeps
+  // every note on its staff, then put back.
   var lift = 0;
   if (!two && notes.isNotEmpty) {
     var low = notes.map((n) => n.key).reduce(math.min);

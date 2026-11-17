@@ -10,12 +10,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// line_settings.dart is a line's settings: the Text panel's shape (see
-// element_panel.dart) -- a quick strip of its colour, width, end and dash;
-// Look (its stroke, its ends and dashes, its looks) and Layout (its length
-// and angle, beside where it is).
+// line_settings.dart is a line's panel (see element_panel.dart): quick
+// strip, Look (stroke, ends, dashes) and Layout (length and angle).
 
-/// linePanel is [e]'s panel.
 Widget linePanel(
     BuildContext context,
     CanvasController controller,
@@ -177,8 +174,8 @@ List<PanelBit> lineBits(
         summary: "${e.length.round()} long"
             "${e.angle.round() != 0 ? " · ${e.angle.round()}°" : ""}",
         children: [
-          // A line is its two ends, so it is sized and turned by its length
-          // and angle rather than by a box -- see LineElement.withEnds.
+          // A line is its two ends, so it is sized and turned by length and
+          // angle, not a box (see LineElement.withEnds).
           CanvasControlGroup(
             label: "Length and angle",
             help: "A line is sized and turned by its two ends: how long it "
@@ -291,13 +288,12 @@ List<PanelBit> lineBits(
             ],
           ),
         ]),
-    // How it comes in, loops and goes: the Chain's Motion view (Ken,
-    // 2026-11-08), not a section here.
+    // How it comes in, loops and goes is the Chain's Motion view.
   ];
 }
 
-/// strokeEndControls is how a stroke starts, how it ends, and how big the
-/// ends are. Shared by the line and the path, so the two always match.
+/// strokeEndControls is a stroke's start, end and end size. Shared by line
+/// and path, so the two always match.
 List<Widget> strokeEndControls({
   required LineStrokeCap cap,
   required LineEnd startEnd,

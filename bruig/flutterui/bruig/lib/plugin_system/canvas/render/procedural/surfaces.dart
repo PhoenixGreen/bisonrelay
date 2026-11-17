@@ -1,13 +1,11 @@
 part of 'generators.dart';
 
 // surfaces.dart is the Surface style: paper, concrete, wood, marble, carbon
-// fibre, fabric and leather.
-//
-// Built like the metal (see _metal) rather than drawn: each kind is a height
-// and a colour at every point of a lattice, and a light across the heights
-// does the rest; the light finding the slopes is what makes a weave look
-// woven. Every relief is asked for as the slope it should reach, not as a
-// depth, since fine detail given a depth comes out as corrugated iron.
+// fibre, fabric and leather. Built like the metal (see _metal): a height
+// and a colour at every lattice point, lit across the heights; the light on
+// the slopes is what makes a weave look woven. Every relief is asked for as
+// the slope it should reach, not a depth, since fine detail given a depth
+// comes out as corrugated iron.
 
 /// SurfaceKind is [ProceduralStyle.surface]'s "surfaceKind" setting.
 abstract final class SurfaceKind {
@@ -50,7 +48,6 @@ double _smooth(double a, double b, double x) {
   return (f1, f2, id);
 }
 
-/// _surface draws one of the surfaces.
 void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var short = math.min(rect.width, rect.height);
   if (short <= 0) return;
@@ -203,22 +200,21 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           // diagonally through clouded stone.
           var turb = n1.fbm(u * 1.8 / size, v * 1.8 / size, octaves: 5);
           // Mostly the diagonal, bent by the turbulence rather than made of
-          // it: bent too far, the veins follow the field's own contours and
-          // the stone reads as a map.
+          // it: bent too far, the veins follow the field's contours and the
+          // stone reads as a map.
           var x = (u * 0.8 + v * 0.6) * (1.2 + spec.density * 2.5) / size +
               (turb - 0.5) * (1.2 + spec.variation * 2.4) +
               (n2.fbm(u * 6 / size, v * 6 / size, octaves: 3) - 0.5) * 0.35;
-          // Sharper in some places than others, and with a soft haze round
-          // it, as a vein that has bled into the stone has: one width all
-          // along reads as a line drawn on it.
+          // Sharper in places, with a soft haze round it, as a vein that has
+          // bled into the stone: one width all along reads as a drawn line.
           var near = 1 - (math.sin(x * math.pi)).abs();
           var sharp = 5 + n3.at(u * 2.2 / size, v * 2.2 / size) * 28;
           var vein = math.pow(near, sharp).toDouble() * 0.85 +
               math.pow(near, 2.2).toDouble() * 0.12;
           // Fainter veins crossing the main ones, and a few of the accent
-          // (gold, in a Calacatta) that come and go along their length.
-          // Sines rather than the creases of a field: creases of value noise
-          // line up with its lattice and come out as little crosses.
+          // (gold, in a Calacatta) coming and going. Sines rather than the
+          // creases of a field: value-noise creases line up with its lattice
+          // and come out as little crosses.
           var y2 = (v * 0.9 - u * 0.45) * (2.2 + spec.density * 3) / size +
               (turb - 0.5) * 2.2;
           var fine = math.pow(1 - math.sin(y2 * math.pi).abs(), 30).toDouble() *
@@ -327,13 +323,12 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
       canvas, rect, spec, cols, rows, height, red, green, blue, gloss);
 }
 
-/// _shadeLattice lights a lattice of heights and colours and draws it.
-///
-/// Shared by the surfaces and the metal finishes. Lit from up and to the
-/// left: a diffuse light lifted so the far side is shaded rather than black,
-/// and a highlight as tight as each point's gloss. [metal] is how much each
-/// point mirrors its surroundings rather than scattering light; a tinted
-/// reflection, more than any highlight, is what reads as metal.
+/// _shadeLattice lights a lattice of heights and colours and draws it, for
+/// the surfaces and the metal finishes. Lit from up and to the left: a
+/// diffuse light lifted so the far side is shaded rather than black, and a
+/// highlight as tight as each point's gloss. [metal] is how much each point
+/// mirrors its surroundings rather than scattering; a tinted reflection,
+/// more than any highlight, is what reads as metal.
 void _shadeLattice(
     ui.Canvas canvas,
     Rect rect,

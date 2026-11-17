@@ -3,21 +3,14 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// stage_element.dart is a 3D stage: a floor and a back wall seen through a
-// camera, that characters stand on. It is no longer an element of its own:
-// these are the settings a background carries when its backdrop is a stage
-// (see BackgroundElement.staged and backdrop.dart). Drawn by render/stage.
-//
-// Characters on it stand at a spot on its floor, and the camera decides
-// where on the page that is and how big they are, so moving the camera
-// moves them all together.
-//
-// Each camera setting is a "cam." channel on the carrier's track (see
-// cameraChannel). These stay keyframes when tracks are converted to clips
-// (see motion_convert.dart).
+// stage_element.dart is a 3D stage's settings: a floor and a back wall seen
+// through a camera, carried by a background whose backdrop is a stage (see
+// BackgroundElement.staged, backdrop.dart); drawn by render/stage.
+// Characters stand at spots on its floor, so moving the camera moves them
+// together. Each camera setting is a "cam." channel on the carrier's track
+// (see cameraChannel), kept as keyframes when tracks become clips.
 
-/// StageCamera is one camera setting. See render/stage/stage_camera.dart for
-/// what it sees.
+/// StageCamera is one camera setting (render/stage/stage_camera.dart).
 class StageCamera {
   /// yaw is how far round the stage the camera has been swung, in degrees:
   /// round to its right as it grows.
@@ -118,7 +111,6 @@ class StageCamera {
 /// cameraChannel is the keyframe channel one camera setting is pinned on.
 String cameraChannel(String setting) => "cam.$setting";
 
-/// CameraShot is a ready-made camera.
 class CameraShot {
   final String name;
   final StageCamera camera;
@@ -137,7 +129,6 @@ const List<CameraShot> cameraShots = [
       StageCamera(yaw: 35, pitch: 12, distance: 7, lens: 35)),
 ];
 
-/// FloorPattern is what the floor is made of.
 enum FloorPattern {
   plain("Plain"),
   grid("Grid"),
@@ -192,8 +183,7 @@ class StageElement extends CanvasElement {
   /// size is how far the floor runs each way from the middle, in metres.
   final double size;
 
-  /// wall is whether there is a back wall; without one the floor runs to
-  /// the horizon under the sky.
+  /// wall is whether there is a back wall, or floor to the horizon.
   final bool wall;
   final Color wallColor;
   final Color sky;
@@ -214,16 +204,15 @@ class StageElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.stage;
 
-  /// cameraAt is the camera on [frame]: its own setting with whatever the
-  /// track keys over it -- or, while a frame is drawn through a Camera
-  /// element, that Camera's: see [director].
+  /// cameraAt is the camera on [frame], keys over its own, or while drawn
+  /// through a Camera element that Camera's: see [director].
   StageCamera cameraAt(int frame) =>
       director?.call(this, frame) ?? camera.over(poseAt(frame));
 
-  /// director is, while a frame is drawn through a Camera element, what
-  /// it makes of a stage's camera: set round the drawing and null the rest
-  /// of the time (see directedBy in camera_3d.dart). While editing, the
-  /// stage is seen through its own camera.
+  /// director is, while a frame is drawn through a Camera element, what it
+  /// makes of a stage's camera: set round the drawing, null otherwise (see
+  /// directedBy in camera_3d.dart). While editing, the stage is seen through
+  /// its own camera.
   static StageCamera? Function(StageElement stage, int frame)? director;
 
   /// ownCameraAt is the stage's own camera on [frame], whoever is directing.

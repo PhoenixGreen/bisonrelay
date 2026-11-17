@@ -7,22 +7,18 @@ import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
-// mix_core.dart is the editor's mixer: the voices playing, each on its
-// channel through its strip and the master, rendered a block at a time.
-//
-// It knows nothing of SoLoud or of time passing: dart_audio_engine.dart
-// decides when to ask for a block and how far ahead to stay.
+// mix_core.dart is the editor's mixer: voices through their strips and the
+// master, a block at a time. dart_audio_engine.dart decides when.
 
-/// CoreVoice is one sound playing.
 class CoreVoice {
   final TrackSource track;
   String? channel;
 
-  /// frame is where the next block will be read from in the track.
+  /// frame is where the next block is read from in the track.
   int frame;
 
-  /// since is where it was last started or moved to: a floor for the heard
-  /// position while earlier audio is still on its way to the speakers.
+  /// since is where it last started or moved to: a floor for the heard
+  /// position while earlier audio is still on its way.
   int since;
 
   double _gain;
@@ -32,17 +28,16 @@ class CoreVoice {
   bool alive = true;
   bool _stopAtSilence = false;
 
-  /// wait is how many frames are still to be rendered before it starts, so
-  /// a clip launched on the next bar starts on that exact frame.
+  /// wait is how many frames are rendered before it starts, so a clip
+  /// launched on the next bar starts on that exact frame.
   int wait = 0;
 
-  /// loopFrom and loopTo are the loop, in track frames; past the track's
-  /// end up to loopTo is silence (a clip longer than its sound). Null for
-  /// once through.
+  /// loopFrom and loopTo are the loop in track frames; past the track's end
+  /// up to loopTo is silence (a clip longer than its sound). Null for once.
   int? loopFrom, loopTo;
 
-  /// endIn is how many frames more it plays before it is stopped with a
-  /// short fade (a clip stopped on the next bar). Null for no end set.
+  /// endIn is how many more frames it plays before a short fade stops it
+  /// (a clip stopped on the next bar). Null for no end.
   int? endIn;
 
   CoreVoice._(this.track, this.channel, this.frame, double volume)
@@ -56,7 +51,6 @@ class CoreVoice {
 class MixCore {
   final List<CoreVoice> _voices = [];
 
-  /// graph is the routing: channels, sends, returns, master.
   final MixGraph graph = MixGraph();
 
   /// _recent are the last [spectrumSize] samples of each channel, each
@@ -64,9 +58,8 @@ class MixCore {
   final Map<String, Float32List> _recent = {};
   static const int spectrumSize = 512;
 
-  /// spectraWanted, set, are the only channels (the master as "") whose
-  /// spectrum is read -- the worker's watched ones -- so the rest are not
-  /// kept at every block. Null keeps every one's, for whoever asks.
+  /// spectraWanted, set, are the only channels (master as "") whose
+  /// spectrum is kept: the worker's watched ones. Null keeps every one's.
   Set<String>? spectraWanted;
 
   Float32List _tl = Float32List(0), _tr = Float32List(0);
@@ -98,7 +91,7 @@ class MixCore {
   /// stopIn stops [v] [delay] seconds from now, to the frame.
   void stopIn(CoreVoice v, double delay) {
     var frames = math.max(0, (delay * mixRate).round());
-    // Still waiting to start, and stopped before it does: never heard.
+    // Stopped before it starts: never heard.
     if (v.wait >= frames) {
       stop(v);
       return;
@@ -106,8 +99,8 @@ class MixCore {
     v.endIn = frames - v.wait;
   }
 
-  /// volume moves [v] to [to] over [fade] seconds, linearly, matching
-  /// SoLoud's faders.
+  /// volume moves [v] to [to] linearly over [fade] seconds, as SoLoud's
+  /// faders do.
   void volume(CoreVoice v, double to, {double fade = 0}) {
     v._target = to;
     var frames = (fade * mixRate).round();
@@ -207,8 +200,7 @@ class MixCore {
   }
 
   /// _read reads [want] frames of [v] into the start of _tl and _tr, going
-  /// round its loop, and returns how many it read: fewer only at the end of
-  /// a voice that does not loop.
+  /// round its loop; fewer only at the end of a voice that does not loop.
   int _read(CoreVoice v, int want) {
     var to = v.loopTo, from = v.loopFrom;
     if (to == null || from == null) {
@@ -262,8 +254,8 @@ class MixCore {
     }
   }
 
-  /// spectrum is the latest [spectrumSize] / 2 magnitudes (0 to about 1,
-  /// up to half the rate) of [channel], or of the master.
+  /// spectrum is the latest [spectrumSize] / 2 magnitudes (0 to about 1, up
+  /// to half the rate) of [channel] or the master.
   Float32List? spectrum([String? channel]) {
     var x = _recent[channel ?? ""];
     if (x == null) return null;

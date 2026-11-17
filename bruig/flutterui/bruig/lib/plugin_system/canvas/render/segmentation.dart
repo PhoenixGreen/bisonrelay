@@ -2,17 +2,13 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 // segmentation.dart separates a subject from its background by colour and
-// by edge: the engine behind Quick select, and behind Select subject where
-// the operating system cannot find one itself.
-//
-// It is GrabCut, more or less. Two colour models (subject and background)
-// are learnt from pixels known to be one or the other; every other pixel
-// goes to whichever side costs least, where a pixel costs how unlikely its
-// colour is on that side and cutting between neighbours costs more the more
-// alike they are. The cheapest cut is a minimum cut of a graph, found as a
-// maximum flow, so the boundary runs where the picture has an edge.
-//
-// Pure Dart over plain lists, so it runs in an isolate.
+// edge: the engine behind Quick select, and Select subject where the
+// operating system cannot find one. Roughly GrabCut: subject and background
+// colour models learnt from known pixels; each other pixel goes to the side
+// that costs least, where cutting between neighbours costs more the more
+// alike they are. The cheapest cut is a minimum cut, found as a maximum
+// flow, so the boundary follows the picture's edges. Pure Dart over plain
+// lists, so it runs in an isolate.
 
 /// Seed is what a pixel is known to be before the cut.
 abstract final class Seed {
@@ -23,10 +19,9 @@ abstract final class Seed {
 
 /// SegmentJob is one cut to make: [rgba] is [width] x [height] pixels, four
 /// bytes each (straight or premultiplied: only colour is compared, and the
-/// pictures cut are opaque), and [seeds] is a [Seed] per pixel. [prior],
-/// where given, is how sure each pixel already was of being the subject, 0
-/// to 255: it decides nothing, but gives the colour models more to learn
-/// from than the seeds alone.
+/// pictures cut are opaque), and [seeds] is a [Seed] per pixel. [prior], if
+/// given, is how sure each pixel already was of being the subject, 0 to
+/// 255: it decides nothing, but gives the models more to learn from.
 class SegmentJob {
   final Uint8List rgba;
   final int width;
@@ -35,8 +30,8 @@ class SegmentJob {
   final Uint8List? prior;
 
   /// rounds is how many times the models are relearnt from the last cut and
-  /// the cut made again. One for a brush stroke, where the seeds say most of
-  /// it; a few for a whole picture with little to go on.
+  /// the cut made again: one for a brush stroke, where the seeds say most;
+  /// a few for a whole picture with little to go on.
   final int rounds;
 
   /// smoothness is how much an edge between alike pixels costs, against what
@@ -71,9 +66,9 @@ Uint8List segment(SegmentJob job) {
   }
   var prior = job.prior;
   for (var round = 0; round < math.max(1, job.rounds); round++) {
-    // The first models are learnt only from what is known (the seeds, and
-    // what the prior is sure of). Learnt from every pixel not yet called
-    // the subject, the background model would take in most of the subject.
+    // The first models are learnt only from what is known (seeds, and what
+    // the prior is sure of): learnt from every pixel not yet the subject,
+    // the background model would take in most of the subject.
     bool first = round == 0;
     bool known(int i, bool subject) {
       var s = job.seeds[i];
@@ -206,7 +201,6 @@ class _Gmm {
 
 const double _hard = 1e7;
 
-/// _cut is one minimum cut with the models [fg] and [bg].
 Uint8List _cut(SegmentJob job, _Gmm fg, _Gmm bg) {
   var w = job.width, h = job.height, n = w * h;
   var rgba = job.rgba;
@@ -276,9 +270,9 @@ Uint8List _cut(SegmentJob job, _Gmm fg, _Gmm bg) {
 }
 
 /// GridFlow is a maximum flow over a grid of pixels, each joined to its four
-/// neighbours, to a source and to a sink. Dinic's method: layer the graph by
+/// neighbours, a source and a sink. Dinic's method: layer the graph by
 /// distance from the source, push flow along the layers until none gets
-/// through, and again until the sink cannot be reached.
+/// through, and repeat until the sink cannot be reached.
 class GridFlow {
   final int w, h, n;
 
@@ -323,7 +317,6 @@ class GridFlow {
     }
   }
 
-  /// solve pushes as much as will go from the source to the sink.
   void solve() {
     // What goes straight through a pixel, source to sink, needs no search.
     for (var i = 0; i < n; i++) {

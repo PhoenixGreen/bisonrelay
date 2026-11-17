@@ -10,17 +10,12 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 
-// table_painter.dart draws a TableElement.
-//
-// Columns are sized by their contents unless the element gives fractions.
-// The measuring is capped so one very long cell cannot squeeze every other
-// column to nothing.
+// table_painter.dart draws a TableElement. Columns are sized by contents,
+// capped so one long cell cannot squeeze the others to nothing.
 
-/// paintTable draws [e] filling [rect].
-///
-/// [images] is where a cell holding a picture gets it from; without it (or
-/// while loading) such cells get the missing-picture mark, never their asset
-/// id as text.
+/// paintTable draws [e] filling [rect]. [images] supplies cell pictures;
+/// without it (or while loading) such cells get the missing-picture mark,
+/// never their asset id as text.
 void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     {CanvasImageSource? images}) {
   if (rect.width <= 4 || rect.height <= 4 || e.rows.isEmpty) {
@@ -43,14 +38,13 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   canvas.save();
   canvas.clipRRect(outer);
 
-  // Both fills are shaded across the whole table, so a fade runs once top to
-  // bottom rather than restarting on every row.
+  // Fills are shaded across the whole table, so a fade runs once, not per row.
   var cellPaint = PaintSpec(e.cellFill, gradient: e.cellFade);
   var headerPaint = PaintSpec(e.headerFill, gradient: e.headerFade);
   var header = headerPaint.shaderFor(rect);
 
-  // A fade of its own counts as a fill, and where there is one the paint is
-  // left opaque: a paint's alpha multiplies its shader. See PaintSpec.into.
+  // A fade counts as a fill, and leaves the paint opaque: a paint's alpha
+  // multiplies its shader (PaintSpec.into).
   if (cellPaint.shows) {
     canvas.drawRect(rect, cellPaint.into(Paint(), rect));
   }
@@ -73,7 +67,6 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     y += h;
   }
 
-  // The header column's fill, down the first column, as the header row has.
   if (e.headerColumn && headerPaint.shows && widths.isNotEmpty) {
     var top = rect.top + (e.headerRow ? heights.first : 0);
     canvas.drawRect(
@@ -81,9 +74,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         headerPaint.into(Paint(), rect));
   }
 
-  // A rule with no word to look for is drawn as one box around everything it
-  // picks out, not a box per cell: a row is a band across, a column a band
-  // down, both the cell where they cross.
+  // A rule with no word to look for draws one box round all it picks out: a
+  // row is a band across, a column a band down, both the crossing cell.
   for (var rule in e.rules) {
     if (rule.off || !rule.banded || !rule.style.paintsBox) continue;
     for (var box in _bandsFor(e, rule, rect, widths, heights, cols)) {
@@ -91,11 +83,9 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     }
   }
 
-  // Cells, their words all made smaller together where a row is too short
-  // for them or a word too wide for its column: cut to slivers or broken
-  // mid-word ("Ran / k") otherwise (found making the Charts canvas).
-  // The type, the room round it and the styles' sizes made smaller
-  // together, as a smaller table's would be; its lines and corners kept.
+  // Words, the room round them and the styles' sizes shrink together where
+  // a row is too short or a word too wide for its column; otherwise they
+  // are cut to slivers or broken mid-word. Lines and corners are kept.
   var fit = _textFit(e, rect.size, widths, heights);
   if (fit < 1) {
     var whole = e;
@@ -131,7 +121,6 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       var w = widths[c];
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
       var spec = isHeader ? e.headerSpec : e.cellSpec;
-      // Drawn rather than written, by its column's kind.
       var kind = isHeader ? "" : (e.columnKinds[c] ?? "");
       if (kind == "merge") {
         if (drawn.continues(r, c)) {
@@ -161,8 +150,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         x += w;
         continue;
       }
-      // Shaded by its size among its column's numbers, then written over
-      // in an ink that reads on the shade (a heatmap table).
+      // Shaded by its size among its column's numbers, then written in an
+      // ink that reads on the shade (a heatmap table).
       if (kind == "heat") {
         var v = _number(e.cell(r, c));
         var (lo, hi) = drawn.range(c);
@@ -195,8 +184,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         }
       }
 
-      // A picture, if the cell names one: inside the cell's padding and
-      // centred, so a column of badges lines up whatever their shapes.
+      // A picture, if the cell names one: centred inside the padding, so a
+      // column of badges lines up whatever their shapes.
       var asset = TableElement.pictureIn(e.cell(r, c));
       if (asset != null) {
         var cell = Rect.fromLTWH(x, y, w, h).deflateSides(e);
@@ -214,8 +203,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           if (image != null) {
             _paintCellImage(canvas, image, box);
           } else {
-            // Not arrived, or never will. Marked rather than blank, so a
-            // missing picture can be told from an empty cell.
+            // Not arrived, or never will: marked, so a missing picture can be
+            // told from an empty cell.
             _paintMissingPicture(canvas, box, e);
           }
         }
@@ -223,8 +212,6 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         continue;
       }
 
-      // Everything the rules say about this cell, worked out once (see
-      // TableCellLook).
       var look = e.lookAt(r, c);
       var style = look.style;
       if (style != null) {
@@ -241,8 +228,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           );
         }
       }
-      // Its sheet's colour rules (Data element): a colour behind it, a bar
-      // along it under the words.
+      // Its sheet's colour rules (Data element): a colour behind, a bar under
+      // the words.
       if (e.sheetLookAt(r, c) case var sl?) {
         var box = Rect.fromLTWH(x, y, w, h);
         if (sl.fill case var fill?) {
@@ -263,24 +250,23 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
               Paint()..color = sl.barColour.withValues(alpha: 0.55));
         }
       }
-      // The table's padding on all four sides, plus whatever a rule adds
-      // (without which a rule's left or right alignment sits on the edge).
+      // Padding plus a rule's own (without it a side alignment hits the edge).
       var extra = style?.textPad ?? 0;
       var left = e.leftPad + extra, right = e.rightPad + extra;
       var top = e.topPad + extra, bottom = e.bottomPad + extra;
       var textBox = Rect.fromLTWH(x + left, y + top,
           math.max(1, w - left - right), math.max(1, h - top - bottom));
 
-      // A header kept but not shown (TableElement.hiddenHeaders): background,
-      // rules and width still apply; only the writing is left out.
+      // A hidden header (TableElement.hiddenHeaders) keeps its background,
+      // rules and width; only the writing is left out.
       if (!e.shows(r, c)) {
         x += w;
         continue;
       }
 
-      // Chips round the words, drawn before the words. Each word rule draws
-      // its own chips in its own style, not the merged style, so "D L W"
-      // with a rule per letter gets three colours.
+      // Chips round the words, before the words. Each word rule draws its own
+      // chips in its own style, so "D L W" with a rule per letter gets three
+      // colours.
       var slots = _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
           style?.letterSpacing ?? 0);
       _paintChips(canvas, look, e.cell(r, c), spec, textBox,
@@ -293,16 +279,15 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         continue;
       }
 
-      // On a fixed pitch, if a rule asked for one: a slot per character, so
-      // the boxes round them line up.
+      // On a fixed pitch, a slot per character so the boxes line up.
       if (slots != null) {
         _paintSlots(canvas, look, e.cell(r, c), spec, slots);
         x += w;
         continue;
       }
 
-      // Where rules style parts of the cell, it is laid out as one paragraph
-      // of styled runs, so the line still aligns as a whole.
+      // Rule-styled parts are laid out as one paragraph of styled runs, so
+      // the line still aligns as a whole.
       var runs = _runsOf(look, e.cell(r, c), spec);
       if (runs != null) {
         paintRunsInBox(canvas, runs, spec, textBox, clip: true);
@@ -323,14 +308,12 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     y += h;
   }
 
-  // Rules.
   if (e.grid != TableGrid.none && e.gridWidth > 0) {
     var paint = Paint()
       ..color = e.gridColor
       ..strokeWidth = e.gridWidth;
 
-    // Each line in pieces where a merged cell runs on across it, or a
-    // group heading spans the row.
+    // Each line in pieces where a merged cell or a group heading crosses it.
     if (e.grid.drawsHorizontal) {
       var ry = rect.top;
       for (var r = 0; r < e.rows.length - 1; r++) {
@@ -371,13 +354,11 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   }
 }
 
-/// tableCardLayout is where a table drawn as cards (TableElement.cards)
-/// puts its columns: the table they are cut from, lowered to leave room
-/// over it for the raised card and its ribbon ([inner]); each column's
-/// place in it ([from]) and its card's ([to]). A column keeps its place
-/// across -- the gaps come out of the cards' own widths, so a click finds
-/// the same cell as in the table drawn plain. The first column, the rows'
-/// names, has no card.
+/// tableCardLayout is where a table drawn as cards (TableElement.cards) puts
+/// its columns: [inner] is the table lowered to leave room for the raised
+/// card and its ribbon, [from] each column's place in it and [to] its
+/// card's. Gaps come out of the cards' widths, so a click finds the same
+/// cell as in the plain table. The first column (row names) has no card.
 ({Rect inner, List<Rect> from, List<Rect> to}) tableCardLayout(
     TableElement e, Rect rect, int cols, TableElement inner) {
   var gap = math.max(4.0, rect.width * 0.025);
@@ -400,8 +381,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   return (inner: innerRect, from: from, to: to);
 }
 
-/// tableCardRoom is how much a table drawn as cards leaves over itself:
-/// the picked card's [lift] and half its ribbon. Nothing drawn plain.
+/// tableCardRoom is the room a card table leaves over itself: the picked
+/// card's [lift] and half its ribbon. Nothing when drawn plain.
 ({double room, double lift}) tableCardRoom(
     TableElement e, Rect rect, int cols) {
   if (!e.cards || cols < 2 || e.picked <= 0 || e.picked >= cols) {
@@ -412,10 +393,9 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   return (room: lift + ribbonH / 2, lift: lift);
 }
 
-/// _paintCards draws [e] as cards: the table painted once a column, each
-/// time cut to that column and moved to its card, with no lines down it;
-/// then each card's edge, the picked one's in the style's accent and
-/// raised, under its ribbon.
+/// _paintCards draws [e] as cards: the table painted once per column, cut to
+/// that column and moved to its card; then each card's edge, the picked one
+/// raised in the accent under its ribbon.
 void _paintCards(ui.Canvas canvas, Rect rect, TableElement e, int cols,
     CanvasImageSource? images) {
   var inner = e.copyWith(
@@ -438,8 +418,7 @@ void _paintCards(ui.Canvas canvas, Rect rect, TableElement e, int cols,
     } else {
       canvas.clipRRect(RRect.fromRectAndRadius(card, round));
     }
-    // Raised, its rows move up with it; the cells' fill behind covers the
-    // room left at its foot.
+    // Raised, its rows move up; the cells' fill covers the gap at its foot.
     if (c > 0 && e.cellFill.a > 0) {
       canvas.drawRect(card, Paint()..color = e.cellFill);
     }
@@ -466,8 +445,8 @@ void _paintCards(ui.Canvas canvas, Rect rect, TableElement e, int cols,
           color: accent.computeLuminance() > 0.45
               ? const Color(0xFF1B1B1B)
               : const Color(0xFFFFFFFF));
-      // On one line: the band as wide as its words, up to the card's
-      // width, and the words smaller where even that is too narrow.
+      // On one line: the band as wide as its words up to the card's width,
+      // the words smaller where even that is too narrow.
       var w = layoutText(words, spec, maxWidth: double.infinity).width;
       var room = card.width - 4;
       if (w + h > room) {
@@ -487,13 +466,9 @@ void _paintCards(ui.Canvas canvas, Rect rect, TableElement e, int cols,
   }
 }
 
-/// paintRedacted draws [text] laid out in [box] as [spec] would, but as a
-/// solid bar over each line, in the text's colour: the words' own extent,
-/// so a short answer gets a short bar and the alignment still shows.
-/// paintCellPicture draws the picture [asset] fitted in [box] -- a vector
-/// first, else the picture -- and says whether it had one to draw. For the
-/// Data Studio's sheet, which shows a picture cell's badge rather than its
-/// name.
+/// paintCellPicture draws the picture [asset] fitted in [box], a vector
+/// first, and returns whether it had one. For the Data Studio's sheet, which
+/// shows a picture cell's badge rather than its name.
 bool paintCellPicture(
     ui.Canvas canvas, CanvasImageSource images, String asset, Rect box) {
   var vector = images.resolveVector(asset);
@@ -507,6 +482,9 @@ bool paintCellPicture(
   return true;
 }
 
+/// paintRedacted draws [text] as [spec] would lay it out in [box], but as a
+/// solid bar over each line in the text's colour, so a short answer gets a
+/// short bar and the alignment still shows.
 void paintRedacted(ui.Canvas canvas, String text, TextSpec spec, Rect box) {
   if (text.trim().isEmpty || box.width <= 0) return;
   // Shared with the paragraph cache: not this function's to dispose.
@@ -528,8 +506,8 @@ void paintRedacted(ui.Canvas canvas, String text, TextSpec spec, Rect box) {
   canvas.restore();
 }
 
-/// _paintCellImage draws a picture inside a cell, contained rather than
-/// cropped: a badge with its sides cut off is not a badge.
+/// _paintCellImage draws a picture contained in a cell, not cropped: a badge
+/// with its sides cut off is not a badge.
 void _paintCellImage(ui.Canvas canvas, ui.Image image, Rect box) {
   if (box.width <= 0 || box.height <= 0) return;
   var size = Size(image.width.toDouble(), image.height.toDouble());
@@ -560,8 +538,7 @@ void _paintMissingPicture(ui.Canvas canvas, Rect box, TableElement e) {
   canvas.drawLine(frame.topLeft, frame.bottomRight, paint);
 }
 
-/// _paintCellVector draws a vector inside a cell, contained rather than
-/// cropped, at whatever size the cell happens to be.
+/// _paintCellVector draws a vector inside a cell, contained, not cropped.
 void _paintCellVector(ui.Canvas canvas, CanvasVector vector, Rect box) {
   if (box.width <= 0 || box.height <= 0 || vector.size.isEmpty) return;
   var scale =
@@ -576,13 +553,11 @@ void _paintCellVector(ui.Canvas canvas, CanvasVector vector, Rect box) {
   canvas.restore();
 }
 
-/// _bandFor is the rectangle a banded rule covers: every cell it picks out,
-/// taken together.
+/// _bandsFor is the rectangles a banded rule covers.
 List<Rect> _bandsFor(TableElement e, TableRule rule, Rect rect,
     List<double> widths, List<double> heights, int cols) {
   var head = e.header;
 
-  // Every column the rule names, taken together into one band.
   var left = rect.left;
   double? fromX, toX;
   for (var c = 0; c < cols; c++) {
@@ -594,8 +569,6 @@ List<Rect> _bandsFor(TableElement e, TableRule rule, Rect rect,
   }
   if (fromX == null || toX == null) return const [];
 
-  // A band for each run of rows it reaches: one for a block of rows, one
-  // each for teams it follows that are apart.
   var out = <Rect>[];
   var top = rect.top;
   double? fromY;
@@ -614,9 +587,9 @@ List<Rect> _bandsFor(TableElement e, TableRule rule, Rect rect,
   return out;
 }
 
-/// _paintChips draws the boxes for every rule that names a word in this cell,
-/// each in its own style, at every occurrence. Hugging boxes come from the
-/// glyph boxes (textRunBox), or the slots on a fixed pitch.
+/// _paintChips draws the boxes for every rule naming a word in this cell,
+/// each in its own style, at every occurrence: from the glyph boxes
+/// (textRunBox), or the slots on a fixed pitch.
 void _paintChips(ui.Canvas canvas, TableCellLook look, String text,
     TextSpec spec, Rect textBox, Rect cell, List<Rect>? slots) {
   for (var (rule, runs) in look.words) {
@@ -637,8 +610,8 @@ void _paintChips(ui.Canvas canvas, TableCellLook look, String text,
 }
 
 /// _slotsIn is one rectangle per character when a rule asked for a fixed
-/// pitch ([width] > 0), and null when it did not. Slots are what line up the
-/// boxes round letters of different widths.
+/// pitch ([width] > 0), else null. Slots line up the boxes round letters of
+/// different widths.
 List<Rect>? _slotsIn(
     String text, TextSpec spec, Rect box, double width, double gap) {
   if (width <= 0 || text.isEmpty) return null;
@@ -676,10 +649,9 @@ Rect? _slotSpan(List<Rect> slots, int from, int to) {
   return out;
 }
 
-/// _paintSlots draws each character in the middle of its own slot, moved by
-/// whatever nudge the rule that claims it asks for.
-///
-/// The nudge moves the letter, not its box, so the slots stay in line.
+/// _paintSlots draws each character centred in its slot, moved by its
+/// rule's nudge. The nudge moves the letter, not the box, so slots stay in
+/// line.
 void _paintSlots(ui.Canvas canvas, TableCellLook look, String text,
     TextSpec spec, List<Rect> slots) {
   var centred = spec.copyWith(
@@ -693,7 +665,6 @@ void _paintSlots(ui.Canvas canvas, TableCellLook look, String text,
     var nudge = rule == null
         ? Offset.zero
         : Offset(rule.style.nudgeX, rule.style.nudgeY);
-    // Each character in the type its own rule asks for.
     paintTextInBox(canvas, text[i], _typed(centred, _typeAt(look, i)),
         nudge == Offset.zero ? slots[i] : slots[i].shift(nudge));
   }
@@ -736,8 +707,7 @@ TableCellStyle? _typeAt(TableCellLook look, int index) {
   return rule != null && rule.style.changesType ? rule.style : null;
 }
 
-/// _wordsIn is the box the words actually occupy inside their cell, which is
-/// what a chip is drawn round.
+/// _wordsIn is the box the words occupy in their cell, which a chip hugs.
 Rect _wordsIn(String text, TextSpec spec, Rect box) {
   if (text.trim().isEmpty) return box;
   var painter = layoutText(text, spec, maxWidth: box.width);
@@ -756,11 +726,9 @@ Rect _wordsIn(String text, TextSpec spec, Rect box) {
   return Rect.fromLTWH(dx, dy, width, height);
 }
 
-/// _paintStyleBox fills and outlines one rule's box.
 void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
     {bool hug = false}) {
-  // The one inset number is padding outward round a chip and an inset
-  // inward inside a band.
+  // The one inset is padding outward round a chip, inward inside a band.
   var box = hug
       ? cell.inflate(style.inset.clamp(0.0, 200.0))
       : cell.inflate(-style.inset.clamp(-200.0, cell.shortestSide / 2));
@@ -787,8 +755,8 @@ void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
     ..strokeWidth = style.borderWidth
     ..color = style.borderColor;
 
-  // All four sides is a rounded rectangle; anything else is straight lines,
-  // since a rounded corner belongs to two sides.
+  // All four sides is a rounded rectangle; anything else straight lines, as
+  // a rounded corner belongs to two sides.
   if (style.allSides) {
     canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -828,8 +796,8 @@ void _placeholder(ui.Canvas canvas, Rect rect, TableElement e) {
       clip: true);
 }
 
-// The last text fit worked out, for one element at one size: it lays out
-// every word, so it is not done per frame.
+// The last text fit, for one element at one size: it lays out every word,
+// so it is not done per frame.
 TableElement? _fitOf;
 Size _fitSize = Size.zero;
 double _fitK = 1;
@@ -841,10 +809,10 @@ double tableTextFit(TableElement e, Rect rect) => e.rows.isEmpty
     : _textFit(e, rect.size, _columnWidths(e, rect, e.columnCount),
         _rowHeights(e, rect));
 
-/// _textFit is how much smaller [e]'s words must all be for each cell's
-/// lines to fit its row and its longest word its column: 1 where they
-/// already do, never below a quarter. Cells drawn rather than written, and
-/// pictures, are left out; a heading across the table has its whole width.
+/// _textFit is how much smaller [e]'s words must be for each cell's lines to
+/// fit its row and its longest word its column: 1 where they do, never below
+/// a quarter. Drawn cells and pictures are left out; a heading across the
+/// table has the whole width.
 double _textFit(
     TableElement e, Size size, List<double> widths, List<double> heights) {
   if (identical(_fitOf, e) && _fitSize == size) return _fitK;
@@ -859,9 +827,8 @@ double _textFit(
       var kind = isHeader ? "" : (e.columnKinds[c] ?? "");
       if (kind.isNotEmpty && kind != "heat") continue;
       var spec = isHeader || group ? e.headerSpec : e.cellSpec;
-      // The room round the words shrinks with them, so it is counted
-      // with them (found making the Charts canvas: a 33-wide column with
-      // 31 of padding left nothing for its "4").
+      // The room round the words shrinks with them, so it counts with them:
+      // a 33-wide column with 31 of padding leaves nothing for a "4".
       var lines = "\n".allMatches(text).length + 1;
       var tall = heights[r];
       // A line's letters, not its leading: one line needs about its size.
@@ -888,19 +855,18 @@ double _textFit(
 }
 
 /// tableColumnWidths is where a table's columns fall. Public so the stage's
-/// divider grips use this calculation rather than a second one that drifts.
+/// divider grips share this calculation rather than drift from it.
 List<double> tableColumnWidths(TableElement e, Rect rect) =>
     _columnWidths(e, rect, e.columnCount);
 
-// The last content-sized answer, for one element at one width. Measuring lays
-// out every cell, so it is not done per frame; a second table just measures
-// again.
+// The last content-sized answer, for one element at one width: measuring
+// lays out every cell, so it is not done per frame.
 TableElement? _measuredOf;
 double _measuredWidth = 0;
 List<double>? _measured;
 
-/// _columnWidths sizes the columns to their contents, or to the fractions the
-/// element carries when it has any.
+/// _columnWidths sizes the columns to their contents, or to the element's
+/// fractions when it has any.
 List<double> _columnWidths(TableElement e, Rect rect, int cols) {
   if (e.columnWidths.length == cols) {
     var total = e.columnWidths.fold<double>(0, (t, v) => t + v);
@@ -915,15 +881,14 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
     return _measured!;
   }
 
-  // Measured against a third of the table, so one long cell wraps rather than
-  // taking the whole width and starving its neighbours.
+  // Measured against a third of the table, so one long cell wraps.
   var cap = rect.width / 3;
   var natural = List.filled(cols, 0.0);
   for (var r = 0; r < e.rows.length; r++) {
     var spec = e.headerRow && r == 0 ? e.headerSpec : e.cellSpec;
     for (var c = 0; c < cols; c++) {
-      // A hidden header is not measured either: a badge column would
-      // otherwise be as wide as the word nobody can see in it.
+      // A hidden header is not measured, or a badge column is as wide as the
+      // unseen word.
       if (!e.shows(r, c)) continue;
       var text = e.cell(r, c);
       if (text.isEmpty) continue;
@@ -933,7 +898,6 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
   }
 
   var sum = natural.fold<double>(0, (t, v) => t + v);
-  // Scaled to fill the element exactly.
   var out = sum <= 0
       ? List.filled(cols, rect.width / cols)
       : [for (var w in natural) rect.width * w / sum];
@@ -954,11 +918,10 @@ extension on Rect {
       );
 }
 
-/// tableRowHeights is where a table's rows fall, public for the stage's cell
-/// editor (see [tableColumnWidths]).
+/// tableRowHeights is where a table's rows fall, for the stage's cell editor.
 List<double> tableRowHeights(TableElement e, Rect rect) {
-  // Drawn as cards, the rows lie lower by the room over them, taken into
-  // the first row so a click on it still finds it.
+  // As cards, the rows lie lower by the room over them, given to the first
+  // row so a click on it still finds it.
   var room = tableCardRoom(e, rect, e.columnCount).room;
   if (room <= 0) return _rowHeights(e, rect);
   var inner =
@@ -979,8 +942,8 @@ List<double> _rowHeights(TableElement e, Rect rect) {
   ];
 }
 
-/// _DrawnCells is what the cell kinds and group rows change about which
-/// cells a table draws (TableElement.columnKinds, groupRows).
+/// _DrawnCells is which cells a table draws, given its cell kinds and group
+/// rows.
 class _DrawnCells {
   final TableElement e;
   _DrawnCells(this.e);
@@ -998,8 +961,8 @@ class _DrawnCells {
     return true;
   }
 
-  /// continues is whether cell [r], [c] is part of a merged run begun
-  /// above it: the same value as the cell above, in a "merge" column.
+  /// continues is whether cell [r], [c] continues a merged run from above:
+  /// the same value as the cell above, in a "merge" column.
   bool continues(int r, int c) {
     if (e.columnKinds[c] != "merge" || r <= 0 || r >= e.rows.length) {
       return false;
@@ -1011,8 +974,7 @@ class _DrawnCells {
 
   final Map<int, (double, double)> _ranges = {};
 
-  /// range is the least and most of column [c]'s numbers, below the
-  /// header.
+  /// range is the least and most of column [c]'s numbers below the header.
   (double, double) range(int c) => _ranges.putIfAbsent(c, () {
         var lo = double.infinity, hi = double.negativeInfinity;
         for (var r = e.headerRow ? 1 : 0; r < e.rows.length; r++) {
@@ -1035,9 +997,9 @@ class _DrawnCells {
   }
 }
 
-/// paintCellKind draws [text] as a column's kind says (see
-/// TableElement.columnKinds) in [box], answering whether it did: a cell
-/// that can't be read that way is written as words instead.
+/// paintCellKind draws [text] in [box] as its column's kind says
+/// (TableElement.columnKinds), returning whether it did: a cell that can't
+/// be read that way is written as words instead.
 bool paintCellKind(ui.Canvas canvas, String kind, String text, TextSpec spec,
     Rect box, TableElement e) {
   var style = dataStyleNamed(e.style);
@@ -1117,8 +1079,8 @@ bool paintCellKind(ui.Canvas canvas, String kind, String text, TextSpec spec,
     case "harvey":
       var v = double.tryParse(t.replaceAll("%", ""));
       if (v == null) return false;
-      // A share: whole steps out of 4 (a Harvey ball's), a fraction of 1,
-      // or a percentage.
+      // A share: whole steps out of 4 (a Harvey ball), a fraction of 1, or a
+      // percentage.
       var f = t.contains("%") || v > 4
           ? v / 100
           : v == v.roundToDouble()

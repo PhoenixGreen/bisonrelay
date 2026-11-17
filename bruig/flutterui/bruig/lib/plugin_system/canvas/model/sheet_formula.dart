@@ -3,21 +3,15 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:petitparser/petitparser.dart';
 
-// sheet_formula.dart is the Data element's formulas (Ken, 2026-11-15: the
-// Data Studio "more inline with common spreadsheet software like open
-// office"): a cell typed "=SUM(B2:B9)" shows what it works out to, as in
-// Calc and Excel.
-//
-// A formula is parsed (petitparser) into a tree of FNodes and worked out
-// against a sheet by whoever asks (SheetCalc, in data_sheet.dart), which
-// gives each cell's value: a number (double), text (String), TRUE/FALSE
-// (bool), an error (SheetError) or nothing (null, a blank cell). The rules
-// are the spreadsheets': blanks count as 0 in sums and "" in text, text in
-// a range is passed over by SUM, an error anywhere in a sum is the sum's.
-// Dates are day numbers counted from 30 December 1899, as both count them.
+// sheet_formula.dart is the Data element's spreadsheet formulas: a cell typed
+// "=SUM(B2:B9)" shows what it works out to. A formula is parsed into FNodes
+// and worked out by SheetCalc (data_sheet.dart) to a double, String, bool,
+// SheetError or null (blank). Spreadsheet rules: blanks are 0 in sums and ""
+// in text, SUM passes over text in a range, an error in a sum is the sum's.
+// Dates are day numbers from 30 December 1899.
 
-/// SheetError is an error a formula works out to, written as the
-/// spreadsheets write it: #DIV/0!, #VALUE!, #REF!, #NAME?, #N/A, #NUM!.
+/// SheetError is an error a formula works out to, written as spreadsheets
+/// do: #DIV/0!, #VALUE!, #REF!, #NAME?, #N/A, #NUM!.
 class SheetError {
   final String code;
   const SheetError(this.code);
@@ -173,9 +167,8 @@ Parser<FNode> _build() {
 final Parser<FNode> _parser = _build();
 final Map<String, FNode?> _parsed = {};
 
-/// parseFormula is the tree of formula [src] (without its "="), or null
-/// where it doesn't parse. Kept, as the same few formulas are worked out
-/// again at every change.
+/// parseFormula is the tree of [src] (without its "="), or null where it does
+/// not parse. Cached: the same few formulas are worked out at every change.
 FNode? parseFormula(String src) {
   // A formula longer than any sheet's (deeply nested brackets) is refused
   // before the parser recurses through it.
@@ -191,8 +184,7 @@ FNode? parseFormula(String src) {
   });
 }
 
-/// maxFormulaLength is the longest formula worked out, as the spreadsheets
-/// have it.
+/// maxFormulaLength is the longest formula worked out, as spreadsheets have.
 const maxFormulaLength = 8192;
 
 /// maxRangeCells is the most cells one range in a formula reads.
@@ -203,8 +195,7 @@ const maxRangeCells = 1000000;
 /// FormulaCells is what a formula reads: each cell's value.
 typedef FormulaCells = Object? Function(int r, int c);
 
-/// evaluateFormula works [node] out against [cell]: its value, an error
-/// where it fails.
+/// evaluateFormula works [node] out against [cell], an error where it fails.
 Object? evaluateFormula(FNode node, FormulaCells cell) {
   try {
     var v = _Eval(cell).eval(node);
@@ -213,9 +204,8 @@ Object? evaluateFormula(FNode node, FormulaCells cell) {
   } on _Thrown catch (t) {
     return t.error;
   } catch (_) {
-    // Anything else -- a number too big to round, a date past the
-    // calendar's end, a stack too deep -- is the formula's error, not the
-    // sheet's or the canvas's.
+    // Anything else (a number too big to round, a date past the calendar, a
+    // stack too deep) is the formula's error, not the sheet's or canvas's.
     return SheetError.num;
   }
 }
@@ -227,13 +217,12 @@ class _Grid {
   Object? at(int r, int c) => cells[r * cols + c];
 }
 
-/// serialOf is [d]'s day number, counted as the spreadsheets count.
+/// serialOf is [d]'s spreadsheet day number.
 double serialOf(DateTime d) => DateTime.utc(d.year, d.month, d.day)
     .difference(DateTime.utc(1899, 12, 30))
     .inDays
     .toDouble();
 
-/// dateOf is day number [serial] as a date.
 DateTime dateOf(double serial) =>
     DateTime.utc(1899, 12, 30).add(Duration(days: serial.floor()));
 
@@ -343,8 +332,8 @@ class _Eval {
     };
   }
 
-  /// _flat is every value [args] give, ranges spread out; [skipText] where
-  /// a range's text and TRUE/FALSE are passed over (SUM, AVERAGE).
+  /// _numbers is every number [args] give, ranges spread out; a range's
+  /// text, TRUE/FALSE and blanks are passed over (SUM, AVERAGE).
   List<double> _numbers(List<FNode> args) {
     var out = <double>[];
     for (var a in args) {
@@ -674,8 +663,7 @@ class _Eval {
     return at;
   }
 
-  /// _criterion is a COUNTIF criterion: ">5", "<>x", "=Arsenal", "Ars*",
-  /// or a value to equal.
+  /// _criterion is a COUNTIF criterion; see criterionMatches.
   bool Function(Object?) _criterion(Object? spec) {
     spec = _scalar(spec);
     if (spec is! String) return (v) => compareValues(v, spec) == 0 && v != null;
@@ -728,8 +716,8 @@ double? _numberIn(String s) {
   return t.isEmpty ? null : double.tryParse(t);
 }
 
-/// compareValues orders two values as a spreadsheet does: numbers before
-/// text before TRUE/FALSE; text without regard to case; a blank as 0 or "".
+/// compareValues orders two values as a spreadsheet does: numbers, then text
+/// (case-blind), then TRUE/FALSE; a blank as 0 or "".
 int compareValues(Object? a, Object? b) {
   int rank(Object? v) =>
       v is double ? 0 : (v is String ? 1 : (v is bool ? 2 : 0));
@@ -745,10 +733,9 @@ int compareValues(Object? a, Object? b) {
   };
 }
 
-/// roundTo is [x] to [places] decimals: halves away from zero ([how] 0, as
-/// ROUND), always away (1, ROUNDUP) or toward it (-1, ROUNDDOWN). A hair is
-/// added before rounding, so 2.675 rounds to 2.68 as the spreadsheets'
-/// does, not 2.67 as the binary number underneath would.
+/// roundTo is [x] to [places] decimals: halves away from zero ([how] 0,
+/// ROUND), always away (1) or toward it (-1). A hair is added first, so
+/// 2.675 rounds to 2.68 as spreadsheets do, not 2.67 as binary would.
 double roundTo(double x, int places, {int how = 0}) {
   var f = math.pow(10, places).toDouble();
   var y = (x.abs() * f) * (1 + 1e-13);
@@ -758,9 +745,8 @@ double roundTo(double x, int places, {int how = 0}) {
   return (x < 0 ? -r : r) / f;
 }
 
-/// generalNumber is [v] as a spreadsheet's General format writes it: whole
-/// numbers whole, others to ten significant figures without trailing noughts
-/// (0.1 + 0.2 shows 0.3).
+/// generalNumber is [v] in a spreadsheet's General format: whole numbers
+/// whole, others to ten significant figures without trailing noughts.
 String generalNumber(double v) {
   if (v.isNaN) return SheetError.num.code;
   if (v == v.roundToDouble() && v.abs() < 1e15) return v.toInt().toString();
@@ -802,9 +788,9 @@ const _days = [
   "Sunday"
 ];
 
-/// textFormat is [v] written by a number format code -- the TEXT
-/// function's, and a cell's own: "0.00", "#,##0", "0%", "$#,##0.00",
-/// "dd/mm/yyyy", "d mmm yyyy", "yyyy-mm-dd", "mmmm". Text stays as it is.
+/// textFormat is [v] written by a number format code (TEXT's, or a cell's):
+/// "0.00", "#,##0", "0%", "$#,##0.00", "dd/mm/yyyy", "d mmm yyyy",
+/// "yyyy-mm-dd", "mmmm". Text stays as it is.
 String textFormat(Object? v, String code) {
   if (v is! double) {
     return v == null ? "" : (v is bool ? (v ? "TRUE" : "FALSE") : "$v");
@@ -882,8 +868,7 @@ final _refs = RegExp(
     r'("(?:[^"]|"")*")|(\$?[A-Za-z]{1,3}\$?\d+)(?::(\$?[A-Za-z]{1,3}\$?\d+))?(?![A-Za-z0-9_(])');
 final _refParts = RegExp(r'^(\$?)([A-Za-z]{1,3})(\$?)(\d+)$');
 
-/// _Ref is one reference as written: its column and row, and which of them
-/// are $-fixed.
+/// _Ref is one reference as written: column, row, and which are $-fixed.
 class _Ref {
   final bool fixC, fixR;
   final int r, c;
@@ -910,9 +895,8 @@ String _rewrite(String raw, String? Function(_Ref a, _Ref? b) f) =>
       return f(a, b) ?? m.group(0)!;
     });
 
-/// shiftedFormula is formula [raw] (with its "=") copied [dr] rows down and
-/// [dc] columns across: its relative references move, its $ ones stay, as
-/// a fill or a paste moves them.
+/// shiftedFormula is [raw] (with its "=") copied [dr] rows down and [dc]
+/// columns across: relative references move, $ ones stay, as a fill does.
 String shiftedFormula(String raw, int dr, int dc) {
   if (!raw.startsWith("=") || (dr == 0 && dc == 0)) return raw;
   _Ref? move(_Ref x) {
@@ -927,11 +911,10 @@ String shiftedFormula(String raw, int dr, int dc) {
   });
 }
 
-/// movedFormula is formula [raw] after [n] rows (or, with [columns],
-/// columns) were put in before [at] (n > 0) or taken out from [at]
-/// (n < 0): every reference -- $ or not -- to a cell that moved follows
-/// it, a range shrinks or grows round what went or came, and a reference
-/// to a cell taken out is #REF!, as Calc does.
+/// movedFormula is [raw] after [n] rows (or [columns]) were put in before
+/// [at] (n > 0) or taken out from [at] (n < 0): every reference to a moved
+/// cell follows it, $ or not; a range shrinks or grows; a reference to a
+/// removed cell is #REF!, as Calc does.
 String movedFormula(String raw, int at, int n, {bool columns = false}) {
   if (!raw.startsWith("=") || n == 0) return raw;
   int get(_Ref x) => columns ? x.c : x.r;

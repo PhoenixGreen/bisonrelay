@@ -7,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 // `rate` is frames per second; bars and beats are the AudioSettings metre
 // counted from the start of the timeline.
 
-/// PositionFormat is how the position reads.
 enum PositionFormat {
   bars("Bars and beats"),
   time("Minutes and seconds"),

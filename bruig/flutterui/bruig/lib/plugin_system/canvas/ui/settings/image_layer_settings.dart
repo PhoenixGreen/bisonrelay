@@ -21,14 +21,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// image_layer_settings.dart is a picture's layers and what works on them:
-// the strip of layers that opens into a list, adding one, the tools as tiles
-// with the settings of the one in hand, the picked layer's blend and
-// strength, and its place. The sections they are laid out in are
-// image_sections.dart's.
+// image_layer_settings.dart is a picture's layers and their tools: the
+// layer strip, adding, tool tiles, blend, strength and place.
+// image_sections.dart lays them into sections.
 
-/// layerAdds are the kinds of layer that can be added, as the Add tiles
-/// show them.
+/// LayerAdd is the kinds of layer that can be added, as the Add tiles show.
 enum LayerAdd {
   picture("Picture", Icons.add_photo_alternate_outlined, "imageAddPicture"),
   recent("Your pictures", Icons.photo_library_outlined, "imageAddRecent"),
@@ -43,8 +40,8 @@ enum LayerAdd {
   const LayerAdd(this.label, this.icon, this.key);
 }
 
-/// addImageLayerOf adds a layer of the kind [what] to [e], opening its layers
-/// first so the new one is there to be worked on.
+/// addImageLayerOf adds a [what] layer to [e], opening its layers first so
+/// the new one is ready to work on.
 Future<void> addImageLayerOf(BuildContext context, CanvasController controller,
     ImageElement e, LayerAdd what) async {
   var editing = controller.imageEditing == e.id;
@@ -74,8 +71,8 @@ Future<void> addImageLayerOf(BuildContext context, CanvasController controller,
     default:
   }
   if (!editing) controller.editImage(e.id);
-  // Over an empty base, anything else is the bottom of the picture: added
-  // just over the base, whatever was picked.
+  // Over an empty base, anything else is the picture's bottom: added just
+  // over the base, whatever was picked.
   if (!e.hasImage) controller.pickImageLayer(baseLayerId);
   switch (what) {
     case LayerAdd.adjustment:
@@ -86,8 +83,8 @@ Future<void> addImageLayerOf(BuildContext context, CanvasController controller,
       controller.addImageLayer(ImageLayer.painting());
       controller.imageTool = ImageTool.paint;
     case LayerAdd.fill:
-      // Half strength, so what it does to the layers under it is seen the
-      // moment it arrives instead of a frame of flat colour.
+      // Half strength, so its effect on the layers under it shows at once,
+      // not as a frame of flat colour.
       controller.addImageLayer(
           ImageLayer.solid(const PaintSpec(Color(0xFF1E2A38)))
               .copyWith(opacity: 0.5));
@@ -105,8 +102,8 @@ String layerKindLabel(ImageLayer layer) => switch (layer.kind) {
       LayerKind.paint => "Paint",
     };
 
-/// LayerThumbnail is a small picture of a layer: its picture, its colour, or
-/// an icon for what it does.
+/// LayerThumbnail is a small picture of a layer: its picture, its colour,
+/// or an icon for what it does.
 class LayerThumbnail extends StatelessWidget {
   final CanvasController controller;
   final ImageElement element;
@@ -155,8 +152,8 @@ class LayerThumbnail extends StatelessWidget {
                 size: Size.infinite,
                 painter: _CoverPainter(controller.images.thumbnail(image)));
     }
-    // No clip of its own: the picture rounds its own corners, since a
-    // clip was a pass of its own every frame the strip scrolled.
+    // No clip: the picture rounds its own corners, as a clip costs a pass
+    // every frame the strip scrolls.
     return Container(
       width: width,
       height: height,
@@ -172,8 +169,8 @@ class LayerThumbnail extends StatelessWidget {
   }
 }
 
-/// _CoverPainter draws [image] covering its box, corners rounded -- inside
-/// its own drawing, so a strip of them needs no clipping layer.
+/// _CoverPainter draws [image] covering its box with rounded corners in its
+/// own drawing, so a strip of them needs no clipping layer.
 class _CoverPainter extends CustomPainter {
   final ui.Image image;
   _CoverPainter(this.image);
@@ -198,9 +195,8 @@ class _CoverPainter extends CustomPainter {
   bool shouldRepaint(_CoverPainter old) => !identical(old.image, image);
 }
 
-/// staggerLayers brings [e]'s layers in one after another over its arrival
-/// -- giving it one, in the same step, where it has none to stagger them
-/// over.
+/// staggerLayers brings [e]'s layers in one after another over its arrival,
+/// giving it an arrival in the same step where it has none.
 void staggerLayers(CanvasController controller, ImageElement e) {
   var span = imageArrivalSpan(e, controller.document.frameRate)?.$2;
   if (span != null && e.animation.on) {
@@ -218,12 +214,10 @@ void staggerLayers(CanvasController controller, ImageElement e) {
   controller.endInteraction();
 }
 
-/// ImageLayersList is every layer of the picture: shut, a strip scrolling
-/// sideways, front first; opened, a list, front at the top, with each
-/// layer's eye and the picked one's arrows, copy and delete. Pressing a layer
-/// picks it and opens the layers. Nothing in a row floats over the page (no
-/// tooltip, no menu): a row is moved, not rebuilt, as it is dragged, and
-/// anything over it comes apart.
+/// ImageLayersList is the picture's layers: shut, a strip, front first;
+/// open, a list with eyes, arrows, copy and delete. Pressing one picks it.
+/// Nothing in a row floats over the page (no tooltip or menu): a dragged
+/// row is moved, not rebuilt, and anything over it comes apart.
 class ImageLayersList extends StatefulWidget {
   final CanvasController controller;
   final ImageElement element;
@@ -252,13 +246,13 @@ class _ImageLayersListState extends State<ImageLayersList> {
     }
   }
 
-  /// _picks are the layers picked, the first one's settings in the panel.
+  /// _picks are the layers picked; the first one's settings are shown.
   Set<String> get _picks => controller.imageEditing == widget.element.id
       ? controller.imageLayers.toSet()
       : const {};
 
-  /// _pick picks [id] -- with Shift or Command held, as well as the layers
-  /// picked already, to line them up or move them together.
+  /// _pick picks [id]; with Shift or Command, beside those already picked,
+  /// to align or move them together.
   void _pick(String id) {
     var e = widget.element;
     var keys = HardwareKeyboard.instance;
@@ -281,13 +275,12 @@ class _ImageLayersListState extends State<ImageLayersList> {
     var picked = controller.imageEditing == e.id ? controller.imageLayer : "";
     var muted = theme.colors.onSurfaceVariant;
 
-    // Backspace or Delete takes out the layer picked -- here, where the
-    // click that picked it put the keys.
+    // Backspace or Delete removes the picked layer, here, where the click
+    // that picked it put the keys.
     return Focus(
       debugLabel: "imageLayers",
       onKeyEvent: (node, event) {
-        // The arrows move the layers picked, as they do with the canvas in
-        // focus -- a layer picked here is a layer picked.
+        // The arrows move the picked layers, as with the canvas in focus.
         if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
             picked.isNotEmpty) {
           var step = HardwareKeyboard.instance.isShiftPressed ? 10.0 : 1.0;
@@ -348,7 +341,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
                                       size: 18, color: muted),
                                 ),
                                 const SizedBox(width: 4),
-                                // Giving way before the buttons beside it,
+                                // Giving way first to the buttons beside it,
                                 // in the narrowest sidebar.
                                 Flexible(
                                   child: Text("Layers",
@@ -375,7 +368,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
                         ),
                       ),
                       // Solo: only the picked layer can be worked on, the
-                      // rest held as if locked, whichever is picked.
+                      // rest held as if locked.
                       CanvasIconButton(
                         key: const ValueKey("imageLayersSolo"),
                         tight: true,
@@ -387,8 +380,8 @@ class _ImageLayersListState extends State<ImageLayersList> {
                         onPressed: () =>
                             controller.imageSolo = !controller.imageSolo,
                       ),
-                      // The picked layer taken out, from the strip as well
-                      // as the list: a tablet has no Delete key.
+                      // Removes the picked layer, from the strip as well as
+                      // the list: a tablet has no Delete key.
                       CanvasIconButton(
                         key: const ValueKey("imageLayersDelete"),
                         tight: true,
@@ -450,8 +443,8 @@ class _ImageLayersListState extends State<ImageLayersList> {
     var stack = e.stack;
     var n = stack.length;
     var accent = theme.colors.primary;
-    // Pressed and held, a layer lifts and is carried along the strip to its
-    // new place; a press let go picks it.
+    // Pressed and held, a layer lifts and is carried to its new place; a
+    // press let go picks it.
     return SizedBox(
       height: 84,
       child: ReorderableListView(
@@ -465,7 +458,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
         children: [
           for (var row = 0; row < n; row++)
             // Each chip kept until what it shows changes (see CanvasKept); a
-            // press picks through this state, so a kept chip picks as it is now.
+            // press picks through this state, so a kept chip picks current.
             CanvasKept(
                 key: ValueKey("imageLayerChip-${stack[n - 1 - row].id}"),
                 deps: [
@@ -636,8 +629,8 @@ class _ImageLayersListState extends State<ImageLayersList> {
                 ),
               ),
             ),
-            // A clipped layer sits in from the one it clips to, as it does
-            // in any editor.
+            // A clipped layer is indented from the one it clips to, as in
+            // any editor.
             if (layer.clip && index > 0)
               Padding(
                 padding: const EdgeInsets.only(right: 2),
@@ -709,9 +702,8 @@ class _ImageLayersListState extends State<ImageLayersList> {
                       : () => controller.removeImageLayer(layer.id),
                   label: "Delete"),
             ],
-            // Locked, it is kept as it is while the others are worked on; a
-            // soloed picture holds every other layer the same way, and they
-            // say so with the lock shut but faint.
+            // Locked, it is held while the others are worked on; soloing
+            // holds every other layer likewise, shown by a faint shut lock.
             tap(
                 "imageLayerLock-${layer.id}",
                 layer.locked
@@ -737,8 +729,8 @@ class _ImageLayersListState extends State<ImageLayersList> {
   }
 }
 
-/// LayersAddButton is a layers strip's "+ Add", which opens the kinds of
-/// layer: a picture's, and a drawing's. Never shortened -- it is one word.
+/// LayersAddButton is a layers strip's "+ Add", opening the picture's and
+/// drawing's layer kinds. Never shortened: it is one word.
 class LayersAddButton extends StatelessWidget {
   final bool open;
   final VoidCallback onPressed;
@@ -753,8 +745,8 @@ class LayersAddButton extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var accent = theme.colors.primary;
-    // In a rebuilt panel, a plain "+" as its prototype's: the word is the
-    // button's to say only where there is no "?" to ask.
+    // In a dense panel, a plain "+": the word is said only where there is
+    // no "?" to ask.
     if (CanvasDense.on(context)) {
       return Material(
         type: MaterialType.transparency,
@@ -800,7 +792,7 @@ class LayersAddButton extends StatelessWidget {
   }
 }
 
-/// toolIcon is each tool's icon, on its tile and on the canvas's hint.
+/// toolIcon is each tool's icon, on its tile and the canvas's hint.
 IconData toolIcon(ImageTool tool) => switch (tool) {
       ImageTool.move => Icons.open_with,
       ImageTool.subject => Icons.person_search_outlined,
@@ -871,9 +863,8 @@ const retouchTools = [
 ];
 const paintTools = [ImageTool.paint, ImageTool.erase];
 
-/// imageToolTiles is [tools] as tiles, with the settings of the one in hand
-/// under them. Picking one opens [e]'s layers on [picked] if they are not
-/// open; picking the one in hand puts it down.
+/// imageToolTiles is [tools] as tiles over the held tool's settings: picking
+/// one opens [e]'s layers on [picked]; picking the held one puts it down.
 Widget imageToolTiles(CanvasController controller, ImageElement e,
     ImageLayer picked, List<ImageTool> tools, List<Widget> settings,
     {String help = ""}) {
@@ -928,8 +919,8 @@ class _BlendPainter extends CustomPainter {
   bool shouldRepaint(_BlendPainter old) => old.blend != blend;
 }
 
-/// layerBlendTiles is the picked layer's blend, as pictures of each mode --
-/// each tried on the canvas as the pointer passes over it.
+/// layerBlendTiles is the picked layer's blend as pictures of each mode,
+/// each previewed on the canvas as the pointer passes.
 Widget layerBlendTiles(
     CanvasController controller,
     ImageElement e,
@@ -963,8 +954,8 @@ Widget layerBlendTiles(
   );
 }
 
-/// layerStrengthGroup is how much of the picked layer shows, and whether it
-/// shows only over the layer under it.
+/// layerStrengthGroup is how much of the picked layer shows, and whether
+/// only over the layer under it.
 Widget layerStrengthGroup(ImageElement e, ImageLayer picked,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var at = e.stack.indexWhere((l) => l.id == picked.id);
@@ -1008,7 +999,7 @@ Widget layerStrengthGroup(ImageElement e, ImageLayer picked,
 }
 
 /// QuickMove is one press that places a picture: mirrored, filling or
-/// fitted to its frame, centred, or given back its own proportions.
+/// fitting its frame, centred, or restored to its own proportions.
 enum QuickMove {
   flipX("Flip across", Icons.swap_horiz, "imageLayerFlipX"),
   flipY("Flip down", Icons.swap_vert, "imageLayerFlipY"),
@@ -1023,9 +1014,8 @@ enum QuickMove {
   const QuickMove(this.label, this.icon, this.key);
 }
 
-/// quickMover is what each quick move does to [picked]: a flip, sized to
-/// cover the frame or sit inside it, put in the middle, or given back the
-/// picture's own proportions -- each one step.
+/// quickMover is what each quick move does to [picked]: flip, cover or fit
+/// the frame, centre, or restore the picture's proportions, each one step.
 void Function(QuickMove) quickMover(
     CanvasController controller,
     ImageElement e,
@@ -1041,16 +1031,16 @@ void Function(QuickMove) quickMover(
   }
 
   var place = picked.place;
-  // The picture's own proportions in the frame's units, where it has loaded:
-  // what "fit" and "fill" keep, and what a squashed layer goes back to.
+  // The picture's proportions in frame units, once loaded: what fit and
+  // fill keep, and what a squashed layer returns to.
   var image = controller.images.original((picked.look ?? e).assetId);
   double? aspect;
   if (image != null && inner.width > 0 && inner.height > 0) {
     aspect = image.width / image.height;
   }
 
-  /// fitted is the layer's place at the picture's proportions, inside the
-  /// frame or covering it, about the frame's middle.
+  /// fitted is the layer's place at the picture's proportions, inside or
+  /// covering the frame, about its middle.
   Rect fitted({required bool cover}) {
     var a = aspect ??
         layerRect(inner, place).width /
@@ -1118,9 +1108,8 @@ List<Widget> flipControls(
   ];
 }
 
-/// fitButtons are the Fit tool's one-press moves: sized to cover the frame
-/// or to sit inside it, put in the middle, or given back the picture's own
-/// proportions -- for a picture with a place of its own in the frame.
+/// fitButtons are the Fit tool's one-press moves (cover, fit, centre,
+/// restore proportions) for a picture with its own place in the frame.
 List<Widget> fitButtons(
     CanvasController controller,
     ImageElement e,
@@ -1171,9 +1160,8 @@ List<Widget> fillLayerSettings(ImageElement e, ImageLayer picked,
   ];
 }
 
-/// layerPositionGroup is where the picked picture layer is, how big and how
-/// turned, in the same canvas units as an element's own, measured in the
-/// picture's frame before the element is turned.
+/// layerPositionGroup is the picked layer's place, size and turn in canvas
+/// units, in the picture's frame before the element turns.
 Widget layerPositionGroup(
     CanvasController controller,
     ImageElement e,
@@ -1213,7 +1201,7 @@ Widget layerPositionGroup(
     children: [
       CanvasStepper(
         key: const ValueKey("layerX"),
-        // Two to a line, as an element's are -- see positionGroup.
+        // Two to a line, as an element's are (see positionGroup).
         width: 104,
         label: "X",
         value: rect.left,
@@ -1247,9 +1235,8 @@ Widget layerPositionGroup(
         onChanged: (v) => resize(height: v),
         onCommit: commit,
       ),
-      // The angle on a line of its own, the whole width: a turn is read
-      // more finely than a position. Not for the base picture, which is
-      // turned with the element.
+      // The angle on its own full-width line, as a turn is read more finely
+      // than a position. Not for the base, which turns with the element.
       if (!layer.isBase) const CanvasBlockBreak(),
       if (!layer.isBase)
         CanvasStepper(
@@ -1284,14 +1271,13 @@ Widget layerPositionGroup(
   );
 }
 
-/// maskToolSettings is the row under the tools while a mask tool is in
-/// hand: whether it takes away or puts back, the tool's own settings, and
-/// how the mask is shown.
+/// maskToolSettings is the row under the tools while a mask tool is held:
+/// take away or put back, the tool's settings, and how the mask shows.
 List<Widget> maskToolSettings(
     CanvasController controller, ImageElement e, ImageLayer picked) {
   var tool = controller.imageTool;
-  // A frame-masked layer -- adjustment, texture, colour, paint -- is masked
-  // by hand: there is no picture in it to find a subject in.
+  // A frame-masked layer (adjustment, texture, colour, paint) is masked by
+  // hand: there is no picture in it to find a subject in.
   if (picked.framed &&
       (tool == ImageTool.subject ||
           tool == ImageTool.quick ||
@@ -1373,9 +1359,8 @@ List<Widget> maskToolSettings(
       ),
       percent("maskFadeStrength", "Strength", controller.maskStrength, 1, 100,
           (v) => controller.maskStrength = v),
-      // Which end is which is the one thing a fade cannot show before it
-      // is drawn, and the wrong guess is the picture gone where it was meant
-      // to stay.
+      // Which end is which is the one thing a fade cannot show before it is
+      // drawn, and guessing wrong removes what was meant to stay.
       CanvasHint(switch ((controller.maskRadial, controller.maskHide)) {
         (false, true) => "Press where the picture is to be gone and drag to "
             "where it is to be whole: hidden where you press, shown where "
@@ -1394,8 +1379,8 @@ List<Widget> maskToolSettings(
   ];
 }
 
-/// _SubjectButton finds every subject in the picture at once -- or says why
-/// it cannot, on a machine that has no way to.
+/// _SubjectButton finds every subject in the picture at once, or says why
+/// this machine cannot.
 class _SubjectButton extends StatelessWidget {
   final CanvasController controller;
   const _SubjectButton({required this.controller});
@@ -1455,9 +1440,8 @@ class _SubjectButton extends StatelessWidget {
   }
 }
 
-/// maskGroupsFor is the mask groups for any [mask], written by [put] --
-/// a picture's, or a frame-masked layer's. Its edge is the Edge tool's:
-/// see maskEdgeControls.
+/// maskGroupsFor is the mask groups for a picture's or framed layer's
+/// [mask], written by [put]; its edge is maskEdgeControls'.
 List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
     VoidCallback begin, VoidCallback commit,
     {bool framed = false, CanvasController? controller}) {
@@ -1524,9 +1508,8 @@ List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
   ];
 }
 
-/// maskEdgeControls is the Edge tool's settings for any [mask], written by
-/// [put]: how its edge is softened, moved, smoothed and hardened, and --
-/// on a picture's own mask -- the old background's tint taken out of it.
+/// maskEdgeControls is the Edge tool for any [mask], written by [put]:
+/// soften, move, smooth, harden; on a picture's mask, defringe too.
 List<Widget> maskEdgeControls(ImageMask mask, void Function(ImageMask) put,
     VoidCallback begin, VoidCallback commit,
     {bool framed = false}) {
@@ -1576,7 +1559,7 @@ List<Widget> maskEdgeControls(ImageMask mask, void Function(ImageMask) put,
 }
 
 /// brushToolSettings is the row under the tools while a paint or
-/// retouching brush is in hand.
+/// retouching brush is held.
 List<Widget> brushToolSettings(CanvasController controller, ImageLayer picked) {
   var tool = controller.imageTool;
   var picture =
@@ -1671,8 +1654,8 @@ List<Widget> brushToolSettings(CanvasController controller, ImageLayer picked) {
   ];
 }
 
-/// strokesGroup is a list of strokes -- a paint layer's, or the retouching
-/// done to a picture -- with the last taken back, or all of them cleared.
+/// strokesGroup is a list of strokes (a paint layer's, or a picture's
+/// retouching), undoing the last or clearing all.
 Widget strokesGroup(String label, List<StrokeMark> strokes,
     void Function(List<StrokeMark>) set) {
   return CanvasControlGroup(
@@ -1700,10 +1683,8 @@ Widget strokesGroup(String label, List<StrokeMark> strokes,
   );
 }
 
-/// warpControls are the Warp tool's settings: how many cells the grid has
-/// across and down -- the shape already made kept -- and the button that
-/// flattens it again. The grid is on the canvas while the tool is open.
-/// See ImageWarp.
+/// warpControls are the Warp tool's grid size (the shape kept) and a
+/// flatten button; the grid shows on the canvas. See ImageWarp.
 List<Widget> warpControls(
     CanvasController controller, ImageElement e, ImageLayer picked) {
   var warp = controller.warpOf(e, picked.id);

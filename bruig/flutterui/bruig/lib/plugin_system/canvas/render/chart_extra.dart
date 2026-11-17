@@ -12,15 +12,11 @@ import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
-// chart_extra.dart draws the kinds the research added (Ken, 2026-11-17:
-// "all" nine; prototype v7): diverging bars, dumbbell, waterfall, heatmap,
-// big number, dot spread, parliament, tile map and pyramid. Like the
-// infographic kinds they have no axes; they read the chart's categories and
-// series, arrive an item at a time (sliceProgress), take a highlight's
-// colour where one reaches, and note their marks so the Charts tab can pick
-// them. Which way each is drawn is its ChartDesign.mode (chartModes).
+// chart_extra.dart draws diverging bars, dumbbell, waterfall, heatmap, big
+// number, dot spread, parliament, tile map and pyramid. Like the infographic
+// kinds they have no axes, arrive an item at a time (sliceProgress), take a
+// highlight's colour, and note their marks. Each way is a ChartDesign.mode.
 
-/// paintExtra draws [e], one of the new kinds, in [area].
 void paintExtra(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   if (e.data.series.isEmpty || e.data.categories.isEmpty) return;
   var mode = modeOf(e.design, e.type.name);
@@ -53,8 +49,7 @@ void paintExtra(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 double _v(ChartElement e, int s, int i) =>
     s < e.data.series.length ? e.data.valueAt(s, i) : double.nan;
 
-/// _col is item [i]'s own colour where a highlight or colour-by gives one,
-/// else [or].
+/// _col is item [i]'s highlight or colour-by colour if it has one, else [or].
 Color _col(ChartElement e, int i, Color or) => e.data.markAt(i) ?? or;
 
 TextSpec _lab(ChartElement e, TextAlignSpec align, [double? size]) =>
@@ -207,8 +202,7 @@ void _diverging(
         ..strokeWidth = 1.4);
 }
 
-/// _likert is survey answers -- the series, least to most agreeing --
-/// centred on the middle answer.
+/// _likert is survey answers (series, least to most agreeing), centred.
 void _likert(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var d = e.data, n = d.categories.length, k = d.series.length;
   var nameW = _nameRoom(e, d.categories, area.width * 0.35);
@@ -305,8 +299,8 @@ void _dumbbell(
   var rowH = plot.height / n;
   var dot = math.min(rowH * 0.22, 9.0);
   var a = d.series[0].color, b = d.series[1].color;
-  // The key, once, over the first row at its two dots -- kept apart where
-  // the dots are close (the shared label rule: "20242025" before).
+  // The key, once, over the first row at its two dots, kept apart where the
+  // dots are close (the shared label rule).
   if (n > 0 && !_v(e, 0, 0).isNaN && !_v(e, 1, 0).isNaN) {
     var placer = LabelPlacer(
         Rect.fromLTWH(area.left, area.top, area.width, head),
@@ -403,8 +397,7 @@ void _dumbbell(
 
 // ------------------------------------------------------------ waterfall
 
-/// _isTotal is whether step [name] is a running total ("Total", "End",
-/// "Subtotal") rather than a change.
+/// _isTotal is whether step [name] is a running total ("Total", "End").
 bool _isTotal(String name) =>
     RegExp(r"total|^end$|^start$|balance", caseSensitive: false)
         .hasMatch(name.trim());
@@ -885,8 +878,7 @@ void _beeswarm(
   }
   if (e.showYLabels) {
     var spec = _lab(e, TextAlignSpec.center);
-    // The ends kept inside the box: the first written from its edge left,
-    // the last right.
+    // The ends kept inside the box: the first written rightward, the last left.
     var y0 = area.bottom - axisH;
     _say(canvas, _num(e, lo), spec.copyWith(align: TextAlignSpec.left),
         Rect.fromLTWH(plot.left, y0, 80, axisH));
@@ -987,7 +979,6 @@ void _parliament(
       }
     }
   }
-  // The majority, and the whole house.
   var need = total ~/ 2 + 1;
   canvas.drawLine(
       centre - Offset(0, outer + 4),
@@ -1050,8 +1041,7 @@ void _tileMap(
   }
   var d = e.data, n = d.categories.length;
   var codes = [for (var c in d.categories) c.trim().toUpperCase()];
-  // On a map -- the US, Europe, the UK -- when most are its places;
-  // otherwise in a grid, in order.
+  // On a map (the US, Europe, the UK) when most are its places; else a grid.
   var map = tileMapOf(codes);
   var places = <(int, int)>[];
   if (map case (var tiles, var named)) {
@@ -1081,8 +1071,7 @@ void _tileMap(
   var hiC = d.series.first.color;
   var loC =
       Color.lerp(e.panel.a > 0 ? e.panel : const Color(0xFFF4F4F4), hiC, 0.1)!;
-  // The rest of the map, faint, so its shape reads (on the Charts canvas,
-  // twelve states floated in the empty).
+  // The rest of the map, faint, so its shape reads.
   if (map case (var tiles, _)) {
     var taken = places.toSet();
     for (var t in tiles.values.toSet()) {
@@ -1156,9 +1145,8 @@ void _tileMap(
   }
 }
 
-/// _drawnMap is the world's countries drawn (world_map.dart), framed on
-/// those the sheet names and shaded by their values, the rest a faint
-/// ground: a choropleth (Ken, 2026-11-17: the report's leftovers).
+/// _drawnMap is a choropleth: the world's countries (world_map.dart), framed
+/// on those the sheet names and shaded by their values, the rest faint.
 void _drawnMap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var d = e.data, n = d.categories.length;
   var found = [for (var c in d.categories) countryFor(c)];

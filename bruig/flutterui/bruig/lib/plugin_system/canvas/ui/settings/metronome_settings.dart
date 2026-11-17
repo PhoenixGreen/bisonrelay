@@ -7,9 +7,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// metronome_settings.dart is a Metronome element's settings: how fast and
-// the beats in a bar -- as its own buttons set them -- start and stop, and
-// its colours.
+// metronome_settings.dart is a Metronome element's settings: tempo and
+// beats in a bar (as its own buttons set them), start and stop, colours.
 
 List<Widget> metronomeSettings(
   BuildContext context,

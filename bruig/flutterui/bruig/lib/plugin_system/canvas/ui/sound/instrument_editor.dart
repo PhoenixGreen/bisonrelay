@@ -25,24 +25,20 @@ import 'package:flutter/services.dart'
     show KeyDownEvent, KeyUpEvent, KeyEvent, LogicalKeyboardKey;
 
 // instrument_editor.dart is the Instrument editor, in the Chain: how a MIDI
-// channel's instrument plays its sound (instrument_shape.dart) -- its volume
-// envelope (the sound's own, or set here, its dots dragged), a filter with
-// an envelope of its own (its curve dragged), an LFO, and its voices: one at
-// a time or many, gliding, the bend wheel's range, tuning and the velocity
-// curve -- each a card of knobs over a picture of what it does. And the
-// instrument's card in the chain, between its MIDI effects and its sound's.
+// channel's instrument plays its sound (instrument_shape.dart). Each card
+// is knobs over a picture of what it does: the volume envelope, a filter
+// with its own envelope, an LFO, and the voices (mono or poly, glide, bend
+// range, tuning, velocity curve). Also the instrument's card in the chain.
 
-/// The cards' colours: each its device family's (see deviceGroupLook).
+/// Each card's colour is its device family's (see deviceGroupLook).
 Color get _envelopeAccent => deviceGroupLook(DeviceGroup.dynamics).$2;
 Color get _filterAccent => deviceGroupLook(DeviceGroup.filter).$2;
 Color get _voicesAccent => const Color(0xFF9A92EA);
 
-/// seconds is [s] as a reading: milliseconds under one.
 String seconds(double s) => s < 1
     ? "${(s * 1000).round()} ms"
     : "${s.toStringAsFixed(s < 10 ? 2 : 1)} s";
 
-/// hertz is [hz] as a reading.
 String hertz(double hz) => hz < 1000
     ? "${hz.toStringAsFixed(hz < 10 ? 2 : 0)} Hz"
     : "${(hz / 1000).toStringAsFixed(1)} kHz";
@@ -68,8 +64,8 @@ const gmFamilies = [
   "Sound effects",
 ];
 
-/// keyRow is the computer's keys, left to right, that play the keyboard's
-/// keys from its lowest C up -- white on the home row, black above it.
+/// keyRow is the computer keys that play the keyboard from its lowest C
+/// up: white on the home row, black above it.
 const keyRow = "awsedftgyhujkolp;'";
 
 class InstrumentEditor extends StatefulWidget {
@@ -86,15 +82,13 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
   CanvasController get c => widget.controller;
   String get channel => widget.channel;
 
-  /// _dragging is the envelope's dot being dragged: 0 its peak, 1 where it
-  /// meets the sustain, 2 its release's end.
+  /// _dragging is the envelope dot dragged: 0 peak, 1 sustain, 2 release end.
   int? _dragging;
 
-  /// _find is what the sound browser is filtered by.
   String _find = "";
 
-  /// _font is the sound bank, read for the Zones card once its sound is
-  /// the bank's; _fontAsked whether it has been asked for.
+  /// _font is the sound bank, read for the Zones card once its sound is the
+  /// bank's; _fontAsked whether it has been asked for.
   SoundFont? _font;
   bool _fontAsked = false;
 
@@ -126,7 +120,6 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
           ? (room.maxHeight * 0.3).clamp(64.0, 130.0)
           : math.max(40.0, room.maxHeight - 34);
       return Column(children: [
-        // What it plays, what it plays like, and how to play it here.
         Container(
           height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -218,8 +211,8 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
     });
   }
 
-  /// _sounds is the sound browser: General MIDI's sounds by family, found
-  /// as they are typed, the one playing picked out.
+  /// _sounds is the sound browser: General MIDI's sounds by family, filtered
+  /// as typed.
   Widget _sounds(MixerLook look, InstrumentPart part) {
     var q = _find.toLowerCase();
     bool shows(String name, String family) =>
@@ -339,8 +332,7 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
     ]);
   }
 
-  /// _cards are the instrument's cards, side by side: as wide as the room
-  /// lets them be, scrolled across where it does not.
+  /// _cards are the cards side by side, scrolled where they do not fit.
   Widget _cards(MixerLook look, InstrumentShape shape) =>
       LayoutBuilder(builder: (context, room) {
         const least = 236.0;
@@ -374,9 +366,9 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
         );
       });
 
-  /// _zonesCard is the prototype's Zones: the samples the sound is made
-  /// of, drawn by key along and by how hard up, with how many layers a
-  /// key has by velocity and how many ranges the keys are split into.
+  /// _zonesCard draws the samples the sound is made of by key and velocity,
+  /// with how many velocity layers a key has and how many ranges the keys
+  /// are split into.
   Widget _zonesCard(MixerLook look) {
     const accent = Color(0xFFA7A3B8);
     var part = c.instrumentOf(channel)?.instrument;
@@ -434,9 +426,8 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
         ]);
   }
 
-  /// _card is one of the editor's cards, as the prototype draws them: its
-  /// colour along its top, its title in capitals, a picture, its knobs on a
-  /// row and its choice under them.
+  /// _card is one of the editor's cards: a coloured top, a title in
+  /// capitals, a picture, a row of knobs and a choice under them.
   Widget _card(MixerLook look,
       {required String id,
       required String title,
@@ -488,8 +479,8 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
                   fontWeight: FontWeight.w600,
                   color: look.studio.text)),
         ),
-        // Short, its knobs and choice without the picture, scrolled where
-        // even they will not fit.
+        // Short: knobs and choice without the picture, scrolled if still too
+        // tall.
         Expanded(
           child: LayoutBuilder(builder: (context, room) {
             if (room.maxHeight < 150) {
@@ -599,7 +590,6 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
             var t = math.max(0.0, (e.localPosition.dx - 6) / scale);
             var level = (1 - (e.localPosition.dy - 6) / (size.height - 12))
                 .clamp(0.0, 1.0);
-            // Dragged, it is the instrument's own envelope.
             _set(
                 (x) => switch (i) {
                       0 => x.copyWith(attack: t, envelope: true),
@@ -673,8 +663,8 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
           key: const ValueKey("instrumentFilterGraph"),
           dragStartBehavior: DragStartBehavior.down,
           behavior: HitTestBehavior.opaque,
-          // Across for its corner, up and down for its resonance -- a
-          // filter switched on by it, where there was none.
+          // Across for its corner, up and down for its resonance; this switches
+          // a filter on where there was none.
           onPanStart: (_) => c.beginInteraction(),
           onPanUpdate: (e) {
             var u = (e.localPosition.dx / w).clamp(0.0, 1.0);
@@ -804,7 +794,6 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
           (m) => m.name,
           (m) => _set((x) => x.copyWith(mode: m))),
       knobs: [
-        // A glide is from one note to the next: one voice's.
         Opacity(
           opacity: s.mode == VoiceMode.poly ? 0.45 : 1,
           child: _knob(look, "instrumentGlide", "Glide", seconds(s.glide),
@@ -865,7 +854,6 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
   }
 }
 
-/// _chords are the keyboard's chords: what a key plays, from it up.
 const _chords = <(String, List<int>)>[
   ("No chord", [0]),
   ("Major", [0, 4, 7]),
@@ -874,10 +862,9 @@ const _chords = <(String, List<int>)>[
   ("Octave", [0, 12]),
 ];
 
-/// _Keyboard is the editor's keyboard, as the prototype has it: bend and
-/// mod wheels, the octave and the sustain pedal; how hard keys are struck,
-/// a chord, hold and the keys' letters; then the keys, played with the
-/// pointer -- lower on a key, harder -- or the computer's keys.
+/// _Keyboard is the editor's keyboard: bend and mod wheels, octave, sustain
+/// pedal, strike strength, chord, hold and key letters; then the keys,
+/// played with the pointer (lower on a key, harder) or the computer's keys.
 class _Keyboard extends StatefulWidget {
   final CanvasController controller;
   final AudioElement element;
@@ -899,30 +886,27 @@ class _KeyboardState extends State<_Keyboard> {
   bool _hold = false;
   bool _sustain = false;
 
-  /// _labels is what is written on the keys: 0 the computer's letters, 1
-  /// their names, 2 nothing.
+  /// _labels is what the keys show: 0 computer letters, 1 names, 2 nothing.
   int _labels = 0;
 
-  /// _held are the keys down, each with the notes it plays.
   final Map<int, List<int>> _held = {};
 
-  /// _placed is where on a neck each key was last pressed.
   final Map<int, FretPlace> _placed = {};
 
-  /// _pressed is the key each pointer holds down, by pointer: kept on the
-  /// state, not in the build, so the press that let go finds the key it
-  /// played -- a rebuild between the two once left it sounding (Ken).
+  /// _pressed is the key each pointer holds, by pointer: kept on the state,
+  /// not in the build, so the release finds the key it played even after a
+  /// rebuild, and the note does not keep sounding.
   final Map<int, int> _pressed = {};
 
-  /// _typed is the key each computer key plays, by that key: let go, the
-  /// same note stops, whatever the octave has become meanwhile.
+  /// _typed is the key each computer key plays: let go, the same note stops,
+  /// whatever the octave has become meanwhile.
   final Map<LogicalKeyboardKey, int> _typed = {};
   double _bend = 0.5, _mod = 0;
 
   @override
   void initState() {
     super.initState();
-    // Focus gone, no key up comes: what the computer keys hold goes.
+    // Focus gone, no key up comes: release what the computer keys hold.
     _focus.addListener(() {
       if (_focus.hasFocus) return;
       for (var k in [..._typed.values]) {
@@ -990,8 +974,8 @@ class _KeyboardState extends State<_Keyboard> {
     return KeyEventResult.handled;
   }
 
-  /// _keyFor is the note computer key [ch] plays, or null: drum pads by
-  /// their place along the row, anything else up from the octave's C.
+  /// _keyFor is the note computer key [ch] plays, or null: drum pads by their
+  /// place along the row, anything else up from the octave's C.
   int? _keyFor(String ch) {
     var i = ch.length == 1 ? keyRow.indexOf(ch) : -1;
     if (i < 0) return null;
@@ -1000,9 +984,9 @@ class _KeyboardState extends State<_Keyboard> {
     return _octave + i;
   }
 
-  /// _played is [child] played with the pointer, [hit] the key under a
-  /// point and how hard it strikes there: pressed, dragged across, and let
-  /// go -- or dragged off it -- the note stops.
+  /// _played is [child] played with the pointer, [hit] giving the key under
+  /// a point and how hard it strikes there; let go or dragged off, the note
+  /// stops.
   Widget _played(
           {required Key key,
           required (int, int)? Function(Offset) hit,
@@ -1013,7 +997,6 @@ class _KeyboardState extends State<_Keyboard> {
           _focus.requestFocus();
           var h = hit(e.localPosition);
           if (h == null) return;
-          // Held keys let go by a second press.
           if (_hold && _held.containsKey(h.$1)) {
             _off(h.$1, force: true);
             setState(() {});
@@ -1045,7 +1028,7 @@ class _KeyboardState extends State<_Keyboard> {
   }
 
   /// _surface is the pads or the neck [size] big, played as the keys are:
-  /// pressed, dragged across, let go -- lower on a pad, harder.
+  /// lower on a pad, harder.
   Widget _surface(InstrumentPart part, Size size, MixerLook look) {
     var layout = keyboardLayout(part, Offset.zero & size, titled: false);
     int velocity(double depth) =>
@@ -1055,7 +1038,6 @@ class _KeyboardState extends State<_Keyboard> {
       key: const ValueKey("instrumentKeys"),
       hit: (p) => switch (layout.keyAt(p)) {
         (var key, var depth)? => () {
-            // Where on a neck it is pressed, to light it there.
             if (neckPlaceAt(layout, part, p) case var at?) _placed[key] = at;
             return (key, velocity(depth));
           }(),
@@ -1070,7 +1052,6 @@ class _KeyboardState extends State<_Keyboard> {
               for (var k in _held.keys)
                 if (_placed[k] case var at?) k: at
             },
-            // The computer key each pad is played by, as Letters asks.
             letters: drums && _labels == 0
                 ? {
                     for (var (i, (key, _)) in drumPads.indexed)
@@ -1133,7 +1114,6 @@ class _KeyboardState extends State<_Keyboard> {
         child: LayoutBuilder(builder: (context, room) {
           var roomy = room.maxHeight >= 80;
           return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // The wheels, the octave and the pedal.
             Container(
               width: 116,
               padding: const EdgeInsets.all(6),
@@ -1198,7 +1178,6 @@ class _KeyboardState extends State<_Keyboard> {
                 ),
               ]),
             ),
-            // How it is played.
             if (roomy)
               Container(
                 width: 92,
@@ -1246,7 +1225,6 @@ class _KeyboardState extends State<_Keyboard> {
                   ),
                 ),
               ),
-            // The keys -- or the pads, or the neck, as it plays like.
             Expanded(
               child: LayoutBuilder(builder: (context, box) {
                 var part = widget.element.instrument;
@@ -1283,8 +1261,7 @@ class _KeyboardState extends State<_Keyboard> {
   }
 }
 
-/// _SurfacePainter draws drum pads or a neck, as the canvas draws an
-/// instrument element, the notes held lit.
+/// _SurfacePainter draws drum pads or a neck, the notes held lit.
 class _SurfacePainter extends CustomPainter {
   final KeyboardLayout layout;
   final InstrumentPart part;
@@ -1325,8 +1302,8 @@ class _SurfacePainter extends CustomPainter {
       !mapEquals(old.places, places);
 }
 
-/// _Wheel is a bend or mod wheel: dragged up and down; the bend wheel
-/// springs back to the middle when let go.
+/// _Wheel is a bend or mod wheel; the bend wheel springs back to the
+/// middle when let go.
 class _Wheel extends StatelessWidget {
   final double value;
   final bool springs;
@@ -1378,8 +1355,7 @@ class _Wheel extends StatelessWidget {
       });
 }
 
-/// _KeysLayout is where each key is on a keyboard [size] big starting at
-/// [low]: white keys across, black ones over them.
+/// _KeysLayout places the keys on a keyboard [size] big starting at [low].
 class _KeysLayout {
   final Size size;
   final int low;
@@ -1486,12 +1462,12 @@ class _KeysPainter extends CustomPainter {
   bool shouldRepaint(_KeysPainter old) => true;
 }
 
-/// _held is how long the envelope's picture shows the key held, in
-/// seconds, between its decay and its release.
+/// _held is how long, in seconds, the envelope's picture shows the key
+/// held between its decay and its release.
 const double _held = 0.6;
 
-/// envelopePoints is [s]'s envelope drawn in [size]: seconds to pixels, then
-/// where it starts, peaks, meets its sustain, is let go and ends.
+/// envelopePoints is [s]'s envelope drawn in [size]: seconds to pixels,
+/// then where it starts, peaks, meets its sustain, is let go and ends.
 (double, Offset, Offset, Offset, Offset, Offset) envelopePoints(
     InstrumentShape s, Size size) {
   var span = math.max(2.2, s.attack + s.decay + _held + s.release);
@@ -1508,7 +1484,6 @@ const double _held = 0.6;
   );
 }
 
-/// _screen draws a card's picture's ground: its colour, and a faint grid.
 void _screen(Canvas canvas, Size size, Color back) {
   var r = RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(6));
   canvas.drawRRect(r, Paint()..color = back);
@@ -1552,9 +1527,8 @@ void _line(Canvas canvas, Path path, Color accent, double floor,
         ..strokeJoin = StrokeJoin.round);
 }
 
-/// EnvelopePainter draws a volume envelope: up, down to its sustain, held,
-/// released -- its three dots to drag, or faint where the sound's own is
-/// used.
+/// EnvelopePainter draws a volume envelope with three dots to drag, or
+/// faint where the sound's own is used.
 class EnvelopePainter extends CustomPainter {
   final InstrumentShape shape;
   final Color accent, back, text;
@@ -1605,7 +1579,7 @@ class EnvelopePainter extends CustomPainter {
       old.accent != accent;
 }
 
-/// filterGain is [s]'s filter's response at [hz], in decibels: the
+/// filterGain is [s]'s filter's response at [hz], in decibels, as the
 /// analogue two-pole it is modelled on.
 double filterGain(InstrumentShape s, double hz) {
   if (s.filter == SynthFilter.off) return 0;
@@ -1657,7 +1631,6 @@ class FilterPainter extends CustomPainter {
   bool shouldRepaint(FilterPainter old) => old.shape != shape;
 }
 
-/// LfoPainter draws two of the LFO's cycles, as tall as its depth.
 class LfoPainter extends CustomPainter {
   final InstrumentShape shape;
   final Color accent, back, text;
@@ -1693,8 +1666,8 @@ class LfoPainter extends CustomPainter {
   bool shouldRepaint(LfoPainter old) => old.shape != shape;
 }
 
-/// VelocityPainter draws the velocity curve: how hard a key is struck
-/// across, how loud it is heard up, the straight line as played.
+/// VelocityPainter draws the velocity curve: strike strength across,
+/// loudness up.
 class VelocityPainter extends CustomPainter {
   final InstrumentShape shape;
   final Color accent, back, text;
@@ -1726,11 +1699,9 @@ class VelocityPainter extends CustomPainter {
   bool shouldRepaint(VelocityPainter old) => old.shape != shape;
 }
 
-/// InstrumentDevice is the instrument's card in the chain, after its MIDI
-/// effects and before its sound's devices -- the Generator, as the
-/// prototype draws it: its envelope (or filter, or voices) on its screen,
-/// its main knobs on a row, how its voices go and what it plays like, and
-/// the way into its editor.
+/// InstrumentDevice is the instrument's card in the chain, between its MIDI
+/// effects and its sound's devices: its envelope, filter or voices on its
+/// screen, its main knobs, its voicing, and the way into its editor.
 class InstrumentDevice extends StatefulWidget {
   final CanvasController controller;
   final String channel;
@@ -1753,7 +1724,6 @@ class InstrumentDevice extends StatefulWidget {
   State<InstrumentDevice> createState() => _InstrumentDeviceState();
 }
 
-/// _Screen is what the Instrument card's screen shows.
 enum _Screen { envelope, filter, voices }
 
 class _InstrumentDeviceState extends State<InstrumentDevice> {
@@ -1768,15 +1738,13 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
     if (!transient) c.endInteraction();
   }
 
-  /// _macroed is whether a macro of the chain turns its setting [id].
   bool _macroed(String id) => c.devicesOf(widget.channel).any((d) =>
       d.on &&
       d.kind == DeviceKind.macro &&
       d.mods.any((t) => t.device == instrumentTarget && t.param == id));
 
-  /// _macroMenu is its knob [id]'s right-click: turned with any knob of the
-  /// chain's macros, or -- with none yet -- macros added, turning it from
-  /// their first.
+  /// _macroMenu is knob [id]'s right-click menu: turn it with any chain
+  /// macro, or with none yet, add macros and turn it from the first.
   List<(String, VoidCallback)> _macroMenu(String id) {
     var devices = c.devicesOf(widget.channel);
     void give(int at, int knob) {
@@ -1843,7 +1811,7 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
             {bool log = false}) =>
         DeviceKnob(
           key: ValueKey(key),
-          // Right-click: turned by one of the chain's macros (Ken).
+          // Right-click: turned by one of the chain's macros.
           menu: _macroMenu(label.toLowerCase()),
           modulated: _macroed(label.toLowerCase()),
           label: label,
@@ -1895,8 +1863,8 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
       icon: Icons.piano,
       accent: midiColour,
       glows: true,
-      // How it plays its notes -- envelope, filter, voices, glide -- with a
-      // second set to compare, or back to plain; the sound itself kept.
+      // How it plays its notes with a second set to compare, or back to plain;
+      // the sound itself kept.
       onAB: () => c.toggleABOf("${widget.channel}|instrument", s,
           (o) => _set((_) => o as InstrumentShape, transient: true)),
       showingB: c.showingBOf("${widget.channel}|instrument"),
@@ -1918,7 +1886,6 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
       display: Stack(children: [
         Positioned.fill(
           child: GestureDetector(
-            // Its screen, pressed: the editor, for every setting.
             onDoubleTap: () => c.showInstrument(widget.channel),
             child: CustomPaint(painter: screen),
           ),
@@ -2052,9 +2019,9 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
   }
 }
 
-/// NoteClipsDevice is a MIDI channel's source, first in its chain as the
-/// prototype's Note clips: its part's notes, drawn small; how long it is
-/// and how many clips its slots hold; and the way into the piano roll.
+/// NoteClipsDevice is a MIDI channel's source, first in its chain: its
+/// part's notes drawn small, its length and slots, and the way into the
+/// piano roll.
 class NoteClipsDevice extends StatefulWidget {
   final CanvasController controller;
   final String channel;
@@ -2078,7 +2045,7 @@ class NoteClipsDevice extends StatefulWidget {
 }
 
 class _NoteClipsDeviceState extends State<NoteClipsDevice> {
-  /// _picked is the slot whose clip the card's Length sets, by its row.
+  /// _picked is the row of the slot whose clip the card's Length sets.
   int? _picked;
 
   @override
@@ -2092,7 +2059,6 @@ class _NoteClipsDeviceState extends State<NoteClipsDevice> {
     var studio = MixerLook.of(context).studio;
     var part = c.instrumentOf(channel)?.instrument;
     var notes = part?.notes ?? const <MidiNote>[];
-    // Each note clip in its slots, by its row.
     var slots = c.session.slots[channel] ?? const <SessionClip?>[];
     var clips = [
       for (var (row, s) in slots.indexed)
@@ -2152,8 +2118,8 @@ class _NoteClipsDeviceState extends State<NoteClipsDevice> {
         ),
       ),
       controls: (tier) => [
-        // Its feel as it plays, as the prototype's: pulled onto the grid,
-        // and swung. The notes drawn are left as they are.
+        // Its feel as it plays: pulled onto the grid and swung; the notes drawn
+        // are left as they are.
         if (part != null)
           for (var (key, label, value, change) in [
             (
@@ -2208,8 +2174,8 @@ class _NoteClipsDeviceState extends State<NoteClipsDevice> {
                     clips.isEmpty ? "no note clips" : "${clips.length} clips"),
               ]),
         ),
-        // Its slots' note clips, as the prototype's chips: pressed to
-        // launch or stop, picked for their Length.
+        // Its note clips as chips: pressed to launch or stop, picked for
+        // Length.
         if (clips.isNotEmpty && tier != DeviceTier.small)
           SizedBox(
             width: 260,
@@ -2248,8 +2214,8 @@ class _NoteClipsDeviceState extends State<NoteClipsDevice> {
     );
   }
 
-  /// _noteChip is one note clip of the slots: its name, a play mark that
-  /// launches or stops it, ringed while it plays.
+  /// _noteChip is one slot's note clip: its name and a play mark, ringed
+  /// while it plays.
   Widget _noteChip(CanvasController c, int row, SessionClip clip, bool on,
       StudioColors studio) {
     var state = c.clipState(widget.channel, row);
@@ -2303,8 +2269,7 @@ class _NoteClipsDeviceState extends State<NoteClipsDevice> {
   }
 }
 
-/// _MiniRollPainter draws notes small: each a bar at its key and its time,
-/// the lowest note at the foot and the highest at the top.
+/// _MiniRollPainter draws notes small, each a bar at its key and time.
 class _MiniRollPainter extends CustomPainter {
   final List<MidiNote> notes;
   final Color accent, back, line;
@@ -2341,9 +2306,9 @@ class _MiniRollPainter extends CustomPainter {
       !identical(old.notes, notes) || old.accent != accent || old.back != back;
 }
 
-/// ZoneMap is a sound's zones, as the Zones card draws them: which sample
-/// group plays at each key (21 to 108) and each band of velocity, and how
-/// many layers and key ranges that makes.
+/// ZoneMap is a sound's zones as the Zones card draws them: which sample
+/// group plays at each key (21 to 108) and velocity band, and how many
+/// layers and key ranges that makes.
 class ZoneMap {
   static const lowKey = 21, keys = 88, bands = 16;
 
@@ -2356,8 +2321,7 @@ class ZoneMap {
 
 final Map<(SoundFont, int, int), ZoneMap> _zoneMaps = {};
 
-/// zoneMap is [font]'s zones for the sound at [bank] and [program], worked
-/// out once.
+/// zoneMap is [font]'s zones for the sound at [bank] and [program], cached.
 ZoneMap? zoneMap(SoundFont font, int bank, int program) {
   var key = (font, bank, program);
   if (_zoneMaps[key] case var m?) return m;
@@ -2377,8 +2341,8 @@ ZoneMap? zoneMap(SoundFont font, int bank, int program) {
           groupOf(ZoneMap.lowKey + k, 1 + b * 8)
       ],
   ];
-  // Layers: the most groups any one key changes through, softest to
-  // hardest; ranges: the groups along the keys, played moderately hard.
+  // Layers: the most groups any one key changes through, softest to hardest;
+  // ranges: the groups along the keys, played moderately hard.
   var layers = 1;
   for (var col in cells) {
     var n = col.where((g) => g >= 0).toSet().length;
@@ -2393,8 +2357,8 @@ ZoneMap? zoneMap(SoundFont font, int bank, int program) {
   return _zoneMaps[key] = ZoneMap(cells, layers, math.max(1, ranges));
 }
 
-/// _ZonesPainter draws a ZoneMap: keys along, velocity up, each group of
-/// samples its own shade; with none, one zone over all of it.
+/// _ZonesPainter draws a ZoneMap: keys along, velocity up, each sample
+/// group its own shade; with none, one zone over all of it.
 class _ZonesPainter extends CustomPainter {
   final ZoneMap? map;
   final Color accent, back, text;
@@ -2416,7 +2380,6 @@ class _ZonesPainter extends CustomPainter {
     for (var (k, col) in m.cells.indexed) {
       for (var (b, g) in col.indexed) {
         if (g < 0) continue;
-        // Neighbouring groups told apart by how light they are.
         var shade = 0.25 + 0.6 * ((g * 37) % 11) / 10;
         canvas.drawRect(
             Rect.fromLTWH(k * w, size.height - (b + 1) * h, w + 0.5, h + 0.5),

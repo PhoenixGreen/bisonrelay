@@ -1,29 +1,16 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// cast.dart is the Cast: elements kept once for a whole document -- a
-// game's hero above all -- of which its scenes hold linked copies (Ken,
-// 2026-11-10: "if I change the character in scene 1 I then need to change
-// again in every scene the player is used in. It would also be nice to get
-// some per scene setting e.g. on the title scene I like the character to
-// be a lot bigger").
-//
-// A copy is stored whole, as any element is, so everything that draws or
-// plays it reads it as it reads any other; what it shares is kept in step
-// by the controller (see CanvasController.castSynced): changed on a copy,
-// the member takes it, and every other copy with it.
-//
-// Its own, scene by scene (Ken's choice, 2026-11-10): where it is and how
-// big, which way it faces and how it is framed, whether it is shown, what
-// it does there -- its performance, its keyframes, its clips' places on the
-// timeline -- and whether it is the player there (a title's hero waves; a
-// level's is played). Shared by every copy: the rest -- its design, its
-// game settings (speed, jump, zoom, controls, punch and kick), its motion
-// clips and chain, its sounds, its name.
+// cast.dart is the Cast: elements kept once for a whole document (a game's
+// hero above all), of which its scenes hold linked copies. A copy is stored
+// whole, so everything reads it as any element; what it shares is kept in
+// step by CanvasController.castSynced. Its own, scene by scene: placement,
+// size, facing, framing, visibility, its performance, keyframes and clips'
+// timeline places, and whether it is the player there. Shared: its design,
+// game settings, motion clips and chain, sounds and name.
 
-/// castOwnKeys are the keys of an element's JSON that a linked copy keeps
-/// as its scene's own -- see the top of the file -- by kind; [castOwnBase]
-/// every kind's.
+/// castOwnKeys are the JSON keys a linked copy keeps as its scene's own, by
+/// kind; [castOwnBase] every kind's.
 const Set<String> castOwnBase = {
   "id",
   "x",
@@ -62,10 +49,9 @@ const Map<ElementKind, Set<String>> castOwnKeys = {
   },
 };
 
-/// castLinked is [shared]'s shared part with [own]'s own -- see the top of
-/// the file: a member made into a copy as [own] has it in its scene, or (the
-/// other way about) a copy's change taken into the member. [own] itself
-/// where the two are different kinds of element.
+/// castLinked is [shared]'s shared part with [own]'s own: a member made a
+/// copy as [own] has it in its scene, or a copy's change taken into the
+/// member. [own] itself where the two are different kinds.
 CanvasElement castLinked(CanvasElement shared, CanvasElement own) {
   if (shared.kind != own.kind) return own;
   var from = shared.toJson(), mine = own.toJson();
@@ -107,15 +93,13 @@ bool sameShared(CanvasElement a, CanvasElement b) =>
 
 String _json(CanvasElement e) => e.toJson().toString();
 
-/// castMember is [doc]'s Cast member [id], or null.
 CanvasElement? castMember(CanvasDocument doc, String id) =>
     id.isEmpty ? null : doc.cast.where((e) => e.id == id).firstOrNull;
 
 /// castSynced is [next] with its Cast kept in step: a linked copy on the
-/// canvas being edited that has changed since [was] in what it shares
-/// changes its member, and every other copy with it -- in every scene and on
-/// the master. [next] itself where nothing shared has changed, or the canvas
-/// being edited is another (a scene turned to changes no copy).
+/// canvas being edited whose shared part changed since [was] changes its
+/// member and every other copy, in every scene and on the master. [next]
+/// itself where nothing shared changed, or another canvas is being edited.
 CanvasDocument castSynced(CanvasDocument was, CanvasDocument next) {
   if (next.cast.isEmpty) return next;
   if (was.at != next.at || was.editingMaster != next.editingMaster) {
@@ -135,7 +119,7 @@ CanvasDocument castSynced(CanvasDocument was, CanvasDocument next) {
 }
 
 /// castRelinked is [doc] with members [changed] put in its Cast, by id, and
-/// every copy of them made as they now are, wherever it is.
+/// every copy of them remade, wherever it is.
 CanvasDocument castRelinked(
     CanvasDocument doc, Map<String, CanvasElement> changed) {
   List<CanvasElement> relinked(List<CanvasElement> list) => [
@@ -156,12 +140,11 @@ CanvasDocument castRelinked(
   return out;
 }
 
-/// castAdded is [doc] with [e] made a Cast member -- a new one, as [e] is
-/// now -- and [e] and every other copy of it linked to it: in every scene
-/// and on the master, each element of its id and kind, and for a 3D
-/// character each of its design too (Ken: linked, the copies already
-/// placed). Each keeps its own; what they share becomes [e]'s. The new
-/// member's id, with the document.
+/// castAdded is [doc] with [e] made a new Cast member, and [e] and every
+/// other copy of it linked to it: in every scene and on the master, each
+/// element of its id and kind, and for a 3D character each of its design
+/// too, so copies already placed join. Each keeps its own; what they share
+/// becomes [e]'s. Returns the document and the new member's id.
 (CanvasDocument, String) castAdded(CanvasDocument doc, CanvasElement e,
     {required String id}) {
   var member = e.rebase(e.base.copyWith(id: id, cast: ""));
@@ -198,16 +181,14 @@ bool _sameDesign(CanvasElement a, CanvasElement b) {
       da["id"] == db["id"];
 }
 
-/// castUnlinked is [doc] with copy [id] on the canvas being edited no longer
-/// linked: as it is, its own from now on.
+/// castUnlinked is [doc] with copy [id] on the edited canvas unlinked.
 CanvasDocument castUnlinked(CanvasDocument doc, String id) =>
     doc.copyWith(elements: [
       for (var e in doc.elements)
         if (e.id == id) e.rebase(e.base.copyWith(cast: "")) else e,
     ]);
 
-/// castRemoved is [doc] without Cast member [id]: its copies kept, each as
-/// it is, linked no more.
+/// castRemoved is [doc] without Cast member [id], its copies kept unlinked.
 CanvasDocument castRemoved(CanvasDocument doc, String id) {
   List<CanvasElement> freed(List<CanvasElement> list) => [
         for (var e in list)

@@ -12,11 +12,8 @@ export 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SoundPlacement, PlaceBy;
 
 // media_clip.dart is what is played: which files, which part of each, the
-// fades and the loop. Audio and Video elements share it, so play range,
-// fades and playlist have one meaning and one set of controls.
-//
-// Times are seconds into the file, not frames, so changing the canvas's
-// frame rate leaves them alone.
+// fades and the loop. Audio and Video elements share it. Times are seconds
+// into the file, not frames, so a change of frame rate leaves them alone.
 
 /// MediaLoop is what happens when the end is reached.
 enum MediaLoop {
@@ -34,8 +31,7 @@ enum MediaLoop {
 
 /// MediaSource is one file in a playlist, and the part of it that plays.
 class MediaSource {
-  /// assetId is the file in the media store (CanvasMedia), named by a hash
-  /// of its bytes.
+  /// assetId is the file in the media store (CanvasMedia), named by its hash.
   final String assetId;
 
   /// name is what the file was called when it was added, for the list.
@@ -46,18 +42,15 @@ class MediaSource {
   final double start;
   final double end;
 
-  /// length is how long the whole file is, in seconds, or nought when not
-  /// known. Recorded when the file is added so [span] and the range fields
-  /// need not open the file; the player asks the file itself.
+  /// length is the whole file in seconds, or nought when unknown: recorded
+  /// when added so [span] need not open the file. The player asks the file.
   final double length;
 
   /// posterId, soundId, width, height and fps describe a video file, found
-  /// when it was added (ui/picking/media_picking.dart).
-  ///
-  /// The poster is a still stored as an ordinary picture, so an export or a
-  /// bundle opened without ffmpeg still shows the video. The sound is the
-  /// file's audio extracted into the audio store, which the audio engine
-  /// plays in step with the picture. Empty for a sound or a silent video.
+  /// when it was added (ui/picking/media_picking.dart). The poster is a still
+  /// in the picture store, so an export or bundle opened without ffmpeg still
+  /// shows the video; the sound is its audio extracted into the audio store,
+  /// played in step with the picture. Empty for a sound or a silent video.
   final String posterId;
   final String soundId;
   final int width;
@@ -68,10 +61,9 @@ class MediaSource {
   /// then the recording made with them, and pitch.original the one made.
   final PitchEdit? pitch;
 
-  /// clip is the sound's settings as a clip's -- warp, pitch, gain, fades,
-  /// envelopes, start and loop -- for a sound on the timeline, edited in
-  /// the clip editor as a clip in a slot is; or null. Its own sound is the
-  /// original: [assetId] is then what it renders to (see timeline_clips).
+  /// clip is a timeline sound's settings as a slot clip's (warp, pitch, gain,
+  /// fades, envelopes, start, loop), edited in the clip editor; or null. Its
+  /// own sound is the original, and [assetId] what it renders to.
   final SessionClip? clip;
 
   const MediaSource({
@@ -174,7 +166,6 @@ class MediaClip {
   /// volume is the level it opens at (the reader can move it).
   final double volume;
 
-  /// muted is whether it opens silent.
   final bool muted;
 
   /// fadeIn and fadeOut are seconds at the start and end of each file's
@@ -188,9 +179,8 @@ class MediaClip {
   /// document does.
   final bool autoplay;
 
-  /// acrossPages is for media on the master: it plays on from one page or
-  /// scene to the next rather than stopping at the join. Elsewhere it has no
-  /// effect: a sound stops when its page is left.
+  /// acrossPages is for media on the master: it plays on across page and
+  /// scene joins. Elsewhere a sound stops when its page is left.
   final bool acrossPages;
 
   /// timed puts the media on the timeline: it plays with the playhead from
@@ -202,11 +192,10 @@ class MediaClip {
   /// mix is this clip's channel strip on the mixer. See mix.dart.
   final ChannelMix mix;
 
-  /// channel is the timeline channel a sound is on, and channelName its
-  /// name. Sounds share a channel by sharing its id; a channel exists only
-  /// while a sound is on it. Empty for media on a lane of its own.
-  ///
-  /// The channel's strip ([mix]) is kept identical on every sound in it.
+  /// channel is the timeline channel a sound is on, and channelName its name.
+  /// Sounds share a channel by sharing its id, and its strip ([mix]) is kept
+  /// identical on each; a channel exists only while a sound is on it. Empty
+  /// for media on a lane of its own.
   final String channel;
   final String channelName;
 
@@ -214,10 +203,9 @@ class MediaClip {
   /// off, the channel's own pan applies.
   final SoundPlacement place;
 
-  /// speed is how fast its media plays: 0.5 at half speed, and so twice as
-  /// long on the timeline. A video's (Ken, 2026-11-11: rain slowed by half);
-  /// its sound is left out at any speed but 1, a sound slowed being a
-  /// different sound.
+  /// speed is how fast its media plays: 0.5 is half speed, and twice as long
+  /// on the timeline. At any speed but 1 a video's sound is left out: a sound
+  /// slowed is a different sound.
   final double speed;
 
   const MediaClip({
@@ -258,29 +246,24 @@ class MediaClip {
           for (var t in l.takes) ...t.ids,
       };
 
-  /// posterIds is the video stills, kept in the picture store. See
-  /// MediaSource.posterId.
+  /// posterIds is the video stills, kept in the picture store.
   Set<String> get posterIds => {
         for (var s in playlist)
           if (s.posterId.isNotEmpty) s.posterId,
       };
 
-  /// runLength is the playlist's play-through time in seconds. A file of
-  /// unknown length counts as nothing.
+  /// runLength is the play-through time in seconds; an unknown length is 0.
   double get runLength => playlist.fold(0.0, (sum, s) => sum + s.span) / _speed;
 
   double get _speed => speed > 0.01 ? speed : 1;
 
-  /// silentAtSpeed is whether its sound is left out: played at any speed
-  /// but its own.
+  /// silentAtSpeed is whether its sound is left out, at any speed but 1.
   bool get silentAtSpeed => (_speed - 1).abs() > 1e-6;
 
   /// momentAt is what is playing [seconds] after the clip starts on the
-  /// timeline (file, time in it, gain), or null when nothing is.
-  ///
-  /// The editor, the channel drawing and the exporter all ask this, so they
-  /// agree. On the timeline any repeat goes round the whole list: "each" is
-  /// for media on its own clock, played until somebody stops it.
+  /// timeline (file, time in it, gain), or null. The editor, the channel
+  /// drawing and the exporter all ask this, so they agree. On the timeline a
+  /// repeat goes round the whole list: "each" is for media on its own clock.
   ClipMoment? momentAt(double seconds) {
     var total = runLength;
     if (seconds < 0 || total <= 0) return null;
@@ -394,8 +377,7 @@ class MediaClip {
   }
 }
 
-/// GainPoint is one point of a volume envelope: seconds, and a gain nought
-/// to one.
+/// GainPoint is one point of a volume envelope: seconds, and gain 0 to 1.
 class GainPoint {
   final double time;
   final double gain;

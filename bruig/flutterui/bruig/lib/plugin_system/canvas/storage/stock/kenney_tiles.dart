@@ -11,14 +11,12 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/kenney_packs.dart';
 import 'package:path/path.dart' as path;
 
-// kenney_tiles.dart is the tile sets to be had from one of Kenney's packs,
-// for the Tile map element: his sheets of tiles, sliced as his notes beside
-// them say -- a Tiled tileset or map, or a line of text, "16 x 16px, 1px
-// margin" -- and the other sheets in their folders sliced the same; and
-// his folders of tiles each a picture of its own, laid out on a sheet.
+// kenney_tiles.dart is the tile sets in a Kenney pack for the Tile map: his
+// sheets sliced as his notes say (Tiled files, or text such as "16 x 16px,
+// 1px margin"), sibling sheets alike, and tile folders laid on a sheet.
 
-/// TileSheetOffer is a tile set a pack has: a sheet of it and its grid, or
-/// a folder of single tiles to be laid out on one.
+/// TileSheetOffer is a tile set in a pack: a sheet and its grid, or a
+/// folder of single tiles to lay out on one.
 class TileSheetOffer {
   final String name;
 
@@ -36,12 +34,12 @@ class TileSheetOffer {
 String _attr(String tag, String name) =>
     RegExp('\\b$name="([^"]*)"').firstMatch(tag)?.group(1) ?? "";
 
-/// TilesetNotes is a tileset as Tiled notes it: its picture's place, from
-/// the notes, and its grid.
+/// TilesetNotes is a tileset as Tiled notes it: its picture's place and
+/// grid.
 typedef TilesetNotes = ({String image, int tileW, int tileH, int margin, int spacing});
 
-/// readTilesets is the tilesets [text] notes -- a .tsx, or a map's .tmx
-/// with them in it -- each with a picture of its own.
+/// readTilesets is the tilesets in [text] (a .tsx, or a .tmx containing
+/// them), each with a picture of its own.
 List<TilesetNotes> readTilesets(String text) => [
       for (var m in RegExp(r"<tileset\b[^>]*>\s*<image\b[^>]*>").allMatches(text))
         if (_tileset(m.group(0)!) case var t?) t,
@@ -61,8 +59,8 @@ TilesetNotes? _tileset(String t) {
   );
 }
 
-/// tileSheetsIn is the tile sets in [archive]: sheets with notes first,
-/// then the folders of single tiles, each [most] tiles at most.
+/// tileSheetsIn is the tile sets in [archive]: noted sheets first, then
+/// folders of single tiles, each [most] tiles at most.
 List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
   var names = [for (var f in archive.files) if (f.isFile && !f.name.contains("__MACOSX")) f.name];
   var has = names.toSet();
@@ -81,11 +79,9 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
           file: file, tileW: t.tileW, tileH: t.tileH, margin: t.margin, spacing: t.spacing);
     }
   }
-  // Kenney's notes in a line or two of text, in the three ways he writes
-  // them: "16 x 16px, 1px margin" (his margin being the gap between tiles),
-  // "Tile size 16px × 16px, Space between tiles 1px", and "Tile width: 16px,
-  // Margin: 0px, Spacing: 1px". Beside his sheets, or at the top with them
-  // in a folder of their own.
+  // Kenney's notes, written three ways: "16 x 16px, 1px margin" (his margin
+  // is the tile gap), "Tile size 16px × 16px, Space between tiles 1px", and
+  // "Tile width: 16px, Margin: 0px, Spacing: 1px"; beside or above sheets.
   bool aSheet(String p) =>
       p.toLowerCase().endsWith(".png") && !RegExp(r"preview|sample", caseSensitive: false).hasMatch(path.basename(p));
   bool inSheetFolder(String p) =>
@@ -106,8 +102,8 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
               spacing: p.toLowerCase().contains("packed") ? 0 : notes.spacing));
     }
   }
-  // The other sheets in a folder of sheets, sliced as the pack's others
-  // are: "packed" ones with no gaps.
+  // Other sheets in a folder of sheets are sliced as the pack's others
+  // are: "packed" ones have no gaps.
   if (sheets.values.firstOrNull case var known?) {
     for (var p in names) {
       var folder = path.basename(path.dirname(p)).toLowerCase();
@@ -120,13 +116,13 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
           spacing: p.toLowerCase().contains("packed") ? 0 : known.spacing);
     }
   }
-  // Folders of tiles, a picture each; a sheet already offered is not a tile
-  // of its folder as well.
+  // Folders of tiles, a picture each; a sheet already offered is not also
+  // a tile of its folder.
   var folders = <String, List<String>>{};
   for (var g in spriteGroups(names)) {
     (folders[g.folder] ??= []).addAll(g.files.where((f) => !sheets.containsKey(f)));
   }
-  // A folder's name, and its parent's too where two have the same one.
+  // A folder's name, with its parent's where two share one.
   var called = {for (var f in folders.keys) f: f == "." ? "Pictures" : path.basename(f)};
   String nameOf(String f) {
     var n = called[f]!;
@@ -144,16 +140,15 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
   ];
 }
 
-/// readKenneyNotes reads the size of the tiles, and how far in and apart
-/// they are, from [text]: Kenney's notes on a sheet, or null when it says
-/// nothing of their size.
+/// readKenneyNotes reads tile size, margin and spacing from [text],
+/// Kenney's notes on a sheet; null when it gives no size.
 ({int tileW, int tileH, int margin, int spacing})? readKenneyNotes(String text) {
   int? n(String pattern) => int.tryParse(
       RegExp(pattern, caseSensitive: false).firstMatch(text)?.groups([1]).firstOrNull ?? "");
   var w = n(r"tile\s*width\s*:\s*(\d+)"), h = n(r"tile\s*height\s*:\s*(\d+)");
   if (w == null || h == null) {
-    // The size given as one across the other, on a line that says size,
-    // or the first such: "16 x 16px", "16px × 16px".
+    // The size as one across the other, on a line saying size or else the
+    // first: "16 x 16px", "16px × 16px".
     var across = RegExp(r"(\d+)\s*(?:px)?\s*[x×]\s*(\d+)", caseSensitive: false);
     var line = text.split("\n").where((l) => l.toLowerCase().contains("size") || l.toLowerCase().contains("tiles are"));
     var m = line.map(across.firstMatch).whereType<RegExpMatch>().firstOrNull ?? across.firstMatch(text);
@@ -162,7 +157,7 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
   }
   var spacing = n(r"spacing\s*:\s*(\d+)") ?? n(r"space between tiles\D*(\d+)");
   var margin = n(r"margin\s*:\s*(\d+)") ?? n(r"(\d+)\s*px\s*margin");
-  // Where no gap is named, his "margin" was the gap between tiles.
+  // Where no gap is named, his "margin" is the gap between tiles.
   if (spacing == null) return (tileW: w, tileH: h, margin: 0, spacing: margin ?? 0);
   return (tileW: w, tileH: h, margin: margin ?? 0, spacing: spacing);
 }
@@ -172,10 +167,8 @@ String _pretty(String s) {
   return words.isEmpty ? "Tiles" : words[0].toUpperCase() + words.substring(1);
 }
 
-/// tileSourceFrom is [offer] of [archive] made a tile set: its sheet
-/// stored, or its tiles laid out on one -- each in a cell as big as the
-/// biggest, standing on its bottom -- and stored; or null when it cannot
-/// be read.
+/// tileSourceFrom is [offer] as a tile set: its sheet stored, or its tiles
+/// laid on one and stored; null when unreadable.
 Future<TileSource?> tileSourceFrom(TileSheetOffer offer, Archive archive) async {
   if (!offer.packed) {
     var entry = archive.findFile(offer.file);
@@ -220,9 +213,8 @@ Future<TileSource?> tileSourceFrom(TileSheetOffer offer, Archive archive) async 
   return TileSource(sheet: id, name: offer.name, sheetW: sheet.width, sheetH: sheet.height, tileW: tw, tileH: th);
 }
 
-/// packTiles lays [tiles] out on a sheet, [across] to a row, each in a
-/// cell as big as the biggest, on its bottom in the middle: the sheet, and
-/// the cell's size.
+/// packTiles lays [tiles] on a sheet, [across] to a row, each centred on
+/// the bottom of a cell as big as the biggest: the sheet and cell size.
 Future<(ui.Image, int, int)> packTiles(List<ui.Image> tiles, {int across = 16}) async {
   var tw = tiles.map((i) => i.width).reduce(math.max), th = tiles.map((i) => i.height).reduce(math.max);
   var cols = math.min(tiles.length, across), rows = (tiles.length / cols).ceil();
@@ -236,10 +228,9 @@ Future<(ui.Image, int, int)> packTiles(List<ui.Image> tiles, {int across = 16}) 
   return (await rec.endRecording().toImage(cols * tw, rows * th), tw, th);
 }
 
-/// kenneyTerrains is the terrain sets [file] (one of Kenney's sheets, as
-/// [s]) comes with: those of its blocks drawn as terrains, each tagged from
-/// its colours. Chosen by eye: his roguelike sheet's pond (grass round water)
-/// is one; its dirt and stone patches are shapes to lay by hand.
+/// kenneyTerrains is the terrain sets [file] (as [s]) comes with, tagged
+/// from colours and chosen by eye: the roguelike sheet's pond is one; its
+/// dirt and stone patches are laid by hand.
 List<TerrainSet> kenneyTerrains(String file, TileSource s, ui.Color Function(int x, int y) pixel) {
   var name = path.basename(file).toLowerCase();
   if (name.startsWith("roguelikesheet") && s.tileW == 16 && s.columns == 57) {

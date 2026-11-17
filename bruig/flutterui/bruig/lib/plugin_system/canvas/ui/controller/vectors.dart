@@ -1,27 +1,23 @@
 part of '../canvas_controller.dart';
 
-// Drawings: editing a vector element's shapes, points and text.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Part of CanvasController (state in canvas_controller.dart): drawings --
+// editing a vector element's shapes, points and text.
 
 extension CanvasVectors on CanvasController {
-  /// vectorEditing is the Vector element being edited point by point, by id,
-  /// or null. vectorShape is the shape of it picked, and vectorPicks the
-  /// points -- one, several, or none.
+  /// vectorEditing is the id of the Vector element being edited point by
+  /// point, or null; vectorShape its shape picked, vectorPicks its points.
   String? get vectorEditing => _vectorEditing;
 
   int get vectorShape => _vectorShape;
 
   Set<VectorPick> get vectorPicks => _vectorPicks;
 
-  /// vectorPick is the one point picked, where exactly one is: the point
-  /// whose handles are shown and can be pulled.
+  /// vectorPick is the one point picked, if exactly one: its handles shown.
   VectorPick? get vectorPick =>
       _vectorPicks.length == 1 ? _vectorPicks.first : null;
 
   /// vectorSolo holds every layer of the drawing being edited but the one
-  /// picked, as a picture's Solo does: only it can be picked or edited on
-  /// the canvas. For this run of the app; off when the drawing is put down.
+  /// picked, as a picture's Solo does. For this run of the app only.
   bool get vectorSolo => _vectorSolo;
 
   set vectorSolo(bool on) {
@@ -85,7 +81,7 @@ extension CanvasVectors on CanvasController {
       vectorTool = on ? VectorTool.pen : VectorTool.select;
 
   /// vectorPenFrom is the point the pen's next point joins on from, or null
-  /// before it has one -- when the next point starts a new shape.
+  /// when the next point starts a new shape.
   VectorPick? get vectorPenFrom => _vectorPenFrom;
 
   /// vectorPenShape is the shape the pen is drawing, or -1.
@@ -99,8 +95,7 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// finishPenShape ends the run the pen is drawing; the pen stays out,
-  /// ready to start another.
+  /// finishPenShape ends the pen's run; the pen stays out for another.
   void finishPenShape() {
     if (_vectorPenFrom == null) return;
     _vectorPenFrom = null;
@@ -110,10 +105,8 @@ extension CanvasVectors on CanvasController {
 
   /// vectorCornerRound is whether the corner tool rounds a corner or cuts
   /// it, and vectorCornerSize how far back along each side it starts, in
-  /// canvas units.
-  ///
-  /// Both reshape the corner the tool last made while it is still picked --
-  /// see vectorCornerActive.
+  /// canvas units. Both reshape the corner the tool last made while it is
+  /// still picked (see vectorCornerActive).
   bool get vectorCornerRound => _vectorCornerRound;
 
   set vectorCornerRound(bool on) {
@@ -126,8 +119,7 @@ extension CanvasVectors on CanvasController {
 
   set vectorCornerSize(double v) => sizeCorner(v);
 
-  /// sizeCorner sets the corner size and reshapes the corner being made by
-  /// it -- [transient] while a drag is still setting it.
+  /// sizeCorner sets the corner size and reshapes the corner being made.
   void sizeCorner(double v, {bool transient = false}) {
     if (_vectorCornerSize == v) return;
     _vectorCornerSize = v;
@@ -145,18 +137,16 @@ extension CanvasVectors on CanvasController {
         c.picks.containsAll(_vectorPicks);
   }
 
-  /// vectorCornerPoint is where the corner being made was, in the drawing's
-  /// units, or null with none.
+  /// vectorCornerPoint is where the corner being made was, or null.
   Offset? get vectorCornerPoint {
     if (!vectorCornerActive) return null;
     var c = _corner!;
     return vectorNodeAt(c.before, c.at)?.point;
   }
 
-  /// adoptCorner takes up the rounded corner the point at [pick] is one end
-  /// of -- one made before, or a rounded box's -- as the corner being made,
-  /// so its size and a drag reshape it: the size set to its own. Answers
-  /// whether the point was one.
+  /// adoptCorner takes up the rounded corner the point at [pick] ends (one
+  /// made before, or a rounded box's) as the corner being made, its size set
+  /// to its own. Answers whether the point was one.
   bool adoptCorner(VectorPick pick) {
     var e = editingVector;
     if (e == null) return false;
@@ -181,9 +171,8 @@ extension CanvasVectors on CanvasController {
     return _shapeCorner(e, at, transient: transient);
   }
 
-  /// reshapeCorner makes the corner being made again from the drawing as it
-  /// was before it, at the size and kind now set. Answers whether there was
-  /// one being made.
+  /// reshapeCorner makes the corner being made again, from the drawing as it
+  /// was before it, at the size and kind now set. Answers whether there was.
   bool reshapeCorner({bool transient = false}) {
     if (!vectorCornerActive) return false;
     var c = _corner!;
@@ -222,8 +211,8 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// copyVectorPoints copies the points picked -- see copiedShapes --
-  /// answering whether there was anything to copy.
+  /// copyVectorPoints copies the picked points (see copiedShapes), answering
+  /// whether there was anything to copy.
   bool copyVectorPoints() {
     var e = editingVector;
     if (e == null) return false;
@@ -251,9 +240,8 @@ extension CanvasVectors on CanvasController {
     return true;
   }
 
-  /// pasteVectorPoints puts the points copied into the drawing being
-  /// edited, a little down and to the right of where they were, and picks
-  /// them -- answering whether there was anything to paste.
+  /// pasteVectorPoints puts the copied points in the drawing being edited, a
+  /// little down and right of where they were, picked. Answers whether any.
   bool pasteVectorPoints() {
     var e = editingVector;
     if (e == null || _copiedShapes.isEmpty) return false;
@@ -273,7 +261,6 @@ extension CanvasVectors on CanvasController {
     return true;
   }
 
-  /// pickAllVectorPoints picks every point of the drawing being edited.
   bool pickAllVectorPoints() {
     var e = editingVector;
     if (e == null) return false;
@@ -286,8 +273,8 @@ extension CanvasVectors on CanvasController {
     return true;
   }
 
-  /// editPickedPoints replaces the drawing being edited with what [edit]
-  /// makes of it and the points picked, as one undo step.
+  /// editPickedPoints applies [edit] to the drawing and its picked points,
+  /// as one undo step.
   void editPickedPoints(
       VectorElement Function(VectorElement, Set<VectorPick>) edit) {
     var e = editingVector;
@@ -315,9 +302,8 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// vectorLanes is how much of a drawing's shapes the timeline shows
-  /// under the drawing's own keyframes: none of them, the shape picked, or
-  /// every one. See VectorShapeLanes.
+  /// vectorLanes is how much of a drawing's shapes the timeline shows under
+  /// its own keyframes: none, the shape picked, or all (see VectorShapeLanes).
   VectorLanes get vectorLanes => _vectorLanes;
 
   set vectorLanes(VectorLanes l) {
@@ -326,11 +312,10 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// retimeShapes changes when [e]'s shapes come in by [edit]. Their timing
-  /// is first written out in the timeline's frames as it plays now (see
-  /// withTimingBaked), then the drawing's arrival is fitted round all of them
-  /// again, lengthening the timeline where needed. [transient] while a drag
-  /// is still making it.
+  /// retimeShapes changes when [e]'s shapes come in by [edit]: their timing
+  /// written out in the timeline's frames first (see withTimingBaked), then
+  /// the drawing's arrival fitted round them, the timeline lengthened where
+  /// needed. [transient] while a drag is still making it.
   void retimeShapes(VectorElement e, VectorElement Function(VectorElement) edit,
       {bool transient = false}) {
     var next = withSpanFitted(
@@ -343,10 +328,9 @@ extension CanvasVectors on CanvasController {
     apply(document.withElement(next), transient: transient);
   }
 
-  /// retimeLayers changes when a picture's layers come in, as [edit] says
-  /// -- worked in the timeline's frames, with the arrival fitted round them
-  /// all again after, and the scene lengthened where it has to be. See
-  /// withLayerTimingBaked.
+  /// retimeLayers changes when a picture's layers come in by [edit], worked
+  /// in the timeline's frames, the arrival fitted round them after and the
+  /// scene lengthened where needed. See withLayerTimingBaked.
   void retimeLayers(ImageElement e, ImageElement Function(ImageElement) edit,
       {bool transient = false}) {
     var next = withLayerSpanFitted(
@@ -370,10 +354,9 @@ extension CanvasVectors on CanvasController {
   set vectorShapeMade(int i) => _vectorShapeMade = i;
 
   /// vectorShapeKind is the shape the shapes tool draws; vectorShapeSides a
-  /// polygon's sides and a star's points; vectorStarInner how far in a
-  /// star's inner points sit, as a share of its outer ones; and
-  /// vectorShapeCorner a rounded box's corners, as a share of its shorter
-  /// side.
+  /// polygon's sides and a star's points; vectorStarInner a star's inner
+  /// points as a share of its outer; vectorShapeCorner a rounded box's
+  /// corners as a share of its shorter side.
   VectorShapeKind get vectorShapeKind => _vectorShapeKind;
 
   set vectorShapeKind(VectorShapeKind k) {
@@ -434,11 +417,10 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// vectorEraseWhole is whether the eraser takes out whole lines and
-  /// shapes, where it touches them, rather than rubbing out what it goes
-  /// over; vectorEraseSize and vectorEraseSoft are its size on screen and
-  /// how far its edge fades; vectorEraseLine and vectorEraseFill whether it
-  /// rubs out lines, fills, or both.
+  /// vectorEraseWhole is whether the eraser takes out whole lines and shapes
+  /// it touches rather than rubbing out what it goes over; vectorEraseSize
+  /// and vectorEraseSoft are its screen size and edge fade; vectorEraseLine
+  /// and vectorEraseFill whether it rubs out lines, fills, or both.
   bool get vectorEraseWhole => _vectorEraseWhole;
 
   set vectorEraseWhole(bool on) {
@@ -487,8 +469,7 @@ extension CanvasVectors on CanvasController {
   }
 
   /// vectorMirrorAcross and vectorMirrorDown are the pencil's symmetry: a
-  /// stroke drawn is mirrored across the drawing's upright middle line, its
-  /// level middle line, or both -- left and right, top and bottom, all four.
+  /// stroke mirrored left to right, top to bottom, or both.
   bool get vectorMirrorAcross => _vectorMirrorAcross;
 
   set vectorMirrorAcross(bool on) {
@@ -505,10 +486,9 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// vectorQuickFill is whether a click with the pencil fills the area the
-  /// lines close round it, rather than drawing -- the paint bucket -- and
-  /// vectorFillGap the widest opening, in pixels on screen, it still counts
-  /// as closed.
+  /// vectorQuickFill is whether a pencil click fills the area the lines
+  /// close round it (the paint bucket) rather than drawing; vectorFillGap is
+  /// the widest opening, in screen pixels, still counted as closed.
   bool get vectorQuickFill => _vectorQuickFill;
 
   set vectorQuickFill(bool on) {
@@ -536,12 +516,10 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// vectorTyping is the shape of the drawing being typed into with the
-  /// text tool, or -1.
+  /// vectorTyping is the shape being typed into with the text tool, or -1.
   int get vectorTyping => _vectorTyping;
 
-  /// _typedShape is the drawing, the shape being typed into and its index,
-  /// while there is one.
+  /// _typedShape is the drawing, shape index and shape being typed into.
   (VectorElement, int, VectorShape)? _typedShape() {
     var e = editingVector;
     var i = _vectorTyping;
@@ -620,8 +598,7 @@ extension CanvasVectors on CanvasController {
   }
 
   /// newVectorText starts new text in the drawing being edited, its first
-  /// line starting at [at] in the drawing's own units, and starts typing
-  /// into it.
+  /// line at [at] in the drawing's units, and starts typing into it.
   Future<void> newVectorText(Offset at) async {
     stopVectorTyping();
     var e = editingVector;
@@ -664,8 +641,7 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// stopVectorTyping finishes the text being typed: what was typed is one
-  /// change, and text left empty is taken away.
+  /// stopVectorTyping finishes the typing as one change; empty text goes.
   void stopVectorTyping() {
     if (_vectorTyping < 0) return;
     if (_typedShape() case (var e, var i, var s)?
@@ -680,8 +656,7 @@ extension CanvasVectors on CanvasController {
   }
 
   /// sampling is whether the eyedropper is out: the next press on the canvas
-  /// takes the colour under it, and gives it to [_onSampled]. sampled is
-  /// the colour it last took.
+  /// gives the colour under it to [_onSampled]. sampled is its last colour.
   bool get sampling => _onSampled != null;
 
   Color? get sampled => _sampled;
@@ -706,8 +681,7 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// vectorKnifeGap is how far apart the knife leaves the two sides of a
-  /// cut, in the canvas's own pixels.
+  /// vectorKnifeGap is the gap the knife leaves in a cut, in canvas pixels.
   double get vectorKnifeGap => _vectorKnifeGap;
 
   set vectorKnifeGap(double v) {
@@ -743,9 +717,8 @@ extension CanvasVectors on CanvasController {
   }
 
   /// stylusButtons is what the pen's three buttons do with the pencil out,
-  /// in the order the pen reports them -- a right click, a middle click, a
-  /// back click, which is what a tablet's driver sends for them -- and
-  /// stylusEraser what its other end does.
+  /// in the order the pen reports them (right, middle and back click, as a
+  /// tablet's driver sends them); stylusEraser what its other end does.
   List<StylusAction> get stylusButtons => _stylusButtons;
 
   void setStylusButton(int index, StylusAction action) {
@@ -776,15 +749,13 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// clearCombining unpicks every shape picked for combining.
   void clearCombining() {
     if (_vectorCombining.isEmpty) return;
     _vectorCombining = const {};
     notifyListeners();
   }
 
-  /// combineVector combines the shapes picked by [op], leaving the result
-  /// picked.
+  /// combineVector combines the picked shapes by [op], the result picked.
   void combineVector(VectorCombine op) {
     var e = editingVector;
     if (e == null || _vectorCombining.length < 2) return;
@@ -854,7 +825,6 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// clearVectorTints takes every tint off the drawing being edited.
   void clearVectorTints() {
     var e = editingVector;
     if (e == null || !hasTints(e)) return;
@@ -862,8 +832,7 @@ extension CanvasVectors on CanvasController {
   }
 
   /// spritePaint is the Sprite element being painted frame by frame on the
-  /// canvas, when one is -- see sprite_painting.dart -- and paintSprite
-  /// starts painting one, or with null stops.
+  /// canvas (see sprite_painting.dart); paintSprite starts or (null) stops.
   SpritePaintSession? get spritePaint => _spritePaint;
 
   void paintSprite(String? id) {
@@ -879,9 +848,8 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// tilePaint is the Tile map being painted on the canvas, when one is --
-  /// see tile_painting.dart -- and paintTiles starts painting one, or with
-  /// null stops.
+  /// tilePaint is the Tile map being painted on the canvas (see
+  /// tile_painting.dart); paintTiles starts or (null) stops.
   TilePaintSession? get tilePaint => _tilePaint;
 
   void paintTiles(String? id) {
@@ -897,8 +865,8 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// studio3dDesign is the character the Studio opens with: [studio3dElement]'s,
-  /// or null for a new one.
+  /// studio3dDesign is the character the Studio opens with:
+  /// [studio3dElement]'s, or null for a new one.
   CharacterDesign? get studio3dDesign {
     var id = studio3dElement;
     var e = id == null ? null : _elementAnywhere(id);
@@ -921,11 +889,10 @@ extension CanvasVectors on CanvasController {
     return e is Character3dElement ? e.performance : null;
   }
 
-  /// closeStudio3d gives the page back to the canvas. With [kept], the
-  /// character as the Studio kept it, every copy of it on the canvas -- and
-  /// the element it was opened for -- is made as it now is; with
-  /// [performance], the element it was opened for does that in its scene,
-  /// as the Test step left it: one step to undo.
+  /// closeStudio3d gives the page back to the canvas. With [kept], every
+  /// copy of the character on the canvas, and the element it was opened
+  /// for, is made as the Studio kept it; with [performance], that element
+  /// does it in its scene as the Test step left it. One step to undo.
   void closeStudio3d(
       [CharacterDesign? kept, CharacterPerformance? performance]) {
     var opened = studio3dElement;
@@ -934,11 +901,10 @@ extension CanvasVectors on CanvasController {
     if (kept == null && performance == null) return;
     var before = _document;
     // Each copy of the character made as it now is where it is: in its own
-    // scene, or on the master. An element's id is its scene's own -- Ember
-    // Vale has a "vivi" in every scene -- so a copy is never written back by
-    // id alone (it took the open scene's place, and the Dawn's Vivi, dancing
-    // and no longer a player, became the woods'). The one the Studio was
-    // opened for is on the canvas being edited, and only it takes [performance].
+    // scene or on the master. An element's id is only its scene's own (a
+    // game may have a "vivi" in every scene), so a copy is never written
+    // back by id alone. Only the one the Studio was opened for, on the
+    // canvas being edited, takes [performance].
     var changed = false;
     List<CanvasElement> remade(List<CanvasElement> list, {required bool here}) {
       var out = <CanvasElement>[];
@@ -990,8 +956,7 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// _elementAnywhere is element [id] in the scene being edited, the master,
-  /// or any other scene.
+  /// _elementAnywhere is element [id] in this scene, the master, or another.
   CanvasElement? _elementAnywhere(String id) {
     var doc = _document;
     for (var e in [
@@ -1151,16 +1116,14 @@ extension CanvasVectors on CanvasController {
     notifyListeners();
   }
 
-  /// pickVectorPoints picks [picks], all at once: a box dragged across the
-  /// drawing.
+  /// pickVectorPoints picks [picks] at once: a box dragged across them.
   void pickVectorPoints(Set<VectorPick> picks) {
     _vectorPicks = {...picks};
     if (picks.isNotEmpty) _vectorShape = picks.first.shape;
     notifyListeners();
   }
 
-  /// deleteVectorPoint takes out the points picked in the drawing being
-  /// edited, returning whether there were any to take.
+  /// deleteVectorPoint takes out the picked points, answering whether any.
   bool deleteVectorPoint() {
     var e = editingVector, picks = _vectorPicks;
     if (e == null) return false;
@@ -1198,8 +1161,7 @@ extension CanvasVectors on CanvasController {
   }
 
   /// _fitEditedVector grows the box of the drawing being left to take in
-  /// whatever the editing carried out past it, so the box drawn round it is
-  /// round all of it. See boxedToDrawing.
+  /// whatever the editing carried past it. See boxedToDrawing.
   void _fitEditedVector() {
     var e = editingVector;
     if (e == null) return;
@@ -1284,16 +1246,15 @@ extension CanvasVectors on CanvasController {
     return found;
   }
 
-  /// replaceAnywhere changes element [next] wherever it is -- this canvas,
-  /// the master or another scene.
+  /// replaceAnywhere changes element [next] wherever it is: here, on the
+  /// master or in another scene.
   void replaceAnywhere(CanvasElement next, {bool transient = false}) {
     var doc = _replacedAnywhere(_document, next);
     if (doc == null) return;
     apply(doc, transient: transient);
   }
 
-  /// pickClips picks [ids] on the timeline, wherever each one is: a box
-  /// dragged across the lanes.
+  /// pickClips picks [ids] on the timeline, wherever each is: a lanes box.
   void pickClips(Set<String> ids) {
     _backgroundSelected = false;
     _focusedPlayer = null;

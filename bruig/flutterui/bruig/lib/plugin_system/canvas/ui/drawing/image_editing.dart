@@ -6,14 +6,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:flutter/material.dart' show Icons, IconData;
 
-// image_editing.dart is the editing of a picture made of layers: the tools,
-// and the changes to the stack they make. The stack's own model is in
-// model/elements/image_layers.dart; this is what a press or a button does
-// to it.
+// image_editing.dart is the tools for a picture made of layers, and the
+// changes they make to its stack. The stack's model is in
+// model/elements/image_layers.dart.
 
-/// PositionTool is one of the Position section's tools: a tile on its shelf
-/// that opens its own settings -- where the picture is and how big, its
-/// mirror, how it fills its box, the shape it is cut to, its warp.
+/// PositionTool is a tile on the Position section's shelf, opening its own
+/// settings: place and size, mirror, fit, cut shape, warp.
 enum PositionTool {
   place("Place", Icons.open_with),
   flip("Flip", Icons.flip),
@@ -27,8 +25,7 @@ enum PositionTool {
 }
 
 /// FrameTool is one of the Frame section's tools: the whole image's place
-/// and size; how what is in it behaves when it is resized or runs past it;
-/// the shape it is cut to; its background and border.
+/// and size, its content's behaviour, its cut shape, background and border.
 enum FrameTool {
   image("Image", "Where the whole image is, and how big", Icons.open_with),
   content(
@@ -56,8 +53,7 @@ enum ImageTool {
   /// the one there, Shift adds it, Option takes it away.
   subject("Select subject", "W"),
 
-  /// crop trims the picked picture's edges; its settings are the amounts
-  /// taken off each.
+  /// crop trims the picked picture's edges by the amounts in its settings.
   crop("Crop", "C"),
 
   /// edge shapes the mask's edge -- softened, moved out or in, smoothed,
@@ -79,8 +75,7 @@ enum ImageTool {
   /// lasso takes away, or puts back, whatever a line drawn round it holds.
   lasso("Lasso", "L"),
 
-  /// fade fades the picture out across a line dragged over it, or away from
-  /// a middle.
+  /// fade fades the picture out across a dragged line, or out from a middle.
   fade("Gradient", "G"),
 
   /// paint lays colour on a paint layer -- making one, where the layer
@@ -88,9 +83,8 @@ enum ImageTool {
   paint("Paint brush", "P"),
   erase("Eraser", "E"),
 
-  /// clone copies the picture from where Option-click chose; heal fills a
-  /// spot with what is round it; dodge lightens (Option: burn darkens); blur
-  /// softens. On the picture picked.
+  /// clone copies from where Option-click chose, heal fills a spot from what
+  /// is round it, dodge lightens (Option burns): all on the picture picked.
   clone("Clone", "S"),
   heal("Spot heal", "J"),
   dodge("Dodge and burn", "O"),
@@ -113,12 +107,10 @@ enum ImageTool {
       this == lasso ||
       this == fade;
 
-  /// paints is whether the tool lays strokes: paint on a paint layer, or
-  /// retouching on a picture.
+  /// paints is whether the tool lays strokes, of paint or of retouching.
   bool get paints => !masks && this != move && this != crop && this != edge;
 
-  /// retouches is whether the tool works on a picture rather than a paint
-  /// layer.
+  /// retouches is whether the tool works on a picture, not a paint layer.
   bool get retouches =>
       this == clone ||
       this == heal ||
@@ -130,11 +122,9 @@ enum ImageTool {
 
 /// MaskView is how a mask being worked on is shown on the canvas.
 enum MaskView {
-  /// result is the picture as it will be.
   result("As it will look", "Picture"),
 
-  /// overlay shows what is hidden in red over the whole picture, so what is
-  /// about to be cut can be seen against what it is cut from.
+  /// overlay shows what is hidden in red, against what it is cut from.
   overlay("Red over hidden", "Red overlay"),
 
   /// grey is the mask alone: white kept, black hidden.
@@ -156,9 +146,8 @@ ImageElement withLayerAdded(ImageElement e, ImageLayer layer, {String? above}) {
   return e.withLayers(_clipFixed(stack));
 }
 
-/// withoutLayer is [e] without the layer [id]. The base layer cannot go: it
-/// is the element's own picture -- taking that out is "Take the picture
-/// out", which leaves the layer and empties it.
+/// withoutLayer is [e] without the layer [id]. The base layer stays: it is
+/// the element's picture, emptied by "Take the picture out" instead.
 ImageElement withoutLayer(ImageElement e, String id) {
   if (id == baseLayerId) return e;
   return e.withLayers(_clipFixed([
@@ -200,9 +189,8 @@ ImageElement withLayerMoved(ImageElement e, int from, int to) {
   return e.withLayers(_clipFixed(stack));
 }
 
-/// _clipFixed takes the clip off whatever layer is now at the bottom, which
-/// has nothing under it to be clipped to and would otherwise show a clip it
-/// does not have.
+/// _clipFixed takes the clip off the bottom layer: with nothing under it,
+/// it would show a clip it does not have.
 List<ImageLayer> _clipFixed(List<ImageLayer> stack) {
   if (stack.isEmpty || !stack.first.clip) return stack;
   return [stack.first.copyWith(clip: false), ...stack.skip(1)];
@@ -242,9 +230,8 @@ ImageElement withLayersMoved(ImageElement e, List<String> ids, Offset by) {
   return next;
 }
 
-/// withLayersAligned lines the layers [ids] of [e] up on one edge or middle,
-/// against the box they make between them -- as CanvasController
-/// .alignSelected does elements, so the outermost stay put.
+/// withLayersAligned lines the layers [ids] of [e] up on an edge or middle
+/// of the box round them all, so the outermost stay put, as for elements.
 ImageElement withLayersAligned(
     ImageElement e, List<String> ids, CanvasAlign align) {
   var inner = e.box.inner(e.bounds);
@@ -277,9 +264,8 @@ ImageElement withLayersAligned(
   return next;
 }
 
-/// withLayersSpread puts an even gap between the layers [ids] of [e], the
-/// two on the ends staying where they are -- even gaps, not even middles,
-/// as for elements.
+/// withLayersSpread puts even gaps (not even middles) between the layers
+/// [ids] of [e], the two on the ends staying put, as for elements.
 ImageElement withLayersSpread(ImageElement e, List<String> ids, bool across) {
   var inner = e.box.inner(e.bounds);
   var layers = [

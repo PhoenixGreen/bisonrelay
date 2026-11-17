@@ -1,15 +1,14 @@
 part of 'mixer_plugins.dart';
 
-// mixer_motion.dart is the Motion view's own cards: a motion device, the slot to add one, the joins between them, and what a modulator moves: part of mixer_plugins.dart, split from it to keep
-// that file readable (Ken, 2026-11-12). Its imports are the library's.
+// mixer_motion.dart is the Motion view's own cards: a motion device, the
+// slot to add one, the joins between them, and what a modulator moves. It
+// is part of mixer_plugins.dart; its imports are the library's.
 
 // ---- The motion chain
 
 /// MotionDeviceCard is one device of an element's motion chain (see
-/// motion_devices.dart) in the Chain's Motion view, as a sound's devices
-/// are in its Sound view: its switch, its knobs, a screen of what it does,
-/// arrows to move it along its side of the drawing, and a way to take it
-/// out.
+/// motion_devices.dart) in the Chain's Motion view: its switch, knobs, a
+/// screen of what it does, arrows to move it, and a way to take it out.
 class MotionDeviceCard extends StatelessWidget {
   final CanvasController controller;
   final String element;
@@ -133,7 +132,7 @@ class MotionDeviceCard extends StatelessWidget {
         ? textLayerChoices(text)
         : null;
     // With copies picked, a knob is theirs: their own value, or the shared
-    // one, and turned it becomes their own (Ken, 2026-11-08).
+    // one, and turned it becomes their own.
     var copies = controller.copiesPicked(element);
     (double, bool) knobAt(DeviceParam p) =>
         controller.deviceKnob(element, d.id, p.id, d.value(p.id));
@@ -189,8 +188,7 @@ class MotionDeviceCard extends StatelessWidget {
           for (var p in d.kind.params)
             if (!p.isChoice && motionParamShown(d, p, reused: reused))
               // A diamond on its corner keys it at the playhead, or takes
-              // the key there away, as the prototype's (Ken, 2026-11-11):
-              // keyframing is done here, in the Chain.
+              // the key there away: keyframing is done in the Chain.
               Stack(clipBehavior: Clip.none, children: [
               _Knob(
                 key: ValueKey("mdev-${d.id}-${p.id}"),
@@ -262,7 +260,7 @@ class MotionDeviceCard extends StatelessWidget {
               onCommit: controller.endInteraction,
             ),
           // Its choices, and what it follows or looks at: dropdowns side by
-          // side under its knobs, as the prototype's Seed and Follows.
+          // side under its knobs.
           if (d.takesTarget ||
               layers != null ||
               d.kind.params.any(
@@ -335,8 +333,8 @@ class MotionDeviceCard extends StatelessWidget {
       id: "mdev:${d.id}",
       title: d.kind.label,
       help: motionAbout(d.kind),
-      // Its presets, as a sound device's: Default, those saved of its
-      // kind, and Save -- a preset's knobs put on, its target kept.
+      // Its presets: Default, those saved of its kind, and Save. A preset's
+      // knobs are put on; its target is kept.
       barExtras: [
         _StripPresetPicker(
           key: ValueKey("mdevPreset-${d.id}"),
@@ -423,8 +421,8 @@ class MotionDeviceCard extends StatelessWidget {
       powerKey: ValueKey("mdevPower-${d.id}"),
       folded: folded,
       onFold: onFold,
-      // As wide as its knobs on one row, and room for two dropdowns.
-      // Wide enough for its presets' mark beside its name and its A|B.
+      // As wide as its knobs on one row, room for two dropdowns, and for
+      // its presets' mark beside its name and its A|B.
       width: math.max(
           280.0,
           16.0 +
@@ -455,10 +453,8 @@ class MotionDeviceCard extends StatelessWidget {
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: knobs,
-      // A screen where there is something to show without the element:
-      // a look on a square, Time's curve, a wave's shape.
-      // Every kind has one now (Ken, 2026-11-08: the motion chain as
-      // usable as the sound's): its settings drawn.
+      // A screen of its settings drawn: a look on a square, Time's curve,
+      // a wave's shape.
       display: SizedBox.expand(
         child: CustomPaint(
             key: ValueKey("mdevScreen-${d.id}"),
@@ -535,8 +531,7 @@ class _LookColour extends StatelessWidget {
 }
 
 /// _MotionScreen is a motion device's screen: a look drawn on a square, as
-/// it would be on the element; Time, the moment it asks for against the
-/// moment it is.
+/// on the element; for Time, the moment asked for against the moment it is.
 class _MotionScreen extends CustomPainter {
   final MotionDevice device;
   final Color back, accent;
@@ -791,10 +786,9 @@ class AddMotionDeviceSlot extends StatelessWidget {
 }
 
 /// MotionJoin is the join after the first [upto] pose devices of
-/// [element]'s motion chain -- after its clips, for nought: how fast it is
-/// going there, as a bar and in its tooltip with its pose; clicked, the
-/// stage shows the element as the chain leaves it there ("Preview from
-/// here"), and clicked again, whole.
+/// [element]'s motion chain (after its clips, for nought): how fast it is
+/// going there, as a bar. Clicked, the stage shows the element as the chain
+/// leaves it there ("Preview from here"); clicked again, whole.
 class MotionJoin extends StatefulWidget {
   final CanvasController controller;
   final String element;
@@ -830,14 +824,14 @@ class _MotionJoinState extends State<MotionJoin>
     _pose = pose;
   }
 
-  /// _hover is whether the pointer is on it: only then is it wide, its
-  /// eye shown -- thin between the cards otherwise (Ken, 2026-11-12).
+  /// _hover is whether the pointer is on it: only then is it wide, its eye
+  /// shown; thin between the cards otherwise.
   bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    // Read again on every build too -- a frame scrubbed to, the chain
-    // changed -- as the ticker rests while nothing plays.
+    // Read on every build too (a frame scrubbed to, the chain changed), as
+    // the ticker rests while nothing plays.
     tick();
     var c = widget.controller;
     var look = MixerLook.of(context);
@@ -850,8 +844,7 @@ class _MotionJoinState extends State<MotionJoin>
           "size ${_pose.scale.toStringAsFixed(2)} · turn ${_pose.rotate.round()}° · "
           "${_speed.round()} px/s\n"
           "${on ? "Showing it as it is here. Click to show it whole." : "Click to show it on the stage as it is here."}",
-      // A right click: preview from here, or with its trail on the stage
-      // as well, as the prototype's join menu.
+      // A right click: preview from here, or with its trail on the stage.
       child: MenuAnchor(
         style: chainMenuStyle(look),
         menuChildren: [
@@ -929,9 +922,9 @@ const Color modulationColour = Color(0xFFFF6FB5);
 /// ownColour marks a copy's own value: a knob's arc and its dot.
 const Color ownColour = Color(0xFFE2B04A);
 
-/// ModTargets is what a modulator moves: each knob, by its device and its
-/// name, with how far it moves it and a way to take it off, and a way to
-/// add another of [knobs] -- (device id, setting, name) each.
+/// ModTargets is what a modulator moves: each knob, by device and name, with
+/// how far it moves it and a way to take it off, and a way to add another of
+/// [knobs] (device id, setting, name).
 class ModTargets extends StatelessWidget {
   final List<ModTarget> mods;
   final List<(String, String, String)> knobs;

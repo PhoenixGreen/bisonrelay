@@ -33,9 +33,8 @@ enum TableGrid {
   bool get drawsOuter => this != none;
 }
 
-/// TableTurn is how a table's arrival brings it in: as one, or a row or a
-/// column at a time, each with the arrival's own movement (the privacy
-/// video's table arrived whole where it wanted its rows read in turn).
+/// TableTurn is how a table's arrival brings it in: whole, or a row or a
+/// column at a time, each with the arrival's own movement.
 enum TableTurn {
   together("Together"),
   rows("Row by row"),
@@ -47,10 +46,8 @@ enum TableTurn {
   static TableTurn fromName(String? name) => values
       .firstWhere((t) => t.name == name, orElse: () => TableTurn.together);
 
-  /// revealOf is how far piece [index] of [count] is in when the whole
-  /// arrival is [through] in: each takes the same stretch, and each starts
-  /// before the one before it has finished (a cascade, not a queue), the
-  /// first at the start and the last finishing at the end.
+  /// revealOf is how far piece [index] of [count] is in when the arrival is
+  /// [through] in: a cascade, each starting before the one before ends.
   static double revealOf(double through, int index, int count) {
     if (count <= 1) return through.clamp(0.0, 1.0).toDouble();
     var length = math.min(1.0, 2 / (count + 1));
@@ -59,12 +56,10 @@ enum TableTurn {
   }
 }
 
-/// TableCellStyle is a look one rule paints onto the cells it matches. Every
-/// field has a "leave it alone" value, since a rule is an exception rather
-/// than a complete description.
+/// TableCellStyle is a look one rule paints onto the cells it matches.
+/// Every field has a "leave it alone" value: a rule is an exception.
 class TableCellStyle {
-  /// background is painted behind the cell. Transparent leaves whatever the
-  /// row already had -- the header's fill, the zebra tint, or nothing.
+  /// background is painted behind the cell; transparent keeps the row's fill.
   final Color background;
 
   /// textColor is transparent to keep the type's own colour.
@@ -76,12 +71,8 @@ class TableCellStyle {
   /// weight is 0 to keep the type's own, and 100..900 to override it.
   final int weight;
 
-  /// letterWidth lays the cell's characters out on a fixed pitch, so a row
-  /// of letter boxes lines up; zero is natural widths. [letterSpacing] is the
-  /// gap between the slots.
-  ///
-  /// Only a rule about the whole cell may set it ([TableElement.lookAt]
-  /// enforces that), since the pitch lays out every letter in the cell.
+  /// letterWidth sets the characters on a fixed pitch so letter boxes line
+  /// up; zero is natural. Only a rule about the whole cell may set it.
   final double letterWidth;
 
   /// letterSpacing is 0 to keep the type's own.
@@ -94,40 +85,32 @@ class TableCellStyle {
   final Color borderColor;
   final double borderWidth;
 
-  /// sides is which edges the border is drawn on, in the order top, right,
-  /// bottom, left.
+  /// sides is which edges the border is drawn on: top, right, bottom, left.
   final List<bool> sides;
 
   final double radius;
 
-  /// inset shrinks the painted box inside its cell, which is what turns a
-  /// background into a chip rather than a filled cell.
+  /// inset shrinks the painted box inside its cell, making a chip.
   final double inset;
 
-  /// textPad is extra room either side of the words, on top of the table's
-  /// own cell padding, so one column can have a margin.
+  /// textPad is extra room either side of the words, beyond cell padding.
   final double textPad;
 
-  /// minWidth and minHeight are the least a hugging box may be, so a row of
-  /// chips round letters of different widths comes out the same size.
+  /// minWidth and minHeight are the least a hugging box may be, so chips
+  /// round letters of different widths come out the same size.
   final double minWidth;
   final double minHeight;
 
-  /// nudgeX and nudgeY move the *letter* inside its box, for a glyph whose
-  /// ink is not centred on its advance. The letter rather than the box, so the
-  /// boxes stay in line; a nudge because the text engine cannot measure ink.
+  /// nudgeX and nudgeY move the letter, not its box, for a glyph whose ink
+  /// is not centred on its advance: the text engine cannot measure ink.
   final double nudgeX;
   final double nudgeY;
 
-  /// hug fits the box to the words (a chip, the default) rather than filling
-  /// the cell.
+  /// hug fits the box to the words (a chip) rather than filling the cell.
   final bool hug;
 
-  /// redact draws a solid bar over each line of the words instead of the
-  /// words, in the text's colour: an answer kept back, a name blacked out
-  /// (the privacy video laid shapes over its cells for this). The words stay
-  /// in the cell, so turning it off brings them back. Only a rule about the
-  /// whole cell may set it ([TableElement.lookAt] enforces that).
+  /// redact draws a bar over each line of the words, which stay in the cell.
+  /// Only a rule about the whole cell may set it (see [TableElement.lookAt]).
   final bool redact;
 
   const TableCellStyle({
@@ -214,8 +197,8 @@ class TableCellStyle {
         nudgeY: nudgeY ?? this.nudgeY,
       );
 
-  /// scaledBy is this style at [by] times the size: the measurements only, not
-  /// fontScale, which multiplies a size that is scaled already.
+  /// scaledBy scales the measurements only, not fontScale, which multiplies
+  /// a size that is scaled already.
   TableCellStyle scaledBy(double by) => copyWith(
         letterSpacing: letterSpacing * by,
         letterWidth: letterWidth * by,
@@ -282,15 +265,13 @@ class TableCellStyle {
       );
 }
 
-/// _Span is a parsed range: "", "3", "2:4", ">1", "<4". Cached in
-/// TableRule._spans.
+/// _Span is a parsed range: "", "3", "2:4", ">1", "<4".
 class _Span {
   final int from;
   final int to;
   const _Span(this.from, this.to);
 
-  /// any is the empty spec, and none is one that could not be read, which
-  /// matches nothing so a typo does not paint the whole table.
+  /// any is the empty spec; none, an unreadable one, matches nothing.
   static const any = _Span(1, 1 << 30);
   static const none = _Span(1, 0);
 
@@ -320,18 +301,14 @@ class _Span {
   }
 }
 
-/// TableMatch is how a rule's text is looked for.
 enum TableMatch {
-  /// cell wants the whole cell. "W" does not find the W in "Won", and does
-  /// not find the W in "--- W" either.
+  /// cell wants the whole cell: "W" finds neither "Won" nor "--- W".
   cell("The whole cell"),
 
-  /// anywhere finds it inside anything, "Won" included.
   anywhere("Anywhere in it"),
 
-  /// word finds it as a word of its own, so "W" finds the W in "--- W" and
-  /// not the W in "Won" -- and a chip is drawn round that word rather than
-  /// round the whole cell.
+  /// word finds it as a word of its own ("--- W", not "Won"), and the chip is
+  /// drawn round that word rather than the whole cell.
   word("A whole word");
 
   final String label;
@@ -386,39 +363,34 @@ class TableWhen {
 }
 
 /// TableRule is "these cells look like that": a column, rows and text to
-/// match, each meaning "any" when left blank.
+/// match, each meaning "any" when blank.
 class TableRule {
-  /// column is a heading ("Points"), or a range of column numbers counting
-  /// from one, in the [spanMatches] language.
+  /// column is a heading or a range of column numbers (see [spanMatches]).
   final String column;
 
-  /// rows is which rows, counting from one and including the header, in the
-  /// [spanMatches] language.
+  /// rows counts from one, including the header (see [spanMatches]).
   final String rows;
 
-  /// match is the text to look for. Empty matches every cell.
+  /// match is the text to look for; empty matches every cell.
   final String match;
 
-  /// how the text is looked for. See [TableMatch].
   final TableMatch how;
 
   final TableCellStyle style;
 
-  /// name is what the Data Studio's Table tab calls this rule, a style: empty
-  /// is named from what it reaches and looks like (see table_design.dart).
+  /// name is what the Data Studio's Table tab calls this rule; empty is
+  /// named from what it reaches (see table_design.dart).
   final String name;
 
-  /// off keeps the rule without drawing it, as the Table tab's eye does.
+  /// off keeps the rule without drawing it (the Table tab's eye).
   final bool off;
 
-  /// keys are rows this rule follows by what they say in [keyColumn] (a
-  /// team's name), so a style stays with its team as the team moves up or
-  /// down (Ken, 2026-11-15: "a styled row follows its data"). Empty is rows
-  /// by place only. Both, if both are set.
+  /// keys are rows this rule follows by what they say in [keyColumn], so a
+  /// style stays with its team as the team moves. Empty is rows by place
+  /// only; both apply if both are set.
   final List<String> keys;
   final String keyColumn;
 
-  /// when is a number a row must have, as "Points 9 or more".
   final TableWhen? when;
 
   const TableRule({
@@ -434,21 +406,18 @@ class TableRule {
     this.when,
   });
 
-  /// banded is a rule with no text to look for, drawn as one box around
-  /// everything it picks out (a band across or down the table) rather than a
-  /// chip round each match.
+  /// banded is a rule with no text: one box round all it picks out rather
+  /// than a chip round each match.
   bool get banded => match.isEmpty;
 
-  /// matchesRow reads the range language. [index] counts from zero. A rule
-  /// that follows keys or wants a number asks [reachesRow] as well.
+  /// matchesRow reads the range language; [index] counts from zero.
   bool matchesRow(int index) => spanMatches(rows, index);
 
-  /// readsRows is whether reaching a row needs what the row says: it
-  /// follows keys or wants a number.
+  /// readsRows is whether reaching a row needs what the row says.
   bool get readsRows => keys.isNotEmpty || when != null;
 
-  /// reachesRow is [matchesRow] with the row's own words asked too: [cellAt]
-  /// is what column [col] of the row says.
+  /// reachesRow is [matchesRow] asking the row's words too: [cellAt] gives
+  /// column [col].
   bool reachesRow(
       int index, List<String> header, String Function(int col) cellAt) {
     if (!matchesRow(index)) return false;
@@ -468,8 +437,7 @@ class TableRule {
     return true;
   }
 
-  /// columnIndexOf finds a column named by its heading, or by its number
-  /// counting from one; -1 when there is none.
+  /// columnIndexOf finds a column by heading or number from one; -1 if none.
   static int columnIndexOf(String spec, List<String> header) {
     var s = spec.trim();
     if (s.isEmpty) return -1;
@@ -480,25 +448,23 @@ class TableRule {
     return n == null ? -1 : n - 1;
   }
 
-  /// _spans remembers what a range string means: they are read once per cell
-  /// per rule per frame, and only a handful are distinct.
+  /// _spans caches parsed ranges: read once per cell per rule per frame, and
+  /// only a handful are distinct.
   static final Map<String, _Span> _spans = {};
 
-  /// _spanOf parses [spec], keeping the map to the ranges a canvas has:
-  /// cleared past a few hundred, as _lowered is.
+  /// _spanOf parses [spec], clearing the cache past a few hundred entries.
   static _Span _spanOf(String spec) {
     if (_spans.length > 256) _spans.clear();
     return _Span.parse(spec);
   }
 
-  /// spanMatches is the range language shared by rows and columns. Empty is
-  /// any, "3" is one (counting from one), "2:4" a block, `>1` everything
-  /// after, `<4` everything before. An unreadable range matches nothing.
+  /// spanMatches is the range language shared by rows and columns: empty is
+  /// any, "3" one (from one), "2:4" a block, `>1` after, `<4` before. An
+  /// unreadable range matches nothing, so a typo does not paint the table.
   static bool spanMatches(String spec, int index) =>
       (_spans[spec] ??= _spanOf(spec)).covers(index + 1);
 
-  /// matchesColumn is whether [index] is one of the columns this rule is
-  /// about: by heading first, else as a range (see [spanMatches]).
+  /// matchesColumn checks by heading first, else as a range.
   bool matchesColumn(int index, List<String> header) {
     var spec = column.trim();
     if (spec.isEmpty) return true;
@@ -511,19 +477,17 @@ class TableRule {
 
   bool matches(String cell) => match.isEmpty || runsIn(cell).isNotEmpty;
 
-  /// runIn is the first place the match falls inside [cell].
   (int, int)? runIn(String cell) {
     var all = runsIn(cell);
     return all.isEmpty ? null : all.first;
   }
 
-  /// _lowered caches each rule text lowered. Kept to a few hundred: every
-  /// keystroke in a rule is a new key.
+  /// _lowered caches each rule text lowered, kept to a few hundred entries:
+  /// every keystroke in a rule is a new key.
   static final Map<String, String> _lowered = {};
 
-  /// runsIn is every place the match falls inside [cell], as character
-  /// ranges, so each gets its own chip. [lowered] is [cell] lowered, if the
-  /// caller already has it.
+  /// runsIn is every character range the match falls in, each getting its
+  /// own chip. [lowered] is [cell] lowered, if the caller has it.
   List<(int, int)> runsIn(String cell, [String? lowered]) {
     if (_lowered.length > 256) _lowered.clear();
     var wanted = _lowered[match] ??= match.trim().toLowerCase();
@@ -615,14 +579,13 @@ class TableRule {
       );
 }
 
-/// TableCellLook is everything the rules say about one cell, worked out in
-/// one walk of the rules so the painter's several questions share it.
+/// TableCellLook is all the rules say about one cell, worked out in one
+/// walk so the painter's several questions share it.
 class TableCellLook {
-  /// style is the cell's own look: what a rule about the whole cell says.
   final TableCellStyle? style;
 
-  /// words are the rules that named a word, with the places they found it.
-  /// In the order they were written, so a later one draws over an earlier.
+  /// words are the rules that named a word, with where they found it, in
+  /// written order so a later one draws over an earlier.
   final List<(TableRule, List<(int, int)>)> words;
 
   const TableCellLook(this.style, this.words);
@@ -631,8 +594,7 @@ class TableCellLook {
 
   bool get isEmpty => style == null && words.isEmpty;
 
-  /// ruleAt is the rule that claims the character at [index]; a later rule
-  /// wins.
+  /// ruleAt is the rule that claims character [index]; a later rule wins.
   TableRule? ruleAt(int index) {
     for (var i = words.length - 1; i >= 0; i--) {
       for (var (from, to) in words[i].$2) {
@@ -645,23 +607,19 @@ class TableCellLook {
 
 /// TableElement is a grid of strings, painted (render/table_painter.dart)
 /// rather than laid out as widgets, so it exports, rotates and animates like
-/// the rest of the canvas. No formulas or column types: the numbers are
-/// computed wherever they came from.
+/// the rest of the canvas. No formulas or column types.
 class TableElement extends CanvasElement {
-  /// rows is the whole grid including the header, if there is one. Ragged
-  /// rows are tolerated and padded out at paint time.
+  /// rows is the whole grid including any header; ragged rows are padded.
   final List<List<String>> rows;
 
   final bool headerRow;
   final bool headerColumn;
 
-  /// hiddenHeaders are the columns whose header text is not drawn, by index.
-  /// The text is kept, so the column still has a name for the data mapping
-  /// and the sort.
+  /// hiddenHeaders are columns whose header is not drawn; the text stays as
+  /// the column's name for the data mapping and the sort.
   final List<int> hiddenHeaders;
 
-  /// showOutline is the rule round the outside of the table, separate from
-  /// [grid] so any combination can be had.
+  /// showOutline is the rule round the table, apart from [grid].
   final bool showOutline;
 
   final TextSpec cellSpec;
@@ -670,34 +628,27 @@ class TableElement extends CanvasElement {
   final Color headerFill;
   final Color cellFill;
 
-  /// headerFade and cellFade are the second colours those two fade to, or
-  /// null for flat ones. Both run across the whole table, not restarting on
-  /// every row.
+  /// headerFade and cellFade are second colours to fade to, or null for flat,
+  /// running across the whole table.
   final GradientSpec? headerFade;
   final GradientSpec? cellFade;
 
-  /// zebra tints alternate rows.
   final bool zebra;
   final Color zebraFill;
 
-  /// source is where the rows came from, when they came from somewhere. See
-  /// DataSource.
   final DataSource source;
 
-  /// sort is the order the rows were last put in, kept so that the same order
-  /// can be applied again after the data underneath changes.
+  /// sort is the order last applied, kept to reapply after the data changes.
   final TableSort sort;
 
   final TableGrid grid;
   final double gridWidth;
   final Color gridColor;
 
-  /// cellPadding is the room round the words in a cell, on every side that
-  /// has not been given a figure of its own.
+  /// cellPadding is the room round a cell's words on sides with no own figure.
   final double cellPadding;
 
-  /// padTop, padRight, padBottom and padLeft are those figures: one side's
-  /// own padding, or null to follow [cellPadding].
+  /// padTop, padRight, padBottom and padLeft are null to follow [cellPadding].
   final double? padTop;
   final double? padRight;
   final double? padBottom;
@@ -705,86 +656,67 @@ class TableElement extends CanvasElement {
 
   final double cornerRadius;
 
-  /// pictureScale is how much of its cell a picture fills, on top of the
-  /// cell's own padding: 1 for the whole cell, less for room round it.
+  /// pictureScale is how much of its padded cell a picture fills.
   final double pictureScale;
 
-  /// columnWidths are each column's share of the table's width (normalised
-  /// by their sum), or empty for columns sized to their contents.
+  /// columnWidths are each column's share of the width (normalised by their
+  /// sum), or empty for columns sized to their contents.
   final List<double> columnWidths;
 
-  /// headerHeightRatio is how tall the header row is against a body row.
   final double headerHeightRatio;
 
-  /// rules are the exceptions: which cells look different, and how. See
-  /// [TableRule].
   final List<TableRule> rules;
 
-  /// animation is how it arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
-  /// turn is whether the arrival brings the table in whole or a row or a
-  /// column at a time. Leaving is always whole. See TableTurn.
+  /// turn is how the arrival brings it in; leaving is always whole.
   final TableTurn turn;
 
-  /// style is the name of the style it was last given (data_styles.dart).
-  /// Empty, none.
+  /// style is the name of the style last given (data_styles.dart), or empty.
   final String style;
 
-  /// columnKinds is how some columns' cells are drawn rather than written
-  /// (Ken, 2026-11-17; prototype v7's table kinds), by column: "spark" a
-  /// small line of the numbers in the cell ("3, 5, 4, 8"); "ticks" a tick
-  /// for yes and a cross for no; "harvey" a part-filled circle for how much
-  /// (0-4, or a share); "change" an arrow up or down and the size of it;
-  /// "merge" a run of the same value as one tall cell. See tableCellKinds.
+  /// columnKinds is how some columns' cells are drawn rather than written:
+  /// "spark" a small line of the cell's numbers ("3, 5, 4, 8"); "ticks" a
+  /// tick or cross; "harvey" a part-filled circle (0-4, or a share); "change"
+  /// an arrow and size; "merge" a run of one value as one tall cell. See
+  /// tableCellKinds.
   final Map<int, String> columnKinds;
 
-  /// groupRows draws a row with only its first cell filled as a heading
-  /// across the table, for rows in groups (fixtures by date, a statement
-  /// by section).
+  /// groupRows draws a row with only its first cell filled as a heading.
   final bool groupRows;
 
-  /// cards draws each column after the first as a card of its own, apart
-  /// from the others (plans side by side); [picked] is the column raised
-  /// above the rest, with [ribbon]'s words on a band across its top (Ken,
-  /// 2026-11-17: prototype v7's "Plans as cards"). -1, none raised.
+  /// cards draws each column after the first as a card of its own; [picked]
+  /// is the column raised above the rest (-1 for none), with [ribbon]'s
+  /// words on a band across its top.
   final bool cards;
   final int picked;
   final String ribbon;
 
-  /// sheet is the range of the canvas sheet this table shows (see
-  /// data_sheet.dart): its rows are that range's, kept in step both ways
-  /// (data_sync.dart). Null only until it is given a sheet of its own.
+  /// sheet is the canvas sheet range this table shows (data_sheet.dart), kept
+  /// in step both ways (data_sync.dart). Null only until it gets a sheet.
   final SheetLink? sheet;
 
-  /// sheetLooks is what its sheet's colour rules make of each of its cells
-  /// (data bars, colour scales, highlights), row by row: made from the
-  /// sheet with its rows (data_sync.dart) and not kept in the file, as the
-  /// sheet keeps the rules.
+  /// sheetLooks is what its sheet's colour rules make of each cell, row by
+  /// row: made with the rows (data_sync.dart), not saved.
   final List<List<SheetCellLook?>> sheetLooks;
 
-  /// sheetLookAt is cell [r], [c]'s look from its sheet's rules, if any.
   SheetCellLook? sheetLookAt(int r, int c) =>
       r < sheetLooks.length && c < sheetLooks[r].length
           ? sheetLooks[r][c]
           : null;
 
-  /// topPad and the three beside it are what each side actually gets.
   double get topPad => padTop ?? cellPadding;
   double get rightPad => padRight ?? cellPadding;
   double get bottomPad => padBottom ?? cellPadding;
   double get leftPad => padLeft ?? cellPadding;
 
-  /// evenPadding is whether every side is simply [cellPadding], which is what
-  /// the settings panel offers as one field rather than four.
+  /// evenPadding is whether every side is [cellPadding] (one panel field).
   bool get evenPadding =>
       padTop == null &&
       padRight == null &&
       padBottom == null &&
       padLeft == null;
 
-  /// evenColumns is whether the columns are sized by their contents rather
-  /// than by [columnWidths].
   bool get evenColumns => columnWidths.isEmpty;
 
   const TableElement(
@@ -843,12 +775,10 @@ class TableElement extends CanvasElement {
             if (pictureIn(cell) case var asset?) asset,
       };
 
-  /// pictureCell is the prefix that turns a cell into a picture. Kept in the
-  /// cell's own text rather than a map of positions, so it moves with the
-  /// cell when rows and columns change.
+  /// pictureCell is the prefix that makes a cell a picture. Kept in the cell's
+  /// text, not a map of positions, so it moves with the cell.
   static const String pictureCell = "img:";
 
-  /// pictureIn is the asset a cell names, or null when it is words.
   static String? pictureIn(String cell) {
     var text = cell.trim();
     return text.startsWith(pictureCell) && text.length > pictureCell.length
@@ -856,21 +786,17 @@ class TableElement extends CanvasElement {
         : null;
   }
 
-  /// header is the first row when there is one, for resolving a rule's column
-  /// by name; empty otherwise.
   List<String> get header =>
       headerRow && rows.isNotEmpty ? rows.first : const [];
 
-  /// columnName is what to call a column: what its header says, or its number
-  /// when it says nothing. Shared by the settings and the charts, so they
-  /// agree.
+  /// columnName is the header's text, or the column number when it is empty.
+  /// Shared by the settings and the charts so they agree.
   String columnName(int column) {
     var names = header;
     var name = column < names.length ? names[column].trim() : "";
     return name.isEmpty ? "Column ${column + 1}" : name;
   }
 
-  /// lookAt is what the rules say about one cell. See [TableCellLook].
   TableCellLook lookAt(int row, int col) {
     if (rules.isEmpty) return TableCellLook.nothing;
 
@@ -957,30 +883,27 @@ class TableElement extends CanvasElement {
         : TableCellLook(style, words);
   }
 
-  /// styleFor is the cell's own look. Use [lookAt] when asking more than one
-  /// question of a cell.
   TableCellStyle? styleFor(int row, int col) => lookAt(row, col).style;
 
-  /// runStyleFor is the type change that belongs to the character at [index],
-  /// from whichever rule that names a word claims it.
+  /// runStyleFor is a word-naming rule's style for the character at [index].
   TableCellStyle? runStyleFor(int row, int col, int index) {
     var rule = lookAt(row, col).ruleAt(index);
     return rule != null && rule.style.changesType ? rule.style : null;
   }
 
-  /// shows is whether a cell's text is drawn: false only for a header in
-  /// [hiddenHeaders]. Its width, rules and background still apply.
+  /// shows is false only for a header in [hiddenHeaders]. Its width, rules
+  /// and background still apply.
   bool shows(int row, int col) =>
       !(headerRow && row == 0 && hiddenHeaders.contains(col));
 
-  /// cell is the string at a position, or "" past the end of a ragged row.
+  /// cell is the string at a position, or "" past a ragged row's end.
   String cell(int row, int col) {
     if (row < 0 || row >= rows.length) return "";
     var r = rows[row];
     return col >= 0 && col < r.length ? r[col] : "";
   }
 
-  /// asText and parseRows are the quick-entry round trip. See joinTable.
+  /// asText and parseRows are the quick-entry round trip (see joinTable).
   String asText() => joinTable(rows);
 
   static List<List<String>> parseRows(String text) => splitTable(text);
@@ -991,9 +914,8 @@ class TableElement extends CanvasElement {
   @override
   bool get scalesInside => true;
 
-  /// scaledBy is the type, the room and the rules at [by] times the size.
-  /// Columns and rows are fractions of the box and follow it on their own;
-  /// these are measurements. See CanvasElement.scaledBy.
+  /// scaledBy scales the type, padding and rules. Columns and rows are
+  /// fractions of the box and follow it on their own.
   @override
   CanvasElement scaledBy(double by) => copyWith(
         cellSpec: cellSpec.scaledBy(by),
@@ -1314,9 +1236,8 @@ class TableElement extends CanvasElement {
         sheet: SheetLink.fromJson(json["sheet"]));
   }
 
-  /// sorted is this table with its rows in the order [sort] asks for, or
-  /// this same table when there is nothing to do, so it can be applied
-  /// unconditionally (after a refresh, say).
+  /// sorted is this table in [sort]'s order, or this same table when there
+  /// is nothing to do, so it can be applied unconditionally.
   TableElement sorted() {
     if (!sort.on) return this;
     var next = sortTableRows(rows, sort, headerRow: headerRow);
@@ -1325,7 +1246,7 @@ class TableElement extends CanvasElement {
 }
 
 /// tableCellKinds is the ways a column's cells can be drawn (see
-/// TableElement.columnKinds), as (name, what it says); "" writes them.
+/// TableElement.columnKinds), as (name, label); "" writes them.
 const tableCellKinds = [
   ("", "Words"),
   ("spark", "A small line"),

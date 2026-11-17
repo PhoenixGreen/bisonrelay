@@ -7,12 +7,11 @@ import 'package:bruig/plugin_system/canvas/ui/motion/motion_lanes.dart'
     show motionRowsOf;
 
 // canvas_rows.dart is the one list of rows the timeline, the mixer and the
-// slots all show (Ken, 2026-11-08: "audio and motion should be one channel
-// rather than 2"): one row for each element, its motion with its own sound
+// slots all show: one row for each element, its motion with its own sound
 // (the channel keyed elementSoundKey, see element_sound.dart); then a row
-// for each sound that is nobody's -- music, a narrator, a MIDI part. A row
-// on the master canvas, heard in every scene, is in the All group, shown
-// after the scene's own and folded away as one.
+// for each sound that is nobody's -- music, a narrator, a MIDI part. Rows on
+// the master canvas, heard in every scene, are in the All group, shown after
+// the scene's own and folded away as one.
 
 /// RowGroup is which group a row is shown in: the scene's own, or All -- on
 /// the master canvas, there in every scene.
@@ -33,17 +32,15 @@ class CanvasRow {
   const CanvasRow(
       {this.element, this.channels = const [], this.group = RowGroup.scene});
 
-  /// key is the row's: its element's id, or its channel's key.
+  /// key is its element's id, or its channel's key.
   String get key => element?.id ?? channels.first.key;
 
   bool get hasMotion => element != null;
   bool get hasSound => channels.isNotEmpty;
 
-  /// channel is the row's sound channel, where it has one.
   TimelineChannel? get channel => channels.isEmpty ? null : channels.first;
 
-  /// transitions is whether the row is the scenes' transition sounds: a
-  /// channel of its own today, the Scenes row's in the new timeline.
+  /// transitions is whether the row is the scenes' transition sounds.
   bool get transitions =>
       element == null &&
       channels.isNotEmpty &&

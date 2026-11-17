@@ -7,14 +7,11 @@ import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
-// chart_analysis.dart is the kinds analysis needs that the gallery lacked
-// (Ken, 2026-11-17, the improvements report's ninth item): a box plot (or
-// violin) of how each column's numbers spread, a bump chart of places over
-// many periods, and a marimekko of each row's parts sized by its total.
-// Drawn like the new kinds (chart_extra.dart): no axes of the chart's own,
-// arriving an item at a time, noting their marks.
+// chart_analysis.dart is the analysis kinds: a box plot (or violin) of each
+// column's spread, a bump chart of places over many periods, and a
+// marimekko of each row's parts sized by its total. Drawn like the kinds in
+// chart_extra.dart: no axes, arriving an item at a time, noting their marks.
 
-/// paintAnalysis draws [e], one of the analysis kinds, in [area].
 void paintAnalysis(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   if (e.data.series.isEmpty || e.data.categories.isEmpty) return;
   var mode = modeOf(e.design, e.type.name);
@@ -50,8 +47,7 @@ Color _quiet(ChartElement e, [double a = 0.3]) =>
 
 String _num(ChartElement e, double v, [int s = 0]) => formatSeries(e, s, v);
 
-/// _scale writes a few values up the left of [plot], from [lo] to [hi],
-/// with faint lines across.
+/// _scale writes a few values up [plot]'s left, [lo] to [hi], lines across.
 void _scale(ui.Canvas canvas, Rect plot, ChartElement e, double lo, double hi,
     double left) {
   var spec = _lab(e, TextAlignSpec.right, e.labelSpec.fontSize * 0.85);
@@ -83,11 +79,10 @@ double _q(List<double> v, double p) {
   return v[lo] + (v[hi] - v[lo]) * (at - lo);
 }
 
-/// _boxPlot is a box for each series -- each column of numbers, its rows
-/// the samples: the middle half, the median, whiskers to the furthest
-/// within one and a half of the box's height, beyond them dots. As a
-/// violin, the spread's shape mirrored; with "dots", every value over a
-/// faint box.
+/// _boxPlot is a box for each series (each column of numbers, its rows the
+/// samples): the middle half, the median, whiskers to the furthest within
+/// one and a half box heights, dots beyond. As a violin, the spread's shape
+/// mirrored; with "dots", every value over a faint box.
 void _boxPlot(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, String mode) {
   var d = e.data;
@@ -126,7 +121,6 @@ void _boxPlot(
     var iqr = q3 - q1;
     var low = g.firstWhere((v) => v >= q1 - 1.5 * iqr, orElse: () => g.first);
     var high = g.lastWhere((v) => v <= q3 + 1.5 * iqr, orElse: () => g.last);
-    // Grown from the median.
     double grow(double v) => med + (v - med) * p.size.clamp(0.0, 1.0);
     var line = Paint()
       ..color = p.tint(colour)
@@ -212,10 +206,9 @@ void _boxPlot(
 
 // ------------------------------------------------------------ bump chart
 
-/// _bump is each series' place over the periods (the categories): ranked
-/// by its value in each, the largest first -- or (mode "places") its
-/// values already the places, 1 the top. A line each through its places,
-/// its name at both ends.
+/// _bump is each series' place over the periods (the categories), ranked by
+/// value in each, largest first; in mode "places" the values are already
+/// places, 1 the top. A line each through its places, named at both ends.
 void _bump(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, String mode) {
   var d = e.data, periods = d.categories.length, n = d.series.length;
@@ -260,7 +253,6 @@ void _bump(
       (periods == 1 ? plot.width / 2 : plot.width * t / (periods - 1));
   double y(int place) =>
       plot.top + (most == 1 ? 0 : plot.height * (place - 1) / (most - 1));
-  // The periods across the top.
   for (var t = 0; t < periods; t++) {
     _say(
         canvas,
@@ -322,9 +314,8 @@ void _bump(
 
 // ------------------------------------------------------------ marimekko
 
-/// _marimekko is each row a column as wide as its total, split from the
-/// bottom by its parts' shares (the series): market share by region, where
-/// both the size and the split matter.
+/// _marimekko is each row a column as wide as its total, split by its
+/// parts' shares (the series): market share by region, size and split.
 void _marimekko(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var d = e.data, n = d.categories.length, parts = d.series.length;
   var totals = [
@@ -375,7 +366,6 @@ void _marimekko(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     }
     x += w;
   }
-  // A faint line along the floor.
   canvas.drawLine(
       plot.bottomLeft, plot.bottomRight, Paint()..color = _quiet(e));
 }

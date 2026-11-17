@@ -3,13 +3,11 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:flutter/material.dart';
 
-// type_parts.dart is how words are set, a control at a time, for the
-// rebuilt settings panel (see panel_parts.dart): the face, the size and the
-// colour for a quick strip, and the rest of the letters for a Look. One
-// control for each, the same on every element that draws words.
+// type_parts.dart is how words are set, a control at a time (see
+// panel_parts.dart), the same on every element that draws words.
 
-/// TypeEdit is how a control changes [spec]: [onChanged] for each step of
-/// a drag, [begin] and [commit] around a change made at once.
+/// TypeEdit is how a control changes [spec]: [onChanged] for each step of a
+/// drag, [begin] and [commit] round a one-go change.
 class TypeEdit {
   final TextSpec spec;
   final ValueChanged<TextSpec> onChanged;
@@ -25,7 +23,6 @@ class TypeEdit {
   }
 }
 
-/// typeFont is the face.
 Widget typeFont(TypeEdit t) => CanvasDropdown<String>(
       key: const ValueKey("typeFont"),
       label: "Font",
@@ -35,8 +32,8 @@ Widget typeFont(TypeEdit t) => CanvasDropdown<String>(
       onChanged: (v) => t.now(t.spec.copyWith(fontFamily: v)),
     );
 
-/// typeSize is the size; [fitted] says it is worked out from the box, so a
-/// size typed there is one wanted and the caller stops the fitting.
+/// typeSize is the size; [fitted] says it comes from the box, so a typed
+/// size is a wanted one and the caller stops the fitting.
 Widget typeSize(TypeEdit t, {bool fitted = false}) => CanvasNumberField(
       key: const ValueKey("typeSize"),
       label: fitted ? "Size (fitted)" : "Size",
@@ -60,7 +57,7 @@ Widget typeColour(TypeEdit t) => CanvasColorButton(
           : t.spec.copyWith(fade: g)),
     );
 
-/// typeAlign is how the lines line up across the box.
+/// typeAlign is how the lines align across the box.
 Widget typeAlign(TypeEdit t) => CanvasSegmented<TextAlignSpec>(
       key: const ValueKey("typeAlign"),
       label: "Align",
@@ -80,9 +77,8 @@ Widget typeAlign(TypeEdit t) => CanvasSegmented<TextAlignSpec>(
       onChanged: (v) => t.now(t.spec.copyWith(align: v)),
     );
 
-/// typeLetters is the rest of how the letters are set, in rows as the
-/// prototype has them: weight, letter and line spacing side by side, the
-/// switches each a line, and how they sit up and down beside their case.
+/// typeLetters is the rest of the letters' setting: weight and spacing side
+/// by side, the switches a line each, baseline beside case.
 List<Widget> typeLetters(TypeEdit t,
         {bool underline = true,
         bool vertical = true,
@@ -168,11 +164,8 @@ List<Widget> typeLetters(TypeEdit t,
         ]),
     ];
 
-/// labelType is the words on an element that is not a text -- a shape's
-/// label, a button's, a counter's -- set as a text's are: the face and its
-/// size, its colour and how it lines up, then its letters (Ken, 2026-11-12:
-/// one control for each, the same on every element). Their shadow, glow
-/// and outline are the element's looks, not the label's own.
+/// labelType is a non-text element's label (shape, button, counter), set as
+/// a text's is; shadow, glow and outline are the element's looks.
 Widget labelType(TypeEdit t,
         {String label = "Label type", String remember = "label"}) =>
     CanvasControlGroup(

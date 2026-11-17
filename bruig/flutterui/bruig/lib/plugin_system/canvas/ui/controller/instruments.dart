@@ -1,8 +1,7 @@
 part of '../canvas_controller.dart';
 
-// Sound on the timeline, and the instruments played into it.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Sound on the timeline, and the instruments played into it. Part of
+// CanvasController.
 
 extension CanvasInstruments on CanvasController {
   /// audio is what is playing. Made the first time anything asks, so a
@@ -13,11 +12,11 @@ extension CanvasInstruments on CanvasController {
     ..addListener(notifyListeners);
 
   /// audioRevision changes whenever any sound's or video's state does, so
-  /// the stage's painter knows to draw the speakers and the frames again.
+  /// the stage's painter redraws the speakers and frames.
   int get audioRevision => (_audio?.revision ?? 0) + (_video?.revision ?? 0);
 
-  /// video plays the canvas's videos, through the same sound runtime as
-  /// everything else. Made the first time anything asks, like [audio].
+  /// video plays the canvas's videos through the same sound runtime. Made
+  /// lazily, like [audio].
   VideoRuntime get video => _video ??= VideoRuntime(
       frames: _frameSource ?? FfmpegFrames(ffmpegPath),
       audio: audio,
@@ -27,7 +26,7 @@ extension CanvasInstruments on CanvasController {
 
   /// videoShow is how [e] should be drawn now: its frame and its play bar.
   VideoShow videoShow(VideoElement e) {
-    // On the timeline, outside its span, it is not there at all.
+    // On the timeline, outside its span, it is not drawn at all.
     if (e.clip.timed && !e.isLink) {
       var at = _timedFrame(e.id);
       if (at == null || _momentOf(e, at) == null) {
@@ -51,13 +50,13 @@ extension CanvasInstruments on CanvasController {
   }
 
   /// pressVideo is a press on [part] of [e], [along] of the way along it
-  /// for the two bars. Returns the address a link video asked to open, for
-  /// the caller to ask about -- leaving the app is not decided down here.
+  /// for the two bars. Returns the address a link video asked to open, so
+  /// the caller decides about leaving the app.
   String? pressVideo(VideoElement e, VideoPart part, {double along = 0}) {
     var current = _mediaById(e.id);
     if (current is VideoElement) e = current;
     if (e.isLink) return linkAt(e.link, e.linkStart);
-    // On the timeline it is the playhead's, and nothing on it is pressed.
+    // On the timeline the playhead controls it; nothing on it is pressed.
     if (e.clip.timed) return null;
     switch (part) {
       case VideoPart.picture:
@@ -80,17 +79,16 @@ extension CanvasInstruments on CanvasController {
   /// the settings to say so.
   bool get audioUnavailable => _audio?.unavailable ?? false;
 
-  /// stopAudio stops every sound the canvas is playing.
   void stopAudio() {
     _video?.stopAll();
     _audio?.stopAll();
   }
 
   /// leavePage is the Canvas page left. The session outlives the page, but
-  /// nothing of it goes on with no page to see or stop it: not the playhead
-  /// (whose every frame would cue the sounds again), a game and its keys, a
-  /// stop waiting for one, the slots, a voice being heard, the counters'
-  /// clock, an arpeggio or a held note -- nor the pictures the renderer kept.
+  /// nothing in it may go on with no page to see or stop it: the playhead
+  /// (each frame would cue sounds again), a game and its keys or a stop
+  /// waiting for one, the slots, a voice, the counters' clock, an arpeggio
+  /// or a held note, nor the pictures the renderer kept.
   void leavePage() {
     if (gaming) gaming = false;
     _endWait();
@@ -117,13 +115,13 @@ extension CanvasInstruments on CanvasController {
     }
     _sounded.clear();
     _soundCount.clear();
-    // Nothing is held on a page left: a key let go after is let go of
-    // nothing, and the pedal is up when it comes back.
+    // Nothing is held on a page left: a later key-up releases nothing, and
+    // the pedal is up when it comes back.
     _held.clear();
     _pressedOn.clear();
     _take.clear();
-    // The pedal let up on every instrument: a page left with it down would
-    // come back holding every key let go.
+    // The pedal let up on every instrument, or a page left with it down
+    // would come back holding every released key.
     for (var e in _document.elements) {
       if (e is AudioElement && e.instrument != null) {
         _audio?.control(CanvasController._channelOf(e), MidiControl.sustain, 0);
@@ -156,10 +154,9 @@ extension CanvasInstruments on CanvasController {
     return AudioState(playing: v.playing, muted: v.muted, volume: v.volume);
   }
 
-  /// heldKeys is [id]'s keys held down now.
   Set<int> heldKeys(String id) => Set.unmodifiable(_held[id] ?? const {});
 
-  /// noteOn presses [key] on instrument [e]: heard at once, through its
+  /// noteOn presses [key] on instrument [e]: heard at once through its
   /// channel, and written down while recording.
   void noteOn(AudioElement e, int key, {int velocity = 100, FretPlace? place}) {
     var part = e.instrument;
@@ -173,8 +170,8 @@ extension CanvasInstruments on CanvasController {
     if (_practice != null) _practiceHeard(e, key);
     // Step input: written at the piano roll's cursor.
     stepNoteOn(CanvasController._channelOf(e), key, velocity);
-    // Into the slot being recorded, where it is this channel's; otherwise
-    // into the part, with Record.
+    // Into the slot being recorded, if it is this channel's; otherwise into
+    // the part, with Record.
     if (_clipRecord?.channel == CanvasController._channelOf(e)) {
       _clipNoteOn(e, key, velocity);
     } else if (_recording && playing && _recordsInto(e)) {
@@ -183,9 +180,9 @@ extension CanvasInstruments on CanvasController {
     _keysChanged();
   }
 
-  /// _keysChanged tells of a key pressed or let go: only the stage, which
-  /// lights it, while nothing else shows it -- the whole editor while it
-  /// is being recorded, practised or stepped in.
+  /// _keysChanged reports a key pressed or released: only the stage, which
+  /// lights it, is told, unless the editor shows it too (while recording,
+  /// practising or step input).
   void _keysChanged() {
     keysHeld.value++;
     if (_recording || _clipRecord != null || _practice != null || _rollStep) {
@@ -194,8 +191,7 @@ extension CanvasInstruments on CanvasController {
   }
 
   /// armed is which MIDI channels are armed, by channel key: what a MIDI
-  /// keyboard plays, and what a recording writes into. The session's, as
-  /// solo is.
+  /// keyboard plays and a recording writes into. Session state, as solo is.
   Set<String> get armed => Set.unmodifiable(_armed);
 
   /// toggleArm arms or disarms a MIDI channel. One at a time, as a keyboard
@@ -209,10 +205,10 @@ extension CanvasInstruments on CanvasController {
     notifyListeners();
   }
 
-  /// midiNote is a key on a MIDI keyboard, pressed or -- at a velocity of
-  /// nought -- let go: played on every MIDI channel that hears it -- see
-  /// midiHearers -- as a key pressed on the canvas is. [from] is the
-  /// keyboard's name; null asks for MidiInput's own.
+  /// midiNote is a MIDI keyboard key pressed, or released at velocity 0,
+  /// played on every MIDI channel that hears it (see midiHearers) as a key
+  /// pressed on the canvas is. [from] is the keyboard's name; null asks for
+  /// MidiInput's own.
   void midiNote(int key, int velocity, {String? from}) {
     if (velocity <= 0) {
       // Let go wherever it was pressed, whatever has changed since.
@@ -227,11 +223,11 @@ extension CanvasInstruments on CanvasController {
     }
   }
 
-  /// midiHearers are the instruments a note from the keyboard [from] is
-  /// played on: each whose input takes it and whose Monitor says to -- In,
-  /// always; Auto, while armed. With nothing armed and none on In, the one
-  /// picked or the first, unless it is set Off: a keyboard plugged in plays
-  /// something without anything being set up first.
+  /// midiHearers are the instruments a note from keyboard [from] plays on:
+  /// each whose input takes it and whose Monitor says to (In always, Auto
+  /// while armed). With nothing armed and none on In, the one picked or the
+  /// first, unless set Off, so a keyboard plugged in plays something with
+  /// no setting up.
   List<AudioElement> midiHearers(String? from) {
     bool takes(InstrumentPart p) =>
         p.input != noInput &&
@@ -264,9 +260,9 @@ extension CanvasInstruments on CanvasController {
     return out;
   }
 
-  /// midiControl is a keyboard's controller moved -- the mod wheel, the
-  /// pitch bend, an expression pedal: heard on every channel that hears
-  /// its notes, and written into the part while Record is on.
+  /// midiControl is a keyboard controller moved (mod wheel, pitch bend,
+  /// expression pedal): heard on every channel that hears its notes, and
+  /// written into the part while Record is on.
   void midiControl(MidiControl control, double value, {String? from}) {
     for (var e in midiHearers(from ?? MidiInput.shared.device?.name)) {
       audio.control(CanvasController._channelOf(e), control, value);
@@ -278,8 +274,8 @@ extension CanvasInstruments on CanvasController {
     }
   }
 
-  /// controlOn moves [control] on instrument [e] alone -- its editor's bend
-  /// and mod wheels and its Sustain -- heard at once, and recorded as a
+  /// controlOn moves [control] on instrument [e] alone (its editor's bend
+  /// and mod wheels and Sustain), heard at once and recorded as a
   /// keyboard's are.
   void controlOn(AudioElement e, MidiControl control, double value) {
     audio.control(CanvasController._channelOf(e), control, value);
@@ -290,8 +286,8 @@ extension CanvasInstruments on CanvasController {
     }
   }
 
-  /// liveScale is the scale a keyboard plays in -- a Push's pads are laid
-  /// out in it: the Scale effect of the channel it plays, or C major.
+  /// liveScale is the scale a keyboard plays in (a Push lays its pads out
+  /// in it): the Scale effect of the channel it plays, or C major.
   (int, List<int>) get liveScale {
     for (var e in midiHearers(MidiInput.shared.device?.name)) {
       var scale = e.instrument!.effects
@@ -307,11 +303,10 @@ extension CanvasInstruments on CanvasController {
     return (0, scaleSteps[0]);
   }
 
-  /// macroedPart is [part] as channel [channel]'s macros turn it: each
-  /// macro knob given one of the instrument's settings (Ken: the Attack,
-  /// from the Instrument card) moves it from where its own knob is, as a
-  /// macro moves a device's knob. Played and rendered so; the part's own
-  /// settings stay where they were set.
+  /// macroedPart is [part] as channel [channel]'s macros turn it: a macro
+  /// knob given one of the instrument's settings (say its Attack) moves it
+  /// from where its own knob is, as a macro moves a device's knob. Played
+  /// and rendered so; the part's own settings stay as set.
   InstrumentPart macroedPart(String channel, InstrumentPart part) {
     var turns = <String, double>{};
     for (var d in devicesOf(channel)) {
@@ -354,9 +349,9 @@ extension CanvasInstruments on CanvasController {
 
   void _soundOff(AudioElement e, int key) {
     var channel = CanvasController._channelOf(e);
-    // Let go as it was sounded -- by the arpeggiator, or as the notes the
-    // effects made of it -- whatever the effects are now: an arpeggiator
-    // put on or taken off while it was held.
+    // Released as it was sounded (by the arpeggiator, or as the notes the
+    // effects made of it), whatever the effects are now: an arpeggiator may
+    // have been added or removed while it was held.
     var arped = false;
     if (_arps[e.id] case var live? when live.pressed.remove(key) != null) {
       arped = true;
@@ -411,11 +406,10 @@ extension CanvasInstruments on CanvasController {
     }
 
     play();
-    // While the transport plays, the steps after the first on its grid --
-    // as a rendered arpeggio's are, from nought -- rather than counted
-    // from the key (Ken, 2026-11-08). The first is at once, so a key is
-    // heard when it is pressed; a grid step too close after it waits for
-    // the next.
+    // While the transport plays, steps after the first fall on its grid, as
+    // a rendered arpeggio's do from nought, rather than counted from the
+    // key. The first is at once, so a key is heard when pressed; a grid
+    // step too close after it waits for the next.
     if (!playing || stepSeconds <= 0) {
       return Timer.periodic(step, (_) => play());
     }
@@ -428,20 +422,18 @@ extension CanvasInstruments on CanvasController {
     });
   }
 
-  /// noteOff lets [key] go.
-  /// The sustain pedal is the instrument's own (MidiControl.sustain): it
-  /// holds the sound of a key let go, and is recorded as it is moved, so a
-  /// take keeps the notes as long as they were played.
+  /// noteOff lets [key] go. The sustain pedal (MidiControl.sustain) holds
+  /// the sound of a released key, and is recorded as moved, so a take keeps
+  /// the notes as long as they were played.
   void noteOff(AudioElement e, int key) => _release(e, key);
 
-  /// _instrumentHeld is instrument [id] as it is now, or -- gone from the
-  /// scene shown -- as it was when its keys were pressed.
+  /// _instrumentHeld is instrument [id] as it is now, or, if gone from the
+  /// scene shown, as it was when its keys were pressed.
   AudioElement? _instrumentHeld(String id) =>
       _document.elementById(id) is AudioElement
           ? _document.elementById(id) as AudioElement
           : _pressedOn[id];
 
-  /// _release lets go of [key] on [e], the pedal or not.
   void _release(AudioElement e, int key) {
     if (!(_held[e.id]?.remove(key) ?? false)) return;
     _heldPlaces[e.id]?.remove(key);
@@ -483,12 +475,12 @@ extension CanvasInstruments on CanvasController {
   }
 
   /// _recordsInto is whether a recording writes into [e]: its channel is
-  /// armed, or none is and every instrument played is.
+  /// armed, or none is armed.
   bool _recordsInto(AudioElement e) =>
       _armed.isEmpty || _armed.contains(CanvasController._channelOf(e));
 
-  /// _keepTake writes what was recorded into each part -- one change to
-  /// undo -- notes still held ending where the playhead is.
+  /// _keepTake writes what was recorded into each part as one undo step,
+  /// held notes ending at the playhead.
   void _keepTake() {
     for (var e in _take.entries) {
       var el = _document.elementById(e.key);
@@ -510,8 +502,8 @@ extension CanvasInstruments on CanvasController {
     var next = _writeClipLog(_document);
     // What the elements' slots played, as clips on their rows.
     next = writeMotionTakes(next, moved, () => motionId("p"));
-    // The controllers moved, into each part's curves: over the stretch
-    // recorded, what was there before is replaced.
+    // The controllers moved, into each part's curves, replacing what was
+    // there over the recorded stretch.
     for (var e in _controlTake.entries) {
       var el = next.elementById(e.key);
       if (el is! AudioElement || el.instrument == null) continue;

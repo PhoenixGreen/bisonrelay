@@ -6,20 +6,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// audio_element.dart is a sound on a canvas, and the thing a reader presses
-// to hear it.
-//
-// On the canvas it is an icon, with a mute switch and a volume bar beside it
-// when wanted. What plays is a MediaClip. A button can play it too, and a
-// hidden one is not drawn but still plays.
-//
-// Playing, paused, muted and the dragged volume are the reader's, not the
-// document's (see CanvasController.audioState), so a published canvas opens
-// at the clip's own volume and silent until pressed or autoplayed.
+// audio_element.dart is a sound on a canvas: an icon a reader presses, with
+// mute and volume where wanted, playing a MediaClip. Play state and volume
+// are the reader's (CanvasController.audioState), not the document's.
 
-/// AudioGlyph is the icon drawn for the element when no picture is chosen.
-/// Drawn as paths rather than from an icon font, so it exports without the
-/// font and has playing, paused and muted forms.
+/// AudioGlyph is the icon drawn without a picture: paths, not a font, so it
+/// exports without one and has playing, paused and muted forms.
 enum AudioGlyph {
   speaker("Speaker"),
   note("Music note"),
@@ -56,31 +48,27 @@ enum AudioControl {
 /// a teal beside its amber right hand.
 const defaultLeftAccent = Color(0xFF2BB3C0);
 
-/// AudioElement is a sound on a canvas; see the top of this file.
 class AudioElement extends CanvasElement {
   final MediaClip clip;
 
   final AudioGlyph glyph;
 
-  /// picture, pausedPicture and mutedPicture replace the drawn icon with the
-  /// reader's own. Only [picture] is needed: the other two fall back to it,
-  /// so one picture is an icon, and three are an icon that changes.
+  /// picture, pausedPicture and mutedPicture replace the drawn icon. Only
+  /// [picture] is needed: the other two fall back to it.
   final String picture;
   final String pausedPicture;
   final String mutedPicture;
 
   /// iconColor is the drawn icon's colour, and accent the colour of what
-  /// shows it is on: the waves while playing, the filled part of the volume
-  /// bar.
+  /// shows it is on: the waves while playing, the volume bar's fill.
   final Color iconColor;
   final Color accent;
 
-  /// leftAccent is, on an instrument playing a part of two staves (a
-  /// piano's), the colour of the keys the left hand plays -- the bass
-  /// staff's -- the right hand's in [accent].
+  /// leftAccent is, on an instrument playing two staves (a piano's), the
+  /// colour of the left hand's keys; the right hand's are [accent].
   final Color leftAccent;
 
-  /// box is what the icon sits on -- a disc, a rounded square, nothing.
+  /// box is what the icon sits on: a disc, a rounded square, nothing.
   final BoxSpec box;
 
   /// controls is which of the three the reader gets, in the order drawn.
@@ -88,8 +76,8 @@ class AudioElement extends CanvasElement {
 
   final ElementAnimation animation;
 
-  /// instrument is the part it plays, where it is an instrument -- drawn as
-  /// a keyboard, its clip's file the part played. See instrument.dart.
+  /// instrument is the part it plays, where it is an instrument: drawn as a
+  /// keyboard, its clip's file the part. See instrument.dart.
   final InstrumentPart? instrument;
 
   bool get isInstrument => instrument != null;
@@ -116,8 +104,8 @@ class AudioElement extends CanvasElement {
 
   bool has(AudioControl control) => controls.contains(control);
 
-  /// assetIds is the pictures standing in for the icon, and the box's own.
-  /// The sound is not a picture: it is in [mediaIds].
+  /// assetIds is the pictures standing in for the icon, and the box's own;
+  /// the sound is in [mediaIds].
   @override
   Set<String> get assetIds => {
         ...box.assetIds,
@@ -218,8 +206,7 @@ class AudioElement extends CanvasElement {
   }
 }
 
-/// isTimelineSound is whether [e] is a sound that lives on a timeline
-/// channel rather than on the canvas: timed, and not drawn. The canvas's
-/// layers, select-all and speaker settings leave it alone.
+/// isTimelineSound is whether [e] is a timed, undrawn sound on a timeline
+/// channel: the canvas's layers, select-all and speaker settings skip it.
 bool isTimelineSound(Object? e) =>
     e is AudioElement && e.clip.timed && !e.visible;

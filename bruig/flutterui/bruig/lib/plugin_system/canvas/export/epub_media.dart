@@ -22,25 +22,10 @@ import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// epub_media.dart is a page's sound and video, for an interactive EPUB.
-//
-// What can be laid over the page picture is, as the reader's own <audio> and
-// <video>; what cannot is baked:
-//
-// - A sound, a speaker to press, a plain video -- one with nothing done to
-//   its picture -- are the reader's own, driven by media.js with the same
-//   playlist, range, repeat and fades as in the editor.
-// - A page that moves is laid out as the things on it, each animated by the
-//   reader -- see epub_layers.dart. Never as a film of the page.
-// - Sound on the page's timeline is mixed into one soundtrack played in step
-//   with it; a plain video on the timeline is the reader's own player,
-//   placed by the playhead; a keyed one is filmed as itself, alone.
-// - A keyed or graded video that is not on the timeline has no way to be
-//   drawn by a reader, and stays as its poster, which the page's picture
-//   already shows. Put it on the timeline to have it move.
-//
-// Files are converted by ffmpeg to AAC and H.264. Without it a book has its
-// pages, its links and no sound.
+// epub_media.dart is a page's sound and video in an interactive EPUB: the
+// reader's own <audio> and <video> driven by media.js, moving pages laid out
+// as layers, timeline sound as one soundtrack. A keyed video off the
+// timeline stays its poster. ffmpeg makes AAC and H.264; without it, no sound.
 
 /// EpubPageMedia is what one page adds to the book.
 class EpubPageMedia {
@@ -61,8 +46,7 @@ class EpubPageMedia {
   });
 }
 
-/// EpubMediaBuilder builds each page's media for one book, converting each
-/// file once.
+/// EpubMediaBuilder builds a book's pages' media, each file converted once.
 class EpubMediaBuilder {
   final String? ffmpeg;
   final double scale;
@@ -72,12 +56,10 @@ class EpubMediaBuilder {
   Future<ElementFilms?>? _filmsFound;
   Future<ElementFilms?> _films() => _filmsFound ??= ElementFilms.find(ffmpeg);
 
-  /// _files is each file converted so far, by href, so a song under ten
-  /// pages is converted once.
+  /// _files is each file converted so far, by href.
   final Map<String, EpubFile?> _files = {};
 
-  /// audioKbps is the bitrate the book's sound is written at, its videos'
-  /// soundtracks included.
+  /// audioKbps is the bitrate of the book's sound, videos' included.
   final int audioKbps;
 
   EpubMediaBuilder(this.ffmpeg,
@@ -90,9 +72,8 @@ class EpubMediaBuilder {
       EpubMediaBuilder(await ffmpegPath(),
           scale: scale, images: images, audioKbps: audioKbps);
 
-  /// page is what page [index] of [document] carries, placed in pixels at
-  /// [pixels] per design unit -- the page picture's own scale -- on a page
-  /// [width] by [height] pixels.
+  /// page is what page [index] carries, placed at [pixels] per design unit
+  /// on a page [width] by [height] pixels.
   Future<EpubPageMedia> page(CanvasDocument document, int index, double pixels,
       {int? width, int? height}) async {
     var scene = document.allScenes[index];
@@ -109,8 +90,7 @@ class EpubMediaBuilder {
       if (used.add(f.href)) files.add(f);
     }
 
-    // A page with playhead buttons waits for them, as the canvas does; one
-    // without starts by itself.
+    // A page with playhead buttons waits for them; one without starts.
     var driven = elements.any((e) =>
         e is ButtonElement && e.visible && _playheadAct(e.action.kind) != null);
 
@@ -141,10 +121,8 @@ class EpubMediaBuilder {
       }
     }
 
-    // A video washed over the whole page and blended into it -- the Decred
-    // infographic's Rain, screened at a tenth -- is drawn into the page's
-    // background as one plain video (Ken, 2026-11-13: the book's rain and
-    // sound stuttered, the reader blending a page of video every frame).
+    // A video washed over the whole page and blended in is baked into the
+    // background as one video: a reader blending it every frame stutters.
     var laid = document;
     if (backdropVideo == null && ffmpeg != null) {
       if (washOf(document, index) case var wash?) {
@@ -169,8 +147,7 @@ class EpubMediaBuilder {
     // The page as its elements, where anything on it moves.
     EpubStage? stage;
     String? soundtrack;
-    // A keyed video on the timeline is filmed frame by frame, read the way an
-    // export reads it.
+    // A keyed timeline video is filmed frame by frame, as exported.
     var keyed = elements.any((e) =>
         e is VideoElement && isTimedMedia(e) && !e.isLink && !plainVideo(e));
     var timeline = keyed && ffmpeg != null
@@ -206,8 +183,7 @@ class EpubMediaBuilder {
         soundtrack = href;
       }
     }
-    // A video on the timeline follows the playhead of a page laid out as
-    // layers.
+    // A timeline video follows a layered page's playhead.
     var following = stage != null;
 
     Future<EpubMedia?> sound(AudioElement e, {bool backdrop = false}) async {
@@ -402,8 +378,7 @@ class EpubMediaBuilder {
       ));
     }
 
-    // The playhead's buttons, aimed at the page's layers -- which is where
-    // the playhead is in a book.
+    // The playhead's buttons, aimed at the page's layers: its playhead.
     if (stage?.animates ?? false) {
       for (var e in elements) {
         if (e is! ButtonElement || !e.visible) continue;
@@ -444,8 +419,8 @@ class EpubMediaBuilder {
   }
 
   /// _pageAlone is page [index] as a document of its own, with its own
-  /// backdrop: what the timeline media of that page -- its soundtrack, a keyed
-  /// video on it -- are read from, counted from the page's first frame.
+  /// backdrop: what that page's timeline media (its soundtrack, a keyed
+  /// video on it) are read from, counted from the page's first frame.
   CanvasDocument _pageAlone(CanvasDocument document, int index) {
     var scene = document.allScenes[index];
     var own = document.backgroundOf(index);
@@ -455,7 +430,6 @@ class EpubMediaBuilder {
         .withScenes([scene.copyWith(background: own)], at: 0);
   }
 
-  /// _convert makes a stored file into one a reader plays, once per book.
   /// _washed is the page's background with [wash] blended over it as its
   /// canvas blends it, as one video once round its loop: see washOf.
   Future<EpubFile?> _washed(CanvasDocument document, int index,
@@ -505,9 +479,8 @@ class EpubMediaBuilder {
       var bw = even(b.width * pixels), bh = even(b.height * pixels);
       var ox = (-b.left * pixels).round(), oy = (-b.top * pixels).round();
       var w = even(width.toDouble()), h = even(height.toDouble());
-      // Written no wider than washWidth: a page of rain at full size is a
-      // video too big to play smoothly, and the reader scales it to the
-      // page. Drawn at the page's size, then made smaller.
+      // Written no wider than washWidth: a page of rain at full size is too
+      // big to play smoothly, and the reader scales it to the page.
       var shrink = math.min(1.0, washWidth / w);
       var ow = even(w * shrink), oh = even(h * shrink);
       // ffmpeg's normal weighs its first input -- the page -- by the
@@ -547,6 +520,7 @@ class EpubMediaBuilder {
     }
   }
 
+  /// _convert makes a stored file into one a reader plays, once per book.
   Future<EpubFile?> _convert(String assetId, {required bool video}) async {
     var stem = path.basenameWithoutExtension(assetId);
     var href = video ? "media/$stem.mp4" : "media/$stem.m4a";
@@ -630,18 +604,13 @@ String? cssBlend(LayerBlend b) => switch (b) {
       _ => b.name,
     };
 
-/// plainVideo is whether a reader's own `<video>` can show [e] as the canvas
-/// does: nothing keyed, cut, cropped, filtered, tinted or outlined -- only
-/// fitted to its box, which CSS can do.
-/// washWidth is the widest a page's baked background video is written:
-/// see EpubMediaBuilder._washed.
+/// washWidth is the widest a baked background video is written.
 const int washWidth = 1280;
 
 /// washOf is the video washed over the whole of page [index] and blended
-/// into it, that a book draws into the page's background (see
+/// into it, which a book draws into the page's background (see
 /// EpubMediaBuilder._washed): the lowest thing on the page, covering it,
-/// still, going round from the page's start, blended in a way ffmpeg can --
-/// or null.
+/// still, looping from the page's start, in a blend ffmpeg can do; or null.
 VideoElement? washOf(CanvasDocument document, int index) {
   var master = document.masterScene?.elements ?? const <CanvasElement>[];
   var elements = document.allScenes[index].elements;
@@ -672,8 +641,7 @@ VideoElement? washOf(CanvasDocument document, int index) {
 }
 
 /// videoBlend is how a video is laid on the page: its Output's blend, else
-/// its own -- the canvas lays on both, one inside the other -- or null where
-/// they differ, which a single blend cannot say.
+/// its own, or null where they differ, which one blend cannot say.
 LayerBlend? videoBlend(VideoElement e) {
   var outer = e.base.blend, own = e.blend;
   if (outer == LayerBlend.normal) return own;
@@ -697,6 +665,8 @@ String? ffmpegBlend(LayerBlend b) => switch (b) {
       _ => null,
     };
 
+/// plainVideo is whether a reader's `<video>` can show [e] as the canvas
+/// does: nothing keyed, cut, cropped, filtered, tinted or outlined.
 bool plainVideo(VideoElement e) {
   var l = e.look;
   return !e.key.on &&

@@ -3,17 +3,13 @@ import 'dart:ui' show Size;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// code_run_element.dart is a Run panel (Ken, 2026-11-15: "a seperate run
-// panel that shows a visual preview and a code output pane for the output
-// of the code written"): it runs a Code panel's project and shows what came
-// of it -- the page or app it makes, over what it printed.
-//
-// A run's result is kept in the element (CodeRunResult): its output, and a
-// picture of its preview saved as an asset. So a canvas opens showing its
-// last run, an export plays that run at its time without running anything,
-// and a canvas someone sends you never runs code until you press Run.
+// code_run_element.dart is a Run panel: it runs a Code panel's project and
+// shows the page or app it makes, over what it printed. A run's result is
+// kept in the element (CodeRunResult: output, and a preview picture as an
+// asset), so a canvas opens showing its last run, an export plays that run
+// without running anything, and a received canvas never runs code until
+// Run is pressed.
 
-/// CodeRunWhen is when it runs on the scene's clock.
 enum CodeRunWhen {
   press("When Run is pressed"),
   typed("When the typing ends"),
@@ -23,7 +19,6 @@ enum CodeRunWhen {
   const CodeRunWhen(this.label);
 }
 
-/// CodeRunShows is what it shows.
 enum CodeRunShows {
   both("Preview and output"),
   preview("Preview"),
@@ -37,9 +32,8 @@ enum CodeRunShows {
 /// a word from the runner itself (fetching Python, say).
 enum CodeLogKind { log, warn, error, note }
 
-/// maxCodeLogs and maxCodeLogLength are the most of a run's output kept:
-/// its lines, and each line's characters. A program that prints for ever
-/// must fill neither the screen nor the canvas file.
+/// maxCodeLogs and maxCodeLogLength cap the output kept, in lines and line
+/// length: endless printing must not fill the screen or the canvas file.
 const maxCodeLogs = 2000, maxCodeLogLength = 4000;
 
 class CodeLog {
@@ -112,7 +106,6 @@ const codeAppWidths = <(double, String)>[
   (1280, "Desktop (1280)"),
 ];
 
-/// CodeRunElement is the element itself.
 class CodeRunElement extends CanvasElement {
   /// code is the Code panel it runs, by id.
   final String code;
@@ -129,16 +122,14 @@ class CodeRunElement extends CanvasElement {
   /// outputSize is the output's text size on the page.
   final double outputSize;
 
-  /// dartpad runs a Flutter app on DartPad -- the real Flutter, on Google's
-  /// servers, over the internet -- rather than drawing it in the app
-  /// (flutter_eval). Off unless turned on, panel by panel.
+  /// dartpad runs a Flutter app on DartPad (Google's servers, over the
+  /// internet), not in the app with flutter_eval. Off unless turned on.
   final bool dartpad;
 
-  /// appWidth is how wide, in logical pixels, an app it runs is laid out
-  /// -- a page or a Flutter app -- before it is fitted to the preview: one
-  /// of [codeAppWidths]; 0 fits the panel (at least a phone's width).
-  /// The same for a run's picture and the live preview, at any zoom (Ken:
-  /// the coin app grew when Run was pressed).
+  /// appWidth is how wide, in logical pixels, an app it runs (a page or a
+  /// Flutter app) is laid out before it is fitted to the preview: one of
+  /// [codeAppWidths]; 0 fits the panel (at least a phone's width). The same
+  /// for a run's picture and the live preview, at any zoom.
   final double appWidth;
   final CodeRunResult? result;
 
@@ -193,9 +184,8 @@ class CodeRunElement extends CanvasElement {
           appWidth: (appWidth ?? this.appWidth).clamp(0.0, 4000.0),
           result: clearResult ? null : result ?? this.result);
 
-  /// appSize is the size an app is laid out at for a preview [preview]
-  /// big on the page: [appWidth] across (or the preview's, at least a
-  /// phone's), in the preview's shape.
+  /// appSize is the layout size for a [preview] that big: [appWidth] across
+  /// (or the preview's, at least a phone's), in the preview's shape.
   Size appSize(Size preview) {
     var w = appWidth > 0 ? appWidth : math.max(360.0, preview.width);
     return Size(w, preview.height * w / math.max(1.0, preview.width));

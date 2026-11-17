@@ -9,12 +9,10 @@ import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/widgets.dart';
 
-// device_presets.dart keeps a sound's devices as presets, as the prototype's
-// "Save as a preset…" does: one device, or a whole chain, with its settings.
-// They are kept with the canvas's other presets (Presets › Sound), one file
-// each, and brought back from a chain's "+" or from the Presets sidebar.
+// device_presets.dart keeps a sound's devices as presets (one device or a
+// whole chain, with settings), one file each with the canvas's other presets
+// (Presets › Sound); they come back from a chain's "+" or the Presets sidebar.
 
-/// devicePresets is where they are kept.
 SavedPresetStore get devicePresets => SavedPresetStore.devices;
 
 /// presetDevices are a preset's sound devices, each with no id yet: added
@@ -25,23 +23,21 @@ List<MixDevice> presetDevices(Map<String, dynamic> data) => [
           if (MixDevice.fromJson(d) case var device?) device.withId(""),
     ];
 
-/// presetMidi are a preset's MIDI effects.
 List<MidiEffect> presetMidi(Map<String, dynamic> data) => [
       if (data["midi"] case List list)
         for (var m in list)
           if (MidiEffect.fromJson(m) case var effect?) effect,
     ];
 
-/// stripPresetOf is a preset of one of a strip's own cards -- which, and its
-/// settings as written -- or null for one of devices.
+/// stripPresetOf is a preset of one of a strip's own cards (which, and its
+/// settings), or null for one of devices.
 (StripPart, Map<String, dynamic>)? stripPresetOf(Map<String, dynamic> data) =>
     switch ((StripPart.fromName(data["strip"]), data["value"])) {
       (var part?, Map<String, dynamic> value) => (part, value),
       _ => null,
     };
 
-/// motionPresetOf is a preset of one motion device -- its kind, and its
-/// settings as written -- or null for any other.
+/// motionPresetOf is a preset of one motion device, or null for any other.
 MotionDevice? motionPresetOf(Map<String, dynamic> data) =>
     MotionDevice.fromJson(data["motion"]);
 
@@ -63,9 +59,8 @@ Future<void> saveMotionPreset(BuildContext context, MotionDevice d) async {
   snack?.success("Kept as the preset \"$named\" (Presets › Sound)");
 }
 
-/// saveStripPreset keeps [value] -- an EQ's, a compressor's, a limiter's or
-/// a Ducker's settings as written -- as a preset of [part], as
-/// saveDevicePreset keeps a device.
+/// saveStripPreset keeps [value] (an EQ's, compressor's, limiter's or
+/// Ducker's settings) as a preset of [part], as saveDevicePreset does.
 Future<void> saveStripPreset(
     BuildContext context, StripPart part, Map<String, dynamic> value) async {
   SnackBarModel? snack;
@@ -84,8 +79,7 @@ Future<void> saveStripPreset(
   snack?.success("Kept as the preset \"$named\" (Presets › Sound)");
 }
 
-/// freshPresetName is [name], or "[name] 2", "[name] 3"… where [taken]
-/// has it.
+/// freshPresetName is [name], or "[name] 2", "[name] 3"… where [taken] has it.
 String freshPresetName(String name, Set<String> taken) {
   var named = name;
   for (var n = 2; taken.contains(named); n++) {
@@ -165,7 +159,6 @@ bool useDevicePreset(
   return true;
 }
 
-/// presetHolds is whether [p] has sound devices, or -- with [midi] --
-/// MIDI effects.
+/// presetHolds is whether [p] has sound devices, or with [midi] MIDI effects.
 bool presetHolds(SavedPreset p, {bool midi = false}) =>
     midi ? presetMidi(p.data).isNotEmpty : presetDevices(p.data).isNotEmpty;

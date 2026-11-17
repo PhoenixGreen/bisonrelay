@@ -12,12 +12,9 @@ import 'package:flutter/painting.dart';
 
 // parallax_painter.dart draws parallax scenery: each layer moved by the
 // camera times its scroll scale plus its own drift, and tiled where it
-// repeats.
-//
-// Drawn scenery repeats without a seam: a ridge is a sum of sines with a
-// whole number of waves per tile, so its ends meet, and trees, buildings and
-// clouds are drawn again a tile along, so one over the edge is completed by
-// the next tile's copy.
+// repeats. Drawn scenery has no seam: a ridge is a sum of sines with whole
+// waves per tile, and trees, buildings and clouds are drawn again a tile
+// along, so one over the edge is completed by the next tile's copy.
 
 /// paintParallax draws [p] as it is on [frame], filling [box]. [loopFrames]
 /// (see parallaxLoopFrames) lets a layer's drift loop with the timeline.
@@ -138,10 +135,9 @@ void _paintLayer(
       range(seen.left, seen.right, origin.dx, tile.width, layer.repeatX);
   var (y0, y1) =
       range(seen.top, seen.bottom, origin.dy, tile.height, layer.repeatY);
-  // A sky or a fill that does not repeat down still covers the page above
-  // and below it rather than ending in a hard line.
-  // Never more than a few thousand tiles a layer a frame, however small
-  // they are.
+  // A sky or fill that does not repeat down still covers the page above and
+  // below rather than ending in a hard line. Never more than a few thousand
+  // tiles a layer a frame, however small.
   if (x1 - x0 > 400 || y1 - y0 > 400 || (x1 - x0 + 1) * (y1 - y0 + 1) > 4096) {
     return;
   }
@@ -232,9 +228,8 @@ void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
 /// move changes from frame to frame, so the paths are kept.
 final Map<String, List<(Path, Paint)>> _drawn = {};
 
-/// _specKeys and _shapeKeys are what a layer's look is, written out once
-/// per look rather than for every tile of every frame (looks never change;
-/// an edit makes a new one).
+/// _specKeys and _shapeKeys are a layer's look written out once per look
+/// rather than for every tile of every frame (looks are immutable).
 final Expando<String> _specKeys = Expando(), _shapeKeys = Expando();
 
 List<(Path, Paint)> _sceneryOf(ParallaxLayer layer, Size tile) {

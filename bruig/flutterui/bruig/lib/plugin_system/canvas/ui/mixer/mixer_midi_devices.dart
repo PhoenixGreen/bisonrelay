@@ -1,12 +1,12 @@
 part of 'mixer_plugins.dart';
 
-// mixer_midi_devices.dart is a MIDI channel's devices: where its notes come from, and its MIDI effects: part of mixer_plugins.dart, split from it to keep
-// that file readable (Ken, 2026-11-12). Its imports are the library's.
+// mixer_midi_devices.dart is a MIDI channel's devices: where its notes come
+// from, and its MIDI effects. Part of mixer_plugins.dart; its imports.
 
 // ---- A MIDI channel's devices: where its notes come from, and its MIDI effects
 
-/// MidiInDevice is a MIDI channel's In: which keyboard it takes notes from,
-/// and when it plays them -- see MidiMonitor. First in its chain.
+/// MidiInDevice is a MIDI channel's In, first in its chain: which keyboard
+/// it takes notes from, and when it plays them (see MidiMonitor).
 class MidiInDevice extends StatelessWidget {
   final CanvasController controller;
   final String channel;
@@ -150,8 +150,8 @@ class MidiInDevice extends StatelessWidget {
   }
 }
 
-/// MidiEffectDevice is one of a MIDI channel's MIDI effects -- see
-/// midi_effects.dart -- as knobs: a choice turned through its choices.
+/// MidiEffectDevice is one MIDI effect (midi_effects.dart) as knobs, a
+/// choice turned through its options.
 class MidiEffectDevice extends StatelessWidget {
   final CanvasController controller;
   final String channel;
@@ -206,8 +206,8 @@ class MidiEffectDevice extends StatelessWidget {
           saveDevicePreset(context, effect.kind.label, midi: [effect]),
       onReset: () =>
           edit((e) => e..[index] = MidiEffect(e[index].kind, on: e[index].on)),
-      // Kept by its place and kind: another effect moved into its place
-      // starts its own A and B.
+      // Kept by place and kind: another effect moved into its place starts
+      // its own A and B.
       onAB: () => controller.toggleABOf(abKey, effect,
           (o) => write((o as MidiEffect).switched(effect.on), transient: true)),
       showingB: controller.showingBOf(abKey),
@@ -284,8 +284,8 @@ class MidiEffectDevice extends StatelessWidget {
   }
 }
 
-/// AddMidiEffectSlot puts a MIDI effect on a MIDI channel, after the
-/// others, before its instrument: the chain's "+".
+/// AddMidiEffectSlot is the chain's "+": a MIDI effect after the others,
+/// before the instrument.
 class AddMidiEffectSlot extends StatelessWidget {
   final CanvasController controller;
   final String channel;
@@ -307,7 +307,7 @@ class AddMidiEffectSlot extends StatelessWidget {
         title: "Add a MIDI effect",
         height: height,
         groups: [
-          // Kept with Save as a preset: its MIDI effects, after the rest.
+          // Saved in a preset: its MIDI effects, after the rest.
           if (devicePresets.presets.where((p) => presetHolds(p, midi: true))
               case var kept when kept.isNotEmpty)
             (

@@ -4,21 +4,18 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 
 // tile_terrain.dart paints a terrain onto a map, as Godot does: each cell
-// painted, and each round it, given the tile whose corners and sides match
+// painted, and each round it, gets the tile whose corners and sides match
 // its neighbours, so water painted into grass finds its own shore. It also
-// tags a set's tiles from their colours: each corner, side and middle told
-// apart by which terrain's tile it looks like, or as nothing where clear.
+// tags a set's tiles from their colours.
 //
-// A set told apart by corners keeps a terrain at each corner between cells:
-// painting a cell sets its four corners, and every cell touching them takes
-// the matching tile, an empty one too, so an edge spreads round a patch. A
-// set told apart by sides keeps a terrain in each cell's middle: a cell
-// joins neighbours of the same terrain, and only cells already of the set
-// change.
+// A corner set keeps a terrain at each corner between cells: painting sets
+// four corners, and every touching cell (an empty one too) takes the
+// matching tile, so an edge spreads round a patch. A side set keeps a
+// terrain in each cell's middle, and only cells already of the set change.
 
-/// paintTerrain is [cells] -- one layer's, by [cellKey] -- with terrain
-/// [terrain] of [set], of tile set [source], painted at [at]: the cells
-/// painted, and the cells round them chosen again to match.
+/// paintTerrain is [cells] (one layer's, by [cellKey]) with terrain
+/// [terrain] of [set], of tile set [source], painted at [at], and the cells
+/// round them chosen again to match.
 Map<int, int> paintTerrain(Map<int, int> cells,
     {required int source,
     required TerrainSet set,
@@ -29,9 +26,9 @@ Map<int, int> paintTerrain(Map<int, int> cells,
   var painted = at.toSet();
   if (painted.isEmpty || set.tags.isEmpty) return out;
 
-  /// tagOf is the tag of the tile in a cell, when it is one of the set's,
-  /// unturned; null when it is not -- a tile of another set, or turned --
-  /// and so not this set's to change.
+  /// tagOf is the tag of the tile in a cell when it is one of the set's,
+  /// unturned; null otherwise (another set's, or turned), so not this set's
+  /// to change.
   List<int>? tagOf(int c, int r) {
     var w = cells[cellKey(c, r)];
     if (w == null) return null;
@@ -166,9 +163,9 @@ int? _best(TerrainSet set, int? now, int source, math.Random? rng, int? Function
 }
 
 /// tagByColour is [set] with [tiles] of [s] tagged from their colours: at
-/// each place its mode tells tiles apart by, the few pixels there taken as
-/// the terrain whose sample tile's middle they are nearest in colour, or
-/// as nothing where they are clear. [pixel] reads the sheet as measured.
+/// each place its mode tells tiles apart by, the pixels there are taken as
+/// the terrain whose sample tile's middle is nearest in colour, or nothing
+/// where clear. [pixel] reads the sheet as measured.
 TerrainSet tagByColour(TerrainSet set, TileSource s, Iterable<int> tiles, ui.Color Function(int x, int y) pixel) {
   var tw = s.tileW, th = s.tileH;
   // A few pixels at each place: the very corner, the middle of each edge,

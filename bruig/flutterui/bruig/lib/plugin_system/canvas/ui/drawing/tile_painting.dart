@@ -9,19 +9,11 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
 // tile_painting.dart is painting a Tile map element on the canvas, as Godot's
-// tile map editor does: a tile, or a stamp of several, laid along the pen's
-// path, a line or a box, or poured into like cells; rubbed out; or picked up
-// off the map. A stamp is laid whole, repeating from where the stroke began;
-// painted at random, each cell takes one of its tiles, some left empty if
-// asked. The tile to be laid shows faintly under the pointer. Each stroke is
-// one undo step.
-//
-// On an objects layer the pen stands things anywhere, not in cells: a stamp put
-// down and moved till the pen lifts, one rubbed out or moved, or a spread
-// scattered where the pen goes.
-//
-// With a terrain in place of tiles, each cell laid takes the terrain, and it
-// and its neighbours the tiles that match: see tile_terrain.dart.
+// tile map editor does: a tile or stamp laid along the pen, a line or a box,
+// or poured into like cells; rubbed out; or picked up. A stamp repeats from
+// where the stroke began. Each stroke is one undo step. On an objects layer
+// things stand anywhere, not in cells. A terrain lays matching tiles in each
+// cell and its neighbours: see tile_terrain.dart.
 
 /// TileTool is what painting a map does with the pen.
 enum TileTool {
@@ -31,8 +23,7 @@ enum TileTool {
   rect("Box"),
   fill("Fill"),
   picker("Pick a tile"),
-  // On an objects layer: one stood there picked up and moved, and a spread
-  // of them scattered.
+  // On an objects layer: one thing moved, or a spread of them scattered.
   move("Move"),
   scatter("Scatter");
 
@@ -57,16 +48,14 @@ class TilePaintSession extends ChangeNotifier {
 
   TileTool tool = TileTool.paint;
 
-  /// stamp is what is laid: one tile, or several, from the set and turned as
-  /// picked.
+  /// stamp is what is laid: one tile or several, turned as picked.
   TileStamp stamp = TileStamp.one(TileRef.of(0, 0));
 
   /// brush is the stamp's first tile; set, the stamp is that one tile.
   TileRef get brush => stamp.first;
 
-  /// random lays one of the stamp's tiles in each cell, picked at random, in
-  /// place of the stamp's layout; gaps is how many cells in every one are left
-  /// empty.
+  /// random lays one of the stamp's tiles at random in each cell, in place of
+  /// its layout; gaps is the share of cells left empty.
   bool random = false;
   double gaps = 0;
   math.Random rng = math.Random();
@@ -80,8 +69,8 @@ class TilePaintSession extends ChangeNotifier {
   /// its stamp's tiles in line with the cells.
   bool snap = true;
 
-  /// spread is how far about the pen things are scattered, and apart how
-  /// far apart they stand at least, in cells.
+  /// spread is how far from the pen things scatter, apart the least gap, in
+  /// cells.
   double spread = 2;
   double apart = 1.5;
 
@@ -150,7 +139,6 @@ class TilePaintSession extends ChangeNotifier {
   /// _pickFrom is the corner of the box being dragged out with the picker.
   (int, int)? _pickFrom;
 
-  /// onObjects is whether the layer painted is an objects layer.
   bool get onObjects => map?.layers[layer].isObjects ?? false;
 
   /// _point is the pointer, counted in cells, when it is over the map.
@@ -267,7 +255,6 @@ class TilePaintSession extends ChangeNotifier {
     tool = TileTool.paint;
   }
 
-  /// _objectsStart puts the pen down at [doc] on objects layer [l].
   void _objectsStart(TileMapElement m, TileLayer l, ui.Offset doc) {
     var p = m.inCells(doc);
     var hit = objectAt(m, l.objects, doc);
@@ -326,7 +313,6 @@ class TilePaintSession extends ChangeNotifier {
     _shown();
   }
 
-  /// _objectsTo carries the pen on to [doc] on the objects layer.
   void _objectsTo(TileMapElement m, ui.Offset doc) {
     var objects = _objects!;
     var p = m.inCells(doc);
@@ -456,9 +442,8 @@ class TilePaintSession extends ChangeNotifier {
     _show(m);
   }
 
-  /// _put lays in cell ([c], [r]) the tile that goes there: the stamp's tile at
-  /// its place on the stamp's grid from where the stroke began (none where the
-  /// stamp has none), or one at random; or rubs it out.
+  /// _put rubs out cell ([c], [r]), or lays its tile: the stamp's, counted
+  /// from where the stroke began (none if the stamp has none), or a random one.
   void _put(int c, int r) {
     var k = cellKey(c, r);
     if (tool == TileTool.erase) {
@@ -485,7 +470,6 @@ class TilePaintSession extends ChangeNotifier {
     return (t.source, sets[t.set], t.terrain);
   }
 
-  /// _laidTerrain lays the terrain in [at], into [cells].
   void _laidTerrain(List<(int, int)> at, Map<int, int> cells) {
     var (source, set, t) = _terrainOf(map)!;
     var next = paintTerrain(cells, source: source, set: set, terrain: t, at: at, rng: rng);

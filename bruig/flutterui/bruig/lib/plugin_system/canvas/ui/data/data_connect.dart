@@ -21,23 +21,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-// data_connect.dart is Connect data, in the Data Studio (Ken, 2026-11-15:
-// "how do you choose, add and edit data set e.g. manually ... but how do you
-// import or use an API?"; prototype v4, chosen 2026-11-16 over reusing the
-// old settings panel). A sheet owns its connection: where its numbers come
-// from, mapped into columns, and every table and chart of it follows a
-// refresh.
-//
-// Four steps, in the studio's side panel, the sheet beside them showing what
-// will arrive: where it comes from (a preset, a web address or a file); what
-// to ask it for (a competition, coins; a key, kept on this computer); which
-// list is the rows and which columns to keep, named and ordered; and where
-// it goes -- this sheet, keeping its own columns, or a new one.
-//
-// Underneath is the engine the tables used before: loadJson/mapData,
-// the presets and their derived columns (the football form guide), pictures
-// collected on the way in, keys filed by host, and fetching off unless the
-// reader has turned it on (and never through a proxy it cannot use).
+// data_connect.dart is Connect data, in the Data Studio. A sheet owns its
+// connection (where its numbers come from, mapped into columns), and every
+// table and chart of it follows a refresh. Four steps beside the sheet's
+// preview: the source, what to ask it for, the rows and columns to keep,
+// and where it goes. Underneath is loadJson/mapData, with fetching off
+// unless the reader turns it on, and never through a proxy it cannot use.
 
 /// SheetFetched is what a refresh of a sheet brought, header first, or why
 /// nothing came; and any rows asked for by name that did not come back.
@@ -53,8 +42,8 @@ class SheetFetched {
 }
 
 /// askingFor is [source] as it is asked: for a preset whose choice is the
-/// sheet's own rows (the coins in its first column), the address built from
-/// [current]'s rows now, never saved, since the rows change.
+/// sheet's own rows (the coins in its first column), the address built
+/// from [current]'s rows now, never saved, since the rows change.
 (DataSource, List<String>) askingFor(
     DataSource source, List<List<String>> current) {
   var preset = presetById(source.preset);
@@ -118,10 +107,9 @@ String sourceSays(DataSource s) {
 }
 
 /// confirmSource is whether [source] may be read: a file or a host already
-/// allowed here may; another is asked about first, and remembered when
-/// agreed to. A canvas's source came with it, from somebody else: their path
-/// would read whatever file it names, their address tell their server who
-/// opened it.
+/// allowed may; another is asked about first, and remembered when agreed
+/// to. A canvas's source came from somebody else: their path would read
+/// whatever file it names, their address tell their server who opened it.
 Future<bool> confirmSource(BuildContext context, DataSource source) async {
   switch (source.kind) {
     case DataKind.file when !await DataFiles.allowed(source.where):
@@ -148,9 +136,8 @@ Future<bool> confirmSource(BuildContext context, DataSource source) async {
   }
 }
 
-/// refreshSheet fetches sheet [id]'s source and puts what came in it,
-/// asking first before a file it has not been allowed to read. It answers
-/// the cells that changed, null when nothing came (having said why).
+/// refreshSheet fetches sheet [id]'s source into it, asking before an
+/// unallowed file; the cells changed, or null when nothing came.
 Future<Set<(int, int)>?> refreshSheet(
     BuildContext context, CanvasController c, String id) async {
   var sheet = c.sheetById(id);
@@ -254,9 +241,8 @@ class _SheetSourceCardState extends State<SheetSourceCard> {
   }
 }
 
-/// ConnectData is the four steps, in the studio's side panel. [onPreview]
-/// shows what will arrive in the sheet (null to stop); [onConnected] is
-/// told which sheet it went into and which cells changed.
+/// ConnectData is the four steps in the side panel; [onPreview] shows what
+/// will arrive (null to stop), [onConnected] where it went and what changed.
 class ConnectData extends StatefulWidget {
   final CanvasController controller;
   final String sheetId;
@@ -279,7 +265,6 @@ class ConnectData extends StatefulWidget {
   State<ConnectData> createState() => _ConnectDataState();
 }
 
-/// _Kind is which sort of source step 1 chose.
 enum _Kind { preset, web, file }
 
 class _ConnectDataState extends State<ConnectData> {
@@ -295,9 +280,8 @@ class _ConnectDataState extends State<ConnectData> {
   /// is read (see [_mayRead]). One picked or typed here is the reader's own.
   String _arrived = "";
 
-  /// _mayRead is whether the file or address named now may be read: one
-  /// named here is; the one the sheet came with, only once the reader
-  /// agrees (see [confirmSource]).
+  /// _mayRead is whether the file or address named may be read: one named
+  /// here is; the sheet's own only once agreed (see [confirmSource]).
   Future<bool> _mayRead() async {
     if (_src.where.isEmpty) return true;
     if (_src.where != _arrived) {
@@ -337,8 +321,7 @@ class _ConnectDataState extends State<ConnectData> {
       _step = 2;
       _checkKey();
     }
-    // A sheet with nothing in it is filled; one holding numbers is not
-    // overwritten unless chosen.
+    // An empty sheet is filled; one with numbers only if chosen.
     _intoNew = s != null && s.rowCount > 0 && !s.source.on;
   }
 
@@ -397,10 +380,8 @@ class _ConnectDataState extends State<ConnectData> {
         _key.clear();
         await _checkKey();
       }
-      // A file named here, by the person at this computer, may be read: the
-      // permission the file picker gives. The one the sheet arrived with is
-      // asked about (DataFiles guards against a path that came inside
-      // somebody else's canvas).
+      // A file named here by the person at this computer may be read, as
+      // the file picker allows; the sheet's own is asked about first.
       if (!await _mayRead() || !mounted) return;
       var allowed = context.read<CanvasPreferences>().allowFetching;
       var proxied = allowed && await networkIsProxied();
@@ -427,8 +408,8 @@ class _ConnectDataState extends State<ConnectData> {
     }
   }
 
-  /// _withFields is [s] with a column for each of the first dozen fields
-  /// its rows have, for a source nobody has mapped.
+  /// _withFields is [s] with a column for each of the first dozen fields its
+  /// rows have, for a source nobody has mapped.
   DataSource _withFields(DataSource s) => s.copyWith(columns: [
         for (var f in fieldsAt(_json, s.rowsPath, sorted: false).take(12))
           SourceColumn(header: _headerOf(f), path: f, picture: _pictureish(f)),
@@ -511,10 +492,8 @@ class _ConnectDataState extends State<ConnectData> {
       widget.onCancel();
     }
 
-    // The Studio's sidebar shape (data_studio_side.dart; Ken, 2026-11-17:
-    // "Build all four"): the way back to the sheet in its header, where the
-    // run has got to under it, each step as an open section, and Back and
-    // Next pinned at the foot.
+    // The Studio's sidebar shape (data_studio_side.dart): the way back up,
+    // progress, each step an open section, Back and Next at the foot.
     return StudioSide(
       header: StudioSideHeader(
         icon: Icons.link,
@@ -967,8 +946,7 @@ InputDecoration _fieldLook(ColorScheme colors, String hint) => InputDecoration(
           borderRadius: BorderRadius.circular(7), borderSide: BorderSide.none),
     );
 
-/// _Field is a one-line field that keeps what is typed while the panel
-/// rebuilds under it.
+/// _Field is a one-line field keeping its typing while the panel rebuilds.
 class _Field extends StatefulWidget {
   final String text, hint;
   final bool dense;
@@ -1016,7 +994,6 @@ class _FieldState extends State<_Field> {
   }
 }
 
-/// _Choices is a dropdown of (code, name) choices.
 class _Choices extends StatelessWidget {
   final String value;
   final List<(String, String)> options;
@@ -1056,8 +1033,7 @@ class _Choices extends StatelessWidget {
   }
 }
 
-/// SheetRefreshButton is a sheet's Refresh, as an icon, for a table's panel
-/// on the canvas.
+/// SheetRefreshButton is a sheet's Refresh icon, for a table's panel.
 class SheetRefreshButton extends StatefulWidget {
   final CanvasController controller;
   final String sheetId;

@@ -1,20 +1,15 @@
 import 'dart:convert';
 
-// dock_layout.dart is how the panels under the canvas are arranged: which of
-// the places each one opens in, how many places there are, how they are
-// switched, and the layouts that set several at once. The reader's, kept in
-// the preferences (see CanvasPreferences.dock), not the document's.
-//
-// Which panels are open is the controller's (see CanvasController.dockOpen):
-// each place shows one panel at a time, so opening one closes whatever else
-// was showing in its place.
+// dock_layout.dart is how the panels under the canvas are arranged: the
+// place each opens in, how many places there are, how they are switched,
+// and the layouts that set several at once. Kept in the reader's
+// preferences (CanvasPreferences.dock), not the document. Which panels are
+// open is the controller's (CanvasController.dockOpen): each place shows one
+// panel at a time.
 
-/// DockPanel is one of the panels under the canvas. [key] is its button's,
-/// on the play bar.
-///
-/// [chain] is the picked channel's or element's devices: its sound (the
-/// effects) or its motion (the animation), switched in the panel -- see
-/// CanvasController.chainShowsMotion.
+/// DockPanel is one of the panels under the canvas; [key] is its play-bar
+/// button's. [chain] is the picked channel's or element's devices, its
+/// sound or its motion (see CanvasController.chainShowsMotion).
 enum DockPanel {
   timeline("Timeline", "rowsToggle"),
   slots("Slots", "slotsToggle"),
@@ -25,8 +20,8 @@ enum DockPanel {
   final String key;
   const DockPanel(this.label, this.key);
 
-  /// fromName reads a panel saved by name. The Effects and Animation panels
-  /// of before are the Chain's two views now, so either name is the Chain.
+  /// fromName reads a panel saved by name. The Effects and Animation names
+  /// both read as the Chain, which has those two views.
   static DockPanel? fromName(Object? name) =>
       name == "effects" || name == "animation"
           ? chain
@@ -132,8 +127,7 @@ class DockArrangement {
               panel: place,
       },
       one: DockPanel.fromName(json["one"]),
-      // One saved when the Animation panel was a panel of its own shows
-      // the Chain on its motion.
+      // An Animation panel saved by that name shows the Chain on its motion.
       chainMotion: json["chainMotion"] == true ||
           (json["shown"] is Map &&
               (json["shown"] as Map).containsValue("animation")) ||
@@ -218,14 +212,12 @@ class DockLayout {
   /// homeOf is where [panel] opens when there are places for it.
   DockPlace homeOf(DockPanel panel) => homes[panel] ?? defaultHomes[panel]!;
 
-  /// placesShown are the places there are.
   List<DockPlace> get placesShown => switch (places) {
         DockPlaces.one => const [DockPlace.main],
         DockPlaces.two => const [DockPlace.main, DockPlace.left],
         DockPlaces.three => DockPlace.values,
       };
 
-  /// layoutsOnBar is whether the play bar carries the layouts.
   bool get layoutsOnBar => switcher == DockSwitcher.layouts || showLayouts;
 
   /// arrangements are the layouts to choose from: the app's, then the
@@ -247,7 +239,7 @@ class DockLayout {
         saved: saved ?? this.saved,
       );
 
-  /// withHome is [panel] opening in [place] from now on.
+  /// withHome is [panel] opening in [place].
   DockLayout withHome(DockPanel panel, DockPlace place) =>
       copyWith(homes: {...homes, panel: place});
 

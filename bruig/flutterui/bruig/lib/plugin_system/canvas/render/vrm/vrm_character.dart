@@ -26,16 +26,15 @@ import 'package:flutter_scene/scene.dart';
 import 'package:flutter_vrm/flutter_vrm.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-// vrm_character.dart is one new 3D character in a scene of its own, as the
-// Character Studio and the canvas both draw it: the VRoid body shaped, the
-// hair worn from other characters on its head, its clothes and decals, its
-// colours, and its look with the finish over it. What is drawn is changed
-// with [CharacterScene.show]; each frame is moved on with [tick] and drawn
-// by whoever holds the scene -- a SceneView, or the canvas's painter.
+// vrm_character.dart is one 3D character in a scene of its own, as the
+// Character Studio and the canvas both draw it: the shaped VRoid body, hair
+// worn from other characters, clothes, decals, colours and look. Change what
+// is drawn with [CharacterScene.show]; [tick] moves each frame on, and a
+// SceneView or the canvas's painter draws it.
 
 /// visemesOf is the face's mouth shapes for drawn mouth [m]: the nine an
-/// animator draws (lip_sync.dart) made of the five the VRoid face has.
-/// Shut and at rest, none -- the face's own mouth.
+/// animator draws (lip_sync.dart) made of the VRoid face's five. Shut and at
+/// rest, none.
 Map<String, double> visemesOf(MouthShape m) => switch (m) {
       MouthShape.rest || MouthShape.closed => const {},
       MouthShape.teeth => const {"MTH_I": 0.55, "MTH_E": 0.2},
@@ -50,8 +49,6 @@ Map<String, double> visemesOf(MouthShape m) => switch (m) {
 /// DecalLoader reads a decal's picture: RGBA, its width and height.
 typedef DecalLoader = Future<(Uint8List, int, int)?> Function(String source);
 
-/// CharacterScene is one character, drawn in its own scene.
-
 /// bodyOverdrawTop and bodyOverdrawSide are how far past its box a
 /// character framed whole is drawn, above and to each side, as shares of
 /// the box's height: room for a hand raised, a leap, a kick.
@@ -60,14 +57,13 @@ const double bodyOverdrawTop = 0.35, bodyOverdrawSide = 0.42;
 class CharacterScene extends ChangeNotifier {
   final Scene scene = Scene();
 
-  /// paper is whether the look's paper is drawn behind the character: in
-  /// the Studio, not on a canvas.
+  /// paper is whether the look's paper is drawn behind: Studio, not canvas.
   final bool paper;
   final DecalLoader loadDecal;
 
   CharacterScene({required this.loadDecal, this.paper = true}) {
-    // Every frame drawn, rather than the last held while the GPU catches
-    // up: an export draws each once, and must have it.
+    // Every frame drawn, not the last held while the GPU catches up: an
+    // export draws each once and must have it.
     if (!paper) scene.maxGpuFramesInFlight = 0;
     scene.directionalLight = DirectionalLight(direction: lightDirection(_look));
     StudioFinishPass.load().then((shader) {
@@ -94,24 +90,21 @@ class CharacterScene extends ChangeNotifier {
   ShapedAvatar? _avatar;
   String? _loading;
 
-  /// avatar is the body drawn, once loaded.
   ShapedAvatar? get avatar => _avatar;
 
-  /// error is why it could not be drawn, if it could not.
+  /// error is why it could not be drawn, if so.
   String? error;
 
-  /// fetching names hair being fetched for the first time, and fetched how
-  /// far, from nought to one.
+  /// fetching names hair being first fetched, and how far, 0 to 1.
   String? fetching;
   double? fetched;
 
-  /// own are the clothes the body comes with, once it is here.
+  /// own are the clothes the body comes with, once loaded.
   Set<WearSlot> get own => {
         for (final s in WearSlot.values)
           if (_avatar?.wardrobe?.hasOwn(s) ?? false) s,
       };
 
-  /// showDesign draws [d].
   void showDesign(CharacterDesign d) => show(
       body: d.body,
       shape: d.shape,
@@ -123,7 +116,7 @@ class CharacterScene extends ChangeNotifier {
       face: d.face,
       move: d.move);
 
-  /// show draws this: what changed is changed, the rest left as it is.
+  /// show changes what is given and leaves the rest as it is.
   void show({
     required String body,
     required CharacterShape shape,
@@ -165,7 +158,6 @@ class CharacterScene extends ChangeNotifier {
   StudioFinishPass? _finish;
   bool _finishTried = false;
 
-  /// _restyle draws everything in the look.
   void _restyle() {
     if (!_finishTried) return;
     _finish?.look = _look;
@@ -175,8 +167,8 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
-  // The hair: the body's own, or pieces of other characters' -- each kept
-  // here whole, all but its hair hidden, and worn on the body's head.
+  // Hair taken from other characters: each kept whole here, all but its
+  // hair hidden, and worn on the body's head.
   final Map<String, ShapedAvatar> _donors = {};
   final Set<String> _donorsLoading = {};
 
@@ -190,8 +182,7 @@ class CharacterScene extends ChangeNotifier {
     };
   }
 
-  /// _hair shows each piece of hair from where it is to come, fetching and
-  /// loading the characters it comes from that are not here yet.
+  /// _hair shows each piece of hair, loading its source character if needed.
   void _hair() {
     final a = _avatar, body = _body;
     if (a == null || body == null) return;
@@ -217,16 +208,15 @@ class CharacterScene extends ChangeNotifier {
       final model =
           [...vroidBodies, ...vroidHairSources].firstWhere((m) => m.id == id);
       if (!await VroidAssets.installed(id)) {
-        // Fetched only by someone who has already chosen to download the
-        // characters: a received canvas opening is not that choice.
+        // Fetched only for someone who chose to download the characters:
+        // opening a received canvas is not that choice.
         if ((await VroidAssets.missing(vroidBodies)).isNotEmpty) {
           error = "This hair comes from a character not downloaded yet. "
               "Download the characters in Character Studio first.";
           return;
         }
         // Nor unless fetching is switched on: a received canvas must not
-        // make a request the reader has said none may (security review,
-        // 2026-11-17).
+        // make a request the reader has forbidden.
         if (!await CanvasPreferences.fetchingAllowed()) {
           error = "This hair needs a download, and fetching is switched "
               "off: turn it on in Settings > Plugins > Canvas.";
@@ -289,7 +279,7 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
-  /// _dress puts the outfit on, and says so if it could not be.
+  /// _dress puts the outfit on, reporting if it could not.
   Future<void> _dress() async {
     final a = _avatar;
     if (a == null) return;
@@ -300,9 +290,8 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
-  /// ready is when everything asked for is here: the body, its clothes
-  /// and decals, and the hair from others. For drawing it once, as an
-  /// export does, rather than as it arrives.
+  /// ready completes when the body, its clothes, decals and borrowed hair are
+  /// all here: for drawing it once, as an export does.
   Future<void> ready({Duration timeout = const Duration(seconds: 60)}) async {
     final end = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(end)) {
@@ -324,8 +313,7 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
-  /// tick moves the character on by [dt] seconds, seen by [camera], with
-  /// its eyes on [lookAt].
+  /// tick moves it on by [dt] seconds, seen by [camera], eyes on [lookAt].
   void tick(double dt, Camera camera,
       {vm.Vector3? lookAt, double pixelRatio = 1}) {
     _finish?.pixelRatio = pixelRatio;
@@ -339,7 +327,6 @@ class CharacterScene extends ChangeNotifier {
     _clock += dt;
     _moveFace(dt);
     if (lookAt != null) {
-      // Where the face's eyes are set to look, as the viewer sees it.
       var at = lookAt;
       if (camera is PerspectiveCamera) {
         final f = camera.target - camera.position;
@@ -354,8 +341,8 @@ class CharacterScene extends ChangeNotifier {
     }
     v.autoBlink.enabled = _face.blinks && (performance?.blink ?? true);
     if (!v.autoBlink.enabled) v.expressions.setValue('blink', 0);
-    // Stood as its Move settings say, rather than in the T it was made in;
-    // the face's tilt of the head over the stance's.
+    // Stood as its Move settings say, not in the T it was made in; the
+    // face's head tilt over the stance's.
     if (!identical(_poser?.avatar, a)) _poser = VrmPoser(a);
     final (move, mt, strength, weight, mirror) = _moveNow(dt);
     _poser!.pose(move, dt,
@@ -384,8 +371,8 @@ class CharacterScene extends ChangeNotifier {
       _blushed = _mixNow.blush;
       _repaint();
     }
-    // The colours picked, and the years' grey; hair from others takes the
-    // colour of the hair it is mixed with, unless one is picked.
+    // The colours picked, and the years' grey; borrowed hair takes the
+    // colour of the hair it mixes with unless one is picked.
     final colours = <VrmPart, int>{
       for (final (part, key) in const [
         (VrmPart.hair, "colour.hair"),
@@ -403,7 +390,7 @@ class CharacterScene extends ChangeNotifier {
       d.colour(colours,
           hairAs: id == back ? null : main?.hairAverage, grey: grey);
     }
-    // Hair from others, on this head, grown or shrunk to its size.
+    // Borrowed hair, scaled to this head.
     for (final d in _donors.values) {
       final mine = a.rig.face?.es, theirs = d.rig.face?.es;
       final grow = mine != null && theirs != null && theirs > 0
@@ -416,18 +403,17 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
-  // ---------------------------------------------------------------------
   // On the canvas.
 
   /// _canvasCamera sees the character as the canvas draws it; _frame is the
-  /// canvas's frame it was last moved on to.
+  /// canvas frame it was last moved on to.
   final PerspectiveCamera _canvasCamera = PerspectiveCamera(
       fovRadiansY: 30 * vm.degrees2Radians, fovNear: 0.05, fovFar: 100);
   int? _frame;
 
-  /// aim points [camera] at the character, showing as much of it as
-  /// [framing] says in a picture [aspect] times as wide as it is high: from
-  /// [turn] half turns round, [tilt] quarter turns up, [zoom] times closer.
+  /// aim points [camera] at the character, showing what [framing] says in a
+  /// picture [aspect] times as wide as high: from [turn] half turns round,
+  /// [tilt] quarter turns up, [zoom] times closer.
   void aim(PerspectiveCamera camera,
       {Character3dFraming framing = Character3dFraming.body,
       double turn = 0,
@@ -438,14 +424,13 @@ class CharacterScene extends ChangeNotifier {
     final h = _avatar?.avatar.humanoid;
     vm.Vector3? at(VrmHumanBone b) => restAt(b) ?? h?.worldPosition(b);
     final head = at(VrmHumanBone.head) ?? vm.Vector3(0, 1.4, 0);
-    // The top of the hair, over the head bone by about three times the
-    // neck's length -- or as high as its hands go, where they go higher.
+    // The hair's top, about three neck lengths over the head bone, or as
+    // high as the hands go if higher.
     final top = math.max(reach,
         head.y + (head.y - (at(VrmHumanBone.neck)?.y ?? head.y * 0.94)) * 3);
     final (vm.Vector3 focus, double high, double wide) = switch (framing) {
-      // Its feet on the frame's bottom -- a character on the canvas stands
-      // on its box's bottom edge, where a game puts the ground -- with a
-      // little room over its hair.
+      // Feet on the frame's bottom, where a game puts the ground, with a
+      // little room over the hair.
       Character3dFraming.body => (
           vm.Vector3(head.x, top * 1.06 / 2, head.z),
           top * 1.06,
@@ -459,9 +444,9 @@ class CharacterScene extends ChangeNotifier {
             top * 0.42
           );
         }(),
-      // By the head where it is: a design posed with its hips moved aside or
-      // its head turned (Kai, his hips 16 cm over) is framed by its face,
-      // not by where its head would be standing straight.
+      // By the head where it is: a design posed with hips moved aside or
+      // head turned is framed by its face, not where its head would be
+      // standing straight.
       Character3dFraming.head => () {
           final posed = h?.worldPosition(VrmHumanBone.head) ?? head;
           final lift = posed.y - head.y;
@@ -475,7 +460,6 @@ class CharacterScene extends ChangeNotifier {
           );
         }(),
     };
-    // Far enough off for the taller of the two to fit.
     final fit = math.max(high, wide / math.max(aspect, 0.05));
     final distance =
         fit / 2 / math.tan(camera.fovRadiansY / 2) / zoom.clamp(0.5, 3.0);
@@ -488,11 +472,10 @@ class CharacterScene extends ChangeNotifier {
       ..target = focus;
   }
 
-  /// paint draws the character into [box] on [canvas] at [frame] of a
-  /// canvas playing [frameRate] frames a second, seen as [aim] says, with
-  /// [pixelRatio] pixels to each of the canvas's points. Moved on once a
-  /// frame however often the frame is drawn, since the stage and an export
-  /// both draw one more than once.
+  /// paint draws the character into [box] at [frame] of a canvas playing
+  /// [frameRate] frames a second, seen as [aim] says, at [pixelRatio] pixels
+  /// per canvas point. Moved on once per frame however often it is drawn,
+  /// since the stage and an export both draw a frame more than once.
   void paint(ui.Canvas canvas, ui.Rect box,
       {required int frame,
       int frameRate = 12,
@@ -501,7 +484,7 @@ class CharacterScene extends ChangeNotifier {
       double tilt = 0,
       double zoom = 1,
       double pixelRatio = 1}) {
-    // Let go of (see dispose), it draws nothing.
+    // Disposed: draws nothing.
     if (_disposed) return;
     if (box.width < 1 || box.height < 1) return;
     final camera = _canvasCamera;
@@ -514,8 +497,8 @@ class CharacterScene extends ChangeNotifier {
         reach: framing == Character3dFraming.body ? 0 : _reach());
     final dt = _advance(frame, frameRate);
     final t = _sceneTime!;
-    // Carried across the picture by its walks, turned the way it goes: the
-    // camera moved and turned the other way, so the framing stays put.
+    // Carried across by its walks, turned the way it goes: the camera moves
+    // and turns the other way so the framing stays put.
     final p = performance;
     if (p != null && (p.startsAt != 0 || p.clips.any((c) => c.dir != 0))) {
       final go = p.travelAt(t, _paceOf);
@@ -527,12 +510,11 @@ class CharacterScene extends ChangeNotifier {
           aspect: box.width / box.height,
           reach: framing == Character3dFraming.body ? 0 : _reach());
       final f = camera.target - camera.position;
-      // As far as the box's edge and no further: a character is drawn
-      // only in its own box, so that is as far across as it can go.
+      // Only to the box's edge: a character is drawn only in its own box.
       final edge =
           f.length * math.tan(camera.fovRadiansY / 2) * box.width / box.height -
               _height * 0.3;
-      // From the edge its walks start at, where they start at one.
+      // From the edge its walks start at, if they start at one.
       final x = (p.startsAt * math.max(0.0, edge) + go.x)
           .clamp(-math.max(0.0, edge), math.max(0.0, edge))
           .toDouble();
@@ -542,10 +524,9 @@ class CharacterScene extends ChangeNotifier {
         ..position = camera.position - right
         ..target = camera.target - right;
     }
-    // Seen whole, past its box's top and sides: an arm raised, a kick, a
-    // leap -- not cut off at the box, nor the body shrunk to leave room for
-    // them (Ken, 2026-11-10: "the character is always very small"). The box
-    // is the body, standing on its bottom edge.
+    // Seen whole past its box's top and sides (a raised arm, a kick, a
+    // leap) rather than cut off or the body shrunk to make room. The box is
+    // the body, standing on its bottom edge.
     var view = box;
     if (framing == Character3dFraming.body) {
       view = ui.Rect.fromLTRB(
@@ -561,9 +542,7 @@ class CharacterScene extends ChangeNotifier {
     scene.render(camera, canvas, viewport: view, pixelRatio: pixelRatio);
   }
 
-  /// _widen moves [camera], aimed at [box], back and over so that it sees
-  /// [view] -- larger, around the box -- with the box where it was, at the
-  /// same size.
+  /// _widen moves [camera] back so it sees the larger [view], [box] unmoved.
   void _widen(PerspectiveCamera camera, ui.Rect box, ui.Rect view) {
     final f = camera.target - camera.position;
     final d = f.length;
@@ -581,9 +560,8 @@ class CharacterScene extends ChangeNotifier {
   }
 
   /// _reach is how high its hands go in what it does (cheering, jumping,
-  /// waving), for the framing to leave room for them; nought where they stay
-  /// below its head. From what it is set to do rather than where its hands
-  /// are now, so the camera stays put as they rise.
+  /// waving), 0 where they stay below its head. Taken from what it is set to
+  /// do, not where its hands are now, so the camera stays put as they rise.
   double _reach() {
     final p = performance;
     final stances = {
@@ -598,34 +576,29 @@ class CharacterScene extends ChangeNotifier {
     final up = stances.contains("Cheer") || motions.contains("Jump");
     final wave = stances.contains("Wave") || motions.contains("Wave");
     if (!up && !wave) return 0;
-    // At rest, or -- before it has been stood at all -- as it was made:
-    // the arm as long either way.
+    // At rest, or as made if not yet stood: the arm is as long either way.
     final h = _avatar?.avatar.humanoid;
     vm.Vector3? at(VrmHumanBone b) => restAt(b) ?? h?.worldPosition(b);
     final shoulder = at(VrmHumanBone.rightUpperArm),
         elbow = at(VrmHumanBone.rightLowerArm),
         hand = at(VrmHumanBone.rightHand);
     if (shoulder == null || elbow == null || hand == null) return 0;
-    // The arm straight up -- or raised to wave -- and the hand past the
-    // wrist, a fist or open, with a little room over it.
+    // The arm straight up, and the hand past the wrist, with a little room.
     final arm = shoulder.distanceTo(elbow) + elbow.distanceTo(hand);
     var top = shoulder.y + (up ? arm : arm * 0.85) + _height * 0.13;
-    // A jump lifts all of it.
     if (motions.contains("Jump")) top += _height * 0.18;
     return top;
   }
 
-  /// _advance moves it on to [frame] of a canvas playing [frameRate] frames
-  /// a second, and is how far that is, in seconds: nought for the frame it
-  /// is already at.
+  /// _advance moves it on to [frame] of a canvas at [frameRate], returning
+  /// the seconds that took: 0 for the frame it is at.
   double _advance(int frame, int frameRate) {
     final last = _frame;
     final dt = last == null || frame <= last
         ? 0.0
         : ((frame - last) / math.max(1, frameRate)).clamp(0.0, 0.25);
     _frame = frame;
-    // The motion where the frame has it, so an export plays it the same
-    // every time.
+    // The motion where the frame has it, so an export plays it the same way.
     final t = frame / math.max(1, frameRate);
     _sceneTime = t;
     _motionTime = t * _move.speed;
@@ -635,13 +608,11 @@ class CharacterScene extends ChangeNotifier {
   final PerspectiveCamera _stageCamera =
       PerspectiveCamera(fovNear: 0.05, fovFar: 300);
 
-  /// paintOnStage draws the character standing on a 3D stage drawn in
-  /// [box], at [frame] of a canvas playing [frameRate] frames a second: on
-  /// the spot [x], [z] metres across its floor and [lift] off it, turned
-  /// [facing] degrees, seen by the stage's camera from [eye] looking at
-  /// [target], [fovY] radians top to bottom -- all in the stage's own
-  /// metres (render/stage/stage_camera.dart). Its walks carry it across
-  /// the floor. [shadows] is whether the stage's light throws any.
+  /// paintOnStage draws the character on a 3D stage in [box], at [frame] of
+  /// a canvas at [frameRate]: on spot [x], [z] of the floor and [lift] off
+  /// it, turned [facing] degrees, seen from [eye] looking at [target] with
+  /// [fovY] radians vertical, all in stage metres (stage/stage_camera.dart).
+  /// Its walks carry it across. [shadows] is whether the light casts any.
   void paintOnStage(ui.Canvas canvas, ui.Rect box,
       {required (double, double, double) eye,
       required (double, double, double) target,
@@ -654,7 +625,7 @@ class CharacterScene extends ChangeNotifier {
       required int frame,
       int frameRate = 12,
       double pixelRatio = 1}) {
-    // Let go of (see dispose), it draws nothing.
+    // Disposed: draws nothing.
     if (_disposed) return;
     if (box.width < 1 || box.height < 1) return;
     final dt = _advance(frame, frameRate);
@@ -662,13 +633,12 @@ class CharacterScene extends ChangeNotifier {
     final go = p != null && p.clips.any((c) => c.dir != 0)
         ? p.travelAt(_sceneTime!, _paceOf)
         : (x: 0.0, turn: 0.0);
-    // The stage's metres in the scene's: across mirrored, since the scene
-    // sees its own left where the stage sees its right.
+    // Stage metres to scene, mirrored across: the scene's left is its right.
     vm.Vector3 toScene((double, double, double) v) =>
         vm.Vector3(-v.$1, v.$2, v.$3);
-    // The camera brought round into the character's own place, rather than
-    // the character moved and turned in front of it: the same picture, and
-    // the body's own placing left alone.
+    // The camera is moved into the character's frame rather than the
+    // character in front of the camera: the same picture, and the body's own
+    // placing left alone.
     final at = toScene((x + go.x, lift, z));
     final turn = (facing + go.turn * 90) * math.pi / 180;
     final into = vm.Matrix4.rotationY(turn - math.pi);
@@ -683,27 +653,24 @@ class CharacterScene extends ChangeNotifier {
     scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
   }
 
-  /// performance is what it does in the canvas's scene, played at the
-  /// frame [paint] draws: how it stands, its motions and walks, its face.
-  /// Null for as designed, as the Studio has it.
+  /// performance is what it does in the canvas's scene, played at the frame
+  /// [paint] draws. Null for as designed, as in the Studio.
   CharacterPerformance? performance;
   double? _sceneTime;
 
-  /// sceneTime is where [performance] is played to, in seconds: set by
-  /// [paint] on the canvas, and by the Studio's Test step as it plays.
+  /// sceneTime is how far [performance] has played, in seconds.
   set sceneTime(double? t) => _sceneTime = t;
 
-  /// travel is how far the walks have carried it across, in metres, and
-  /// how far it is turned to face the way it goes, in quarter turns: for a
-  /// view that moves the other way, as [paint] does. Nought where there is
-  /// no performance.
+  /// travel is how far its walks carry it, in metres, and how far it turns
+  /// to face that way, in quarter turns, for a view that moves the other way
+  /// as [paint] does. Nought with no performance.
   ({double x, double turn}) get travel {
     final p = performance, t = _sceneTime;
     if (p == null || t == null) return (x: 0.0, turn: 0.0);
     return p.travelAt(t, _paceOf);
   }
 
-  /// _height is how tall it is, near enough: what its walks are paced by.
+  /// _height is roughly how tall it is: what its walks are paced by.
   double get _height {
     final head = restAt(VrmHumanBone.head) ??
         _avatar?.avatar.humanoid.worldPosition(VrmHumanBone.head);
@@ -717,15 +684,13 @@ class CharacterScene extends ChangeNotifier {
       (0.7 + 0.6 * _move.walkOf("pace")) *
       c.speed;
 
-  /// _moveNow is how it stands and moves now: the motion, its time, how
-  /// strongly and how much of it plays, and mirrored or not.
+  /// _moveNow is the motion, its time, strength, share and mirroring now.
   (CharacterMove, double, double, double, bool) _moveNow(double dt) {
     final p = performance, t = _sceneTime;
     if (p == null || t == null) {
-      // The motion's time: on the canvas, the frame's; in the Studio, as
-      // it plays.
+      // On the canvas, the frame's time; in the Studio, as it plays.
       final mt = _motionTime ?? (_moveClock += playing ? dt * _move.speed : 0);
-      // Stopped, it stands in its stance: no motion holding any of it.
+      // Stopped: it stands in its stance.
       return (
         playing ? _move : _move.copyWith(motion: "Still"),
         mt,
@@ -738,7 +703,7 @@ class CharacterScene extends ChangeNotifier {
     final key = p.keyAt(t);
     final stance = key?.stance ?? p.stance;
     if (stance != null && stance != m.stance && moveStances.contains(stance)) {
-      // A scene's stance puts the hands and feet where it has them.
+      // A scene's stance places the hands and feet.
       m = m.copyWith(stance: stance, offsets: const {});
     }
     final lean = key?.lean ?? p.lean, tilt = key?.tilt ?? p.tilt;
@@ -762,15 +727,14 @@ class CharacterScene extends ChangeNotifier {
     return (m, t * m.speed, 1, 1, false);
   }
 
-  /// shadowOn draws its shadow on the ground as [camera] sees it in [box],
-  /// for a view that draws the scene itself, as the Studio's does: under
-  /// the scene, before it is drawn.
+  /// shadowOn draws its ground shadow for a view that draws the scene itself
+  /// (the Studio's), before the scene.
   void shadowOn(ui.Canvas canvas, ui.Rect box, PerspectiveCamera camera,
           {String kind = "Soft"}) =>
       _shadow(canvas, box, camera, kind);
 
-  /// _shadow draws the shadow under it on the ground, as [camera] sees it
-  /// in [box]: smaller as it leaves the ground.
+  /// _shadow draws its ground shadow as [camera] sees it in [box], smaller as
+  /// it leaves the ground.
   void _shadow(
       ui.Canvas canvas, ui.Rect box, PerspectiveCamera camera, String kind) {
     if (kind == "None") return;
@@ -824,8 +788,7 @@ class CharacterScene extends ChangeNotifier {
       ..restore();
   }
 
-  /// picture is the character standing, [width] by [height] pixels, as a
-  /// PNG: for the library's list of characters. Null before it is drawn.
+  /// picture is a [width] by [height] PNG of it standing, for the library.
   Future<Uint8List?> picture(int width, int height) async {
     if (_avatar == null || _disposed) return null;
     final camera = PerspectiveCamera(
@@ -850,9 +813,8 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
-  /// settle lets the hair and clothes fall still, as they would by the time
-  /// anybody looks: for the first frame of an export, which otherwise
-  /// catches them swinging from how they were made.
+  /// settle lets hair and clothes fall still, for an export's first frame,
+  /// which otherwise catches them swinging from how they were made.
   void settle() {
     aim(_canvasCamera);
     for (var i = 0; i < 45; i++) {
@@ -860,7 +822,6 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
-  // ---------------------------------------------------------------------
   // The face (character_face.dart).
 
   CharacterFace _face = const CharacterFace();
@@ -870,14 +831,14 @@ class CharacterScene extends ChangeNotifier {
   CharacterMove _move = const CharacterMove();
   VrmPoser? _poser;
 
-  /// playing is whether its motion plays: the Studio's Play and Stop. On
-  /// the canvas it always does.
+  /// playing is whether its motion plays (the Studio's Play and Stop); always
+  /// on the canvas.
   bool playing = true;
   double _moveClock = 0;
   double? _motionTime;
 
-  /// expression is the expression worn, by name, in place of the face's
-  /// own: a scene's choice for a character on the canvas. Null for its own.
+  /// expression is a scene's chosen expression by name, worn in place of the
+  /// face's own; null for its own.
   set expression(String? name) => _expression = name;
 
   SpokenLine? _line;
@@ -889,7 +850,6 @@ class CharacterScene extends ChangeNotifier {
     _lineAt = _clock;
   }
 
-  /// saying is whether a line is being said.
   bool get saying => _line != null;
 
   FaceMix get _mixNow {
@@ -901,12 +861,11 @@ class CharacterScene extends ChangeNotifier {
         _face.wearing(feeling), _face.wearing(p.mixTo), p.mixAmount);
   }
 
-  // The scene's line, as it is said.
   SpokenLine? _spoken;
   String _spokenText = "";
 
-  /// _mouthNow is the mouth's shapes now as a line has them, or as a scene
-  /// holds them; null for the face's own.
+  /// _mouthNow is the mouth's shapes as a line or scene has them; null for
+  /// the face's own.
   Map<String, double>? _mouthNow() {
     final p = performance, t = _sceneTime;
     if (p == null || t == null) {
@@ -931,7 +890,7 @@ class CharacterScene extends ChangeNotifier {
     return p.mouth == "rest" ? null : {"MTH_${p.mouth}": 0.85};
   }
 
-  // The face as it is now, eased toward what it is set to.
+  // The face now, eased toward what it is set to.
   Map<String, double> _unitsNow = const {};
   double _gazeX = 0, _gazeY = 0, _tiltNow = 0;
   bool _faceSettled = false;
@@ -943,9 +902,8 @@ class CharacterScene extends ChangeNotifier {
     final want = Map<String, double>.of(mix.w);
     final line = _mouthNow();
     if (line != null) {
-      // The line's shapes over the mouth's, the rest of it eased well off:
-      // halved, a face made open-mouthed (Kai's Joy) never shut between
-      // words or after the line.
+      // The line's shapes over the mouth's, the rest eased well off: only
+      // halved, an open-mouthed face never shuts between words.
       for (final k in want.keys.toList()) {
         if (k.startsWith('MTH_')) want[k] = want[k]! * 0.15;
       }
@@ -980,8 +938,7 @@ class CharacterScene extends ChangeNotifier {
 
   double _blushed = 0;
 
-  /// _creased is what the skin's creases were last drawn from: see
-  /// ShapedAvatar.creases.
+  /// _creased is what the creases were last drawn from (ShapedAvatar.creases).
   String? _creased;
 
   /// _repaint paints what is painted on the character, and the blush.
@@ -1007,8 +964,8 @@ class CharacterScene extends ChangeNotifier {
     ]);
   }
 
-  /// dotsAt are where the Move step's dots are, in the scene: on each hand
-  /// and foot, the hips, and over the head.
+  /// dotsAt are the Move step's dots in the scene: hands, feet, hips, and
+  /// over the head.
   Map<String, vm.Vector3> dotsAt() {
     final h = _avatar?.avatar.humanoid;
     if (h == null) return const {};
@@ -1026,21 +983,20 @@ class CharacterScene extends ChangeNotifier {
     };
   }
 
-  /// toBody is [world], a point in the scene, in the body's own space --
-  /// the space a dragged dot's offset is kept in.
+  /// toBody is scene point [world] in the body's own space, where a dragged
+  /// dot's offset is kept.
   vm.Vector3? toBody(vm.Vector3 world) {
     final root = _avatar?.avatar.modelRoot;
     if (root == null) return null;
     return vm.Matrix4.inverted(root.globalTransform).transformed3(world);
   }
 
-  /// restAt is where bone [b] is with the body at rest, in the scene: what
-  /// it is framed by, so the camera stays put as it jumps or crouches.
+  /// restAt is where bone [b] is at rest, in the scene: what it is framed
+  /// by, so the camera stays put as it jumps or crouches.
   vm.Vector3? restAt(VrmHumanBone b) =>
       identical(_poser?.avatar, _avatar) ? _poser?.restWorld(b) : null;
 
-  /// pick is where a ray from [from] going [dir] first meets the
-  /// character: see ShapedAvatar.pick.
+  /// pick is where a ray from [from] along [dir] first meets it.
   CharacterHit? pick(vm.Vector3 from, vm.Vector3 dir) =>
       _avatar?.pick(from, dir);
 
@@ -1051,8 +1007,8 @@ class CharacterScene extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    // Its render targets, shadows and history are GPU memory, which the
-    // garbage collector does not feel the want of.
+    // Render targets, shadows and history are GPU memory the garbage
+    // collector cannot see.
     scene.dispose();
     super.dispose();
   }

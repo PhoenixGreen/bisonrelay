@@ -5,14 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 // text_item.dart is the extra pieces (items) a text element carries besides
-// its own paragraph: words or pictures held to a slot of its box, so a card's
-// number, title and small print are one element.
-//
-// An item is not a *part*: a part (TextPart) is a run of the element's own
-// sentence inside the paragraph's layout; an item is a separate string or
-// picture in a place of its own.
+// its paragraph: words or pictures held to a slot of its box, so a card's
+// number, title and small print are one element. Unlike a part (TextPart,
+// a run of the element's own sentence), an item stands on its own.
 
-/// TextSlot is where an item sits in the box: three across by three down.
+/// TextSlot is where an item sits in the box, three across by three down.
 /// Slots rather than coordinates, so items stay held to their edge when the
 /// box is resized.
 enum TextSlot {
@@ -58,53 +55,44 @@ enum TextSlot {
       };
 }
 
-/// _plainBox is an item's box as it is when nothing has been set.
 final String _plainBox = jsonEncode(const BoxSpec(padding: 0).toJson());
 
-/// TextItem is one extra piece of a text element: what it says (or the
-/// picture it is), how it is set, and which of the nine slots it is in.
+/// TextItem is one extra piece of a text element: its words or picture, how
+/// it is set, and which of the nine slots it is in.
 class TextItem {
-  /// id is its own and survives edits, so the on-canvas editor keeps hold of
-  /// the right item across rebuilds and reorders.
+  /// id survives edits, so the on-canvas editor keeps hold of the right item
+  /// across rebuilds and reorders.
   final String id;
 
   final String text;
 
-  /// name is what the panel calls this piece, where somebody has named it;
-  /// otherwise the row shows what it says (see [says]).
+  /// name is what the panel calls this piece, or empty to show [says].
   final String name;
 
-  /// spec is how this piece is set: its own, not the element's with
-  /// overrides. The slot decides alignment, so [TextSpec.align] and
-  /// [TextSpec.verticalAlign] are not read here -- see textItemRects.
+  /// spec is this piece's own setting, not overrides of the element's. The
+  /// slot decides alignment, so [TextSpec.align] and
+  /// [TextSpec.verticalAlign] are not read (see textItemRects).
   final TextSpec spec;
 
   final TextSlot slot;
 
-  /// icon is the picture this piece is, or null for words.
   final TextIcon? icon;
 
-  /// gap is the room, in design units, between this piece and what is before
-  /// it: the piece before it in its slot's stack, or for the first piece the
-  /// box edge the slot holds it to (the top edge for a top slot, the bottom
-  /// for a bottom one).
-  ///
-  /// Pieces in one slot are a stack in the order added, kept exactly their
-  /// gaps apart however the box is resized; pieces in different slots move
-  /// apart as the box grows.
+  /// gap is the room in design units between this piece and the one before
+  /// it in its slot's stack, or for the first piece the box edge its slot
+  /// holds it to. A slot's pieces keep exactly their gaps however the box is
+  /// resized; pieces in different slots move apart as it grows.
   final double gap;
 
-  /// box is what is drawn behind this piece (see BoxSpec). The default is
-  /// transparent with no padding, so it takes exactly the room its words do.
+  /// box is drawn behind this piece (see BoxSpec); by default transparent,
+  /// unpadded.
   final BoxSpec box;
 
-  /// side is the room this piece keeps from the edge its slot holds it to
-  /// sideways: rightwards for a left or middle slot, leftwards for a right
-  /// one. Negative moves it the other way.
+  /// side is the room kept from the edge its slot holds it to sideways
+  /// (rightwards for left or middle slots); negative moves it the other way.
   final double side;
 
-  /// hidden leaves the piece out of the drawing while it keeps its place:
-  /// the pieces after it in its slot do not move up.
+  /// hidden leaves the piece out of the drawing while it keeps its place.
   final bool hidden;
 
   /// locked is a piece the canvas will not open for typing.
@@ -124,17 +112,16 @@ class TextItem {
     this.locked = false,
   });
 
-  /// isIcon is whether this piece is a picture.
   bool get isIcon => icon != null;
 
-  /// freshIcon is a new picture piece, waiting for a picture to be chosen.
+  /// freshIcon is a new picture piece awaiting a picture.
   factory TextItem.freshIcon(TextSlot slot) => TextItem(
         id: newElementId(),
         slot: slot,
         icon: const TextIcon(size: 48),
       );
 
-  /// fresh is a new item in [slot], in [like]'s face at a smaller, regular
+  /// fresh is a new item in [slot], in [like]'s face at a smaller regular
   /// weight, since an added piece usually belongs with the element's type.
   factory TextItem.fresh(TextSlot slot, TextSpec like) => TextItem(
         id: newElementId(),
@@ -172,8 +159,7 @@ class TextItem {
         locked: locked ?? this.locked,
       );
 
-  /// scaledBy is this piece at [by] times the size: its type, picture, box
-  /// and spacing. The slot and text are unchanged.
+  /// scaledBy scales its type, picture, box and spacing; slot and text stay.
   TextItem scaledBy(double by) => copyWith(
         spec: spec.scaledBy(by),
         icon: icon?.copyWith(
@@ -183,8 +169,8 @@ class TextItem {
         side: side * by,
       );
 
-  /// says is what the settings panel calls this item: its name, "Picture",
-  /// its first line cut short, or its slot when it has no words yet.
+  /// says is what the panel calls this item: its name, "Picture", its first
+  /// line cut short, or its slot when it has no words yet.
   String get says {
     if (name.trim().isNotEmpty) return name.trim();
     if (isIcon) return "Picture";
@@ -232,6 +218,5 @@ class TextItem {
       );
 }
 
-/// _side reads one side's own room, or null where it has none.
 double? _side(Object? raw) =>
     raw is num ? raw.toDouble().clamp(-400.0, 400.0) : null;

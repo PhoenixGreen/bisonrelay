@@ -7,15 +7,12 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// canvas_sidebar.dart is the Canvas sidebar: a row of icons, one for each
-// sidebar (see sidebar_layout.dart), and the panels of the one chosen, in a
-// panel stack of its own. Along the row: the toggle between full height and
-// above the panels under the canvas, the menu, and the arrow that hides it. A panel's heading dropped on another
-// sidebar's icon moves it there; its ⋯ moves or hides it too. Hidden panels
-// come back, and sidebars change places, in Customise sidebars (see
-// customise_sidebars.dart).
+// canvas_sidebar.dart is the Canvas sidebar: a row of icons, a sidebar each
+// (sidebar_layout.dart), and the chosen one's panels in a panel stack, with
+// the height toggle, menu and hide arrow. A panel's heading dropped on an
+// icon moves it there; hidden panels return in customise_sidebars.dart.
 
-/// canvasNavHeight matches the composer's, so the two pages' sidebars line up.
+/// canvasNavHeight matches the composer's, so the pages' sidebars line up.
 const double canvasNavHeight = 36;
 
 /// sidebarIcon is the icon a sidebar wears, by its name in the layout.
@@ -36,14 +33,12 @@ IconData sidebarIcon(String name) => switch (name) {
       _ => Icons.star_outline,
     };
 
-/// CanvasSidebar is the sidebar: see the top of the file.
 class CanvasSidebar extends StatefulWidget {
   final CanvasController controller;
   final SidebarLayout layout;
   final ValueChanged<SidebarLayout> onLayout;
   final SidebarPanelBodies bodies;
 
-  /// onCustomise opens the sidebars' settings.
   final VoidCallback onCustomise;
 
   /// canSitAbove is whether it may sit above the bottom panels: not with
@@ -71,7 +66,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
 
   /// _seen are the sidebars that have been looked at, kept built so going
   /// back to one is instant (building the design column cold takes over a
-  /// hundred milliseconds). Not built before they are wanted.
+  /// hundred milliseconds); none is built before it is wanted.
   final Set<String> _seen = {};
 
   List<SidebarSet> get _shown => layout.shown(game: controller.document.game);
@@ -89,8 +84,8 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
           var current = _current;
           _seen.add(current.id);
           var shown = _shown;
-          // Squeezed to a sliver -- the Chain filling the window, a panel
-          // dragged over it -- it shows nothing rather than spilling.
+          // Squeezed to a sliver (the Chain filling the window, a panel
+          // dragged over it), it shows nothing rather than spilling.
           return LayoutBuilder(builder: (context, box) {
             if (box.maxHeight < 60) return const SizedBox.shrink();
             return Column(
@@ -106,7 +101,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
                             Offstage(
                               key: ValueKey("sidebar-${s.id}"),
                               offstage: s.id != current.id,
-                              // Nothing hidden should be animating: an offstage
+                              // Nothing hidden may animate: an offstage
                               // spinner would go on scheduling frames.
                               child: TickerMode(
                                 enabled: s.id == current.id,
@@ -138,8 +133,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
         ),
         if (widget.canSitAbove) _modeToggle(theme),
         _menu(theme),
-        // A drawer is already put away by tapping off it, and the chevron
-        // would point at an edge that is not there.
+        // A drawer is put away by tapping off it; a chevron would mislead.
         if (!inDrawer) ...[
           Container(
             width: 1,
@@ -283,8 +277,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
         ]),
       );
 
-  /// _column is sidebar [s]: its panels, and at its foot the panels that
-  /// could go back in it.
+  /// _column is sidebar [s]: its panels, and at its foot those it could take.
   Widget _column(BuildContext context, SidebarSet s, bool showing) {
     var panels = [
       for (var id in s.panels)
@@ -335,8 +328,8 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
   }
 }
 
-/// CanvasSidebarRestoreButton is what is left on the page once the sidebar is
-/// hidden: the one visible way back, since a shortcut alone is undiscoverable.
+/// CanvasSidebarRestoreButton is what is left once the sidebar is hidden:
+/// the one visible way back, since a shortcut alone is undiscoverable.
 class CanvasSidebarRestoreButton extends StatelessWidget {
   final VoidCallback onShow;
   const CanvasSidebarRestoreButton({required this.onShow, super.key});
@@ -350,7 +343,7 @@ class CanvasSidebarRestoreButton extends StatelessWidget {
           child: SizedBox(
             width: 26,
             height: 26,
-            // The same weight as the hide control, so the pair reads as one thing.
+            // The same weight as the hide control, so the pair reads as one.
             child: Icon(Icons.chevron_right,
                 size: 18,
                 color: ThemeNotifier.of(context).colors.onSurfaceVariant),

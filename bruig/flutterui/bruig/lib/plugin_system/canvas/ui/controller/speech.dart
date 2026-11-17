@@ -1,16 +1,13 @@
 part of '../canvas_controller.dart';
 
-// The Speech device, phrasing, hearing takes, MIDI files and the Vocaliser.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Part of CanvasController (state in canvas_controller.dart): the Speech
+// device, phrasing, hearing takes, MIDI files and the Vocaliser.
 
 extension CanvasSpeech on CanvasController {
-  /// speechOf is channel [channel]'s Speech device, or null for none.
   SpeechSpec? speechOf(String channel) =>
       timelineChannels.where((c) => c.key == channel).firstOrNull?.mix.speech;
 
-  /// setSpeech puts a Speech device on [channel] -- or changes it, or with
-  /// null takes it off.
+  /// setSpeech puts, changes or (null) takes off [channel]'s Speech device.
   void setSpeech(String channel, SpeechSpec? spec, {bool transient = false}) {
     var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
     if (lane == null) return;
@@ -28,8 +25,7 @@ extension CanvasSpeech on CanvasController {
         transient: transient);
   }
 
-  /// speechLineState is "speaking" or "waiting" for a line in the queue,
-  /// or null.
+  /// speechLineState is "speaking" or "waiting" for a queued line, or null.
   String? speechLineState(String channel, SpeechLine line) {
     var queue = speechQueue[channel];
     if (queue == null) return null;
@@ -38,9 +34,8 @@ extension CanvasSpeech on CanvasController {
     return queue.contains(key) ? "waiting" : null;
   }
 
-  /// stopSpeaking stops what [channel] is speaking, and lets go of the
-  /// sections waiting: the program speaking is ended, and nothing it was
-  /// part way through is kept. The takes already made stay.
+  /// stopSpeaking stops what [channel] is speaking and drops the sections
+  /// waiting, ending the program part way; the takes already made stay.
   void stopSpeaking(String channel) {
     var stop = _speechStops[channel];
     if (stop == null) return;
@@ -49,8 +44,7 @@ extension CanvasSpeech on CanvasController {
     notifyListeners();
   }
 
-  /// _lineSpeech is [channel]'s device with its lines set out -- those of
-  /// its script, where it has none yet.
+  /// _lineSpeech is [channel]'s device with its lines set out from its script.
   SpeechSpec? _lineSpeech(String channel) {
     var spec = speechOf(channel);
     if (spec == null || spec.lines.isNotEmpty) return spec;
@@ -61,12 +55,11 @@ extension CanvasSpeech on CanvasController {
     return spec;
   }
 
-  /// speakLines speaks [lines] of [channel] -- by default, every line with
-  /// no take yet -- in the background, each into a slot of its own: the
-  /// one it is to replace, or else its first free one. Nothing is put on
-  /// the timeline, nor in the Audio library: see saveTake, addTake and
-  /// joinSpeech. Lines asked for while it runs join the queue. Answers why
-  /// not, where it could not.
+  /// speakLines speaks [lines] of [channel] (by default every line with no
+  /// take yet) in the background, each into its own slot: the one it is to
+  /// replace, else its first free one. Nothing goes on the timeline or in
+  /// the Audio library (see saveTake, addTake, joinSpeech). Lines asked for
+  /// while it runs join the queue. Answers why not, where it could not.
   Future<String?> speakLines(String channel, {List<SpeechLine>? lines}) async {
     var spec = _lineSpeech(channel);
     if (spec == null) return null;
@@ -102,8 +95,7 @@ extension CanvasSpeech on CanvasController {
         if (queue.isEmpty) break;
         var engine = CanvasController.speechEngineFor(now);
         var stop = engine.stopper = _speechStops[channel] = SpeechStop();
-        // Every line waiting, at once, where the engine does better so;
-        // else the first.
+        // Every line waiting at once where the engine batches; else the first.
         var keys = engine.batches ? [...queue] : [queue.first];
         var lines = [for (var k in keys) lineOf(k)!];
         _speakingNow[channel] = {...keys};
@@ -144,10 +136,9 @@ extension CanvasSpeech on CanvasController {
     return problem;
   }
 
-  /// _keepLineTake keeps [audio] as a take of [channel]'s line [key], in
-  /// the slot it was to replace or its first free one, picked. Kept apart
-  /// from the library -- see speechTakeStore. Whether it could be kept; a
-  /// line edited away meanwhile is let go.
+  /// _keepLineTake keeps [audio] as a take of [channel]'s line [key], picked,
+  /// in the slot it was to replace or its first free one, apart from the
+  /// library (see speechTakeStore). False where the line was edited away.
   Future<bool> _keepLineTake(
       String channel, String key, SpokenAudio audio) async {
     var id = await CanvasController.speechTakeStore(wav16(audio.l, audio.r));
@@ -173,9 +164,9 @@ extension CanvasSpeech on CanvasController {
     return true;
   }
 
-  /// anotherTake speaks [line] of [channel] again into slot [slot] -- one
-  /// not in use -- or its first free one. With all three in use, it says
-  /// so: a take is only replaced by the reader, with replaceTake.
+  /// anotherTake speaks [line] of [channel] again into free slot [slot], or
+  /// its first free one. With all three in use it says so: only the reader
+  /// replaces a take, with replaceTake.
   Future<String?> anotherTake(String channel, SpeechLine line, {int? slot}) {
     var into = slot != null && line.slot(slot) == null ? slot : line.freeSlot;
     if (into < 0) {
@@ -186,8 +177,7 @@ extension CanvasSpeech on CanvasController {
     return speakLines(channel, lines: [line]);
   }
 
-  /// replaceTake speaks line [index] of [channel] again into slot [slot],
-  /// in place of the take there.
+  /// replaceTake speaks line [index] of [channel] again over slot [slot].
   Future<String?> replaceTake(String channel, int index, int slot) {
     var spec = _lineSpeech(channel);
     if (spec == null || index < 0 || index >= spec.lines.length) {
@@ -198,8 +188,8 @@ extension CanvasSpeech on CanvasController {
     return speakLines(channel, lines: [line]);
   }
 
-  /// speechReplacing is the slot line [line] of [channel] is being spoken
-  /// into, while it waits or is spoken -- or null.
+  /// speechReplacing is the slot [line] of [channel] is queued or being
+  /// spoken into, or null.
   int? speechReplacing(String channel, SpeechLine line) {
     var key = CanvasController.speechLineKey(line);
     if (!(speechQueue[channel]?.contains(key) ?? false)) return null;
@@ -207,7 +197,7 @@ extension CanvasSpeech on CanvasController {
   }
 
   /// _slotTake is line [index]'s slot [slot] on [channel], with the device
-  /// and the line -- or null for none there.
+  /// and the line, or null.
   (SpeechSpec, SpeechLine, SpeechTake)? _slotTake(
       String channel, int index, int slot) {
     var spec = speechOf(channel);
@@ -230,8 +220,7 @@ extension CanvasSpeech on CanvasController {
         transient: transient);
   }
 
-  /// chooseTake picks slot [slot] of line [index]: the take "Add all
-  /// lines" puts on the timeline.
+  /// chooseTake picks line [index]'s slot [slot] for "Add all lines".
   void chooseTake(String channel, int index, int slot) {
     var spec = speechOf(channel);
     if (spec == null || index < 0 || index >= spec.lines.length) return;
@@ -255,8 +244,8 @@ extension CanvasSpeech on CanvasController {
     endInteraction();
   }
 
-  /// phrasing is the take the Speech device's Phrasing is open on: a
-  /// channel's section, and its slot -- which may have no take yet.
+  /// phrasing is the take Phrasing is open on: a channel's section and its
+  /// slot, which may have no take yet.
   ({String channel, int line, int slot})? get phrasing => _phrasing;
 
   /// phrasingTake is the take Phrasing is open on, as it is now.
@@ -284,8 +273,8 @@ extension CanvasSpeech on CanvasController {
     notifyListeners();
   }
 
-  /// pickWords picks [words] -- [adding] them to those picked, or, a word
-  /// already picked, taking it off.
+  /// pickWords picks [words], [adding] them to those picked (a word already
+  /// picked is taken off).
   void pickWords(Iterable<int> words, {bool adding = false}) {
     var next = <int>{};
     if (adding) {
@@ -308,8 +297,8 @@ extension CanvasSpeech on CanvasController {
   /// word's loudness -- or null until it has been read.
   TakeReading? readingOf(SpeechTake take) => _readings[take.asSpoken.assetId];
 
-  /// _readSpoken reads [spoken] -- a take as the voice spoke it -- once:
-  /// its sound, or null where its file could not be.
+  /// _readSpoken reads [spoken] (a take as the voice spoke it) once: its
+  /// sound, or null where its file could not be.
   Future<Float32List?> _readSpoken(SpeechTake spoken) async {
     var id = spoken.assetId;
     Float32List? pcm;
@@ -353,14 +342,12 @@ extension CanvasSpeech on CanvasController {
     unawaited(_readSpoken(spoken));
   }
 
-  /// phrasingUnread is whether the take Phrasing is open on could not be
-  /// read.
+  /// phrasingUnread is whether Phrasing's take could not be read.
   bool get phrasingUnread =>
       _unreadTakes.contains(phrasingTake?.asSpoken.assetId);
 
-  /// shapeWords shapes several words of the take Phrasing is open on, by
-  /// their places in it, as one change. Its sound is made again a moment
-  /// after the last change.
+  /// shapeWords shapes several words of Phrasing's take, by their places,
+  /// as one change; its sound is made again a moment after the last change.
   void shapeWords(Map<int, WordShape> next, {bool transient = false}) {
     var p = _phrasing;
     var take = phrasingTake;
@@ -374,8 +361,7 @@ extension CanvasSpeech on CanvasController {
     _shapeSoon();
   }
 
-  /// resetPhrasing puts every word of the take back as it was spoken: one
-  /// change to undo.
+  /// resetPhrasing puts every word back as spoken: one change to undo.
   void resetPhrasing() {
     var p = _phrasing;
     var take = phrasingTake;
@@ -396,8 +382,8 @@ extension CanvasSpeech on CanvasController {
   }
 
   /// shapedTake is slot [slot]'s take of [channel]'s section [index], its
-  /// sound made from its shapes first where it is not yet -- what is
-  /// heard, saved, put on the timeline or joined.
+  /// sound made from its shapes first if needed: what is heard, saved, put
+  /// on the timeline or joined.
   Future<SpeechTake?> shapedTake(String channel, int index, int slot) async {
     var key = "$channel/$index/$slot";
     for (var running = _shaping[key];
@@ -443,9 +429,8 @@ extension CanvasSpeech on CanvasController {
     return made;
   }
 
-  /// hearSlot plays slot [slot]'s take of [channel]'s section [index] --
-  /// shaped, or, [spoken], as the voice spoke it -- from [at] seconds into
-  /// it; or, playing, stops it.
+  /// hearSlot plays (or, playing, stops) slot [slot]'s take of [channel]'s
+  /// section [index], shaped or [spoken], from [at] seconds into it.
   Future<String?> hearSlot(String channel, int index, int slot,
       {bool spoken = false, double at = 0}) async {
     var take = spoken
@@ -455,8 +440,8 @@ extension CanvasSpeech on CanvasController {
     return hearTake(take.assetId, at: at);
   }
 
-  /// saveTake puts slot [slot]'s take of line [index] in the Audio library,
-  /// answering it saved -- or why not.
+  /// saveTake puts line [index]'s slot [slot] take in the Audio library,
+  /// answering it saved, or why not.
   Future<(SpeechTake?, String?)> saveTake(
       String channel, int index, int slot) async {
     await shapedTake(channel, index, slot);
@@ -479,10 +464,9 @@ extension CanvasSpeech on CanvasController {
     return (saved, null);
   }
 
-  /// addTake puts slot [slot]'s take of line [index] on the timeline, in a
-  /// clip of its own at the playhead -- saved to the Audio library first,
-  /// and kept with the device so a character's lips follow it. One change
-  /// to undo.
+  /// addTake puts slot [slot]'s take of line [index] in a clip of its own at
+  /// the playhead, saved to the Audio library first and kept with the device
+  /// so a character's lips follow it. One change to undo.
   Future<String?> addTake(String channel, int index, int slot) async {
     var (take, problem) = await saveTake(channel, index, slot);
     if (take == null) return problem;
@@ -517,8 +501,8 @@ extension CanvasSpeech on CanvasController {
     setSpeech(channel, spec.withLines(lines));
   }
 
-  /// joinSpeechLine makes line [index] and the next one line, to be spoken
-  /// as one: its direction the first's, its takes none yet.
+  /// joinSpeechLine joins line [index] and the next, spoken as one: the
+  /// first's direction, no takes yet.
   void joinSpeechLine(String channel, int index) {
     var lines = _lineSpeech(channel)?.lines;
     if (lines == null || index < 0 || index + 1 >= lines.length) return;
@@ -559,12 +543,11 @@ extension CanvasSpeech on CanvasController {
     }
   }
 
-  /// joinSpeech is "Add all lines to the timeline": [channel]'s lines,
-  /// each its slot picked, a pause between each two, given the finish --
-  /// the room and the speaker boost -- in the channel's clip: the one it
-  /// made before, its sound changed, or a new one at the playhead. Saved
-  /// to the Audio library; nothing goes on the timeline but by this, or a
-  /// slot's own addTake. One change to undo.
+  /// joinSpeech is "Add all lines to the timeline": [channel]'s lines, each
+  /// its picked slot, a pause between each two, with the finish (room and
+  /// speaker boost), in the channel's clip: its earlier one with the sound
+  /// changed, or a new one at the playhead. Saved to the Audio library; only
+  /// this and addTake put speech on the timeline. One change to undo.
   Future<String?> joinSpeech(String channel) async {
     var spec = speechOf(channel);
     if (spec == null || !joining.add(channel)) return null;
@@ -659,8 +642,8 @@ extension CanvasSpeech on CanvasController {
   /// nothing. speechPreviewing is the voice being spoken for its preview.
   String? get speechHeard => _speechHeard;
 
-  /// hearTake plays take [assetId] on its own, from [at] seconds into it
-  /// -- or, playing, stops it. Answers why not, where it could not.
+  /// hearTake plays (or, playing, stops) take [assetId] on its own, from
+  /// [at] seconds. Answers why not, where it could not.
   Future<String?> hearTake(String assetId, {double at = 0}) async {
     if (_speechHeard == assetId) {
       stopHearing();
@@ -671,10 +654,9 @@ extension CanvasSpeech on CanvasController {
     return _hear(file, assetId, at: at);
   }
 
-  /// hearSound plays the Audio library's sound [assetId] on its own, at
-  /// [volume] -- a transition's, to try it before keeping it (Ken,
-  /// 2026-11-08) -- or, playing, stops it. Found as a take is, the library
-  /// first; answers why not, where it could not.
+  /// hearSound plays the Audio library's sound [assetId] on its own at
+  /// [volume], to try a transition's before keeping it; or, playing, stops
+  /// it. Found as a take is, library first; answers why not, where it can't.
   Future<String?> hearSound(String assetId, {double volume = 1}) async {
     var what = "sound:$assetId";
     if (_speechHeard == what) {
@@ -689,8 +671,7 @@ extension CanvasSpeech on CanvasController {
   /// hearingSound is whether [assetId] is being heard on its own.
   bool hearingSound(String assetId) => _speechHeard == "sound:$assetId";
 
-  /// heardSeconds is how far into what is being heard on its own it has
-  /// played -- or null, with nothing heard.
+  /// heardSeconds is how far what is heard on its own has played, or null.
   double? get heardSeconds {
     var v = _heardVoice;
     if (v == null || _speechHeard == null) return null;
@@ -715,7 +696,6 @@ extension CanvasSpeech on CanvasController {
     return null;
   }
 
-  /// stopHearing stops what is being heard on its own.
   void stopHearing() {
     _heardWatch?.cancel();
     _heardWatch = null;
@@ -730,9 +710,9 @@ extension CanvasSpeech on CanvasController {
     }
   }
 
-  /// previewVoice speaks speechSample in [voice] -- channel [channel]'s
-  /// device's engine, language and feel, its finish too -- and plays it; or,
-  /// playing, stops it. Not kept: nothing is added to the library.
+  /// previewVoice speaks speechSample in [voice] with [channel]'s device's
+  /// engine, language, feel and finish and plays it, or, playing, stops it.
+  /// Nothing is added to the library.
   Future<String?> previewVoice(String channel, String voice) async {
     var what = "voice:$voice";
     if (_speechHeard == what) {
@@ -852,15 +832,13 @@ extension CanvasSpeech on CanvasController {
     return true;
   }
 
-  /// vocaliserOf is channel [channel]'s Vocaliser, or null for none.
   VocaliserSpec? vocaliserOf(String channel) => timelineChannels
       .where((c) => c.key == channel)
       .firstOrNull
       ?.mix
       .vocaliser;
 
-  /// setVocaliser puts a Vocaliser on [channel], changes it, or with null
-  /// takes it off.
+  /// setVocaliser puts, changes or (null) takes off [channel]'s Vocaliser.
   void setVocaliser(String channel, VocaliserSpec? spec,
       {bool transient = false}) {
     var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
@@ -873,8 +851,8 @@ extension CanvasSpeech on CanvasController {
         transient: transient);
   }
 
-  /// midiChannels are the MIDI channels there are, by key and name: what
-  /// a Vocaliser can sing the notes of.
+  /// midiChannels are the MIDI channels, by key and name, a Vocaliser can
+  /// sing the notes of.
   List<(String, String)> get midiChannels => [
         for (var c in timelineChannels)
           if (instrumentChannel(c.key)) (c.key, c.name),
@@ -927,10 +905,9 @@ extension CanvasSpeech on CanvasController {
     return words.isEmpty ? null : (Float32List.fromList(sound), words);
   }
 
-  /// sing sings [channel]'s Speech -- see singsWhat -- to its Vocaliser's
-  /// melody -- a MIDI channel's notes -- into a new clip on the channel
-  /// where the melody starts. One change to undo. Answers why not, where
-  /// it could not.
+  /// sing sings [channel]'s Speech (see singsWhat) to its Vocaliser's
+  /// melody, a MIDI channel's notes, into a new clip where the melody starts.
+  /// One change to undo. Answers why not, where it could not.
   Future<String?> sing(String channel) async {
     var spec = vocaliserOf(channel);
     if (spec == null) return null;
@@ -997,8 +974,7 @@ extension CanvasSpeech on CanvasController {
     }
   }
 
-  /// renderParts plays every instrument's part that needs it into its
-  /// clip's file, now.
+  /// renderParts plays every instrument's part that needs it into its file.
   Future<void> renderParts() async {
     _partTimer?.cancel();
     for (var e in [..._document.elements]) {
@@ -1075,8 +1051,8 @@ extension CanvasSpeech on CanvasController {
     }
   }
 
-  /// _mediaById is an Audio or Video element on the canvas showing or on the
-  /// master: what a button's media action is aimed at.
+  /// _mediaById is an Audio or Video element on the canvas showing or the
+  /// master: what a button's media action aims at.
   CanvasElement? _mediaById(String id) {
     for (var e in [
       ..._document.elements,
@@ -1088,8 +1064,7 @@ extension CanvasSpeech on CanvasController {
     return null;
   }
 
-  /// _audioById finds an audio element on the canvas showing or on the
-  /// master: the two places a button on this page could mean.
+  /// _audioById finds an audio element on the canvas showing or the master.
   AudioElement? _audioById(String id) {
     for (var e in _document.elements) {
       if (e is AudioElement && e.id == id) return e;
@@ -1100,8 +1075,7 @@ extension CanvasSpeech on CanvasController {
     return null;
   }
 
-  /// _pageAudio is every sound that belongs to what is on screen: the canvas
-  /// showing, and the master under it.
+  /// _pageAudio is every sound on screen: the canvas showing and its master.
   Iterable<AudioElement> get _pageAudio sync* {
     for (var e in _document.elements) {
       if (e is AudioElement) yield e;
@@ -1111,14 +1085,11 @@ extension CanvasSpeech on CanvasController {
     }
   }
 
-  /// _masterHeard is the master as it is heard from the scene showing: all
-  /// of it where the scene draws it, and otherwise -- a scene that leaves it
-  /// off (CanvasScene.masterOff), a game's title with no HUD -- its sounds
-  /// still: its channels are every scene's, a game's music, its effects,
-  /// its narrator. Unheard there, the title's music played through no strip
-  /// at all, and jumped in level when the master was opened (Ken,
-  /// 2026-11-10), and its channels could not be got at from the title.
-  /// None while the master itself is being edited.
+  /// _masterHeard is the master as heard from the scene showing: all of it
+  /// where the scene draws it, else (CanvasScene.masterOff, a game's title
+  /// with no HUD) still its sounds, since its channels are every scene's --
+  /// the music, effects, narrator -- and must play through their strips at
+  /// one level. None while the master itself is being edited.
   List<CanvasElement> get _masterHeard {
     var doc = _document;
     if (doc.editingMaster) return const [];
@@ -1132,9 +1103,8 @@ extension CanvasSpeech on CanvasController {
   }
 
   /// _audioFollowsPage stops whatever does not belong on the canvas now
-  /// showing. [turned] is whether the page actually changed: a master sound
-  /// set to stop at the join stops then, and not when an unrelated edit is
-  /// made.
+  /// showing. [turned] is whether the page changed: a master sound set to
+  /// stop at the join stops then, not at an unrelated edit.
   void _audioFollowsPage({required bool turned}) {
     var a = _audio;
     if (a == null) return;
@@ -1171,9 +1141,8 @@ extension CanvasSpeech on CanvasController {
     bool timed(CanvasElement e) => switch (e) {
           VideoElement v => v.clip.timed && !v.isLink && !v.clip.isEmpty,
           // An instrument is on its channel before it has a note: a MIDI
-          // channel waiting to be played into. So is an empty audio
-          // channel, named and waiting for a sound -- see
-          // addEmptyAudioChannel.
+          // channel waiting to be played into. So is an empty audio channel
+          // waiting for a sound (see addEmptyAudioChannel).
           AudioElement a => a.clip.timed &&
               (!a.clip.isEmpty ||
                   a.instrument != null ||
@@ -1214,8 +1183,7 @@ extension CanvasSpeech on CanvasController {
     var backdrop = {for (var e in document.drawnBackground.media) e.id};
     var onMaster = document.editingMaster;
     var fromMaster = onMaster || document.sharedBackdrop;
-    // Which canvas each clip is on, for the strip's label: the master, or the
-    // scene being edited.
+    // Which canvas each clip is on, for its label: master or edited scene.
     int sceneOf(CanvasElement e) => onMaster ||
             (!here.contains(e.id) && !backdrop.contains(e.id)) ||
             (backdrop.contains(e.id) && fromMaster)
@@ -1228,8 +1196,7 @@ extension CanvasSpeech on CanvasController {
         TimedLane(
           e,
           offset: at - _frame,
-          // A transition's sound belongs to its transition, and is changed
-          // there.
+          // A transition's sound is changed on its transition.
           editable: !e.id.startsWith(transitionSoundPrefix) &&
               (allChannels ||
                   here.contains(e.id) ||
@@ -1261,14 +1228,12 @@ extension CanvasSpeech on CanvasController {
   }
 
   /// allChannels is whether the timeline lists every scene's channels, or
-  /// only the scene being edited and the master's. It is Play all scenes:
-  /// watching the whole run is when every scene's sound is wanted in view.
+  /// only the edited scene's and the master's: on with Play all scenes.
   bool get allChannels => _playAll;
 
   /// timelineReach is how many frames the timeline shows: the scene's, or
-  /// further where a clip on it runs on past the scene's end -- so the rest
-  /// of a long video or song can be scrolled to, seen and trimmed. The frames
-  /// past the scene are drawn as out of it; nothing plays there.
+  /// more where a clip runs past its end, so the rest can be seen and
+  /// trimmed. Frames past the scene are drawn as out of it; nothing plays.
   int get timelineReach {
     var most = _document.frames;
     var rate = math.max(1, _document.frameRate);
@@ -1363,16 +1328,14 @@ extension CanvasSpeech on CanvasController {
     ];
   }
 
-  /// moveChannel puts the channel [key] at [to] in the list -- the strip
-  /// dragged up or down.
+  /// moveChannel puts channel [key] at [to] in the list: its strip dragged.
   void moveChannel(String key, int to) {
     var keys = [for (var c in timelineChannels) c.key];
     var from = keys.indexOf(key);
     if (from < 0) return;
     keys.removeAt(from);
     keys.insert(to.clamp(0, keys.length).toInt(), key);
-    // The ones not in view now -- another scene's, with every scene off --
-    // keep the places they were given.
+    // Those not in view (another scene's) keep the places they were given.
     _channelOrder = [
       ...keys,
       for (var k in _channelOrder)

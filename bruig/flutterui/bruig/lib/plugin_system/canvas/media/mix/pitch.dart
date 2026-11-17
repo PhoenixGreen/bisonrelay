@@ -6,21 +6,16 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
     show scaleSteps;
 
-// pitch.dart detects a voice's pitch (YIN) and moves it (TD-PSOLA). The
-// Tuner uses the first, Auto-tune both.
-//
-// YIN (de Cheveigné and Kawahara, 2002) takes the period as the first lag
-// whose cumulative-mean-normalised difference falls under a threshold.
-//
-// TD-PSOLA shifts pitch without shifting formants, so a voice moved up is
-// not a chipmunk: windowed two-period slices are laid down again closer
-// together (higher) or further apart (lower).
+// pitch.dart detects pitch with YIN (de Cheveigné and Kawahara, 2002: the
+// first lag whose cumulative-mean-normalised difference is under a
+// threshold) and moves it with TD-PSOLA, keeping formants. Tuner uses the
+// first, Auto-tune both.
 
 /// PitchReading is what YIN heard: the pitch in Hz and its clarity, 0 to 1.
 typedef PitchReading = ({double hz, double clarity});
 
-/// _cmnd is detectPitch's row, each lag's cumulative mean normalised
-/// difference: kept between calls rather than made at every one.
+/// _cmnd is detectPitch's per-lag cumulative mean normalised difference,
+/// kept between calls rather than made anew.
 Float64List _cmnd = Float64List(0);
 
 /// detectPitch finds [x]'s pitch at [rate] samples a second, between
@@ -40,11 +35,8 @@ PitchReading? detectPitch(Float32List x,
     energy += x[i] * x[i];
   }
   if (energy / w < 1e-7) return null;
-  // Worked out lag by lag, and no further than the dip it settles in: the
-  // cumulative mean at a lag needs only the lags before it, so stopping
-  // there gives what working out every lag gave, for a fraction of the
-  // work at a voice's pitches (Ken's systems review, 2026-11-08: an
-  // Auto-tune took a good share of a core). Its rows kept between calls.
+  // Lag by lag, stopping at the dip: a lag's cumulative mean needs only the
+  // lags before it, so the answer is the same for a fraction of the work.
   if (_cmnd.length < maxLag + 1) _cmnd = Float64List(maxLag + 1);
   var cmnd = _cmnd..[0] = 1;
   var running = 0.0;
@@ -107,25 +99,20 @@ double snapNote(double midi, int root, List<int> steps) {
   return best;
 }
 
-/// AutoTune pulls a voice towards the nearest note of a key and scale by
-/// [_amount], easing the correction in over the retune time (zero gives the
-/// robotic sound). Slices are taken [latency] behind the input and emitted
-/// [_settle] behind where they are laid, a fixed delay of the two together.
+/// AutoTune pulls a voice toward the nearest scale note by [_amount], eased
+/// over the retune time (zero is robotic). Slices are taken [latency] behind
+/// and emitted [_settle] behind: a fixed delay.
 class AutoTune implements DeviceProcessor, Tunable {
   static const int latency = 1024;
 
-  /// _settle is how far behind the newest slice output is read: at least
-  /// half a slice at the lowest pitch, so every slice touching a sample is
-  /// laid before it goes out.
+  /// _settle is how far behind the newest slice output is read: half a slice
+  /// at the lowest pitch, so every slice touching a sample is laid first.
   static const int _settle = 1024;
   static const int _size = 8192;
   static const int _window = 2048;
 
-  /// _hop is how often it listens for the pitch sung, in samples: every
-  /// ninetieth of a second -- what pitch trackers step by, and quick enough
-  /// to follow a note sung -- where every 256 (half that) was twice the work
-  /// for nothing heard (Ken, 2026-11-08: "reduce this to a more optimal
-  /// amount").
+  /// _hop is how often the pitch is read, in samples: a ninetieth of a
+  /// second, as trackers step; halving it doubles work for nothing heard.
   static const int _hop = 512;
 
   int _root;
@@ -133,10 +120,9 @@ class AutoTune implements DeviceProcessor, Tunable {
   double _amount;
   double _ease;
 
-  /// _retuneMs, _humanise and _vibrato: see the device's knobs. _slow is
-  /// the pitch heard, smoothed over about a tenth of a second -- the note
-  /// being sung, without its vibrato -- and _held how long it has been on
-  /// one note, in samples.
+  /// _retuneMs, _humanise and _vibrato: see the knobs. _slow is the pitch
+  /// smoothed over a tenth of a second (the note without vibrato); _held is
+  /// how long one note has been held, in samples.
   double _retuneMs, _humanise, _vibrato;
   double? _slow;
   int _held = 0;
@@ -146,8 +132,8 @@ class AutoTune implements DeviceProcessor, Tunable {
   final Float32List _outL = Float32List(_size), _outR = Float32List(_size);
   final Float32List _scratch = Float32List(_window);
 
-  /// _t is how many samples have gone in; _synth the next place a slice is
-  /// laid down, in output time; _mark the last slice's place in the input.
+  /// _t is how many samples have gone in; _synth the next slice's place in
+  /// output time; _mark the last slice's place in the input.
   int _t = 0;
   double _synth = latency.toDouble();
   double _mark = 0;
@@ -176,9 +162,8 @@ class AutoTune implements DeviceProcessor, Tunable {
       : scaleSteps[
           (d.value("scale").round() - 1).clamp(0, scaleSteps.length - 1)];
 
-  /// tune takes [d]'s settings as it plays: what it has heard and what it
-  /// holds back are kept, so a knob turned -- or an LFO on it -- does not
-  /// leave a gap while it listens again.
+  /// tune takes [d]'s settings as it plays, keeping what it has heard and
+  /// holds back, so a turned knob or LFO leaves no gap.
   @override
   void tune(MixDevice d) {
     _root = _rootOf(d);
@@ -209,8 +194,8 @@ class AutoTune implements DeviceProcessor, Tunable {
     }
     _period = 48000 / p.hz;
     var midi = midiOf(p.hz);
-    // The note sung, under its vibrato: a jump of more than half a
-    // semitone is a new note, taken at once.
+    // The note sung, under its vibrato: a jump of over half a semitone is
+    // a new note, taken at once.
     var slow = _slow;
     if (slow == null || (midi - slow).abs() > 0.7) {
       slow = midi;
@@ -225,8 +210,8 @@ class AutoTune implements DeviceProcessor, Tunable {
     // The note sung goes onto the scale; its vibrato is kept, by Vibrato.
     var to = snapNote(slow, _root, _steps) + _vibrato * (midi - slow);
     _target = math.pow(2, (to - midi) * _amount / 12).toDouble();
-    // Held a while, eased on more slowly, by Humanise: up to three tenths
-    // of a second more once it has been held for a sixth of one.
+    // Held a while, eased more slowly by Humanise: up to 0.3 s more once
+    // held for a sixth of a second.
     var settled = (_held / (48000 / 6)).clamp(0.0, 1.0);
     _easeNow = _easeFor(_retuneMs + _humanise * 300 * settled);
   }
@@ -244,12 +229,11 @@ class AutoTune implements DeviceProcessor, Tunable {
       }
       _ratio =
           _easeNow == 0 ? _target : _target + (_ratio - _target) * _easeNow;
-      // Lay down every slice due by now: two periods of the input [latency]
-      // behind, spaced the period over the ratio, each scaled by 1/ratio
-      // as that many more overlap.
+      // Every slice due: two input periods [latency] behind, a period over
+      // the ratio apart, scaled by 1/ratio for the extra overlap.
       while (_synth <= _t) {
         var at = _synth - latency;
-        // The input's own marks a period apart: the one nearest.
+        // The input's own marks a period apart: the nearest.
         while (_mark + _period < at) {
           _mark += _period;
         }
@@ -267,7 +251,7 @@ class AutoTune implements DeviceProcessor, Tunable {
         }
         _synth += _period / _ratio;
       }
-      // Take what is due out now and clear it for the next time round.
+      // Take out what is due and clear it for the next time round.
       var o = (_t - 1 - _settle) & (_size - 1);
       l[i] = _outL[o];
       r[i] = _outR[o];
@@ -278,7 +262,7 @@ class AutoTune implements DeviceProcessor, Tunable {
 }
 
 /// PitchListener is a device that only listens (a tuner or a spectrum),
-/// keeping the [heard] pitch for the panel to read when [pitch].
+/// keeping the [heard] pitch for the panel when [pitch].
 class PitchListener implements DeviceProcessor {
   final Float32List _buffer = Float32List(2048);
   final Float32List _ordered = Float32List(2048);
@@ -287,17 +271,16 @@ class PitchListener implements DeviceProcessor {
   final bool pitch;
   PitchListener({this.pitch = false});
 
-  /// _askedAt is when its reading was last asked for (see asked), on
-  /// [_clock]. Not asked for in a second -- nothing showing it -- it stops
-  /// listening, and starts again when it is (Ken, 2026-11-08).
+  /// _askedAt is when its reading was last asked for (see asked); unasked
+  /// for a second, it stops listening until asked.
   int _askedAt = -1 << 40;
   static final Stopwatch _clock = Stopwatch()..start();
 
-  /// asked notes its reading being read: by a tuner's screen, through
+  /// asked notes its reading being read, by a tuner's screen through
   /// MixGraph.pitchOf.
   void asked() => _askedAt = _clock.elapsedMilliseconds;
 
-  /// listening is whether it is worth working out: shown somewhere lately.
+  /// listening is whether it is worth working out: shown lately.
   bool get listening => pitch && _clock.elapsedMilliseconds - _askedAt < 1000;
 
   @override

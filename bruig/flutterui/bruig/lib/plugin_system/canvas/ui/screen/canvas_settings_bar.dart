@@ -22,54 +22,39 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // canvas_settings_bar.dart is the band of controls above the canvas, and the
-// panel of canvas settings that drops out of it.
-//
-// The band is always exactly one line: the tools, the zoom, and the actions
-// that must never move (undo, redo and Publish).
-//
-// The canvas settings are a separate widget, CanvasSettingsPanel, which the
-// screen puts in the line under the band (see canvasSecondLine).
-//
-// The frame count lives on the timeline, beside the frames it counts.
+// panel of canvas settings that drops out of it. The band is always one
+// line: the tools, the zoom, and the actions that never move (undo, redo,
+// Publish). CanvasSettingsPanel goes in the line under the band (see
+// canvasSecondLine). The frame count is on the timeline.
 
 /// _typeARate is the Rate list's Custom entry. Not a rate, so it cannot
-/// collide with one: every real rate is at least one, and zero is the entry
-/// naming the rate that is set.
+/// collide: real rates are at least one, and zero names the rate set.
 const int _typeARate = -1;
 
-/// CanvasSettingsBar is the settings band.
 class CanvasSettingsBar extends StatefulWidget {
   final CanvasController controller;
 
-  /// onPublish opens the publish sheet. Held by the screen, which has the
+  /// onPublish opens the publish sheet, held by the screen, which has the
   /// document's saved name and the image store.
   final VoidCallback onPublish;
 
   /// canvasSettingsOpen and onToggleCanvasSettings drive the settings panel
-  /// the screen puts under the band.
+  /// under the band; guidesOpen and onToggleGuides the grid and guides line.
   final bool canvasSettingsOpen;
   final VoidCallback onToggleCanvasSettings;
 
-  /// guidesOpen and onToggleGuides drive the grid and guides line, which opens
-  /// in the same place and the same way.
   final bool guidesOpen;
   final VoidCallback onToggleGuides;
 
-  /// timelineOpen and onToggleTimeline show and hide the transport and the
-  /// strip under the canvas. Beside the other two, since it too decides how
-  /// much of the window the design gets.
   final bool timelineOpen;
   final VoidCallback onToggleTimeline;
 
-  /// canvasShown is whether the canvas itself is on screen, and
-  /// onToggleCanvas puts it away or brings it back: put away, the mixer and
-  /// the effects have the whole of the room it was in.
+  /// canvasShown is whether the canvas is on screen; onToggleCanvas puts it
+  /// away, giving the mixer and effects its room, or brings it back.
   final bool canvasShown;
   final VoidCallback? onToggleCanvas;
 
-  /// onShowSidebar brings a hidden sidebar back, and is null while it is
-  /// showing. See CanvasSidebarRestoreButton: a hidden sidebar needs a way
-  /// back somewhere predictable.
+  /// onShowSidebar brings a hidden sidebar back; null while it shows.
   final VoidCallback? onShowSidebar;
 
   const CanvasSettingsBar({
@@ -110,8 +95,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
     if (mounted) setState(() {});
   }
 
-  /// _menuHidden is whether the app's menu is put away for the canvas;
-  /// false where there are no preferences to say (a test's bar).
+  /// _menuHidden is whether the app's menu is put away; false in a test.
   bool _menuHidden(BuildContext context) {
     try {
       return Provider.of<CanvasPreferences>(context).menuHidden;
@@ -134,8 +118,8 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
-          // The app's logo, while its menu is put away for the canvas: the way
-          // back to it. See CanvasPreferences.menuHidden.
+          // The app's logo while its menu is put away for the canvas: the way
+          // back to it (CanvasPreferences.menuHidden).
           if (_menuHidden(context))
             Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -154,12 +138,11 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                 ),
               ),
             ),
-          // The tools and the zoom in one stretch that takes all the room the
-          // buttons on the right do not want; a narrow window scrolls the tools
-          // rather than pushing the row under the buttons. Expanded with no Spacer
-          // after it: two flexible children split the leftover width between them,
-          // leaving a hole when there is room and hiding the last tools when there
-          // is not. The zoom sits against the tools as the end of that group.
+          // The tools and zoom in one stretch taking the room the right-hand
+          // buttons do not; a narrow window scrolls the tools rather than
+          // pushing the row under the buttons. No Spacer after it: two
+          // flexible children would split the leftover, leaving a hole or
+          // hiding the last tools.
           Expanded(
             child: Row(children: [
               Flexible(
@@ -169,8 +152,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                 ),
               ),
               _zoomGroup(theme),
-              // The rule that closes the group, so the percentage reads as the end
-              // of the view controls.
+              // Closes the group, so the percentage ends the view controls.
               _divider(theme),
             ]),
           ),
@@ -181,8 +163,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
     );
   }
 
-  /// _viewControls is the tools and the zoom: how you are looking at the
-  /// canvas, rather than what is on it.
+  /// _viewControls is the tools and zoom: how the canvas is looked at.
   Widget _viewControls(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -190,8 +171,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
             CanvasSidebarRestoreButton(onShow: widget.onShowSidebar!),
             _divider(theme),
           ],
-          // Which canvas of several is showing, first: everything to the right is
-          // about that canvas. Hidden for a document of one scene.
+          // Which scene shows, first, as all to its right is about it.
           if (controller.document.hasScenes) ...[
             _barButton(theme,
                 icon: Icons.skip_previous_outlined,
@@ -209,10 +189,9 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                     : () => controller.goToScene(controller.document.at + 1)),
             _divider(theme),
           ],
-          // The tools first, because the active one changes what every other
-          // gesture does. On a 3D stage they are what the gizmo on the selected
-          // element does (move, rotate, scale) and how much of the view controls
-          // float at the stage's right.
+          // The tools first: the active one changes what every gesture does.
+          // On a 3D stage they are what the gizmo does (move, rotate, scale)
+          // and how much of the view controls float at the stage's right.
           if (controller.onStage3d) ...[
             for (var (tool, icon) in const [
               (StageTool.move, Icons.open_with),
@@ -290,10 +269,9 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               active: controller.pageLocked,
               onPressed: () => controller.pageLocked = !controller.pageLocked),
           _divider(theme),
-          // The joins between text boxes: locked so a drag cannot change them,
-          // and hidden so the lines stop crossing the design. Like the boxes and
-          // handles, drawn while working and never published. Only where there
-          // is a join.
+          // Text box joins: locked so a drag cannot change them, and hidden
+          // so the lines stop crossing the design. Drawn while working, never
+          // published; only where there is a join.
           if (_hasJoins) ...[
             _barButton(theme,
                 icon: controller.lockJoins ? Icons.link_off : Icons.link,
@@ -313,8 +291,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                 active: controller.hideJoins,
                 onPressed: () => controller.hideJoins = !controller.hideJoins),
           ],
-          // Every element's box, or only the selected one's: one switch for the
-          // canvas, drawn while working and never published.
+          // Every element's box, or only the selected one's.
           _barButton(theme,
               icon: controller.showAllBounds
                   ? Icons.select_all
@@ -336,11 +313,11 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               onPressed: () =>
                   controller.showHelpers = !controller.showHelpers),
           _divider(theme),
-          // What the window shows, before the zoom: fit it all in, fit the
-          // width, and show the room outside the page. "All of it" differs by
-          // shape (a wide banner is limited by the height; a 9:16 story fitted
-          // whole is a narrow strip), so one button says which it is and a press
-          // changes to the other, or, zoomed away from it, goes back.
+          // What the window shows before the zoom: fit it all, fit the width,
+          // or show the room outside the page. "All of it" differs by shape
+          // (a banner is limited by height, a 9:16 story is a narrow strip),
+          // so the button says which it is; a press changes to the other, or,
+          // zoomed away, goes back.
           _barButton(theme,
               key: const ValueKey("canvasFit"),
               icon: controller.fit == CanvasFit.whole
@@ -365,8 +342,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                       : (controller.fit == CanvasFit.whole
                           ? controller.fitWidth()
                           : controller.showWhole())),
-          // The world just outside the canvas, for building entrances and
-          // exits.
+          // The world outside the canvas, for building entrances and exits.
           _barButton(theme,
               icon: controller.showOverspill
                   ? Icons.select_all
@@ -381,17 +357,15 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         ],
       );
 
-  /// _zoomGroup is the zoom's reading, kept out of the scrolling part of the
-  /// bar: it is the one thing here that has to be read, and in the scrolling
-  /// row a narrow window would push it under the buttons on the right.
+  /// _zoomGroup is the zoom reading, kept out of the scrolling part: it
+  /// must be read, and would be pushed under the right-hand buttons.
   Widget _zoomGroup(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           _divider(theme),
-          // What is on screen: document pixels to screen pixels, the fitted scale
-          // times the zoom (the zoom alone would read 100% for a 4096-pixel canvas
-          // squeezed into a third of a window). A field, to type a percentage;
-          // dragged sideways, it scrubs.
+          // Document to screen pixels, the fitted scale times the zoom (the
+          // zoom alone would read 100% for a 4096-pixel canvas squeezed into
+          // a third of a window). Typed into, or dragged sideways to scrub.
           _ZoomField(controller: controller, theme: theme),
         ],
       );
@@ -406,22 +380,19 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
     return false;
   }
 
-  /// _actions is the canvas settings toggle, undo, redo and Publish, pinned to
-  /// the right of the band. Publish is an icon, its tooltip carrying the word.
+  /// _actions is the settings toggle, undo, redo and Publish, pinned right.
   Widget _actions(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // The grid, guides and rulers, all behind one button: the panel is
-          // where they are set up.
+          // Grid, guides and rulers behind one button: the panel sets them up.
           _barButton(theme,
               icon: Icons.grid_4x4,
               tooltip: "Grid, guides, rulers and snapping",
               active: widget.guidesOpen,
               onPressed: widget.onToggleGuides),
           _divider(theme),
-          // The timeline, beside the canvas settings: both open a line across
-          // the window. The mixer's button is on the timeline, beside the
-          // effects'.
+          // The timeline beside the canvas settings: both open a line across
+          // the window. The mixer's button is on the timeline.
           _barButton(theme,
               icon: Icons.view_timeline_outlined,
               tooltip: widget.timelineOpen
@@ -434,9 +405,8 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               tooltip: "Canvas settings",
               active: widget.canvasSettingsOpen,
               onPressed: widget.onToggleCanvasSettings),
-          // Lit while the canvas is away, as the others are lit while what they
-          // open is out: the unusual state is the one to see. Not on an audio
-          // document, which has no canvas to show.
+          // Lit while the canvas is away: the unusual state is the one to
+          // see. Not on an audio document, which has no canvas to show.
           if (widget.onToggleCanvas != null)
             _barButton(theme,
                 key: const ValueKey("toggleCanvas"),
@@ -448,8 +418,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                     : "Show the canvas",
                 active: !widget.canvasShown,
                 onPressed: widget.onToggleCanvas),
-          // Made into a game: the Game panel in the sidebar, where each element
-          // is given what it does, and the game is played from.
+          // Made into a game: the Game panel, where elements get their parts.
           _barButton(theme,
               key: const ValueKey("makeGame"),
               icon: Icons.sports_esports_outlined,
@@ -497,9 +466,8 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         color: theme.colors.outlineVariant,
       );
 
-  /// _barButton is a control in one of the two pinned clusters: not a
-  /// CanvasIconButton, whose top padding lines it up with a captioned
-  /// control, since this row has no captions.
+  /// _barButton is a control in a pinned cluster: not a CanvasIconButton,
+  /// whose top padding lines up with captions this row does not have.
   Widget _barButton(
     ThemeNotifier theme, {
     required IconData icon,
@@ -536,10 +504,9 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
       );
 }
 
-/// CanvasSettingsPanel is the canvas's own settings: its shape, its export
-/// width, and what publishing it will cost. The screen shows it under the
-/// band while the band's Canvas settings button is pressed (see
-/// canvasSecondLine).
+/// CanvasSettingsPanel is the canvas's own settings: shape, export width and
+/// what publishing will cost, shown under the band while the Canvas
+/// settings button is pressed.
 class CanvasSettingsPanel extends StatefulWidget {
   final CanvasController controller;
   const CanvasSettingsPanel({required this.controller, super.key});
@@ -572,9 +539,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       groups: (context) => _canvasGroups(context, ThemeNotifier.of(context)));
 
   /// _estimateGroup is what publishing this canvas will cost, beside the
-  /// ratio and export width that decide it. An estimate rather than a
-  /// measurement, and it says so: rendering on every edit would be too slow.
-  /// See estimateStillBytes.
+  /// ratio and width that decide it. An estimate, and it says so: rendering
+  /// on every edit would be too slow. See estimateStillBytes.
   Widget _estimateGroup(
       BuildContext context, ThemeNotifier theme, CanvasDocument document) {
     var spec = document.estimate;
@@ -613,8 +579,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               Tooltip(
                 message: "There are keyframes past the end of the timeline. "
                     "Raise the frame count to reach them.",
-                // error rather than tertiary: tertiary is a panel background, near-black
-                // in the dark theme.
+                // error, not tertiary: tertiary is a panel background,
+                // near-black in the dark theme.
                 child: Icon(Icons.warning_amber_rounded,
                     size: 14, color: theme.colors.error),
               ),
@@ -622,8 +588,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           ]),
         ),
       ),
-      // What it is estimated as: the same canvas is four hundred kilobytes
-      // as a PNG and forty as a JPEG.
+      // A canvas is four hundred kilobytes as a PNG and forty as a JPEG.
       CanvasDropdown<EstimateAs>(
         key: const ValueKey("estimateAs"),
         label: "As a",
@@ -658,10 +623,9 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     ]);
   }
 
-  /// _audioGroup is the document's sound as a production: where it is going
-  /// (a preset that sets everything at once), how it is written, and how loud
-  /// it is brought to. Tempo, metre and quantise are on the timeline's control
-  /// bar.
+  /// _audioGroup is the document's sound as a production: its destination
+  /// preset, how it is written, and how loud. Tempo, metre and quantise are
+  /// on the timeline's control bar.
   Widget _audioGroup(CanvasDocument document) {
     var audio = document.audio;
     var export = audio.export;
@@ -779,10 +743,9 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     /// write is an immediate change (a dropdown), its own undo step.
     void write(CanvasDocument next) => controller.apply(next);
 
-    /// edit is a change being made continuously, by typing or dragging. It
-    /// opens the undo step itself: beginInteraction is idempotent, and a
-    /// transient edit made outside an interaction is silently never pushed onto
-    /// the history.
+    /// edit is a continuous change, typed or dragged, opening the undo step
+    /// itself: beginInteraction is idempotent, and a transient edit outside
+    /// an interaction is silently never pushed onto the history.
     void edit(CanvasDocument next) {
       controller.beginInteraction();
       controller.apply(next, transient: true);
@@ -790,9 +753,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
 
     return [
       CanvasControlGroup(label: "Canvas", children: [
-        // What this document is for, first, because everything after follows
-        // from it: the canvas's shape, its rate, what happens between two of
-        // them and what they are called. See CanvasKind.
+        // What this document is for, first: shape, rate, scene joins and
+        // names follow from it. See CanvasKind.
         CanvasDropdown<CanvasKind>(
           key: const ValueKey("canvasKind"),
           label: "Type",
@@ -807,8 +769,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             "pages, and one gives way to the next with a page turn. Choosing "
             "Pages puts a new canvas on A4 at one frame a second; a canvas "
             "already on paper is left as it is."),
-        // A piece of sound starts with no picture (Ratio "None") and can be
-        // given one. Everything else always has one.
+        // Sound starts with no picture (Ratio "None") and can be given one;
+        // everything else always has one.
         if (document.kind.isAudio)
           CanvasDropdown<String>(
             key: const ValueKey("canvasRatio"),
@@ -836,9 +798,9 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             value: document.size.ratio,
             width: 116,
             options: [for (var r in CanvasRatio.values) (r, r.label)],
-            // The shapes this document is laid out for are marked in the list,
-            // each with a cross to give it up: clicking a shape starts a layout for
-            // it. See CanvasDocument.targets.
+            // Shapes this document is laid out for are marked, each with a
+            // cross to give it up; clicking one starts a layout for it. See
+            // CanvasDocument.targets.
             marked: {
               for (var r in CanvasRatio.values)
                 if (document.targets.contains(r.name)) r,
@@ -847,8 +809,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                 ? "Lay ${r.label} out again from another shape"
                 : "Stop laying out for ${r.label}",
             onRemove: (r) {
-              // The shape on screen cannot simply be dropped, so its cross lays it
-              // out again from another.
+              // The shape on screen cannot be dropped: its cross lays it out
+              // again from another.
               if (r.name != shapeKey(document.size)) {
                 controller.forgetShape(r.name);
                 return;
@@ -859,26 +821,23 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               if (other != null) controller.resetShape(other);
             },
             onChanged: (v) {
-              // A shape change carries its own frame rate with it, but only where
-              // nobody has chosen one (a typed 30 is kept).
+              // A shape change brings its own frame rate, but only where none
+              // was chosen (a typed 30 is kept).
               var rate = document.frameRate;
               if (rate == defaultRateFor(document.size.ratio, document.kind)) {
-                // Through defaultRateFor rather than the shape alone: a document of
-                // pages on A4 must not drop to one frame a second, because its pages
-                // turn.
+                // Through defaultRateFor, not the shape alone: pages on A4
+                // turn, so must not drop to one frame a second.
                 rate = defaultRateFor(v, document.kind);
               }
-              // Through the controller, which keeps the layout of the shape being
-              // left and takes out the one of the shape being opened. See
-              // CanvasController.setShape.
+              // Through the controller, which keeps the layout of the shape
+              // left and takes out the one opened (CanvasController.setShape).
               controller.setShape(document.size.copyWith(ratio: v),
                   frameRate: rate);
             },
           ),
-        // The sizes that have a name in this shape, beside the box that takes
-        // any other number: 1920 across is 1080p at 16:9 and nothing on A4, so
-        // the list follows the ratio. With no canvas there is no size nor frames
-        // to count: the timeline goes by the tempo.
+        // The named sizes of this shape beside a box for any other: 1920
+        // across is 1080p at 16:9 and nothing on A4. With no canvas there is
+        // no size or frame count: the timeline goes by the tempo.
         if (document.hasCanvas) ...[
           if (sizePresetsFor(document.size.ratio) case var named
               when named.isNotEmpty)
@@ -914,8 +873,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                 size: document.size.copyWith(exportWidth: v.round()))),
             onCommit: controller.endInteraction,
           ),
-          // How many frames a second this canvas runs at, beside the shape since
-          // the answer follows it: a page is one a second, a screen twenty-four.
+          // Frames a second, beside the shape since it follows it: a page is
+          // one a second, a screen twenty-four.
           CanvasDropdown<int>(
             key: const ValueKey("canvasRatePreset"),
             label: "Rate",
@@ -924,8 +883,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                 : 0,
             width: 118,
             options: [
-              // The rate somebody has typed, at the top and only while it is set:
-              // there is never more than one custom rate to keep.
+              // A typed rate, at the top and only while set: there is never
+              // more than one custom rate to keep.
               if (!canvasFrameRates.contains(document.frameRate))
                 (0, "Custom · ${document.frameRate}"),
               for (var rate in canvasFrameRates)
@@ -933,7 +892,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               (_typeARate, "Custom…"),
             ],
             onChanged: (v) async {
-              // The rate already set: writing it would be an undo step for nothing.
+              // The rate already set: writing it would be an empty undo step.
               if (v == 0) return;
               if (v != _typeARate) {
                 write(document.copyWith(frameRate: v));
@@ -942,8 +901,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               var typed =
                   await askForFrameRate(context, initial: document.frameRate);
               if (typed == null) return;
-              // The document as it is now: the one captured when the list was built
-              // is out of date by the time the dialog closes.
+              // The document now: the one captured when the list was built is
+              // out of date once the dialog closes.
               write(controller.document.copyWith(frameRate: typed));
             },
           ),
@@ -961,15 +920,13 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               onCommit: controller.endInteraction,
             ),
           Padding(
-            // No nudge: these readouts only appear on the band, where captions are
-            // beside their controls and there is nothing above to line up under.
+            // No nudge: on the band, captions sit beside their controls.
             padding: const EdgeInsets.only(left: 2),
             child: SizedBox(
               height: controlHeight,
               child: Center(
                 child: Text(
-                  // The file's size: where the design is laid out smaller and published
-                  // larger, the larger number.
+                  // The file's size: the larger, where published larger.
                   "${document.size.exportWidth} × ${document.size.exportHeight}",
                   style: TextStyle(
                       fontSize: 10, color: theme.colors.onSurfaceVariant),
@@ -1027,10 +984,10 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                   "paired with another page"}."),
         ]),
       _audioGroup(document),
-      // What changing the size does, at the end of the line. On, the size is
-      // a resolution: the design is drawn in its own space and scaled on the
-      // way out, so 4K is the same picture with four times the pixels. Off, it
-      // is a page: the design keeps its scale and there is more room round it.
+      // What changing the size does. On, the size is a resolution: the
+      // design is drawn in its own space and scaled on the way out, so 4K is
+      // the same picture with more pixels. Off, it is a page: the design
+      // keeps its scale and gains room round it.
       if (document.hasCanvas)
         CanvasControlGroup(label: "Scaling", children: [
           CanvasToggle(
@@ -1046,14 +1003,14 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               "same picture with more pixels in it. Off, the size is a page: "
               "the design keeps its scale and there is more room around it."),
         ]),
-      // Last, at the far end of the row: what all of the above comes to.
+      // Last: what all of the above comes to.
       _estimateGroup(context, theme, document),
     ];
   }
 }
 
-/// _SceneField is which canvas of how many, and a way to type a number and
-/// go there. It says Master while the shared canvas is being edited.
+/// _SceneField is which scene of how many, with a box to type one to go to.
+/// It says Master while the shared canvas is edited.
 class _SceneField extends StatefulWidget {
   final CanvasController controller;
   final ThemeNotifier theme;
@@ -1068,8 +1025,7 @@ class _SceneFieldState extends State<_SceneField> {
   final TextEditingController _text = TextEditingController();
   final FocusNode _focus = FocusNode();
 
-  /// _shown is what the box last said, so the text is only replaced when the
-  /// scene has changed.
+  /// _shown is what the box last said; the text is replaced on a new scene.
   String _shown = "";
 
   @override
@@ -1125,8 +1081,7 @@ class _SceneFieldState extends State<_SceneField> {
             key: const ValueKey("sceneField"),
             controller: _text,
             focusNode: _focus,
-            // Centred between the two buttons, since the box is as wide as the
-            // longest reading.
+            // Centred: the box is as wide as the longest reading.
             textAlign: TextAlign.center,
             style: type,
             decoration: InputDecoration(
@@ -1154,11 +1109,10 @@ class _SceneFieldState extends State<_SceneField> {
   }
 }
 
-/// _ZoomField is the percentage on the band: what is on screen, and a place
-/// to type what you want instead, or, dragged sideways, to scrub it (right
-/// zooms in, left out). A double-click fits the canvas again, and a single
-/// click opens it for typing. Still while the page is locked. Not a
-/// CanvasNumberField, whose caption and box would make the band two lines.
+/// _ZoomField is the percentage on the band: what is on screen, typed into
+/// after a click, or dragged sideways to scrub (right zooms in). A
+/// double-click fits the canvas again. Still while the page is locked. Not a
+/// CanvasNumberField, whose caption would make the band two lines.
 class _ZoomField extends StatefulWidget {
   final CanvasController controller;
   final ThemeNotifier theme;
@@ -1173,8 +1127,8 @@ class _ZoomFieldState extends State<_ZoomField> {
   final TextEditingController _text = TextEditingController();
   final FocusNode _focus = FocusNode();
 
-  /// _shown is what the box last said, so the text is only replaced when the
-  /// view has moved, not on every rebuild, which would fight somebody typing.
+  /// _shown is what the box last said, so the text is replaced only when the
+  /// view moves: replacing it every rebuild would fight the typist.
   int _shown = -1;
 
   @override
@@ -1208,11 +1162,9 @@ class _ZoomFieldState extends State<_ZoomField> {
     });
   }
 
-  /// _typing is whether the reading has been clicked open to type into.
   bool _typing = false;
 
-  /// _type opens the reading for typing, and puts the caret in it once
-  /// the field is there.
+  /// _type opens the reading for typing, with the caret in it.
   void _type() {
     setState(() => _typing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1220,28 +1172,25 @@ class _ZoomFieldState extends State<_ZoomField> {
     });
   }
 
-  /// _scrubbing is whether the reading is being dragged.
   bool _scrubbing = false;
 
-  /// _scrub zooms by a drag of [dx] screen pixels: a little over a
-  /// doubling for every hundred and twenty.
+  /// _scrub zooms by a drag of [dx] pixels: about doubling per 120.
   void _scrub(double dx) {
     var c = widget.controller;
     if (c.pageLocked) return;
     c.zoomBy(math.exp(dx * 0.006));
   }
 
-  /// _fit puts the canvas back to the fit it was last given.
+  /// _fit puts back the fit last chosen.
   void _fit() {
     var c = widget.controller;
     if (c.pageLocked) return;
     c.fit == CanvasFit.whole ? c.showWhole() : c.fitWidth();
   }
 
-  /// _boxWidth is the room the widest reading takes: one size for every
-  /// reading, so the box never changes width as the view moves on its own.
-  /// Four eights rather than a real number, since eight is the widest digit
-  /// of this face (1400% would measure narrow because of the one).
+  /// _boxWidth is the room the widest reading takes, so the box never
+  /// changes width as the view moves. Four eights, since eight is this face's
+  /// widest digit (1400% would measure narrow because of the one).
   double _boxWidth(TextStyle style) {
     var painter = TextPainter(
       text: TextSpan(text: "8888%", style: style),
@@ -1259,18 +1208,17 @@ class _ZoomFieldState extends State<_ZoomField> {
     var locked = widget.controller.pageLocked;
     if (!_focus.hasFocus && at != _shown) {
       _shown = at;
-      // The sign is part of the reading rather than a suffix widget, which
-      // would be positioned against a box whose width depended on the number.
+      // The sign is part of the reading, not a suffix widget placed against
+      // a box whose width depends on the number.
       _text.text = "$at%";
     }
 
     var type = TextStyle(
         fontSize: 12, color: widget.theme.colors.onSurfaceVariant, height: 1.1);
 
-    // No height of its own: the field is as tall as its text and the row
-    // centres it against the buttons either side (in a taller box, the
-    // underline would be drawn through the digits). Not being typed into,
-    // it is a reading to drag; the field takes over once clicked.
+    // No height of its own: as tall as its text, centred against the buttons
+    // (in a taller box the underline crosses the digits). Not typed into, it
+    // is a reading to drag; clicked, the field takes over.
     if (!_typing) {
       var colors = widget.theme.colors;
       return Center(
@@ -1323,8 +1271,7 @@ class _ZoomFieldState extends State<_ZoomField> {
 
     return Center(
         child: SizedBox(
-      // The room this reading needs, with the per cent sign pinned to the
-      // right of the box. See _boxWidth.
+      // The reading's room, with the per cent sign pinned right (_boxWidth).
       width: _boxWidth(type) + 13,
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
@@ -1336,11 +1283,10 @@ class _ZoomFieldState extends State<_ZoomField> {
           textAlign: TextAlign.left,
           style: type,
           decoration: InputDecoration(
-            // Collapsed: no padding of its own. Dense still reserves room under
-            // the text for a decoration, which lifts the digits above the buttons.
+            // Collapsed: no padding. Dense still reserves room under the
+            // text for a decoration, lifting the digits above the buttons.
             isCollapsed: true,
-            // Nothing until it is being typed into: a line under it while the
-            // cursor is in it is the only moment it needs to look like a field.
+            // No line until typed into: only then must it look like a field.
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: UnderlineInputBorder(
@@ -1356,16 +1302,14 @@ class _ZoomFieldState extends State<_ZoomField> {
   }
 }
 
-/// _SnapButton is Snap on the band, as a split button: the switch, and an
-/// arrow for what it snaps to (the page's lines on a page, the 3D steps on a
-/// stage). The same switch as the one in the Grid and guides settings, which
-/// the menu's last line opens.
+/// _SnapButton is Snap on the band as a split button: the switch, and an
+/// arrow for what it snaps to (page lines on a page, 3D steps on a stage).
+/// The same switch as in the Grid and guides settings.
 class _SnapButton extends StatelessWidget {
   final CanvasController controller;
   final ThemeNotifier theme;
 
-  /// onMore opens the Grid and guides settings, or is null while they are
-  /// open already.
+  /// onMore opens the Grid and guides settings; null while they are open.
   final VoidCallback? onMore;
 
   const _SnapButton(

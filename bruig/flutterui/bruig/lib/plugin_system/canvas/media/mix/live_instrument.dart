@@ -5,22 +5,18 @@ import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
-// live_instrument.dart is a channel's instrument played live -- keys on a
-// keyboard, the editor's own -- as the mix plays it: the same here, where
-// the mix runs on the editor's isolate, and in the mix worker (Ken's
-// systems review, 2026-11-08: the two had a copy each, and their copies of
-// which sound to play had come apart).
+// live_instrument.dart is a channel's instrument played live, defined once
+// for the editor's isolate and the mix worker so the two cannot drift.
 
 /// LiveInstrument is a sampler played live, as an endless track.
 class LiveInstrument implements TrackSource {
-  /// which is what it plays, as liveWhich has it: a key pressed with
-  /// another sound to play is played by another.
+  /// which is what it plays, as liveWhich has it: a key wanting another
+  /// sound is played by another instrument.
   final String which;
   final Sampler sampler;
   LiveInstrument(this.which, this.sampler);
 
-  /// LiveInstrument.of plays [part] -- on [font], for a part played on a
-  /// bank or on its slices.
+  /// LiveInstrument.of plays [part], on [font] for a bank or slices part.
   LiveInstrument.of(InstrumentPart part, SoundFont? font)
       : which = liveWhich(part, font),
         sampler = Sampler(
@@ -48,11 +44,11 @@ class LiveInstrument implements TrackSource {
   void close() => sampler.allOff();
 }
 
-/// liveWhich is what playing [part] on [font] sounds like, for telling
-/// whether the instrument playing a channel can play its next key.
+/// liveWhich is what playing [part] on [font] sounds like, to tell whether
+/// the channel's instrument can play its next key.
 String liveWhich(InstrumentPart part, SoundFont? font) =>
     "${part.look.name}:${part.sound.name}:${part.bank}:${part.program}:"
     "${font != null && part.sound != InstrumentSound.builtin}:"
     "${part.sound == InstrumentSound.slices ? part.slices?.key : null}:"
-    // A patch rewired is another instrument; one only set otherwise plays on.
+    // A rewired patch is another instrument; other changes play on.
     "${part.sound == InstrumentSound.patch ? part.patch?.wiring : null}";

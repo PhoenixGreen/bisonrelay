@@ -1,17 +1,14 @@
 part of 'generators.dart';
 
-// light.dart is the Gradient & light family: colour that blends, waves of
-// light, out-of-focus discs, and stars. (Rings are in generators.dart.)
+// light.dart is the Gradient & light family: blended colour, waves of light,
+// out-of-focus discs, and stars. (Rings are in generators.dart.)
 //
-// Each style's first kind is the default and must keep drawing what the style
-// drew before it had kinds, so older documents look the same.
+// Each style's first kind is the default and must keep drawing what the
+// style drew before it had kinds, so older documents look the same.
 
-/// _colourGrid draws a lattice of [cols] by [rows] cells over [rect], the
-/// colour at each corner given by [at] as 0xAARRGGBB and blended smoothly
-/// across each cell.
-///
-/// Smooth colour over the whole frame is then a few hundred corners rather
-/// than a million pixels; the GPU blends between them for free.
+/// _colourGrid draws a [cols] by [rows] lattice over [rect], each corner's
+/// colour from [at] (0xAARRGGBB), blended across each cell. A few hundred
+/// corners stand in for a million pixels; the GPU blends between them.
 void _colourGrid(ui.Canvas canvas, Rect rect, int cols, int rows,
     int Function(double u, double v) at) {
   var colours = Int32List((cols + 1) * (rows + 1));
@@ -54,8 +51,8 @@ int _argb(Color c, [double alpha = 1]) =>
 // Gradient mesh
 // --------------------------------------------------------------------------
 
-/// _gradientMesh is colour blended across the frame: soft blooms of light,
-/// a mesh gradient, or the curtains of an aurora.
+/// _gradientMesh is colour blended across the frame: blooms, a mesh
+/// gradient, or an aurora.
 void _gradientMesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   switch (spec.choice("meshKind")) {
     case 1:
@@ -67,10 +64,8 @@ void _gradientMesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _blooms is a handful of soft radial blooms, blended additively.
-///
-/// Additive so overlaps get brighter, which reads as light rather than as
-/// coloured circles lying on one another.
+/// _blooms is a handful of soft radial blooms, blended additively so
+/// overlaps brighten and read as light, not stacked circles.
 void _blooms(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var rnd = SeededRandom(spec.seed);
   var count = 3 + (spec.density * 9).round();
@@ -107,16 +102,13 @@ void _blooms(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   canvas.restore();
 }
 
-/// _mesh is a mesh gradient: a few points of colour scattered over the
-/// frame, every place in between a blend of the nearest of them, the whole
-/// thing gently bent.
-///
-/// The colours are the base, main and accent and blends of them, so the
-/// background's palette is the mesh's.
+/// _mesh is a mesh gradient: points of colour scattered over the frame,
+/// each place a blend of the nearest, the whole gently bent. Its colours
+/// are the base, main, accent and blends of them.
 void _mesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var count = spec.p("points").round().clamp(2, 9);
-  // The steeper each point's pull falls off, the more the frame is patches
-  // of one colour; soft is shallow, and blends the whole way across.
+  // A steeper fall-off makes patches of one colour; soft is shallow and
+  // blends the whole way across.
   var soft = 0.8 + (1 - spec.p("softness")) * 2.5;
   var warp = spec.p("warp");
   var noise = ValueNoise(spec.seed + 5);
@@ -141,8 +133,8 @@ void _mesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var rows = (cols / aspect).round().clamp(9, 96);
   var a = spec.intensity.clamp(0.0, 1.0);
   _colourGrid(canvas, rect, cols, rows, (u, v) {
-    // Bent by a slow field before the nearest points are found, which is
-    // what turns circles of colour into folds of it.
+    // Bent by a slow field before finding the nearest points: circles of
+    // colour become folds.
     var bx = u * aspect, by = v;
     if (warp > 0) {
       bx += (noise.fbm(u * 2 + t * 0.05, v * 2, octaves: 2) - 0.5) * warp * 0.8;
@@ -164,8 +156,8 @@ void _mesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   });
 }
 
-/// _aurora is curtains of light hanging in the sky: bright along a wavering
-/// lower edge and fading upwards, folding as they go.
+/// _aurora is curtains of light: bright along a wavering lower edge,
+/// fading upward, folding as they go.
 void _aurora(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var noise = ValueNoise(spec.seed + 11);
   var curtains = 2 + (spec.density * 4).round();
@@ -240,9 +232,8 @@ void _aurora(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // Flow waves
 // --------------------------------------------------------------------------
 
-/// _flowWaves is waves of light across the frame: strands bunched into
-/// ribbons, wide translucent ribbons of silk, or many fine lines flowing
-/// together.
+/// _flowWaves is waves of light across the frame: bunched strands, wide
+/// silk ribbons, or many fine lines.
 void _flowWaves(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   switch (spec.choice("waveKind")) {
     case 1:
@@ -255,9 +246,8 @@ void _flowWaves(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 }
 
 /// _strands traces ribbons through a flow field, glowing where they bunch.
-///
-/// Drawn in bands of neighbouring start points, so a band stays together
-/// as it flows and reads as a ribbon rather than unrelated strands.
+/// Drawn in bands of neighbouring start points, so a band reads as a ribbon
+/// rather than unrelated strands.
 void _strands(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var noise = ValueNoise(spec.seed);
   var bands = 3 + (spec.density * 9).round();
@@ -275,8 +265,8 @@ void _strands(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var color = rnd.next() < 0.35 ? spec.accent : spec.foreground;
     var width = math.max(0.7, _unit(rect, spec) * rnd.range(0.03, 0.12));
 
-    // Built once, drawn twice: one blurred layer holds every strand's glow
-    // (one blur per band, not per strand), then the filaments go on top.
+    // Built once, drawn twice: one blurred layer for every strand's glow
+    // (one blur per band, not per strand), then the filaments on top.
     var strands = <Path>[];
     for (var s = 0; s < perBand; s++) {
       var frac = perBand == 1 ? 0.5 : s / (perBand - 1);
@@ -287,8 +277,8 @@ void _strands(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var path = Path()..moveTo(p.dx, p.dy);
       for (var i = 0; i < steps; i++) {
         var a = angleNoise(noise, p.dx * freq + t * 0.15, p.dy * freq, turns);
-        // Biased strongly to the right so the strands cross the frame rather
-        // than curling up in one corner.
+        // Biased right so strands cross the frame rather than curling up in
+        // a corner.
         var dir = Offset(math.cos(a) * 0.45 + 0.9, math.sin(a) * 0.85);
         p = p + dir * stepLen;
         path.lineTo(p.dx, p.dy);
@@ -327,9 +317,9 @@ void _strands(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   canvas.restore();
 }
 
-/// _waveY is the height of wave [k] of [count] at [u] across the frame, as
-/// a fraction of its height: a sum of slow sines, shifted a little for each
-/// wave so that neighbours run together and drift apart.
+/// _waveY is wave [k] of [count]'s height at [u] across, as a fraction of
+/// the frame: slow sines, shifted per wave so neighbours run together and
+/// drift apart.
 double _waveY(ProceduralSpec spec, int k, int count, double u, double t,
     ValueNoise noise) {
   var amp = spec.p("amplitude");
@@ -347,8 +337,8 @@ double _waveY(ProceduralSpec spec, int k, int count, double u, double t,
   return y;
 }
 
-/// _silk is wide translucent ribbons laid over one another, each brighter
-/// along its edges, the way light catches folds of cloth.
+/// _silk is wide translucent ribbons over one another, brighter along their
+/// edges, as light catches folds of cloth.
 void _silk(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var noise = ValueNoise(spec.seed);
   var count = spec.p("waves").round().clamp(1, 40);
@@ -399,8 +389,8 @@ void _silk(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   canvas.restore();
 }
 
-/// _waveLines is many fine lines flowing across the frame together, each a
-/// little out of step with the one before it.
+/// _waveLines is many fine lines flowing together, each a little out of
+/// step with the last.
 void _waveLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var noise = ValueNoise(spec.seed);
   var count = spec.p("waves").round().clamp(1, 40) * 3;
@@ -432,8 +422,7 @@ void _waveLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // Bokeh
 // --------------------------------------------------------------------------
 
-/// _aperture is the outline of a disc of out-of-focus light: round, or the
-/// shape of a lens's blades.
+/// _aperture is an out-of-focus disc's outline: round, or a lens's blades.
 Path _aperture(Offset c, double r, int sides, double turn) {
   if (sides < 3) return Path()..addOval(Rect.fromCircle(center: c, radius: r));
   return Path()
@@ -446,10 +435,8 @@ Path _aperture(Offset c, double r, int sides, double turn) {
     ], true);
 }
 
-/// _bokeh is out-of-focus discs of light.
-///
-/// Each disc is brighter at its rim than its centre, as an out-of-focus
-/// highlight is through a real lens.
+/// _bokeh is out-of-focus discs of light, brighter at the rim than the
+/// centre, as through a real lens.
 void _bokeh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var rnd = SeededRandom(spec.seed);
   var count = 8 + (spec.density * 90).round();
@@ -475,8 +462,8 @@ void _bokeh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var color = pick < 0.3 ? spec.accent : spec.foreground;
     var alpha = spec.intensity * (0.10 + 0.35 * (1 - sizeF).abs());
 
-    // Near and far: the big ones further out of focus and dimmer, the small
-    // ones sharper and brighter, which is what puts space between them.
+    // Big discs further out of focus and dimmer, small ones sharper and
+    // brighter, putting space between them.
     var far = depth && sizeF > 0.9;
     if (depth && !far) alpha *= 1.5;
     if (far) alpha *= 0.6;
@@ -506,9 +493,9 @@ void _bokeh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // Starfield
 // --------------------------------------------------------------------------
 
-/// _starfield is scattered points of light, densest and brightest in the
-/// middle so the frame has somewhere to look -- with clouds of nebula behind
-/// them, stars streaking past at warp speed, and the odd shooting star.
+/// _starfield is points of light, densest and brightest in the middle so
+/// the frame has a focus, with nebula behind, warp streaks, and the odd
+/// shooting star.
 void _starfield(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var nebula = spec.p("nebula");
   if (nebula > 0) _nebula(canvas, rect, spec, t, nebula);
@@ -537,8 +524,8 @@ void _starfield(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         r,
         Paint()
           ..color = _fade(mag > 0.93 ? spec.accent : spec.foreground, alpha));
-    // The brightest few get a cross of light, so the field reads as stars
-    // rather than noise.
+    // The brightest few get a cross of light, so the field reads as stars,
+    // not noise.
     if (mag > 1 - spec.p("spikes")) {
       var arm = r * 6;
       var paint = Paint()
@@ -549,8 +536,8 @@ void _starfield(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     }
   }
 
-  // Shooting stars: each crosses the frame in a moment and is gone, at its
-  // own time in a cycle of a few seconds.
+  // Shooting stars: each crosses the frame in a moment, at its own time in
+  // a cycle of a few seconds.
   var shooting = spec.p("shooting");
   if (shooting > 0 && spec.animated) {
     var many = (shooting * 6).ceil();
@@ -581,8 +568,8 @@ void _starfield(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _nebula is clouds of coloured gas behind the stars: a slow field in the
-/// main colour, shot through with the accent where it is thickest.
+/// _nebula is coloured gas behind the stars: a slow field in the main
+/// colour, shot with the accent where thickest.
 void _nebula(
     ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t, double amount) {
   var noise = ValueNoise(spec.seed + 31);
@@ -602,8 +589,8 @@ void _nebula(
   canvas.restore();
 }
 
-/// _warp is stars streaming out of the middle of the frame, as if it were
-/// flying through them: each a streak that lengthens as it nears the edge.
+/// _warp is stars streaming from the middle as if flying through them, each
+/// streak lengthening toward the edge.
 void _warp(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var count = 60 + (spec.density * 500).round();
   var reach =
@@ -613,8 +600,8 @@ void _warp(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   for (var i = 0; i < count; i++) {
     var a = hash(spec.seed, i, 1) * math.pi * 2;
     var dir = Offset(math.cos(a), math.sin(a));
-    // How far out it is, going round: each star comes back into the middle
-    // once it has left the frame.
+    // How far out it is, wrapping: each star returns to the middle once it
+    // leaves the frame.
     var z = hash(spec.seed, i, 2) + t * speed * (0.6 + hash(spec.seed, i, 3));
     z -= z.floorToDouble();
     var d = reach * z * z;

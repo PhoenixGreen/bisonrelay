@@ -6,7 +6,6 @@ import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
 // be renamed or deleted (ElementPreset.builtIn), and must carry the page it
 // was designed on, or it is not scaled.
 
-/// builtinElementPresets are the presets everybody has.
 List<ElementPreset> get builtinElementPresets =>
     _builtin ??= [...codeExamplePresets];
 List<ElementPreset>? _builtin;

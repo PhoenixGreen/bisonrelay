@@ -194,8 +194,7 @@ enum Quantise {
       values.firstWhere((q) => q.name == name, orElse: () => quarter);
 }
 
-/// sectionNames are the names a section is usually given, offered when one
-/// is added.
+/// sectionNames are the usual section names, offered when one is added.
 const sectionNames = [
   "Intro",
   "Verse",
@@ -209,8 +208,7 @@ const sectionNames = [
   "Outro",
 ];
 
-/// sectionColors are the colours sections are told apart by on the
-/// timeline, in turn.
+/// sectionColors are the colours sections take on the timeline, in turn.
 const sectionColors = [
   0xFF5AA9FF,
   0xFFF08A3C,
@@ -253,10 +251,8 @@ class SongSection {
   }
 }
 
-/// AudioSettings is a document's sound as a production.
-/// ControlLink is a controller's knob learnt for a setting, as the
-/// prototype's "Learn a controller": MIDI control change [cc] turning
-/// [target] (an automation target's id) of channel [channel].
+/// ControlLink is a controller knob learnt for a setting: MIDI CC [cc]
+/// turning [target] (an automation target's id) of channel [channel].
 class ControlLink {
   final int cc;
   final String channel;
@@ -283,6 +279,7 @@ class ControlLink {
   int get hashCode => Object.hash(cc, channel, target);
 }
 
+/// AudioSettings is a document's sound as a production.
 class AudioSettings {
   /// tempo is in beats a minute, and beatsPerBar over beatUnit the time
   /// signature: what the timeline counts in bars and beats by.
@@ -297,14 +294,12 @@ class AudioSettings {
   /// the whole piece as one.
   final List<SongSection> sections;
 
-  /// quantise is the grid sounds snap to on the timeline.
   final Quantise quantise;
 
   /// speakers is what it is mixed for: stereo, or surround -- which the
   /// editor plays folded down to stereo, and an export writes whole.
   final SpeakerLayout speakers;
 
-  /// controls are the controller knobs learnt for its settings.
   final List<ControlLink> controls;
 
   const AudioSettings({

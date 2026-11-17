@@ -10,17 +10,12 @@ import 'package:flutter/foundation.dart';
 export 'package:bruig/plugin_system/canvas/model/sheet_formula.dart'
     show SheetError;
 
-// data_sheet.dart is the Data element's data (Ken, 2026-11-15: Table and
-// Chart made one "Data" element, its data kept in sheets edited in a
-// spreadsheet-like Data Studio): a canvas keeps its data in sheets, as a
-// Calc workbook does, and each Data element on it -- shown as a table or a
-// chart -- is a view of a range of one (SheetLink). Several can view one
-// sheet, so a league table and a chart of its points read the same numbers
-// and cannot disagree.
-//
-// A sheet holds what was typed in each cell (raw text); what a cell shows
-// is worked out from it (sheetShown). See data_sync.dart for how views are
-// kept in step with their sheet.
+// data_sheet.dart is the Data element's data: a canvas keeps its data in
+// sheets, as a Calc workbook does, and each Data element on it (a table or
+// a chart) is a view of a range of one (SheetLink). Several can view one
+// sheet, so a league table and a chart of its points cannot disagree. A
+// cell holds raw typed text; what it shows is worked out (sheetShown). See
+// data_sync.dart for keeping views in step with their sheet.
 
 /// CellRange is a block of cells, from row [r0] and column [c0] to [r1] and
 /// [c1] inclusive, counted from 0.
@@ -83,10 +78,9 @@ String columnName(int c) {
 /// cellName is the cell at row [r], column [c]: "B4".
 String cellName(int r, int c) => "${columnName(c)}${r + 1}";
 
-/// maxSheetRows and maxSheetColumns are the most a sheet can be, as the
-/// spreadsheets have it (1,048,576 rows, columns to XFD). A cell named past
-/// them is no cell: a received canvas's "A1:ZZZ99999999" would otherwise be
-/// worked through cell by cell as it opens.
+/// maxSheetRows and maxSheetColumns are the most a sheet can be, as in
+/// spreadsheets (1,048,576 rows, columns to XFD). A cell named past them is
+/// no cell, so a received canvas's "A1:ZZZ99999999" is not worked through.
 const maxSheetRows = 1048576, maxSheetColumns = 16384;
 
 /// cellAt reads "B4" (or "$B$4") as its row and column; null otherwise.
@@ -114,18 +108,17 @@ class SheetLink {
   final List<int> series;
 
   /// The rows this view shows of its range, without changing the sheet
-  /// (Ken's plan: "the table shows all 20 clubs, the chart the top 5"):
-  /// in order of column [sortBy] (-1, the sheet's own order), largest first
-  /// where [descending]; only those whose column [whereColumn] meets
-  /// [where] (a COUNTIF criterion: ">5", "Arsenal", "<>0"); the first
-  /// [top] of them (0, all).
+  /// (so a table can show all 20 clubs and a chart the top 5): in order of
+  /// column [sortBy] (-1, the sheet's own order), largest first where
+  /// [descending]; only those whose column [whereColumn] meets [where] (a
+  /// COUNTIF criterion: ">5", "Arsenal", "<>0"); the first [top] (0, all).
   final int sortBy;
   final bool descending;
   final int top;
   final int whereColumn;
   final String where;
 
-  // How a chart reads its rows (the Data Studio's Charts tab, prototype v6):
+  // How a chart reads its rows (the Data Studio's Charts tab):
 
   /// group brings rows with the same label together: "" each row, or
   /// "total", "average", "count", "most", "least" of their numbers.
@@ -149,8 +142,8 @@ class SheetLink {
   final int through;
   final String at;
 
-  /// split draws a small chart for each word of a column (Arsenal's, then
-  /// Chelsea's...), all on one scale. -1, one chart.
+  /// split draws a small chart for each word of a column, all on one
+  /// scale. -1, one chart.
   final int split;
 
   /// numbering keeps a table's first column where it is while its rows
@@ -158,8 +151,7 @@ class SheetLink {
   /// to the club in it, so it goes on reading 1, 2, 3.
   final bool numbering;
 
-  /// others adds, after the first [top], one more item -- "All others" --
-  /// adding up the rest (a top ten and everyone else).
+  /// others adds "All others" after the first [top], adding up the rest.
   final bool others;
 
   /// bins draws a histogram: the first series' numbers counted into this
@@ -381,24 +373,21 @@ class DataSheet {
   /// chart of the sheet follows a refresh. Off for a sheet typed in.
   final DataSource source;
 
-  /// spotlight is one row picked out everywhere the sheet is shown (the
-  /// Charts tab's "pick it out everywhere"): its mark lit in every chart of
-  /// the sheet, its row tinted in every table. Empty, none.
+  /// spotlight is one row picked out wherever the sheet is shown: its mark
+  /// lit in every chart, its row tinted in every table. Empty, none.
   final String spotlight;
   final Color spotlightColour;
 
   /// gridRows and gridColumns are how many rows and columns the Data
-  /// Studio's grid has (Ken, 2026-11-16: 40 rows to start, more added at
-  /// the end of the row numbers): at least, since the cells typed always
-  /// show. See [shownRows].
+  /// Studio's grid has at least (40 rows to start, more added at the end of
+  /// the row numbers), since the cells typed always show. See [shownRows].
   final int gridRows, gridColumns;
 
   /// made is how it is made from another sheet (sheet_reshape.dart): made
   /// again when that one changes. Null for a sheet typed in or connected.
   final SheetMade? made;
 
-  /// folder is the folder it is kept in, for the Data Studio's list of
-  /// sheets; "" for none.
+  /// folder is its folder in the Data Studio's sheet list; "" for none.
   final String folder;
 
   const DataSheet(
@@ -469,10 +458,9 @@ class DataSheet {
           made: unmade ? null : made ?? this.made,
           folder: folder ?? this.folder);
 
-  /// withBlock is it with [rows] written from [r0], [c0] -- and the cells
-  /// of [clear] it doesn't reach emptied, where a view grew smaller. Rows
-  /// and columns past the edge are added; empty ones left at the end are
-  /// taken off.
+  /// withBlock is it with [rows] written from [r0], [c0], and the cells of
+  /// [clear] it doesn't reach emptied (where a view shrank). Rows and
+  /// columns are added past the edge; empty ones left at the end go.
   DataSheet withBlock(int r0, int c0, List<List<String>> rows,
       {CellRange? clear}) {
     var height = math.max(cells.length, r0 + rows.length);
@@ -645,7 +633,6 @@ class CellFormat {
           symbol: symbol ?? this.symbol,
           date: date ?? this.date);
 
-  /// write is [v] as this format writes it.
   String write(Object? v) {
     if (v is! double) return sheetText(v);
     var zeros = places > 0 ? ".${"0" * places}" : "";

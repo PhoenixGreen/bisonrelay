@@ -8,21 +8,17 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 
-// stage_gizmo.dart is the handle drawn on a selected element standing on a 3D
-// stage: arrows along the stage's three axes and a square across its floor to
-// move it, a ring on the floor to turn it, and a box on a stem to scale it, as
-// the bar's 3D tool says (StageTool).
-//
-// Drawn through the stage's own camera, so the arrows follow the floor however
-// the camera turns, at a fixed size on screen. A drag works out the new spot
-// from where it started, never step by step, so slow and fast drags end alike.
+// stage_gizmo.dart is the handle on a selected element on a 3D stage: axis
+// arrows and a floor square to move it, a floor ring to turn it, and a box on
+// a stem to scale it, as the 3D tool says (StageTool). Drawn through the
+// stage's camera at a fixed screen size. A drag works out the new spot from
+// where it started, never step by step, so slow and fast drags end alike.
 
 /// GizmoPart is a part of the gizmo that can be taken hold of.
 enum GizmoPart { x, y, z, floor, turn, scale }
 
-/// gizmoColours are the parts' colours: the axes as 3D programs draw them
-/// (across red, up green, nearer blue), and the floor square and scale box
-/// amber.
+/// gizmoColours are the parts' colours: axes as 3D programs draw them (x
+/// red, y green, z blue), floor square and scale box amber.
 const Map<GizmoPart, Color> gizmoColours = {
   GizmoPart.x: Color(0xFFE0484D),
   GizmoPart.y: Color(0xFF3AA35C),
@@ -35,23 +31,23 @@ const Map<GizmoPart, Color> gizmoColours = {
 /// gizmoHot is a part's colour while the pointer is on it.
 const Color gizmoHot = Color(0xFFFFD34D);
 
-/// StageGizmo is the gizmo on one element, as its stage's camera sees it,
-/// in page units.
+/// StageGizmo is the gizmo on one element as its stage's camera sees it, in
+/// page units.
 class StageGizmo {
   final Staged at;
   final StageTool tool;
 
-  /// length is how long its arrows are, in metres: a fixed stretch of the
-  /// screen at its distance from the camera.
+  /// length is its arrows' length in metres: a fixed stretch of screen at
+  /// its distance from the camera.
   final double length;
 
   /// body is whether it is on a 3D character, which keeps the height it was
-  /// made at and so is not scaled.
+  /// made at and so has no scale handle.
   final bool body;
 
   StageGizmo._(this.at, this.tool, this.length, this.body);
 
-  /// onScreen is how long its arrows are on screen, in screen pixels.
+  /// onScreen is its arrows' length in screen pixels.
   static const double onScreen = 84;
 
   /// of is the gizmo on [e], standing where [at] says, for [tool], with
@@ -78,13 +74,12 @@ class StageGizmo {
 
   bool get _onWall => at.spot.stand == SpotStand.wall;
 
-  /// parts are what is drawn and can be taken hold of, for its tool.
+  /// parts are what its tool draws and lets be taken hold of.
   List<GizmoPart> get parts => switch (tool) {
         StageTool.move => _onWall
             ? const [GizmoPart.x, GizmoPart.y]
             : const [GizmoPart.floor, GizmoPart.x, GizmoPart.z, GizmoPart.y],
-        // A flat that faces the camera, or hangs on the wall, has no way
-        // round to turn.
+        // A flat facing the camera or hung on the wall cannot turn.
         StageTool.rotate => _onWall || at.spot.stand == SpotStand.camera
             ? const []
             : const [GizmoPart.turn],
@@ -93,7 +88,6 @@ class StageGizmo {
 
   Offset _see(double x, double y, double z) => at.view.see(x, y, z).page;
 
-  /// centre is its foot on the page.
   Offset get centre {
     var (x, y, z) = foot;
     return _see(x, y, z);
@@ -105,15 +99,13 @@ class StageGizmo {
         _ => (0, 0, 1),
       };
 
-  /// tip is the end of [axis]'s arrow on the page.
   Offset tip(GizmoPart axis) {
     var (x, y, z) = foot;
     var (dx, dy, dz) = _way(axis);
     return _see(x + dx * length, y + dy * length, z + dz * length);
   }
 
-  /// square is the floor square's four corners on the page, in the corner
-  /// between the across and nearer arrows.
+  /// square is the floor square's corners, between the x and z arrows.
   List<Offset> get square {
     var (x, y, z) = foot;
     var a = length * 0.14, b = length * 0.5;
@@ -125,7 +117,6 @@ class StageGizmo {
     ];
   }
 
-  /// ring is the turning ring on the floor round its foot, on the page.
   List<Offset> get ring {
     var (x, y, z) = foot;
     var r = length * 0.7;
@@ -136,14 +127,14 @@ class StageGizmo {
     ];
   }
 
-  /// facingTick is the point on the ring the way it faces.
+  /// facingTick is the point on the ring it faces towards.
   Offset get facingTick {
     var (x, y, z) = foot;
     var t = at.spot.facing * math.pi / 180, r = length * 0.7;
     return _see(x + math.sin(t) * r, y, z + math.cos(t) * r);
   }
 
-  /// scaleBox is the scale handle's middle, at the top of its stem.
+  /// scaleBox is the scale handle's middle, atop its stem.
   Offset get scaleBox {
     var (x, y, z) = foot;
     return _see(x, y + length * 0.86, z);
@@ -157,7 +148,6 @@ class StageGizmo {
         (scaleBox - page).distance <= reach * 1.6) {
       return GizmoPart.scale;
     }
-    // Inside the floor square, the square.
     var sq = shown.contains(GizmoPart.floor) ? square : const <Offset>[];
     if (sq.isNotEmpty && (Path()..addPolygon(sq, true)).contains(page)) {
       return GizmoPart.floor;
@@ -174,8 +164,7 @@ class StageGizmo {
       }
     }
     if (best != null) return best;
-    // And near the square's edges: seen along the floor it is a sliver,
-    // still meant to be caught.
+    // Near the square's edges: seen edge-on it is a sliver.
     for (var k = 0; k < sq.length; k++) {
       if (_toSegment(page, sq[k], sq[(k + 1) % sq.length]) <= reach * 0.6) {
         return GizmoPart.floor;
@@ -200,18 +189,17 @@ class StageGizmo {
     return (p - (a + ab * t)).distance;
   }
 
-  /// dragged is the spot that dragging [part] from [from] to [to] (page points)
-  /// puts it on, from where it stood when the drag began. [pageScale] is screen
-  /// pixels to a page unit; [step] above nought moves in steps of that many
-  /// metres, and [turn] turns in steps of that many degrees.
+  /// dragged is the spot dragging [part] from [from] to [to] (page points)
+  /// puts it on, from where it stood when the drag began. [pageScale] is
+  /// screen pixels to a page unit; [step] and [turn], above nought, snap to
+  /// that many metres and degrees.
   StageSpot dragged(GizmoPart part, Offset from, Offset to,
       {double pageScale = 1, double step = 0, double turn = 0}) {
     var spot = at.spot;
     double snap(double v) => step > 0 ? (v / step).roundToDouble() * step : v;
     switch (part) {
       case GizmoPart.x || GizmoPart.y || GizmoPart.z:
-        // Along the arrow as seen: how far the pointer went along it, in the
-        // arrow's own metres.
+        // How far the pointer went along the arrow as seen, in metres.
         var along = tip(part) - centre;
         var len = along.distanceSquared;
         if (len < 1e-9) return spot;
@@ -240,7 +228,7 @@ class StageGizmo {
         if (turn > 0) f = (f / turn).roundToDouble() * turn;
         return spot.copyWith(facing: f == -180 ? 180 : f);
       case GizmoPart.scale:
-        // Up grows it, down shrinks it, by the screen's pixels.
+        // Up grows it, down shrinks it, by screen pixels.
         var dy = (to.dy - from.dy) * pageScale;
         var h = spot.height * math.exp(-dy * 0.006);
         if (step > 0) h = math.max(0.1, (h * 10).roundToDouble() / 10);
@@ -317,7 +305,7 @@ class StageGizmoPainter extends CustomPainter {
           canvas.drawRect(box, Paint()..color = colour(part));
       }
     }
-    // Its foot, where it stands.
+    // Its foot.
     canvas.drawCircle(centre, 3.5, Paint()..color = Colors.white);
     canvas.drawCircle(
         centre,

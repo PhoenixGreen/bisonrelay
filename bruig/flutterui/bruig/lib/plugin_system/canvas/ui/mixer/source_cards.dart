@@ -12,19 +12,16 @@ import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
-// source_cards.dart is the Source zone of a sound's chain, as the
-// prototype's: what the channel plays, before anything is done to it. A MIDI
-// channel's is its Note clips (instrument_editor.dart); an audio channel's,
-// its Clips here.
+// source_cards.dart is the Source zone of a sound's chain: what the channel
+// plays, before anything is done to it. A MIDI channel's is its Note clips
+// (instrument_editor.dart); an audio channel's, its Clips here.
 
-/// audioColour is an audio channel's colour, as the prototype's.
 const audioColour = Color(0xFF4F8FD6);
 
-/// AudioClipsDevice is an audio channel's Clips, as the prototype's: its
-/// sounds -- on the timeline, and in its slots -- as a row of chips, one
-/// picked; the picked one's shape over its knobs (Gain, and a slot clip's
-/// Transpose; its fades) and a slot clip's Warp, with the Clip and Warp
-/// pages of its screen. A slot's chip launches it, the one playing ringed.
+/// AudioClipsDevice is an audio channel's Clips: its timeline and slot
+/// sounds as a row of chips, one picked; the picked one's shape over its
+/// knobs (Gain, a slot clip's Transpose, fades) and Warp, with Clip and Warp
+/// screen pages. A slot's chip launches it, the playing one ringed.
 class AudioClipsDevice extends StatefulWidget {
   final CanvasController controller;
   final String channel;
@@ -54,14 +51,13 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
   CanvasController get c => widget.controller;
   String get channel => widget.channel;
 
-  /// _picked is the chip picked: a slot's row, or a timeline sound's index
-  /// (as -1 - index); null for the playing slot, or else the first.
+  /// _picked is a slot's row, or a timeline sound's index as -1 - index;
+  /// null for the playing slot, or else the first.
   int? _picked;
 
   /// _warpPage is whether the screen shows its warp markers.
   bool _warpPage = false;
 
-  /// _tick redraws the playhead while something plays.
   Timer? _tick;
 
   @override
@@ -106,8 +102,8 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
             : picks.first);
     var lane = pick.lane;
     var timed = lane?.clip;
-    // A sound on the timeline is a clip as one in a slot is (Ken): the same
-    // settings, kept on it.
+    // A timeline sound is a clip as a slot's is: the same settings, kept on
+    // it.
     var timedSound = switch (lane?.element) {
       AudioElement a
           when a.instrument == null &&
@@ -122,7 +118,7 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
     var sound = slot?.sound ?? timed?.playlist.firstOrNull;
     var spb = c.document.audio.secondsPerBeat;
 
-    // Its settings, written to the chip picked.
+    // Its settings, written to the picked chip.
     void setSlot(SessionClip Function(SessionClip clip) change,
         {bool transient = false}) {
       if (transient) c.beginInteraction();
@@ -177,7 +173,7 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
         ? "−∞ dB"
         : "${v >= 0 ? "" : "−"}${v.abs().toStringAsFixed(1)} dB";
 
-    // Where its sound is played to now, seconds into its file.
+    // Where its sound is played to, in seconds into its file.
     double? playhead;
     if (pick.row == null && slot != null && timed != null && sound != null) {
       // On the timeline: where the playhead is over it.
@@ -392,8 +388,8 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
           ),
       ]),
       controls: (tier) => [
-        // The chips: each sound, picked; a slot's launched. Short, its
-        // knobs only.
+        // The chips: each sound picked, a slot's launched. Short, knobs
+        // only.
         if (tier != DeviceTier.small)
           SizedBox(
             width: 344,
@@ -525,8 +521,7 @@ class _WavePainter extends CustomPainter {
   final Float32List? peaks;
   final double start, end, fadeIn, fadeOut;
 
-  /// playhead is where it is played to, and markers its warp markers, as
-  /// parts of its file.
+  /// playhead and markers (its warp markers) are fractions of its file.
   final double? playhead;
   final List<double> markers;
   final Color accent, back, line;

@@ -7,10 +7,9 @@ import 'package:bruig/plugin_system/canvas/model/notation.dart';
 import 'package:xml/xml.dart';
 
 // musicxml.dart writes a Score as MusicXML and reads MusicXML back as notes.
-//
 // Written partwise as one part, a piano's two staves in it, as MuseScore
-// writes it. Read in, every part's notes are merged as one instrument; grace
-// notes are dropped and ties joined into one held note.
+// writes it. Read in, every part is merged as one instrument; grace notes
+// are dropped and ties joined into one held note.
 
 /// _divisions is how finely a quarter note is counted: a dotted semiquaver
 /// is nine of them, a triplet quaver eight.
@@ -24,9 +23,7 @@ String _typeOf(double base) => switch (base) {
       _ => "16th",
     };
 
-/// scoreToMusicXml is [score] as a MusicXML document: its key, time and
-/// staves, every note and rest as written, its ties and signs, and
-/// [tempo] quarter notes a minute.
+/// scoreToMusicXml is [score] as MusicXML, at [tempo] quarters a minute.
 String scoreToMusicXml(Score score, {String title = "", double tempo = 120}) {
   var b = XmlBuilder();
   b.processing("xml", 'version="1.0" encoding="UTF-8" standalone="no"');
@@ -81,8 +78,8 @@ String scoreToMusicXml(Score score, {String title = "", double tempo = 120}) {
           var barLength = (score.barQuarters * _divisions).round();
           var firstVoice = true;
           for (var (i, staff) in score.staves.indexed) {
-            // Each voice of the staff, with a backup to the bar's start
-            // between them; numbered as MuseScore does, four per staff.
+            // Each voice of the staff, with a backup to the bar's start between
+            // them; numbered as MuseScore does, four per staff.
             var voices = <int, List<Written>>{};
             for (var w in bar.staves[staff] ?? const <Written>[]) {
               (voices[w.voice] ??= []).add(w);
@@ -201,11 +198,10 @@ String scoreToMusicXml(Score score, {String title = "", double tempo = 120}) {
   return b.buildDocument().toXmlString(pretty: true, indent: "  ");
 }
 
-/// MusicXmlScore is what a MusicXML file says: its notes, in quarter notes
-/// from its start, its title, tempo, time and key.
+/// MusicXmlScore is what a MusicXML file says: its notes (in quarter notes
+/// from its start), title, tempo, time and key.
 class MusicXmlScore {
-  /// notes are each key, its start and its length in quarters, and its
-  /// velocity.
+  /// notes are each key, its start, length in quarters and velocity.
   final List<MidiNote> notes;
   final String title;
   final double? tempo;
@@ -227,7 +223,6 @@ class MusicXmlScore {
   }
 }
 
-/// MusicXmlException is a file that is not a score that can be read.
 class MusicXmlException implements Exception {
   final String message;
   const MusicXmlException(this.message);
@@ -235,9 +230,8 @@ class MusicXmlException implements Exception {
   String toString() => message;
 }
 
-/// readMusicXml reads a MusicXML file's [bytes], plain or compressed (.mxl).
-/// Anything that is not a score it can read -- a broken zip, bad text, bad
-/// XML -- is a MusicXmlException.
+/// readMusicXml reads MusicXML [bytes], plain or compressed (.mxl); anything
+/// unreadable (a broken zip, bad text or XML) is a MusicXmlException.
 MusicXmlScore readMusicXml(List<int> bytes) {
   try {
     return _readMusicXml(bytes);

@@ -6,13 +6,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-// character_assets.dart is the library's characters in the Assets sidebar,
-// made in the Character Studio and placed with a click. See
-// character_designs.dart.
+// character_assets.dart is the library's characters in the Assets sidebar, made
+// in the Character Studio and placed with a click. See character_designs.dart.
 
-/// CharacterAssetSection lists the library's 3D characters as last drawn in
-/// the Studio, for a click to place a copy in the middle of the canvas, and a
-/// way to make a new one.
+/// CharacterAssetSection lists the library's 3D characters as last drawn,
+/// a click placing a copy mid-canvas, and a way to make a new one.
 class CharacterAssetSection extends StatelessWidget {
   final CanvasController controller;
 
@@ -61,9 +59,8 @@ class CharacterAssetSection extends StatelessWidget {
       );
 }
 
-/// _Listed reads a library's list once per change to it, not per build: the
-/// sidebar rebuilds as it scrolls and resizes, and reading the folder each
-/// time held frames up.
+/// _Listed reads a library's list once per change, not per build: the
+/// sidebar rebuilds as it scrolls, and rereading would hold frames up.
 class _Listed<T> extends StatefulWidget {
   final ValueListenable<int> changes;
   final Future<T> Function() read;
@@ -149,8 +146,7 @@ class _Character3dTile extends StatefulWidget {
 }
 
 class _Character3dTileState extends State<_Character3dTile> {
-  /// _picture is the character's picture, read once and again only when
-  /// the character is kept again.
+  /// _picture is the character's picture, read again only once re-kept.
   late Future<Uint8List?> _picture = CharacterDesigns.picture(widget.design.id);
 
   @override

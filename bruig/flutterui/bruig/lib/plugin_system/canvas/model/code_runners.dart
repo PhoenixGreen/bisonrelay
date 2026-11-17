@@ -1,12 +1,11 @@
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 
-// code_runners.dart is what runs a Code panel's project, worked out from
-// its files: a web page in a browser, Python in the browser (Pyodide), Go in
-// the browser (Yaegi), Dart in the app (dart_eval), a Flutter app drawn in
-// the app (flutter_eval) or, when asked, on DartPad. And the pieces of a run
-// that are plain text work: the page with its stylesheets and scripts put in
-// it.
+// code_runners.dart picks what runs a Code panel's project from its files:
+// a web page in a browser, Python (Pyodide) or Go (Yaegi) in the browser,
+// Dart (dart_eval) or Flutter (flutter_eval) in the app, or DartPad when
+// asked. It also builds the plain-text parts of a run, such as a page with
+// its stylesheets and scripts put in.
 
 enum CodeRunner {
   web("Browser"),
@@ -23,7 +22,7 @@ enum CodeRunner {
   /// online is whether it needs the internet each time it runs.
   bool get online => this == dartpad;
 
-  /// previews is whether it makes something to look at, not just output.
+  /// previews is whether it makes something to look at, not only output.
   bool get previews => this == web || this == flutter || this == dartpad;
 }
 
@@ -54,10 +53,8 @@ CodeFile? entryFile(CodeRunElement run, CodeElement? code) {
       first((f) => runnable(f.language));
 }
 
-/// isFlutter is whether Dart [text] is a Flutter app.
 bool isFlutter(String text) => text.contains("package:flutter/");
 
-/// runnerOf is what runs [run]'s project.
 CodeRunner runnerOf(CodeRunElement run, CodeElement? code) {
   var f = entryFile(run, code);
   if (f == null) return CodeRunner.none;
@@ -65,7 +62,7 @@ CodeRunner runnerOf(CodeRunElement run, CodeElement? code) {
     CodeLanguage.html || CodeLanguage.js || CodeLanguage.css => CodeRunner.web,
     CodeLanguage.python => CodeRunner.python,
     CodeLanguage.go => CodeRunner.go,
-    // A Flutter project's Dart is an app even before it says so.
+    // A Flutter project's Dart is an app even before it imports Flutter.
     CodeLanguage.dart => isFlutter(f.text) || code!.project == CodeKind.flutter
         ? (run.dartpad ? CodeRunner.dartpad : CodeRunner.flutter)
         : CodeRunner.dart,
@@ -73,9 +70,8 @@ CodeRunner runnerOf(CodeRunElement run, CodeElement? code) {
   };
 }
 
-/// consoleCapture is the script put first in a page so what it prints, and
-/// its errors, come back to the app: each as a message to the
-/// "codeConsole" handler.
+/// consoleCapture is put first in a page so its prints and errors come back
+/// to the app as messages to the "codeConsole" handler.
 const consoleCapture = r'''<script>(function(){
 function send(k,a){try{var m=Array.prototype.map.call(a,function(x){if(typeof x==="string")return x;try{return JSON.stringify(x)}catch(e){return String(x)}}).join(" ");
 window.flutter_inappwebview&&window.flutter_inappwebview.callHandler("codeConsole",k,m)}catch(e){}}
@@ -84,15 +80,12 @@ addEventListener("error",function(e){send("error",[e.message+(e.lineno?" (line "
 addEventListener("unhandledrejection",function(e){send("error",[String(e.reason)])});
 })();</script>''';
 
-/// sealed is [page] with a Content-Security-Policy put before anything of
-/// its own (security review, 2026-11-17). A Code element's page came with
-/// the canvas, and a page that can reach the network can tell its sender
-/// the reader's address -- past a proxy, past Tor -- or knock on the
-/// reader's own network. Sealed, it reaches nothing: its pictures, sounds
-/// and fonts are its own (data: and blob:), and only a run server at
-/// [origin] (Python's and Go's, on this machine) is let through. Written
-/// first, ahead of the page's own markup, no script of the page runs before
-/// it.
+/// sealed puts a Content-Security-Policy ahead of [page]'s own markup. A
+/// Code element's page came with the canvas, and a page that can reach the
+/// network can tell its sender the reader's address (past a proxy or Tor)
+/// or probe the reader's own network. Sealed, it reaches nothing beyond its
+/// own data: and blob: media, and a run server at [origin] (Python's and
+/// Go's, on this machine). Written first, so no page script runs before it.
 String sealed(String page, {String origin = ""}) {
   var o = origin.isEmpty ? "" : " $origin";
   var policy = "default-src 'none'; "
@@ -105,10 +98,9 @@ String sealed(String page, {String origin = ""}) {
       'content="$policy">$page';
 }
 
-/// webPage is [code]'s page [entry] as one document: each stylesheet it
-/// links and each script it loads that is a file of the project put into
-/// it, and [head] (the console's capture) first. A script file run by
-/// itself is wrapped in an empty page.
+/// webPage is [code]'s page [entry] as one document: every stylesheet and
+/// script it links that is a project file put in, and [head] first. A
+/// script run by itself is wrapped in an empty page.
 String webPage(CodeElement code, CodeFile entry,
     {String head = consoleCapture}) {
   if (entry.language == CodeLanguage.js) {

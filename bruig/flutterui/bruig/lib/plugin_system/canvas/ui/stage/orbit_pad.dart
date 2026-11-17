@@ -4,10 +4,9 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-// orbit_pad.dart is a round button that is dragged to go round something:
-// across to swing round it, up and down to go over or under it. The one
-// control for orbiting a character in its own box and a stage's camera,
-// so both are taken hold of the same way.
+// orbit_pad.dart is a round button dragged to orbit something: across to
+// swing round it, up and down to go over or under it. Both a character's box
+// and a stage's camera use it, so they are taken hold of the same way.
 
 /// CanvasOrbitPad turns [turn] and [tilt], in degrees, as it is dragged:
 /// across for the turn, down to look from above. A double click goes back
@@ -16,11 +15,11 @@ class CanvasOrbitPad extends StatefulWidget {
   final double turn;
   final double tilt;
 
-  /// minTilt and maxTilt are how far over and under it goes.
+  /// minTilt and maxTilt bound the tilt, in degrees.
   final double minTilt, maxTilt;
 
-  /// onChanged is each step of a drag; onStart and onEnd its two ends, for
-  /// an undo step round the whole of it.
+  /// onChanged is each step of a drag; onStart and onEnd bracket it, so the
+  /// whole drag is one undo step.
   final void Function(double turn, double tilt) onChanged;
   final VoidCallback? onStart;
   final VoidCallback? onEnd;
@@ -43,7 +42,6 @@ class CanvasOrbitPad extends StatefulWidget {
     super.key,
   });
 
-  /// degreesPerPixel is how far a pixel of drag turns.
   static const double degreesPerPixel = 0.8;
 
   @override
@@ -86,8 +84,7 @@ class _CanvasOrbitPadState extends State<CanvasOrbitPad> {
       child: MouseRegion(
         cursor: _held ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
         child: GestureDetector(
-          // From where it was pressed, so the first stretch of a drag --
-          // before it is known to be one -- turns it too.
+          // From where it was pressed, so a drag's first stretch turns it too.
           dragStartBehavior: DragStartBehavior.down,
           onDoubleTap: () {
             widget.onStart?.call();
@@ -135,9 +132,8 @@ class _CanvasOrbitPadState extends State<CanvasOrbitPad> {
   }
 }
 
-/// _OrbitPainter draws a globe turned as the orbit is: its lines of
-/// longitude swing with the turn and its equator tips with the tilt, and a
-/// dot is where it is seen from.
+/// _OrbitPainter draws a globe turned as the orbit is, with a dot where it
+/// is seen from.
 class _OrbitPainter extends CustomPainter {
   final double turn, tilt;
   final Color ring, fill, line, mark;

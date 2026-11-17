@@ -109,22 +109,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 
-// canvas_stage.dart is the canvas you can touch: the document drawn, with
-// selection handles over it and every gesture that moves something.
-//
-// It draws through the same scene_renderer.dart the export uses, under one
-// transform, so nothing here decides how an element looks. What it owns is
-// which element is under the pointer, what dragging a handle means, and where
-// the handles go. Next door: stage_painter.dart draws, given values this file
-// has decided; stage_parts.dart answers drags that move a piece inside an
-// element (a chart's title, a table's column rules); stage_geometry.dart is
-// the sizes both halves agree on.
-//
-// Two coordinate spaces. Document space is where elements live and never
-// changes with the view; stage space is pixels on screen. Everything the
-// pointer says arrives in stage space and is converted once, at the top of
-// each gesture handler. Handles are the exception: drawn and hit-tested in
-// stage space, so they stay one size on screen at every zoom.
+// canvas_stage.dart is the canvas you can touch: the document drawn through
+// the export's scene_renderer.dart, with handles over it and every gesture
+// that moves something. stage_painter.dart draws; stage_parts.dart answers
+// drags on a piece inside an element; stage_geometry.dart holds shared sizes.
+// Pointer positions go from stage (screen) space to document space once, at
+// the top of each handler; handles stay in stage space, one size at any zoom.
 
 /// _DragMode is what the pointer is currently doing.
 enum _DragMode {
@@ -138,38 +128,34 @@ enum _DragMode {
   /// synthScreen is a digital envelope's or filter's screen dragged on.
   synthScreen,
 
-  /// codeDivider is the line between two of a Code panel's panes dragged;
-  /// codeTab one of its tabs carried, to another place or pane. See
-  /// _pressCode.
+  /// codeDivider is a Code panel's pane divider dragged; codeTab one of its
+  /// tabs carried. See _pressCode.
   codeDivider,
   codeTab,
 
   /// codeScrub is a Code panel's playbar track dragged along.
   codeScrub,
 
-  /// copies is copies of an element reused dragged on their own -- those
-  /// picked, or made by an Alt-drag. See _moveCopies.
+  /// copies is copies of an element dragged on their own: those picked, or
+  /// made by an Alt-drag. See _moveCopies.
   copies,
 
   /// skew is a side handle dragged to slant the element. See _applySkew.
   skew,
 
-  /// copySize and copyTurn are the box of the one copy picked (see _oneCopy)
-  /// taken by a handle: a corner or side sizes that copy alone, the ring
-  /// turns it -- its own Size and Turn. See _applyCopyBox.
+  /// copySize and copyTurn size or turn the one copy picked (see _oneCopy)
+  /// by its own handles. See _applyCopyBox.
   copySize,
   copyTurn,
 
-  /// warpMove, warpScale and warpTurn carry a warp grid's picked points:
-  /// dragged, sized about the middle of their box, or turned about it.
-  /// warpMarquee is a box dragged out to pick the points in it.
+  /// warpMove, warpScale and warpTurn move, size or turn a warp grid's
+  /// picked points; warpMarquee picks points with a box.
   warpMove,
   warpScale,
   warpTurn,
   warpMarquee,
 
-  /// anchor is an element's anchor point being dragged. See
-  /// ElementBase.anchorX.
+  /// anchor is an element's anchor point dragged. See ElementBase.anchorX.
   anchor,
   move,
   resize,
@@ -180,8 +166,7 @@ enum _DragMode {
   node,
   handle,
 
-  /// spritePaint is a Sprite element's frame being painted on -- see
-  /// sprite_painting.dart.
+  /// spritePaint is a Sprite's frame being painted: see sprite_painting.dart.
   spritePaint,
 
   /// tilePaint is a Tile map being painted -- see tile_painting.dart.
@@ -195,41 +180,32 @@ enum _DragMode {
   /// shifted or middle-button drag with the page locked.
   stagePan,
 
-  /// gizmo is a part of the gizmo on an element standing on a stage being
-  /// dragged: see stage_gizmo.dart.
+  /// gizmo is a part of the stage gizmo dragged: see stage_gizmo.dart.
   gizmo,
 
-  /// parallaxPan is parallax scenery's camera being panned, by a drag with
-  /// Option held on it: the scenery follows the pointer, as a map does.
+  /// parallaxPan is parallax scenery panned by an Option-drag on it.
   parallaxPan,
 
-  /// chartLabel is a chart's title or description being moved or resized
-  /// inside the chart: a part of an element rather than the element, as
-  /// player is.
+  /// chartLabel is a chart's title or description moved or resized.
   chartLabel,
 
-  /// tableColumn is the rule between two of a table's columns being dragged
-  /// to make one wider and the other narrower.
+  /// tableColumn is the rule between two table columns dragged.
   tableColumn,
 
-  /// counterPart is one of a counter's freely placed pieces (a word, or one of
-  /// its buttons) being moved inside the counter's own box.
+  /// counterPart is one of a counter's freely placed pieces moved inside it.
   counterPart,
 
-  /// imageFrame is a picture being moved about inside its own frame: neither
-  /// the element nor its pixels move, only which part the frame shows. See
-  /// ImageFraming.
+  /// imageFrame is a picture moved inside its frame: only which part the
+  /// frame shows changes. See ImageFraming.
   imageFrame,
 
-  /// imageLayerMove, imageLayerSize and imageLayerTurn are a picture layer
-  /// being moved, resized by one of its handles, or turned by its knob, in a
-  /// picture whose layers are being edited. See image_layers.dart.
+  /// imageLayerMove, imageLayerSize and imageLayerTurn move, resize or turn a
+  /// picture layer while its layers are edited. See image_layers.dart.
   imageLayerMove,
   imageLayerSize,
   imageLayerTurn,
 
-  /// imageMask is a mark being made on a picture's mask: a brush stroke, a
-  /// lasso being drawn round something, or a gradient being dragged out.
+  /// imageMask is a mask mark: a brush stroke, a lasso or a gradient.
   imageMask,
 
   /// imageQuick is a quick-select stroke being drawn.
@@ -238,69 +214,58 @@ enum _DragMode {
   /// imageBrush is a paint or retouching stroke being drawn.
   imageBrush,
 
-  /// flow is a link being pulled out of a text box's overflow grip and
-  /// dropped on another box, making a chain of boxes: it changes which box the
-  /// words that do not fit run on into.
+  /// flow is a link pulled from a text box's overflow grip to another box.
   flow,
 
-  /// guide is one of the reader's own lines being moved, or a new one pulled
-  /// out of a ruler. Not an element: it moves what the canvas is lined up
-  /// against.
+  /// guide is a guide line moved, or a new one pulled from a ruler.
   guide,
 
-  /// vectorPoint is a point of a drawing being edited, or one of its
-  /// handles, being dragged. See vector_editing.dart.
+  /// vectorPoint is a drawing's point or handle dragged.
   vectorPoint,
 
-  /// vectorPoints is several picked points of a drawing dragged together,
-  /// and vectorMarquee a box dragged across one to pick the points inside it.
+  /// vectorPoints is several picked points dragged together; vectorMarquee a
+  /// box dragged to pick points.
   vectorPoints,
   vectorMarquee,
 
-  /// vectorPen is the pen's point just put down, its handles being pulled
-  /// out by the drag.
+  /// vectorPen is the pen's new point, its handles pulled out by the drag.
   vectorPen,
 
-  /// vectorScale is picked points being scaled by the scale tool, and
-  /// vectorTint the tint tool dragged across points, colouring each it meets.
+  /// vectorScale is picked points scaled; vectorTint the tint tool colouring
+  /// each point it meets.
   vectorScale,
   vectorTint,
 
   /// vectorCorner is a corner being rounded, the drag setting how far.
   vectorCorner,
 
-  /// vectorPencil is a pencil stroke being drawn; vectorErase the pen's
-  /// eraser going over lines.
+  /// vectorPencil is a pencil stroke; vectorErase the pen's eraser.
   vectorPencil,
 
-  /// vectorKnife is the knife's line being drawn through a drawing. See
-  /// vector_cut.dart.
+  /// vectorKnife is the knife's line through a drawing. See vector_cut.dart.
   vectorKnife,
   vectorErase,
 
   /// vectorRub is the eraser rubbing out what it goes over.
   vectorRub,
 
-  /// vectorShapeDraw is a shape being dragged out with the shapes tool;
-  /// vectorShapeFit the one picked being moved or resized by its box.
+  /// vectorShapeDraw is a shape dragged out with the shapes tool;
+  /// vectorShapeFit the picked one moved or resized by its box.
   vectorShapeDraw,
   vectorShapeFit,
 
-  /// vectorItems is the shapes the select shapes tool has picked being
-  /// moved, sized or turned by their box. See vector_items.dart.
+  /// vectorItems is the picked shapes moved, sized or turned by their box.
   vectorItems,
 
-  /// vectorItemsBox is a box being dragged across a drawing to pick the
-  /// shapes it touches.
+  /// vectorItemsBox is a box dragged to pick the shapes it touches.
   vectorItemsBox,
 }
 
 class CanvasStage extends StatefulWidget {
   final CanvasController controller;
 
-  /// onButtonLink is called when a button element whose action is a link is
-  /// pressed in the editor: handed up, since leaving the app is not the
-  /// canvas's decision.
+  /// onButtonLink is called when a link button is pressed in the editor:
+  /// leaving the app is not the canvas's decision.
   final void Function(String url)? onButtonLink;
 
   const CanvasStage({required this.controller, this.onButtonLink, super.key});
@@ -309,9 +274,8 @@ class CanvasStage extends StatefulWidget {
   State<CanvasStage> createState() => CanvasStageState();
 }
 
-/// CanvasStageState is public so the screen, holding a key to it, can ask
-/// where in document coordinates a drop from the sidebar landed: only the
-/// stage knows the transform.
+/// CanvasStageState is public so the screen can ask, through a key, where in
+/// document space a sidebar drop landed: only the stage knows the transform.
 class CanvasStageState extends State<CanvasStage>
     with SingleTickerProviderStateMixin {
   CanvasController get controller => widget.controller;
@@ -319,62 +283,52 @@ class CanvasStageState extends State<CanvasStage>
 
   _DragMode _mode = _DragMode.none;
 
-  /// _playerIndex is which player of the selected team is being dragged, in
-  /// [_DragMode.player]. The team stays selected: a player is one row of its
-  /// list, not an element, with no handles of its own.
+  /// _playerIndex is which player of the selected team is dragged. The team
+  /// stays selected: a player is a row of its list, not an element.
   int _playerIndex = -1;
 
   /// _playerGrab is where in the dot the pointer took hold, so a player does
-  /// not jump to centre itself under the cursor on the first pixel of a drag.
+  /// not jump to centre under the cursor.
   Offset _playerGrab = Offset.zero;
 
-  /// _pendingButton is a selected button that has been pressed but not yet
-  /// released. It runs its action on release, and only if the pointer has not
-  /// travelled far enough to have been a drag. See _onPointerDown.
+  /// _pendingButton is a selected button pressed: it runs on release, unless
+  /// the press became a drag.
   ButtonElement? _pendingButton;
 
-  /// _noteWas is the marker whose label on the canvas is being dragged, as
-  /// it was when the press began -- moved, or by its grip [_noteSizing]
-  /// sized -- and _noteFrom where the press began, on the page.
+  /// _noteWas is the marker whose canvas label is dragged (sized by its grip
+  /// if [_noteSizing]), as it was at the press; _noteFrom where it began.
   TimelineAction? _noteWas;
   bool _noteSizing = false;
   Offset _noteFrom = Offset.zero;
 
-  /// _pendingCounter is a live counter's own button that has been pressed and
-  /// not yet released, and _pendingCounterAt which of them it is: as with a
-  /// button element, a press that turns into a drag moves the counter instead.
-  /// See _onPointerUp.
+  /// _pendingCounter and _pendingCounterAt are a live counter's button
+  /// pressed: a press that becomes a drag moves the counter instead.
   CounterElement? _pendingCounter;
   int _pendingCounterAt = -1;
 
-  /// _pendingCodeEdit is a Code panel's pane whose code has been pressed
-  /// and not yet let go: let go where it was pressed, it opens for typing.
+  /// _pendingCodeEdit is a Code pane pressed: released in place, it opens.
   (String, int)? _pendingCodeEdit;
 
-  /// _pendingAudio is a selected speaker pressed on one of its controls and
-  /// not yet released, which control, and where (the volume bar needs to know
-  /// how far along).
+  /// _pendingAudio is a selected speaker pressed on a control: which, and
+  /// where (the volume bar needs how far along).
   AudioElement? _pendingAudio;
 
   /// _keyDown is an instrument's key held under the pointer.
   (AudioElement, int)? _keyDown;
 
-  /// _synthKey is a synth keyboard module's key held under the pointer;
-  /// _synthKnob a module's knob being turned -- its module, knob, where it
-  /// was, and where the press began; _synthCable a cable being carried --
-  /// from which jack, the cable it was lifted out of if it was, and where
-  /// it is now.
+  /// _synthKey is a synth keyboard key held; _synthKnob a knob turned (its
+  /// module, knob, start value and press point); _synthCable a cable carried
+  /// (from which jack, the cable it was lifted from if any, and where it is).
   (SynthModuleElement, int)? _synthKey;
   (String, SynthKnob, double, Offset)? _synthKnob;
 
-  /// _synthScreen is a digital module's screen being dragged: its module,
-  /// and what was taken (see synthScreenGrab).
+  /// _synthScreen is a digital module's screen dragged: its module and what
+  /// was taken (see synthScreenGrab).
   (String, String)? _synthScreen;
 
-  /// _codeDivider is a Code panel's line between panes being dragged: the
-  /// panel's id and the line. _codeTab is one of its tabs pressed: the
-  /// panel, the pane and the file; _codeTabAt where it has been carried to
-  /// on the page, once it has moved.
+  /// _codeDivider is a Code panel's pane divider dragged (panel id, line).
+  /// _codeTab is a tab pressed (panel, pane, file); _codeTabAt where it has
+  /// been carried on the page.
   (String, CodeDividerBox)? _codeDivider;
   ({String id, int pane, String file})? _codeTab;
   Offset? _codeTabAt;
@@ -382,18 +336,15 @@ class CanvasStageState extends State<CanvasStage>
   /// _codeScrub is the Code panel whose playbar track is being dragged.
   String? _codeScrub;
 
-  /// _codeOver is the Code panel and pane whose code the pointer is over:
-  /// the wheel and two fingers scroll it there, not the page. _codePinch
-  /// is one a two-finger slide began over.
+  /// _codeOver is the Code pane under the pointer, which the wheel and two
+  /// fingers scroll instead of the page; _codePinch one a slide began over.
   (String, int)? _codeOver;
   (String, int)? _codePinch;
 
-  /// _inLive is a press that began on a live preview: the page's, which the
-  /// stage leaves alone until it is let go.
+  /// _inLive is a press that began on a live preview, left to the preview.
   bool _inLive = false;
 
-  /// _codeEditBegun is whether the open code editor has changed anything
-  /// yet: the change it makes is one to undo, begun at its first keystroke.
+  /// _codeEditBegun is whether the code editor has begun its undo step.
   bool _codeEditBegun = false;
   ({
     SynthModuleElement from,
@@ -403,8 +354,8 @@ class CanvasStageState extends State<CanvasStage>
     Offset at,
   })? _synthCable;
 
-  /// _pendingSheet is a selected score sheet pressed: let go where it was
-  /// pressed, the playhead goes to the note there (see sheetPressed).
+  /// _pendingSheet is a selected score sheet pressed: let go in place, the
+  /// playhead goes to the note there (see sheetPressed).
   SheetElement? _pendingSheet;
   Offset _pendingSheetAt = Offset.zero;
 
@@ -415,70 +366,58 @@ class CanvasStageState extends State<CanvasStage>
   AudioControl _pendingAudioPart = AudioControl.playPause;
   Offset _pendingAudioAt = Offset.zero;
 
-  /// _pendingLegend is a chart whose key has been pressed, and
-  /// _pendingLegendAt which series' entry: a press that turns into a drag
-  /// moves the chart rather than switching a series off.
+  /// _pendingLegend is a chart whose key was pressed, and _pendingLegendAt
+  /// which entry: a press that becomes a drag moves the chart instead.
   ChartElement? _pendingLegend;
   int _pendingLegendAt = -1;
 
-  /// _legendHold is the timer running while a key is held down, and
-  /// _legendHoldDelay how long it has to be held. Held, a key becomes a thing
-  /// to move: a press and a drag are already spoken for, and a key has no grip
-  /// of its own.
+  /// _legendHold times a key held down for _legendHoldDelay, after which it
+  /// can be moved: press and drag are taken, and a key has no grip.
   Timer? _legendHold;
   static const Duration _legendHoldDelay = Duration(milliseconds: 400);
 
-  /// _settingCounter is the counter whose Set button is being typed into, and
-  /// _settingAt which button that is.
+  /// _settingCounter and _settingAt are the counter Set button typed into.
   String? _settingCounter;
   int _settingAt = -1;
 
-  /// _hoveredCounter is the counter whose button is under the pointer, and
-  /// _hoveredCounterAt which one, so it can be drawn lit.
+  /// _hoveredCounter and _hoveredCounterAt are the counter button hovered.
   String? _hoveredCounter;
   int _hoveredCounterAt = -1;
 
-  /// _buttonClickSlop is how far the pointer may move and still count as a
-  /// click rather than a drag. Most trackpad clicks move a pixel or two.
+  /// _buttonClickSlop is how far a click may move and not be a drag.
   static const double _buttonClickSlop = 4;
 
-  /// _dragThreshold is how far a press has to travel before it is a drag, in
-  /// screen pixels: a click arrives with a pixel or three of travel, and must
-  /// not move what it selects. Everything that moves something waits for
-  /// this, then measures from the press itself, so what is dragged stays
-  /// where it was picked up.
+  /// _dragThreshold is how far, in screen pixels, a press travels before it
+  /// is a drag, so a click does not move what it selects. Drags then measure
+  /// from the press itself, so what is dragged stays where it was picked up.
   static const double _dragThreshold = 4;
 
   /// _travelled is whether the press in hand has passed that threshold.
   bool _travelled = false;
 
-  /// _lastClickAt and _doubleClickWindow spot the second click of a pair,
-  /// timed by hand: this stage handles raw pointers, and a double-tap
-  /// recogniser would delay every single tap while it waited.
+  /// _lastClickAt and _doubleClickWindow spot a double click by hand: a
+  /// double-tap recogniser would delay every single tap.
   DateTime _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _doubleClickWindow = Duration(milliseconds: 400);
 
-  /// _lastVectorClick is where the last press on a drawing being edited
-  /// was, for the pen's double-click.
+  /// _lastVectorClick is the last press on a drawing, for its double-click.
   Offset _lastVectorClick = Offset.infinite;
 
-  /// _thicknessReach is how near, on screen, the line thickness tool's drag
-  /// has to pass a point to take it in.
+  /// _thicknessReach is how near, on screen, the thickness tool's drag must
+  /// pass a point to take it in.
   static const double _thicknessReach = 24;
 
-  /// _penPullMin is how far, on screen, the pen has to be dragged as a point
-  /// goes down before it pulls a curve out of it.
+  /// _penPullMin is how far, on screen, the pen must be dragged as a point
+  /// goes down to pull a curve out of it.
   static const double _penPullMin = 8;
 
-  /// _framing is the picture being repositioned inside its frame, if one is:
-  /// the picture whose layers are open with the base picture picked and the
-  /// move tool in hand. Opened by double-clicking a selected picture (as a
-  /// text element opens for typing); a plain drag still moves the element.
+  /// _framing is the picture being moved inside its frame, if one is: layers
+  /// open with the base picture picked and the move tool in hand. Opened by
+  /// double-clicking a selected picture; a plain drag moves the element.
   String? get _framing {
     var e = controller.editingImage;
-    // With layers round it the base picture has a place of its own (see
-    // ImageLayer.basePlace) and is moved and sized by that, so there is no
-    // framing to show.
+    // Layered, the base picture has a place of its own (see
+    // ImageLayer.basePlace), so there is no framing.
     if (e == null ||
         !e.hasImage ||
         e.layered ||
@@ -489,165 +428,139 @@ class CanvasStageState extends State<CanvasStage>
     return e.id;
   }
 
-  /// _layersMoved are the other picked picture layers a move carries with
-  /// the one held, as they were when it began.
+  /// _layersMoved are the other picked layers a move carries, as they began.
   List<ImageLayer> _layersMoved = const [];
 
-  /// _layerStart is the picture layer being dragged as it was when the drag
-  /// started, and _layerHandle the handle held -- see boxHandles.
+  /// _layerStart is the dragged picture layer as it was at the start, and
+  /// _layerHandle the handle held (see boxHandles).
   ImageLayer? _layerStart;
   int _layerHandle = -1;
 
   /// _maskOn is the picture a mark is being made on, while one is.
   LayerPicture? _maskOn;
 
-  /// _strokeAt turns a point on the canvas into one of the stroke being
-  /// drawn (a fraction of the frame for paint, of the picture for
-  /// retouching), while one is.
+  /// _strokeAt turns a canvas point into one of the stroke being drawn (a
+  /// fraction of the frame for paint, of the picture for retouching).
   Offset Function(Offset)? _strokeAt;
 
-  /// _quickTrail is a quick-select stroke being drawn, in fractions of the
-  /// picture, and _quickSubtract whether it takes away; the stroke is cut
-  /// when it is let go.
+  /// _quickTrail is a quick-select stroke in fractions of the picture, and
+  /// _quickSubtract whether it takes away; it is cut when let go.
   List<Offset> _quickTrail = const [];
   bool _quickSubtract = false;
 
-  /// _guideIndex is which guide is being dragged, while one is.
   int _guideIndex = -1;
 
-  /// _framingStart is the framing the drag started from, so the drag is
-  /// applied to where the picture was taken hold of rather than accumulating
-  /// rounding.
+  /// _framingStart is the framing at the drag's start: no rounding builds up.
   ImageFraming _framingStart = const ImageFraming();
 
   /// _pressedAt is where the pointer went down, in stage coordinates.
   Offset _pressedAt = Offset.zero;
 
-  /// _painting is the picture being retouched, while a brush stroke is under
-  /// way. Held by id, since the element is replaced when the stroke lands.
+  /// _painting is the picture being retouched during a brush stroke, by id,
+  /// since the element is replaced when the stroke lands.
   String? _painting;
 
-  /// _liveImage and _liveCanvas are the stroke being drawn: the same points in
-  /// the picture's coordinates, for storing, and in the canvas's, for showing.
-  /// The stroke is written to the element only when the pointer comes up:
-  /// each write changes the cache key and rebuilds the whole treated picture.
+  /// _liveImage and _liveCanvas are the stroke being drawn, in the picture's
+  /// coordinates for storing and the canvas's for showing. It is written to
+  /// the element only on pointer up: each write rebuilds the treated picture.
   final List<Offset> _liveImage = [];
   final List<Offset> _liveCanvas = [];
 
-  /// _liveRadius is the brush's radius in canvas units, worked out once when
-  /// the stroke starts so the preview does not have to ask again per point.
+  /// _liveRadius is the brush radius in canvas units, set once per stroke.
   double _liveRadius = 0;
 
-  /// _preview is a picture of what the held stroke would do, and _previewOf the
-  /// settings it was made for: rebuilt as they change, so the reader adjusts
-  /// hardness or cling and watches the same stroke redraw.
+  /// _preview is a picture of what the held stroke would do, and _previewOf
+  /// the settings it was made for: rebuilt as they change, so adjusting
+  /// hardness or cling redraws the same stroke.
   ui.Image? _preview;
   String? _previewOf;
 
-  /// _previewDebounce waits for the settings to stop moving before running the
-  /// brush again: each keystroke or pixel of a scrub would otherwise start a
-  /// full pass over the picture and an image decode.
+  /// _previewDebounce waits for the settings to settle: otherwise each
+  /// keystroke or scrub pixel starts a full pass and an image decode.
   Timer? _previewDebounce;
 
-  /// _previewDelay covers the gap between keystrokes and is short enough to
-  /// feel like a consequence of the change.
+  /// _previewDelay spans the gap between keystrokes yet still feels prompt.
   static const Duration _previewDelay = Duration(milliseconds: 220);
 
-  /// _editorRect is where the editor was opened, in document space, frozen as
-  /// it opens: for text riding a line the box comes from where the letters
-  /// are, which move on every keystroke.
+  /// _editorRect is where the editor opened, in document space, frozen: for
+  /// text on a line the box follows the letters, which move as you type.
   Rect? _editorRect;
 
-  /// _editingCell is the table cell being typed into, or null: a record, since
-  /// a cell has no identity and its table is whatever is selected.
+  /// _editingCell is the table cell typed into, or null: a record, since a
+  /// cell has no identity and its table is the selection.
   (String, int, int)? _editingCell;
 
-  /// _editingText is the text element being typed into, or null: by id,
-  /// because the element is replaced on every keystroke.
+  /// _editingText is the text element typed into, or null: by id, since the
+  /// element is replaced on every keystroke.
   String? _editingText;
 
-  /// _editingItem is which of that element's extra pieces is being typed
-  /// into, by its own id, or null for the element's own paragraph. A piece is
-  /// typed where it is drawn, as all words on the canvas are. See TextItem.
+  /// _editingItem is the id of the element's extra piece typed into, or null
+  /// for its own paragraph. See TextItem.
   String? _editingItem;
 
-  /// _nodeIndex is which point of the selected path is being dragged, and
-  /// _nodeHandleOut which of its two handles when the drag is a handle. Like a
-  /// player, a node is not an element: the path stays selected.
+  /// _nodeIndex is the selected path's point being dragged, and
+  /// _nodeHandleOut which handle, when a handle is. The path stays selected.
   int _nodeIndex = -1;
 
   bool _nodeHandleOut = false;
 
   StageHandle? _handle;
 
-  /// _flowFrom is the text box a link is being dragged out of, and _flowAt
-  /// where the pointer has got to. See TextFlowGrips.
+  /// _flowFrom is the box a link is dragged from; _flowAt the pointer.
   String? _flowFrom;
   Offset? _flowAt;
 
   /// _dragStart is where the gesture began, in document space, and
-  /// _startBounds are the selected elements as they were then: kept, rather
-  /// than applying each delta to the current state, so rounding does not
-  /// accumulate.
+  /// _startBounds the selection then: kept so rounding does not accumulate.
   Offset _dragStart = Offset.zero;
 
-  /// _orbiting is the stage whose camera an Option-drag is swinging round,
-  /// with the camera as it was and where on the screen the drag began.
+  /// _orbiting is the stage an Option-drag is orbiting, with the camera as
+  /// it was and where the drag began.
   String? _orbiting;
   StageCamera? _orbitFrom;
   ParallaxCamera? _panFrom;
   Offset _orbitAt = Offset.zero;
   Map<String, Rect> _startBounds = {};
 
-  /// _startPosed is where each element was on screen when the gesture began.
-  /// See _beginTransform.
+  /// _startPosed is each element's place at the start: see _beginTransform.
   Map<String, Rect> _startPosed = {};
 
   /// _startVisual is the box the handles were on. See _beginTransform.
   Map<String, Rect> _startVisual = {};
 
-  /// _startElements are the selected elements as they were when the drag
-  /// began, for a resize that scales what is inside them.
+  /// _startElements are the selection at the start, for a scaling resize.
   Map<String, CanvasElement> _startElements = {};
   Map<String, double> _startRotation = {};
   Offset _startPan = Offset.zero;
   Rect? _marquee;
 
-  /// marqueeForTest is the box being dragged to pick with, if one is.
   @visibleForTesting
   Rect? get marqueeForTest => _marquee;
 
-  /// _visible is the room on screen: what the stage was laid out into.
+  /// _visible is the room on screen the stage was laid out into.
   Size _visible = Size.zero;
 
   /// _viewport is the box the canvas is drawn into: [_visible] while the page
-  /// fits, and bigger (by as much as the page sticks out) once it is zoomed in
-  /// past the window or fitted to a width taller than it; the difference is
-  /// scrolled.
+  /// fits, bigger when zoomed past the window or fitted to a width taller
+  /// than it; the difference is scrolled.
   ///
-  /// Everything else in this file works in this box's coordinates, as do the
-  /// pointer events (the Listener is inside the scroll views). The exceptions
-  /// are [toDocumentPoint] and the getters for the tests, in widget
-  /// coordinates.
+  /// This file and the pointer events (the Listener is inside the scroll
+  /// views) work in its coordinates, except [toDocumentPoint] and the test
+  /// getters, which use widget coordinates.
   Size _viewport = Size.zero;
 
-  /// _scroll and _scrollX scroll the page down and across, where it is
-  /// bigger than the window.
+  /// _scroll and _scrollX scroll the page down and across.
   final ScrollController _scroll = ScrollController();
   final ScrollController _scrollX = ScrollController();
 
-  /// _scrolled is how far the page is scrolled, down and across.
   Offset get _scrolled => Offset(_scrollX.hasClients ? _scrollX.offset : 0,
       _scroll.hasClients ? _scroll.offset : 0);
 
-  /// _stageMargin is the gap kept around the canvas when it is showing whole,
-  /// so the page reads as a sheet with room around it.
+  /// _stageMargin is the gap kept round the whole canvas.
   static const double _stageMargin = 24;
 
-  /// _overspillFraction is how much of the world outside the canvas is shown
-  /// when CanvasController.showOverspill is on, as a fraction of the page:
-  /// enough to hold something coming on or going off, while the page still
-  /// dominates.
+  /// _overspillFraction is how much world beyond the page shows when
+  /// CanvasController.showOverspill is on, as a fraction of the page.
   static const double _overspillFraction = 0.12;
 
   final FocusNode _focus = FocusNode(debugLabel: "canvas stage");
@@ -661,21 +574,17 @@ class CanvasStageState extends State<CanvasStage>
         setState(() {});
       }
     });
-    // The pen's pressure and tilt, where the platform only passes them on
-    // through the runner.
+    // Pen pressure and tilt, which some platforms pass only via the runner.
     TabletInput.instance.start();
     controller.addListener(_onChanged);
     controller.images.addListener(_onChanged);
     controller.keysHeld.addListener(_onChanged);
-    // Scrolled by hand (a scroll bar, two fingers, the wheel), the view is
-    // where it is scrolled to: see _followScroll.
     _scroll.addListener(_followScroll);
     _scrollX.addListener(_followScroll);
-    // Counters that say they start running do (a clock); a stopwatch waits
-    // to be started.
+    // Counters set to start running do; a stopwatch waits.
     controller.startCounters();
-    // The green screen's shader, read once for the whole app. Until it has
-    // landed a keyed video is drawn unkeyed, and this repaints when it does.
+    // Shaders loaded once for the app. Until the key shader lands a keyed
+    // video is drawn unkeyed; this repaints when it does.
     VideoKey.ready.addListener(_onChanged);
     AdjustShader.ready.addListener(_onChanged);
     TextureShader.ready.addListener(_onChanged);
@@ -728,15 +637,12 @@ class CanvasStageState extends State<CanvasStage>
     super.dispose();
   }
 
-  /// _between is how far past its frame the playhead has got, kept by
-  /// _betweenTicker on every screen refresh while a drift plays, so the
-  /// stage redraws it smoothly rather than a whole frame at a time. See
-  /// scene_renderer's betweenFrames.
+  /// _between is how far past its frame the playhead is, updated each screen
+  /// refresh while a drift plays. See scene_renderer's betweenFrames.
   final ValueNotifier<double> _between = ValueNotifier(0);
   Ticker? _betweenTicker;
 
-  /// _followPlayback starts the refresh-by-refresh redraw when a drift
-  /// starts playing, and stops it when playing stops.
+  /// _followPlayback runs _betweenTicker while a drift plays.
   void _followPlayback() {
     var want = controller.playing && controller.playsDrift;
     var ticker = _betweenTicker ??=
@@ -750,8 +656,7 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   void _onChanged() {
-    // Reframing follows the selection by way of the controller, which closes
-    // a picture's layers when it stops being the one thing selected.
+    // The controller closes a picture's layers when the selection moves off it.
     if (!mounted) return;
     _followPlayback();
     setState(() {});
@@ -761,37 +666,31 @@ class CanvasStageState extends State<CanvasStage>
   // Coordinates
   // ------------------------------------------------------------------------
 
-  /// _fitScale is the scale at which the whole canvas fills the area, with
-  /// [_stageMargin] to spare. Worked out from the viewport on every build:
-  /// it changes with the window and the sidebar, which the controller does
-  /// not know of.
+  /// _fitScale is the scale at which the whole canvas fits, with
+  /// [_stageMargin] to spare. Worked out on every build: it changes with the
+  /// window and sidebar, which the controller does not know.
   double get _fitScale {
     var size = document.size.size;
     if (size.width <= 0 || size.height <= 0) return 1;
-    // A spread is two pages across and one down, so only the width makes
-    // room; halving the fitted scale would halve the height as well.
+    // A spread is two pages across: only the width makes room.
     var across = size.width * (_spreadShown ? 2 : 1);
     var byWidth = (_visible.width - _stageMargin * 2) / across;
-    // Fit to width ignores the height: a 9:16 story fitted whole would be a
-    // narrow strip down the middle of a wide window.
+    // Fit to width ignores the height: a 9:16 story would be a narrow strip.
     var fit = controller.fit == CanvasFit.width
         ? byWidth
         : math.min(byWidth, (_visible.height - _stageMargin * 2) / size.height);
-    // The overspill has to fit on screen too, so the page gives up the room
-    // for it rather than the margin.
+    // The page gives up room for the overspill, not the margin.
     if (controller.showOverspill) fit /= 1 + _overspillFraction * 2;
     return fit.isFinite && fit > 0 ? fit : 1;
   }
 
-  /// _viewRect is everything that is drawn: the page, plus the overspill
-  /// round it when that is showing. The stage clips to it and tests the
-  /// pointer against it, so an element off the page is grabbable exactly
-  /// when it can be seen.
+  /// _viewRect is everything drawn: the page, plus overspill when showing.
+  /// Clipped and hit-tested against, so off-page elements are grabbable
+  /// exactly when seen.
   Rect get _viewRect {
     var page = _pageRect;
-    // The neighbour's half of the spread, added on its own side. The edited
-    // page keeps its frame and its origin, so nothing the pointer does has
-    // to know of a second leaf.
+    // The neighbour's half of the spread, on its own side. The edited page
+    // keeps its frame and origin, so the pointer code knows of one leaf.
     if (_spreadShown) {
       page = _facingOnLeft
           ? Rect.fromLTWH(page.left, page.top, page.width * 2, page.height)
@@ -805,8 +704,7 @@ class CanvasStageState extends State<CanvasStage>
             width: page.width * (1 + _overspillFraction * 2),
             height: page.height * (1 + _overspillFraction * 2),
           );
-    // A game's level, as far as it reaches: drawn, grabbable and scrolled
-    // along while it is not being played.
+    // A game's level, drawn, grabbable and scrollable while not played.
     if (_level case var level?) {
       shown = shown.expandToInclude(
           Rect.fromPoints(_toStage(level.topLeft), _toStage(level.bottomRight)));
@@ -814,16 +712,13 @@ class CanvasStageState extends State<CanvasStage>
     return shown;
   }
 
-  /// _level is how far a game's scene reaches, in the document's units (a
-  /// level wider or taller than the screen), so it can be scrolled along to be
-  /// edited; null for one that fits on the page, for anything but a game, and
-  /// while it is played, when the view is the game's.
+  /// _level is a game scene's reach past the page, in document units, so it
+  /// can be scrolled to; null if it fits, for a non-game, and during play.
   Rect? get _level {
     if (!document.game || controller.gaming || document.editingMaster) {
       return null;
     }
-    // Asked several times a build: worked out once for each document,
-    // frame and moment of what plays live.
+    // Asked several times a build: cached per document, frame and live clock.
     var key = (document, controller.frame, controller.liveMotion?.clock);
     if (_levelOf case (var k, var known)
         when identical(k.$1, key.$1) && k.$2 == key.$2 && k.$3 == key.$3) {
@@ -848,21 +743,19 @@ class CanvasStageState extends State<CanvasStage>
     return reach == page ? null : reach;
   }
 
-  /// levelShown is whether a game's level reaching past the page is being
-  /// shown round it, for the painter to mark the page out within it.
+  /// levelShown is whether a game's level reaches past the page.
   bool get levelShown => _level != null;
 
-  /// _contentSize is how much room the canvas and its margins need: the
-  /// visible box whenever the canvas fits in it, wider or taller when zoomed
-  /// in or fitted to the width, the excess scrolled.
+  /// _contentSize is the room the canvas and margins need, the excess over
+  /// the visible box scrolled.
   Size _contentSize(Size visible) {
     if (visible.width <= 0 || visible.height <= 0) return visible;
     var spill = controller.showOverspill ? 1 + _overspillFraction * 2 : 1.0;
     var page = document.size.size * _scale;
     var wide = page.width * spill * (_spreadShown ? 2 : 1) + _stageMargin * 2;
     var tall = page.height * spill + _stageMargin * 2;
-    // A game's level, all of it in reach: the page stays in the middle, so
-    // as much room each side as it reaches past the page on its far side.
+    // A game's level: the page stays centred, so each side gets as much room
+    // as the level reaches past the far side.
     if (_level case var level?) {
       var doc = document.size.size;
       var across = math.max(-level.left, level.right - doc.width) * _scale;
@@ -870,10 +763,8 @@ class CanvasStageState extends State<CanvasStage>
       wide = math.max(wide, page.width + across * 2 + _stageMargin * 2);
       tall = math.max(tall, page.height + down * 2 + _stageMargin * 2);
     }
-    // Zoomed, room to move it about in: as far as its edges reach the
-    // window's, and half a window past them, so it can be lifted clear of
-    // the timeline and mixer open over the stage. At the whole canvas it
-    // stays in the middle.
+    // Zoomed, room to move it about: half a window past its edges, so it can
+    // be lifted clear of the timeline and mixer. Unzoomed it stays centred.
     if ((controller.zoom - 1).abs() > 0.001) {
       wide = math.max(wide, visible.width * 2 - wide) + visible.width;
       tall = math.max(tall, visible.height * 2 - tall) + visible.height;
@@ -881,40 +772,32 @@ class CanvasStageState extends State<CanvasStage>
     return Size(math.max(visible.width, wide), math.max(visible.height, tall));
   }
 
-  /// _facingPage is the page drawn beside the one being worked on, or null
-  /// where it stands alone: a set of scenes, facing pages switched off, a
-  /// cover, the first leaf, or the master canvas (one page, which would
-  /// otherwise look different depending on where it was opened from). See
-  /// CanvasDocument.facingAt. The neighbour is only drawn: it cannot be
-  /// selected, moved or typed into.
+  /// _facingPage is the page drawn beside the edited one, or null when it
+  /// stands alone (scenes, facing pages off, a cover, the first leaf, or the
+  /// master, which would otherwise look different by where it was opened
+  /// from). See CanvasDocument.facingAt. The neighbour is only drawn.
   int? get _facingPage =>
       document.editingMaster ? null : document.facingAt(document.at);
 
-  /// _bookPreview is whether the document is being played as a book: facing
-  /// pages, and the run rather than one canvas on the stage. Every leaf is
-  /// then drawn in its own place in the spread, so the stage keeps one frame
-  /// for the run and a transition between spreads has both to move.
+  /// _bookPreview is whether the document plays as a book: every leaf drawn
+  /// in its spread place, so a transition between spreads moves both.
   bool get _bookPreview => controller.previewAt != null && document.hasSpread;
 
-  /// _spreadShown is whether room is given to the leaf beside this one, which
-  /// is not whether it is drawn: fitted to the width there is no spread, but
-  /// the neighbour is still drawn, since a picture across the gutter is part
-  /// of this page.
+  /// _spreadShown is whether room is given to the facing leaf. Fitted to
+  /// width there is none, but the neighbour is still drawn, since a picture
+  /// across the gutter is part of this page.
   bool get _spreadShown =>
       (_facingPage != null || _bookPreview) &&
       controller.fit != CanvasFit.width;
 
-  /// _facingOnLeft is whether the page being worked on is the left-hand leaf,
-  /// so the neighbour is drawn to its right.
+  /// _facingOnLeft is whether the edited page is the left leaf.
   bool get _facingOnLeft {
     if (_bookPreview) return document.spreadOf(document.at)?.$1 == document.at;
     if (document.editingMaster) return false;
     return document.facingIsLeft(document.at) ?? false;
   }
 
-  /// _onFacingPage is whether a point on the stage is over the leaf drawn
-  /// beside the one being edited: measured against the edited page's own
-  /// frame, since the two share an edge.
+  /// _onFacingPage is whether a stage point is over the facing leaf.
   bool _onFacingPage(Offset stage) {
     if (!_spreadShown) return false;
     var page = _pageRect;
@@ -922,14 +805,11 @@ class CanvasStageState extends State<CanvasStage>
     return _facingOnLeft ? stage.dx > page.right : stage.dx < page.left;
   }
 
-  /// _pageRect is the page on screen: drawn at [_scale] and centred in the
-  /// viewport, which grows past the window when the page does, the
-  /// difference scrolled.
+  /// _pageRect is the page on screen at [_scale], centred in the viewport.
   Rect get _pageRect {
     var size = document.size.size * _scale;
-    // The spread is what sits in the middle, the edited page taking its own
-    // half, so the spread does not move across the window when the page
-    // being worked on changes sides.
+    // The spread is centred, the edited page taking its half, so it does not
+    // shift when the edited page changes sides.
     var across = !_spreadShown
         ? 0.0
         : (_facingOnLeft ? -size.width / 2 : size.width / 2);
@@ -940,14 +820,11 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _scale is what one document unit measures on screen: the fitted size
-  /// times the zoom. See CanvasController.zoom on why zoom is a multiple of
-  /// the fit.
+  /// _scale is one document unit on screen: the fit times the zoom.
   double get _scale => _fitScale * controller.zoom;
 
-  /// _tellControllerTheScale hands the fitted scale to the controller so the
-  /// band can say what is on screen. After the frame: notifying during layout
-  /// is "setState called during build" (see CanvasController.restoreFit).
+  /// _tellControllerTheScale reports the fitted scale to the controller after
+  /// the frame: notifying during layout is "setState called during build".
   void _tellControllerTheScale() {
     var found = _fitScale;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -955,24 +832,20 @@ class CanvasStageState extends State<CanvasStage>
     });
   }
 
-  /// _scaledSize is the document as drawn.
   Size get _scaledSize => document.size.size * _scale;
 
-  /// _origin is where the document's top-left corner sits in stage space: the
-  /// page's own.
+  /// _origin is the document's top-left in stage space: the page's own.
   Offset get _origin => _pageRect.topLeft;
 
-  /// _clampedPan is where the view is, as CanvasController.pan says it: how
-  /// far the middle of the page is from the middle of the window, in screen
-  /// pixels, as it is scrolled.
+  /// _clampedPan is the view as CanvasController.pan holds it: the page's
+  /// middle from the window's, in screen pixels.
   Offset get _clampedPan {
     var page = _pageRect.center;
     var at = _scrolled + Offset(_visible.width / 2, _visible.height / 2);
     return page - at;
   }
 
-  /// _scrollFor is how far to scroll, down and across, to put the view at
-  /// [pan], within how far the page can be scrolled.
+  /// _scrollFor is the scroll that puts the view at [pan], within range.
   Offset _scrollFor(Offset pan) {
     var page = _pageRect.center;
     var want = page - Offset(_visible.width / 2, _visible.height / 2) - pan;
@@ -986,8 +859,7 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _setPan moves the view to [pan], as near it as the page can be
-  /// scrolled.
+  /// _setPan moves the view as near [pan] as the page can be scrolled.
   void _setPan(Offset pan) {
     var to = _scrollFor(pan);
     _jumpTo(to);
@@ -996,8 +868,8 @@ class CanvasStageState extends State<CanvasStage>
     controller.pan = Offset2(at.dx, at.dy);
   }
 
-  /// _syncing is set while the scroll views are moved to match the view, so
-  /// _followScroll does not take the move back as a scroll by hand.
+  /// _syncing is set while the scroll views follow the view, so
+  /// _followScroll does not take it for a scroll by hand.
   bool _syncing = false;
 
   void _jumpTo(Offset to) {
@@ -1011,16 +883,15 @@ class CanvasStageState extends State<CanvasStage>
     _syncing = false;
   }
 
-  /// _followScroll keeps the view where the page has been scrolled to by
-  /// hand, so the zoom buttons zoom about what is looked at.
+  /// _followScroll keeps the view where the page was scrolled by hand, so
+  /// the zoom buttons zoom about what is looked at.
   void _followScroll() {
     if (_syncing || !mounted) return;
     var pan = _clampedPan;
     controller.followPan(Offset2(pan.dx, pan.dy));
   }
 
-  /// _syncScroll scrolls to where the view is, after the page is laid out
-  /// at its size: zoomed by the buttons, by a pinch, or onto a character.
+  /// _syncScroll scrolls to the view once the page is laid out at its size.
   void _syncScroll() {
     if (!mounted) return;
     _jumpTo(_scrollFor(Offset(controller.pan.dx, controller.pan.dy)));
@@ -1031,81 +902,66 @@ class CanvasStageState extends State<CanvasStage>
 
   Offset _toStage(Offset doc) => doc * _scale + _origin;
 
-  /// toDocumentPoint converts a position in this widget's own coordinates to a
-  /// point in the document, for a drop from the sidebar. The scroll offset is
-  /// added on, since everything in here works in the scrolled content's
-  /// coordinates.
+  /// toDocumentPoint is a widget point in document space, for sidebar drops.
   Offset toDocumentPoint(Offset local) => _toDocument(local + _scrolled);
 
-  /// pageRect is the canvas's frame, in this widget's coordinates, for tests:
-  /// the canvas is painted, not laid out, so there is no render box to
-  /// measure.
+  /// pageRect is the canvas's frame in widget coordinates, for tests: the
+  /// canvas is painted, so there is no render box to measure.
   @visibleForTesting
   Rect get pageRect => _pageRect.shift(-_scrolled);
 
-  /// contentRect is the document as drawn inside that frame.
   @visibleForTesting
   Rect get contentRect => (_origin & _scaledSize).shift(-_scrolled);
 
-  /// spreadRect is the frame the page and the leaf beside it fill together,
-  /// which sits in the middle of the window while facing pages show; the
-  /// page's own frame where there is no leaf beside it.
+  /// spreadRect is the page and facing leaf's frame together, for tests.
   @visibleForTesting
   Rect get spreadRect => _viewRect.shift(-_scrolled);
 
-  /// flowGrips is where a selected text box's overflow dots are and what they
-  /// say, for the tests that drag one onto another box.
+  /// textFlowGrips is a selected text box's overflow dots, for tests.
   @visibleForTesting
   TextFlowGrips? get textFlowGrips => _flowGrips();
 
-  /// textFlowLines is the links being drawn, for the tests about when a chain
-  /// is visible.
+  /// textFlowLines is the chain links drawn, for tests.
   @visibleForTesting
   List<FlowLine> get textFlowLines => _flowLines();
 
-  /// gizmo is the gizmo on the selected element standing on a 3D stage, for
-  /// the tests that take hold of its parts.
+  /// gizmo is the gizmo on the selected staged element, for tests.
   @visibleForTesting
   StageGizmo? get gizmo => _gizmo();
 
-  /// toStagePoint is where a point of the document is on screen, for the same
-  /// tests.
+  /// toStagePoint is a document point on screen, for tests.
   @visibleForTesting
   Offset toStagePoint(Offset doc) => _toStage(doc) - _scrolled;
 
-  /// handleAt is where the selection's [handle] is on screen, for the tests
-  /// that drag one: turned and slanted, it is not at the box's corner.
+  /// handleAt is [handle] on screen, for tests: turned or slanted, it is off
+  /// the box's corner.
   @visibleForTesting
   Offset handleAt(StageHandle handle) {
     var bounds = _selectionBounds;
     return bounds == null ? Offset.zero : _handlePosition(handle, bounds);
   }
 
-  /// _chosen is what is selected on the canvas. A sound on the timeline is
-  /// selected from its channel and is not drawn, so it has no box.
+  /// _chosen is the selection on the canvas: a timeline sound is selected
+  /// from its channel and has no box.
   List<CanvasElement> get _chosen => [
         for (var e in controller.selectedElements)
           if (!isTimelineSound(e)) e,
       ];
 
-  /// _selectionBounds is the axis-aligned box round everything selected, in
-  /// document space. Rotation is ignored for several: handles cannot follow
-  /// several rotations at once.
+  /// _selectionBounds is the axis-aligned box round the selection, in
+  /// document space; rotation is ignored for several.
   Rect? get _selectionBounds {
     var elements = _chosen;
     if (elements.isEmpty) return null;
-    // A team standing on a pitch has no box to show, move or size: the
-    // pitch places it, and its players are what is picked up.
+    // A team on a pitch has no box: the pitch places it.
     if (elements.length == 1 &&
         elements.first is TeamElement &&
         (elements.first as TeamElement).linked) {
       return null;
     }
-    // An element reused: each copy its own thing on the canvas, outlined
-    // and picked alone -- the box round them all only with every one picked
-    // in its Instances (Ken: the box was clutter, and in the way).
-    // One copy picked: a box of its own, to size, turn and move it by
-    // (Ken, 2026-11-08: "Individual instances should get a box").
+    // A reused element's copies are each outlined and picked alone; a box
+    // round them all shows only with every copy picked, as it would be
+    // clutter. One copy picked gets its own box to size, turn and move.
     if (_oneCopy case (var e, var i)?) {
       return e.boundsWith(_copyPose(e, i));
     }
@@ -1118,8 +974,7 @@ class CanvasStageState extends State<CanvasStage>
         }
       }
     }
-    // Where they are on this frame, not where they rest (see
-    // CanvasElement.boundsAt), so the box moves with an animated element.
+    // Where they are on this frame, so the box follows an animated element.
     var box = _visualBounds(elements.first);
     for (var e in elements.skip(1)) {
       box = box.expandToInclude(_visualBounds(e));
@@ -1127,8 +982,8 @@ class CanvasStageState extends State<CanvasStage>
     return box;
   }
 
-  /// _oneCopy is the one copy picked of the one element selected, reused,
-  /// as (the element, the copy's index): the one copy that has a box.
+  /// _oneCopy is (element, index) when one copy of the one selected reused
+  /// element is picked: the one copy that has a box.
   (CanvasElement, int)? get _oneCopy {
     var elements = _chosen;
     if (elements.length != 1) return null;
@@ -1141,35 +996,32 @@ class CanvasStageState extends State<CanvasStage>
     return i < 0 ? null : (e, i);
   }
 
-  /// _copyPose is copy [i] of [e] as it is on this frame.
   Keyframe _copyPose(CanvasElement e, int i) =>
       poseWithMotion(e, controller.frame, controller.document,
           live: controller.liveMotion, instance: i);
 
-  /// _boxIsNotTheShape marks the elements whose selection box is bigger than
-  /// what the pointer can actually land on -- see _onPointerDown.
+  /// _boxIsNotTheShape marks elements whose selection box is bigger than what
+  /// the pointer can land on: see _onPointerDown.
   bool _boxIsNotTheShape(CanvasElement e) =>
       e is LineElement ||
       e is PathElement ||
       (e is TextElement && e.curve != null);
 
-  /// _visualBounds is where an element is drawn (see visualBoundsOf): a bowed
-  /// line, a path and text riding a line are drawn outside their own
-  /// rectangle.
+  /// _visualBounds is where an element is drawn: outside its rectangle for a
+  /// bowed line, a path or text on a line. See visualBoundsOf.
   Rect _visualBounds(CanvasElement e) =>
       visualBoundsOf(e, document, controller.frame,
           live: controller.liveMotion);
 
-  /// _selectionHasOwnGeometry is whether the handles and the rotate ring are
-  /// worth showing. See hasOwnGeometry.
+  /// _selectionHasOwnGeometry is whether handles are worth showing. See
+  /// hasOwnGeometry.
   bool get _selectionHasOwnGeometry {
     var elements = _chosen;
     if (elements.isEmpty) return false;
     return elements.every((e) => hasOwnGeometry(e, document, controller.frame));
   }
 
-  /// _rotationOfSelection is the single selected element's rotation, or zero
-  /// when several are chosen.
+  /// _rotationOfSelection is the lone selection's rotation in radians, or 0.
   double get _rotationOfSelection {
     if (_oneCopy case (var e, var i)?) {
       return (e.rotation + _copyPose(e, i).rotate) * math.pi / 180;
@@ -1182,14 +1034,12 @@ class CanvasStageState extends State<CanvasStage>
         : 0;
   }
 
-  /// _skewOfSelection is the single selected element's slant, in degrees,
-  /// across and down, or nothing when several are chosen.
+  /// _skewOfSelection is the lone selection's slant in degrees, or zero.
   Offset get _skewOfSelection => _chosen.length == 1
       ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
       : Offset.zero;
 
-  /// _frameOfSelection is how the selection's box is laid on the page:
-  /// turned and slanted, for one element; upright for several.
+  /// _frameOfSelection is the selection box's turn and slant on the page.
   BoxFrame get _frameOfSelection => BoxFrame(
       _rotationOfSelection * 180 / math.pi,
       _skewOfSelection.dx,
@@ -1199,8 +1049,7 @@ class CanvasStageState extends State<CanvasStage>
   // Hit testing
   // ------------------------------------------------------------------------
 
-  /// _hitElement is the topmost element under a document-space point, walked
-  /// from the front backwards.
+  /// _hitElement is the topmost element under a document point.
   CanvasElement? _hitElement(Offset point) {
     for (var i = document.elements.length - 1; i >= 0; i--) {
       var e = document.elements[i];
@@ -1210,8 +1059,8 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _selectedAt is the topmost of the selected elements under [point], or
-  /// null: see the press, where it comes before anything drawn over it.
+  /// _selectedAt is the topmost selected element under [point], which a
+  /// press takes before anything drawn over it.
   CanvasElement? _selectedAt(Offset point) {
     var picked = controller.selection;
     if (picked.isEmpty) return null;
@@ -1223,12 +1072,10 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _strokeReach is how far from a line the pointer may be and still be on
-  /// it, in document units: half the stroke plus a few pixels of slack.
+  /// _strokeReach is how near a line, in document units, counts as on it.
   double _strokeReach(double strokeWidth) =>
       math.max(strokeWidth / 2, 0) + strokeHitSlop / _scale;
 
-  /// _nearPolyline is whether [point] is within [reach] of the polyline.
   bool _nearPolyline(List<Offset> points, Offset point, double reach) {
     for (var i = 1; i < points.length; i++) {
       var a = points[i - 1], b = points[i];
@@ -1245,11 +1092,11 @@ class CanvasStageState extends State<CanvasStage>
     return false;
   }
 
-  /// _containsPoint asks whether a point is inside an element, undoing its
-  /// turn and slant first so it is hit where it is drawn.
+  /// _containsPoint is whether [point] is inside [e] as drawn, turn and slant
+  /// undone.
   bool _containsPoint(CanvasElement e, Offset point) {
-    // A camera by its frame's edge: inside it is what it shows, to be
-    // picked as if it were not there.
+    // A camera is hit by its frame's edge: what it shows inside is picked as
+    // if it were not there.
     if (e is CameraElement) {
       var frame = e.movedBoundsAt(controller.frame, controller.document,
           live: controller.liveMotion);
@@ -1258,8 +1105,8 @@ class CanvasStageState extends State<CanvasStage>
           !frame.deflate(reach).contains(point)) {
         return true;
       }
-      // Its name tab, and its corners' brackets, to take hold of where its
-      // edge is on the page's (Ken, 2026-11-14: hard to pick).
+      // Its name tab and corner brackets too: an edge on the page's edge is
+      // hard to pick.
       if (cameraTab(e, frame, _scale).contains(point)) return true;
       var corner = math.min(22 / _scale, frame.shortestSide / 4);
       for (var c in [
@@ -1277,19 +1124,16 @@ class CanvasStageState extends State<CanvasStage>
       }
       return false;
     }
-    // A team on a pitch is wherever the pitch puts its players, not in its
-    // own box.
+    // A team on a pitch is wherever the pitch puts its players.
     if (e is TeamElement && e.linked) return _hitPlayer(e, point) != null;
-    // Something on a stage is wherever the camera puts it: inside the four
-    // corners it is seen at.
+    // Something on a stage is inside the four corners the camera sees.
     if (e.base.spot != null) {
       if (stagedIn(document, e, controller.frame) case var at?) {
         return (Path()..addPolygon(at.quad, true)).contains(point);
       }
     }
-    // A curve is caught by its stroke, not by its box: a bowed line or a
-    // path bulges outside its box, and text riding a line has its words
-    // wherever the line is.
+    // A curve is hit by its stroke, not its box: a bowed line or path bulges
+    // out of its box, and text on a line is wherever the line is.
     if (e is LineElement || e is PathElement) {
       var curve = curveOfElement(
           e is LineElement ? lineWithPose(e, controller.frame) : e);
@@ -1302,24 +1146,20 @@ class CanvasStageState extends State<CanvasStage>
     if (e is TextElement) {
       var curve = curveUnderText(e, document, controller.frame);
       if (curve != null && curve.length >= 2) {
-        // Generous: what is aimed at is a row of letters on the line.
+        // Generous: the target is a row of letters on the line.
         return _nearPolyline(
             curve, point, _strokeReach(e.textSpec.fontSize * 1.2));
       }
     }
 
-    // Against where it is on this frame, as the selection box is.
     var box = e.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion);
-    // Back into its own upright box: turned and slanted, it is hit where it
-    // is drawn. See BoxFrame.
     var shape = e.movedFrameAt(controller.frame, controller.document,
         live: controller.liveMotion);
     var local = point;
     if (!shape.upright) local = box.center + shape.invert(point - box.center);
     if (!box.contains(local)) return false;
 
-    // A circle is hit inside the circle, not in its box's corners.
     if (e is ShapeElement && e.shape == ShapeKind.circle) {
       var r = box.shortestSide / 2;
       return (local - box.center).distance <= r;
@@ -1327,9 +1167,8 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _onSelectionGrip is whether a press at [stage] ([doc] in document space)
-  /// would take hold of something on the selection: a resize or rotate
-  /// handle, a flow grip, or a selected path's points and handles.
+  /// _onSelectionGrip is whether a press takes hold of the selection: a
+  /// handle, a flow grip, or a path's points.
   bool _onSelectionGrip(Offset stage, Offset doc) {
     if (controller.selection.isEmpty) return false;
     if (_hitHandle(stage) != null || _hitFlowGrip(stage) != null) return true;
@@ -1337,34 +1176,29 @@ class CanvasStageState extends State<CanvasStage>
     return path != null && _hitPathControl(path, doc) != null;
   }
 
-  /// _hitHandle is which grip is under a stage-space point, if any.
   StageHandle? _hitHandle(Offset stage) => _nearestHandle(stage)?.$1;
 
-  /// _nearestHandle is the closest grip within reach, and how far away it is.
-  /// The closest rather than the first found: on anything small two handles'
-  /// targets overlap. The distance comes back because the flow grips sit on
-  /// the same outline and have to know whether they are the nearer thing.
+  /// _nearestHandle is the closest grip in reach and its distance: closest,
+  /// since on a small element handle targets overlap; the distance lets the
+  /// flow grips on the same outline tell whether they are nearer.
   (StageHandle, double)? _nearestHandle(Offset stage) {
-    // Nothing to grab on something whose size and angle are a line's.
     if (!_selectionHasOwnGeometry) return null;
     var bounds = _selectionBounds;
     if (bounds == null) return null;
     var reach = handleSize / 2 + handleHitSlop;
 
-    // Hidden helpers are unreachable helpers: see
-    // CanvasController.showHelpers.
+    // Hidden helpers cannot be grabbed: see CanvasController.showHelpers.
     if (!controller.showHelpers) return null;
 
-    // The middle of an element is not a handle. On a short element (a text
-    // box one line high) the top and bottom grips' targets would meet in the
-    // middle, and every press on the words would resize instead of move.
+    // The middle is not a handle: on a one-line text box the top and bottom
+    // targets would meet, and every press would resize instead of move.
     if (_insideCore(stage, bounds, reach)) return null;
 
     StageHandle? best;
     var away = double.infinity;
     for (var handle in StageHandle.values) {
       var at = _handlePosition(handle, bounds);
-      // Clipped out of sight means clipped out of reach.
+      // Clipped out of sight is out of reach.
       if (!_viewRect.inflate(reach).contains(at)) continue;
       var d = (stage - at).distance;
       if (d <= reach && d < away) {
@@ -1375,33 +1209,30 @@ class CanvasStageState extends State<CanvasStage>
     return best == null ? null : (best, away);
   }
 
-  /// _insideCore is whether a stage point is far enough inside [bounds] that
-  /// nothing on the outline can have meant it. Each direction gives up at most
-  /// a third of the element to its grips, so there is always a middle left to
-  /// press.
+  /// _insideCore is whether a stage point is deep enough inside [bounds] that
+  /// no grip can have meant it. Each direction gives at most a third to its
+  /// grips, so a middle is always left to press.
   bool _insideCore(Offset stage, Rect bounds, double reach) {
     var on = Offset(bounds.width, bounds.height) * _scale;
     if (on.dx <= 0 || on.dy <= 0) return false;
     var keepX = math.min(reach, on.dx / 3);
     var keepY = math.min(reach, on.dy / 3);
 
-    // In the selection's own frame, so a rotated box keeps its middle too.
+    // In the selection's own frame, so a rotated box keeps its middle.
     var d = stage - _toStage(bounds.center);
     var local = _frameOfSelection.invert(d);
     return local.dx.abs() < on.dx / 2 - keepX &&
         local.dy.abs() < on.dy / 2 - keepY;
   }
 
-  /// _selectedText is the one text element selected on its own, the only
-  /// time the flow grips are shown.
+  /// _selectedText is the lone selected text element, which shows flow grips.
   TextElement? _selectedText() {
     if (controller.selection.length != 1) return null;
     var element = document.elementById(controller.selection.first);
     return element is TextElement ? element : null;
   }
 
-  /// _flowGrips is where a selected text box's two dots go, and what they
-  /// have to say. Null when there is nothing to say it about.
+  /// _flowGrips is a selected text box's two dots and what they say, or null.
   TextFlowGrips? _flowGrips() {
     if (!controller.showHelpers) return null;
     var e = _selectedText();
@@ -1422,8 +1253,7 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _flowDragLine is the link being dragged, from the box the words leave to
-  /// wherever the pointer is.
+  /// _flowDragLine is the link being dragged, from its box to the pointer.
   FlowLine? _flowDragLine() {
     if (_mode != _DragMode.flow) return null;
     var at = _flowAt;
@@ -1435,12 +1265,11 @@ class CanvasStageState extends State<CanvasStage>
         at);
   }
 
-  /// _flowLines is every link between two text boxes worth drawing: either
-  /// box selected, or every box being shown at once (see
-  /// CanvasController.showAllBounds).
+  /// _flowLines is every text link worth drawing: either box selected, or
+  /// all boxes shown (see CanvasController.showAllBounds).
   List<FlowLine> _flowLines() {
-    // Hidden joins leave the grips, which say there is a chain and whether
-    // the words fit; it is the lines that cross the design.
+    // Hidden joins hide only the lines that cross the design; the grips
+    // still say there is a chain and whether the words fit.
     if (!controller.showHelpers || controller.hideJoins) return const [];
     var out = <FlowLine>[];
 
@@ -1449,7 +1278,7 @@ class CanvasStageState extends State<CanvasStage>
       var into = document.elementById(e.flowTo);
       if (into == null || !e.visible || !into.visible) continue;
 
-      // Not the one in hand: it is being drawn from the pointer instead.
+      // Not the one in hand: that is drawn from the pointer.
       if (_mode == _DragMode.flow && e.id == _flowFrom) continue;
 
       var shown = controller.showAllBounds ||
@@ -1471,15 +1300,12 @@ class CanvasStageState extends State<CanvasStage>
     return out;
   }
 
-  /// _flowPointOf is where a box's flow grip sits, in document space.
   Offset _flowPointOf(Rect bounds, {required bool top}) => top
       ? Offset(bounds.left, bounds.top + bounds.height / 4)
       : Offset(bounds.right, bounds.bottom - bounds.height / 4);
 
-  /// _gripPosition puts a flow grip half way between two resize handles: the
-  /// incoming dot between the top-left and the middle-left, the outgoing one
-  /// between the middle-right and the bottom-right, so they do not crowd a
-  /// corner.
+  /// _gripPosition puts a flow grip between two resize handles, in at upper
+  /// left and out at lower right, clear of the corners.
   Offset _gripPosition(Rect bounds, {required bool top}) {
     var centre = _toStage(bounds.center);
     var half = Offset(bounds.width, bounds.height) * _scale / 2;
@@ -1488,11 +1314,10 @@ class CanvasStageState extends State<CanvasStage>
     return centre + _frameOfSelection.apply(local);
   }
 
-  /// _textPieceOwner is the text element with a piece under the pointer,
-  /// where its own box is not. Any text element, not only the selected one: a
-  /// piece pushed outside its box may be the only thing of it near the
-  /// pointer, and must take a first click. Front to back, like the ordinary
-  /// hit test.
+  /// _textPieceOwner is the frontmost text element with a piece under the
+  /// pointer outside its box. Any one, not only the selected: a piece pushed
+  /// outside its box may be all of it near the pointer, and must take a
+  /// first click.
   TextElement? _textPieceOwner(Offset doc) {
     for (var i = document.elements.length - 1; i >= 0; i--) {
       var element = document.elements[i];
@@ -1504,10 +1329,9 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _looseTextPiece is a text element with a piece under the pointer that is
-  /// drawn outside the element's own box. It beats the resize handles: a
-  /// piece pushed out sits against the outline the handles answer near.
-  /// Inside the box the outline means resizing (see _insideCore).
+  /// _looseTextPiece is a text element with a piece under the pointer drawn
+  /// outside its box. It beats the resize handles, whose outline a piece
+  /// pushed out sits against; inside the box they win (see _insideCore).
   TextElement? _looseTextPiece(Offset doc) {
     var owner = _textPieceOwner(doc);
     if (owner == null) return null;
@@ -1515,17 +1339,16 @@ class CanvasStageState extends State<CanvasStage>
             live: controller.liveMotion).contains(doc) ? null : owner;
   }
 
-  /// _textItemAt is which of a text element's extra pieces a document point
-  /// is on, or null for none: off the function that draws them (see
-  /// textItemRects), so what is clicked is what is seen.
+  /// _textItemAt is [e]'s extra piece at a document point, or null, from
+  /// what draws them (see textItemRects).
   TextItem? _textItemAt(TextElement e, Offset doc) {
     if (e.items.isEmpty) return null;
     var bounds = e.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion);
     var rects = textItemRects(e, bounds);
-    // Backwards: the last one drawn is on top.
+    // Backwards: the last drawn is on top.
     for (var i = e.items.length - 1; i >= 0; i--) {
-      // Hidden or locked in the Layers, it is not there to be pressed.
+      // Hidden or locked in the Layers, it cannot be pressed.
       if (e.items[i].hidden || e.items[i].locked) continue;
       if (!rects[i].isEmpty && rects[i].inflate(2).contains(doc)) {
         return e.items[i];
@@ -1534,8 +1357,7 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _topmostOf is whichever of the two is drawn in front (later in the
-  /// document's list), or either one where the other is null.
+  /// _topmostOf is whichever of the two is drawn in front, or the non-null one.
   CanvasElement? _topmostOf(CanvasElement? box, CanvasElement? piece) {
     if (box == null || piece == null) return box ?? piece;
     if (box.id == piece.id) return box;
@@ -1546,19 +1368,18 @@ class CanvasStageState extends State<CanvasStage>
         : box;
   }
 
-  /// _hitFlowGrip is which flow grip is under the pointer, if either. The
-  /// outgoing grip starts or moves a link; the incoming one picks up the link
-  /// that arrives, to disconnect it.
+  /// _hitFlowGrip is the flow grip under the pointer, if any: the outgoing
+  /// grip starts or moves a link, the incoming one picks up the arriving
+  /// link to disconnect it.
   ///
-  /// [beat] is how close the nearest resize handle is: a grip only answers
-  /// when it is nearer. On a short box they sit almost on top of each other,
-  /// and ties go to the handle.
+  /// [beat] is how close the nearest resize handle is: a grip answers only
+  /// when nearer, since on a short box they nearly overlap; ties go to the
+  /// handle.
   ({bool out})? _hitFlowGrip(Offset stage, {double beat = double.infinity}) {
     var grips = _flowGrips();
     if (grips == null) return null;
     var reach = flowGripSize / 2 + flowGripHitSlop;
-    // On the same outline as the resize grips, so it keeps off the middle
-    // too: see _insideCore.
+    // On the resize grips' outline, so it keeps off the middle too.
     var bounds = _selectionBounds;
     if (bounds != null && _insideCore(stage, bounds, reach)) return null;
     var out = (stage - grips.outAt).distance;
@@ -1570,14 +1391,12 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _counterPart is which freely placed piece of a counter is being dragged:
-  /// its id, and which piece (-2 the words in front, -3 the words after, 0
-  /// upwards a button).
+  /// _counterPart is the counter whose loose piece is dragged, and
+  /// _counterPartAt which: -2 the words before, -3 after, 0 and up a button.
   String? _counterPart;
   int _counterPartAt = 0;
 
-  /// _counterPartUnder is the freely placed piece a document point is on, if
-  /// any. Only pieces let loose: a word on the number's line is part of it.
+  /// _counterPartUnder is the loose piece at a document point, if any.
   int? _counterPartUnder(CounterElement e, Offset doc) {
     if (e.looseButtons) {
       var at = _counterButtonAt(e, doc);
@@ -1592,8 +1411,6 @@ class CanvasStageState extends State<CanvasStage>
       if (text.isEmpty) continue;
       var centre = Offset(inner.center.dx + inner.width * at.dx,
           inner.center.dy + inner.height * at.dy);
-      // A target the height of the words and a few ems wide, about what is
-      // drawn.
       var box = Rect.fromCenter(
           center: centre,
           width: math.max(
@@ -1604,13 +1421,11 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _applyCounterPart moves that piece to wherever the pointer is.
   /// _pressSynth answers a press on synth module [e]'s controls: a key
-  /// sounds, a knob turns as the press moves up or down (double-clicked,
-  /// back to the teacher's start), an option is chosen, ↺ and the look
-  /// switch do what they say, and a jack starts a cable -- out of an input
-  /// that has one, that cable lifted to go elsewhere. A locked module's
-  /// knobs, options and ↺ stay as they are. False on its panel itself.
+  /// sounds, a knob turns with a vertical drag (double-click: back to the
+  /// teacher's start), an option is chosen, ↺ and the look switch act, and a
+  /// jack starts a cable (from a used input, that cable is lifted). A locked
+  /// module's knobs, options and ↺ do not change. False on the panel itself.
   bool _pressSynth(SynthModuleElement e, Offset doc) {
     var part = synthPartAt(e, doc);
     if (part == null) return false;
@@ -1673,11 +1488,10 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _pressCode answers a press on Code panel [e]: a tab shown (or, carried
-  /// off, moved), its cross closing it, a file in the list opened in the
-  /// pane last pressed, the line between two panes dragged; a second press
-  /// on a picked panel's code opens that pane for typing. False where the
-  /// panel itself is pressed, to pick and move it.
+  /// _pressCode answers a press on Code panel [e]: a tab shown, or carried
+  /// to move it; its cross closing it; a listed file opened in the pane last
+  /// pressed; a pane divider dragged; a press on the code queued to open it
+  /// for typing. False on the panel itself, to pick and move it.
   bool _pressCode(CodeElement e, Offset doc) {
     var hit = codeHitAt(e, doc);
     if (hit == null) return false;
@@ -1688,8 +1502,7 @@ class CanvasStageState extends State<CanvasStage>
     }
 
     switch (hit) {
-      // Its playbar: pressed whether it is picked or not, as a sheet's is;
-      // its track dragged along to scrub.
+      // Its playbar works picked or not; the track is dragged to scrub.
       case CodePlayHit(part: CodePlayPart.play):
         controller.playCode(e);
         _mode = _DragMode.none;
@@ -1735,16 +1548,15 @@ class CanvasStageState extends State<CanvasStage>
         return true;
       case CodePaneHit(:var pane, :var inTabs):
         controller.pressCodePane(e, pane);
-        // One click on the code opens it for typing (Ken: two "doesn't
-        // feel like a very good user experience"); a press that becomes a
+        // One click on the code opens it for typing; a press that becomes a
         // drag moves the panel instead. See _onPointerUp.
         if (!inTabs && !_shiftHeld) _pendingCodeEdit = (e.id, pane);
         return false;
     }
   }
 
-  /// _pressCodeRun answers a Run panel's Run button; and a press on a
-  /// picked panel's preview opens it live, to be used.
+  /// _pressCodeRun answers a Run panel's Run button, and opens a picked
+  /// panel's preview live.
   bool _pressCodeRun(CodeRunElement e, Offset doc) {
     var code = document.elementById(e.code);
     var runner = runnerOf(e, code is CodeElement ? code : null);
@@ -1757,8 +1569,7 @@ class CanvasStageState extends State<CanvasStage>
         e.result != null &&
         (runner == CodeRunner.web || runner == CodeRunner.flutter)) {
       controller.liveCode(e);
-      // The press that opened it is the app's too, once it is there (Ken:
-      // the first press did nothing).
+      // The opening press is replayed into the app once it is there.
       if (runner == CodeRunner.flutter) _liveTapPending = true;
       _mode = _DragMode.none;
       return true;
@@ -1770,8 +1581,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.first != e.id) {
       controller.selectOnly(e.id);
     }
-    // Run, then live: the next press is the app's own, not the one that
-    // opens it (Ken: "click run and then the next click in the app work").
+    // Run, then open live, so the next press goes to the app.
     controller.runCode(e).then((_) {
       if (!mounted || controller.codeLive != null) return;
       var now = document.elementById(e.id);
@@ -1787,13 +1597,13 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _liveTapPending is a press on a Run panel's preview that opened it
-  /// live: let go, it is pressed again in the live app (_replayTap).
+  /// _liveTapPending is a press that opened a preview live, replayed into
+  /// the app on release (_replayTap).
   bool _liveTapPending = false;
   int _replayPointer = 0x7FFF0000;
 
-  /// _replayTap presses the live app at [global] once it has been built:
-  /// a touch, as a mouse's needs its pointer added first.
+  /// _replayTap presses the live app at [global] once built, as a touch: a
+  /// mouse's would need its pointer added first.
   void _replayTap(Offset global) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || controller.codeLive == null) return;
@@ -1806,9 +1616,8 @@ class CanvasStageState extends State<CanvasStage>
     WidgetsBinding.instance.scheduleFrame();
   }
 
-  /// _releaseCode ends a press on a Code panel: a line between panes let
-  /// go; a tab let go where it was pressed shown, or carried somewhere
-  /// moved there.
+  /// _releaseCode ends a press on a Code panel: a divider let go, or a tab
+  /// shown, or moved where it was carried.
   bool _releaseCode(Offset doc) {
     if (_codeScrub != null) {
       _codeScrub = null;
@@ -1841,8 +1650,7 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _codeTabCarried is a tab being carried: its name under the pointer,
-  /// and a mark where it would go.
+  /// _codeTabCarried is a carried tab's name at the pointer and a drop mark.
   List<Widget> _codeTabCarried() {
     var tab = _codeTab, at = _codeTabAt;
     if (tab == null || at == null) return const [];
@@ -1890,8 +1698,7 @@ class CanvasStageState extends State<CanvasStage>
     return out;
   }
 
-  /// _codeEditorFor is the code editor over the pane being edited, when one
-  /// is open.
+  /// _codeEditorFor is the code editor over the pane being edited, if open.
   Widget? _codeEditorFor() {
     var (id, pane) = controller.codeEditing ?? ("", -1);
     if (pane < 0) return null;
@@ -1930,8 +1737,7 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _codeLiveRect is where the live preview is on the stage, if one is
-  /// open.
+  /// _codeLiveRect is the open live preview on the stage, if any.
   Rect? _codeLiveRect() {
     var e = document.elementById(controller.codeLive ?? "");
     if (e is! CodeRunElement) return null;
@@ -1944,7 +1750,6 @@ class CanvasStageState extends State<CanvasStage>
         tl.dx, tl.dy, preview.width * _scale, preview.height * _scale);
   }
 
-  /// _codeLiveFor is the live preview over the Run panel open live.
   Widget? _codeLiveFor() {
     var id = controller.codeLive;
     if (id == null) return null;
@@ -1970,14 +1775,13 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _hoverCode notes the pane of code under the pointer, if any: while
-  /// there, the page's scroll views hold still and the pane scrolls.
+  /// _hoverCode notes the code pane under the pointer, which then scrolls
+  /// instead of the page.
   void _hoverCode(Offset stage) {
     var over = _codePaneAt(stage);
     if (over != _codeOver) setState(() => _codeOver = over);
   }
 
-  /// _codePaneAt is the Code panel and pane whose code is at [stage].
   (String, int)? _codePaneAt(Offset stage) {
     var doc = _toDocument(stage);
     var e = _hitElement(doc);
@@ -1989,15 +1793,13 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _scrollCodeBy scrolls the pane [at] by [by] on the stage, down
-  /// positive.
+  /// _scrollCodeBy scrolls pane [at] by [by] stage pixels, down positive.
   void _scrollCodeBy((String, int) at, double by) {
     var e = document.elementById(at.$1);
     if (e is! CodeElement) return;
     controller.scrollCode(e, at.$2, by / (_scale == 0 ? 1 : _scale));
   }
 
-  /// _pressMetronome answers a metronome's buttons.
   void _pressMetronome(MetronomeElement e, MetronomePart part) {
     if (controller.selection.length != 1 ||
         controller.selection.first != e.id) {
@@ -2017,8 +1819,7 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  /// _pressSynthTask answers a task card's buttons: its target heard, or
-  /// the patch checked against it.
+  /// _pressSynthTask answers a task card's Hear and Check buttons.
   void _pressSynthTask(SynthTaskElement card, SynthTaskButton b) {
     if (controller.selection.length != 1 ||
         controller.selection.first != card.id) {
@@ -2039,8 +1840,8 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  /// _turnSynthKnob turns the knob being dragged: a whole turn over 150
-  /// pixels up, as the prototype's; with Shift, four times finer.
+  /// _turnSynthKnob turns the dragged knob a whole turn per 150 pixels up,
+  /// four times finer with Shift.
   void _turnSynthKnob(Offset doc) {
     var (id, knob, from, start) = _synthKnob ?? (null, null, 0.0, Offset.zero);
     var e = id == null ? null : document.elementById(id);
@@ -2050,10 +1851,9 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _releaseSynth ends what a press on a synth module began: the key let
-  /// go, the knob's turn one change to undo, the cable plugged into the
-  /// jack it is dropped on -- or, lifted out and dropped on nothing, taken
-  /// out. True where there was one.
+  /// _releaseSynth ends a press on a synth module: the key released, the
+  /// knob's turn one undo step, the cable plugged into the jack it is dropped
+  /// on, or, lifted and dropped on nothing, removed. True if there was one.
   bool _releaseSynth(Offset doc) {
     if (_synthKey case (var e, var key)?) {
       _synthKey = null;
@@ -2093,7 +1893,6 @@ class CanvasStageState extends State<CanvasStage>
                 "${a.signal.name} jack.");
       }
     } else if (cable.lifted case (var was, var input)?) {
-      // Pulled out and let go of: the cable comes out.
       controller.unplugSynth(
           document.elementById(was.id) as SynthModuleElement, input);
     }
@@ -2102,6 +1901,7 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
+  /// _applyCounterPart moves the dragged counter piece to the pointer.
   void _applyCounterPart(Offset doc) {
     var id = _counterPart;
     var element = id == null ? null : document.elementById(id);
@@ -2109,8 +1909,7 @@ class CanvasStageState extends State<CanvasStage>
 
     var inner = element.box.inner(element.bounds);
     if (inner.width <= 0 || inner.height <= 0) return;
-    // Back to a fraction of the box from its middle, as a placement is
-    // held, so the piece stays put when the counter is resized.
+    // A fraction of the box from its middle, so it stays put on resize.
     var at = Offset(
       ((doc.dx - inner.center.dx) / inner.width).clamp(-1.0, 1.0),
       ((doc.dy - inner.center.dy) / inner.height).clamp(-1.0, 1.0),
@@ -2128,8 +1927,8 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _legendSeriesAt is which series' key entry a document point is on, or -1
-  /// for none: off the painter, so the target is exactly what was drawn.
+  /// _legendSeriesAt is the series whose key entry is at a document point,
+  /// from the painter, or -1.
   int _legendSeriesAt(ChartElement e, Offset doc) {
     for (var (series, box) in chartLegendRects(e, e.bounds)) {
       if (box.contains(doc)) return series;
@@ -2137,7 +1936,6 @@ class CanvasStageState extends State<CanvasStage>
     return -1;
   }
 
-  /// _toggleSeries switches one of a chart's series off, or back on.
   void _toggleSeries(ChartElement e, int at) {
     var current = document.elementById(e.id);
     if (current is! ChartElement) return;
@@ -2150,10 +1948,9 @@ class CanvasStageState extends State<CanvasStage>
     controller.endInteraction();
   }
 
-  /// _holdLegend takes hold of a chart's key, so a held press moves the key
-  /// rather than pressing one of its switches. The key keeps the place it is
-  /// drawn in, and from then on is a placed label like the title, put back by
-  /// the button in the Legend settings.
+  /// _holdLegend takes hold of a chart's key after a held press, to move it
+  /// rather than press a switch. The key keeps its drawn place and becomes a
+  /// placed label like the title, reset from the Legend settings.
   void _holdLegend(ChartElement e) {
     _legendHold = null;
     var current = document.elementById(e.id);
@@ -2164,7 +1961,6 @@ class CanvasStageState extends State<CanvasStage>
     var block = chartLegendBlock(current, bounds);
     if (block.isEmpty) return;
 
-    // What was pressed is not a switch any more.
     _pendingLegend = null;
     _pendingLegendAt = -1;
 
@@ -2183,8 +1979,8 @@ class CanvasStageState extends State<CanvasStage>
     setState(() => _mode = _DragMode.chartLabel);
   }
 
-  /// _audioPartAt is which of a speaker's controls a document point is on, or
-  /// null for none: the rectangles the painter drew (see audioParts).
+  /// _audioPartAt is the speaker control at a document point, or null (see
+  /// audioParts).
   AudioControl? _audioPartAt(AudioElement e, Offset doc) {
     var parts = audioParts(e, e.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion));
@@ -2198,8 +1994,7 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _masterAudioAt is a speaker on the master under a document point, and
-  /// which of its controls, while a page is the canvas in front of the reader.
+  /// _masterAudioAt is a master speaker and control under a document point.
   (AudioElement, AudioControl)? _masterAudioAt(Offset doc) {
     if (document.editingMaster) return null;
     var master = document.masterScene;
@@ -2212,16 +2007,15 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _videoPartAt is which part of a video a document point is on, from the
-  /// rectangles the painter drew. A link answers anywhere on it.
+  /// _videoPartAt is the video part at a document point. A link answers
+  /// anywhere on it.
   VideoPart? _videoPartAt(VideoElement e, Offset doc) =>
       videoPartAt(videoParts(e, e.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion)), doc,
           clickable:
               e.isLink || (e.has(VideoControl.clickToggle) && !e.clip.timed));
 
-  /// _masterVideoAt is a video on the master under a document point, while a
-  /// page is in front of the reader. See _masterAudioAt.
+  /// _masterVideoAt is a master video under a document point.
   (VideoElement, VideoPart)? _masterVideoAt(Offset doc) {
     if (document.editingMaster) return null;
     var master = document.masterScene;
@@ -2243,8 +2037,7 @@ class CanvasStageState extends State<CanvasStage>
       _ => 0.0,
     };
     var url = controller.pressVideo(e, part, along: along);
-    // Leaving the app is asked about by whoever put the stage up, as for a
-    // button's link.
+    // Leaving the app is for whoever put the stage up, as a button's link is.
     if (url != null && url.isNotEmpty) widget.onButtonLink?.call(url);
   }
 
@@ -2258,8 +2051,7 @@ class CanvasStageState extends State<CanvasStage>
     controller.pressAudio(e, part, volume: volume);
   }
 
-  /// _counterButtonAt is which of a counter's buttons a document point is in,
-  /// or -1 for none.
+  /// _counterButtonAt is the counter button at a document point, or -1.
   int _counterButtonAt(CounterElement e, Offset doc) {
     var rects = counterButtonRects(e, e.bounds);
     for (var i = 0; i < rects.length; i++) {
@@ -2268,9 +2060,8 @@ class CanvasStageState extends State<CanvasStage>
     return -1;
   }
 
-  /// _pressCounter runs one of a counter's buttons. Set is handled here: the
-  /// controller has no window, and the answer is typed on the button rather
-  /// than in a dialog over the canvas.
+  /// _pressCounter runs a counter's button. Set is typed on the button here,
+  /// as the controller has no window.
   void _pressCounter(CounterElement e, int at) {
     if (at < 0 || at >= e.buttons.length) return;
     var button = e.buttons[at];
@@ -2281,9 +2072,8 @@ class CanvasStageState extends State<CanvasStage>
     });
   }
 
-  /// _counterInputFor is the field that opens on a counter's Set button, at
-  /// the button's size. Enter takes it; anything else that closes it leaves
-  /// the counter alone.
+  /// _counterInputFor is the field on a counter's Set button: Enter takes
+  /// it; closing it otherwise changes nothing.
   Widget? _counterInputFor() {
     var id = _settingCounter;
     if (id == null) return null;
@@ -2320,9 +2110,8 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _dropFlow finishes a link drag: onto another text box it points the
-  /// words there; anywhere else it takes the link away, so a chain is taken
-  /// apart by the gesture that made it.
+  /// _dropFlow finishes a link drag: onto another text box it links there;
+  /// elsewhere it unlinks, so the gesture that made a chain undoes it.
   void _dropFlow(Offset stage) {
     var from = _flowFrom == null
         ? null
@@ -2341,8 +2130,7 @@ class CanvasStageState extends State<CanvasStage>
     }
 
     if (onto != null && wouldLoop(from, onto.id, document)) {
-      // A ring of boxes has no first box to start reading from: refused, and
-      // the link that was there is left alone.
+      // A ring of boxes has no first box to read from: refused.
       return;
     }
 
@@ -2367,7 +2155,6 @@ class CanvasStageState extends State<CanvasStage>
       StageHandle.bottomRight => Offset(half.dx, half.dy),
       StageHandle.rotate => Offset(0, -half.dy - rotateHandleGap),
     };
-    // Where the box is drawn: turned and slanted. See BoxFrame.
     return centre + _frameOfSelection.apply(local);
   }
 
@@ -2378,30 +2165,27 @@ class CanvasStageState extends State<CanvasStage>
   bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
   /// _pressedCopy is the copy of [_pressedCopyOf] a press landed on, picked
-  /// where the press is a click rather than a drag (Ken, 2026-11-08: copies
-  /// are objects on the canvas).
+  /// if the press is a click.
   String? _pressedCopy, _pressedCopyOf;
 
-  /// _copiesStart and _dragCopies are an element's copies as a drag of
-  /// some of them began, and which are dragged.
+  /// _copiesStart and _dragCopies are the copies at the drag's start, and
+  /// which are dragged.
   InstanceSet? _copiesStart;
   Set<String> _dragCopies = const {};
 
   void _onPointerDown(PointerDownEvent event) {
     _pointer = event;
-    // Not while typing: an editor is a real text field over the canvas, with
-    // its own pointers, and clicking off it moves the focus, which closes it
-    // (see CanvasTextEditor._onFocus). A cell editor counts: the stage
-    // taking the focus would close it before its own picture button's tap
-    // finished.
+    // Not while typing: an editor is a real text field with its own
+    // pointers, and clicking off it moves focus, which closes it (see
+    // CanvasTextEditor._onFocus). Taking focus would also close a cell editor
+    // before its own picture button's tap finished.
     if (_editingText != null ||
         _editingCell != null ||
         controller.codeEditing != null) {
       return;
     }
-    // A press off a live preview shuts it. One on it is the page's own: the
-    // stage hears every press over it, the preview's included, and shutting
-    // it there would take the page away from under the click.
+    // A press off a live preview shuts it. One on it belongs to the preview:
+    // shutting it would pull the page from under the click.
     if (controller.codeLive != null) {
       if (_codeLiveRect()?.contains(event.localPosition) ?? false) {
         _inLive = true;
@@ -2410,9 +2194,9 @@ class CanvasStageState extends State<CanvasStage>
       controller.endLiveCode();
     }
     _focus.requestFocus();
-    // Looking through the camera, the page is drawn moved and a press would
-    // land somewhere other than it looks: the press puts the page back, and
-    // does nothing else. See CanvasController.cameraView.
+    // Through the camera the page is drawn moved, so a press would land
+    // elsewhere than it looks: it only puts the page back. See
+    // CanvasController.cameraView.
     if (controller.cameraView) {
       controller.cameraView = false;
       return;
@@ -2423,7 +2207,6 @@ class CanvasStageState extends State<CanvasStage>
     var doc = _toDocument(stage);
     _dragStart = doc;
     _pressedCopy = null;
-    // Placing copies: each click puts one there (Escape stops).
     if (controller.placingCopies case var placing?
         when event.buttons == kPrimaryMouseButton) {
       controller.beginInteraction();
@@ -2433,10 +2216,10 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A press on the facing page opens it. Before the pan check (panning is
-    // a drag) and the hit test (an element of the edited page hanging over
-    // the spine would take it). Except on a grip of what is selected: a
-    // picture across the spread has handles on the other leaf.
+    // A press on the facing page opens it, before the pan check (panning is
+    // a drag) and the hit test (an element hanging over the spine would take
+    // it), unless it is on a grip: a picture across the spread has handles on
+    // the other leaf.
     if (_facingPage case var beside?
         when _onFacingPage(stage) && !_onSelectionGrip(stage, doc)) {
       controller.goToScene(beside);
@@ -2444,32 +2227,28 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A held marker's label on the canvas: dragged to move it, or by its
-    // grip to size it. Not in a game, where the page is the player's.
+    // A held marker's canvas label: dragged to move, or sized by its grip.
+    // Not in a game, where the page is the player's.
     if (_pressMarkerNote(doc)) return;
 
-    // The eyedropper: the colour under the press, and nothing else.
     if (controller.sampling) {
       _mode = _DragMode.none;
       _sampleAt(doc);
       return;
     }
 
-    // The pen's buttons and its other end, with the pencil out, do what
-    // they are set to, before the middle button's pan.
+    // The pen's buttons and eraser end, with the pencil out, before the
+    // middle button's pan.
     if (_stylusPress(event, doc)) return;
 
-    // The gizmo on an element standing on a 3D stage, before anything under
-    // it: it is drawn on top.
+    // The stage gizmo, drawn on top, before anything under it.
     if (_pressGizmo(doc)) return;
 
-    // The page locked on a stage: a press on the stage itself takes hold
-    // of its camera rather than moving the page or sweeping a selection.
+    // With the page locked, a press on a stage takes its camera.
     if (_pressLockedStage(event, doc)) return;
 
-    // The pan tool and the middle button pan (Space plays and stops). Not
-    // while the page is locked; and the pan tool not on a 3D stage, where
-    // the bar has the 3D tools instead.
+    // The pan tool and middle button pan (Space plays). Not with the page
+    // locked, and not the pan tool on a 3D stage, which has its own tools.
     if (!controller.pageLocked &&
         ((controller.tool == CanvasTool.pan && !controller.onStage3d) ||
             event.buttons == kMiddleMouseButton)) {
@@ -2479,21 +2258,18 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // While a picture's layers are open, a press on it works on them; a
-    // press anywhere else finishes the editing, as clicking off a text
-    // editor closes it.
+    // With a picture's layers open, a press on it works on them; elsewhere
+    // it finishes editing.
     if (controller.editingImage case var picture?) {
       if (_pressLayers(picture, doc)) return;
       controller.editImage(null);
     }
 
-    // A guide, before anything on the canvas: it is a hairline drawn over
-    // the design, so the reach is tight (see guideGrabSlop), but within it
-    // the guide wins.
+    // A guide before anything on the canvas: it is a hairline, so its reach
+    // is tight (see guideGrabSlop), but within it the guide wins.
     if (_startGuideDrag(stage, doc)) return;
 
-    // An anchor point shown and not locked, before the element it sits on:
-    // it is the small thing drawn on top.
+    // An anchor point shown and unlocked, before the element it sits on.
     if (_anchorUnder(stage) case var id?) {
       _anchorOf = id;
       _mode = _DragMode.anchor;
@@ -2501,8 +2277,7 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A sprite being painted takes a press on it before anything else: a
-    // brush on its pixels.
+    // A sprite or tile map being painted takes a press on it first.
     if (controller.spritePaint case var session?) {
       if (session.sprite case var e? when !e.locked && e.bounds.contains(doc)) {
         _mode = _DragMode.spritePaint;
@@ -2510,7 +2285,6 @@ class CanvasStageState extends State<CanvasStage>
         return;
       }
     }
-    // So does a map being painted: a brush on its cells.
     if (controller.tilePaint case var session?) {
       if (session.map case var e? when !e.locked && e.bounds.contains(doc)) {
         _mode = _DragMode.tilePaint;
@@ -2519,17 +2293,16 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A drawing being edited takes the press first: its points and handles,
-    // its shapes, and anywhere inside it. A press outside it finishes the
-    // editing and goes on to do what it would have done.
+    // A drawing being edited takes the press first; outside it, editing
+    // ends and the press goes on.
     if (controller.editingVector case var vector?
         when _pressVector(vector, doc)) {
       return;
     }
 
-    // Option held on a 3D stage takes hold of its camera: across goes round
-    // the stage, down looks from higher. On a Background element showing
-    // one, or, where the press hits nothing else, the background's own.
+    // Option on a 3D stage takes its camera: across orbits, down looks from
+    // higher. On a Background element showing one, or, hitting nothing else,
+    // the background's own.
     if (HardwareKeyboard.instance.isAltPressed) {
       var hit = _hitElement(doc);
       var held = switch (hit) {
@@ -2538,7 +2311,6 @@ class CanvasStageState extends State<CanvasStage>
         null => controller.stageOf(backgroundStageId),
         _ => null,
       };
-      // Parallax scenery is panned the same way.
       var scenery = switch (hit) {
         BackgroundElement b when b.isParallax => b.parallaxed,
         null => controller.parallaxOf(backgroundParallaxId),
@@ -2562,8 +2334,7 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A selected path's points and handles are grabbed before anything
-    // else, as a team's players are: they are drawn on top of the curve.
+    // A selected path's points and handles first: they are over the curve.
     var path = _selectedPath();
     if (path != null) {
       var grab = _hitPathControl(path, doc);
@@ -2577,10 +2348,9 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // Inside the box of something already selected whose box is not its
-    // shape (a curved line, a path, text on a line) takes hold of it.
-    // Selecting one still needs the stroke, or a bowed line's empty box
-    // would steal clicks meant for what is under it.
+    // Inside the box of a selected element whose box is not its shape (a
+    // curved line, a path, text on a line) takes hold of it. Selecting one
+    // still needs the stroke, or a bowed line's empty box would steal clicks.
     if (!_shiftHeld && controller.selection.length == 1) {
       var chosen = document.elementById(controller.selection.first);
       if (chosen != null &&
@@ -2594,29 +2364,27 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // Outside the frame there is nothing to hit: clicking the margin clears
-    // the selection.
+    // Outside the frame there is nothing to hit: a click clears the selection.
     if (!_viewRect.contains(stage) && _hitHandle(stage) == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.none;
       return;
     }
 
-    // Neither the flow grips nor the resize handles where the press is on a
-    // piece of writing drawn outside its own box: see _looseTextPiece.
+    // No flow grips or resize handles when the press is on a piece of text
+    // drawn outside its box: see _looseTextPiece.
     if (_looseTextPiece(doc) == null) {
-      // A flow grip, before the resize handles, but only where it is the
-      // nearer: on a short box the grip lands on the middle handle.
+      // A flow grip before the resize handles, if nearer: on a short box the
+      // grip lands on the middle handle.
       var nearest = _nearestHandle(stage);
       if (_hitFlowGrip(stage, beat: nearest?.$2 ?? double.infinity)
           case var grip?) {
         var selected = document.elementById(controller.selection.first);
-        // A locked connector still shows (it is how a chain is read) but does
-        // not answer the pointer.
+        // A locked connector shows, as a chain is read by it, but ignores
+        // the pointer.
         if (controller.lockJoins) return;
-        // Dragging the incoming grip takes hold of the link that arrives here,
-        // which belongs to the box in front. The loose end moves; where it is
-        // dropped is what it means.
+        // The incoming grip takes the arriving link, which belongs to the
+        // box in front; where its loose end drops says what it means.
         var from = grip.out
             ? controller.selection.first
             : (selected is TextElement
@@ -2634,14 +2402,13 @@ class CanvasStageState extends State<CanvasStage>
 
       var handle = nearest?.$1;
       if (handle != null) {
-        // A side handle slants the element instead, with Command held or the
-        // Skew switch on, one element at a time.
+        // A side handle slants instead with Command or the Skew switch on.
         var side = handle == StageHandle.topCenter ||
             handle == StageHandle.bottomCenter ||
             handle == StageHandle.centerLeft ||
             handle == StageHandle.centerRight;
-        // The one copy's box sizes and turns that copy: its own values, as
-        // its Instances card sets them. It has no slant of its own.
+        // The one copy's box sizes and turns that copy by its own values. A
+        // copy has no slant.
         if (_oneCopy case (var e, var i)?) {
           _beginCopyBox(e, i,
               handle == StageHandle.rotate
@@ -2664,8 +2431,7 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // The retouching brush, before anything else: while it is on, a drag is
-    // a stroke and nothing on the canvas moves.
+    // The retouching brush first: while on, a drag is a stroke.
     if (controller.retouch.on) {
       var picture = _selectedPicture();
       if (picture != null) {
@@ -2677,10 +2443,9 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A player of any team, before anything else on the canvas: a player
-    // dragged outside his team's box, or standing in the other side's half,
-    // would otherwise find no team or the wrong one. A dot is the smallest
-    // and topmost thing and wins against every box.
+    // A player of any team, before anything else: one dragged out of his
+    // team's box, or in the other half, would find no team or the wrong one.
+    // A dot is the smallest, topmost thing and beats every box.
     var hit = _hitAnyPlayer(doc);
     if (hit != null) {
       var (team, index) = hit;
@@ -2690,29 +2455,27 @@ class CanvasStageState extends State<CanvasStage>
       }
       _mode = _DragMode.player;
       _playerIndex = index;
-      // Held by where they stand rather than by the middle of their token,
-      // which on a pitch seen at an angle is lifted off the ground.
+      // Held by where they stand, not their token's middle, which on a pitch
+      // seen at an angle is off the ground.
       _playerGrab = doc -
           playerPlace(teamGround(document, team, controller.frame), team,
                   team.players[index], controller.frame)
               .ground;
-      // Clicking a player is also how the timeline is pointed at them: a
-      // player has no id and cannot be selected.
+      // Clicking a player points the timeline at them: they have no id.
       controller.focusedPlayer = index;
       controller.beginInteraction();
       return;
     }
 
-    // A placed label of the selected chart, before the chart itself: it sits
-    // inside the chart's box, so the ordinary hit test would move the chart.
+    // A selected chart's placed label, before the chart whose box holds it.
     var chart = controller.selected;
     if (chart is ChartElement && !chart.locked) {
       var grab = chartLabelGrabAt(
           chart, chart.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion), doc, _docSlop);
       if (grab != null) {
-        // A placed key is both the thing that moves and the row of switches:
-        // armed here, decided on release by how far the pointer travelled.
+        // A placed key both moves and holds switches: decided on release by
+        // how far the pointer went.
         if (grab.part == ChartLabelPart.legend &&
             controller.selection.length == 1) {
           var at = _legendSeriesAt(chart, doc);
@@ -2728,8 +2491,7 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A column rule of the selected table, before the table itself, which
-    // would otherwise be picked up.
+    // A selected table's column rule, before the table.
     var table = controller.selected;
     if (table is TableElement && !table.locked) {
       var divider =
@@ -2743,16 +2505,15 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // What is selected comes first: pressed anywhere on it, it is what is
-    // moved, whatever is drawn over it -- Ken, 2026-11-11, picked six
-    // elements in Layers and his first drag on the canvas picked the one
-    // lying over them instead. With nothing selected under the pointer the
-    // topmost thing wins, as ever.
+    // The selection comes first: pressed anywhere on it, it is what moves,
+    // whatever is drawn over it, so a drag after picking in Layers moves
+    // what was picked. With nothing selected under the pointer, the topmost
+    // thing wins.
     var held = _selectedAt(doc);
 
-    // A speaker on the master, pressed from a page. It cannot be selected
-    // there (the master is edited on its own), so a press means pressing
-    // it: background music with a mute switch sits on the master.
+    // A master speaker pressed from a page. It cannot be selected there (the
+    // master is edited on its own), so a press presses it: background music
+    // with a mute switch lives on the master.
     if (held == null) {
       if (_masterAudioAt(doc) case (var sound, var part)?) {
         _pressAudio(sound, part, doc);
@@ -2766,9 +2527,8 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A piece of a text element counts as that element, wherever it is
-    // drawn (a gap or a side can put it outside its box), and wins against
-    // anything drawn under its element.
+    // A text element's piece counts as that element wherever it is drawn
+    // (gaps or sides can put it outside its box), and beats what is under it.
     var element =
         held ?? _topmostOf(_hitElement(doc), _textPieceOwner(doc));
     if (element == null) {
@@ -2778,10 +2538,9 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A synth module's controls answer a press whether it is picked or not,
-    // as a rack's do; its panel otherwise is what picks and moves it.
+    // A synth module's controls answer a press picked or not, as a rack's
+    // do; its panel picks and moves it.
     if (element is SynthModuleElement && _pressSynth(element, doc)) return;
-    // A metronome's buttons, pressed whether it is picked or not.
     if (element is MetronomeElement) {
       if (metronomePartAt(element, doc) case var part?) {
         _pressMetronome(element, part);
@@ -2789,8 +2548,8 @@ class CanvasStageState extends State<CanvasStage>
         return;
       }
     }
-    // A Code panel's tabs, files and the lines between its panes answer a
-    // press whether it is picked or not; its Run panel's Run button too.
+    // A Code panel's tabs, files and pane dividers, and a Run panel's Run
+    // button, answer a press picked or not.
     if (element is CodeElement && _pressCode(element, doc)) return;
     if (element is CodeRunElement && _pressCodeRun(element, doc)) return;
     if (element is CodeTaskElement && codeTaskButtonAt(element, doc)) {
@@ -2810,9 +2569,9 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A selected button is tried by clicking it and moved by dragging it,
-    // so the action waits for pointer-up, where the distance travelled is
-    // known. See _onPointerUp.
+    // A selected button is tried by a click and moved by a drag, so its
+    // action waits for pointer-up, when the travel is known. See
+    // _onPointerUp.
     if (element is ButtonElement &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
@@ -2821,10 +2580,9 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A selected speaker's own controls, on the same terms as a button: a
-    // press that stays put plays, mutes or sets the volume, and one that
-    // travels moves it. And a selected video's: its play button, its bar,
-    // or the picture itself.
+    // A selected speaker's or video's controls, on the same terms: a press
+    // that stays put plays, mutes, sets the volume or seeks; one that
+    // travels moves it.
     if (element is VideoElement &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
@@ -2838,10 +2596,9 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A selected sheet showing a score part: a press that stays put moves
-    // the playhead to the note there; one that travels moves the sheet.
-    // Its playbar takes a press whether it is picked or not, as a play
-    // button would.
+    // A selected sheet with a score: a press that stays put moves the
+    // playhead to the note there; one that travels moves the sheet. Its
+    // playbar takes a press picked or not.
     var onBar = element is SheetElement &&
         (sheetBarRect(
                     element,
@@ -2864,9 +2621,9 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A selected instrument's keys: down, the note sounds at once, and let
-    // go, it stops. A press that travels lets the note go and moves the
-    // keyboard instead. Further down the key is harder, as on a real one.
+    // A selected instrument's keys sound on press and stop on release; a
+    // press that travels releases the note and moves the keyboard. Further
+    // down the key is harder, as on a real one.
     if (element is AudioElement &&
         element.instrument != null &&
         controller.selection.length == 1 &&
@@ -2897,10 +2654,9 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A live counter's own buttons, on the same terms: only when it is the
-    // thing selected and the press does not turn into a drag. A freely
-    // placed piece is both (press it and it runs, drag it and it moves), so
-    // the press is armed here and the mode is the one that moves the piece.
+    // A live counter's buttons, on the same terms: only when selected and the
+    // press does not become a drag. A loose piece is both, so the press is
+    // armed here and the mode moves the piece.
     if (element is CounterElement &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
@@ -2926,8 +2682,7 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // A chart's key entry switches that series off and on, on the same
-    // terms: only while the chart is selected.
+    // A chart's key entry switches its series, on the same terms.
     if (element is ChartElement &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
@@ -2935,15 +2690,14 @@ class CanvasStageState extends State<CanvasStage>
       if (at >= 0) {
         _pendingLegend = element;
         _pendingLegendAt = at;
-        // Held rather than tapped, the same press moves the key instead.
+        // Held rather than tapped, the press moves the key instead.
         _legendHold = Timer(_legendHoldDelay, () => _holdLegend(element));
         _beginTransform(_DragMode.move, null);
         return;
       }
     }
 
-    // A second click on a selected drawing opens it for editing point by
-    // point, as a second click opens text for typing.
+    // A second click on a selected drawing opens it for editing.
     if (element is VectorElement &&
         !_shiftHeld &&
         !element.locked &&
@@ -2952,7 +2706,6 @@ class CanvasStageState extends State<CanvasStage>
         _pressedAt != Offset.zero &&
         clock.now().difference(_lastClickAt) < _doubleClickWindow) {
       _mode = _DragMode.none;
-      // And the shape that was double-clicked picked, ready to be worked on.
       var at = doc;
       unawaited(startVectorEditing(context, controller, element).then((_) {
         var e = controller.editingVector;
@@ -2964,9 +2717,9 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A second click on a selected picture opens its layers, with the layer
-    // under the click picked. With the base picture picked, dragging moves
-    // the picture inside its box (see _framing).
+    // A second click on a selected picture opens its layers, the one under
+    // the click picked. With the base picked, a drag moves the picture
+    // inside its box (see _framing).
     if (element is ImageElement &&
         !_shiftHeld &&
         !element.locked &&
@@ -2979,7 +2732,7 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A second click on a cell of a selected table opens it for typing.
+    // A second click on a selected table's cell opens it for typing.
     if (element is TableElement &&
         !_shiftHeld &&
         !element.locked &&
@@ -2997,9 +2750,9 @@ class CanvasStageState extends State<CanvasStage>
     }
 
     // A second click on a selected text element opens it for typing; the
-    // first selects, so it is still moved by dragging. Not one whose words
-    // come from a document or that is flowed into: neither owns its words,
-    // and what was typed would be written over.
+    // first only selects, so it can still be dragged. Not one whose words
+    // come from a document or a flow: it does not own them, and typing would
+    // be overwritten.
     if (element is TextElement &&
         !element.document.on &&
         flowSourceOf(element, document) == null &&
@@ -3010,19 +2763,15 @@ class CanvasStageState extends State<CanvasStage>
         clock.now().difference(_lastClickAt) < _doubleClickWindow) {
       setState(() {
         _editingText = element.id;
-        // Whichever piece the second click landed on, or the element's own
-        // words.
         _editingItem = _textItemAt(element, doc)?.id;
       });
-      // The piece being typed into is the one picked in its Layers, so its
-      // settings are the ones showing.
+      // Pick the typed piece in Layers, so its settings show.
       controller.pickTextLayer(element.id, _editingItem);
       _mode = _DragMode.none;
       return;
     }
     _lastClickAt = clock.now();
 
-    // A copy of an element reused: see _pressCopy.
     if (_pressCopy(element, doc)) return;
 
     if (_shiftHeld) {
@@ -3031,9 +2780,8 @@ class CanvasStageState extends State<CanvasStage>
       controller.selectOnly(element.id);
     }
 
-    // A team with its frame locked, or standing on a pitch, is still
-    // selectable but its box does not move. A drag that was going to take
-    // hold of a player has been dealt with above.
+    // A team with its frame locked, or on a pitch, is selectable but its box
+    // does not move. A player drag was dealt with above.
     if (element is TeamElement && element.frameFixed) {
       _mode = _DragMode.none;
       return;
@@ -3042,12 +2790,11 @@ class CanvasStageState extends State<CanvasStage>
     _beginTransform(_DragMode.move, null);
   }
 
-  /// _pressCopy takes a press on [element], reused, at [doc] for the copy
-  /// there (Ken, 2026-11-08). Alt drags out new copies of it (or of those
-  /// picked, it among them); Shift picks it in or out; with copies picked,
-  /// it is picked and dragged on its own -- otherwise the press goes on to
-  /// the element, a drag moving them all and a click picking this one (see
-  /// _onPointerUp). True where the press is dealt with.
+  /// _pressCopy takes a press on reused [element] at [doc] for the copy
+  /// there. Alt drags out new copies of it (or of those picked); Shift picks
+  /// it in or out; with copies picked, it is picked and dragged alone.
+  /// Otherwise the press goes on to the element: a drag moves them all, a
+  /// click picks this one (see _onPointerUp). True if handled.
   bool _pressCopy(CanvasElement element, Offset doc) {
     var set = element.base.motion.instances;
     if (set == null) return false;
@@ -3091,10 +2838,9 @@ class CanvasStageState extends State<CanvasStage>
     return false;
   }
 
-  /// _copyPivot is what the one copy's box sizes and turns about, while a
-  /// handle of it is held: its anchor, which stays where it is (see
-  /// CanvasElement.boundsWith). _copySize and _copyTurn are its own Size and
-  /// Turn as the drag began.
+  /// _copyPivot is the one copy's anchor, which its box sizes and turns
+  /// about and which stays put (see CanvasElement.boundsWith). _copySize and
+  /// _copyTurn are its own Size and Turn at the drag's start.
   Offset _copyPivot = Offset.zero;
   double _copySize = 1, _copyTurn = 0;
 
@@ -3109,10 +2855,10 @@ class CanvasStageState extends State<CanvasStage>
     controller.beginInteraction();
   }
 
-  /// _applyCopyBox sizes or turns the one copy picked as its handle is
-  /// dragged to [doc]. Sized evenly, by how much farther from its anchor the
-  /// pointer is along the line it was pressed on (a copy has one Size);
-  /// turned by the angle swept, to fifteen degrees with Shift.
+  /// _applyCopyBox sizes or turns the one picked copy as its handle is
+  /// dragged to [doc]: sized evenly (a copy has one Size) by how much farther
+  /// from its anchor the pointer is along the line pressed on; turned by the
+  /// angle swept, in 15-degree steps with Shift.
   void _applyCopyBox(Offset doc) {
     var e = controller.selected;
     if (e == null) return;
@@ -3134,8 +2880,8 @@ class CanvasStageState extends State<CanvasStage>
     controller.setCopyOwn(e.id, CopyValue.size.name, size, transient: true);
   }
 
-  /// _moveCopies puts the copies being dragged [delta] from where they
-  /// began, one way only with Shift.
+  /// _moveCopies puts the dragged copies [delta] from their start, along one
+  /// axis with Shift.
   void _moveCopies(Offset delta) {
     var from = _copiesStart, of = controller.selected?.id;
     if (from == null || of == null) return;
@@ -3155,18 +2901,16 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _selectedPath is the one selected element, when it is a path.
   PathElement? _selectedPath() {
     var selected = controller.selected;
     return selected is PathElement ? selected : null;
   }
 
-  /// _hitPathControl finds the point or handle under [doc], as (index,
-  /// isHandle, isOutHandle). Handles first, so a handle on top of its own
-  /// point (an unbent node's) can still be pulled out.
+  /// _hitPathControl is the point or handle under [doc], as (index, isHandle,
+  /// isOutHandle). Handles first, so one on top of an unbent node's point
+  /// can still be pulled out.
   (int, bool, bool)? _hitPathControl(PathElement path, Offset doc) {
-    // In document units, so the grab area is the same size on screen at any
-    // zoom.
+    // In document units, so the grab area is one size on screen at any zoom.
     var reach = (handleSize / 2 + handleHitSlop) / _scale;
     for (var i = 0; i < path.nodes.length; i++) {
       var node = path.nodes[i];
@@ -3187,28 +2931,24 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _vectorPart is which part of the picked point a drag has hold of.
   VectorPart _vectorPart = VectorPart.point;
 
-  /// _vectorBefore and _vectorFrom are the drawing and the press a drag of
-  /// several points started from, so the drag is applied to where they were.
+  /// _vectorBefore and _vectorFrom are the drawing and press a drag began at.
   VectorElement? _vectorBefore;
   Offset _vectorFrom = Offset.zero;
 
-  /// _vectorShapeUnder is the shape a box was started on, which a click (a
-  /// box that never grew) picks.
+  /// _vectorShapeUnder is the shape a box began on, picked by a click.
   int _vectorShapeUnder = -1;
 
-  /// _pressVector answers a press on a drawing being edited, returning
-  /// whether it took the press.
+  /// _pressVector answers a press on a drawing being edited, and says
+  /// whether it took it.
   ///
-  /// With the pen out, a press puts a point down. Otherwise: a point or
-  /// handle is taken hold of (Shift adds or removes it; one of several picked
-  /// drags them all); a second click on the picked point makes it a corner or
-  /// smooth; a second click on the picked shape's outline puts a point in it;
-  /// a press on a shape picks it and drags it whole; and a press on empty
-  /// space drags a box to pick points. Outside the drawing the editing ends,
-  /// and the press is left for whatever else wants it.
+  /// With the pen out, a press puts a point down. Otherwise a point or handle
+  /// is taken (Shift toggles it; one of several picked drags them all); a
+  /// second click on the picked point toggles corner/smooth; a double-click
+  /// on a line adds a point; a press on a shape picks and drags it; and empty
+  /// space drags a box to pick points. Outside the drawing, editing ends and
+  /// the press goes on.
   bool _pressVector(VectorElement e, Offset doc) {
     var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
     var twice = clock.now().difference(_lastClickAt) < _doubleClickWindow;
@@ -3216,13 +2956,12 @@ class CanvasStageState extends State<CanvasStage>
     var sameSpot = (doc - _lastVectorClick).distance * _scale <= _penPullMin;
     _lastClickAt = clock.now();
     _lastVectorClick = doc;
-    // The pen takes hold of points and handles as picking does, and the
-    // next point it puts down joins on from the point it took.
+    // The pen takes hold of points and handles as picking does, and its next
+    // point joins on from the one it took.
     VectorHit? penHit;
     switch (controller.vectorTool) {
       case VectorTool.pen:
-        // A double-click finishes the line, as Escape does, ready for the
-        // next to start fresh.
+        // A double-click finishes the line, as Escape does.
         if (twice && sameSpot) {
           controller.finishPenShape();
           _mode = _DragMode.none;
@@ -3257,7 +2996,6 @@ class CanvasStageState extends State<CanvasStage>
         _pressItems(e, doc, reach);
         return true;
       case VectorTool.text:
-        // On text: type into it. Anywhere else: new text, starting there.
         var under = shapeAt(e, doc, reach);
         var shapes = e.shapes ?? const <VectorShape>[];
         if (under >= 0 && shapes[under].liveText != null) {
@@ -3277,7 +3015,7 @@ class CanvasStageState extends State<CanvasStage>
         _vectorBefore = e;
         _shapeFrom = doc;
         controller.beginInteraction();
-        // On the shape just drawn or picked, or a handle of its box: moved or
+        // On the shape just drawn or picked, or its box's handle: moved or
         // resized, not another drawn.
         if (_shapeGrabbed(e, doc) case (var group, var box, var handle)?) {
           _shapeGroup = group;
@@ -3300,8 +3038,8 @@ class CanvasStageState extends State<CanvasStage>
           when _pressTint(e, doc):
         return true;
       default:
-        // Otherwise as the select tool (a scale with nothing to scale, or a
-        // tint off any point): a box, a shape picked, a click off.
+        // Otherwise as the select tool (a scale with nothing to scale, a tint
+        // off any point): a box, a shape picked, a click off.
         break;
     }
     var hit = penHit ??
@@ -3339,8 +3077,8 @@ class CanvasStageState extends State<CanvasStage>
       controller.beginInteraction();
       return true;
     }
-    // Inside the box round several picked points: they are dragged, all
-    // together, by their middle as well as by any one of them.
+    // Inside the box round several picked points drags them all, by their
+    // middle as well as any one of them.
     if (!twice && !_shiftHeld) {
       var box = picksBox(e, controller.vectorPicks);
       // As far out as the box is drawn: a handle's width round the points.
@@ -3352,9 +3090,9 @@ class CanvasStageState extends State<CanvasStage>
         return true;
       }
     }
-    // A double-click on a shape's line puts a point in it there; on its
-    // fill, away from the line, it picks every point connected to the part
-    // clicked. Both clicks on one spot.
+    // A double-click on a shape's line adds a point there; on its fill, it
+    // picks every point connected to the part clicked. Both clicks on one
+    // spot.
     if (twice && sameSpot) {
       var shape = controller.vectorShape >= 0
           ? controller.vectorShape
@@ -3381,8 +3119,8 @@ class CanvasStageState extends State<CanvasStage>
         return true;
       }
     }
-    // A shape cut into pieces: a press on a piece picks it -- every point
-    // of it -- and a drag moves it alone. See vector_cut.dart.
+    // A shape cut into pieces: a press picks a piece's points, and a drag
+    // moves it alone. See vector_cut.dart.
     if (!twice && !_shiftHeld && controller.vectorTool == VectorTool.select) {
       var under = shapeAt(e, doc, reach);
       var shapes = e.shapes ?? const <VectorShape>[];
@@ -3405,14 +3143,11 @@ class CanvasStageState extends State<CanvasStage>
         }
       }
     }
-    // Anywhere else (on a shape, empty space, or off the drawing) starts a
-    // box to pick points with: in edit mode a drag picks points. Let go
-    // without moving, it is a click, which on a shape picks the shape. See
-    // _onPointerUp.
+    // Anywhere else starts a box to pick points; released without moving it
+    // is a click, which on a shape picks the shape. See _onPointerUp.
     _vectorShapeUnder = shapeAt(e, doc, reach);
-    // A box started off the drawing can sweep up its edge points; a click
-    // off it that does not move finishes the editing. What is picked stays
-    // picked until the box is let go.
+    // A box from off the drawing can sweep up its edge points; a still click
+    // off it finishes editing. The picks stay until the box is let go.
     _vectorPressedOutside = !_visualBounds(e).contains(doc);
     _dragStart = doc;
     setState(() => _marquee = Rect.fromPoints(doc, doc));
@@ -3420,24 +3155,21 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _vectorPressedOutside is whether the press a box started from was
-  /// outside the drawing, so that, let go without moving, it finishes the
-  /// editing.
+  /// _vectorPressedOutside is whether a box began off the drawing.
   bool _vectorPressedOutside = false;
 
-  /// _pointer is the pointer event being handled: what the pen says about
-  /// pressure, tilt and its buttons, which the press and drag handlers
-  /// are not otherwise given.
+  /// _pointer is the event being handled: the pen's pressure, tilt and
+  /// buttons, which the handlers are not otherwise given.
   PointerEvent? _pointer;
 
-  /// _penSamples is the pencil stroke being drawn, reading by reading, and
-  /// _penWidth its full width in the drawing's units.
+  /// _penSamples is the pencil stroke's readings, _penWidth its full width
+  /// in drawing units.
   List<PenSample> _penSamples = [];
   double _penWidth = 1;
   double _eraseReach = 0;
 
-  /// _penLean is which way, and how far, the pen leans (across and down,
-  /// each -1 to 1), or null for a mouse, or a pen that does not say.
+  /// _penLean is the pen's lean across and down, each -1 to 1, or null for a
+  /// mouse or a pen that does not say.
   Offset? _penLean() {
     var tablet = TabletInput.instance;
     if (tablet.fresh) return Offset(tablet.tiltX, tablet.tiltY);
@@ -3447,17 +3179,17 @@ class CanvasStageState extends State<CanvasStage>
             ev.kind != PointerDeviceKind.invertedStylus)) {
       return null;
     }
-    // Flutter's own: how far over, a quarter turn at most, and which way.
+    // Flutter's tilt: how far over (a quarter turn at most), and which way.
     var lean = (ev.tilt / (math.pi / 2)).clamp(0.0, 1.0);
     return Offset(math.sin(ev.orientation), -math.cos(ev.orientation)) * lean;
   }
 
-  /// _penSample is the pen as [_pointer] last reported it, at [doc]: its
-  /// pressure and tilt where the pen says (a mouse, or a platform that passes
-  /// neither on, gives null, and the brush makes do with speed).
+  /// _penSample is the pen as [_pointer] last reported it, at [doc]: pressure
+  /// and tilt are null for a mouse or a platform that gives neither, and the
+  /// brush then makes do with speed.
   PenSample _penSample(Offset doc) {
     var ev = _pointer;
-    // On macOS the runner reads the pen for Flutter -- see TabletInput.
+    // On macOS the runner reads the pen: see TabletInput.
     var tablet = TabletInput.instance;
     if (tablet.fresh) {
       return PenSample(doc,
@@ -3479,9 +3211,9 @@ class CanvasStageState extends State<CanvasStage>
         time: ev?.timeStamp ?? Duration.zero);
   }
 
-  /// _pressEraser starts the eraser: rubbing out what it goes over (the
-  /// lines, the fills, or both, as set) or, set to take out whole lines,
-  /// every line and shape it touches. On the page only, as the pencil is.
+  /// _pressEraser starts the eraser: rubbing out lines, fills or both as
+  /// set, or, set to whole lines, removing each line and shape it touches.
+  /// On the page only, as the pencil is.
   void _pressEraser(VectorElement e, Offset doc, double reach) {
     _mode = _DragMode.none;
     if (!_onPage(doc)) return;
@@ -3509,23 +3241,22 @@ class CanvasStageState extends State<CanvasStage>
     _mode = _DragMode.vectorRub;
   }
 
-  /// _picksShapes is whether presses on the drawing pick whole shapes: the
-  /// select shapes tool, or the align tool after it.
+  /// _picksShapes is whether presses pick whole shapes: the select shapes
+  /// tool, or align after it.
   bool get _picksShapes =>
       controller.vectorTool == VectorTool.selectShapes ||
       (controller.vectorTool == VectorTool.align &&
           controller.vectorAlignsShapes);
 
-  /// _itemsBox is the box round the shapes picked when the drag began, in
-  /// the drawing's units; _itemsHandle the handle held (see boxHandles), -1
-  /// for the turning handle, or null for the whole, moved.
+  /// _itemsBox is the box round the picked shapes at the drag's start, in
+  /// drawing units; _itemsHandle the handle held (see boxHandles), -1 for the
+  /// turning handle, or null to move the whole.
   Rect _itemsBox = Rect.zero;
   int? _itemsHandle;
 
-  /// _pressItems is a press with the select shapes tool: on a handle of the
-  /// box round what is picked, that handle; on a shape, it (with Shift, added
-  /// or taken out) held to be moved; inside the box, everything picked, held;
-  /// anywhere else, nothing picked.
+  /// _pressItems is a press with the select shapes tool: a handle of the
+  /// picked box takes that handle; a shape is held to move (Shift toggles
+  /// it); inside the box, everything picked is held; elsewhere, nothing.
   void _pressItems(VectorElement e, Offset doc, double reach) {
     _mode = _DragMode.none;
     var space = VectorSpace(e);
@@ -3566,18 +3297,17 @@ class CanvasStageState extends State<CanvasStage>
     if (box != null && box.contains(space.toDrawing(doc)) && !_shiftHeld) {
       return hold(box, null);
     }
-    // Empty space: a box dragged across it picks every shape it touches;
-    // let go without moving, nothing picked.
+    // Empty space: a box picks every shape it touches.
     if (!_shiftHeld) controller.pickVectorItem(null);
     _dragStart = doc;
     setState(() => _marquee = Rect.fromPoints(doc, doc));
     _mode = _DragMode.vectorItemsBox;
   }
 
-  /// _dragItems moves, sizes or turns what is picked to follow [doc]: by a
-  /// handle, the opposite side staying put (Shift keeps a corner's
-  /// proportions); by the turning handle, about the box's middle (Shift in
-  /// steps of fifteen degrees); held inside, the whole of it.
+  /// _dragItems moves, sizes or turns the picked shapes to follow [doc]: a
+  /// handle keeps its opposite side put (Shift keeps a corner's proportions);
+  /// the turning handle turns about the middle (Shift in 15-degree steps);
+  /// held inside moves the whole.
   void _dragItems(Offset doc) {
     var before = _vectorBefore;
     if (before == null) return;
@@ -3606,21 +3336,18 @@ class CanvasStageState extends State<CanvasStage>
     controller.replaceElement(next, transient: true);
   }
 
-  /// _shapeFrom is where the shape being drawn was started, on the canvas.
   Offset _shapeFrom = Offset.zero;
 
-  /// _shapeGroup, _shapeBox and _shapeHandle are the shape the shapes tool is
-  /// moving or resizing: its group, its box when the drag began (in the
-  /// drawing's units), and the handle held (see boxHandles), or null for the
-  /// whole of it.
+  /// _shapeGroup, _shapeBox and _shapeHandle are the shape the shapes tool
+  /// moves or resizes: its group, its box at the drag's start (drawing
+  /// units), and the handle held (see boxHandles), or null for the whole.
   int _shapeGroup = -1;
   Rect _shapeBox = Rect.zero;
   int? _shapeHandle;
 
-  /// _shapeGrabbed is the shape picked (what the shapes tool last drew, or
-  /// whatever was picked) where [doc] is on it or a handle of its box: its
-  /// group, its box, and the handle, or null for inside it. Null where the
-  /// press is elsewhere, and draws a new shape.
+  /// _shapeGrabbed is (group, box, handle) when [doc] is on the picked shape
+  /// (the shapes tool's last, or whatever was picked) or a handle of its box;
+  /// handle is null inside it. Null elsewhere, which draws a new shape.
   (int, Rect, int?)? _shapeGrabbed(VectorElement e, Offset doc) {
     var picked = controller.vectorShapeMade;
     if (picked < 0) return null;
@@ -3637,9 +3364,9 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _fitShape moves or resizes the shape held to follow [doc]: by its
-  /// handle, the opposite side staying put (Shift keeps a corner's
-  /// proportions), or, held inside, the whole of it.
+  /// _fitShape moves or resizes the held shape to follow [doc]: a handle
+  /// keeps its opposite side put (Shift keeps a corner's proportions); held
+  /// inside moves the whole.
   void _fitShape(Offset doc) {
     var before = _vectorBefore;
     if (before == null) return;
@@ -3654,11 +3381,10 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _drawShape draws the shapes tool's shape from where the drag began to
-  /// [doc]: in the box between them, or from one to the other for a line or
-  /// an arrow. Shift keeps a box square and a line to steps of forty-five
-  /// degrees; Alt draws out from the middle. [clicked] draws one of a good
-  /// size round the click, for a click that never became a drag.
+  /// _drawShape draws the shapes tool's shape from the drag's start to [doc]:
+  /// in the box between, or end to end for a line or arrow. Shift keeps a box
+  /// square and a line to 45-degree steps; Alt draws from the middle.
+  /// [clicked] draws one of a good size round a click that never dragged.
   void _drawShape(Offset doc, {bool clicked = false}) {
     var before = _vectorBefore;
     if (before == null) return;
@@ -3704,17 +3430,16 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _typing holds what is typed into a drawing's text, in a field the reader
-  /// never sees: it takes the keys, caret moves, selections and input methods,
-  /// and the letters appear on the drawing. _typingFor is the shape it was
-  /// last filled from, so a different one starts it afresh.
+  /// _typing holds a drawing's text being typed, in an unseen field that
+  /// takes keys, caret moves, selections and input methods; the letters
+  /// appear on the drawing. _typingFor is the shape it was last filled from,
+  /// so another one refills it.
   final TextEditingController _typing = TextEditingController();
   final FocusNode _typingFocus = FocusNode(debugLabel: "vectorTyping");
   int _typingFor = -1;
   bool _filling = false;
 
-  /// _typedLayout is the text being typed, laid out, with the drawing and the
-  /// shape, or null.
+  /// _typedLayout is the text being typed, laid out, with its drawing.
   (VectorElement, VectorTextLayout)? _typedLayout() {
     var e = controller.editingVector;
     var i = controller.vectorTyping;
@@ -3730,7 +3455,7 @@ class CanvasStageState extends State<CanvasStage>
     return (e, layoutVectorText(t, s.textOrigin ?? t.origin, pick));
   }
 
-  /// _caret is where the caret is drawn, top to bottom, on the page.
+  /// _caret is the caret's top and bottom on the page.
   (Offset, Offset)? _caret() {
     if (_typedLayout() case (var e, var laid)?) {
       var at =
@@ -3745,7 +3470,6 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _typingField is the unseen field typed into, while text is.
   Widget? _typingField() {
     var i = controller.vectorTyping;
     if (i < 0) {
@@ -3759,7 +3483,8 @@ class CanvasStageState extends State<CanvasStage>
     if (_typingFor != i) {
       _typingFor = i;
       var text = t?.text ?? "";
-      // Filled while the stage is being built, which is the rebuild.
+      // Filled during the build, so _filling keeps its listener from
+      // asking for another.
       _filling = true;
       _typing.value = TextEditingValue(
           text: text, selection: TextSelection.collapsed(offset: text.length));
@@ -3810,8 +3535,8 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _sampleAt takes the colour of the canvas at [doc] (everything on it, as
-  /// drawn at this frame) for the eyedropper.
+  /// _sampleAt takes the colour at [doc], as drawn at this frame, for the
+  /// eyedropper.
   Future<void> _sampleAt(Offset doc) async {
     var rec = ui.PictureRecorder();
     var canvas = Canvas(rec);
@@ -3828,11 +3553,9 @@ class CanvasStageState extends State<CanvasStage>
         bytes.getUint8(0), bytes.getUint8(1), bytes.getUint8(2)));
   }
 
-  /// _knife is the knife's line, on the page, while it is being drawn.
   List<Offset> _knife = const [];
 
-  /// _finishKnife cuts what the knife's line went through (the shape picked,
-  /// or every shape it crossed) as one change.
+  /// _finishKnife cuts the picked shape, or every shape the knife crossed.
   void _finishKnife() {
     var line = _knife;
     setState(() => _knife = const []);
@@ -3853,14 +3576,13 @@ class CanvasStageState extends State<CanvasStage>
     }
     if (!cut) return;
     controller.replaceElement(e.copyWith(shapes: next));
-    // The points have new numbers: nothing of them stays picked.
+    // The points are renumbered: none stays picked.
     controller.pickVectorShape(only);
   }
 
-  /// _pressQuickFill fills the area the lines close round the click with the
-  /// fill colour, or, on an earlier quick fill (a fill with no line of its
-  /// own), recolours it. An area the lines leave open is said so, and nothing
-  /// is filled.
+  /// _pressQuickFill fills the area the lines close round the click, or
+  /// recolours an earlier quick fill (a fill with no line). An open area is
+  /// reported and left unfilled.
   void _pressQuickFill(VectorElement e, Offset doc, double reach) {
     _mode = _DragMode.none;
     var colour = controller.vectorPencilFill;
@@ -3875,8 +3597,7 @@ class CanvasStageState extends State<CanvasStage>
     var gap = controller.vectorFillGap / _scale * VectorSpace(e).unitsPer;
     var snack = SnackBarModel.of(context);
     quickFilled(e, doc, colour, gap: gap).then((next) {
-      // Only onto the drawing it was worked out from: anything done to it in
-      // the meantime wins.
+      // Only onto the drawing it was worked out from: later edits win.
       if (!mounted || !identical(controller.editingVector, e)) return;
       if (next == null) {
         snack.error("That area isn't closed: no fill");
@@ -3887,17 +3608,14 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _onPage is whether [doc] is on the page, the only place the pencil
-  /// draws: a hand resting round the page, or a pen run off its edge, puts
-  /// nothing down.
+  /// draws: a resting hand or a pen run off the edge puts nothing down.
   bool _onPage(Offset doc) =>
       (Offset.zero & controller.document.size.size).contains(doc);
 
-  /// _penRuns is the pencil stroke being drawn, as the stretches of it on the
-  /// page: one, unless the pen went off the edge and came back, when each
-  /// stretch is a line of its own.
+  /// _penRuns is the pencil stroke's stretches on the page, each its own
+  /// line.
   List<List<PenSample>> _penRuns = [];
 
-  /// _pressPencil starts a stroke of the pencil: a new line, on top.
   void _pressPencil(VectorElement e, Offset doc) {
     if (!_onPage(doc)) {
       _mode = _DragMode.none;
@@ -3914,13 +3632,12 @@ class CanvasStageState extends State<CanvasStage>
     _mode = _DragMode.vectorPencil;
   }
 
-  /// _penInto is the shapes picked as the pencil went down: one filled
-  /// shape, and what is drawn in its colour is added to it rather than
-  /// drawn as a shape of its own.
+  /// _penInto is the shapes picked as the pencil went down: if one filled
+  /// shape, strokes in its colour are added to it (see _mergePencil).
   Set<int> _penInto = const {};
 
-  /// _mergePencil adds what the pencil has just drawn to the one filled shape
-  /// picked, where it touches it, as a blob brush adds to a shape.
+  /// _mergePencil adds the pencil's new stroke to the one picked filled shape
+  /// where it touches it, as a blob brush does.
   void _mergePencil() {
     var before = _vectorBefore, e = controller.editingVector;
     if (before == null || e == null || _penInto.length != 1) return;
@@ -3930,8 +3647,8 @@ class CanvasStageState extends State<CanvasStage>
     if (now.length <= was.length || base >= was.length) return;
     if (groupMembers(before, base).length != 1) return;
     var target = was[base];
-    // Only in its own colour, as a blob brush merges: a line drawn in
-    // another (an eye on a face) is a shape of its own.
+    // Only in its own colour: a line in another (an eye on a face) is a
+    // shape of its own.
     var fill = target.fill, ink = controller.vectorPencilColour;
     if (fill == null ||
         (fill.r - ink.r).abs() > 0.01 ||
@@ -3939,8 +3656,6 @@ class CanvasStageState extends State<CanvasStage>
         (fill.b - ink.b).abs() > 0.01) {
       return;
     }
-    // What was drawn, as the area it covers: its line, as wide as it is
-    // drawn, and its fill.
     Path area(VectorShape s) {
       var out = Path();
       if (s.fill != null) {
@@ -3958,7 +3673,6 @@ class CanvasStageState extends State<CanvasStage>
     var stroke = added
         .map(area)
         .reduce((a, b) => Path.combine(PathOperation.union, a, b));
-    // Not touching it: a shape of its own, as drawn.
     if (Path.combine(PathOperation.intersect, into, stroke)
         .getBounds()
         .isEmpty) {
@@ -3978,13 +3692,11 @@ class CanvasStageState extends State<CanvasStage>
 
   void _applyPencil(Offset doc) {
     if (!_onPage(doc)) {
-      // Off the page: the stretch drawn so far ends, and the next reading back
-      // on it starts another.
+      // Off the page the stretch ends; back on, another starts.
       _penSamples = [];
       return;
     }
     var last = _penSamples.lastOrNull;
-    // A reading less than a pixel on is no new reading.
     if (last != null && (doc - last.at).distance * _scale < 1) return;
     if (_penSamples.isEmpty) _penRuns.add(_penSamples);
     _penSamples.add(_penSample(doc));
@@ -3994,8 +3706,7 @@ class CanvasStageState extends State<CanvasStage>
   void _drawPencil() {
     var before = _vectorBefore;
     if (before == null) return;
-    // The stroke and, with symmetry on, its mirror images: each a line of
-    // its own, drawn as it is.
+    // The stroke and its mirror images, each its own line.
     var drawn = [
       for (var run in _penRuns)
         for (var (samples, brush) in mirroredStrokes(
@@ -4014,9 +3725,9 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _modifierButton is which pen button a key held as the pen touches stands
-  /// for (Shift the first, Option the second, Control the third), or null.
-  /// Command is left alone for shortcuts.
+  /// _modifierButton is the pen button a key held as the pen touches stands
+  /// for (Shift first, Option second, Control third), or null. Command is
+  /// left for shortcuts.
   int? _modifierButton() {
     var keys = HardwareKeyboard.instance;
     if (keys.isMetaPressed) return null;
@@ -4026,8 +3737,7 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _tabletButton is which of the pen's three buttons (0, 1 or 2) the
-  /// tablet's last reading says is held, or null for none, or no reading.
+  /// _tabletButton is the pen button (0 to 2) the tablet says is held.
   int? _tabletButton() {
     var t = TabletInput.instance;
     if (!t.fresh) return null;
@@ -4037,10 +3747,10 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _stylusPress does what a button on the pen (or its other end) is set to,
-  /// with the pencil out, answering whether it took the press. A tablet's
-  /// driver sends the pen's buttons as mouse buttons (right, middle, back
-  /// clicks) as the tablet's settings map them.
+  /// _stylusPress does what a pen button (or its other end) is set to, with
+  /// the pencil out, and says whether it took the press. Tablet drivers send
+  /// pen buttons as mouse buttons (right, middle, back) as mapped in their
+  /// settings.
   bool _stylusPress(PointerDownEvent event, Offset doc) {
     var e = controller.editingVector;
     if (e == null || controller.vectorTool != VectorTool.pencil) return false;
@@ -4051,8 +3761,6 @@ class CanvasStageState extends State<CanvasStage>
         (TabletInput.instance.eraser && TabletInput.instance.near)) {
       action = controller.stylusEraser;
     } else if (_tabletButton() case var i?) {
-      // The pen's own buttons, as the tablet reported them, where it sent
-      // them as a reading rather than as a click.
       action = buttons[i];
     } else if (b & kSecondaryButton != 0) {
       action = buttons[0];
@@ -4061,9 +3769,9 @@ class CanvasStageState extends State<CanvasStage>
     } else if (b & (kBackMouseButton | kForwardMouseButton) != 0) {
       action = buttons[2];
     } else if (_modifierButton() case var i?) {
-      // A key held as the pen touches stands in for a button: the way to
-      // reach them on a pen display whose own buttons are taken (a MovinkPad's
-      // open its sidebar of keys).
+      // A key held as the pen touches stands in for a button, for pen
+      // displays whose own buttons are taken (a MovinkPad's open its key
+      // sidebar).
       action = buttons[i];
     }
     if (action == null || action == StylusAction.draw) return false;
@@ -4100,15 +3808,14 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _cornerFrom is where, on the canvas, the corner being shaped was: what a
-  /// drag's distance is measured from.
+  /// _cornerFrom is the shaped corner's place, a drag's distance's origin.
   Offset _cornerFrom = Offset.zero;
 
-  /// _pressCorner rounds (or cuts) the corner at the point pressed, as far
-  /// back as the corner size says; the drag that follows sets how far. While
-  /// the corner it made is still picked, a press on it (either of its two
-  /// points, or where the corner was) goes on shaping that one. Off any point
-  /// it takes no press, and the press picks as the select tool's would.
+  /// _pressCorner rounds (or cuts) the corner at the pressed point by the
+  /// corner size; the following drag sets how far. While the corner made is
+  /// still picked, a press on it (either point, or where the corner was)
+  /// goes on shaping it. Off any point it declines, and the press picks as
+  /// the select tool would.
   bool _pressCorner(VectorElement e, Offset doc, double reach) {
     var on = anyPointAt(e, doc, reach);
     if (controller.vectorCornerPoint case var was?) {
@@ -4123,8 +3830,8 @@ class CanvasStageState extends State<CanvasStage>
     }
     if (on == null) return false;
     _mode = _DragMode.none;
-    // On a corner already rounded (made before, or a rounded box's), that
-    // corner is taken up to be reshaped, not rounded again.
+    // A corner already rounded (earlier, or a rounded box's) is taken up to
+    // reshape, not rounded again.
     if (controller.adoptCorner(on)) {
       if (controller.vectorCornerPoint case var was?) {
         controller.beginInteraction();
@@ -4151,10 +3858,9 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _pressCombine is a click with the Boolean tool: on a shape it picks that
-  /// shape for combining, or unpicks it (the whole of a shape already
-  /// combined, never a part). On empty space it unpicks them all; off the
-  /// drawing it finishes the editing.
+  /// _pressCombine is a Boolean-tool click: on a shape it toggles that shape
+  /// for combining (a combined shape whole, never a part); on empty space it
+  /// unpicks all; off the drawing it finishes editing.
   void _pressCombine(VectorElement e, Offset doc, double reach) {
     _mode = _DragMode.none;
     var hit = shapeAt(e, doc, reach);
@@ -4167,8 +3873,7 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  /// _penCloses closes the run the pen is drawing, where the press is on its
-  /// first point, returning whether it did.
+  /// _penCloses closes the pen's run on a press at its first point.
   bool _penCloses(VectorElement e, Offset doc, double reach) {
     var from = controller.vectorPenFrom;
     var shapes = e.shapes ?? const <VectorShape>[];
@@ -4191,17 +3896,16 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _penPut puts the pen's next point down at [doc], joined on from the point
-  /// it last put down or took hold of, or starting a shape with none. The drag
-  /// that follows pulls its handles out; the press and the drag are one undo
-  /// step.
+  /// _penPut puts the pen's next point at [doc], joined from the point last
+  /// put or taken, or starting a shape. The following drag pulls out its
+  /// handles; press and drag are one undo step.
   void _penPut(VectorElement e, Offset doc) {
     var from = controller.vectorPenFrom;
     var shapes = e.shapes ?? const <VectorShape>[];
     if (from != null && vectorNodeAt(e, from) == null) from = null;
     var picked = controller.vectorShape;
-    // A new shape is drawn like the shape picked, or, with none, in the
-    // colours set for new shapes. See ColourPanel.
+    // A new shape copies the picked shape, or the colours set for new shapes.
+    // See ColourPanel.
     var view = e.viewBox;
     var like = from == null && picked >= 0 && picked < shapes.length
         ? shapes[picked]
@@ -4220,25 +3924,22 @@ class CanvasStageState extends State<CanvasStage>
     _mode = _DragMode.vectorPen;
   }
 
-  /// _widths is the points the scale tool is thickening or thinning the line
-  /// at, each with its width when the drag began, or empty when it is scaling
-  /// the whole drawing.
+  /// _widths is the points the thickness tool changes, with their widths at
+  /// the start; empty when scaling the whole drawing.
   Map<VectorPick, double> _widths = {};
   double _scaleReach = 0;
   bool _sweeping = false;
   bool _scaleLetsGo = false;
 
-  /// _pressScale starts the line thickness tool: the line made thicker or
-  /// thinner at the points picked (or, with none picked, the points nearest
-  /// the press) and at every point the drag goes on to pass near.
+  /// _pressScale starts the line thickness tool on the picked points (or,
+  /// with none, the point nearest the press) and every point the drag passes
+  /// near.
   bool _pressScale(VectorElement e, Offset doc, double reach) {
-    // Near enough to take in is wider than a point's own handle: a drag
-    // sweeps across a line's points as a brush would.
+    // The reach is wider than a point's handle: a drag sweeps across a
+    // line's points as a brush would.
     var near = math.max(reach, _thicknessReach / _scale);
     var picks = controller.vectorPicks;
     var hit = anyPointAt(e, doc, reach);
-    // Shift and a click on a point adds it to the points picked, or takes
-    // it out, as picking does.
     if (hit != null && _shiftHeld) {
       controller.pickVectorPoint(hit, toggle: true);
       _mode = _DragMode.none;
@@ -4246,22 +3947,17 @@ class CanvasStageState extends State<CanvasStage>
     }
     Set<VectorPick> those;
     if (hit != null) {
-      // On a point: all those picked if it is one of them; otherwise it,
-      // picked now.
       if (!picks.contains(hit)) controller.pickVectorPoint(hit);
       those = controller.vectorPicks;
     } else if (picks.isNotEmpty) {
       those = picks;
     } else {
-      // Nothing picked: the point nearest the press, if one is near.
       var nearest = anyPointAt(e, doc, near);
       those = nearest == null ? const {} : {nearest};
     }
-    // Only a drag with nothing picked sweeps up the points it passes; with
-    // points picked, it is theirs alone.
+    // Only a drag with nothing picked sweeps up the points it passes.
     _sweeping = hit == null && picks.isEmpty;
-    // A click off every point, with points picked, lets them go (back to
-    // sweeping). See _onPointerUp.
+    // A click off every point unpicks them. See _onPointerUp.
     _scaleLetsGo = hit == null && picks.isNotEmpty;
     _widths = {
       for (var p in joinedTo(e, those))
@@ -4275,16 +3971,14 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _applyScale scales by how far the pointer has gone: right or up larger,
-  /// left or down smaller, doubling or halving every hundred and fifty pixels
-  /// on screen, whatever the zoom.
+  /// _applyScale scales by the pointer's travel: right or up larger, left or
+  /// down smaller, doubling or halving every 150 screen pixels at any zoom.
   void _applyScale(Offset doc) {
     var before = _vectorBefore;
     if (before == null) return;
     var moved = (doc - _vectorFrom) * _scale;
     var factor = math.pow(2, (moved.dx - moved.dy) / 150).toDouble();
-    // Passed near, a point joins in from the width it had, so a sweep across
-    // a line takes in all it crosses.
+    // A point passed near joins in from its own width.
     for (var over in _sweeping
         ? pointsNear(before, doc, _scaleReach)
         : const <VectorPick>{}) {
@@ -4298,14 +3992,12 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _pressTint starts a stroke of the tint brush (an eraser's, with Alt
-  /// held) anywhere over the drawing. Off it, it takes no press.
+  /// _pressTint starts a tint stroke (an eraser's, with Alt).
   bool _pressTint(VectorElement e, Offset doc) {
     controller.beginInteraction();
     _mode = _DragMode.vectorTint;
-    // Off the drawing nothing is painted until the brush is dragged onto
-    // it; let go without moving, it is a click off the drawing. Never a box:
-    // the brush picks nothing.
+    // Off the drawing nothing paints until the brush reaches it; a still
+    // release is a click off it. The brush never picks.
     if (!_visualBounds(e).contains(doc)) {
       _tintWaiting = doc;
       return true;
@@ -4318,8 +4010,8 @@ class CanvasStageState extends State<CanvasStage>
   /// _tintWaiting is a tint press off the drawing, not yet a stroke.
   Offset? _tintWaiting;
 
-  /// _shade is what the brush stroke being painted is: a tint (nought), a
-  /// shadow (below), or a highlight (above). See VectorTool.shadow.
+  /// _shade is the stroke's kind: a tint (0), a shadow (-1) or a highlight
+  /// (1). See VectorTool.shadow.
   int get _shade => switch (controller.vectorTool) {
         VectorTool.shadow => -1,
         VectorTool.highlight => 1,
@@ -4328,8 +4020,6 @@ class CanvasStageState extends State<CanvasStage>
 
   void _startTint(VectorElement e, Offset doc) {
     var space = VectorSpace(e);
-    // The brush is a size on screen; in the drawing's units it is that over
-    // how large a drawing unit is on screen.
     var unit =
         (space.toDrawing(doc + const Offset(1, 0)) - space.toDrawing(doc))
             .distance;
@@ -4340,7 +4030,7 @@ class CanvasStageState extends State<CanvasStage>
           points: const [],
           paint: controller.vectorTint,
           width: controller.vectorBrushSize / _scale * unit,
-          // Shading drawn on is cel shading: a hard edge, unless softened.
+          // Drawn-on shading is cel shading: hard-edged unless softened.
           soft: _shade != 0
               ? controller.vectorBrushSoft * 0.5
               : controller.vectorBrushSoft,
@@ -4360,10 +4050,9 @@ class CanvasStageState extends State<CanvasStage>
     _carryStroke(doc);
   }
 
-  /// _stroke is the tint stroke or rub-out being painted, _strokeOn the shapes
-  /// it has gone over so far, and _strokeRubs whether it is a rub-out. Laid,
-  /// each time it grows, on the drawing as it was when it began; see
-  /// shapesUnder and withStrokeOn.
+  /// _stroke is the tint stroke or rub-out being painted, _strokeOn the
+  /// shapes it has crossed, and _strokeRubs whether it rubs out. Each growth
+  /// is laid on the drawing as it was at the start; see withStrokeOn.
   VectorTint? _stroke;
   Set<int> _strokeOn = {};
   bool _strokeRubs = false;
@@ -4388,8 +4077,7 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _onPicked is [under] (the shapes a brush goes over) kept to the shapes
-  /// picked, where any are, so a tint stays inside what is selected.
+  /// _onPicked keeps [under] to the picked shapes, if any.
   Set<int> _onPicked(Set<int> under) {
     var picked = controller.vectorSelectedShapes;
     return picked.isEmpty ? under : under.intersection(picked);
@@ -4399,7 +4087,6 @@ class CanvasStageState extends State<CanvasStage>
     var before = _vectorBefore, stroke = _stroke;
     if (before == null || stroke == null) return;
     var at = VectorSpace(before).toDrawing(doc);
-    // A move of less than a tenth of the brush's width adds nothing.
     if ((at - stroke.points.last).distance < stroke.width / 10) return;
     _stroke = stroke.withPoint(at);
     _strokeOn = {
@@ -4412,8 +4099,7 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _brushAt is where the tint brush's ring is drawn: the pointer, while
-  /// the tint tool is out over a drawing being edited. Null hides it.
+  /// _brushAt is where the brush ring is drawn; null hides it.
   Offset? _brushAt;
 
   void _moveBrush(Offset stage) {
@@ -4427,8 +4113,7 @@ class CanvasStageState extends State<CanvasStage>
     if (at != _brushAt) setState(() => _brushAt = at);
   }
 
-  /// _brushRing is the tint brush's outline under the pointer: how wide a
-  /// stroke will be, before it is painted.
+  /// _brushRing is the brush outline under the pointer, a stroke's width.
   Widget? _brushRing() {
     var at = _brushAt;
     var pencil = controller.vectorTool == VectorTool.pencil &&
@@ -4470,9 +4155,8 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _applyVectorMove drags the picked point of the drawing being edited, or
-  /// one of its handles. Alt moves a smooth point's handle on its own, making
-  /// the point a corner, as on a path.
+  /// _applyVectorMove drags the picked point, or one of its handles. Alt
+  /// moves a smooth point's handle alone, making it a corner.
   void _applyVectorMove(Offset doc) {
     var e = controller.editingVector, pick = controller.vectorPick;
     if (e == null || pick == null) return;
@@ -4484,7 +4168,6 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _applyNodeMove drags a point or one of its handles.
   void _applyNodeMove(Offset doc, {required bool handle}) {
     var path = _selectedPath();
     if (path == null || _nodeIndex < 0 || _nodeIndex >= path.nodes.length) {
@@ -4495,8 +4178,7 @@ class CanvasStageState extends State<CanvasStage>
     var fraction = Offset((doc.dx - path.x) / w, (doc.dy - path.y) / h);
     var node = path.nodes[_nodeIndex];
 
-    // Alt breaks the handle pair, which is how a corner is made; most of a
-    // run is smooth, so held down is the exception.
+    // Alt breaks the handle pair, making a corner.
     var next = handle
         ? (HardwareKeyboard.instance.isAltPressed
             ? (_nodeHandleOut
@@ -4510,18 +4192,17 @@ class CanvasStageState extends State<CanvasStage>
     controller.replaceElement(path.withNode(_nodeIndex, next), transient: true);
   }
 
-  /// _selectedPicture is the one selected element, when it is a picture with
+  /// _selectedPicture is the one selected element if it is a picture with
   /// something in it.
   ImageElement? _selectedPicture() {
     var selected = controller.selected;
     return selected is ImageElement && selected.hasImage ? selected : null;
   }
 
-  /// _paintStrokeAt adds a point to the live copy of the stroke being painted
-  /// (committing is [_commitStroke], on pointer up). The point is stored in
-  /// the picture's coordinates, so a stroke stays where it was painted when
-  /// the element is resized, refitted or recropped; converting is
-  /// ImagePlacement's job, the same mapping the painter draws through.
+  /// _paintStrokeAt adds a point to the live stroke ([_commitStroke] commits
+  /// it on pointer up). Points are stored in picture coordinates, so the
+  /// stroke stays put when the element is resized, refitted or recropped;
+  /// ImagePlacement converts, as the painter does.
   void _paintStrokeAt(Offset doc, {bool start = false}) {
     var id = _painting;
     if (id == null) return;
@@ -4537,13 +4218,12 @@ class CanvasStageState extends State<CanvasStage>
     var placement = placeImage(size, inner, picture.fit,
         crop: picture.crop, framing: picture.framing);
     var at = placement.toImage(doc, size);
-    // Off the picture: the part of a stroke past the edge touches nothing,
-    // but the stroke goes on.
+    // Off the picture the stroke touches nothing but goes on.
     if (at == null) return;
 
     if (start) {
-      // The brush is a fraction of the picture's shorter side; the preview is
-      // drawn in canvas units, so it is converted once here.
+      // The brush is a fraction of the picture's shorter side, converted once
+      // to canvas units for the preview.
       var shorter = math.min(size.width, size.height);
       var scale = placement.scaleToImage();
       _liveRadius = controller.brushSize * shorter / (scale == 0 ? 1 : scale);
@@ -4555,12 +4235,10 @@ class CanvasStageState extends State<CanvasStage>
     });
   }
 
-  /// _layerReach is how near, in document units, a press has to be to a
-  /// layer's handle to take hold of it.
+  /// _layerReach is how near a layer handle, in document units, a press is.
   double get _layerReach => (handleSize / 2 + handleHitSlop) / _scale;
 
-  /// _layerKnob is where the knob that turns [space]'s layer is: above the
-  /// middle of its top, out along the way it faces.
+  /// _layerKnob is [space]'s turning knob, above the middle of its top.
   Offset _layerKnob(LayerSpace space) {
     var corners = space.corners;
     var top = (corners[0] + corners[1]) / 2;
@@ -4578,7 +4256,7 @@ class CanvasStageState extends State<CanvasStage>
     if (e == null) return null;
     if (controller.warpLayer case var id?) return _warpView(e, id);
     var picked = controller.pickedLayer;
-    // With a brush in hand, its ring and, cloning, where it copies from.
+    // A brush in hand: its ring and, cloning, where it copies from.
     if (controller.imageTool.paints && picked != null) {
       var tool = controller.imageTool;
       var hover = _toDocument(_hoverAt);
@@ -4605,8 +4283,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.paintSize * on.shortSide * on.canvasPerPixel
       ), marker: marker);
     }
-    // With a mask tool in hand the boxes are in the way: the picture, its
-    // mask as shown, and the brush's ring.
+    // A mask tool in hand: no boxes, just the picture, its mask and the ring.
     if (controller.imageTool.masks && picked != null) {
       var on = _maskPicture(e);
       if (controller.maskBusy == null && _mode != _DragMode.imageQuick) {
@@ -4615,7 +4292,6 @@ class CanvasStageState extends State<CanvasStage>
       var brushes = controller.imageTool == ImageTool.brush ||
           controller.imageTool == ImageTool.quick ||
           controller.imageTool == ImageTool.refine;
-      // A lasso being drawn: its outline, from the mark being made.
       List<Offset>? lasso;
       if (_mode == _DragMode.imageMask &&
           controller.imageTool == ImageTool.lasso &&
@@ -4662,9 +4338,9 @@ class CanvasStageState extends State<CanvasStage>
         if (l.kind == LayerKind.picture && l.visible && also.contains(l.id))
           LayerSpace(e, l).corners
     ];
-    // The base picture has a place of its own once there are layers round
-    // it (see ImageLayer.basePlace) and is handled as a picture layer is,
-    // without the knob: it turns with the element.
+    // Layered, the base picture has its own place (see ImageLayer.basePlace)
+    // and is handled as a picture layer, without the knob: it turns with the
+    // element.
     var handled = picked != null &&
         (picked.kind == LayerKind.picture || (picked.isBase && e.layered));
     if (!handled) {
@@ -4681,7 +4357,6 @@ class CanvasStageState extends State<CanvasStage>
           ].map(space.fromFrame).toList());
     }
     var space = LayerSpace(e, picked);
-    // Locked, it is outlined but has nothing to take hold of.
     var held = controller.layerLocked(picked);
     return StageLayers(
       others: others,
@@ -4696,10 +4371,9 @@ class CanvasStageState extends State<CanvasStage>
 
   // ---- warp grid ------------------------------------------------------
 
-  /// _warpSpace is how the warp grid of the layer [id] of [e] lies on the
-  /// canvas: a fraction of the picture's box to a point on the canvas, and
-  /// back, through the element's turn and slant, the layer's turn, and its
-  /// mirror.
+  /// _warpSpace maps the warp grid of layer [id] of [e] between fractions of
+  /// the picture's box and canvas points, and back, through the element's
+  /// turn and slant and the layer's turn and mirror.
   (Offset Function(Offset), Offset Function(Offset)) _warpSpace(
       ImageElement e, String id) {
     var layer = e.layerById(id) ?? ImageLayer.base;
@@ -4722,14 +4396,12 @@ class CanvasStageState extends State<CanvasStage>
     return (toDoc, toFrac);
   }
 
-  /// _warpPoints is the warp grid's points on the canvas.
   List<Offset> _warpPoints(ImageElement e, String id) {
     var (toDoc, _) = _warpSpace(e, id);
     return [for (var f in controller.warpOf(e, id).grid) toDoc(f)];
   }
 
-  /// _warpBox is the box round the picked points, on the canvas, with its
-  /// knob, for two or more picked.
+  /// _warpBox is the box and knob round two or more picked warp points.
   (Rect, Offset)? _warpBox(List<Offset> points) {
     var picks = controller.warpPicks;
     if (picks.length < 2) return null;
@@ -4754,7 +4426,6 @@ class CanvasStageState extends State<CanvasStage>
     return (box, box.topCenter - Offset(0, 24 / _scale));
   }
 
-  /// _warpView is the warp grid as the stage draws it.
   StageLayers _warpView(ImageElement e, String id) {
     var warp = controller.warpOf(e, id);
     var (toDoc, _) = _warpSpace(e, id);
@@ -4794,10 +4465,9 @@ class CanvasStageState extends State<CanvasStage>
   Offset _warpPivot = Offset.zero;
   Offset _warpGrab = Offset.zero;
 
-  /// _pressWarp is a press while a warp grid is shown: on the box's knob
-  /// or a corner, to turn or size the points picked; on a point, to pick it
-  /// (Shift adds it or takes it away) and drag; inside the box, to drag the
-  /// lot; anywhere else, a box dragged out to pick points with.
+  /// _pressWarp is a press on a shown warp grid: the box's knob or a corner
+  /// turns or sizes the picked points; a point is picked (Shift toggles) and
+  /// dragged; inside the box drags them all; elsewhere a box picks points.
   bool _pressWarp(ImageElement e, String id, Offset doc) {
     var points = _warpPoints(e, id);
     var reach = 10 / _scale;
@@ -4860,9 +4530,8 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _dragWarp carries the picked points to [doc]: moved by the drag, sized
-  /// about the middle of their box by how much further from it the pointer
-  /// is, or turned about it.
+  /// _dragWarp carries the picked points to [doc]: moved, sized about their
+  /// box's middle by the pointer's change in distance, or turned about it.
   void _dragWarp(Offset doc) {
     var e = controller.editingImage, id = controller.warpLayer;
     if (e == null || id == null) return;
@@ -4902,7 +4571,6 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _finishWarpMarquee picks the points inside the box dragged out.
   void _finishWarpMarquee() {
     var box = _marquee;
     var e = controller.editingImage, id = controller.warpLayer;
@@ -4928,15 +4596,14 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _pressLayers is a press at [doc] on [e] while its layers are open: the
-  /// picked layer's knob or handles, then whichever picture layer is on top
-  /// under the press, then the base picture. False when the press missed the
-  /// picture altogether, which closes it.
+  /// _pressLayers is a press at [doc] on [e] with its layers open: the picked
+  /// layer's knob or handles, then the topmost picture layer under it, then
+  /// the base picture. False if it missed the picture, which closes it.
   bool _pressLayers(ImageElement e, Offset doc) {
     if (controller.warpLayer case var id?) return _pressWarp(e, id, doc);
     var picked = controller.pickedLayer;
-    // A locked layer is not drawn on, masked or moved here. The press is
-    // still the picture's, so it stays open.
+    // A locked layer is not drawn on, masked or moved. The press is still the
+    // picture's, so it stays open.
     if (picked != null &&
         controller.layerLocked(picked) &&
         (controller.imageTool.masks || controller.imageTool.paints)) {
@@ -4965,8 +4632,8 @@ class CanvasStageState extends State<CanvasStage>
     }
     var under = layerAt(e, doc, locked: controller.layerLocked);
     if (!under.isBase) {
-      // Shift or Command picks it as well, or lets it go again; a press on
-      // one already picked keeps the others, so they move together.
+      // Shift or Command toggles it into the picks; a press on one already
+      // picked keeps the others, so they move together.
       if (_shiftHeld || HardwareKeyboard.instance.isMetaPressed) {
         controller.pickImageLayer(under.id, add: true);
         if (!controller.imageLayers.contains(under.id)) {
@@ -4979,15 +4646,14 @@ class CanvasStageState extends State<CanvasStage>
       return _holdLayer(under, _DragMode.imageLayerMove, -1);
     }
     if (!_containsPoint(e, doc)) return false;
-    // Locked, the base picture is not picked or moved: the press only keeps
-    // the picture open.
+    // A locked base picture is not picked or moved; the press only keeps the
+    // picture open.
     if (controller.layerLocked(under)) {
       _mode = _DragMode.none;
       return true;
     }
     controller.pickImageLayer(baseLayerId);
-    // With layers round it, the base picture is moved about the frame as a
-    // picture layer is, where it is pressed.
+    // Layered, the base picture moves about the frame like a picture layer.
     if (e.layered) {
       var base = e.layerById(baseLayerId)!;
       if (LayerSpace(e, base).contains(doc)) {
@@ -4996,9 +4662,9 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.none;
       return true;
     }
-    // The base picture always fills its frame, so moving it is moving it
-    // about inside the frame, which only a picture filling the frame has
-    // room to do. See ImageFraming.
+    // Otherwise the base picture fills its frame, so moving it shifts it
+    // inside the frame, which only a cover-fitted picture has room to do. See
+    // ImageFraming.
     if (e.hasImage && e.fit == ImageFit.cover) {
       _framingStart = e.framing;
       _mode = _DragMode.imageFrame;
@@ -5009,8 +4675,7 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _maskPicture is where the picked layer of [e] draws its picture, once
-  /// the picture has loaded.
+  /// _maskPicture is where the picked layer draws its picture, once loaded.
   LayerPicture? _maskPicture(ImageElement e) {
     var picked = controller.pickedLayer;
     if (picked != null && picked.framed) return LayerPicture.frame(e, picked);
@@ -5022,9 +4687,9 @@ class CanvasStageState extends State<CanvasStage>
         Size(image.width.toDouble(), image.height.toDouble()));
   }
 
-  /// _pressMask is a press with a mask tool in hand: a click for a subject,
-  /// or the start of a mark. Anywhere on the picture, or near enough to it
-  /// that a stroke can start off its edge; further off, it misses.
+  /// _pressMask is a press with a mask tool: a click for a subject, or a
+  /// mark's start. On the picture, or near enough for a stroke to start off
+  /// its edge; further off it misses.
   bool _pressMask(ImageElement e, Offset doc) {
     var on = _maskPicture(e);
     if (on == null) return _containsPoint(e, doc);
@@ -5034,8 +4699,8 @@ class CanvasStageState extends State<CanvasStage>
     if (!inside && !_containsPoint(e, doc)) return false;
     var alt = HardwareKeyboard.instance.isAltPressed;
     var hide = controller.maskHide != alt;
-    // The tools that look at a picture's pixels have none to look at on an
-    // adjustment, a texture, a colour or paint.
+    // Pixel-reading tools have no pixels on an adjustment, a texture, a
+    // colour or paint.
     if ((controller.pickedLayer?.framed ?? false) &&
         (controller.imageTool == ImageTool.subject ||
             controller.imageTool == ImageTool.quick ||
@@ -5097,7 +4762,6 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _dragMask carries the mark being made to [doc].
   void _dragMask(Offset doc) {
     var on = _maskOn;
     if (on == null) return;
@@ -5109,8 +4773,8 @@ class CanvasStageState extends State<CanvasStage>
       if (last.kind == MaskMarkKind.fade) {
         return m.withLastMark(last.copyWith(points: [last.points.first, f]));
       }
-      // Not every pixel of the drag: a point every half a picture pixel or so
-      // is all a stroke can show, and a stroke is kept in the document.
+      // A point every half picture pixel or so is all a stroke can show, and
+      // strokes are kept in the document.
       var was = last.points.last;
       var gap = Offset(
           (f.dx - was.dx) * on.size.width, (f.dy - was.dy) * on.size.height);
@@ -5123,7 +4787,6 @@ class CanvasStageState extends State<CanvasStage>
     }, transient: true);
   }
 
-  /// _frameFraction is [doc] as a fraction of [e]'s frame, across and down.
   Offset _frameFraction(ImageElement e, Offset doc) {
     var space = LayerSpace(e, ImageLayer.base);
     var p = space.toFrame(doc) - space.inner.topLeft;
@@ -5131,20 +4794,19 @@ class CanvasStageState extends State<CanvasStage>
         p.dy / math.max(1e-9, space.inner.height));
   }
 
-  /// _pressBrush is a press with a paint or retouching brush in hand: the
-  /// start of a stroke, or, with the clone tool and Option, the choosing of
-  /// where to copy from.
+  /// _pressBrush starts a paint or retouch stroke, or, cloning with Option,
+  /// sets where to copy from.
   bool _pressBrush(ImageElement e, Offset doc) {
     var tool = controller.imageTool;
     var alt = HardwareKeyboard.instance.isAltPressed;
     var pressure = _penSample(doc).pressure;
     if (!tool.retouches) {
-      // Anywhere at all on a picture that does not clip: the frame grows to
-      // take the paint in. One that clips paints only inside itself.
+      // Anywhere on a picture that does not clip: the frame grows to take
+      // the paint. One that clips paints only inside itself.
       if (e.clip && !_containsPoint(e, doc)) return false;
       controller.beginInteraction();
-      // Paint goes on a paint layer: one is made over the layer picked, where
-      // that is not one already, in the same step as the stroke.
+      // Paint goes on a paint layer: one is made over the picked layer if it
+      // is not one, in the same step as the stroke.
       if (controller.pickedLayer?.kind != LayerKind.paint) {
         controller.addImageLayer(ImageLayer.painting());
       }
@@ -5166,8 +4828,8 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.imageBrush;
       return true;
     }
-    // Across the whole frame, the strokes are a paint layer's, in fractions
-    // of the frame; on one picture, that picture's, in fractions of it.
+    // Across the whole frame, strokes belong to a paint layer, in fractions
+    // of the frame; on one picture, to it, in fractions of it.
     var whole = controller.retouchesFrame;
     var on = whole
         ? LayerPicture.frame(e, controller.pickedLayer ?? ImageLayer.base)
@@ -5218,16 +4880,16 @@ class CanvasStageState extends State<CanvasStage>
         source: source);
     controller.beginInteraction();
     if (whole) {
-      // A layer of its own, at the top of the picture, in the same step as the
-      // stroke, unless a paint layer is picked already. See
+      // Its own layer at the top of the picture, in the same step as the
+      // stroke, unless a paint layer is picked. See
       // CanvasController.retouchLayerForFrame.
       controller.retouchLayerForFrame();
       controller.changePaint((s) => [...s, mark], transient: true);
     } else {
       controller.changeRetouch((s) => [...s, mark], transient: true);
     }
-    // Across the whole frame, measured in the frame as it is at each step:
-    // it grows as the stroke goes past it.
+    // Across the whole frame, measured in the frame at each step: it grows
+    // as the stroke passes its edge.
     _strokeAt = whole
         ? (doc) => _frameFraction(controller.editingImage!, doc)
         : on.toPicture;
@@ -5235,7 +4897,6 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _dragBrush carries the stroke being drawn to [doc].
   void _dragBrush(Offset doc) {
     var at = _strokeAt;
     if (at == null) return;
@@ -5269,7 +4930,6 @@ class CanvasStageState extends State<CanvasStage>
 
   bool _holdLayer(ImageLayer layer, _DragMode mode, int handle) {
     _layerStart = layer;
-    // A move carries every picked picture layer with the one held.
     _layersMoved = mode == _DragMode.imageLayerMove
         ? [
             for (var l in controller.pickedLayers)
@@ -5285,7 +4945,6 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _dragLayer carries the picture layer held to where the pointer is.
   void _dragLayer(Offset doc) {
     var e = controller.editingImage, was = _layerStart;
     if (e == null || was == null) return;
@@ -5295,12 +4954,11 @@ class CanvasStageState extends State<CanvasStage>
     ImageLayer next;
     switch (_mode) {
       case _DragMode.imageLayerMove:
-        // The travel in the frame's own unturned space, so a turned picture
-        // still moves the way the pointer does.
+        // The travel in the frame's unturned space, so a turned picture moves
+        // the way the pointer does.
         var travel = space.toFrame(doc) - space.toFrame(_dragStart);
         var rect = space.rect.shift(travel);
         next = was.placed(layerPlace(space.inner, rect), turn: was.turn);
-        // And the others picked with it, the same distance.
         for (var other in _layersMoved) {
           var at = layerRect(space.inner, other.place).shift(travel);
           carried = carried.withLayer(
@@ -5309,8 +4967,8 @@ class CanvasStageState extends State<CanvasStage>
                   other.placed(layerPlace(space.inner, at), turn: other.turn));
         }
       case _DragMode.imageLayerSize:
-        // The corners keep the picture's proportions where it holds them (Keep
-        // its proportions), and Shift does the other.
+        // Corners keep proportions if the picture holds them (Keep its
+        // proportions); Shift does the opposite.
         var holds = (was.look ?? e).base.lockAspect;
         var even = _layerHandle < 4 && (holds ? !_shiftHeld : _shiftHeld);
         var rect = space.resized(doc, _layerHandle,
@@ -5328,8 +4986,7 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _framedPicture is the element being reframed and the picture in it,
-  /// when both are there to be had.
+  /// _framedPicture is the element being reframed and its picture.
   (ImageElement, ui.Image)? _framedPicture() {
     var id = _framing;
     if (id == null) return null;
@@ -5339,8 +4996,7 @@ class CanvasStageState extends State<CanvasStage>
     return image == null ? null : (element, image);
   }
 
-  /// _framingPlacement is where the picture is drawn right now, asked of the
-  /// same code that draws it.
+  /// _framingPlacement is where the picture is drawn, from what draws it.
   ImagePlacement? _framingPlacement(ImageElement e, ui.Image image) {
     var inner = _framingRect(e);
     if (inner.width <= 0 || inner.height <= 0) return null;
@@ -5349,9 +5005,9 @@ class CanvasStageState extends State<CanvasStage>
         crop: e.crop, framing: e.framing);
   }
 
-  /// _framingRect is where the picture being reframed is drawn: its frame,
-  /// or, with layers round it, its own place in the frame, which is no longer
-  /// the whole once the frame has grown round a layer or a stroke.
+  /// _framingRect is where the reframed picture is drawn: its frame, or,
+  /// layered, its own place in the frame, which is less than the whole once
+  /// the frame grows round a layer or stroke.
   Rect _framingRect(ImageElement e) {
     var inner = e.box.inner(e.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion));
@@ -5361,8 +5017,8 @@ class CanvasStageState extends State<CanvasStage>
     return layerRect(inner, base.place);
   }
 
-  /// _framingView is what the painter draws over a picture being reframed:
-  /// the whole of it, in the place the visible part is already in.
+  /// _framingView is the whole reframed picture, placed where its visible
+  /// part is, for the painter.
   StageFraming? _framingView() {
     if (_framedPicture() case (var e, var image)) {
       var placement = _framingPlacement(e, image);
@@ -5381,16 +5037,13 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _startGuideDrag takes hold of a guide, or pulls a new one out of a ruler,
-  /// returning whether it did. A press inside a ruler always means a new
-  /// guide; a press near a line means that line, unless the guides are locked
-  /// or hidden.
+  /// _startGuideDrag takes a guide, or pulls a new one out of a ruler, and
+  /// says whether it did. A press in a ruler always means a new guide; near a
+  /// line, that line, unless guides are locked or hidden.
   bool _startGuideDrag(Offset stage, Offset doc) {
     var guides = document.guides;
     if (!guides.showGuides) return false;
 
-    // Out of a ruler: pulling down from the top gives a horizontal line,
-    // out of the left a vertical one.
     var from = _rulerUnder(stage);
     if (from != null) {
       var axis = from == GuideAxis.vertical
@@ -5420,9 +5073,9 @@ class CanvasStageState extends State<CanvasStage>
     return false;
   }
 
-  /// _rulerUnder is which ruler the pointer is in, as the axis of the guide
-  /// it would produce, or null. The strips come from the function that draws
-  /// them, so what can be dragged out of is what is seen.
+  /// _rulerUnder is the ruler under the pointer, as the axis of the guide it
+  /// makes, or null. The strips come from what draws them, so what can be
+  /// dragged from is what is seen.
   GuideAxis? _rulerUnder(Offset stage) {
     if (!document.guides.showRulers) return null;
     var rulers = document.guides.rulers;
@@ -5432,8 +5085,7 @@ class CanvasStageState extends State<CanvasStage>
         .axisAt(stage - _scrolled);
   }
 
-  /// _applyGuide moves the guide being dragged to where the pointer is,
-  /// snapped to the grid like anything else so it can sit exactly on a
+  /// _applyGuide moves the dragged guide, snapped so it can sit on a
   /// gridline.
   void _applyGuide(Offset doc) {
     var guides = document.guides;
@@ -5457,8 +5109,7 @@ class CanvasStageState extends State<CanvasStage>
         transient: true);
   }
 
-  /// _finishGuide drops the guide, or throws it away if it was dragged off
-  /// the canvas, which is how a single guide is removed.
+  /// _finishGuide drops the guide, or removes it if dragged off the canvas.
   void _finishGuide() {
     var guides = document.guides;
     if (_guideIndex < 0 || _guideIndex >= guides.guides.length) {
@@ -5478,25 +5129,23 @@ class CanvasStageState extends State<CanvasStage>
     _guideIndex = -1;
   }
 
-  /// _applyFraming moves the picture inside its frame by however far the
-  /// pointer has come since it went down. The travel is in canvas units and
-  /// the framing in fractions of the slack, so it is converted through the
-  /// placement, and the picture follows the pointer at any zoom. Dragging
-  /// right moves the picture right: the window chooses pixels further left.
+  /// _applyFraming moves the picture inside its frame by the pointer's travel
+  /// since the press. Travel is in canvas units and framing in fractions of
+  /// the slack, so it converts through the placement and follows the pointer
+  /// at any zoom. Dragging right moves the picture right.
   void _applyFraming(Offset doc) {
     if (_framedPicture() case (var e, var image)) {
       var placement = _framingPlacement(e, image);
       if (placement == null) return;
-      // Canvas units per picture pixel, from what is drawn and where: the
-      // window is the picture before the crop, and the drawn part after it.
+      // Canvas units per picture pixel.
       var perPixel = placement.src.width <= 0
           ? 0.0
           : placement.dst.width / placement.src.width;
       if (perPixel <= 0) return;
       var slack = placement.slack;
 
-      // Undone by the element's own rotation, so a tilted picture moves the
-      // way the pointer does.
+      // Undo the element's rotation and mirror, so the picture moves with
+      // the pointer.
       var travel = doc - _dragStart;
       var a = -e.movedRotationAt(controller.frame, controller.document,
             live: controller.liveMotion) * math.pi / 180;
@@ -5504,8 +5153,6 @@ class CanvasStageState extends State<CanvasStage>
         travel = Offset(travel.dx * math.cos(a) - travel.dy * math.sin(a),
             travel.dx * math.sin(a) + travel.dy * math.cos(a));
       }
-      // And by its mirror: a picture flipped across moves the other way
-      // inside its frame for the same drag.
       var base =
           e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
       travel = Offset(base.flipX ? -travel.dx : travel.dx,
@@ -5525,8 +5172,7 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  /// _previewPlacement is where the held stroke's preview goes on the canvas:
-  /// over its picture, through the same placement the picture is drawn with.
+  /// _previewPlacement is where the held stroke's preview is drawn.
   ImagePlacement? _previewPlacement() {
     var id = controller.pendingPicture;
     if (id == null || _preview == null) return null;
@@ -5539,9 +5185,8 @@ class CanvasStageState extends State<CanvasStage>
         crop: picture.crop, framing: picture.framing);
   }
 
-  /// _refreshPreview rebuilds the picture of what the held stroke would do,
-  /// when the stroke or the settings behind it have changed, keyed on the
-  /// settings rather than on every notification.
+  /// _refreshPreview rebuilds the held stroke's preview when the stroke or
+  /// its settings change, keyed on the settings rather than every notify.
   void _refreshPreview() {
     var stroke = controller.pendingAsStroke();
     var id = controller.pendingPicture;
@@ -5566,14 +5211,12 @@ class CanvasStageState extends State<CanvasStage>
     if (key == _previewOf) return;
     _previewOf = key;
 
-    // After the settings have stopped moving. There is no telling a
-    // keystroke from the last one except by waiting, so the stroke goes
-    // through the same delay.
+    // Once the settings stop moving. A last keystroke is only told by
+    // waiting, so the stroke goes through the same delay.
     _previewDebounce?.cancel();
     _previewDebounce = Timer(_previewDelay, () {
       if (!mounted || _previewOf != key) return;
-      // The preview colours itself by how hard the brush is at each pixel,
-      // which is the thing being judged.
+      // Coloured by the brush's hardness at each pixel, which is judged.
       strokePreview(source, stroke).then((image) {
         if (!mounted || _previewOf != key) return;
         setState(() => _preview = image);
@@ -5581,8 +5224,8 @@ class CanvasStageState extends State<CanvasStage>
     });
   }
 
-  /// _commitStroke writes the finished stroke onto the picture, as one change
-  /// for the whole gesture: one pass over the pixels, one undo step.
+  /// _commitStroke writes the finished stroke onto the picture as one change
+  /// for the gesture: one pass over the pixels, one undo step.
   void _commitStroke() {
     var id = _painting;
     _painting = null;
@@ -5598,13 +5241,13 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A marking brush teaches the learning method what is what; the other
-    // two rub the picture out and put it back. Which it is is kept with the
-    // stroke, since another brush may be picked before it is applied.
+    // A marking brush teaches the learning method; the other two rub out and
+    // restore. Which is kept with the stroke, since another brush may be
+    // picked before it is applied.
     var teaching = controller.retouch.teaches;
 
-    // Held rather than applied, so the brush can be adjusted while the same
-    // stroke redraws: see CanvasController.holdStroke.
+    // Held, not applied, so the brush can be adjusted while the same stroke
+    // redraws: see CanvasController.holdStroke.
     controller.holdStroke(picture.id, points,
         keeps: controller.retouch.keeps,
         teaches: teaching,
@@ -5612,16 +5255,14 @@ class CanvasStageState extends State<CanvasStage>
     controller.endInteraction();
   }
 
-  /// _selectedTeam is the one selected element, when it is a team.
   TeamElement? _selectedTeam() {
     var selected = controller.selected;
     return selected is TeamElement ? selected : null;
   }
 
-  /// _hitAnyPlayer is the topmost player of any team under [doc], in reverse
-  /// paint order. It ignores the teams' boxes: a player is placed as a
-  /// fraction of one but not confined to it, and two teams on one pitch
-  /// overlap.
+  /// _hitAnyPlayer is the topmost player of any team under [doc]. Team boxes
+  /// are ignored: a player is placed as a fraction of one but not confined
+  /// to it, and two teams on one pitch overlap.
   (TeamElement, int)? _hitAnyPlayer(Offset doc) {
     for (var i = document.elements.length - 1; i >= 0; i--) {
       var element = document.elements[i];
@@ -5634,10 +5275,9 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
-  /// _hitPlayer is which of [team]'s players is under [doc], or null,
-  /// searched back to front so the one drawn on top is picked. A locked
-  /// player is not hittable, so a run can be dragged through a pinned back
-  /// four.
+  /// _hitPlayer is the topmost of [team]'s players under [doc], or null. A
+  /// locked player cannot be hit, so a run can be dragged through a pinned
+  /// back four.
   int? _hitPlayer(TeamElement team, Offset doc) {
     var rx = team.dotWidth / 2;
     var ry = team.dotHeight / 2;
@@ -5647,24 +5287,22 @@ class CanvasStageState extends State<CanvasStage>
     for (var i = team.players.length - 1; i >= 0; i--) {
       var spot = team.players[i];
       if (spot.locked || spot.hidden) continue;
-      // Where they are on this frame, not where they rest, and on a pitch,
-      // where the pitch has put them, at the size it has made them.
+      // Where the pitch draws them on this frame.
       var at = playerPlace(ground, team, spot, controller.frame);
       if (!at.shown) continue;
       var d = doc - at.centre;
-      // The ball by its own size, which is smaller than a player's.
       var own = spot.ball ? team.radiusOf(spot) : null;
       var sx = (own ?? rx) * at.size, sy = (own ?? ry) * at.size;
-      // Against the ellipse rather than a square, so the gaps between dots in
-      // a tight back four stay gaps.
+      // Tested against the ellipse, so gaps between dots in a tight back four
+      // stay gaps.
       if ((d.dx * d.dx) / (sx * sx) + (d.dy * d.dy) / (sy * sy) <= 1) return i;
     }
     return null;
   }
 
-  /// _applyPlayerMove drags one player of the selected team, written back as
-  /// the fraction of the team's box it is stored as, so it stays put when the
-  /// team is moved or resized.
+  /// _applyPlayerMove drags a player of the selected team, stored as a
+  /// fraction of the team's box so it stays put when the team moves or
+  /// resizes.
   void _applyPlayerMove(Offset doc) {
     var team = _selectedTeam();
     if (team == null ||
@@ -5675,8 +5313,8 @@ class CanvasStageState extends State<CanvasStage>
     var spot = team.players[_playerIndex];
     var at = doc - _playerGrab;
 
-    // On a pitch, the pointer is carried back onto the field and the player
-    // kept in its metres, so wherever the pitch goes, they go.
+    // On a pitch the pointer is carried onto the field and the player kept
+    // in its metres, so the player goes wherever the pitch goes.
     var ground = teamGround(document, team, controller.frame);
     if (ground != null) {
       var field = ground.field(at);
@@ -5712,17 +5350,16 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A player animates like anything else: while the document is animated
-    // and either auto-keyframe is on or this player already moves, the drag
-    // writes a keyframe on the player's track rather than changing where
-    // they line up.
+    // A player animates like anything else: with the document animated and
+    // auto-keyframe on or the player already moving, the drag writes a
+    // keyframe on their track rather than their lined-up place.
     var animating = controller.document.isAnimated &&
         (controller.autoKeyframe || (spot.track?.isEmpty == false));
 
     if (animating) {
       var rest = team.centreOf(spot);
-      // Seeded at the start, so a drag at frame 12 is a run from where he was
-      // rather than a move for the whole document. See ElementTrack.seededFor.
+      // Seeded at the start, so a drag at frame 12 is a run from where he
+      // was, not a move for the whole document. See ElementTrack.seededFor.
       var track =
           (spot.track ?? ElementTrack.empty).seededFor(controller.frame);
       var pose = track.at(controller.frame);
@@ -5759,25 +5396,23 @@ class CanvasStageState extends State<CanvasStage>
     _startBounds = {
       for (var e in controller.selectedElements) e.id: e.bounds,
     };
-    // And the elements as they were, for the resize that scales what is
-    // inside them: the factor is measured from the start of the drag, so it
-    // is applied to the element as it was then.
+    // And the elements themselves, for a resize that scales what is inside:
+    // its factor is measured from the drag's start.
     _startElements = {
       for (var e in controller.selectedElements) e.id: e,
     };
-    // Where each element is on this frame, which is what a move works from.
-    // Kept apart from the resting bounds, which a resize works from: a
-    // resize writes the base size, and a posed size would bake a scale into
-    // the element. A move from the resting bounds would throw away whatever
-    // pose the frame already had.
+    // Where each element is on this frame, which a move works from. A resize
+    // works from the resting bounds instead: it writes the base size, and a
+    // posed size would bake a scale in. A move from the resting bounds would
+    // lose the frame's pose.
     _startPosed = {
       for (var e in controller.selectedElements)
         e.id: e.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion),
     };
-    // The box the handles are on, which for a line or a path is bigger than
-    // the element's own (see _visualBounds). A resize is expressed against
-    // this and applied to the real rectangle in the same proportion.
+    // The box the handles are on, bigger than the element's own for a line
+    // or path (see _visualBounds). A resize is measured against it and
+    // applied to the real rectangle in proportion.
     _startVisual = {
       for (var e in controller.selectedElements) e.id: _visualBounds(e),
     };
@@ -5787,8 +5422,7 @@ class CanvasStageState extends State<CanvasStage>
     controller.beginInteraction();
   }
 
-  /// _selectedChartLabels is what the painter outlines. Empty unless one
-  /// chart is selected and has a placed label.
+  /// _selectedChartLabels are the lone selected chart's placed labels.
   List<Rect> _selectedChartLabels() {
     var element = controller.selected;
     if (element is! ChartElement || !controller.showHelpers) return const [];
@@ -5799,9 +5433,8 @@ class CanvasStageState extends State<CanvasStage>
         .toList();
   }
 
-  /// _selectedTableColumns is what the painter puts grips on: each inner
-  /// column rule of the selected table, as an x and the top and bottom of the
-  /// table.
+  /// _selectedTableColumns are the selected table's inner column rules, as
+  /// (x, top, bottom), for grips.
   List<(double, double, double)> _selectedTableColumns() {
     var element = controller.selected;
     if (element is! TableElement || element.locked || !controller.showHelpers) {
@@ -5815,13 +5448,12 @@ class CanvasStageState extends State<CanvasStage>
     ];
   }
 
-  /// _docSlop is the pointer's reach in document units: the allowance is in
-  /// screen pixels (how still a hand is), so it is divided by the zoom.
+  /// _docSlop is the pointer's reach in document units: the slop is in
+  /// screen pixels (how still a hand is), so divided by the zoom.
   double get _docSlop => handleHitSlop / _scale;
 
-  /// _applyPart writes a part-drag onto the selected element (see
-  /// stage_parts.dart, which works out the new element). Transient: the drag
-  /// is one undo step, closed when the pointer lifts.
+  /// _applyPart writes a part-drag onto the selected element (stage_parts.dart
+  /// works out the new element). Transient: the drag is one undo step.
   void _applyPart(Offset doc, {required bool chartLabel}) {
     var element = controller.selected;
     if (element == null) return;
@@ -5840,15 +5472,12 @@ class CanvasStageState extends State<CanvasStage>
     if (next != null) controller.replaceElement(next, transient: true);
   }
 
-  /// _labelGrab is the chart label being dragged, while one is.
   ChartLabelGrab? _labelGrab;
 
-  /// _columnGrab is which of a table's dividers is being dragged: the index of
-  /// the column to its left.
+  /// _columnGrab is the dragged divider: the index of the column to its left.
   int? _columnGrab;
 
-  /// _pressMarkerNote takes a press at [doc] on the label of the marker
-  /// playback holds at, where it is on the canvas: false where it is not.
+  /// _pressMarkerNote takes a press on the held marker's canvas label.
   bool _pressMarkerNote(Offset doc) {
     var note = controller.holdingMarker;
     if (note == null || controller.gaming) return false;
@@ -5863,8 +5492,8 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _dragMarkerNote moves the held marker's label to follow the pointer at
-  /// [doc], or sizes it as far from its middle as the pointer has gone.
+  /// _dragMarkerNote moves the held marker's label, or sizes it by the
+  /// pointer's distance from its middle.
   void _dragMarkerNote(Offset doc) {
     var was = _noteWas!;
     var page = controller.document.size.size;
@@ -5892,17 +5521,14 @@ class CanvasStageState extends State<CanvasStage>
       _dragMarkerNote(_toDocument(event.localPosition));
       return;
     }
-    // Held down as well as hovering: a brush's ring is drawn where the
-    // pointer last was, and must follow it through a stroke.
+    // Pressed as well as hovering: the brush ring must follow a stroke.
     _hoverAt = event.localPosition;
     if (_brushAt != null) _moveBrush(event.localPosition);
-    // A key held that travels is a drag of the keyboard: the note goes.
     if (_keyDown case (var e, var key)?
         when (event.localPosition - _pressedAt).distance > _buttonClickSlop) {
       controller.noteOff(e, key);
       _keyDown = null;
     }
-    // A press that travels is a drag of the chart, not a hold of its key.
     if (_legendHold != null &&
         (event.localPosition - _pressedAt).distance > _buttonClickSlop) {
       _legendHold?.cancel();
@@ -5923,22 +5549,18 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A link being pulled out of a text box's overflow grip: nothing moves,
-    // the line follows the pointer.
     if (_mode == _DragMode.flow) {
       setState(() => _flowAt = event.localPosition);
       return;
     }
 
-    // Nothing moves until the press has travelled far enough to be a drag,
-    // except the marquee, drawn from the press itself.
+    // Nothing moves until the press travels far enough to be a drag, except
+    // the marquee, drawn from the press itself.
     if (!_travelled && _mode != _DragMode.marquee) {
       if ((event.localPosition - _pressedAt).distance <= _dragThreshold) {
         return;
       }
       _travelled = true;
-      // From here on the drag is measured from the press, so what is dragged
-      // sits under the pointer where it was picked up.
     }
 
     var doc = _toDocument(event.localPosition);
@@ -6047,7 +5669,6 @@ class CanvasStageState extends State<CanvasStage>
       case _DragMode.vectorPencil:
         _applyPencil(doc);
       case _DragMode.vectorKnife:
-        // A point a couple of pixels on from the last, no closer.
         if ((doc - _knife.last).distance * _scale >= 2) {
           setState(() => _knife = [..._knife, doc]);
         }
@@ -6071,8 +5692,8 @@ class CanvasStageState extends State<CanvasStage>
       case _DragMode.vectorPen:
         var e = controller.editingVector, pick = controller.vectorPick;
         if (e != null && pick != null) {
-          // A hand that shifts a little as it clicks puts a corner down: handles
-          // a few pixels long would round it off.
+          // A hand that shifts a little as it clicks puts a corner down:
+          // handles a few pixels long would round it off.
           var pulled = (doc - _vectorFrom).distance * _scale >= _penPullMin;
           controller.replaceElement(
               withPenHandles(e, pick, pulled ? doc : _vectorFrom),
@@ -6149,9 +5770,7 @@ class CanvasStageState extends State<CanvasStage>
   /// rather than felt as a jump.
   SnapResult? _snappedTo;
 
-  /// _otherBounds is where everything not being dragged sits, for the drag to
-  /// line up against: the elements themselves, not only the guides. Locked
-  /// elements count.
+  /// _otherBounds is everything not dragged, locked included, to snap to.
   List<Rect> _otherBounds() {
     if (!document.guides.snapTo.objects) return const [];
     var moving = _startPosed.keys.toSet();
@@ -6162,8 +5781,6 @@ class CanvasStageState extends State<CanvasStage>
     ];
   }
 
-  /// _startBoxOfSelection is where everything being dragged was when the drag
-  /// began, as one rectangle.
   Rect? _startBoxOfSelection() {
     Rect? box;
     for (var entry in _startPosed.entries) {
@@ -6173,18 +5790,16 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   void _applyMove(Offset delta) {
-    // Shift constrains to one axis.
     if (_shiftHeld) {
       delta = delta.dx.abs() > delta.dy.abs()
           ? Offset(delta.dx, 0)
           : Offset(0, delta.dy);
     }
     // Snapped once, against the whole selection's box, so things moved
-    // together stay together. Alt held turns it off for the drag.
+    // together stay together. Alt turns it off.
     var box = _startBoxOfSelection();
-    // Not on a 3D stage, where the page's lines mean nothing: what stands
-    // there snaps to the 3D steps across its floor (see
-    // CanvasController.movedTo).
+    // Not on a 3D stage, where page lines mean nothing: staged elements snap
+    // to the floor's 3D steps (see CanvasController.movedTo).
     var onStage = _startPosed.keys
         .any((id) => document.elementById(id)?.base.spot != null);
     if (box != null && !onStage && !HardwareKeyboard.instance.isAltPressed) {
@@ -6206,31 +5821,29 @@ class CanvasStageState extends State<CanvasStage>
     for (var entry in _startPosed.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
-      // A camera is moved by where it looks, from where it looked when the
-      // drag began: its frame is not its box (see cameraFraming).
+      // A camera moves by where it looks, from its start: its frame is not
+      // its box (see cameraFraming).
       if (_startElements[entry.key] case CameraElement start) {
         next = next.withElement(controller.cameraShifted(start, delta));
         continue;
       }
-      // Through the controller rather than straight onto the base: an element
-      // being animated is posed rather than moved. See
-      // CanvasController.posesRatherThanMoves.
+      // Through the controller, so an animated element is posed rather than
+      // moved. See CanvasController.posesRatherThanMoves.
       next = next.withElement(
           controller.movedTo(element, entry.value.topLeft + delta));
     }
     controller.apply(next, transient: true);
   }
 
-  /// _applyLineEnd drags one end of a single straight line, if that is what
-  /// [handle] is on, and says whether it was. A line is its two ends, not a
-  /// box (a box is at least eight pixels deep, so a line could never be
-  /// level). The end swings onto the nearest level, upright or diagonal
-  /// within a few degrees of one, always with Shift; Alt lets it go anywhere.
+  /// _applyLineEnd drags one end of a single straight line, if [handle] is
+  /// on one, and says whether it did. A line is its two ends, not a box (a
+  /// box is at least eight pixels deep, so a line could never be level). The
+  /// end snaps to level, upright or diagonal within a few degrees, always
+  /// with Shift; Alt frees it.
   bool _applyLineEnd(StageHandle handle, Offset delta) {
     if (_startVisual.length != 1 || !_frameOfSelection.upright) return false;
-    // The line as it was when the drag began: every frame of the drag works
-    // from it, since crossing one end past the other swaps the ends and
-    // their arrows.
+    // The line at the drag's start: every step works from it, since crossing
+    // one end past the other swaps the ends and their arrows.
     var line = _startElements[_startVisual.keys.first];
     if (line is! LineElement || line.curvature != 0 || line.locked) {
       return false;
@@ -6238,7 +5851,6 @@ class CanvasStageState extends State<CanvasStage>
     var was = line.bounds;
     var start = line.flipped ? was.bottomLeft : was.topLeft;
     var end = line.flipped ? was.topRight : was.bottomRight;
-    // Which end the handle is on: the corner of the visual box nearest it.
     var box = _startVisual.values.first;
     var corner = switch (handle) {
       StageHandle.topLeft => box.topLeft,
@@ -6262,8 +5874,8 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _applyCameraZoom zooms the one selected camera by a handle dragged
-  /// [delta], and says whether it did: pulled out, it shows more; in,
-  /// less -- about the middle of its frame, which keeps the page's shape.
+  /// [delta], and says whether it did: out shows more, in less, about the
+  /// frame's middle, which keeps the page's shape.
   bool _applyCameraZoom(StageHandle handle, Offset delta) {
     if (_startElements.length != 1) return false;
     var start = _startElements.values.first;
@@ -6296,17 +5908,17 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _applySkew slants the one selected element by a side handle dragged
-  /// [delta]: the top or bottom handle across, the left or right up and
-  /// down. The side held moves with the pointer and the opposite stays put,
-  /// so the element is slanted about its middle and moved by half as much.
+  /// [delta]: top or bottom across, left or right up and down. The held side
+  /// follows the pointer and the opposite stays put, so the element slants
+  /// about its middle and moves by half as much.
   void _applySkew(Offset delta) {
     var handle = _handle;
     if (handle == null || _startElements.length != 1) return;
     var start = _startElements.values.first;
     if (start.locked) return;
     var box = start.bounds;
-    // The drag in the element's own turned frame, but not its slanted one:
-    // the slant is what is being changed.
+    // The drag in the element's turned frame but not its slanted one: the
+    // slant is what changes.
     var a = -start.rotation * math.pi / 180;
     var d = Offset(delta.dx * math.cos(a) - delta.dy * math.sin(a),
         delta.dx * math.sin(a) + delta.dy * math.cos(a));
@@ -6329,7 +5941,6 @@ class CanvasStageState extends State<CanvasStage>
       default:
         return;
     }
-    // The half-move back onto the page, turned as the element is.
     var r = start.rotation * math.pi / 180;
     var page = Offset(shift.dx * math.cos(r) - shift.dy * math.sin(r),
         shift.dx * math.sin(r) + shift.dy * math.cos(r));
@@ -6348,20 +5959,20 @@ class CanvasStageState extends State<CanvasStage>
     if (_applyLineEnd(handle, delta)) return;
     if (_applyCameraZoom(handle, delta)) return;
 
-    // The edge being dragged lands on the lines a move lands on: only for an
-    // upright box, and Alt turns it off, as for a move.
+    // The dragged edge lands on the lines a move does: upright boxes only,
+    // and Alt turns it off.
     if (_frameOfSelection.upright && !HardwareKeyboard.instance.isAltPressed) {
       delta = _snapResize(handle, delta);
     } else {
       _snappedTo = null;
     }
 
-    // The drag is rotated into the element's own frame, so pulling the right
-    // edge of a tilted element makes it wider rather than moving it sideways.
+    // Into the element's own frame, so pulling a tilted element's right edge
+    // widens it rather than moving it sideways.
     delta = _frameOfSelection.invert(delta);
 
-    // One box for the whole drag, every element mapped through it, so
-    // things resized together keep their sizes and gaps in proportion.
+    // One box for the whole drag, so things resized together keep their sizes
+    // and gaps in proportion.
     Rect? group;
     for (var box in _startVisual.values) {
       group = group == null ? box : group.expandToInclude(box);
@@ -6374,10 +5985,10 @@ class CanvasStageState extends State<CanvasStage>
     var top = group.top + (handle.movesTop ? delta.dy : 0);
     var bottom = group.bottom + (handle.movesBottom ? delta.dy : 0);
 
-    // Shift keeps the proportions, by whichever axis moved further. A
-    // picture asks for that without the key, and Shift lets it go (see
-    // CanvasElement.keepsAspect). Several things at once are held by
-    // default: a group pulled out of shape pulls every gap out of shape.
+    // Shift keeps proportions, by whichever axis moved further. A picture
+    // keeps them without the key, Shift freeing it (see
+    // CanvasElement.keepsAspect), as does a group: pulled out of shape, every
+    // gap would be.
     var first = document.elementById(_startVisual.keys.first);
     var keep = several
         ? !_shiftHeld
@@ -6393,7 +6004,7 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // Minimums rather than a selection dragged inside out: a negative width
+    // A minimum size, not a selection turned inside out: a negative width
     // draws nothing and cannot be grabbed again.
     const minimum = 8.0;
     if (right - left < minimum) {
@@ -6410,14 +6021,11 @@ class CanvasStageState extends State<CanvasStage>
     for (var entry in _startVisual.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
-      // Against the box the handles are on, which for a line or a path is
-      // larger than the element's own rectangle.
       var start = entry.value;
       var real = _startBounds[entry.key] ?? start;
 
-      // Holding the proportions holds them of everything inside (the type,
-      // the spacing, the room inside a chip). From the element as it was when
-      // the drag began: see _startElements.
+      // Keeping proportions scales everything inside (type, spacing, a chip's
+      // padding), from the element at the drag's start.
       var from = _startElements[entry.key] ?? element;
       element = keep ? from.scaledBy(sx) : element;
       next = next.withElement(element.withBase(
@@ -6425,18 +6033,17 @@ class CanvasStageState extends State<CanvasStage>
         y: top + (real.top - group.top) * sy,
         width: math.max(1, real.width * sx),
         height: math.max(1, real.height * sy),
-        // What the design inside the box has been scaled by, written down
-        // where the shape switch reads it (see ElementBase.typeScale), so going
-        // to another shape does not undo the drag by the wrong amount.
+        // The scale applied inside the box, kept where the shape switch reads
+        // it (see ElementBase.typeScale), so a shape change does not undo the
+        // drag by the wrong amount.
         typeScale: keep ? from.base.typeScale * sx : null,
       ));
     }
     controller.apply(next, transient: true);
   }
 
-  /// _snapResize moves the dragged edge onto a line and leaves the opposite
-  /// edge alone: a resize moves one side, so it snaps that side only, against
-  /// the union of what is being resized.
+  /// _snapResize snaps the dragged edge alone onto a line, against the union
+  /// of what is resized.
   Offset _snapResize(StageHandle handle, Offset delta) {
     Rect? box;
     for (var start in _startVisual.values) {
@@ -6482,11 +6089,10 @@ class CanvasStageState extends State<CanvasStage>
     return Offset(dx, dy);
   }
 
-  /// _anchorOf is the element whose anchor is being dragged.
   String? _anchorOf;
 
-  /// _anchorsShown is every selected element's anchor that is shown: where
-  /// it is on the page now, and whether it is locked.
+  /// _anchorsShown is each selected element's shown anchor and whether it
+  /// is locked.
   List<({Offset at, bool locked})> _anchorsShown() => [
         for (var id in controller.selection)
           if (controller.anchorShown(id))
@@ -6494,8 +6100,7 @@ class CanvasStageState extends State<CanvasStage>
               (at: e.anchorAt(controller.frame), locked: e.base.anchorLocked),
       ];
 
-  /// _anchorUnder is the element whose anchor (shown, and not locked) is
-  /// under [stage], or null.
+  /// _anchorUnder is the element whose shown, unlocked anchor is at [stage].
   String? _anchorUnder(Offset stage) {
     for (var id in controller.selection) {
       if (!controller.anchorShown(id)) continue;
@@ -6512,7 +6117,7 @@ class CanvasStageState extends State<CanvasStage>
     var bounds = _selectionBounds;
     if (bounds == null) return;
     var centre = bounds.center;
-    // One element turns about its anchor, which stays where it is.
+    // One element turns about its anchor, which stays put.
     if (controller.selection.length == 1) {
       var one = document.elementById(controller.selection.first);
       if (one != null && !one.anchorCentred) {
@@ -6530,7 +6135,6 @@ class CanvasStageState extends State<CanvasStage>
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
       var rotation = entry.value + degrees;
-      // Shift snaps to fifteen degrees.
       if (_shiftHeld) rotation = (rotation / 15).round() * 15;
       next = next.withElement(element.turnedTo(rotation));
     }
@@ -6567,7 +6171,6 @@ class CanvasStageState extends State<CanvasStage>
       controller.editCodePane(e, codeEdit.$2);
       return;
     }
-    // Let go before it was held long enough, so it was a press after all.
     _legendHold?.cancel();
     _legendHold = null;
     if (_painting != null) {
@@ -6576,9 +6179,8 @@ class CanvasStageState extends State<CanvasStage>
     }
     _playerIndex = -1;
 
-    // A press on an already-selected button that never became a drag is a
-    // click, and a click runs it. Measured in stage pixels, so the tolerance
-    // is the same at any zoom.
+    // A press on a selected button that never became a drag is a click,
+    // which runs it. Measured in stage pixels, so it holds at any zoom.
     var counter = _pendingCounter;
     var counterAt = _pendingCounterAt;
     _pendingCounter = null;
@@ -6685,14 +6287,13 @@ class CanvasStageState extends State<CanvasStage>
         controller.pickVectorPoints(
             _shiftHeld ? {...controller.vectorPicks, ...inside} : inside);
       } else if (_vectorShapeUnder >= 0 && !_travelled) {
-        // A click on a shape picks it.
         controller.pickVectorShape(_vectorShapeUnder);
       } else if (!_vectorPressedOutside && !_shiftHeld) {
-        // A click on the drawing's empty space lets go of what was picked.
+        // A click on empty space unpicks.
         controller.pickVectorShape(-1);
       } else if (_vectorPressedOutside && !_travelled) {
-        // A click off the drawing: the editing is finished, and the click does
-        // what it would have.
+        // A click off the drawing finishes editing, and does what it would
+        // have.
         controller.editVector(null);
         var hit = _hitElement(_dragStart);
         if (hit == null) {
@@ -6717,7 +6318,6 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.vectorShapeFit ||
         _mode == _DragMode.vectorItems) {
       if (_mode == _DragMode.vectorShapeDraw) {
-        // A click, not a drag: a shape of a good size, centred on it.
         if (!_travelled) _drawShape(_shapeFrom, clicked: true);
         if (_vectorBefore?.shapes case var was?) {
           controller.vectorShapeMade = was.length;
@@ -6755,8 +6355,8 @@ class CanvasStageState extends State<CanvasStage>
       setState(() => _marquee = null);
     }
     if (_mode == _DragMode.node || _mode == _DragMode.handle) {
-      // Re-baked once, at the end of the drag rather than on every pixel: a
-      // route is dozens of keyframes.
+      // Re-baked once at the end, not every pixel: a route is dozens of
+      // keyframes.
       var path = _selectedPath();
       if (path != null) controller.applyPathFollow(path);
       controller.endInteraction();
@@ -6781,7 +6381,6 @@ class CanvasStageState extends State<CanvasStage>
       }
       setState(() => _marquee = null);
     }
-    // A click on a copy, not a drag: that copy picked.
     if (_mode == _DragMode.move && !_travelled) {
       if ((_pressedCopy, _pressedCopyOf) case (var id?, var of?)) {
         controller.pickCopy(of, id);
@@ -6820,11 +6419,11 @@ class CanvasStageState extends State<CanvasStage>
       unawaited(controller.imageTool == ImageTool.refine
           ? controller.refineEdge(_quickTrail)
           : controller.quickSelect(_quickTrail, subtract: _quickSubtract));
-      // Left on the canvas until the cut lands, so the stroke does not
-      // vanish for the moment it takes.
+      // Left on the canvas until the cut lands, so the stroke does not vanish
+      // meanwhile.
     }
-    // A press on the stage with the page locked that never moved is a click
-    // on nothing: it lets go of what was selected.
+    // A still press on the stage with the page locked is a click on nothing:
+    // it clears the selection.
     if (_lockedPress && !_travelled) controller.clearSelection();
     _lockedPress = false;
     if (_gizmoDrag != null) setState(() => _gizmoDrag = null);
@@ -6832,29 +6431,25 @@ class CanvasStageState extends State<CanvasStage>
     _handle = null;
     _maskOn = null;
     _strokeAt = null;
-    // The lines only mean anything while something is being dragged.
     if (_snappedTo != null) setState(() => _snappedTo = null);
   }
 
-  /// _backgrounds is the generated background, rasterised once and kept while
-  /// the design and the size hold still. One cache for every canvas on screen:
-  /// it holds a few rasters, so the facing leaf and the pages leaving and
-  /// arriving keep theirs. See ProceduralCache.
+  /// _backgrounds caches generated backgrounds, rasterised once while the
+  /// design and size hold still. Shared by every canvas on screen, with room
+  /// for a few, so the facing leaf and pages in transition keep theirs. See
+  /// ProceduralCache.
   final ProceduralCache _backgrounds = ProceduralCache();
 
-  /// _hoverAt is where the pointer last was, in stage coordinates, so the
-  /// cursor can say what is under it (a ruler, in particular).
+  /// _hoverAt is the pointer's last stage position, for the cursor.
   Offset _hoverAt = Offset.zero;
 
-  /// _updateHover keeps the renderer told which button is under the pointer.
+  /// _updateHover keeps the renderer told what is under the pointer.
   void _updateHover(Offset stage) {
     _hoverAt = stage;
     _hoverCode(stage);
     // For a Look at that faces the pointer.
     controller.stagePointer = _toDocument(stage);
-    // The tile to be laid follows the pointer over a map being painted.
     controller.tilePaint?.hoverAt(_toDocument(stage));
-    // The brush's ring follows the pointer.
     if (controller.editingImage != null &&
         (controller.imageTool == ImageTool.brush ||
             controller.imageTool == ImageTool.quick ||
@@ -6863,14 +6458,11 @@ class CanvasStageState extends State<CanvasStage>
       setState(() {});
     }
     var doc = _toDocument(stage);
-    // The gizmo's part under the pointer, lit.
     var hot = _gizmo()?.hit(doc, _gizmoReach);
     if (hot != _gizmoHot) setState(() => _gizmoHot = hot);
     var element = _hitElement(doc);
     var id = element is ButtonElement ? element.id : null;
 
-    // And which of a live counter's own buttons, lit as a button element
-    // is.
     String? counter;
     var at = -1;
     if (element is CounterElement && element.live) {
@@ -6878,8 +6470,7 @@ class CanvasStageState extends State<CanvasStage>
       if (at >= 0) counter = element.id;
     }
 
-    // Whether a click here would do something rather than select or move
-    // (the tests _onPointerDown makes), so the pointer can say so.
+    // Whether a click here presses something, for the cursor.
     var selected = element != null &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id;
@@ -6904,31 +6495,25 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  /// _hoverPressable is whether the pointer is over something a click would
-  /// press: a selected button, a selected speaker's or video's controls, or a
-  /// live counter's buttons.
+  /// _hoverPressable is whether a click here would press a selected button,
+  /// speaker or video control, or a live counter's button.
   bool _hoverPressable = false;
 
   // ---------------------------------------------------------- 3D stage
 
-  /// _gizmoDrag is the gizmo being dragged: as it was when the drag began,
-  /// the part held, the page point it was taken hold of at, and the
-  /// element's id.
+  /// _gizmoDrag is the gizmo at the drag's start, the part held, the page
+  /// point taken, and the element's id.
   (StageGizmo, GizmoPart, Offset, String)? _gizmoDrag;
 
-  /// _gizmoHot is the gizmo's part under the pointer, lit.
   GizmoPart? _gizmoHot;
 
-  /// _lockedPress is whether the press under way took hold of the stage's
-  /// camera because the page is locked.
+  /// _lockedPress is whether this press took the camera of a locked page.
   bool _lockedPress = false;
 
-  /// _gizmoReach is how near a part, in page units, the pointer has to be
-  /// to take hold of it.
+  /// _gizmoReach is how near a part, in page units, the pointer must be.
   double get _gizmoReach => 9 / (_scale == 0 ? 1 : _scale);
 
-  /// _gizmo is the gizmo on the one element selected, where it stands on a
-  /// stage and the handles are shown, or null.
+  /// _gizmo is the gizmo on the lone selected staged element, or null.
   StageGizmo? _gizmo() {
     if (!controller.showHelpers || controller.playing || controller.gaming) {
       return null;
@@ -6941,7 +6526,6 @@ class CanvasStageState extends State<CanvasStage>
     return StageGizmo.of(e, at, controller.stageTool, _scale);
   }
 
-  /// _pressGizmo takes hold of the part of the gizmo under [doc], if any.
   bool _pressGizmo(Offset doc) {
     var g = _gizmo();
     if (g == null) return false;
@@ -6954,10 +6538,9 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _pressLockedStage takes hold of the stage's camera, with the page locked,
-  /// for a press on the stage itself (not on anything standing on it) or the
-  /// middle button anywhere: a drag orbits; shifted, or the middle button, it
-  /// pans.
+  /// _pressLockedStage takes the stage's camera, with the page locked, for a
+  /// press on the stage itself (not on anything standing on it) or the
+  /// middle button anywhere: a drag orbits; shifted, or middle, it pans.
   bool _pressLockedStage(PointerDownEvent event, Offset doc) {
     if (!controller.pageLocked) return false;
     var s = controller.steeredStage;
@@ -6981,12 +6564,9 @@ class CanvasStageState extends State<CanvasStage>
     return true;
   }
 
-  /// _steerTimer ends a run of scrolls and pinches steering the camera
-  /// as one undo step, once they stop.
+  /// _steerTimer closes a run of camera steering as one undo step.
   Timer? _steerTimer;
 
-  /// _steering opens the undo step a run of camera steering makes, or
-  /// keeps it open.
   void _steering() {
     if (_steerTimer == null) controller.beginInteraction();
     _steerTimer?.cancel();
@@ -6996,9 +6576,9 @@ class CanvasStageState extends State<CanvasStage>
     });
   }
 
-  /// _steerByScroll is the wheel and two fingers with the page locked on a
-  /// stage: they orbit its camera, shifted they pan it, and with Command or
-  /// Control (a pinch, to the wheel) they zoom it.
+  /// _steerByScroll is the wheel or two fingers with the page locked on a
+  /// stage: orbit, Shift to pan, Command or Control (a pinch, to the wheel)
+  /// to zoom.
   void _steerByScroll(PointerScrollEvent event) {
     if (!controller.onStage3d) return;
     var keys = HardwareKeyboard.instance;
@@ -7014,25 +6594,23 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  /// _scrollPhysics holds a page that scrolls still while it is locked.
+  /// _scrollPhysics holds the page still while locked or over code.
   ScrollPhysics? get _scrollPhysics =>
       controller.pageLocked || _codeOver != null
           ? const NeverScrollableScrollPhysics()
           : null;
 
-  /// _pinchScale is the last scale of a pinch steering the camera.
   double _pinchScale = 1;
 
   /// _wheelRests closes a run of wheel turns as one change.
   Timer? _wheelRests;
 
   void _onScroll(PointerScrollEvent event) {
-    // While reframing, the wheel is the picture's zoom rather than the
-    // view's: drag to choose what is in shot, scroll to choose how much.
+    // While reframing, the wheel zooms the picture, not the view: drag to
+    // choose what is in shot, scroll to choose how much.
     if (_framing != null) {
       var framed = document.elementById(_framing!);
       if (framed is ImageElement) {
-        // A run of wheel turns is one change, closed once the wheel rests.
         controller.beginInteraction();
         controller.replaceElement(
             framed.copyWith(
@@ -7047,14 +6625,12 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
-    // About the pointer rather than the middle, so the corner scrolled in on
-    // stays where it is.
+    // About the pointer, so the corner scrolled in on stays put.
     _zoomAbout(event.localPosition,
         controller.zoom * (event.scrollDelta.dy > 0 ? 0.9 : 1.1));
   }
 
-  /// _zoomAbout zooms to [zoom], keeping the point of the page under
-  /// [stage] where it is on screen.
+  /// _zoomAbout zooms to [zoom], keeping the page point under [stage] put.
   void _zoomAbout(Offset stage, double zoom,
       {Offset? doc, Offset? pan, double? scale}) {
     var under = doc ?? _toDocument(stage);
@@ -7067,15 +6643,13 @@ class CanvasStageState extends State<CanvasStage>
     controller.pan = Offset2(next.dx, next.dy);
   }
 
-  /// _pinch is a pinch on the trackpad under way: the zoom, the view, the
-  /// scale and the point of the page under the fingers it started from.
+  /// _pinch is the zoom, view, scale and page point a pinch began from.
   ({double zoom, Offset pan, double scale, Offset doc})? _pinch;
 
   void _onPinchStart(PointerPanZoomStartEvent e) {
-    // Two fingers over a pane of code: they scroll it.
     _codePinch = _codePaneAt(e.localPosition);
-    // Locked, the page does not zoom: on a stage the fingers steer its
-    // camera instead (see _onPinchUpdate).
+    // Locked, the page does not zoom: on a stage the fingers steer the camera
+    // instead (see _onPinchUpdate).
     if (controller.pageLocked) {
       _pinchScale = 1;
       return;
@@ -7089,7 +6663,7 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _onPinchUpdate zooms as the fingers spread or close, about where they
-  /// are. A two-finger slide alone is the scroll views' to scroll.
+  /// are. A two-finger slide alone is the scroll views' to handle.
   void _onPinchUpdate(PointerPanZoomUpdateEvent e) {
     if (_codePinch case var at? when (e.scale - 1).abs() < 0.01) {
       _scrollCodeBy(at, -e.panDelta.dy);
@@ -7124,30 +6698,23 @@ class CanvasStageState extends State<CanvasStage>
 
   // ------------------------------------------------------------------------
 
-  /// _onKey is the canvas's keyboard. The arrows move what is chosen, and
-  /// walk the frames when nothing is; Alt swaps the two. Space plays and
-  /// stops; the pan tool pans (see CanvasTool).
+  /// _onKey is the canvas's keyboard. Arrows move the selection, or walk the
+  /// frames with none; Alt swaps the two. Space plays and stops.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    // A game playing has the keys: Space jumps and the arrows run, rather
-    // than playing the timeline or walking its frames. See gameKey.
+    // A running game has the keys. See gameKey.
     if (controller.gaming) return KeyEventResult.handled;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-    // Never while somebody is typing: see isTypingInAField.
     if (isTypingInAField()) return KeyEventResult.ignored;
     var keys = HardwareKeyboard.instance;
-    // Arrows move what is chosen, and walk the frames when nothing is; Alt
-    // asks for the other.
     var nudging = controller.selection.isNotEmpty != keys.isAltPressed;
     var step = keys.isShiftPressed ? 10.0 : 1.0;
 
-    // Cmd on a Mac, Control everywhere else; either, so a Mac with a PC
-    // keyboard works too.
+    // Cmd or Control, so a Mac with a PC keyboard works too.
     var command = keys.isMetaPressed || keys.isControlPressed;
     if (command) {
-      // While a drawing is edited, its points are what is copied, cut, pasted
-      // and picked all, not the elements.
+      // While a drawing is edited, these act on its points, not elements.
       if (controller.editingVector != null) {
         var done = switch (event.logicalKey) {
           LogicalKeyboardKey.keyA => controller.pickAllVectorPoints(),
@@ -7157,8 +6724,7 @@ class CanvasStageState extends State<CanvasStage>
           _ => false,
         };
         if (done) return KeyEventResult.handled;
-        // A copy or paste with no points: nothing, rather than the whole
-        // drawing copied while its points are being edited.
+        // With no points to act on: nothing, not the whole drawing.
         if (const [
           LogicalKeyboardKey.keyA,
           LogicalKeyboardKey.keyC,
@@ -7187,8 +6753,6 @@ class CanvasStageState extends State<CanvasStage>
       return KeyEventResult.handled;
     }
 
-    // A warp grid's picked points, while it is shown, before anything else
-    // the arrows do.
     var arrow = switch (event.logicalKey) {
       LogicalKeyboardKey.arrowLeft => Offset(-step, 0),
       LogicalKeyboardKey.arrowRight => Offset(step, 0),
@@ -7198,10 +6762,9 @@ class CanvasStageState extends State<CanvasStage>
     };
     if (arrow != null && _nudgeWarp(arrow)) return KeyEventResult.handled;
 
-    // The page's and the stage's own letters, while no picture or drawing is
-    // being edited (they have letters of their own). L locks the page,
-    // Shift-S snaps; on a 3D stage G, R and S are the 3D tools, F frames what
-    // is selected and Home puts the camera back.
+    // Page and stage letters, unless a picture or drawing is edited (they
+    // have their own): L locks the page, Shift-S snaps; on a 3D stage G, R
+    // and S are the 3D tools, F frames the selection, Home resets the camera.
     var plain = controller.editingImage == null &&
         controller.editingVector == null &&
         !keys.isAltPressed;
@@ -7234,13 +6797,10 @@ class CanvasStageState extends State<CanvasStage>
             : controller.stepFrame(-10);
       case LogicalKeyboardKey.arrowDown:
         nudging ? controller.nudgeSelected(0, step) : controller.stepFrame(10);
-      // A picture's layers open with a layer picked: the layer goes, not the
-      // picture.
       case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace
           when controller.editingImage != null &&
               controller.imageLayer != baseLayerId:
         controller.removeImageLayer(controller.imageLayer);
-      // Copies picked: those copies go, not the element.
       case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace
           when controller.selected != null &&
               controller.copiesPicked(controller.selected!.id):
@@ -7251,15 +6811,12 @@ class CanvasStageState extends State<CanvasStage>
       case LogicalKeyboardKey.delete:
       case LogicalKeyboardKey.backspace:
         controller.deleteSelected();
-      // Return finishes the shape the pen is drawing, left open.
       case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter
           when controller.vectorPenShape >= 0:
         controller.finishPenShape();
-      // The drawing's tools, while it is edited: V picks points, P the pen,
-      // S scales, I tints. A tool's key again goes back to picking.
+      // A picture's tools, while its layers are open.
       case LogicalKeyboardKey.keyV when controller.editingImage != null:
         controller.imageTool = ImageTool.move;
-      // A picture's mask tools, while its layers are open.
       case LogicalKeyboardKey.keyW when controller.editingImage != null:
         controller.imageTool = ImageTool.subject;
       case LogicalKeyboardKey.keyC when controller.editingImage != null:
@@ -7292,7 +6849,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.imageTool = ImageTool.lasso;
       case LogicalKeyboardKey.keyG when controller.editingImage != null:
         controller.imageTool = ImageTool.fade;
-      // X turns the mask tools over, as it swaps the colours everywhere.
+      // X inverts the mask tools, as it swaps colours elsewhere.
       case LogicalKeyboardKey.keyX when controller.editingImage != null:
         controller.maskHide = !controller.maskHide;
       // The brackets size the brush, as in every painting program.
@@ -7308,6 +6865,8 @@ class CanvasStageState extends State<CanvasStage>
         } else {
           controller.maskBrushSize = controller.maskBrushSize * 1.2;
         }
+      // A drawing's tools, while it is edited; a tool's key again goes back
+      // to picking.
       case LogicalKeyboardKey.keyV when controller.editingVector != null:
         controller.vectorTool = VectorTool.select;
       case LogicalKeyboardKey.keyG when controller.editingVector != null:
@@ -7356,27 +6915,25 @@ class CanvasStageState extends State<CanvasStage>
             ? VectorTool.select
             : VectorTool.tint;
       case LogicalKeyboardKey.escape:
-        // One thing at a time: a warp grid's picked points are let go first,
-        // then the grid, then the picture's frame, and only then the selection.
+        // One thing at a time: a warp grid's picked points, then the grid,
+        // then the picture's frame, then the selection.
         if (controller.warpLayer != null && controller.warpPicks.isNotEmpty) {
           controller.warpPicks = const {};
         } else if (controller.warpLayer != null) {
           controller.editWarp("", "", on: false);
         } else
-        // A clone's point is let go before the picture is.
         if (controller.editingImage != null &&
             controller.imageTool == ImageTool.clone &&
             controller.cloneFrom != null) {
           controller.cloneFrom = null;
         } else if (controller.editingImage != null &&
             controller.imageTool != ImageTool.move) {
-          // Then the tool is put down, and only then the picture.
           controller.imageTool = ImageTool.move;
         } else if (controller.editingImage != null) {
           controller.editImage(null);
         } else if (controller.vectorEditing != null) {
-          // Out of a drawing a step at a time: the shape the pen is drawing,
-          // then the pen, then the points picked, then the editing.
+          // Out of a drawing a step at a time: the pen's shape, the pen, the
+          // picked points, then the editing.
           if (controller.vectorPenShape >= 0) {
             controller.finishPenShape();
           } else if (controller.vectorTool != VectorTool.select) {
@@ -7387,12 +6944,10 @@ class CanvasStageState extends State<CanvasStage>
             controller.editVector(null);
           }
         } else if (controller.placingCopies != null) {
-          // Placing copies stops before anything is let go.
           controller.placingCopies = null;
         } else if (controller.selected case var e?
             when controller.copiesPicked(e.id)) {
-          // Copies picked: back to all of them, then the element -- each
-          // still its own on the canvas, no box round them all.
+          // Copies picked: back to all of them, then the element.
           controller.pickCopies(e.id, const {});
         } else {
           controller.clearSelection();
@@ -7405,8 +6960,7 @@ class CanvasStageState extends State<CanvasStage>
 
   @override
   Widget build(BuildContext context) {
-    // Cheap unless the stroke or its settings have changed: see
-    // _refreshPreview.
+    // Cheap unless the stroke or its settings changed: see _refreshPreview.
     _refreshPreview();
     return _buildStage();
   }
@@ -7416,25 +6970,21 @@ class CanvasStageState extends State<CanvasStage>
           _visible = Size(constraints.maxWidth, constraints.maxHeight);
           var content = _contentSize(_visible);
           _viewport = content;
-          // Scrolled to where the view is, once laid out at this size.
           WidgetsBinding.instance.addPostFrameCallback((_) => _syncScroll());
-          // How much the canvas had to shrink to fit, half of what the percentage
-          // on the band means.
+          // How much the canvas shrank to fit, for the band's percentage.
           _tellControllerTheScale();
 
           Widget painter = SizedBox(
             width: content.width,
             height: content.height,
-            // Not clipped: the text editor sits in here and a long caption grows
-            // past the box it opened in.
+            // Not clipped: a long caption in the text editor grows past it.
             child: Stack(clipBehavior: Clip.none, children: [
               Positioned.fill(
                   child: Listener(
                 onPointerDown: _onPointerDown,
                 onPointerMove: _onPointerMove,
                 onPointerUp: _onPointerUp,
-                // A pointer the system takes away ends what it was doing
-                // as letting go would, rather than leaving it open.
+                // A cancelled pointer ends its gesture as a release would.
                 onPointerCancel: _onPointerUp,
                 onPointerHover: (e) {
                   _updateHover(e.localPosition);
@@ -7450,15 +7000,15 @@ class CanvasStageState extends State<CanvasStage>
                     controller.stagePointer = null;
                     if (_codeOver != null) setState(() => _codeOver = null);
                   },
-                  // Clipped to the stage's own box as well as the frame inside it: a
-                  // CustomPainter may draw outside its bounds, and a zoomed canvas would
-                  // paint over the sidebar, the band and the timeline.
+                  // Clipped to the stage's box too: a CustomPainter may draw
+                  // outside its bounds, and a zoomed canvas would paint over
+                  // the sidebar, band and timeline.
                   child: ClipRect(
                     child: CustomPaint(
                       painter: StagePainter(
                         between: _between,
-                        // A tile tried on as the pointer passes is a glimpse too: drawn as a
-                        // gesture is, then properly when it is picked or let go of.
+                        // A tile tried on under the pointer is drawn as a
+                        // gesture is, then properly once picked or left.
                         drafting: controller.interacting || controller.trying,
                         backgrounds: _backgrounds,
                         page: _pageRect,
@@ -7470,9 +7020,7 @@ class CanvasStageState extends State<CanvasStage>
                             : controller.frameOn(_facingPage!),
                         facingOnLeft: _facingOnLeft,
                         facingShown: _spreadShown,
-                        // Played as a game: the canvas as the game has it.
-                        // Played as a game: the canvas as the game has it.
-                        // Playing either way, its guide paths left out.
+                        // A game's own view; playing, without guide paths.
                         document: controller.gaming || controller.playing
                             ? withoutGuides(controller.gameView ??
                                 controller.spoken(document))
@@ -7490,8 +7038,6 @@ class CanvasStageState extends State<CanvasStage>
                         counterValue: controller.counterValue,
                         liveMotion: controller.liveMotion,
                         motionTick: controller.motionTick,
-                        // Played or looked through: a 3D stage through its
-                        // Camera.
                         directed: (controller.playing || controller.cameraView) &&
                             !document.editingMaster,
                         counterPressed: (e) =>
@@ -7503,8 +7049,7 @@ class CanvasStageState extends State<CanvasStage>
                         audioRevision: controller.audioRevision,
                         keysTick: controller.keysHeld.value,
                         selection: {for (var e in _chosen) e.id},
-                        // Its trail and onion skin while the Chain is
-                        // open on its motion.
+                        // Trail and onion skin while the Chain shows motion.
                         trail: controller.motionTrail &&
                             controller.chainShowsMotion,
                         gameChange: controller.gameChange,
@@ -7512,22 +7057,19 @@ class CanvasStageState extends State<CanvasStage>
                             ? const {}
                             : controller.pickedCopiesOf(controller.selected!.id),
                         showHelpers: controller.showHelpers,
-                        // The scene's slow move, while it plays (see SceneCamera). Still while
-                        // editing, so a press lands where the page looks to be.
-                        // A game frames the page its own way: its view
-                        // following the player, close as it asks.
+                        // The scene's slow move while it plays (see
+                        // SceneCamera); still while editing, so a press lands
+                        // where the page looks to be. A game frames the page
+                        // its own way, following the player.
                         camera: controller.gaming
                             ? controller.gameFraming
                             : (controller.playing || controller.cameraView) &&
                                 !document.editingMaster
-                            // Its Camera, which takes over, or its slow
-                            // move: see sceneFraming.
+                            // Its Camera, or its slow move: see sceneFraming.
                             ? sceneFraming(document, controller.frame,
                                 live: controller.liveMotion)
                             : null,
                         selectedPath: _selectedPath(),
-                        // Over a page that scrolls, the rulers are drawn in a
-                        // layer that does not.
                         rulersApart: _viewport.width > _visible.width + 0.5 ||
                             _viewport.height > _visible.height + 0.5,
                         spritePaintTick: controller.spritePaint?.tick ?? -1,
@@ -7539,15 +7081,13 @@ class CanvasStageState extends State<CanvasStage>
                               shape: controller.vectorShape,
                               pick: controller.vectorPick,
                               picks: controller.vectorPicks,
-                              // The tint brush picks nothing, so the points and the box round them
-                              // are put away (and the pencil's, unless it is set to show them); and
-                              // while the line's thickness is dragged, the line is watched.
+                              // Points and their box are put away for tools
+                              // that pick nothing (and the pencil, unless set
+                              // to show them), and while a line's thickness
+                              // is dragged, so the line can be watched.
                               bare: _mode == _DragMode.vectorScale ||
                                   controller.vectorTool == VectorTool.shapes ||
-                                  // Shapes picked whole: their box, not
-                                  // their points.
                                   _picksShapes ||
-                                  // Typing: the letters, not their points.
                                   controller.vectorTool == VectorTool.text ||
                                   controller.vectorTool == VectorTool.tint ||
                                   controller.vectorTool == VectorTool.shadow ||
@@ -7556,7 +7096,6 @@ class CanvasStageState extends State<CanvasStage>
                                   controller.vectorTool == VectorTool.eraser ||
                                   (controller.vectorTool == VectorTool.pencil &&
                                       !controller.vectorPencilPoints),
-                              // The shapes tool's box round the shape picked.
                               turnable: _picksShapes,
                               shapeBox: _picksShapes
                                   ? itemsExtent(v, controller.vectorItems)
@@ -7568,7 +7107,6 @@ class CanvasStageState extends State<CanvasStage>
                                           groupStarts(v).indexOf(groupOf(
                                               v, controller.vectorShapeMade)))
                                       : null,
-                              // The pencil's mirror lines, while it is out.
                               mirror: controller.vectorTool == VectorTool.pencil
                                   ? (
                                       across: controller.vectorMirrorAcross,
@@ -7579,8 +7117,7 @@ class CanvasStageState extends State<CanvasStage>
                                   controller.vectorTool == VectorTool.boolean
                                       ? controller.vectorCombining
                                       : null,
-                              // While a box is dragged across it, every point
-                              // is shown, and those in the box lit.
+                              // While a box is dragged, all points show.
                               boxing: _mode == _DragMode.vectorMarquee &&
                                   _marquee != null,
                               boxed: _mode == _DragMode.vectorMarquee &&
@@ -7621,7 +7158,6 @@ class CanvasStageState extends State<CanvasStage>
                   ),
                 ),
               )),
-              // The gizmo on an element standing on a 3D stage.
               if (_gizmo() case var g?)
                 Positioned.fill(
                   child: IgnorePointer(
@@ -7633,7 +7169,6 @@ class CanvasStageState extends State<CanvasStage>
                     ),
                   ),
                 ),
-              // A cable being carried from a jack.
               if (_synthCable case var c?)
                 Positioned.fill(
                   child: IgnorePointer(
@@ -7662,10 +7197,10 @@ class CanvasStageState extends State<CanvasStage>
             ]),
           );
 
-          // Only scrollable when there is something to scroll: a scroll view that
-          // never scrolls still claims the wheel, which is how the pan tool zooms.
-          // The bar that runs down is the inner view's, drawn at the window's
-          // edge.
+          // Scrollable only when there is something to scroll: a scroll view
+          // that never scrolls still claims the wheel, which the pan tool
+          // zooms with. The vertical bar is the inner view's, drawn at the
+          // window's edge.
           var down = content.height > _visible.height + 0.5;
           var across = content.width > _visible.width + 0.5;
           if (down && across) {
@@ -7714,9 +7249,8 @@ class CanvasStageState extends State<CanvasStage>
               ),
             );
           }
-          // A drag on the page (a finger's, a pen's, a mouse's) is the canvas's:
-          // drawing, moving, picking. The page is scrolled by its bars, the wheel
-          // and two fingers on a trackpad.
+          // A drag on the page (finger, pen or mouse) is the canvas's; the
+          // page scrolls by its bars, the wheel and two trackpad fingers.
           if (down || across) {
             painter = ScrollConfiguration(
               behavior: ScrollConfiguration.of(context)
@@ -7748,9 +7282,9 @@ class CanvasStageState extends State<CanvasStage>
             ]);
           }
 
-          // The 3D view controls, at the right of a scene showing a stage, over
-          // the page and still however it scrolls. Not while it plays. Always in
-          // a Stack, so the page under them is not rebuilt as they come and go.
+          // The 3D view controls, top right of a scene with a stage, fixed
+          // over the scrolling page, hidden while playing. Always in a Stack,
+          // so the page is not rebuilt as they come and go.
           painter = Stack(children: [
             Positioned.fill(child: painter),
             if (controller.onStage3d &&
@@ -7768,8 +7302,8 @@ class CanvasStageState extends State<CanvasStage>
         },
       );
 
-  /// _touchAreas are what a game touches of each element played, while the
-  /// Game tab is open and the game is not being played.
+  /// _touchAreas are what a game touches of each played element, shown with
+  /// the Game tab open.
   List<Rect> _touchAreas() {
     if (!controller.gameTabOpen || controller.gaming || !document.game) {
       return const [];
@@ -7782,8 +7316,7 @@ class CanvasStageState extends State<CanvasStage>
     ];
   }
 
-  /// _cellEditorFor is the overlay for a cell being typed into: see
-  /// CanvasCellEditor.
+  /// _cellEditorFor is the overlay for the cell being typed into.
   Widget? _cellEditorFor() {
     var editing = _editingCell;
     if (editing == null) return null;
@@ -7826,18 +7359,16 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _editorFor is the text editor overlay, when one is open: built here
-  /// because it sits in the painting's coordinates, which only the stage
-  /// knows.
+  /// _editorFor is the text editor overlay, if open: built here because it
+  /// sits in the painting's coordinates, which only the stage knows.
   Widget? _editorFor() {
     var id = _editingText;
     if (id == null) return null;
     var element = document.elementById(id);
     if (element is! TextElement) return null;
 
-    // One of the element's own pieces, where the second click landed on
-    // one, held open by its id: the element and its list are rebuilt on
-    // every keystroke.
+    // The piece the second click landed on, if any, held by id: the element
+    // and its list are rebuilt on every keystroke.
     var itemId = _editingItem;
     var at = itemId == null
         ? -1
@@ -7878,8 +7409,7 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _itemEditorBoxFor is the rectangle an item's editor opens in: where the
-  /// piece is drawn, with room to type into.
+  /// _itemEditorBoxFor is where an item's editor opens, with room to type.
   Rect _itemEditorBoxFor(TextElement element, int at) {
     var bounds = element.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion);
@@ -7892,8 +7422,8 @@ class CanvasStageState extends State<CanvasStage>
         item.spec.fontSize * item.spec.lineHeight);
   }
 
-  /// _grownForTyping is a block's rectangle with room to write in, grown from
-  /// the edge its slot holds it to, so the words stay put.
+  /// _grownForTyping grows a block for typing from the edge its slot holds,
+  /// so the words stay put.
   Rect _grownForTyping(
       Rect rect, TextAlignSpec across, Rect inner, double line) {
     var width = math.max(rect.width, math.max(line * 6, inner.width * 0.4));
@@ -7907,14 +7437,12 @@ class CanvasStageState extends State<CanvasStage>
     return Rect.fromLTWH(left, rect.top, width, height);
   }
 
-  /// _editorBoxFor is the rectangle the editor opens in: over the words,
-  /// wherever they are (text riding a line is not in its own rectangle), but
-  /// not tight round them. A minimum leaves room to type, grown about its
-  /// centre so what is there stays put.
+  /// _editorBoxFor is where the editor opens: over the words wherever they
+  /// are (text on a line is outside its rectangle), not tight round them,
+  /// with a minimum to type in, grown about its centre so the text stays put.
   Rect _editorBoxFor(TextElement element) {
     var box = _visualBounds(element);
-    // The element's own words in a slot are a block in the box, so the
-    // editor opens over the block, not the whole box. See TextElement.slot.
+    // Words in a slot are a block, so the editor opens over it.
     if (bodyIsBlock(element)) {
       var bounds = element.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion);
@@ -7942,13 +7470,12 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _onPointerSignal decides whether the wheel belongs to this stage or to
-  /// the scroll view round it. The pan tool claims it through the resolver,
-  /// so zooming wins; the select tool does not, so a tall fit-width canvas
-  /// scrolls with the wheel.
+  /// _onPointerSignal decides whether the wheel belongs to this stage or the
+  /// scroll view round it. The pan tool claims it through the resolver, so
+  /// zooming wins; the select tool does not, so a tall fit-width canvas
+  /// scrolls.
   void _onPointerSignal(PointerSignalEvent signal) {
     if (signal is! PointerScrollEvent) return;
-    // Over a pane of code, the wheel scrolls it.
     if (_codeOver case var at?) {
       GestureBinding.instance.pointerSignalResolver.register(
           signal,
@@ -7956,8 +7483,8 @@ class CanvasStageState extends State<CanvasStage>
               _scrollCodeBy(at, (event as PointerScrollEvent).scrollDelta.dy));
       return;
     }
-    // Locked, the wheel is claimed before the scroll views see it: on a
-    // stage it steers the camera, on a page it does nothing.
+    // Locked, the wheel is claimed before the scroll views: on a stage it
+    // steers the camera, on a page it does nothing.
     if (controller.pageLocked) {
       GestureBinding.instance.pointerSignalResolver.register(
           signal, (event) => _steerByScroll(event as PointerScrollEvent));
@@ -7969,7 +7496,6 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   MouseCursor _cursor() {
-    // Placing copies: a click puts one down.
     if (controller.placingCopies != null) return SystemMouseCursors.copy;
     if (controller.retouch.on && _selectedPicture() != null) {
       return SystemMouseCursors.precise;
@@ -7987,8 +7513,7 @@ class CanvasStageState extends State<CanvasStage>
     if (controller.tool == CanvasTool.pan && !controller.onStage3d) {
       return SystemMouseCursors.grab;
     }
-    // Drawing with the pencil, the pointer is the brush's ring and nothing
-    // more.
+    // With the eraser, the pointer is the brush's ring and nothing more.
     if (controller.editingVector != null &&
         controller.vectorTool == VectorTool.eraser) {
       return SystemMouseCursors.none;
@@ -8000,22 +7525,19 @@ class CanvasStageState extends State<CanvasStage>
     }
     if (controller.editingVector != null &&
         controller.vectorTool == VectorTool.pencil) {
-      // Filling, it is a point to click on; drawing, the brush's ring.
       return controller.vectorQuickFill
           ? SystemMouseCursors.precise
           : SystemMouseCursors.none;
     }
     if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
     if (_mode == _DragMode.move) return SystemMouseCursors.move;
-    // A ruler is a place to pull a guide out of, so it says so on approach.
     if (_mode == _DragMode.guide) return SystemMouseCursors.grabbing;
     if (_rulerUnder(_hoverAt) case var axis?) {
       return axis == GuideAxis.vertical
           ? SystemMouseCursors.resizeLeftRight
           : SystemMouseCursors.resizeUpDown;
     }
-    // A picture being reframed is grabbable everywhere inside it, and
-    // saying so tells the reader they are in a mode.
+    // A picture being reframed is grabbable anywhere inside it.
     if (_framing != null) {
       return _mode == _DragMode.imageFrame
           ? SystemMouseCursors.grabbing
@@ -8028,8 +7550,8 @@ class CanvasStageState extends State<CanvasStage>
   }
 }
 
-/// _RulerLayer draws the stage's rulers over a page that scrolls, at the
-/// edges of the window: see paintStageRulers.
+/// _RulerLayer draws the rulers over a scrolling page, at the window's
+/// edges: see paintStageRulers.
 class _RulerLayer extends CustomPainter {
   final CanvasGuides guides;
   final Size sheet;
@@ -8056,8 +7578,7 @@ class _RulerLayer extends CustomPainter {
       old.page != page;
 }
 
-/// _CarriedCable is a synth cable being carried from a jack, dashed, to
-/// the pointer.
+/// _CarriedCable is a synth cable carried from a jack to the pointer, dashed.
 class _CarriedCable extends CustomPainter {
   final Offset? jack;
   final Offset at;

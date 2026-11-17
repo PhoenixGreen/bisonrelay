@@ -13,10 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // image_settings.dart is a picture's settings.
 
-/// imageSettings is a picture's settings: its layers, and the picked layer's
-/// settings in sections -- see image_sections.dart. A backdrop's picture is
-/// one picture, with no layers, no box and no arrival, and keeps the plain
-/// run of groups it always had.
+/// imageSettings is a picture's settings (see image_sections.dart); a
+/// backdrop's picture, with no layers, box or arrival, keeps plain groups.
 List<Widget> imageSettings(
     BuildContext context,
     CanvasController controller,
@@ -40,8 +38,8 @@ List<Widget> _pictureSettings(
     VoidCallback commit,
     {Rect? layerFrame,
     ValueChanged<ImageElement?>? tryLook}) {
-  // A picture layer rather than the element's own picture: the frame it is
-  // placed in, and no removal brushes, which paint on the base picture only.
+  // A picture layer, not the element's own picture: placed in a frame, and
+  // without removal brushes, which paint on the base picture only.
   var layer = layerFrame != null;
 
   return [
@@ -49,8 +47,7 @@ List<Widget> _pictureSettings(
     CanvasControlGroup(
         label: "Picture",
         hideCaption: true,
-        // No line under it: the picture and what is taken out of it are one
-        // question.
+        // No rule: the picture and what is removed from it are one question.
         rule: false,
         children: [
           ...pictureSourceButtons(context, e, write, begin, commit,
@@ -99,10 +96,9 @@ List<Widget> _pictureSettings(
   ];
 }
 
-/// pictureRemovalGroup keys out a flat colour or paper -- what a logo or a
-/// scan needs. A photograph's subject is the mask's: see the mask tools.
-/// [layer] is a picture layer's, which has the methods and none of the old
-/// brushes, which paint on the base picture only.
+/// pictureRemovalGroup keys out a flat colour or paper (logos, scans); a
+/// photo's subject is the mask's. [layer]: methods only, as the brushes
+/// paint the base picture.
 Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit,
     {required bool layer}) {
@@ -113,15 +109,13 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
           "cuts at a level. A photograph's subject is the Mask tools' work.",
       rule: false,
       children: [
-        // The brush comes before the method, and outside the check for whether
-        // anything is being removed yet: a fresh picture has no method and no
-        // strokes, and the brush is the tool for photographs no method can do.
+        // The brush before the method and outside its check: a fresh picture
+        // has neither, and the brush does photographs no method can.
         if (!layer) ...[
-          // The old brushes are the mask tools now, on every layer (see
-          // image_layer_settings.dart). What is left here serves a picture already
-          // painted with them: its strokes, to undo or clear, and the marks of the
-          // method that learns from them. A drawn stroke waits here until applied,
-          // so the settings above can be adjusted against it.
+          // Brushing is the mask tools' job on every layer (see
+          // image_layer_settings.dart); this serves pictures painted with the
+          // old brushes. A drawn stroke waits here until applied, so the
+          // settings above can be tuned against it.
           if (controller.hasPendingStroke) ...[
             Padding(
               padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
@@ -156,8 +150,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
               value: controller.brushSize,
               onChanged: (v) => controller.brushSize = v,
             ),
-            // Only for the brushes that mark the picture. A hint is a sample
-            // and is taken exactly where it was drawn.
+            // Only for brushes that mark the picture. A hint is a sample,
+            // taken exactly where drawn.
             if (!controller.retouch.teaches) ...[
               CanvasNumberField(
                 label: "Hardness",
@@ -168,8 +162,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
                 value: controller.brushHardness,
                 onChanged: (v) => controller.brushHardness = v,
               ),
-              // Neither for putting back nor for cutting around: clinging finds the
-              // edge of a background by colour, and a subject is every colour.
+              // Not for putting back or cutting around: clinging finds a
+              // background's edge by colour, and a subject is every colour.
               if (!controller.retouch.keeps && !controller.retouch.fills)
                 CanvasNumberField(
                   label: "Cling",
@@ -180,9 +174,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
                   value: controller.brushSnap,
                   onChanged: (v) => controller.brushSnap = v,
                 ),
-              // Which side of the boundary goes. Read when the stroke is
-              // applied rather than when it was drawn, so it can be turned over
-              // with a stroke still held and the preview redraws.
+              // Which side goes, read when the stroke is applied, so it can be
+              // flipped with a stroke held.
               if (controller.retouch.fills)
                 CanvasIconButton(
                   icon: controller.cutInside
@@ -196,9 +189,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
                   active: controller.cutInside,
                   onPressed: () => controller.cutInside = !controller.cutInside,
                 ),
-              // The magnet. Cling wants a number nobody can read off a
-              // photograph, so this reads it off the picture instead -- see
-              // CanvasController.magnetiseCling.
+              // The magnet reads Cling off the picture, as nobody can read it
+              // off a photograph (CanvasController.magnetiseCling).
               if (!controller.retouch.keeps &&
                   !controller.retouch.fills &&
                   controller.hasPendingStroke)
@@ -208,9 +200,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
                   onPressed: () async {
                     var found = await controller.magnetiseCling();
                     if (!found) {
-                      // Nothing to say it wrongly: a stroke drawn entirely on the
-                      // background has no edge in it, and pretending otherwise
-                      // would cut the background in half.
+                      // A stroke wholly on the background has no edge; finding
+                      // one would cut the background in half.
                       controller.brushSnap = 0;
                     }
                   },
@@ -251,8 +242,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
             (RemovalMode.chromaKey, "A colour"),
             (RemovalMode.cornerFlood, "Edges"),
             (RemovalMode.luminance, "Brightness"),
-            // Learning from marks is what Select subject does now, better;
-            // kept for the pictures that already use it.
+            // Select subject does this better; kept for pictures already
+            // using it.
             if (e.removal.mode == RemovalMode.learn)
               (RemovalMode.learn, "Marks"),
           ],
@@ -288,13 +279,11 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
             },
             onCommit: commit,
           ),
-        // A method's own settings, only while one is chosen: work by hand
-        // alone reads no tolerance or softness.
+        // A method's settings only while one is chosen: hand work alone
+        // reads no tolerance or softness.
         if (e.removal.mode != RemovalMode.none) ...[
-          // Edge first, because on a photograph it is the control that does
-          // the work: it says how sharply the picture has to change for the
-          // flood to treat it as the end of the background. Tolerance is the
-          // runaway guard behind it.
+          // Edge first: on a photograph it does the work, setting how sharp a
+          // change ends the flood. Tolerance is the runaway guard.
           if (e.removal.mode == RemovalMode.cornerFlood)
             CanvasNumberField(
               label: "Edge",
@@ -309,8 +298,7 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
               },
               onCommit: commit,
             ),
-          // Every method but the brightness one, which cuts at a threshold
-          // and has no use for it.
+          // Every method but brightness, which cuts at a threshold.
           if (e.removal.mode != RemovalMode.luminance)
             CanvasNumberField(
               label: e.removal.mode == RemovalMode.cornerFlood
@@ -340,8 +328,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
             },
             onCommit: commit,
           ),
-          // Marking, for the method that learns from it: mark some background
-          // and some subject; the numbers below only fine-tune.
+          // Marks for the learning method: mark some background and some
+          // subject; the numbers below only fine-tune.
           if (e.removal.mode == RemovalMode.learn) ...[
             CanvasIconButton(
               icon: Icons.format_paint_outlined,
@@ -404,9 +392,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
       ]);
 }
 
-/// pictureSourceButtons put a picture in, take it out, or change its size --
-/// from a file, or from the pictures already added. Putting one in a picture
-/// layer, [layerFrame] is the frame it is placed in.
+/// pictureSourceButtons put in, remove or resize a picture, from a file or
+/// the store; for a layer, [layerFrame] is its frame.
 List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit,
     {Rect? layerFrame}) {
@@ -416,9 +403,8 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
     commit();
   }
 
-  // Putting a picture in gives the box the picture's proportions, so it is
-  // neither cropped nor squashed by the fit. It only ever shrinks the box:
-  // growing it could push it off the canvas.
+  // A new picture gives the box its proportions, so it is neither cropped
+  // nor squashed; only shrinking, as growing could leave the canvas.
   Future<void> use(String id) async {
     var next = e.copyWith(assetId: id);
     var size = await pictureSize(id);
@@ -431,7 +417,7 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
   }
 
   return [
-    // Somewhere to put a picture in: without one the element does nothing.
+    // Somewhere to put a picture: without one the element does nothing.
     CanvasIconButton(
       icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
       tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
@@ -440,8 +426,7 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
         if (id != null) await use(id);
       },
     ),
-    // The pictures already in the store, to reuse one without finding the
-    // file again.
+    // The store's pictures, to reuse one without finding the file again.
     CanvasIconButton(
       icon: Icons.photo_library_outlined,
       tooltip: "Use a picture you have already added",
@@ -450,8 +435,8 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
         if (id != null) await use(id);
       },
     ),
-    // The size controls again: on the way in they are offered only past
-    // half a megabyte. The app's own width, quality and format controls.
+    // The size controls again: on import they are offered only past half
+    // a megabyte. The app's own width, quality and format controls.
     if (e.hasImage)
       CanvasIconButton(
         icon: Icons.compress,
@@ -470,11 +455,9 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
   ];
 }
 
-/// grownForPadding gives [e] its new padding and grows its box to match, so
-/// the room is added around the picture rather than taken out of it: a
-/// picture cannot reflow as words do, and would crop. Worked out from where
-/// the picture is drawn now, so repeated calls while a field is dragged keep
-/// the picture's own rectangle in place.
+/// grownForPadding gives [e] new padding and grows its box, as a picture
+/// cannot reflow and would crop. From the drawn place, so a drag's
+/// repeated calls keep the picture still.
 ImageElement grownForPadding(ImageElement e, BoxSpec box) {
   var inner = e.box.inner(e.bounds);
   if (inner.width <= 0 || inner.height <= 0) return e.copyWith(box: box);
@@ -491,10 +474,8 @@ ImageElement grownForPadding(ImageElement e, BoxSpec box) {
       height: grown.height) as ImageElement;
 }
 
-/// pictureLookGroups is how a picture is drawn: the shape it is cut to, its
-/// framing and crop, the filter and overlay, and the outline. Shared with
-/// the video (see VideoElement.look). [shown] is whether there is anything
-/// to look at yet: an empty picture has no framing to set.
+/// pictureLookGroups is how a picture is drawn: cut shape, framing, crop,
+/// filter, overlay, outline; shared with video. [shown]: anything yet.
 List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
     VoidCallback begin, VoidCallback commit,
     {required bool shown,
@@ -522,8 +503,7 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
           width: 128,
           options: [
             ("", "Rectangle"),
-            // "Rectangle" above is no cut at all; the rectangle shape again
-            // would be the same thing twice.
+            // "Rectangle" above is no cut; the rectangle shape would repeat it.
             for (var k in ShapeKind.values)
               if (k != ShapeKind.rectangle) (k.name, k.label),
           ],
@@ -534,10 +514,9 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
               : e.copyWith(frame: ShapeKind.fromName(v), clip: true)),
         ),
       ]),
-    // Framing is the same three numbers the double-click gesture writes (see
-    // CanvasStageState._applyFraming): numbers put two pictures in exactly the
-    // same place. Said rather than missing where the picture does not fill
-    // its frame, since they would do nothing there.
+    // Framing is the double-click gesture's three numbers (see
+    // CanvasStageState._applyFraming), so pictures can match exactly;
+    // explained, not hidden, where they would do nothing.
     if (shown && framing && e.fit != ImageFit.cover)
       const CanvasHint(
           "Framing — moving the picture about inside its box and zooming it "
@@ -615,7 +594,7 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
               ),
           ]),
     // Not under "Remove background", though that is its use: it traces the
-    // alpha channel however the alpha got there.
+    // alpha channel however it got there.
     if (shown && outline)
       CanvasControlGroup(label: "Outline", rule: false, children: [
         CanvasNumberField(
@@ -665,9 +644,8 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
   ];
 }
 
-/// cropControls are how much is trimmed off each edge of [e], and the
-/// button that shows the whole picture again: the Crop tool's settings.
-/// [flipX] and [flipY] are a picture layer's mirror -- see croppedTo.
+/// cropControls are the Crop tool: trims per edge of [e] and a show-all
+/// button. [flipX] and [flipY] are a layer's mirror (see croppedTo).
 List<Widget> cropControls(ImageElement e, SettingsWrite write,
     VoidCallback begin, VoidCallback commit,
     {bool flipX = false, bool flipY = false}) {
@@ -689,9 +667,8 @@ List<Widget> cropControls(ImageElement e, SettingsWrite write,
         value: value,
         onChanged: (v) {
           begin();
-          // The frame is trimmed with the crop, so the picture that is left
-          // stays where it is instead of being re-fitted into the same box
-          // -- see ImageElement.croppedTo.
+          // The frame is trimmed with the crop, so what is left stays put
+          // (see ImageElement.croppedTo).
           write(e.croppedTo(apply(v), flipX: flipX, flipY: flipY));
         },
         onCommit: commit,

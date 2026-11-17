@@ -25,15 +25,12 @@ import 'package:bruig/plugin_system/canvas/render/brush_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:flutter/foundation.dart';
 
-// canvas_export.dart turns a document into bytes somebody can be sent.
-//
-// Everything renders through scene_renderer.dart, the code the editing stage
-// draws with, so what is exported is what was on screen. Compression goes
-// through prepareEmbed, the same path as any picture attached to a post.
+// canvas_export.dart turns a document into bytes to send. It renders
+// through scene_renderer.dart, as the stage does, so the export is what was
+// on screen; compression goes through prepareEmbed, as a post's pictures do.
 
 /// maxExportScale bounds how far past the document's own width an export may
-/// go. Past four the memory for one frame starts to matter: a 4096-wide 16:9
-/// frame at 4x is 1.5GB of RGBA.
+/// go: a 4096-wide 16:9 frame at 4x is already 1.5GB of RGBA.
 const double maxExportScale = 4;
 
 /// CanvasExport is one finished file.
@@ -49,20 +46,16 @@ class CanvasExport {
   int get bytes => data.length;
 }
 
-/// ExportBackdrop is a document's background, rasterised once for a whole run
-/// of frames.
-///
-/// Generating a background is the most expensive thing on a canvas (about a
-/// tenth of a second a frame for Metal at 2048). Kept only where it is still
-/// for the whole run: in a document of scenes, only where every scene shows
-/// the same still background.
+/// ExportBackdrop is a document's background, rasterised once for a whole
+/// run of frames, since generating it is the costliest thing on a canvas
+/// (about 0.1s a frame for Metal at 2048). Kept only where it stays still
+/// the whole run: with scenes, only where every scene shows the same one.
 class ExportBackdrop {
   final ui.Image image;
   ExportBackdrop._(this.image);
 
   /// prepare rasterises [document]'s background at the export's pixel size
-  /// (not the design's, which would blur), or returns null where there is
-  /// nothing to keep.
+  /// (the design's would blur), or is null where there is nothing to keep.
   static Future<ExportBackdrop?> prepare(
     CanvasDocument document, {
     double scale = 1,
@@ -75,8 +68,7 @@ class ExportBackdrop {
         : document;
     var background = drawn.drawnBackground;
     // A zooming camera blows the backdrop up with the scene, so it is drawn
-    // larger by the most any scene zooms -- see SceneCamera -- and sharp
-    // under the closest of them.
+    // larger by the most any scene zooms (see SceneCamera) to stay sharp.
     var zoom = 1.0;
     if (document.hasScenes) {
       var shared = jsonEncode(background.toJson());
@@ -103,8 +95,7 @@ class ExportBackdrop {
         background.parallaxOn(document.size.rect).moves) {
       return null;
     }
-    // A stage whose camera moves is a different picture every frame too --
-    // keyed, or a Camera's.
+    // A stage whose camera moves differs every frame too.
     if (background.isStage &&
         ((background.stage?.track?.keys.isNotEmpty ?? false) ||
             cameraOf(drawn) != null)) {
@@ -138,11 +129,9 @@ class ExportBackdrop {
   void dispose() => image.dispose();
 }
 
-/// loadExportShaders loads the shaders the looks are drawn with, before
-/// anything is: drawn without them, adjustment layers come out unadjusted
-/// and Wear, Texture, Sharpen and Heal are left off -- the Decred
-/// infographic's book lost its worn print, which its video kept, because
-/// only the video loaded them.
+/// loadExportShaders loads the looks' shaders before anything is drawn:
+/// without them adjustment layers do nothing and Wear, Texture, Sharpen
+/// and Heal are left off. Every export path must call it.
 Future<void> loadExportShaders() async {
   await AdjustShader.load();
   await TextureShader.load();
@@ -150,29 +139,25 @@ Future<void> loadExportShaders() async {
   await HealShader.load();
 }
 
-/// renderFrame draws one frame into a ui.Image at [scale] times the size the
-/// canvas is published at (the design scaled by CanvasSize.exportScale, so a
-/// bigger export width is the same picture with more pixels).
-///
-/// The caller owns the image and must dispose it.
+/// renderFrame draws one frame at [scale] times the published size (see
+/// CanvasSize.exportScale). The caller must dispose the image.
 Future<ui.Image> renderFrame(
   CanvasDocument document, {
   int frame = 0,
   double scale = 1,
   CanvasImageSource? images,
 
-  /// backdrop is the background rasterised once for the whole run (see
+  /// backdrop is the background rasterised once for the run (see
   /// ExportBackdrop). Null draws it the slow way, right for a single still.
   ExportBackdrop? backdrop,
 
-  /// videoShow is the frame each video on the timeline shows on this frame
-  /// -- see ExportMedia. Null shows every video as its poster.
+  /// videoShow is the frame each timeline video shows on this frame (see
+  /// ExportMedia). Null shows every video as its poster.
   VideoShow Function(VideoElement)? videoShow,
 }) async {
   await loadExportShaders();
-  // Only the caller's multiplier is clamped: exportScale is what makes the
-  // file its declared size, and clamping it would draw a small scene into a
-  // large image.
+  // Only the caller's multiplier is clamped: clamping exportScale would
+  // draw a small scene into an image of the file's declared size.
   var asked = scale.clamp(0.05, maxExportScale);
   var s = asked * document.size.exportScale;
   var width = math.max(1, (document.size.exportSize.width * asked).round());
@@ -189,7 +174,7 @@ Future<ui.Image> renderFrame(
       paintCanvasDocument(canvas, document,
           frame: frame,
           // A document of one scene moves its camera too: its Camera, or
-          // its slow move -- see sceneFraming.
+          // its slow move (see sceneFraming).
           camera: sceneFraming(document, frame),
           images: images,
           backdrop: backdrop?.image,
@@ -201,7 +186,7 @@ Future<ui.Image> renderFrame(
   void draw(ui.Canvas canvas) =>
       directedBy(document, null, () => drawNow(canvas));
 
-  // Its pictures read, not their placeholders -- see drawWhenLoaded.
+  // Its pictures read, not their placeholders: see drawWhenLoaded.
   await drawWhenLoaded(images, draw);
   var recorder = ui.PictureRecorder();
   draw(ui.Canvas(recorder));
@@ -259,11 +244,9 @@ Future<CanvasExport?> renderImage(
       height: prepared.height ?? png.height);
 }
 
-/// renderPdf is the document as pages: one page per scene, or [frame] alone
-/// for a document without scenes.
-///
-/// [scale] is the print resolution, not the page size ([paper] decides the
-/// sheet). At 1 a canvas prints at roughly 96 to the inch, soft on paper.
+/// renderPdf is the document as pages: one per scene, or [frame] alone for
+/// a document without scenes. [scale] is the print resolution ([paper]
+/// decides the sheet); at 1 a canvas prints at about 96dpi, soft on paper.
 Future<CanvasExport?> renderPdf(
   CanvasDocument document, {
   int frame = 0,
@@ -311,15 +294,12 @@ Future<CanvasExport?> renderPdf(
   }
 }
 
-/// GifProgress reports how far an animation export has got, so a long one can
-/// show something moving rather than appearing to have hung.
+/// GifProgress reports how far an animation export has got, so a long one
+/// shows something moving rather than appearing hung.
 typedef GifProgress = void Function(int done, int total);
 
-/// renderGif draws every frame and encodes them.
-///
-/// Each frame is converted to raw bytes at once, so only one ui.Image is
-/// alive at a time; the raw RGBA of every frame is still held until
-/// encodeGif runs.
+/// renderGif draws and encodes every frame: one ui.Image alive at a
+/// time, every frame's raw RGBA held until encodeGif runs.
 Future<CanvasExport?> renderGif(
   CanvasDocument document, {
   double scale = 1,
@@ -382,8 +362,8 @@ Future<CanvasExport?> renderGif(
 }
 
 /// estimateBytes is what publishing this canvas would cost, in the file it
-/// would be published as. An estimate, and labelled one on screen: rendering
-/// the real thing on every edit would make the editor unusable.
+/// would be published as. An estimate, labelled so on screen: rendering the
+/// real thing on every edit would make the editor unusable.
 int estimateBytes(CanvasDocument document, CanvasEstimate spec,
     {double scale = 1}) {
   if (spec.format == EstimateAs.audio) {
@@ -419,12 +399,10 @@ double _quality(int quality) {
   return 0.06 + 0.94 * math.pow(q, 4.5).toDouble();
 }
 
-/// estimateStillBytes is a fast, rough guess at what a PNG of this document
-/// will weigh: enough to tell a canvas that fits in a message from one that
-/// does not.
+/// estimateStillBytes is a fast, rough guess at this document's PNG size:
+/// enough to tell one that fits in a message from one that does not.
 int estimateStillBytes(CanvasDocument document, {double scale = 1}) {
-  // The export size, not the design's: a 720p design published at 4K is a 4K
-  // file.
+  // The export size: a 720p design published at 4K is a 4K file.
   var pixels = document.size.exportSize.width *
       document.size.exportSize.height *
       scale *
@@ -450,9 +428,8 @@ int estimateStillBytes(CanvasDocument document, {double scale = 1}) {
   return (pixels * complexity.clamp(0.02, 1.2)).round() + 1024;
 }
 
-/// _backgroundWeight is how badly a generated background compresses: large
-/// flat areas pack to almost nothing, a different colour every few pixels
-/// barely packs at all.
+/// _backgroundWeight is how badly a generated background compresses: flat
+/// areas pack to almost nothing, a new colour every few pixels barely.
 double _backgroundWeight(ProceduralStyle style) => switch (style) {
       ProceduralStyle.plain => 0.0,
       ProceduralStyle.lineGrid ||
@@ -480,18 +457,16 @@ double _backgroundWeight(ProceduralStyle style) => switch (style) {
       ProceduralStyle.metal || ProceduralStyle.surface => 0.55,
     };
 
-/// estimateAnimationBytes is the same guess for a GIF.
-///
-/// Later frames cost only the rectangle that changed (see encodeGif). The
-/// 0.12 is a guess at how much of a frame moves, on the high side of what the
-/// presets measure.
+/// estimateAnimationBytes is the same guess for a GIF. Later frames cost
+/// only the rectangle that changed (see encodeGif); 0.12 guesses how much
+/// of a frame moves, on the high side of what the presets measure.
 int estimateAnimationBytes(CanvasDocument document, {double scale = 1}) {
   var first = estimateStillBytes(document, scale: scale) * 0.7;
   return (first + first * 0.12 * (document.playFrames - 1)).round();
 }
 
-/// _oldAnimationBytes is a GIF's weight without frame differencing. Kept only
-/// because the video estimate was measured as a fraction of it.
+/// _oldAnimationBytes is a GIF's weight without frame differencing, kept
+/// because the video estimate is measured as a fraction of it.
 int _oldAnimationBytes(CanvasDocument document, {double scale = 1}) {
   var first = estimateStillBytes(document, scale: scale) * 0.7;
   return (first + first * 0.35 * (document.playFrames - 1)).round();

@@ -2,43 +2,39 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
-// notation.dart writes a part (notes in seconds) out as a score: bars on one
-// or two staves, written values with rests and ties, notes spelled for the
-// key and given accidentals only where the key signature or an earlier note
-// in the bar does not already say so.
-//
-// Up to two voices a staff: notes starting and ending together are a chord,
-// a note held under a moving tune is a voice of its own. A beat whose notes
-// sit nearer thirds than sixteenths is written as a triplet. Times are in
-// quarter notes throughout.
+// notation.dart writes a part (notes in seconds) out as a score: bars on
+// one or two staves, values with rests and ties, notes spelled for the key
+// with accidentals only where the key or an earlier note in the bar does
+// not say so. Up to two voices a staff; a note held under a moving tune is
+// a voice of its own. A beat nearer thirds than sixteenths is a triplet.
+// Times are in quarter notes throughout.
 
 /// Staff is which staff: the treble, for the right hand, or the bass.
 enum Staff { treble, bass }
 
 /// Written is a chord (one key or several) or a rest on a staff, [at]
-/// quarters into its bar and [quarters] long. [notes] are the part's notes it
-/// sounds, by index (repeated in each tied piece), for marking what was
-/// played.
+/// quarters into its bar and [quarters] long. [notes] are the part's notes
+/// it sounds, by index (repeated in each tied piece), for marking playing.
 class Written {
   final double at;
   final double quarters;
   final List<int> keys;
   final List<int> notes;
 
-  /// tiedOn is whether it carries on, tied, into the next.
+  /// tiedOn is whether it is tied into the next.
   final bool tiedOn;
 
-  /// steps are each key's place in steps up from the staff's bottom line,
-  /// and accidentals its sign (1 sharp, -1 flat, 0 natural, null none), in
-  /// the order of [keys].
+  /// steps are each key's place in steps up from the staff's bottom line, and
+  /// accidentals its sign (1 sharp, -1 flat, 0 natural, null none), in the
+  /// order of [keys].
   final List<int> steps;
   final List<int?> accidentals;
 
   /// voice is nought for the upper voice, one for the lower (stems down).
   final int voice;
 
-  /// tuplet is whether it is part of a triplet, so written half as long
-  /// again as it lasts (a third of a beat is a quaver).
+  /// tuplet is whether it is in a triplet, so written half as long again as
+  /// it lasts (a third of a beat is a quaver).
   final bool tuplet;
 
   const Written(this.at, this.quarters,
@@ -61,7 +57,7 @@ class Written {
 
   bool get isRest => keys.isEmpty;
 
-  /// dots is how many dots its value has. Triplets are never dotted.
+  /// dots is how many dots its value has; triplets are never dotted.
   int get dots => !tuplet &&
           (quarters == 3 ||
               quarters == 1.5 ||
@@ -78,7 +74,7 @@ class Written {
           : quarters;
 }
 
-/// tupletGroups are [items]' triplets, by index, grouped by voice and beat
+/// tupletGroups are [items]' triplets by index, grouped by voice and beat
 /// for their brackets.
 List<List<int>> tupletGroups(List<Written> items) {
   var groups = <List<int>>[];
@@ -98,11 +94,11 @@ List<List<int>> tupletGroups(List<Written> items) {
   return groups;
 }
 
-/// _onGrid is [quarters] rounded to a 48th of a quarter (holding sixteenths
-/// and thirds alike), so a moment worked out two ways is one number.
+/// _onGrid rounds [quarters] to a 48th (holding sixteenths and thirds), so
+/// a moment worked out two ways is one number.
 double _onGrid(double quarters) => (quarters * 48).round() / 48;
 
-/// Bar is one bar of a score: what is written on each staff.
+/// Bar is one bar: what is written on each staff.
 class Bar {
   final int number;
   final double start;
@@ -110,14 +106,13 @@ class Bar {
   const Bar(this.number, this.start, this.staves);
 }
 
-/// Score is a part written out.
 class Score {
   final int beatsPerBar, beatUnit;
 
   /// fifths is the key signature: sharps positive, flats negative.
   final int fifths;
 
-  /// barQuarters is how long a bar is, in quarter notes.
+  /// barQuarters is a bar's length in quarter notes.
   final double barQuarters;
   final List<Staff> staves;
   final List<Bar> bars;
@@ -125,7 +120,6 @@ class Score {
   /// noteStarts are each of the part's notes' starts, in quarters.
   final List<double> noteStarts;
 
-  /// voicesIn is how many voices [staff] has in [bar].
   int voicesIn(Bar bar, Staff staff) =>
       {for (var w in bar.staves[staff] ?? const <Written>[]) w.voice}.length;
 
@@ -134,8 +128,8 @@ class Score {
       {this.fifths = 0});
 }
 
-/// _Chord is a voice's chord while a score is written: keys starting and
-/// ending together, and their note indexes.
+/// _Chord is a voice's chord while writing: keys starting and ending
+/// together, and their note indexes.
 class _Chord {
   final double start;
   double end;
@@ -150,8 +144,8 @@ const int splitKey = 60;
 /// _values are the written values, longest first, in quarters.
 const List<double> _values = [4, 3, 2, 1.5, 1, 0.75, 0.5, 0.375, 0.25];
 
-/// writeScore writes [notes] out at [tempo] quarter notes a minute, in bars
-/// of [beatsPerBar] over [beatUnit], times rounded to [grid] quarters.
+/// writeScore writes [notes] at [tempo] quarters a minute, in bars of
+/// [beatsPerBar] over [beatUnit], times rounded to [grid] quarters.
 Score writeScore(List<MidiNote> notes,
     {double tempo = 120,
     int beatsPerBar = 4,
@@ -218,9 +212,8 @@ Score writeScore(List<MidiNote> notes,
   var barCount = math.max(1, (end / barQ - 1e-9).ceil());
 
   // Each staff as up to two voices of chords. A note held a quaver or more
-  // into the next gets a voice of its own (a pianist's held bass); a third
-  // voice, or a shorter overlap (a legato touch), is cut where the next
-  // starts.
+  // into the next gets its own voice (a pianist's held bass); a third voice,
+  // or a shorter overlap (legato), is cut where the next starts.
   var written = <Staff, List<List<_Chord>>>{};
   for (var staff in staves) {
     var idx = [...on[staff]!]..sort((a, b) => starts[a] != starts[b]
@@ -249,8 +242,7 @@ Score writeScore(List<MidiNote> notes,
           .where((v) => (lastOf(v)?.end ?? 0) <= g.start + 1e-9)
           .firstOrNull;
       if (free == null) {
-        // Held a quaver or more into this one, with a voice to spare: a
-        // voice of its own.
+        // Held a quaver or more into this one, with a voice to spare: its own.
         var overlapping = [for (var v in voices) (v, lastOf(v)!.end - g.start)];
         if (voices.length < 2 && overlapping.every((o) => o.$2 >= 0.5 - 1e-9)) {
           voices.add(free = <_Chord>[]);
@@ -298,9 +290,8 @@ Score writeScore(List<MidiNote> notes,
         if (t >= from - 1e-9 && t < to - 1e-9) (t - from).round()
     };
     for (var staff in staves) {
-      // Each voice's notes and rests, then their accidentals in time order.
-      // The alterations in force in the bar are the staff's, whichever
-      // voice set them.
+      // Each voice's notes and rests, then accidentals in time order. The
+      // alterations in force are the staff's, whichever voice set them.
       var pending = <(Written, bool, List<Spelled>)>[];
       for (var (v, chords) in written[staff]!.indexed) {
         var here = chords.any((c) => c.end > from && c.start < to);
@@ -373,11 +364,9 @@ Score writeScore(List<MidiNote> notes,
   return Score(beatsPerBar, beatUnit, barQ, staves, bars, starts, fifths: key);
 }
 
-/// _spell is [length] quarters from [at] in a bar as written values, and
-/// whether each is a triplet's.
-///
-/// A partly filled beat in [triplets] is written in thirds (triplet quaver
-/// or crotchet); one filled whole is a crotchet like its neighbours.
+/// _spell is [length] quarters from [at] as written values, each flagged if
+/// a triplet's. A partly filled beat in [triplets] is written in thirds; one
+/// filled whole is a crotchet like its neighbours.
 List<(double, double, bool)> _spell(double at, double length,
     {bool rest = false, Set<int> triplets = const {}}) {
   var out = <(double, double, bool)>[];
@@ -411,9 +400,9 @@ List<(double, double, bool)> _spell(double at, double length,
   return out;
 }
 
-/// _plain is [length] quarters from [at] in a bar as written values: each
-/// the longest that fits and may start there (a half note on a half of the
-/// bar, a quarter on a beat). Rests are never dotted, as is plainer.
+/// _plain is [length] quarters from [at] as written values, each the
+/// longest that fits and may start there (a half on a half bar, a quarter
+/// on a beat). Rests are never dotted, being plainer so.
 List<(double, double)> _plain(double at, double length, {bool rest = false}) {
   var out = <(double, double)>[];
   var left = length;
@@ -422,8 +411,8 @@ List<(double, double)> _plain(double at, double length, {bool rest = false}) {
     for (var v in _values) {
       if (v > left + 1e-9) continue;
       if (rest && (v == 3 || v == 1.5 || v == 0.75 || v == 0.375)) continue;
-      // Where a value may start: dotted values on their own grid, others on
-      // a multiple of themselves.
+      // Where a value may start: dotted ones on their own grid, others on a
+      // multiple of themselves.
       var unit = v >= 1
           ? (v == 3 || v == 1.5 ? 1.0 : v)
           : (v == 0.75 || v == 0.375 ? 0.25 : v);
@@ -455,9 +444,8 @@ int keyAlter(int letter, int fifths) {
   return 0;
 }
 
-/// spellKey is [key] spelled in the key of [fifths]: as the key signature
-/// has it where it does, else a white key as itself, else a sharp in a sharp
-/// key and a flat in a flat one.
+/// spellKey is [key] spelled in [fifths]: as the signature has it, else a
+/// white key as itself, else sharp in a sharp key and flat in a flat one.
 Spelled spellKey(int key, int fifths) {
   var pc = key % 12, octave = key ~/ 12 - 1;
   Spelled make(int letter, int alter) {
@@ -492,13 +480,12 @@ Spelled spellKey(int key, int fifths) {
   return make(l, a);
 }
 
-/// _bottomOf is a staff's bottom line, in steps: E4 on the treble, G2 on
-/// the bass.
+/// _bottomOf is a staff's bottom line in steps: E4 treble, G2 bass.
 int _bottomOf(Staff staff) => staff == Staff.treble ? 5 * 7 + 2 : 3 * 7 + 4;
 
-/// keyFifthsOf is the likeliest key signature for [notes], correlating how
-/// long each pitch class is held with the Krumhansl-Kessler key profiles.
-/// Nought with no notes.
+/// keyFifthsOf is the likeliest signature for [notes], correlating how long
+/// each pitch class is held with the Krumhansl-Kessler profiles. Nought
+/// with no notes.
 int keyFifthsOf(List<MidiNote> notes) {
   if (notes.isEmpty) return 0;
   const major = [
@@ -561,15 +548,15 @@ int keyFifthsOf(List<MidiNote> notes) {
   return fifthsOfMajor(isMinor ? (root + 3) % 12 : root);
 }
 
-/// fifthsOfMajor is the signature of the major key on [root] (0 C to 11 B),
-/// the spelling with fewer signs (D flat, not C sharp; F sharp at a tie).
+/// fifthsOfMajor is the signature of the major key on [root] (0 C to 11
+/// B), with fewer signs (D flat, not C sharp; F sharp at a tie).
 int fifthsOfMajor(int root) {
   var f = (root * 7) % 12;
   return f > 6 ? f - 12 : f;
 }
 
-/// keyNames are the keys a score can be written in, by signature: the
-/// major and its relative minor.
+/// keyNames are the keys a score can be in, by signature: the major and
+/// its relative minor.
 const keyNames = {
   -7: "C♭ major / A♭ minor",
   -6: "G♭ major / E♭ minor",
@@ -588,9 +575,8 @@ const keyNames = {
   7: "C♯ major / A♯ minor",
 };
 
-/// staffStep is where [key] sits on [staff], in steps up from the bottom
-/// line, and whether it needs a sharp (black keys as the white key below,
-/// sharpened).
+/// staffStep is where [key] sits on [staff] in steps from the bottom line,
+/// and whether it needs a sharp (black keys as the white below, sharpened).
 (int, bool) staffStep(int key, Staff staff) {
   const steps = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
   var diatonic = (key ~/ 12) * 7 + steps[key % 12];

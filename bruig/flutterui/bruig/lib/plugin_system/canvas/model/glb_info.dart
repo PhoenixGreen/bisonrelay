@@ -5,13 +5,11 @@ import 'dart:typed_data';
 // loading the model, so clips can be made where nothing can draw in 3D (a
 // test, a machine without the GPU) and before the model loads.
 
-/// ModelAnimation is one of a model's own animations: its name, and how
-/// long it runs, in seconds.
+/// ModelAnimation is a model's own animation: its name and length, seconds.
 typedef ModelAnimation = (String name, double length);
 
-/// glbAnimations is the animations in the .glb [bytes], in the file's
-/// order -- one with no name named for its place -- or null where [bytes]
-/// are not a .glb this can read.
+/// glbAnimations is the .glb [bytes]' animations in file order (an unnamed
+/// one named for its place), or null where [bytes] are not a readable .glb.
 List<ModelAnimation>? glbAnimations(Uint8List bytes) {
   var json = _glbJson(bytes);
   if (json == null) return null;
@@ -49,9 +47,8 @@ List<ModelAnimation>? glbAnimations(Uint8List bytes) {
   return out;
 }
 
-/// _glbJson is the JSON chunk of a .glb: a 12-byte header -- "glTF", the
-/// version, the length -- and then the first chunk, its length, "JSON" and
-/// the text.
+/// _glbJson is a .glb's JSON chunk: after the 12-byte header ("glTF",
+/// version, length), the first chunk's length, "JSON" and the text.
 Map<String, dynamic>? _glbJson(Uint8List bytes) {
   if (bytes.length < 20) return null;
   var data = ByteData.sublistView(bytes);

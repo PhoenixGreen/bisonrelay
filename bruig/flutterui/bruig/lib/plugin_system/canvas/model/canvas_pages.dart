@@ -5,7 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 // that only mean something to a document of pages: leaves side by side rather
 // than moments in time, with covers, numbers and a page turn between them.
 
-/// CanvasKind is which sort of document this is. Scenes is the default.
+/// CanvasKind is which sort of document this is; scenes by default.
 enum CanvasKind {
   scenes(
       "Scenes",
@@ -26,12 +26,10 @@ enum CanvasKind {
 
   bool get isPages => this == pages;
 
-  /// isAudio is whether this is an audio document: its timeline and mixer,
-  /// with the canvas put away.
+  /// isAudio is an audio document: timeline and mixer, the canvas put away.
   bool get isAudio => this == audio;
 
-  /// one and many are what a canvas of this kind is called. Every label that
-  /// names one should use these.
+  /// one and many name a canvas of this kind; every label naming one uses them.
   String get one => switch (this) {
         pages => "page",
         audio => "section",
@@ -47,9 +45,8 @@ enum CanvasKind {
       values.firstWhere((k) => k.name == name, orElse: () => scenes);
 }
 
-/// PageCover marks a page that is not part of the body. A cover is an
-/// ordinary canvas; marking it means it is not numbered (unless
-/// PagesSpec.countCovers), is never paired with another page, and is what an
+/// PageCover marks a page outside the body, an ordinary canvas otherwise: not
+/// numbered (unless PagesSpec.countCovers), never paired, and what an
 /// exporter puts on the outside.
 enum PageCover {
   none("Not a cover"),
@@ -65,23 +62,19 @@ enum PageCover {
       values.firstWhere((c) => c.name == name, orElse: () => none);
 }
 
-/// PagesSpec is the settings that only mean something to a document of pages.
 class PagesSpec {
-  /// facing is whether the page being worked on is shown beside the one it
-  /// faces. A way of looking only: every page stays one canvas of the page
-  /// size, which is also what EPUB and PDF export want.
+  /// facing shows the page being worked on beside the one it faces: a view
+  /// only, every page staying one canvas of the page size, as exports want.
   final bool facing;
 
-  /// startAt is the number the first numbered page carries.
   final int startAt;
 
-  /// countCovers is whether a cover takes a number of its own, as a magazine
-  /// is paginated. Off by default.
+  /// countCovers gives a cover a number of its own, as in a magazine; off by
+  /// default.
   final bool countCovers;
 
-  /// numbersOnCovers is whether a number is *drawn* on a cover. Separate from
-  /// [countCovers]: a magazine counts its cover as page one without printing
-  /// the 1.
+  /// numbersOnCovers is whether a number is *drawn* on a cover, apart from
+  /// [countCovers]: a magazine counts its cover as page one unprinted.
   final bool numbersOnCovers;
 
   const PagesSpec({
@@ -104,8 +97,7 @@ class PagesSpec {
         numbersOnCovers: numbersOnCovers ?? this.numbersOnCovers,
       );
 
-  /// isDefault is whether every setting is at its default, so nothing need
-  /// be saved.
+  /// isDefault is every setting at its default, so nothing need be saved.
   bool get isDefault =>
       !facing && startAt == 1 && !countCovers && !numbersOnCovers;
 
@@ -124,11 +116,9 @@ class PagesSpec {
       );
 }
 
-/// pageNumberFor is the number printed on the page at [index], or null for a
-/// page that carries none.
-///
-/// Worked out rather than stored, so it follows every add, remove and
-/// reorder. [covers] is one entry per page, in order.
+/// pageNumberFor is the number printed on the page at [index], or null for
+/// one that carries none. Worked out rather than stored, so it follows
+/// every add, remove and reorder. [covers] has one entry per page, in order.
 int? pageNumberFor(List<PageCover> covers, int index, PagesSpec spec) {
   if (index < 0 || index >= covers.length) return null;
   if (covers[index].isCover && !spec.numbersOnCovers) return null;
@@ -140,13 +130,10 @@ int? pageNumberFor(List<PageCover> covers, int index, PagesSpec spec) {
   return number;
 }
 
-/// facingPage is the page shown beside the one at [index], or null where it is
-/// shown alone.
-///
-/// The first leaf stands alone, whether it is a front cover or page one, and
-/// everything after it pairs two at a time. Covers are not counted
-/// separately, or a cover and page one would both stand alone. A pair
-/// containing a cover is broken, both standing alone.
+/// facingPage is the page shown beside the one at [index], or null where it
+/// is shown alone. The first leaf stands alone, cover or page one, and the
+/// rest pair two at a time (covers are not counted separately, or a cover
+/// and page one would both stand alone). A pair holding a cover is broken.
 int? facingPage(List<PageCover> covers, int index) {
   if (index <= 0 || index >= covers.length) return null;
   if (covers[index].isCover) return null;
@@ -156,15 +143,12 @@ int? facingPage(List<PageCover> covers, int index) {
   return beside;
 }
 
-/// pageIsLeft is whether the leaf at [index] is a left-hand page.
-///
-/// The first leaf is a right-hand page and they alternate from there,
-/// whether or not facing pages are shown, so a page number on the outside
-/// edge does not move when the view changes.
+/// pageIsLeft is whether the leaf at [index] is a left-hand page. The first
+/// is a right-hand page and they alternate, facing pages shown or not, so a
+/// page number on the outside edge stays put when the view changes.
 bool pageIsLeft(int index) => index > 0 && index.isOdd;
 
-/// leftOfSpread is whether the page at [index] is the left-hand leaf of a
-/// spread. Null where it has no facing page at all.
+/// leftOfSpread is whether page [index] is a spread's left leaf; null alone.
 bool? leftOfSpread(List<PageCover> covers, int index) {
   var beside = facingPage(covers, index);
   if (beside == null) return null;

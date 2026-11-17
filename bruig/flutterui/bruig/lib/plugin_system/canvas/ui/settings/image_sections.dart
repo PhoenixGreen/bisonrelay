@@ -26,18 +26,12 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
 // image_sections.dart is a picture's panel: its layers, then the picked
-// layer's settings in sections that fold -- Position, Mask, Retouch, Colour,
-// Effects, Animation and the whole image's Frame for a picture; the layer's
-// own kind, Blend, Mask, Effects, Animation and Frame for anything else. A
-// section shut says in a line how it is set, so the panel reads as a summary
-// before anything is opened. See panel_kit.dart for the parts.
+// layer's folding sections, each summarised in a line when shut. See
+// panel_kit.dart for the parts.
 
-/// imagePanel is the settings of the picture [e], laid out as every rebuilt
-/// element's are (Ken, 2026-11-11: batch 4): its layers over a quick strip,
-/// then Content, Look, Layout, Motion and More. The picked layer's own
-/// sections -- the tools inside them unchanged -- go into those: the mask
-/// in Content; retouching, colour and effects (or a layer's blend) in Look;
-/// position and the whole picture's frame in Layout.
+/// imagePanel is picture [e]'s settings: layers over a quick strip, then
+/// the usual five sections; the mask in Content, retouch, colour and
+/// effects in Look, position and frame in Layout.
 List<Widget> imagePanel(
     BuildContext context,
     CanvasController controller,
@@ -56,7 +50,7 @@ List<Widget> imagePanel(
       picked.kind == LayerKind.base || picked.kind == LayerKind.picture;
   return [
     elementPanel(context, controller, e, write, begin, commit,
-        // The layers, over everything -- and over the menu's bar.
+        // The layers, over everything, the menu's bar included.
         parts: ImageLayersList(
             key: const ValueKey("imageLayers"),
             controller: controller,
@@ -89,7 +83,6 @@ List<Widget> imagePanel(
   ];
 }
 
-/// _Sections builds each section for the picked layer.
 class _Sections {
   final BuildContext context;
   final CanvasController controller;
@@ -109,9 +102,8 @@ class _Sections {
   /// layer's for a picture layer.
   ImageElement get _look => picked.isBase ? e : picked.look!;
 
-  /// _kind names the sections' remembered open states, so a picture's and an
-  /// adjustment's are kept apart: what is open on one is not what is wanted
-  /// on the other.
+  /// _kind names the sections' remembered open states, so a picture's and
+  /// an adjustment's are kept apart.
   String get _kind => switch (picked.kind) {
         LayerKind.base || LayerKind.picture => "picture",
         var k => k.name,
@@ -142,8 +134,8 @@ class _Sections {
 
   // ---- Quick strip ------------------------------------------------------
 
-  /// quick is the picked picture's settings changed most: how it fills its
-  /// box, its filter, and its saturation and brightness.
+  /// quick is the picked picture's most-changed settings: fill mode,
+  /// filter, saturation and brightness.
   Widget quick() {
     var look = _look;
     void now(ImageElement next) {
@@ -269,8 +261,8 @@ class _Sections {
 
   // ---- Position ---------------------------------------------------------
 
-  /// _frameShapeDropdown is the shape the whole picture is cut to -- every
-  /// layer and the paint on it -- which turns Clip to frame on.
+  /// _frameShapeDropdown is the shape the whole picture (every layer and
+  /// its paint) is cut to, which turns Clip to frame on.
   Widget _frameShapeDropdown() => CanvasDropdown<String>(
         key: const ValueKey("imageFrameShapeKind"),
         label: "Cut to",
@@ -278,8 +270,7 @@ class _Sections {
         width: 128,
         options: [
           ("", "Rectangle"),
-          // "Rectangle" above is no cut at all; the rectangle shape again
-          // would be the same thing twice.
+          // "Rectangle" above is no cut; the rectangle shape would repeat it.
           for (var k in ShapeKind.values)
             if (k != ShapeKind.rectangle) (k.name, k.label),
         ],
@@ -295,9 +286,8 @@ class _Sections {
   Widget position() {
     var look = _look;
     String summary;
-    // A plain picture (flipped or with an effect, but nothing laid over it) is
-    // its frame, placed as any element is; with layers, its base picture has a
-    // place of its own in the frame, and the frame is the Frame section's.
+    // A plain picture (nothing over it) is its frame, placed as any element;
+    // with layers, its base has a place in the frame (the Frame section's).
     var framed = picked.isBase &&
         (!e.layered || (e.stack.length == 1 && picked.basePlace == null));
     if (framed) {
@@ -319,15 +309,15 @@ class _Sections {
         PositionTool.warp,
       ],
     ];
-    // The Warp tool open on this picture shows its grid; another tool, or
-    // none, puts it away.
+    // The Warp tool open on this picture shows its grid; any other tool
+    // hides it.
     var open = controller.positionTool;
     if (!tools.contains(open)) open = null;
     var warping = controller.warpLayer == picked.id;
     var settings = switch (open) {
       PositionTool.place => [
           framed
-              // Compact, as every rebuilt panel's: keyframes are the Chain's.
+              // Compact, as every panel: keyframes are the Chain's.
               ? positionGroup(controller, e, write, begin, commit)
               : layerPositionGroup(controller, e, picked, write, begin, commit),
         ],
@@ -439,8 +429,8 @@ class _Sections {
       }
     }
 
-    // Crop's settings are the amounts trimmed off, Edge's the mask's edge;
-    // every other tool's are its brush's or its own.
+    // Crop's settings are the trims, Edge's the mask's edge; other tools'
+    // are their brush's or their own.
     var settings = !_holds(tools)
         ? const <Widget>[]
         : switch (controller.imageTool) {
@@ -477,8 +467,8 @@ class _Sections {
     return CanvasSection(
       key: const ValueKey("imageSection-mask"),
       icon: Icons.content_cut,
-      // How much of the picture shows: what is painted away, and what is
-      // trimmed off its edges.
+      // How much of the picture shows: what is painted away and what is
+      // trimmed off.
       title: "Mask",
       summary: summary,
       remember: _remember("mask"),
@@ -530,9 +520,8 @@ class _Sections {
       summary: n == 0 ? "No retouching yet" : "$n stroke${n == 1 ? "" : "s"}",
       remember: _remember("retouch"),
       forceOpen: _holds(retouchTools),
-      // Strokes are work done, not a setting moved: no dot, and no reset
-      // that would wipe them -- the Strokes group takes them back one at a
-      // time, or clears them when that is what is meant.
+      // Strokes are work done, not a setting: no dot and no reset to wipe
+      // them; the Strokes group undoes them one at a time or clears them.
       children: [
         imageToolTiles(controller, e, picked, retouchTools, settings,
             help: "Brushwork on the picture itself: copy one part over "
@@ -656,7 +645,7 @@ class _Sections {
             crop: false,
             filter: false,
             outline: false),
-        // Looks and designs kept to wear again: a look is a colour grade.
+        // Looks and designs kept to reuse: a look is a colour grade.
         ImageSaved(controller: controller, element: e),
       ],
     );
@@ -762,7 +751,7 @@ class _Sections {
         ),
         ...adjustmentSettings(controller, e, picked, write, begin, commit,
             kindPicker: false),
-        // The grades kept, where the grading is: see ImageSaved.
+        // The kept grades, beside the grading: see ImageSaved.
         ImageSaved(controller: controller, element: e),
       ],
     );
@@ -772,8 +761,8 @@ class _Sections {
     var texture = picked.texture;
     ImageElement withKind(TextureKind k) {
       var next = texture.copyWith(kind: k, plainColours: true);
-      // A new kind brings its own usual blend, unless the blend has been
-      // chosen by hand -- see textureSettings.
+      // A new kind brings its usual blend unless the blend was chosen by
+      // hand (see textureSettings).
       var blend = picked.blend == LayerBlend.fromName(texture.kind.blend)
           ? LayerBlend.fromName(k.blend)
           : picked.blend;
@@ -895,8 +884,7 @@ class _Sections {
   // ---- Frame: the whole image -------------------------------------------
 
   Widget frame() {
-    // The frame round the layers -- where it is, how big, and what happens
-    // to what is in it -- is a picture of layers' alone: a plain picture is
+    // The frame round the layers is only a layered picture's: a plain one is
     // its frame, placed in Position.
     var tools = [
       if (e.layered) ...[FrameTool.image, FrameTool.content],
@@ -969,7 +957,7 @@ class _Sections {
               begin,
               commit,
               remember: "image",
-              // Unnamed: the shelf already says "Background and border" over it.
+              // Unnamed: the shelf already says "Background and border".
               label: "",
               fillLabel: "Background",
               rule: false,
@@ -1039,8 +1027,8 @@ IconData _adjustIcon(AdjustKind k) => switch (k) {
       AdjustKind.invert => Icons.invert_colors,
     };
 
-/// paintFilterPreview is the picture itself through [filter], or -- with no
-/// picture yet -- a strip of colour through it, so the tiles still differ.
+/// paintFilterPreview is the picture through [filter], or with no picture
+/// yet a strip of colour, so the tiles still differ.
 void paintFilterPreview(
     Canvas canvas, Size size, ui.Image? image, ImageFilterPreset filter) {
   var all = Offset.zero & size;
@@ -1074,8 +1062,8 @@ class _TexturePainter extends CustomPainter {
     canvas.drawRect(all, Paint()..color = const Color(0xFF7D8794));
     canvas.saveLayer(all, Paint());
     canvas.drawRect(all, Paint()..color = const Color(0xFF7D8794));
-    // Drawn at a bigger frame's scale and then shrunk, so a grain meant for a
-    // whole picture reads at the size of a tile.
+    // Drawn at a bigger frame's scale then shrunk, so a grain meant for a
+    // whole picture reads at tile size.
     canvas.save();
     canvas.scale(0.4);
     paintTexture(canvas, Offset.zero & (size / 0.4), TextureSpec(kind: kind));

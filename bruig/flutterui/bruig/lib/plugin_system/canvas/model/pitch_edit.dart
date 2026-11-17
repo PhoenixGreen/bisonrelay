@@ -5,13 +5,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonDouble, jsonStr;
 
 // pitch_edit.dart is a recording's notes as sung, and what is done to each
-// -- moved, straightened onto its note, its wobble kept or smoothed, made
-// louder or softer -- as Melodyne does it: read from the recording once,
-// the recording made again from the original with them, its timing kept.
+// (moved, straightened onto its note, its wobble kept or smoothed, made
+// louder or softer), as Melodyne does it: read from the recording once,
+// then the recording made again from the original, its timing kept.
 
 /// PitchNote is one note of a recording: from [start] to [end] seconds into
 /// the original, sung at [sung] (a MIDI note, fractional: its mean), and
-/// what is done to it, as the prototype's Pitch editor does.
+/// what is done to it.
 class PitchNote {
   final double start, end;
   final double sung;
@@ -19,8 +19,7 @@ class PitchNote {
   /// shift is semitones up (down, negative).
   final double shift;
 
-  /// straighten is how far onto the nearest semitone its middle is drawn,
-  /// nought to one: Melodyne's pitch centre.
+  /// straighten pulls its middle onto the nearest semitone, nought to one.
   final double straighten;
 
   /// wobble is how much of its slow drift round its middle is kept, and
@@ -34,8 +33,7 @@ class PitchNote {
   /// from its start: nought at once, longer as a singer's ear would.
   final double retuneMs;
 
-  /// formant is its voice's colour moved, in semitones: up thinner, down
-  /// deeper, its pitch the same.
+  /// formant is its voice's colour moved, in semitones, its pitch the same.
   final double formant;
 
   /// slideMs is how long it glides in from the note before it.
@@ -45,14 +43,12 @@ class PitchNote {
   /// note) -- heard in place of its note where it is drawn.
   final List<(double, double)> curve;
 
-  /// startAt is where it is heard to start, in seconds into the original,
-  /// moved there by Quantise timing -- its sound stretched or squeezed to
-  /// end where it did -- or null, as sung.
+  /// startAt is where Quantise timing moved its start, in seconds into the
+  /// original (its sound stretched to end where it did), or null as sung.
   final double? startAt;
 
-  /// endAt is where it is heard to end, in seconds into the original --
-  /// its edge dragged, its sound stretched or squeezed to fill it -- or
-  /// null, where it was sung to.
+  /// endAt is where its dragged edge ends it, in seconds into the original
+  /// (its sound stretched to fill), or null as sung.
   final double? endAt;
 
   /// fadeIn and fadeOut are how long it fades in from its start and out to
@@ -74,13 +70,10 @@ class PitchNote {
       this.fadeIn = 0,
       this.fadeOut = 0});
 
-  /// heardStart is where it is heard to start: see [startAt].
   double get heardStart => startAt ?? start;
 
-  /// heardEnd is where it is heard to end: see [endAt].
   double get heardEnd => endAt ?? end;
 
-  /// heardLength is how long it is heard for.
   double get heardLength => heardEnd - heardStart;
 
   /// stretch is how much longer it is heard than sung: one as sung.
@@ -90,9 +83,8 @@ class PitchNote {
   bool get timed => startAt != null || endAt != null;
 
   /// sourceAt is where in the original [t] seconds is heard from: its own
-  /// sound stretched from [heardStart] to [heardEnd]. Null where it was
-  /// sung but is heard no longer -- moved or squeezed off it: silence
-  /// there.
+  /// sound stretched from [heardStart] to [heardEnd]. Null where it was sung
+  /// but is not heard (moved or squeezed off it): silence there.
   double? sourceAt(double t) {
     if (!timed) return t;
     var from = heardStart, to = heardEnd;
@@ -103,8 +95,7 @@ class PitchNote {
     return t;
   }
 
-  /// fadeAt is how loud it is at [t] seconds heard, by its fades: one
-  /// outside them.
+  /// fadeAt is its fades' level at [t] seconds heard: one outside them.
   double fadeAt(double t) {
     var g = 1.0;
     if (fadeIn > 0 && t < heardStart + fadeIn) {
@@ -123,7 +114,6 @@ class PitchNote {
   double get target =>
       sung + (sung.roundToDouble() - sung) * straighten + shift;
 
-  /// edited is whether anything is done to it.
   bool get edited =>
       shift != 0 ||
       straighten != 0 ||
@@ -201,8 +191,8 @@ class PitchNote {
         if (shift != 0) "shift": _r(shift),
         if (straighten != 0) "straighten": _r(straighten),
         if (wobble != 1) "wobble": _r(wobble),
-        // Written always where it differs from the drift's: a file from
-        // before, with no vibrato of its own, kept both by its wobble.
+        // Written only where it differs from wobble: a file without
+        // it reads its vibrato as its wobble.
         if (vibrato != wobble) "vibrato": _r(vibrato),
         if (gainDb != 0) "gain": _r(gainDb),
         if (retuneMs != 0) "retune": _r(retuneMs),
@@ -285,15 +275,14 @@ class PitchNote {
       fadeOut);
 }
 
-/// PitchEdit is a recording's notes and what is done to them: kept on its
-/// MediaSource, with [original] the recording as it was made, so it can
-/// always be made again from it.
+/// PitchEdit is a recording's notes and what is done to them, kept on its
+/// MediaSource with [original], the recording as made, to remake it from.
 class PitchEdit {
   final String original;
   final List<PitchNote> notes;
 
-  /// madeWith is the [key] the recording now playing was made with: when
-  /// the notes are changed again, it is made again.
+  /// madeWith is the [key] the recording playing was made with: when the
+  /// notes change, it is made again.
   final String madeWith;
 
   const PitchEdit(this.original, {this.notes = const [], this.madeWith = ""});

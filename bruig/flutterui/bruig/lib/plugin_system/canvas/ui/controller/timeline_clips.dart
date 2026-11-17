@@ -1,14 +1,12 @@
 part of '../canvas_controller.dart';
 
 // timeline_clips.dart makes a sound on the timeline a clip, as one in a slot
-// is (Ken: "a clip and a timeline clip are interchangeable"): opened in the
-// clip editor with the same settings -- warp, pitch, gain, fades,
-// envelopes, its start and its loop -- kept on its source (MediaSource
-// .clip), with its own sound the original. What the timeline plays is the
-// clip rendered (see _playedSound), between its start and its loop's end.
+// is: opened in the clip editor with the same settings -- warp, pitch, gain,
+// fades, envelopes, start, loop -- kept on its source (MediaSource.clip),
+// its own sound the original. The timeline plays the clip rendered (see
+// _playedSound), between its start and its loop's end.
 
-/// timelineRow is the clip editor's row for a sound on the timeline, not in
-/// a slot.
+/// timelineRow is the clip editor's row for a timeline sound, not a slot's.
 const int timelineRow = -1;
 
 /// timelineClipColour is a sound's colour on the timeline (sectionColors'
@@ -17,8 +15,8 @@ const int timelineClipColour = 3;
 
 extension CanvasTimelineClips on CanvasController {
   /// timelineSoundOf is the sound on [channel]'s timeline the clip editor
-  /// opens on: its first that is a file -- not an instrument, nor a voice.
-  /// The one picked first, where the channel has several.
+  /// opens on: the selected one, else the first that is a file (not an
+  /// instrument or a voice).
   AudioElement? timelineSoundOf(String channel) {
     var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
     AudioElement? first;
@@ -34,8 +32,8 @@ extension CanvasTimelineClips on CanvasController {
     return first;
   }
 
-  /// timelineClipOf is [e]'s sound as a clip: its settings, or -- never
-  /// opened in the editor -- ones made from it as it plays now.
+  /// timelineClipOf is [e]'s sound as a clip: its settings, or ones made
+  /// from how it plays if never opened in the editor.
   SessionClip timelineClipOf(AudioElement e) {
     var source = e.clip.playlist.first;
     // Its fades are the timeline's own, dragged there or set here: one
@@ -54,7 +52,6 @@ extension CanvasTimelineClips on CanvasController {
       loop: false,
       // The timeline's teal, until one is picked.
       color: timelineClipColour,
-      // As loud as it plays, and faded as it is.
       gain: (gainToDb(e.clip.volume) * 10).roundToDouble() / 10,
       fadeIn: e.clip.fadeIn,
       fadeOut: e.clip.fadeOut,
@@ -70,10 +67,9 @@ extension CanvasTimelineClips on CanvasController {
     _setTimelineClip(e, change(timelineClipOf(e)), transient: transient);
   }
 
-  /// setTimelineRecording makes [e]'s clip from recording [assetId] -- the
-  /// Pitch editor's notes made, or its original back -- with [pitch] the
-  /// notes as they now are: the notes first, then the clip's settings over
-  /// them, made again. Used where the sound is a clip.
+  /// setTimelineRecording makes [e]'s clip from recording [assetId] (the
+  /// Pitch editor's notes made, or its original back), [pitch] first and the
+  /// clip's settings made over them. Used where the sound is a clip.
   void setTimelineRecording(AudioElement e, String assetId,
       {PitchEdit? pitch, bool clearPitch = false, bool transient = false}) {
     var clip = timelineClipOf(e);
@@ -81,12 +77,11 @@ extension CanvasTimelineClips on CanvasController {
     if (sound == null) return;
     _setTimelineClip(e, clip.copyWith(sound: sound.copyWith(assetId: assetId)),
         pitch: pitch, clearPitch: clearPitch, transient: transient);
-    // A transient change is made too: the Pitch editor's own making is.
+    // A transient change is rendered too, as the Pitch editor's own is.
     if (transient && clip.needsRender) _renderTimelineSoon(e.id);
   }
 
-  /// _timelineOwner is the sound on the timeline whose clip is [id], or
-  /// null.
+  /// _timelineOwner is the sound on the timeline whose clip is [id].
   AudioElement? _timelineOwner(String id) {
     for (var e in _document.elements) {
       if (e is! AudioElement || e.instrument != null) continue;
@@ -98,9 +93,9 @@ extension CanvasTimelineClips on CanvasController {
   }
 
   /// _setTimelineClip writes [clip] onto [e]: its settings kept on its
-  /// source, and the source what it plays -- its sound as it is, where it
-  /// needs nothing made, or as last rendered. An undo step unless
-  /// [transient]; rendered again a moment after the last change.
+  /// source, which plays its sound as it is if nothing needs making, else as
+  /// last rendered. An undo step unless [transient]; rendered again a moment
+  /// after the last change.
   void _setTimelineClip(AudioElement e, SessionClip clip,
       {bool transient = false,
       bool render = true,
@@ -138,7 +133,6 @@ extension CanvasTimelineClips on CanvasController {
         e.copyWith(
             clip: e.clip.copyWith(
                 playlist: [played, ...e.clip.playlist.skip(1)],
-                // Its gain the clip's, and its fades the timeline's.
                 volume: dbToGain(clip.gain),
                 fadeIn: fades.$1,
                 fadeOut: fades.$2)),
@@ -151,9 +145,8 @@ extension CanvasTimelineClips on CanvasController {
   SessionClip _rendered(SessionClip clip) =>
       clip.copyWith(fadeIn: 0, fadeOut: 0, fade: false);
 
-  /// refreshTimelineClips lays every sound on the timeline that is a clip
-  /// out again at the song's tempo as it is now -- where it plays from and
-  /// to -- and makes again those whose sound was made at another.
+  /// refreshTimelineClips lays every timeline clip out again at the song's
+  /// tempo, and makes again those whose sound was made at another.
   void refreshTimelineClips() {
     var spb = _document.audio.secondsPerBeat;
     for (var e in [..._document.elements]) {
@@ -178,8 +171,8 @@ extension CanvasTimelineClips on CanvasController {
   }
 
   /// renderTimelineClip makes sound [id]'s clip's sound -- warped, pitched,
-  /// faded, enveloped -- where it has changed, and plays it: not an undo
-  /// step of its own, as the clip's change is.
+  /// faded, enveloped -- where it has changed, and plays it. Not an undo
+  /// step of its own: the clip's change is.
   Future<void> renderTimelineClip(String id) async {
     var e = _document.elementById(id);
     if (e is! AudioElement || e.clip.playlist.isEmpty) return;
@@ -201,6 +194,6 @@ extension CanvasTimelineClips on CanvasController {
   }
 }
 
-/// _timelineRenders are each controller's waits before rendering a
-/// timeline clip again.
+/// _timelineRenders are each controller's waits before re-rendering a
+/// timeline clip.
 final Expando<Timer> _timelineRenders = Expando("timelineRenders");

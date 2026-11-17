@@ -1,12 +1,10 @@
 part of '../canvas_controller.dart';
 
-// Part of CanvasController: Metronome elements going (see
-// metronome_element.dart) -- the reader's, not the document's: started and
-// stopped, sped up and slowed, tapped, each clicking on a click of its own
-// and swinging as the stage draws it.
+// Part of CanvasController: Metronome elements going (metronome_element.dart).
+// Their state is the reader's, not the document's: started and stopped,
+// sped up and slowed, tapped, each clicking and swinging on its own.
 
 extension CanvasMetronomes on CanvasController {
-  /// metronomeGoing is whether metronome [id] is going.
   bool metronomeGoing(String id) => _metroStarted.containsKey(id);
 
   /// metronomeShowFor is how metronome [e] is going: how many beats since it
@@ -18,7 +16,6 @@ extension CanvasMetronomes on CanvasController {
     return MetronomeShow(going: true, beats: seconds * e.bpm / 60);
   }
 
-  /// toggleMetronome starts [e] going, or stops it.
   void toggleMetronome(MetronomeElement e) {
     if (_metroStarted.remove(e.id) != null) {
       audio.metronome(on: false, key: e.id);
@@ -61,9 +58,8 @@ extension CanvasMetronomes on CanvasController {
     });
   }
 
-  /// setMetronome writes [e] over the one with its id -- its beats a minute
-  /// or its bar changed -- going on, if it was going, at the new speed from
-  /// its next beat.
+  /// setMetronome writes [e] over the one with its id; if it was going, it
+  /// goes on at the new speed from its next beat.
   void setMetronome(MetronomeElement e) {
     replaceElement(e);
     if (metronomeGoing(e.id)) _metroStart(e);
@@ -80,9 +76,9 @@ extension CanvasMetronomes on CanvasController {
         e.copyWith(beats: metronomeBeats[(i + 1) % metronomeBeats.length]));
   }
 
-  /// tapMetronome is a tap on [e]'s Tap: its beats a minute set by the
-  /// taps' own pace, from the second tap on -- the last few, a moment
-  /// apart at most. [at] stands in for now, in seconds, in tests.
+  /// tapMetronome sets [e]'s tempo from the pace of the last few taps, a
+  /// moment apart at most, from the second tap on. [at] stands in for now,
+  /// in seconds, in tests.
   void tapMetronome(MetronomeElement e, {double? at}) {
     if (!_metroClock.isRunning) _metroClock.start();
     var now = at ?? _metroClock.elapsedMicroseconds / 1e6;

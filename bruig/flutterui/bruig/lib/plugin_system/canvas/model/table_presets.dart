@@ -7,15 +7,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/table_design.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// table_presets.dart is the Table tab's gallery (Ken, 2026-11-17; prototype
-// v7 and its research): ten kinds of table, each with starting designs. A
-// design sets the table's layout -- its header, lines, stripes, which
-// columns are drawn rather than written, headings across -- and its
-// emphasis, as styles (TableRules) named "Design: ...", which the next
-// design replaces; the cells, the user's own styles and the style's
-// colours stay. Each design reads the table's own columns -- numbers, yes
-// and no, W/D/L, lists of numbers, changes -- and says what it needs when
-// they aren't there.
+// table_presets.dart is the Table tab's gallery: ten kinds of table, each
+// with starting designs. A design sets the table's layout (header, lines,
+// stripes, drawn columns, headings across) and emphasis as styles
+// (TableRules) named "Design: ...", which the next design replaces; the
+// cells, the user's own styles and the style's colours stay. Each design
+// reads the table's own columns and says what it needs when they lack it.
 
 /// TableShape is what a table's columns hold, for its designs.
 class TableShape {
@@ -73,8 +70,7 @@ class TableShape {
       ];
 
   /// lead is the first data row's key, for a design that lights one row:
-  /// one with figures in it, not a heading over a group of rows (found
-  /// making the Charts canvas: "Income" was lit).
+  /// one with figures in it, not a heading over a group of rows.
   String get lead {
     for (var r = t.headerRow ? 1 : 0; r < t.rows.length; r++) {
       var filled = false;
@@ -130,9 +126,8 @@ TableElement _fresh(TableElement t) => t.copyWith(
 TableRule _rule(String name, TableRule r) =>
     r.copyWith(name: "$designPrefix$name");
 
-/// _right is each column of numbers set on the right, its heading with it:
-/// a plain table's figures line up by their units (the kind's "numbers
-/// right", which its designs didn't do).
+/// _right is each column of numbers set on the right, its heading with it,
+/// so a plain table's figures line up by their units.
 List<TableRule> _right(TableElement t, TableShape s) => [
       for (var c in {...s.numbers, ...s.changes})
         _rule(

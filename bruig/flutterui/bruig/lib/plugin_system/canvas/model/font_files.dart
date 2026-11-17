@@ -4,9 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 import 'package:flutter/services.dart';
 
 // font_files.dart finds the font file a drawing's text is set from: the
-// app's bundled faces, and the common desktop ones where this system keeps
-// them. A missing face falls back to Inter, and a missing italic is the
-// upright face leant over.
+// app's bundled faces, and common desktop ones where this system keeps them.
+// A missing face falls back to Inter; a missing italic is the upright leant.
 
 /// FontPick is the face found for a family, weight and slant: the face,
 /// and whether it has to be leant over to be italic.
@@ -16,7 +15,6 @@ class FontPick {
   const FontPick(this.face, {this.lean = false});
 }
 
-/// FontFiles finds faces and keeps every one it has read.
 class FontFiles {
   FontFiles._();
   static final FontFiles instance = FontFiles._();
@@ -78,9 +76,8 @@ class FontFiles {
     return FontFace.parse(bytes);
   }
 
-  /// _familyName is what a family name may be. It comes from the document
-  /// and becomes part of a path, so only letters, digits, spaces and a few
-  /// marks.
+  /// _familyName is what a family name may be: it comes from the document
+  /// and becomes part of a path, so only letters, digits, spaces, few marks.
   static final _familyName = RegExp(r"^[A-Za-z0-9 _+&'-]{1,64}$");
 
   /// _sources is where [family] in [weight] and [italic] may be, best

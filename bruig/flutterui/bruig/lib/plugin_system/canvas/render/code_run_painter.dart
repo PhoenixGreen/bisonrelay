@@ -7,10 +7,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:flutter/painting.dart';
 
-// code_run_painter.dart draws a Run panel (code_run_element.dart): a bar
-// with what runs it and its Run button, the preview its last run made, and
-// what that run printed -- or, before its time on the scene's clock, when
-// it will run.
+// code_run_painter.dart draws a Run panel (code_run_element.dart): a bar with
+// what runs it and its Run button, the preview its last run made, and what that
+// run printed; or, before its time on the scene's clock, when it will run.
 
 const _ui = "Inter";
 const _mono = "RobotoMono";
@@ -23,7 +22,6 @@ const _go = Color(0xFF2ED6A1);
 const _warn = Color(0xFFF2C14E);
 const _error = Color(0xFFFF8A8A);
 
-/// CodeRunBoxes is where a Run panel's parts are, on the page.
 class CodeRunBoxes {
   final Rect bar;
   final Rect runButton;
@@ -32,7 +30,6 @@ class CodeRunBoxes {
   const CodeRunBoxes(this.bar, this.runButton, this.preview, this.output);
 }
 
-/// codeRunBoxes lays [e] out in [box].
 CodeRunBoxes codeRunBoxes(CodeRunElement e, Rect box, {CodeRunner? runner}) {
   var fs = e.outputSize;
   var bar = Rect.fromLTWH(box.left, box.top, box.width, fs * 2.7);
@@ -67,7 +64,7 @@ class CodeRunShow {
   final List<CodeLog> logs;
 
   /// now shows its run whatever the scene's clock says: run by hand, or its
-  /// Code panel showing the whole of its code (Ken, 2026-11-15).
+  /// Code panel showing the whole of its code.
   final bool now;
   const CodeRunShow(
       {this.running = false,
@@ -76,8 +73,7 @@ class CodeRunShow {
       this.now = false});
 }
 
-/// codeRunShowOf is how the stage shows each Run panel, set by the
-/// controller; null in an export.
+/// codeRunShowOf is how the stage shows each Run panel; null in an export.
 CodeRunShow Function(CodeRunElement e)? codeRunShowOf;
 
 void _text(Canvas canvas, String t, Offset at, double size, Color colour,
@@ -105,8 +101,7 @@ void _text(Canvas canvas, String t, Offset at, double size, Color colour,
   tp.dispose();
 }
 
-/// waitingSaid is what a Run panel says before it has run at [seconds]:
-/// null once it shows its run.
+/// waitingSaid is what a Run panel says before it runs at [seconds], or null.
 String? waitingSaid(CodeRunElement e, CodeElement? code, double seconds) {
   var at = runAt(e, code);
   if (at != null && seconds < at) {
@@ -131,7 +126,6 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
   canvas.clipRRect(RRect.fromRectAndRadius(box, Radius.circular(fs * 0.9)));
   canvas.drawRect(box, Paint()..color = _bg);
 
-  // The bar: "Run", what runs it, and the button.
   canvas.drawRect(b.bar, Paint()..color = _bar);
   _text(canvas, "Run", Offset(b.bar.left + fs * 1.1, b.bar.center.dy),
       fs * 1.05, const Color(0xFFB7BEC7));
@@ -178,7 +172,6 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
       ? null
       : waitingSaid(e, code, seconds);
 
-  // The preview: the picture of the last run.
   if (b.preview case var p?) {
     if (waiting != null) {
       canvas.drawRect(p, Paint()..color = const Color(0xFF15191E));
@@ -209,7 +202,6 @@ void paintCodeRun(Canvas canvas, Rect box, CodeRunElement e, CodeElement? code,
     }
   }
 
-  // The output: what the run printed.
   if (b.output case var o?) {
     canvas.drawRect(
         Rect.fromLTWH(o.left, o.top, o.width, 1), Paint()..color = _line);

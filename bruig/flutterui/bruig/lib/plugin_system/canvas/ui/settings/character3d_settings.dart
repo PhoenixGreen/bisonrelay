@@ -13,13 +13,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// character3d_settings.dart is a 3D character's settings on the canvas: the
-// character (changed in the Character Studio), what it does in this scene
-// (see character_performance.dart) and how its box shows it.
+// character3d_settings.dart is a 3D character's canvas settings: the
+// character (Character Studio), its scene performance, and its box.
 
-/// character3dSettings are [e]'s settings. [inStudio] is for the Character
-/// Studio's Test step, which tries a scene's settings on its own stage: no
-/// way to the Studio, and no box to show it in.
+/// character3dSettings are [e]'s settings. [inStudio] is the Studio's Test
+/// step: no link to the Studio, and no box.
 List<Widget> character3dSettings(
   BuildContext context,
   CanvasController controller,
@@ -42,8 +40,8 @@ List<Widget> character3dSettings(
     write(e.performing(n));
   }
 
-  // The playhead, in seconds of the scene; a key there is what the pose and
-  // feeling settings change, rather than how it stands between keys.
+  // The playhead in scene seconds; pose and feeling settings change the key
+  // there, not how it stands between keys.
   final fps = math.max(1, controller.document.frameRate);
   final at = controller.frame / fps;
   final keyIndex = p.keys.indexWhere((k) => (k.t - at).abs() < 0.5 / fps);
@@ -612,7 +610,7 @@ List<Widget> character3dSettings(
 }
 
 /// channelsToSpeakFor are the channels a character can speak for: those
-/// with clips in their slots, by key and name.
+/// with clips in slots, by key and name.
 List<(String, String)> channelsToSpeakFor(CanvasController c) {
   var names = {for (var ch in c.timelineChannels) ch.key: ch.name};
   return [
@@ -661,8 +659,7 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
     } catch (exception) {
       said = "The mouths could not be worked out: $exception";
     } finally {
-      // Closed whatever happened: left open, every later edit would join
-      // this one undo step.
+      // Closed whatever happens, or every later edit joins this undo step.
       controller.endInteraction();
     }
     if (!mounted) return;

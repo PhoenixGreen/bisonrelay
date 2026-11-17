@@ -1,10 +1,9 @@
 part of 'generators.dart';
 
 // marks.dart is the extra kinds of mark the Organic and Graphic & comic
-// styles can draw: terrain, soft fire and embers, non-round halftone dots,
-// parallel speed lines, shaded hatching, drips, spray, splashes and
-// watercolour. The styles themselves are in generators.dart and call these
-// when the matching kind is chosen.
+// styles draw: terrain, soft fire and embers, non-round halftone dots,
+// speed lines, shaded hatching, drips, spray, splashes and watercolour. The
+// styles are in generators.dart and call these for the matching kind.
 
 /// _terrain fills the bands between contour lines like a relief map:
 /// background at the lowest, through foreground, to accent at the peaks.
@@ -327,7 +326,6 @@ void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       ..isAntiAlias = true;
     var wild = 0.4 + spec.variation;
 
-    // The body: lumpy but smooth.
     const around = 28;
     var body = [
       for (var i = 0; i < around; i++)
@@ -392,7 +390,6 @@ void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       canvas.restore();
     }
 
-    // The mist.
     var mist = (40 + wild * 160).round();
     var points = Float32List(mist * 2);
     for (var i = 0; i < mist; i++) {
@@ -449,7 +446,6 @@ void _watercolour(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var a = spec.intensity * 0.14;
       var tint = colour;
       canvas.drawPath(path, Paint()..color = _fade(tint, a));
-      // The darker edge.
       canvas.drawPath(
           path,
           Paint()

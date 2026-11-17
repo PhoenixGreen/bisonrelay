@@ -166,8 +166,7 @@ Future<MediaSource?> addCanvasVideo(BuildContext context, String file) async {
       return null;
     }
 
-    // A still from a moment in, rather than the very first frame, which is
-    // black more often than not.
+    // A still from a moment in: the first frame is often black.
     var still = await posterOf(ffmpeg, file,
         at: probe.duration > 3 ? 1 : 0, maxWidth: 1280);
     var poster = still == null ? null : await CanvasAssets.save(still);

@@ -10,10 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart
     show sheetColumnName;
 import 'package:flutter/material.dart';
 
-// data_view_settings.dart is the top of a Data element's quick settings,
-// the same for its table and its chart (Ken, 2026-11-15: Table and Chart
-// made one Data element): whether it shows its data as a table or a chart,
-// and which of the canvas's sheets it shows.
+// data_view_settings.dart is the top of a Data element's quick settings:
+// table or chart, and which canvas sheet.
 
 /// dataViewStrip is [e]'s View and Sheet.
 Widget dataViewStrip(CanvasController controller, CanvasElement e) {
@@ -65,9 +63,8 @@ Widget dataStudioButton(CanvasController controller, CanvasElement e) {
   );
 }
 
-/// dataRowsGroup is which of its range's rows Data element [e] shows, and
-/// in what order -- its own, the sheet left as it is (Ken's plan: "the
-/// table shows all 20 clubs, the chart the top 5").
+/// dataRowsGroup is which rows of its range [e] shows, in its own order,
+/// the sheet untouched (a table of 20 clubs, a chart of the top 5).
 Widget dataRowsGroup(CanvasController controller, CanvasElement e) {
   var link = linkOf(e);
   var sheet = link == null ? null : controller.sheetById(link.sheet);
@@ -141,7 +138,7 @@ Widget dataRowsGroup(CanvasController controller, CanvasElement e) {
                 label: "is",
                 value: link.where,
                 hint: ">5, Arsenal, <>0",
-                // A word typed is one change to undo, not one per key.
+                // A typed word is one undo step, not one per key.
                 onChanged: (v) {
                   controller.beginInteraction();
                   controller.replaceElement(

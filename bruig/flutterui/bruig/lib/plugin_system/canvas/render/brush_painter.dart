@@ -6,18 +6,15 @@ import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
-// brush_painter.dart draws brushwork (see image_strokes.dart): a paint
-// layer's strokes, and retouching done to a picture.
-//
-// Every stroke is dabs along the path, sized by pen pressure. Paint is the
-// dabs in its colour; a retouching stroke draws something (the picture moved,
-// blurred, lightened) and keeps it only where the dabs are.
+// brush_painter.dart draws brushwork (image_strokes.dart): paint layers'
+// strokes and retouching. Every stroke is dabs along the path, sized by pen
+// pressure. Paint is the dabs in its colour; a retouching stroke draws
+// something (the picture moved, blurred, lightened) only where the dabs are.
 
 /// paintDabs lays [points] (in [canvas]'s units) down as dabs, [radius]
-/// across at full pressure, with [paint]'s colour, in the shape and the way
-/// [tip] says -- see BrushTip. [tilt] is the pen's lean at each point;
-/// [seed] fixes the scatter and the grain, so a stroke drawn again comes out
-/// the same.
+/// across at full pressure, in [paint]'s colour, shaped as [tip] says.
+/// [tilt] is the pen's lean at each point; [seed] fixes the scatter and the
+/// grain, so a stroke drawn again comes out the same.
 void paintDabs(ui.Canvas canvas, List<Offset> points, List<double> pressure,
     double radius, double hardness, Paint paint,
     {BrushTip tip = const BrushTip(),
@@ -75,9 +72,8 @@ void paintDabs(ui.Canvas canvas, List<Offset> points, List<double> pressure,
     }
     var body = math.max(0.5, r - sigma);
     if (tip.grain > 0) {
-      // Grain: the dab as specks, covering enough of it that, with the
-      // overlapping dabs, the paper shows through as much as the grain says
-      // at any stroke size.
+      // Grain: the dab as specks, covering enough that, with the overlapping
+      // dabs, the paper shows through as much as the grain says at any size.
       var over = (2 / tip.spacing).clamp(1.0, 60.0);
       var paper = tip.grain * 0.8;
       var share = 1 - math.pow(paper, 1 / over).toDouble();
@@ -136,8 +132,7 @@ void paintDabs(ui.Canvas canvas, List<Offset> points, List<double> pressure,
   }
 }
 
-/// _strokeBounds is the area a stroke can touch, in the units its points
-/// are given in.
+/// _strokeBounds is the area a stroke can touch, in its points' units.
 Rect _strokeBounds(List<Offset> points, double radius) {
   var box = Rect.fromCircle(center: points.first, radius: radius);
   for (var p in points) {
@@ -146,7 +141,6 @@ Rect _strokeBounds(List<Offset> points, double radius) {
   return box.inflate(radius * 0.5);
 }
 
-/// _paintStroke draws one paint or erase stroke into a space of [size].
 void _paintStroke(ui.Canvas canvas, StrokeMark s, Size size) {
   if (s.points.isEmpty) return;
   var short = math.min(size.width, size.height);
@@ -154,7 +148,6 @@ void _paintStroke(ui.Canvas canvas, StrokeMark s, Size size) {
     for (var p in s.points) Offset(p.dx * size.width, p.dy * size.height)
   ];
   var radius = s.radius * short;
-  // Allowing for tilt and scatter.
   var reach = radius * (1 + s.tip.tiltSize) * (1 + s.tip.scatter);
   // A layer per stroke, so its dabs build up to its strength and no further.
   canvas.saveLayer(
@@ -178,9 +171,8 @@ void _paintStroke(ui.Canvas canvas, StrokeMark s, Size size) {
   canvas.restore();
 }
 
-/// _Painted is a paint layer's strokes as they were last drawn: all but the
-/// last flattened into a picture, so the stroke being drawn costs its own
-/// dabs and nothing more.
+/// _Painted is a paint layer's strokes as last drawn: all but the last
+/// flattened into a picture, so the stroke being drawn costs only its dabs.
 class _Painted {
   final List<StrokeMark> settled;
   final Size size;
@@ -191,8 +183,7 @@ class _Painted {
 
 final Map<String, _Painted> _painted = {};
 
-/// clearPaintLayers lets go of every paint layer kept: see
-/// clearRenderCaches.
+/// clearPaintLayers lets go of every paint layer kept.
 void clearPaintLayers() {
   for (var p in _painted.values) {
     p.picture.dispose();
@@ -204,9 +195,8 @@ void clearPaintLayers() {
 /// _side is how big a paint layer is flattened at, on its longer side.
 const double _side = 2048;
 
-/// paintPaintLayer draws [strokes] -- a paint layer's, in fractions of the
-/// frame -- across [frame]. [key] names the layer, so what is drawn can be
-/// kept for the next frame.
+/// paintPaintLayer draws [strokes] (a paint layer's, in fractions of the
+/// frame) across [frame]. [key] names the layer, so it can be kept.
 void paintPaintLayer(
     ui.Canvas canvas, Rect frame, List<StrokeMark> strokes, String key) {
   // Retouching on a paint layer is drawn from what is under it -- see
@@ -282,9 +272,8 @@ bool _samePrefix(List<StrokeMark> a, List<StrokeMark> b) {
   return true;
 }
 
-/// _alphaToOne makes every pixel opaque, keeping its unmultiplied colour: a
-/// blur of the picture with a hole cut in it becomes the average colour
-/// round the hole, which fills it.
+/// _alphaToOne makes every pixel opaque, keeping its colour: a blur of the
+/// picture with a hole cut in it becomes the colour round the hole.
 const _alphaToOne = ColorFilter.matrix([
   1, 0, 0, 0, 0, //
   0, 1, 0, 0, 0, //
@@ -292,17 +281,15 @@ const _alphaToOne = ColorFilter.matrix([
   0, 0, 0, 0, 255, //
 ]);
 
-/// SharpenShader is the sharpen brush's shader, loaded once -- see
-/// sharpen.frag.
+/// SharpenShader is the sharpen brush's shader (sharpen.frag), loaded once.
 class SharpenShader {
   static ui.FragmentProgram? _program;
   static bool _unloadable = false;
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
   static Future<void> load() async {
-    // The program, not the loading, is what is kept: a load begun
-    // where it never finishes (a test's own time, gone) would leave
-    // every later wait for it waiting for ever.
+    // The program, not the loading, is kept: a load begun where it never
+    // finishes (a finished test's clock) would leave later waits hanging.
     if (_program != null || _unloadable) return;
     try {
       _program = await ui.FragmentProgram.fromAsset("shaders/sharpen.frag");
@@ -315,12 +302,9 @@ class SharpenShader {
 }
 
 /// _healFill draws a heal stroke's fill: what is round the spot, blurred
-/// across it, with the spot itself cut out first so none of it is averaged
-/// in -- the light and colour the healed spot should have.
-///
-/// In passes, widest first: one brush-wide blur cannot reach the middle of a
-/// wider stroke. Each narrower pass covers the wider ones only as far as it
-/// reached, so every spot is filled however wide.
+/// across it, with the spot cut out first so none of it is averaged in.
+/// In passes, widest first: one brush-wide blur cannot reach the middle of
+/// a wider stroke, and each narrower pass covers only as far as it reached.
 void _healFill(ui.Canvas canvas, ui.Image image, Paint picturePaint,
     List<Offset> points, StrokeMark s, double radius, Rect reach) {
   var stroke = _strokeBounds(points, radius * 1.1);
@@ -356,9 +340,8 @@ class HealShader {
   static bool _unloadable = false;
 
   static Future<void> load() async {
-    // The program, not the loading, is what is kept: a load begun
-    // where it never finishes (a test's own time, gone) would leave
-    // every later wait for it waiting for ever.
+    // The program, not the loading, is kept: a load begun where it never
+    // finishes (a finished test's clock) would leave later waits hanging.
     if (_program != null || _unloadable) return;
     try {
       _program = await ui.FragmentProgram.fromAsset("shaders/heal.frag");
@@ -369,10 +352,9 @@ class HealShader {
   }
 }
 
-/// healSource is where a heal stroke started at [f] -- a fraction of a
-/// picture of [size] -- takes its texture from, as a distance across the
-/// picture: a couple of brush widths to the side, towards the picture's
-/// middle so it stays inside it.
+/// healSource is where a heal stroke started at [f] (a fraction of a picture
+/// of [size]) takes its texture from, as a distance: a couple of brush
+/// widths to the side, towards the middle so it stays inside the picture.
 Offset healSource(Offset f, double radius, Size size) {
   var short = math.min(size.width, size.height);
   var reach = 2.4 * radius * short;
@@ -381,11 +363,8 @@ Offset healSource(Offset f, double radius, Size size) {
 }
 
 /// _blurred is [image] blurred by [sigma] of its own pixels, made once and
-/// kept with it: what sharpening pushes the picture away from.
-///
-/// Only the [_blursKept] most recently used are kept, across all pictures:
-/// each is a whole picture of pixels, and whole-frame retouching makes new
-/// pictures often.
+/// kept: what sharpening pushes the picture away from. Only the [_blursKept]
+/// most recently used are kept: each is a whole picture of pixels.
 final _blurs = <(ui.Image, double), ui.Image>{};
 const int _blursKept = 4;
 ui.Image _blurred(ui.Image image, double sigma) {
@@ -428,10 +407,9 @@ List<(Offset, double)> _alongPath(
   return out;
 }
 
-/// _paintSmudge drags the picture along [s], like a finger through wet
-/// paint: each dab is a weighted average of the picture from further back
-/// along the stroke, each step back counting less. Higher strength carries
-/// colour further.
+/// _paintSmudge drags the picture along [s] like a finger through wet paint:
+/// each dab is a weighted average of the picture further back along the
+/// stroke. Higher strength carries colour further.
 void _paintSmudge(ui.Canvas canvas, ui.Image image, Paint picturePaint,
     StrokeMark s, List<Offset> points, double radius) {
   // A dab every quarter brush, at most 150: each is its own layer.
@@ -536,10 +514,8 @@ void paintRetouchUnder(
 }
 
 /// paintRetouchKept is paintRetouch with every stroke but the last kept as
-/// pixels, so only the last is drawn again on each frame.
-///
-/// The earlier strokes change only on undo, so they are worked once and
-/// cached; the last works on their result. See retouchedPicture.
+/// pixels, worked once and cached (they change only on undo), so only the
+/// last is drawn again each frame. See retouchedPicture.
 void paintRetouchKept(ui.Canvas canvas, ui.Image image, Size size,
     List<StrokeMark> marks, ColorFilter? colour) {
   var strokes = [
@@ -551,8 +527,7 @@ void paintRetouchKept(ui.Canvas canvas, ui.Image image, Size size,
     return;
   }
   var settled = strokes.sublist(0, strokes.length - 1);
-  // Keyed by the picture and its first stroke, which stay the same objects
-  // while strokes are added.
+  // Keyed by the picture and its first stroke, which stay put as strokes add.
   var key = "retouch|${identityHashCode(image)}|"
       "${identityHashCode(settled.first)}";
   var from = <Object?>[image, size, ...settled];
@@ -568,8 +543,7 @@ void paintRetouchKept(ui.Canvas canvas, ui.Image image, Size size,
   var h = math.max(1, (size.height * most).ceil());
   var kept = RasterCache.instance.sized(key, from, w, h);
   if (kept == null) {
-    // Most likely a stroke was just added: work only it onto the cached
-    // result of the ones before.
+    // Most likely a stroke was just added: work only it onto the cached result.
     var before = RasterCache.instance.sized(
         key, [image, size, ...settled.sublist(0, settled.length - 1)], w, h);
     kept = before != null && before.width == w && before.height == h
@@ -631,9 +605,9 @@ Rect _reachOf(StrokeMark s, Size size, {bool sampling = false}) {
 }
 
 /// retouchedPicture is [image] with [strokes] worked on it in turn, each on
-/// the result of the ones before (so a healed spot stays healed when gone
-/// over again). [width] by [height] pixels, or [image]'s own size. Strokes
-/// that read nothing an earlier one in their run changed share one pass.
+/// the result of the ones before (so a healed spot stays healed). [width] by
+/// [height] pixels, or [image]'s own size. Strokes that read nothing an
+/// earlier one in their run changed share one pass.
 ui.Image retouchedPicture(ui.Image image, List<StrokeMark> strokes,
     {int? width, int? height}) {
   var w = width ?? image.width, h = height ?? image.height;
@@ -680,10 +654,9 @@ ui.Image retouchedPicture(ui.Image image, List<StrokeMark> strokes,
   return current;
 }
 
-/// paintRetouch draws [marks] -- retouching, in fractions of the picture --
-/// over [image] already drawn at its own pixel size [size] in [canvas].
-/// [colour] is the colour filter the picture was drawn with, so what is
-/// cloned or blurred matches it.
+/// paintRetouch draws [marks] (retouching, in fractions of the picture) over
+/// [image] already drawn at its pixel size [size]. [colour] is the filter
+/// the picture was drawn with, so what is cloned or blurred matches it.
 void paintRetouch(ui.Canvas canvas, ui.Image image, Size size,
     List<StrokeMark> marks, ColorFilter? colour) {
   var short = math.min(size.width, size.height);
@@ -726,8 +699,7 @@ void paintRetouch(ui.Canvas canvas, ui.Image image, Size size,
         var drawn = recorder.endRecording();
         var fill = drawn.toImageSync(fw, fh);
         drawn.dispose();
-        // Then the source patch's fine detail, without its colour. See
-        // heal.frag.
+        // Then the source patch's fine detail, without its colour (heal.frag).
         var shader = program.fragmentShader()
           ..setFloat(0, size.width)
           ..setFloat(1, size.height)
@@ -769,8 +741,7 @@ void paintRetouch(ui.Canvas canvas, ui.Image image, Size size,
       case StrokeKind.sharpen:
         var program = SharpenShader._program;
         if (program == null) break;
-        // An unsharp mask of about a pixel's radius (detail, not halos), up
-        // to 2.5 times at full strength.
+        // An unsharp mask of about a pixel (detail, not halos), up to 2.5x.
         var sigma = math.max(1.2, short / 350);
         var shader = program.fragmentShader()
           ..setFloat(0, size.width)

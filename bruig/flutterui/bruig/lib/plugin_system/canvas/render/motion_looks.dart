@@ -11,13 +11,11 @@ import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 // motion_looks.dart draws an element's looks: the devices right of its
 // drawing in its Chain's Motion view (glow, shadow, blur, colour, outline).
-// Each takes what is to its left -- the element drawn, with the looks before
-// it -- and changes how it looks, so the order they are in is the order they
-// are laid on: a shadow after a glow casts the glow's shadow too.
+// Each takes what is to its left and changes how it looks, so their order
+// is the order they are laid on: a shadow after a glow casts it too.
 
-/// looksReach is how far, in the page's pixels, [looks] can reach outside
-/// the element's box: for the layer they are drawn in, and an export's
-/// picture of the element, to hold them.
+/// looksReach is how far, in page pixels, [looks] can reach outside the
+/// element's box, for the layer they are drawn in and an export to hold.
 double looksReach(List<MotionDevice> looks) {
   var reach = 0.0;
   for (var d in looks) {
@@ -34,13 +32,11 @@ double looksReach(List<MotionDevice> looks) {
   return reach;
 }
 
-/// paintWithLooks draws [paint] -- the element, in its own box [bounds] on
-/// a canvas already moved, turned and sized as it is -- with [looks] on it,
-/// in order. [turn] (degrees) and [scale] are how it is turned and sized,
-/// so that a shadow falls the same way, and as far, however it turns.
-///
-/// [velocity] is how fast it moves, in the page's pixels a second: what a
-/// Blur's Motion blur smears it along.
+/// paintWithLooks draws [paint] (the element, in its box [bounds] on a
+/// canvas already moved, turned and sized) with [looks] on it in order.
+/// [turn] (degrees) and [scale] are how it is turned and sized, so a shadow
+/// falls the same way however it turns. [velocity] is how fast it moves, in
+/// page pixels a second, for a Blur's Motion blur.
 void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
     void Function(ui.Canvas on) paint,
     {double turn = 0,
@@ -63,8 +59,8 @@ void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
   drawn(canvas, looks.length - 1);
 }
 
-/// _look draws [under] -- everything to its left -- with look [d] on it.
-/// [k] turns the page's pixels into the canvas's, as it is sized.
+/// _look draws [under] (everything to its left) with look [d] on it. [k]
+/// turns the page's pixels into the canvas's.
 void _look(
     ui.Canvas canvas,
     Rect room,
@@ -77,14 +73,10 @@ void _look(
     double time,
     double presence) {
   void under() => draw(canvas);
-  // What is under it, recorded once for a look that lays it twice -- a
-  // shadow, a glow, an outline, then the element over it -- so three of
-  // them draw the element once each, not eight times (Ken's systems
-  // review, 2026-11-08).
-  //
-  // Recorded in the canvas's own transform, so what is drawn at the size it
-  // is seen (a 3D model, a raster) is as sharp; laid back through the
-  // inverse of it.
+  // What is under it, recorded once for a look that lays it twice (shadow,
+  // glow, outline, then the element), so three looks draw it three times,
+  // not eight. Recorded in the canvas's transform, so it is sharp at the
+  // size it is seen; laid back through the inverse.
   var seen = canvas.getTransform();
   ui.Picture recorded() {
     var rec = ui.PictureRecorder();
@@ -92,8 +84,7 @@ void _look(
     return rec.endRecording();
   }
 
-  // A copy: fromFloat64List wraps the list it is given, and inverting it
-  // would turn [seen] round too.
+  // A copy: fromFloat64List wraps its list, and inverting would turn [seen].
   var back = Matrix4.fromFloat64List(seen.sublist(0))..invert();
   void lay(ui.Picture picture) {
     canvas.save();
@@ -119,8 +110,8 @@ void _look(
       canvas.restore();
     case MotionDeviceKind.blur:
       var amount = d.value("amount");
-      // Motion blur: a fiftieth of a second's travel, along it -- turned
-      // into the element's own way round, as the canvas is.
+      // Motion blur: a fiftieth of a second's travel, along it, turned into
+      // the element's own way round, as the canvas is.
       var smear = d.value("motion");
       var a = -turn * math.pi / 180;
       var along = Offset(velocity.dx * math.cos(a) - velocity.dy * math.sin(a),
@@ -138,8 +129,8 @@ void _look(
       under();
       canvas.restore();
     case MotionDeviceKind.shadow:
-      // Cast where the light puts it, whichever way the element turns --
-      // or, Turns with it, as if the light were fixed to the element.
+      // Cast where the light puts it, whichever way the element turns; or,
+      // with Turns with it, as if the light were fixed to the element.
       var turnsWith = d.value("turns").round() == 1;
       var angle =
           (d.value("angle") - 90 - (turnsWith ? 0 : turn)) * math.pi / 180;
@@ -214,10 +205,9 @@ void _look(
               reach: d.value("reach")),
           under);
     case MotionDeviceKind.lens:
-      // A glass is something of its own, drawn whatever is under it: only
-      // as much of it as the element is there -- not before it arrives,
-      // nor after it has gone (a table leaves by itself, hiding its cells
-      // and leaving its glass behind).
+      // A glass is drawn whatever is under it, but only as much as the
+      // element is there: not before it arrives, nor after it has gone (a
+      // table leaving would otherwise leave its glass behind).
       if (presence <= 0.002) return under();
       var picture = recorded();
       lay(picture);
@@ -252,7 +242,7 @@ double lensRadius(MotionDevice d, Rect bounds) =>
 
 /// lensAt is where a Lens's glass is centred at [time] seconds: round its
 /// middle (Across, Down), Goes round of the way to the box's edge, so many
-/// Laps a second -- clockwise, from the right.
+/// Laps a second, clockwise from the right.
 Offset lensAt(MotionDevice d, Rect bounds, double time) {
   var middle = Offset(bounds.left + bounds.width * d.value("x"),
       bounds.top + bounds.height * d.value("y"));
@@ -263,8 +253,7 @@ Offset lensAt(MotionDevice d, Rect bounds, double time) {
           math.sin(a) * orbit * bounds.height / 2);
 }
 
-/// _paintGlass draws a magnifying glass's rim, sheen and handle round the
-/// glass at [at], [r] across.
+/// _paintGlass draws a magnifying glass's rim, sheen and handle at [at].
 void _paintGlass(ui.Canvas canvas, Offset at, double r) {
   var rim = r * 0.11;
   // The handle first, under the rim: out to the lower right.
@@ -306,7 +295,6 @@ void _paintGlass(ui.Canvas canvas, Offset at, double r) {
             at + Offset(0, r),
             const [Color(0xFFD4D8DE), Color(0xFF6B717A), Color(0xFF2A2E34)],
             const [0, 0.45, 1]));
-  // The sheen on the glass, upper left.
   canvas.drawCircle(
       at,
       r - rim / 2,
@@ -315,9 +303,8 @@ void _paintGlass(ui.Canvas canvas, Offset at, double r) {
             const [Color(0x33FFFFFF), Color(0x00FFFFFF)], const [0, 1]));
 }
 
-/// wearTexture is what a Wear device takes out of its element: one of the
-/// pictures' textures, drawn as marks on nothing (see texture.frag), and
-/// as heavy and as coarse as its Amount and Size.
+/// wearTexture is what a Wear device takes out of its element: a picture
+/// texture as marks on nothing (texture.frag), by its Amount and Size.
 TextureSpec wearTexture(MotionDevice d) {
   var amount = d.value("amount"), size = d.value("size");
   var seed = d.value("seed").round();

@@ -11,10 +11,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// synth_settings.dart is a synth module's settings: its knobs and choice
-// as sliders and a list (what its panel turns, for a reader of the panel
-// rather than the canvas), its look, and the teacher's tools -- Set as
-// start, Lock, Reset, Reset all -- with a module to add beside it.
+// synth_settings.dart is a synth module's settings: knobs as sliders, its
+// look, and the teacher's tools (Set as start, Lock, Reset, Reset all).
 
 List<Widget> synthSettings(
   BuildContext context,
@@ -192,9 +190,8 @@ String _choiceLabel(String v) => switch (v) {
       _ => v,
     };
 
-/// synthTaskSettings are a task card's: what it says, its target set
-/// from the rack, and its checks -- each worded, a knob's range set, or
-/// taken out.
+/// synthTaskSettings are a task card's: its text, its target set from the
+/// rack, and its checks, each worded, ranged or removed.
 List<Widget> synthTaskSettings(
   BuildContext context,
   CanvasController controller,
@@ -203,7 +200,7 @@ List<Widget> synthTaskSettings(
   VoidCallback begin,
   VoidCallback commit,
 ) {
-  // Each word typed fits the card to what it now says.
+  // Each typed word refits the card to its text.
   void live(SynthTaskElement next) => write(controller.fitSynthTask(next));
   void now(SynthTaskElement next) {
     live(next);

@@ -16,20 +16,16 @@ import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
-// motion_cards.dart is the Motion chain's Source and Output as the chain
-// prototype draws them (Ken, 2026-11-08: "the motion panel design is very
-// off"): Timing, Launch and Place as studio cards with a screen, knobs and
-// lists -- every setting the old sections had -- and the Output: how much of
-// it is seen, and whether it is shown at all.
+// motion_cards.dart is the Motion chain's Source and Output: Timing, Launch
+// and Place as studio cards with a screen, knobs and lists, and the Output:
+// how much of the element is seen, and whether it is shown at all.
 
-/// ClipEdit changes the clip shown: live while a knob is dragged, one undo
-/// step otherwise.
+/// ClipEdit changes the clip shown: live while a knob drags, else one undo.
 typedef ClipEdit = void Function(MotionClip Function(MotionClip) change,
     {bool live});
 
-/// StudioDrop is a list to pick from, as the prototype's cards have them: a
-/// small name over a boxed choice. [key] is the box's; each item is keyed
-/// "[key]-[value's index]".
+/// StudioDrop is a list to pick from: a small name over a boxed choice.
+/// [key] is the box's; each item is keyed "[key]-[value's index]".
 class StudioDrop<T> extends StatelessWidget {
   final String label;
   final T value;
@@ -49,11 +45,9 @@ class StudioDrop<T> extends StatelessWidget {
     var look = MixerLook.of(context);
     var s = look.studio;
     var name = (key as ValueKey?)?.value ?? label;
-    // In the Motion view, as the settings panel's selects (Ken,
-    // 2026-11-12): see ChainPanelStyle.
+    // In the Motion view, as the settings panel's selects: see ChainPanelStyle.
     var panel = ChainPanelStyle.on(context);
-    // Where it is given a row too short for the panel's height -- a
-    // trigger's line -- it keeps the compact one.
+    // In a row too short for the panel's height, it stays compact.
     return LayoutBuilder(
         builder: (context, box) => _drop(context, look, s, name,
             panel && box.maxHeight >= (label.isEmpty ? 30 : 52)));
@@ -234,8 +228,7 @@ class MotionTimingCard extends StatelessWidget {
               ),
             ],
             if (p != null && span != null) ...[
-              // Where it starts, as a number: the sidebar's Delay (Ken,
-              // 2026-11-08). Moved here, it lets go of its pins.
+              // Where it starts, as a number; moved here, it lets go of pins.
               DeviceKnob(
                 key: const ValueKey("animStart"),
                 label: "Starts",
@@ -280,8 +273,7 @@ class MotionTimingCard extends StatelessWidget {
                     controller.pinPlacement(e.id, p.id, pinOf(v), end: true),
               ),
             ],
-            // Its own arrival tied to a word cue, or said on a word, and the
-            // rest dimmed as it arrives: the sidebar's, in the chain.
+            // Its own arrival tied to a word cue, the rest dimmed meanwhile.
             if (c.inside["own"] == true && c.kind == MotionKind.arrive) ...[
               if (controller.cues.isNotEmpty)
                 StudioDrop<String>(
@@ -359,7 +351,7 @@ class MotionTimingCard extends StatelessWidget {
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: controls,
-      // Where it sits, and -- placed -- its span in words at the foot.
+      // Where it sits, and, placed, its span in words at the foot.
       display: Stack(fit: StackFit.expand, children: [
         CustomPaint(
           key: const ValueKey("motionTimingSpan"),
@@ -390,8 +382,6 @@ class MotionTimingCard extends StatelessWidget {
   }
 }
 
-/// _DimButton fades everything already on the canvas as the element
-/// arrives, and keeps it there.
 /// _WordFind is a one-line box to look for a word said by: what is typed
 /// narrows "On a word" to the words it is found in.
 class _WordFind extends StatefulWidget {
@@ -533,8 +523,7 @@ class _SpanPainter extends CustomPainter {
 }
 
 /// MotionLaunchCard is what starts [clip] from its slot: the triggers it
-/// answers -- listed on its screen -- and a press's way, what it waits for
-/// and what comes after it.
+/// answers, on its screen, and a press's way, its wait and what follows.
 class MotionLaunchCard extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -586,7 +575,6 @@ class MotionLaunchCard extends StatelessWidget {
           "${n.name.isEmpty ? n.id : n.name} changes"
         ),
     ];
-    // Its screen: the triggers, a row each, as the prototype lists them.
     var screen = Container(
       color: s.display,
       padding: const EdgeInsets.all(6),
@@ -790,9 +778,8 @@ class MotionPlaceCard extends StatelessWidget {
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: (tier) => [
-        // Where it comes from -- or, leaving, goes to -- worked out as it
-        // plays: an edge, beside another element, on its ground. The
-        // prototype's From and Offset.
+        // Where it comes from (or, leaving, goes to), worked out as it
+        // plays: an edge, beside another element, on its ground.
         DevicePack(key: const ValueKey("animPlacePack"), children: [
           StudioDrop<String>(
             key: const ValueKey("animPlaceFrom"),
@@ -883,8 +870,8 @@ const _placeKinds = [
   MotionPlaceKind.ground,
 ];
 
-/// placeOf is the place [c] comes from -- its first keys across and up and
-/// down -- or, leaving, goes to (its last): null for where it is.
+/// placeOf is the place [c] comes from (its first keys across and down) or,
+/// leaving, goes to (its last): null for where it is.
 MotionPlace? placeOf(MotionClip c) {
   var leaving = c.kind == MotionKind.leave;
   for (var prop in const [MotionProp.x, MotionProp.y]) {
@@ -895,10 +882,10 @@ MotionPlace? placeOf(MotionClip c) {
   return null;
 }
 
-/// withPlace is [c] coming from [kind] -- or, leaving, going to it -- of
-/// [target], [by] pixels on: its first keys across and up and down made the
-/// place (its last, leaving), keys made where it has none. Null puts it
-/// back where it is ([box], the element's, for a clip of set places).
+/// withPlace is [c] coming from [kind] of [target] (or, leaving, going to
+/// it), [by] pixels on: its first keys across and down made the place (its
+/// last, leaving), keys made where it has none. Null puts it back where it
+/// is ([box], the element's, for a clip of set places).
 MotionClip withPlace(MotionClip c, MotionPlaceKind? kind, Rect box,
     {String target = "", double by = 0}) {
   var leaving = c.kind == MotionKind.leave;
@@ -938,8 +925,7 @@ MotionClip withPlace(MotionClip c, MotionPlaceKind? kind, Rect box,
   return c.copyWith(keys: keys, edited: true);
 }
 
-/// MotionOutputCard is where the chain ends, as the prototype's Output: how
-/// much of the element is seen, and whether it is shown at all.
+/// MotionOutputCard is where the chain ends: how much shows, and whether.
 class MotionOutputCard extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -1043,7 +1029,6 @@ class MotionOutputCard extends StatelessWidget {
           options: const [(true, "Yes"), (false, "Hidden")],
           onChanged: (v) => write(e.withBase(visible: v)),
         ),
-        // How it is laid over what is under it, as the prototype's Blend.
         StudioDrop<LayerBlend>(
           key: const ValueKey("motionOutputBlend"),
           label: "Blend",

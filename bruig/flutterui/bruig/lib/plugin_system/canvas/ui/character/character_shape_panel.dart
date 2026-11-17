@@ -4,13 +4,11 @@ import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 
 // character_shape_panel.dart is the Character Studio's Character base step:
-// its parts down the left, and the open part's settings on the right (the
-// clothes' are in character_outfit_panel.dart). Kept apart from the stage so
-// it is tested without Flutter GPU.
+// parts down the left, the open part's settings on the right (clothes in
+// character_outfit_panel.dart). Apart from the stage, to test without GPU.
 
-/// startPartId, outfitPartId and wearPartId are the list's ids for what is
-/// not a shaping part: the body to start from, the whole outfit, and each
-/// piece of it.
+/// startPartId, outfitPartId and wearPartId are the list's other ids: the
+/// body to start from, the whole outfit, and each piece of it.
 const String startPartId = "start";
 const String outfitPartId = "outfit";
 String wearPartId(WearSlot s) => "wear-${s.name}";
@@ -23,9 +21,8 @@ class CharacterShapeList extends StatelessWidget {
   final CharacterShape shape;
   final CharacterOutfit outfit;
 
-  /// styled is whether the Drawing style is not the one started from;
-  /// decorated whether any decals are on; touched whether the body is
-  /// shaped by hand.
+  /// styled is whether the Drawing style differs from the start, decorated
+  /// whether decals are on, touched whether the body is shaped by hand.
   final bool styled, decorated, touched;
   final String selected;
   final ValueChanged<String> onSelect;
@@ -77,8 +74,7 @@ class CharacterShapeList extends StatelessWidget {
 }
 
 /// CharacterShapeControls are [part]'s settings: what it changes, its
-/// presets and choices as pills, its numbers as sliders, and a way back to
-/// how it was made.
+/// presets and choices as pills, its numbers as sliders, and a way back.
 class CharacterShapeControls extends StatelessWidget {
   final ShapePart part;
   final CharacterShape shape;

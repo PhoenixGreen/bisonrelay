@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-// chain_icons.dart is the Chain prototype's icons, as they are: each one
-// path on a 16-unit square, drawn in a 1.5 line with round ends (or filled,
-// where its path starts "F:"). See ChainIcon, and chainIconFor for the
-// Material icons the cards were given before, each mapped to its own.
+// chain_icons.dart is the Chain's icons: each one path on a 16-unit square,
+// drawn in a 1.5 line with round ends (or filled, where its path starts "F:").
+// See ChainIcon, and chainIconFor for the Material icons mapped to them.
 
-/// chainIcons are the prototype's icons by name, as its core.js has them.
+/// chainIcons are the Chain's icons by name.
 const Map<String, String> chainIcons = {
   "eq": "M1 11 C4 11 5 4 8 4 S12 11 15 11",
   "dyn": "M2 14 L7 9 L14 6 M2 14 H14",
@@ -80,8 +79,8 @@ const Map<String, String> chainIcons = {
   "open": "M9 2h5v5 M14 2L8 8 M12 9v5H2V4h5",
 };
 
-/// ChainIcon draws the prototype's icon [name], [size] square, in [color]
-/// (the text's, where none is given). Nothing for a name it has not.
+/// ChainIcon draws icon [name], [size] square, in [color] (the text's where
+/// none is given); nothing for a name it has not.
 class ChainIcon extends StatelessWidget {
   final String name;
   final double size;
@@ -109,9 +108,8 @@ class ChainIcon extends StatelessWidget {
   }
 }
 
-/// chainIconFor is the prototype's icon for [icon], one of the Material
-/// icons the Chain's cards and tabs were given, or null for one it has no
-/// match for.
+/// chainIconFor is the Chain's icon for the Material [icon] a card or tab
+/// names, or null for one it has no match for.
 String? chainIconFor(IconData icon) => switch (icon) {
       Icons.blur_circular => "space",
       Icons.compress => "dyn",
@@ -138,8 +136,7 @@ String? chainIconFor(IconData icon) => switch (icon) {
       _ => null,
     };
 
-/// chainIconOr is the prototype's icon for [icon] where it has one, else
-/// [icon] itself.
+/// chainIconOr is the Chain's icon for [icon] where it has one, else [icon].
 Widget chainIconOr(IconData icon, {double size = 15, Color? color}) {
   var name = chainIconFor(icon);
   return name == null

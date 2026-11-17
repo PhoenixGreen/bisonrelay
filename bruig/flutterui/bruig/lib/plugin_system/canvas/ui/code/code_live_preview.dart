@@ -10,11 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-// code_live_preview.dart is a Run panel's preview opened to be used (as the
-// prototype's was): the page itself, live in a browser over the panel, or a
-// Flutter app's own widgets -- its buttons pressed, what it prints added to
-// the output. Shut (a press elsewhere), a picture of it as it was left is
-// kept in place of the run's.
+// code_live_preview.dart is a Run panel's preview opened to be used: the
+// page live in a browser over the panel, or a Flutter app's own widgets,
+// what it prints added to the output. Shut by a press elsewhere, it leaves
+// a picture of itself as it was in place of the run's.
 
 class CodeLivePreview extends StatefulWidget {
   final CodeRunner runner;
@@ -24,9 +23,9 @@ class CodeLivePreview extends StatefulWidget {
   /// rect is the preview on the stage, in the stage's pixels.
   final Rect rect;
 
-  /// appSize is what a Flutter app is laid out at before it is fitted to
-  /// [rect]: the Run panel's (CodeRunElement.appSize), as its run's picture
-  /// was -- not the stage's pixels, which change with the zoom.
+  /// appSize is the size a Flutter app is laid out at before it is fitted to
+  /// [rect]: the Run panel's, as the run's picture was, not the stage's
+  /// pixels, which change with the zoom.
   final Size appSize;
   final void Function(CodeLog) onLog;
 
@@ -99,8 +98,8 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
     Widget body;
     if (widget.runner == CodeRunner.web &&
         InAppWebViewPlatform.instance == null) {
-      // No browser here (a test, or a system without one): said, not a
-      // failure.
+      // No browser here (a test, or a system without one): said, not an
+      // error.
       body = const ColoredBox(
           color: Color(0xFF15191E),
           child: Center(
@@ -142,8 +141,8 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
           child: RepaintBoundary(
             key: _app,
             child: MediaQuery(
-              // Not the app's text size (Ken runs a larger one): the
-              // run's picture is drawn without it.
+              // Not the app's text size: the run's picture is drawn
+              // without it.
               data: MediaQuery.of(context)
                   .copyWith(size: Size(w, h), textScaler: TextScaler.noScaling),
               child: ownNavigator(_built!),
@@ -172,10 +171,9 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
   }
 }
 
-/// ownNavigator gives a lesson's app a navigator of its own. It is built
-/// inside the app's own tree, and Navigator.of would otherwise find the
-/// app's: a page pushed there covered the whole app, and stayed after the
-/// preview was shut (security review, 2026-11-17).
+/// ownNavigator gives a lesson's app a navigator of its own. Built inside
+/// the app's tree, Navigator.of would otherwise find the app's, and a page
+/// pushed there would cover the whole app and outlive the preview.
 Widget ownNavigator(Widget app) => HeroControllerScope.none(
       child: Navigator(
         onGenerateInitialRoutes: (_, __) => [

@@ -3,10 +3,9 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/cues_section.dart';
 import 'package:flutter/material.dart';
 
-// vocal_cues_panel.dart is the run's cues down the sidebar: the named
-// moments a voice-over's lines start on, that elements are timed against.
-// A scene's transition and camera are in the Animation panel, opened by a
-// double click on the scene on the timeline.
+// vocal_cues_panel.dart is the run's cues down the sidebar: the moments a
+// voice-over's lines start on. A scene's transition and camera are in the
+// Animation panel, opened by double-clicking the scene on the timeline.
 
 class CanvasVocalCuesPanel extends StatelessWidget {
   final CanvasController controller;

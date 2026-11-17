@@ -1,7 +1,6 @@
-// character_outfit.dart is what a new 3D character wears: for each piece
-// of clothing, the body's own (the VRoid model's top, bottom or shoes), none,
-// or one made to fit from the body itself -- its kind, cut, colour and
-// pattern. What is made from these is in render/vrm/vrm_wear.dart.
+// character_outfit.dart is what a 3D character wears: for each piece, the
+// VRoid body's own, none, or one made to fit (kind, cut, colour, pattern),
+// made in render/vrm/vrm_wear.dart.
 
 /// WearSlot is a piece of clothing, in the order they are put on.
 enum WearSlot {
@@ -91,15 +90,14 @@ const List<int> underwearPalette = [
   0x3e6145
 ];
 
-/// Garment is one slot's clothing.
 class Garment {
   final WearSource source;
 
   /// kind is what is made, from [madeKinds].
   final String kind;
 
-  /// sleeves, hem, depth and fit are the top's cut: sleeves and hem from short to long, the neckline, its
-  /// depth, and how loose.
+  /// sleeves, hem, depth and fit are the top's cut: sleeves and hem from
+  /// short to long, the neckline's depth, and how loose.
   final double sleeves, hem, depth, fit;
   final String neckline;
 
@@ -107,16 +105,14 @@ class Garment {
   /// the waist, a skirt's flare and pleats.
   final double length, rise, flare, pleats;
 
-  /// colour, patternColour and sole are 0xRRGGBB: the cloth, the pattern on
-  /// it, a shoe's sole.
+  /// colour, patternColour and sole are 0xRRGGBB: cloth, pattern, sole.
   final int colour, patternColour, sole;
   final String pattern;
 
   /// scale is the pattern's size.
   final double scale;
 
-  /// ownCut is how much of the body's own sleeves or trouser legs is left,
-  /// from none to all.
+  /// ownCut is how much of the body's own sleeves or legs is left, 0 to 1.
   final double ownCut;
 
   const Garment({
@@ -186,8 +182,7 @@ class Garment {
         colour, patternColour, sole, pattern, scale, ownCut,
       ];
 
-  /// key says exactly what is made, so a garment the same as last time is
-  /// not made again.
+  /// key says exactly what is made, so an unchanged garment is not remade.
   String get key => _fields.join("|");
 
   Map<String, dynamic> toJson() => {
@@ -246,7 +241,6 @@ class Garment {
   int get hashCode => key.hashCode;
 }
 
-/// CharacterOutfit is everything worn. Immutable.
 class CharacterOutfit {
   final Map<WearSlot, Garment> _slots;
   const CharacterOutfit._(this._slots);
@@ -279,8 +273,7 @@ class CharacterOutfit {
   /// changed is whether [s] is not as designed.
   bool changed(WearSlot s) => this[s] != defaults[s];
 
-  /// underwearOnly takes every outer piece off at once, making underwear
-  /// where there is none.
+  /// underwearOnly takes off every outer piece, making underwear if none.
   CharacterOutfit underwearOnly({required bool male}) {
     var o = this;
     for (final s in [

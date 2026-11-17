@@ -9,12 +9,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 
-// path_settings.dart is a path's settings: the Text panel's shape (see
-// element_panel.dart) -- a quick strip of its colour, width and whether it
-// is closed; Content (its points), Look (its stroke, ends and dashes, its
-// looks) and More (what follows it).
+// path_settings.dart is a path's panel (see element_panel.dart): quick
+// strip, Content (points), Look and More (its follower).
 
-/// pathPanel is [e]'s panel.
 Widget pathPanel(
     BuildContext context,
     CanvasController controller,
@@ -66,14 +63,13 @@ Widget pathPanel(
           onChanged: (v) => now(e.copyWith(closed: v)),
         ),
       ]),
-      // Its points are what its settings are opened for: not shut away.
+      // Its points are why its settings are opened: not folded away.
       contentOpen: true,
       bits: pathBits(context, controller, e, write, begin, commit));
 }
 
-/// pathSettings is a curve, and what travels along it. The follower is one
-/// flat list of everything on the canvas plus every team's players, not a
-/// team-then-row choice: it is one decision.
+/// pathBits are a curve and its follower, chosen from one flat list of the
+/// canvas's elements and every team's players: one decision.
 List<PanelBit> pathBits(
     BuildContext context,
     CanvasController controller,
@@ -87,9 +83,8 @@ List<PanelBit> pathBits(
     commit();
   }
 
-  /// relink rewrites the follower's keyframes from the curve. Called after
-  /// anything that changes the route or its timing, since the movement is
-  /// baked rather than evaluated -- see CanvasController.applyPathFollow.
+  /// relink rebakes the follower's keyframes after any route or timing
+  /// change (see CanvasController.applyPathFollow).
   void relink(PathElement next) {
     begin();
     write(next);
@@ -143,9 +138,8 @@ List<PanelBit> pathBits(
                 onChanged: (v) => now(e.copyWith(closed: v)),
               ),
               CanvasToggle(
-                // A route is scaffolding: the line showing where a player runs helps
-                // while the move is being worked out and ruins the picture that comes
-                // out of it.
+                // A route is scaffolding: the line helps while the move is
+                // worked out and spoils the finished picture.
                 label: "Guide only",
                 value: e.guide,
                 onChanged: (v) => now(e.copyWith(guide: v)),
@@ -199,8 +193,8 @@ List<PanelBit> pathBits(
           CanvasDropdown<String>(
             label: "Who follows",
             value: _followKey(e.follow),
-            // The least it will be: any wider and the frame fields and the button
-            // wrapped onto a line of their own in a narrow sidebar.
+            // The least it can be: wider, and the frame fields and button
+            // wrap onto their own line in a narrow sidebar.
             width: 112,
             options: _followOptions(controller),
             onChanged: (v) {
@@ -210,13 +204,13 @@ List<PanelBit> pathBits(
                 now(e.copyWith(clearFollow: true));
                 return;
               }
-              // Detaching the old follower first, or its baked keyframes are left
-              // behind and it goes on running a route nothing is attached to.
+              // Detach the old follower first, or its baked keyframes stay
+              // and it keeps running a route nothing is attached to.
               controller.clearPathFollow(e);
               relink(e.copyWith(follow: follow, guide: true));
             },
           ),
-          // The run's two ends on a line of their own, under who runs it.
+          // The run's two ends on their own line, under who runs it.
           const CanvasLineBreak(),
           CanvasNumberField(
             key: const ValueKey("pathStartFrame"),
@@ -262,15 +256,13 @@ List<PanelBit> pathBits(
     PanelBit(PanelSection.content,
         summary: "${e.nodes.length} points",
         children: [_pathNodeList(controller, e, relink)]),
-    // A path that carries a follower still carries it: this is the line
-    // itself coming on, not the thing travelling along it.
-    // How it comes in, loops and goes: the Chain's Motion view (Ken,
-    // 2026-11-08), not a section here.
+    // A follower still rides a path that arrives: this is the line itself.
+    // Motion lives in the Chain's Motion view.
   ];
 }
 
-/// _followKey encodes a follower as a dropdown value, since a dropdown wants
-/// one comparable thing and a follower is an id and maybe an index.
+/// _followKey encodes a follower as one comparable dropdown value: an id
+/// and maybe an index.
 String _followKey(PathFollow? follow) =>
     follow == null ? "" : "${follow.elementId}/${follow.playerIndex ?? -1}";
 
@@ -285,8 +277,8 @@ PathFollow? _followFromKey(String key) {
   );
 }
 
-/// _followOptions is everything on the canvas that could follow a path,
-/// players included and paths excluded -- a path following a path is a knot.
+/// _followOptions is everything that could follow a path, players included
+/// and paths excluded (a path following a path is a knot).
 List<(String, String)> _followOptions(CanvasController controller) {
   var out = <(String, String)>[("", "Nothing")];
   for (var element in controller.document.elements) {
@@ -304,10 +296,9 @@ List<(String, String)> _followOptions(CanvasController controller) {
   return out;
 }
 
-/// _pathNodeList is one row per point: when the follower reaches it, and
-/// where it is. Retiming a point is how the movement is made to look right,
-/// as dragging its mark on the timeline is. An ordinary group, not a section
-/// to open: the points are what anybody came to this panel for.
+/// _pathNodeList is a row per point: when the follower reaches it and
+/// where. Retiming shapes the movement; a plain group, as the points are
+/// why the panel is opened.
 Widget _pathNodeList(CanvasController controller, PathElement e,
         void Function(PathElement) relink) =>
     CanvasControlGroup(
@@ -320,13 +311,13 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
           Padding(
             key: ValueKey("path-node-$i-${e.id}"),
             padding: const EdgeInsets.only(bottom: 2),
-            // A CanvasWrap, so the numbers grow into a wide sidebar, each taking the
-            // same share so the rows come out in columns.
+            // A CanvasWrap, so the numbers grow into a wide sidebar, each an
+            // equal share so the rows line up in columns.
             child: CanvasWrap(children: [
               CanvasNumberField(
                 key: ValueKey("node-frame-$i-${e.id}"),
-                // The two ends are named, because they are what the run is
-                // timed against and what the Start and End fields above set.
+                // The ends are named: the run is timed against them and the
+                // Start and End fields above set them.
                 label: i == 0
                     ? "Start"
                     : i == e.nodes.length - 1
@@ -366,9 +357,8 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
               CanvasIconButton(
                 icon: Icons.add,
                 tooltip: "Add a point after this one",
-                // Only between two points -- past the last one there is no
-                // segment to halve, and that is what the Add button on the
-                // Follow row is for.
+                // Only between two points: past the last there is no segment
+                // to halve, which is what the Follow row's Add is for.
                 onPressed: i >= e.nodes.length - 1
                     ? null
                     : () => relink(e.insertAfter(i,

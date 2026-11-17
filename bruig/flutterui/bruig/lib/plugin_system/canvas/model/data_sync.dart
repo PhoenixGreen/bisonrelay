@@ -10,19 +10,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 
-// data_sync.dart keeps every Data element -- a table or a chart -- in step
-// with the sheet it views (data_sheet.dart), whichever side changed:
-//
-// - A sheet changed (in the Data Studio): every view of it is made again
-//   from it, in every scene, on the master and in the Cast.
-// - A view changed its own data (a cell typed on the stage, its data
-//   editor, a refresh from its source): what it changed is written into the
-//   sheet, and so reaches every other view of it.
-// - A table or chart with no sheet (an old canvas, one pasted from another
-//   canvas, a new one): it is given a sheet of its own made from its data.
-//
-// Ken, 2026-11-15: a chart kept its own copy of a table's numbers, so typing
-// in the table didn't change the chart; one set of numbers ends that.
+// data_sync.dart keeps every Data element (a table or a chart) in step with
+// the sheet it views (data_sheet.dart), so there is one set of numbers. A
+// sheet changed in the Data Studio remakes every view of it, everywhere; a
+// view that changed its own data (a typed cell, its editor, a refresh)
+// writes that into the sheet, reaching every other view; a table or chart
+// with no sheet is given one made from its own data.
 
 /// linkOf is [e]'s view of a sheet, if it is a Data element with one.
 SheetLink? linkOf(CanvasElement e) => switch (e) {
@@ -33,15 +26,13 @@ SheetLink? linkOf(CanvasElement e) => switch (e) {
 
 bool isDataView(CanvasElement e) => e is TableElement || e is ChartElement;
 
-/// withLink is [e] viewing [link].
 CanvasElement withLink(CanvasElement e, SheetLink link) => switch (e) {
       TableElement t => t.copyWith(sheet: link),
       ChartElement c => c.copyWith(sheet: link),
       _ => e,
     };
 
-/// numText is [v] as a sheet holds a typed number: no ".0" on a whole one;
-/// a gap (NaN) an empty cell.
+/// numText is [v] as a sheet holds a number: no ".0" when whole; NaN empty.
 String numText(double v) {
   if (v.isNaN) return "";
   if (v.isInfinite) return v > 0 ? "∞" : "-∞";
@@ -49,8 +40,7 @@ String numText(double v) {
   return v.toString();
 }
 
-/// viewFromSheet is [e] made from its sheet: [e] itself, untouched, when it
-/// already shows what the sheet says.
+/// viewFromSheet is [e] made from its sheet; [e] itself if it already agrees.
 CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
   var link = linkOf(e);
   if (link == null) return e;
@@ -99,11 +89,11 @@ CanvasElement viewFromSheet(CanvasElement e, DataSheet sheet) {
   return e;
 }
 
-/// chartDataOf is the chart [link]'s range of [sheet] makes (its first
-/// row the headings): labelled by column [SheetLink.labels] as the sheet
-/// shows it, a series from each of [SheetLink.series] read from the cells'
-/// values (so "\$14.20" and a formula are numbers). Each series keeps how
-/// [was]'s one in its place looked; a blank or a word is a gap.
+/// chartDataOf is the chart [link]'s range of [sheet] makes (first row the
+/// headings): labelled by column [SheetLink.labels] as shown, a series from
+/// each of [SheetLink.series] read from the cells' values (so "\$14.20" and
+/// a formula are numbers), each looking as [was]'s in its place; a blank or
+/// a word is a gap.
 ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
     {ChartType type = ChartType.bar,
     List<ChartHighlight> highlights = const []}) {
@@ -137,9 +127,7 @@ ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
         sheetShown(sheet, r, link.range.c0 + link.pointNames)
     ]);
   }
-  // A few lines, a column each, are named at their ends, as a few lines a
-  // name each are (found making the Charts canvas: "Editorial lines" of
-  // five clubs' columns named none).
+  // A few lines, a column each, are named at their ends.
   if ((type == ChartType.line || type == ChartType.area) &&
       data.named.isEmpty &&
       data.series.length > 1 &&
@@ -150,12 +138,9 @@ ChartData chartDataOf(DataSheet sheet, SheetLink link, ChartData was,
   if (!highlights.any((h) => !h.off) || data.series.isEmpty) return data;
   var first = link.series.isEmpty ? -1 : link.series.first;
   List<double> by(int col) => valuesOf(col < 0 ? first : col);
-  // A line each (colour by words): the highlights pick out lines, ranked by
-  // where each ends.
-  // (A line a column, as well as a line a name: found making the Charts
-  // canvas, where five clubs' columns lit nothing.)
-  // A radar's shapes too, each ranked by its total: "the leader" is the
-  // biggest shape (found making the Charts canvas: nothing faded).
+  // A line each (a column or a name): the highlights pick out lines, ranked
+  // by where each ends. A radar's shapes are ranked by their totals, so
+  // "the leader" is the biggest shape.
   var radar = type == ChartType.radar;
   if (data.categories.isNotEmpty &&
       data.series.length > 1 &&
@@ -263,10 +248,9 @@ bool sameData(ChartData a, ChartData b) {
   return true;
 }
 
-/// sheetWithView is [sheet] with what view [e] shows written into it -- only
-/// the cells that read differently, so a formula or a typed "1,240" that
-/// still reads the same is kept -- and the range it views now, grown or
-/// shrunk to what it holds.
+/// sheetWithView is [sheet] with what view [e] shows written into it (only
+/// cells that read differently, so a formula or typed "1,240" that reads the
+/// same is kept), and the range it views, grown or shrunk to what it holds.
 (DataSheet, SheetLink) sheetWithView(DataSheet sheet, CanvasElement e) {
   var link = linkOf(e)!;
   var range = link.range;
@@ -342,10 +326,9 @@ bool sameData(ChartData a, ChartData b) {
   return (sheet, link);
 }
 
-/// _mappedBack is [sheet] with what view [e] -- which shows its rows its
-/// own way (sorted, filtered, cut to its top) -- changed written into the
-/// rows each of its rows shows. Its range stays: rows it gained or lost
-/// can't be placed in the sheet from here.
+/// _mappedBack is [sheet] with what view [e] changed written into the rows
+/// each of its rows shows (it may sort, filter or cut them to its top). Its
+/// range stays: rows it gained or lost can't be placed from here.
 DataSheet _mappedBack(DataSheet sheet, CanvasElement e, SheetLink link) {
   var g = link.range;
   var order = [g.r0, ...viewRows(sheet, link)];
@@ -362,8 +345,7 @@ DataSheet _mappedBack(DataSheet sheet, CanvasElement e, SheetLink link) {
   }
 
   if (e is TableElement) {
-    // A numbered first column isn't the shown rows' own: it isn't written
-    // back onto them.
+    // A numbered first column isn't the shown rows' own: not written back.
     var from = link.numbering ? 1 : 0;
     for (var (i, r) in order.indexed) {
       if (i >= e.rows.length) break;
@@ -391,9 +373,8 @@ DataSheet _mappedBack(DataSheet sheet, CanvasElement e, SheetLink link) {
   return out;
 }
 
-/// _mapViews is [doc] with [f] applied to every element everywhere -- this
-/// scene, the others, the master and the Cast -- the lists nothing changed
-/// in left as they were.
+/// _mapViews is [doc] with [f] applied to every element everywhere (this
+/// scene, the others, the master and the Cast), unchanged lists kept.
 CanvasDocument _mapViews(
     CanvasDocument doc, CanvasElement Function(CanvasElement e) f) {
   List<CanvasElement> mapped(List<CanvasElement> list) {
@@ -426,7 +407,6 @@ CanvasDocument _mapViews(
   return out;
 }
 
-/// _allViews is every Data element everywhere in [doc].
 Iterable<CanvasElement> _allViews(CanvasDocument doc) sync* {
   yield* doc.elements.where(isDataView);
   for (var (i, scene) in doc.allScenes.indexed) {
@@ -556,9 +536,8 @@ CanvasDocument dataAdopted(CanvasDocument doc) {
   });
 }
 
-/// dataRefreshed is [doc] with every view made from its sheet as it opens:
-/// what isn't kept in the file (a table's colour-rule looks) made again,
-/// and nothing touched that already agrees.
+/// dataRefreshed is [doc] with every view made from its sheet as it opens,
+/// remaking what the file doesn't keep (a table's colour-rule looks).
 CanvasDocument dataRefreshed(CanvasDocument doc) {
   if (doc.sheets.isEmpty) return doc;
   var sheets = {for (var s in doc.sheets) s.id: s};
@@ -568,9 +547,8 @@ CanvasDocument dataRefreshed(CanvasDocument doc) {
   });
 }
 
-/// dataSynced is [next] -- a change from [was] -- with its sheets and every
-/// view of them in step (see the top of this file). [next] itself when it
-/// changed no data.
+/// dataSynced is [next], a change from [was], with its sheets and every
+/// view of them in step; [next] itself when it changed no data.
 CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
   if (identical(was.sheets, next.sheets) &&
       identical(was.elements, next.elements)) {
@@ -579,7 +557,6 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
   var sheets = {for (var s in next.sheets) s.id: s};
   var before = {for (var e in was.elements) e.id: e};
   var changed = <String>{
-    // Sheets changed themselves (the Data Studio).
     for (var s in next.sheets)
       if (!identical(was.sheets.where((w) => w.id == s.id).firstOrNull, s))
         s.id,
@@ -597,14 +574,13 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
     }
     var old = before[e.id];
     if (identical(old, e)) continue;
-    // Shown from somewhere else now (another range, sheet or column): made
-    // from the sheet, not written into it.
+    // Shown from elsewhere (another range, sheet or column): made from the
+    // sheet, not written into it.
     if (old == null || linkOf(old) != link || old.kind != e.kind) {
       remake.add(e.id);
       continue;
     }
-    // Its highlights or its type changed: its marks, and a line per word,
-    // are made again from the sheet.
+    // Highlights or type changed: its marks and lines remade from the sheet.
     if (e is ChartElement &&
         old is ChartElement &&
         (!listEquals(old.highlights, e.highlights) || old.type != e.type)) {
@@ -617,7 +593,6 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
     var sheet = sheets[link.sheet]!;
     if (changed.contains(link.sheet)) continue;
     if (identical(viewFromSheet(e, sheet), e)) continue;
-    // Its own data changed: into the sheet with it.
     var (written, now) = sheetWithView(sheet, e);
     sheets[link.sheet] = written;
     changed.add(link.sheet);
@@ -646,14 +621,10 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
   });
 }
 
-/// chartColumnsOf is which columns of [range] of [sheet] (its first row
-/// the headings) a chart of it is labelled by -- the first that isn't
-/// numbers -- and draws: every column of numbers but that one.
-/// namingScore is how well column [col] of [range] (counted from its
-/// first) names its rows: the average length of each value's longest word,
-/// halved where values repeat. A club's name scores over its code, and both
-/// over a form guide ("W W D W W": one-letter words, however long the
-/// value). 0 for a column of numbers or nothing.
+/// namingScore is how well column [col] of [range] (from its first) names
+/// its rows: the average length of each value's longest word, halved where
+/// values repeat. A club's name beats its code, and both a form guide ("W W
+/// D W W"); 0 for a column of numbers or nothing.
 double namingScore(DataSheet sheet, CellRange range, int col) {
   var words = <String>[];
   for (var r = range.r0 + 1; r <= range.r1; r++) {
@@ -671,8 +642,7 @@ double namingScore(DataSheet sheet, CellRange range, int col) {
   return words.toSet().length == words.length ? score : score / 2;
 }
 
-/// namingColumn is the column of [range] that best names its rows
-/// (namingScore), or -1 when none is words.
+/// namingColumn is the column that best names its rows, or -1 for none.
 int namingColumn(DataSheet sheet, CellRange range) {
   var best = -1;
   var most = 0.0;
@@ -686,6 +656,8 @@ int namingColumn(DataSheet sheet, CellRange range) {
   return best;
 }
 
+/// chartColumnsOf is the column a chart of [range] is labelled by (the
+/// first not numbers) and those it draws (every other column of numbers).
 (int, List<int>) chartColumnsOf(DataSheet sheet, CellRange range) {
   var cols = range.cols;
   bool numbers(int c) {
@@ -715,14 +687,11 @@ int namingColumn(DataSheet sheet, CellRange range) {
 }
 
 // ---------- Rows and columns put in and taken out ----------
-//
 // As in Calc: a view's range moves with the cells it shows, grows when rows
 // or columns go in inside it and shrinks when they come out, and a chart's
-// label and series columns follow their columns (Ken, 2026-11-15: moving or
-// deleting a table's column broke the chart reading it).
+// label and series columns follow their columns.
 
-/// _withSheet is [doc] with [sheet] in place of the one of its id, and every
-/// view of it relinked by [relink].
+/// _withSheet is [doc] with [sheet] in, its views relinked by [relink].
 CanvasDocument _withSheet(CanvasDocument doc, DataSheet sheet,
     SheetLink Function(SheetLink link) relink) {
   var out = doc.copyWith(sheets: [
@@ -803,8 +772,7 @@ DataSheet _moved(DataSheet s, List<List<String>> cells, int at, int n,
   return (na, nb);
 }
 
-/// rowsInserted is [doc] with [n] empty rows put in sheet [id] before row
-/// [at].
+/// rowsInserted is [doc] with [n] empty rows put in sheet [id] before [at].
 CanvasDocument rowsInserted(CanvasDocument doc, String id, int at, int n) {
   var s = _sheetIn(doc, id);
   if (s == null || n <= 0) return doc;
@@ -818,8 +786,7 @@ CanvasDocument rowsInserted(CanvasDocument doc, String id, int at, int n) {
   });
 }
 
-/// rowsDeleted is [doc] with rows [at] to [at] + [n] - 1 of sheet [id] taken
-/// out.
+/// rowsDeleted is [doc] without rows [at] to [at] + [n] - 1 of sheet [id].
 CanvasDocument rowsDeleted(CanvasDocument doc, String id, int at, int n) {
   var s = _sheetIn(doc, id);
   if (s == null || n <= 0) return doc;
@@ -855,8 +822,7 @@ CanvasDocument sheetResized(
   ]);
 }
 
-/// sheetsRemoved is [doc] without sheets [ids], and without every table
-/// and chart showing them.
+/// sheetsRemoved is [doc] without sheets [ids] and every view of them.
 CanvasDocument sheetsRemoved(CanvasDocument doc, Set<String> ids) {
   var out = doc;
   for (var id in ids) {
@@ -870,8 +836,7 @@ CanvasDocument sheetsRemoved(CanvasDocument doc, Set<String> ids) {
   ]);
 }
 
-/// viewRemoved is [doc] without Data element [id], wherever it is: this
-/// scene, another, or the master.
+/// viewRemoved is [doc] without Data element [id], in any scene or master.
 CanvasDocument viewRemoved(CanvasDocument doc, String id) {
   List<CanvasElement> without(List<CanvasElement> list) =>
       list.any((e) => e.id == id) ? [...list.where((e) => e.id != id)] : list;
@@ -892,8 +857,7 @@ CanvasDocument viewRemoved(CanvasDocument doc, String id) {
   return out;
 }
 
-/// columnsInserted is [doc] with [n] empty columns put in sheet [id] before
-/// column [at].
+/// columnsInserted is [doc] with [n] empty columns in sheet [id] before [at].
 CanvasDocument columnsInserted(CanvasDocument doc, String id, int at, int n) {
   var s = _sheetIn(doc, id);
   if (s == null || n <= 0) return doc;
@@ -918,9 +882,7 @@ CanvasDocument columnsInserted(CanvasDocument doc, String id, int at, int n) {
         range: CellRange(g.r0, c0, g.r1, c1),
         labels: rel(l.labels),
         series: [for (var p in l.series) rel(p)],
-        // Every other column it names moves too (found making the Charts
-        // canvas: a column put in left a sort, a colour-by and the rest
-        // pointing at their old places).
+        // Every other column it names moves too: sort, colour-by and the rest.
         sortBy: relOr(l.sortBy),
         whereColumn: relOr(l.whereColumn),
         colourBy: relOr(l.colourBy),
@@ -971,11 +933,10 @@ CanvasDocument columnsDeleted(CanvasDocument doc, String id, int at, int n) {
   });
 }
 
-/// rowsSorted is [doc] with rows [rows] of sheet [id] put in order of
-/// column [by] -- numbers by value, before words, blanks last -- smallest
-/// first or, with [descending], largest; only columns [rows].c0 to c1
-/// move, their formats with them, a formula's references moving as a
-/// copied one's do (as Calc sorts).
+/// rowsSorted is [doc] with rows [rows] of sheet [id] ordered by column
+/// [by] (numbers by value, then words, blanks last), ascending unless
+/// [descending]. Only columns [rows].c0 to c1 move, formats with them, and
+/// a formula's references move as a copied one's do (as Calc sorts).
 CanvasDocument rowsSorted(CanvasDocument doc, String id, CellRange rows, int by,
     {bool descending = false}) {
   var s = _sheetIn(doc, id);
@@ -1065,12 +1026,10 @@ const _fillLists = [
   ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
 ];
 
-/// _filled is the [count] cells that carry on after [src] -- one line of
-/// a selection, in order -- [step] cells apart (a row or a column) from
-/// where each of [src] was: numbers by their step (one alone counting up
-/// by 1), names of months and days in order, words ending in a number
-/// counting on, and anything else over again, a formula's references
-/// moved as a copy's are.
+/// _filled is the [count] cells that carry on after [src] (one line of a
+/// selection), [step] cells apart: numbers by their step (one alone counting
+/// up by 1), months and days in order, words ending in a number counting
+/// on, and anything else repeated, a formula's references moved as a copy's.
 List<String> _filled(List<String> src, int count,
     String Function(String raw, int moved) copied) {
   var n = src.length;
@@ -1125,9 +1084,8 @@ List<String> _filled(List<String> src, int count,
   ];
 }
 
-/// sheetFilled is [sheet] with [from] carried on over [to], which lies
-/// below it (the same columns) or to its right (the same rows). Formats
-/// come too.
+/// sheetFilled is [sheet] with [from] carried on over [to], below it (same
+/// columns) or to its right (same rows), formats too.
 DataSheet sheetFilled(DataSheet sheet, CellRange from, CellRange to) {
   var down = to.r0 > from.r1;
   var formats = {...sheet.formats};
@@ -1160,12 +1118,10 @@ DataSheet sheetFilled(DataSheet sheet, CellRange from, CellRange to) {
   return sheet.withBlock(to.r0, to.c0, block).copyWith(formats: formats);
 }
 
-/// sourcesAdopted moves each table's data source onto its sheet (Connect
-/// data, 2026-11-16: the sheet owns its connection, and every table and
-/// chart of it follows one refresh). Only where the table shows its sheet
-/// whole from A1 and the sheet has no source of its own; the table's own is
-/// cleared, so there is one place it is kept. [doc] itself when there is
-/// nothing to move.
+/// sourcesAdopted moves each table's data source onto its sheet, which owns
+/// the connection so every view follows one refresh. Only where the table
+/// shows its sheet whole from A1 and the sheet has none; the table's is
+/// cleared so it is kept in one place. [doc] itself when nothing moves.
 CanvasDocument sourcesAdopted(CanvasDocument doc) {
   var moved = <String, DataSource>{};
   var from = <String>{};
@@ -1193,13 +1149,11 @@ CanvasDocument sourcesAdopted(CanvasDocument doc) {
           : e);
 }
 
-/// sheetFromSource is [sheet] filled with [rows] -- what a refresh brought,
-/// header first -- under [source]. The source's columns are written from
-/// A1, in place of what the sheet held; columns of the sheet's own past
-/// them are kept, matched row by row on the source's match column (else
-/// its first), so a note typed beside a team stays with that team. Columns
-/// the source marks keep are put back the same way, and with [keepHeads]
-/// (a sheet already connected) its own headings over the source's.
+/// sheetFromSource is [sheet] filled with [rows] (a refresh's, header first)
+/// under [source], written from A1. The sheet's own columns past them stay,
+/// matched row by row on the source's match column (else its first), so a
+/// note beside a team stays with it; columns marked keep likewise. With
+/// [keepHeads] (already connected) its headings stay over the source's.
 DataSheet sheetFromSource(
     DataSheet sheet, List<List<String>> rows, DataSource source,
     {bool keepHeads = false}) {
@@ -1232,8 +1186,7 @@ DataSheet sheetFromSource(
   return sheet.copyWith(cells: after, source: source);
 }
 
-/// changedCells is every cell that reads differently in [after] than in
-/// [before], for a refresh to show what moved.
+/// changedCells is every cell reading differently in [after] than [before].
 Set<(int, int)> changedCells(
     List<List<String>> before, List<List<String>> after) {
   String at(List<List<String>> g, int r, int c) =>
@@ -1250,9 +1203,8 @@ Set<(int, int)> changedCells(
   return out;
 }
 
-/// viewsRegrown is [doc] with every view of sheet [id] that showed the
-/// whole of [was] now showing [now]: a refresh that brings more rows (or
-/// fewer) is seen whole in the tables and charts that showed it whole.
+/// viewsRegrown is [doc] with every view of sheet [id] that showed the whole
+/// of [was] showing [now], so a refresh's added or lost rows are seen.
 CanvasDocument viewsRegrown(
         CanvasDocument doc, String id, CellRange was, CellRange now) =>
     was == now
@@ -1265,8 +1217,7 @@ CanvasDocument viewsRegrown(
             return withLink(e, link.copyWith(range: now));
           });
 
-/// _aggregate is [how] of [values] -- a group's numbers -- gaps left out
-/// (count counts the rows).
+/// _aggregate is [how] of a group's [values], gaps left out (count: rows).
 double _aggregate(String how, List<double> values) {
   if (how == "count") return values.length.toDouble();
   var v = [
@@ -1312,10 +1263,9 @@ Color scaleColour(double v, double lo, double hi) {
 }
 
 /// _chartedData is a chart reading its rows as only a chart can (see
-/// SheetLink.charted): one date at a time, rows with the same label brought
-/// together, a line for each word of a column, places picked, marks
-/// coloured by a column. With it, the numbers of any column of the range,
-/// one per category, for the highlights to rank.
+/// SheetLink.charted): one date at a time, same-label rows together, a line
+/// per word of a column, places picked, marks coloured by a column. With
+/// it, the numbers of any column of the range, one per category, to rank.
 (ChartData, List<double> Function(int col)) _chartedData(
     DataSheet sheet, SheetLink link, ChartData was, ChartType type) {
   var g = link.range;
@@ -1390,8 +1340,7 @@ Color scaleColour(double v, double lo, double hi) {
               ? was.series[i].copyWith(values: values)
               : ChartSeries(
                   name: sub,
-                  // Past six lines they start grey, so a highlight is what
-                  // shows (prototype v6).
+                  // Past six lines they start grey, so a highlight shows.
                   color: subs.length > 6
                       ? const Color(0x88C9D6EA)
                       : chartPalette[i % chartPalette.length],
@@ -1434,8 +1383,7 @@ Color scaleColour(double v, double lo, double hi) {
     });
     items = [for (var (_, it, _) in keyed) it];
   }
-  // Which places: the first or last few, or places named, a gap between
-  // groups of them.
+  // Which places: the first or last few, or those named, gaps between.
   var placed = [for (var (i, it) in items.indexed) (i + 1, it)];
   if (link.top > 0 && placed.length > link.top) {
     placed = link.bottom
@@ -1576,8 +1524,7 @@ ChartData _binnedData(DataSheet sheet, SheetLink link, ChartData was) {
   );
 }
 
-/// _spotlit is the look of row [r] of [g] when it is the sheet's spotlight
-/// -- a cell of it says the spotlit name -- else null.
+/// _spotlit is row [r]'s look where a cell names the spotlit one, else null.
 SheetCellLook? _spotlit(DataSheet sheet, int r, CellRange g) {
   var who = sheet.spotlight.trim().toLowerCase();
   if (who.isEmpty) return null;
@@ -1640,8 +1587,7 @@ bool _samePanels(List<ChartPanel> a, List<ChartPanel> b) {
   return true;
 }
 
-/// chartLights is [highlights] with [sheet]'s spotlight after them, so it
-/// wins: what a chart of the sheet lights.
+/// chartLights is [highlights] with [sheet]'s spotlight last, so it wins.
 List<ChartHighlight> chartLights(
         List<ChartHighlight> highlights, DataSheet sheet) =>
     [

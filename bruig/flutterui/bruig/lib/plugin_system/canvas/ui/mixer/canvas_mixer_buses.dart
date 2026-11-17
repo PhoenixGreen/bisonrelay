@@ -1,9 +1,8 @@
 part of 'canvas_mixer.dart';
 
-// canvas_mixer_buses.dart is a bus's own cards in the Chain, as the chain
-// prototype has them (Ken, 2026-11-08): a scene's Source -- everything heard
-// in it, summed, with its transition's sound -- and a bus's Output, its
-// level and where it goes.
+// canvas_mixer_buses.dart is a bus's own cards in the Chain: a scene's
+// Source (everything heard in it, summed, with its transition's sound) and
+// a bus's Output (its level and where it goes).
 
 const _sceneColour = Color(0xFF5AB4C8);
 
@@ -103,10 +102,9 @@ class _SceneSoundDevice extends StatelessWidget {
   }
 }
 
-/// _BusSourceDevice is where a return's or the master's sound comes from,
-/// as the prototype's From sends and Every channel: each channel sending to
-/// the return (by how much), or everything summed into the master, with its
-/// level now.
+/// _BusSourceDevice is where a return's or the master's sound comes from:
+/// each channel sending to the return, by how much, or everything summed
+/// into the master, with its level now.
 class _BusSourceDevice extends StatelessWidget {
   final CanvasController controller;
 
@@ -187,14 +185,12 @@ class _BusSourceDevice extends StatelessWidget {
   }
 }
 
-/// _SumScreen is a bar for each of [rows] -- a name and its level now, in
-/// dB -- as the prototype's Sum view draws them.
+/// _SumScreen is a bar for each of [rows]: a name and its level now, in dB.
 class _SumScreen extends CustomPainter {
   final List<(String, double)> rows;
   final String caption;
   final StudioColors studio;
 
-  /// empty is what it says with nothing to show.
   final String empty;
   _SumScreen(this.rows, this.caption, this.studio,
       {this.empty = "Nothing heard in it yet"});
@@ -333,10 +329,9 @@ class _PairMeter extends CustomPainter {
   bool shouldRepaint(_PairMeter old) => old.level != level;
 }
 
-/// _LoudnessDevice is the master's loudness, as the chain prototype has it:
-/// on its screen the momentary, short-term and integrated readings of what
-/// leaves the master against the target -- or, Whole song, the timeline
-/// measured as an export would be -- with the Target, what it is aimed for,
+/// _LoudnessDevice is the master's loudness: momentary, short-term and
+/// integrated readings of what leaves the master against the target (or,
+/// Whole song, the timeline measured as an export would be), the Target,
 /// and whether an export is brought to it.
 class _LoudnessDevice extends StatefulWidget {
   final CanvasController controller;

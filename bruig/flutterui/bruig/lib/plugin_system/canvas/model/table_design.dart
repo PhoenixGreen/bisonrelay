@@ -5,13 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:flutter/painting.dart';
 
 // table_design.dart is what the Data Studio's Table tab says about a
-// table's rules, which it calls styles (Ken, 2026-11-15: designing a table
-// through the settings was "very painful"): what part of the table was
-// clicked, what each style reaches, what to call it, and whether it changes
-// anything you can see. Words rather than the rule language, so "Points
-// column · bold" stands for {col: "Points", style: {weight: 700}}.
+// table's rules, which it calls styles: what part was clicked, what each
+// style reaches, what to call it, and whether it changes anything visible.
+// Words rather than the rule language: "Points column · bold" stands for
+// {col: "Points", style: {weight: 700}}.
 
-/// TablePartKind is what was clicked in the Table tab.
 enum TablePartKind { table, header, column, row, cell, style }
 
 /// TablePart is one part of a table: the whole of it, its header row, a
@@ -55,8 +53,7 @@ bool styleShows(TableCellStyle s) =>
     s.textPad != 0 ||
     s.redact;
 
-/// styleCells is every cell [rule] reaches in [t], switched off or not, as
-/// (row, column) pairs.
+/// styleCells is every (row, column) [rule] reaches in [t], on or off.
 List<(int, int)> styleCells(TableElement t, TableRule rule) {
   var head = t.header;
   var out = <(int, int)>[];
@@ -89,8 +86,7 @@ String? styleIdle(TableElement t, TableRule rule) {
   return null;
 }
 
-/// stylesAt is the styles on one cell, in the order they apply: a later one
-/// wins where two say different things.
+/// stylesAt is the styles on one cell in applying order: later ones win.
 List<int> stylesAt(TableElement t, int row, int col) => [
       for (var (i, rule) in t.rules.indexed)
         if (rule.matchesRow(row) &&
@@ -101,8 +97,7 @@ List<int> stylesAt(TableElement t, int row, int col) => [
           i
     ];
 
-/// stylesOnColumn and stylesOnRow are the styles reaching any cell of a
-/// column or a row.
+/// stylesOnColumn and stylesOnRow are the styles reaching a column or row.
 List<int> stylesOnColumn(TableElement t, int col) => [
       for (var (i, rule) in t.rules.indexed)
         if (styleCells(t, rule).any((p) => p.$2 == col)) i
@@ -272,8 +267,7 @@ String styleLook(TableCellStyle s) {
   return out.isEmpty ? "no change" : out.join(", ");
 }
 
-/// styleName is what to call [t]'s style [index]: its own name, else what it
-/// reaches and looks like.
+/// styleName is style [index]'s own name, else its reach and look in words.
 String styleName(TableElement t, int index) {
   var rule = t.rules[index];
   if (rule.name.trim().isNotEmpty) return rule.name.trim();
@@ -386,12 +380,11 @@ String columnKey(TableElement t, int col) {
   return name.isEmpty ? "${col + 1}" : name;
 }
 
-/// reachOptions is what a new style could reach, from a click on [from]
-/// (prototype v3's reachOptions): a cell offers that team's cell or whole
-/// row (following it), the row by place (staying put), the column, a number
-/// condition from what the cell says, and each short word in it; a row tab,
-/// the team's row or the place; a column tab, the column. [rows], picked
-/// with shift, offers them by place or by who is in them.
+/// reachOptions is what a new style could reach, from a click on [from]: a
+/// cell offers that team's cell or row (following it), the row by place
+/// (staying put), the column, a number condition from the cell, and each
+/// short word in it; a row tab, the team's row or the place; a column tab,
+/// the column. [rows], picked with shift, offers them by place or by who.
 List<ReachOption> reachOptions(TableElement t, TablePart from,
     {List<int> rows = const []}) {
   var out = <ReachOption>[];

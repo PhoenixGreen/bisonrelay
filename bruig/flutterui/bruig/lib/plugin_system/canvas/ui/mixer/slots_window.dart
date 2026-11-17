@@ -11,7 +11,6 @@ import 'package:flutter/widgets.dart';
 // the slots' column and scrolled along with every other row (see
 // CanvasController.slotsScroll).
 
-/// SlotsWindow is one row's slots beside it, [cell] for each slot shown.
 class SlotsWindow extends StatelessWidget {
   final CanvasController controller;
   final Widget Function(int i) cell;
@@ -84,9 +83,8 @@ Widget slotsScroller(CanvasController c, Widget child) => Builder(
           ),
         ));
 
-/// SlotKeys is a slot taking the keyboard once clicked: Delete or
-/// Backspace empties it (Ken: "with a slot selected a user should be able
-/// to delete it"). [focus] is asked for by the slot's click.
+/// SlotKeys is a slot taking the keyboard once clicked: Delete or Backspace
+/// empties it. [focus] is asked for by the slot's click.
 class SlotKeys extends StatelessWidget {
   final FocusNode focus;
   final VoidCallback onDelete;

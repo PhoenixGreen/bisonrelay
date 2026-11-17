@@ -8,32 +8,28 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 // canvas_row_names.dart is the list of things a source has: every coin
-// CoinGecko knows, and whatever the next source with a list of rows holds.
-//
-// A built-in list of identifiers cannot be right: CoinGecko files Firo under
-// "zcoin" and XRP under "ripple", and there is no way to know that except to
-// ask. So the list is asked for, once, and kept; the built-in list is only
-// what is offered before anybody asks.
+// CoinGecko knows, and any later source with a list of rows. A built-in
+// list cannot be right -- CoinGecko files Firo under "zcoin" and XRP under
+// "ripple" -- so the list is fetched once and kept; the built-in one is
+// only what is offered before then.
 
-/// CanvasRowNames is the fetched list, in memory and on disk.
 class CanvasRowNames {
-  /// _loaded is what each preset's list turned out to be, for this run: name
-  /// key to identifier, keyed by asRowKey of the name as a cell is matched,
-  /// so a row saying "Bitcoin Cash" finds bitcoin-cash.
+  /// _loaded is each preset's fetched list for this run: identifier by
+  /// asRowKey of the name, as a cell is matched, so a row saying "Bitcoin
+  /// Cash" finds bitcoin-cash.
   static final Map<String, Map<String, String>> _loaded = {};
 
-  /// _names is the same lists as names, in the order they arrived, for the
-  /// cell that suggests one.
+  /// _names is the same lists as names, in arrival order, for the cell that
+  /// suggests one.
   static final Map<String, List<String>> _names = {};
 
-  /// known is what has been fetched for [presetId], or null where nothing
-  /// has. Synchronous on purpose: the settings panel asks while it builds.
+  /// known is what has been fetched for [presetId], or null. Synchronous on
+  /// purpose: the settings panel asks while it builds.
   static Map<String, String>? known(String presetId) => _loaded[presetId];
 
-  /// idFor is what to ask for when a row says [cell]: the fetched identifier,
-  /// the preset's own where nothing has been fetched, and the cell's own key
-  /// where neither knows it. The fetched list wins, being the source's own
-  /// answer.
+  /// idFor is what to ask for when a row says [cell]: the fetched identifier
+  /// (the source's own answer, so it wins), else the preset's own, else the
+  /// cell's own key.
   static String idFor(DataPreset preset, String cell) {
     var fetched = _loaded[preset.id];
     if (fetched != null) {
@@ -49,8 +45,8 @@ class CanvasRowNames {
     return _names[preset.id] ?? preset.rowNames;
   }
 
-  /// load reads a list fetched in some earlier sitting. Cheap and safe to
-  /// call again: it does nothing once the list is in memory.
+  /// load reads a list fetched in an earlier sitting; it does nothing once
+  /// the list is in memory.
   static Future<void> load(String presetId) async {
     if (_loaded.containsKey(presetId)) return;
     try {
@@ -67,7 +63,7 @@ class CanvasRowNames {
     }
   }
 
-  /// fetch asks the source for its list and keeps it. Returns how many it now
+  /// fetch asks the source for its list and keeps it. Returns how many it
   /// knows, or null where the request failed, which the caller reports.
   static Future<int?> fetch(
     DataPreset preset,
@@ -87,8 +83,8 @@ class CanvasRowNames {
       if (id.isEmpty || name.isEmpty) continue;
       var key = asRowKey(name);
       if (key.isEmpty) continue;
-      // The first of a name wins: CoinGecko has several coins of the same
-      // name, and lists the real one before its imitators.
+      // The first of a name wins: CoinGecko lists the real coin before its
+      // imitators of the same name.
       if (byKey.containsKey(key)) continue;
       byKey[key] = id;
       names.add(name);
@@ -99,8 +95,8 @@ class CanvasRowNames {
     try {
       await writeWholeText(await _pathFor(preset.id), jsonEncode(byKey));
     } catch (exception) {
-      // Kept for this sitting even where it cannot be written: the list is
-      // useful now, and failing to save it is not a reason to throw it away.
+      // Kept for this sitting even where it cannot be written: failing to save
+      // it is no reason to throw it away.
       debugPrint("The list of names could not be saved: $exception");
     }
     return byKey.length;
@@ -112,7 +108,7 @@ class CanvasRowNames {
     _names[presetId] = names ?? byKey.keys.toList();
   }
 
-  /// forget drops what is held, for tests and for a list that has gone stale.
+  /// forget drops what is held, for tests and a stale list.
   @visibleForTesting
   static void forget() {
     _loaded.clear();

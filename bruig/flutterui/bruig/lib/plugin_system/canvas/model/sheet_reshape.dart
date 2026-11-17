@@ -2,20 +2,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:flutter/foundation.dart';
 
-// sheet_reshape.dart is a sheet made from another (Ken, 2026-11-17, the
-// improvements report's second item): the same numbers in another shape,
-// so one sheet feeds any chart without being typed again. The Charts canvas
-// found Line's "Small charts" needing its own long copy of a wide sheet.
-//
-// - long: a column a club becomes a row a club a season (wide → long);
-// - wide: a row a club a season becomes a column a club (a pivot);
-// - group: rows with the same word brought together, their numbers added
-//   up, averaged, counted, or the most or least;
+// sheet_reshape.dart is a sheet made from another: the same numbers in
+// another shape, so one sheet feeds any chart without retyping.
+// - long: a column a club becomes a row a club a season (wide to long);
+// - wide: a pivot, the reverse;
+// - group: rows sharing a word brought together, numbers totalled,
+//   averaged, counted, or the most or least;
 // - join: another sheet's columns beside each row, matched on a column.
-//
-// A made sheet keeps its recipe (DataSheet.made) and is made again whenever
-// what it is made from changes, so a refresh flows through to its tables
-// and charts (sheetsMade, before the views follow their sheets).
+// A made sheet keeps its recipe (DataSheet.made) and is remade whenever
+// its source changes, before the views follow their sheets (sheetsMade).
 
 enum ReshapeKind {
   long("Long: a row a value"),
@@ -38,15 +33,13 @@ class SheetMade {
   final ReshapeKind kind;
 
   /// keep is, for long, the columns kept on every row (the club's name); the
-  /// rest each become a row, their heading under [names], their value under
-  /// [valuesName].
+  /// rest each become a row, heading under [names], value under [valuesName].
   final List<int> keep;
   final String names, valuesName;
 
   /// rows, columns and value are, for wide, the column naming each row, the
-  /// one whose words become columns, and the one filling them; [values],
-  /// where there are several (a column a word for each: "Arsenal · Pts",
-  /// "Arsenal · GD"), all of them.
+  /// one whose words become columns, and the one filling them; [values] all
+  /// of them where there are several ("Arsenal · Pts", "Arsenal · GD").
   final int rows, columns, value;
   final List<int> values;
 
@@ -176,7 +169,7 @@ double _aggregate(String how, List<double> v) => switch (how) {
       _ => v.fold(0.0, (a, b) => a + b),
     };
 
-/// reshaped is the cells [m] makes from [from] (and, for a join, [other]),
+/// reshaped is the cells [m] makes from [from] (and [other] for a join),
 /// header first.
 List<List<String>> reshaped(SheetMade m, DataSheet from, [DataSheet? other]) {
   var g = _grid(from);
@@ -288,9 +281,9 @@ List<List<String>> reshaped(SheetMade m, DataSheet from, [DataSheet? other]) {
   }
 }
 
-/// sheetsMade is [next] with every made sheet made again where what it is
-/// made from changed since [was] (or it is new, or its recipe changed): a
-/// chain of them settles in as many passes as it is long.
+/// sheetsMade is [next] with each made sheet remade where its source
+/// changed since [was] (or it or its recipe is new): a chain settles in as
+/// many passes as it is long.
 CanvasDocument sheetsMade(CanvasDocument was, CanvasDocument next) {
   if (!next.sheets.any((s) => s.made != null)) return next;
   var before = {for (var s in was.sheets) s.id: s};

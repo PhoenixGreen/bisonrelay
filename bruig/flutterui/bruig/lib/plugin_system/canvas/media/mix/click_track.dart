@@ -4,9 +4,8 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 
-// click_track.dart is the metronome: a click on every beat, the first of
-// each bar higher. It is generated as it is read, so it is never a file and
-// seeking is free. Editor only: exports do not include it.
+// click_track.dart is the metronome: a click a beat, each bar's first
+// higher, generated as read so seeking is free. Editor only, not exported.
 
 class ClickTrack implements TrackSource {
   /// secondsPerBeat and beatsPerBar are the metre it counts.
@@ -21,7 +20,7 @@ class ClickTrack implements TrackSource {
   /// clickSeconds is how long one click rings.
   static const double clickSeconds = 0.03;
 
-  /// frames is a day: longer than anything it will be played under.
+  /// frames is a day: longer than anything it plays under.
   @override
   int get frames => 24 * 3600 * mixRate;
 

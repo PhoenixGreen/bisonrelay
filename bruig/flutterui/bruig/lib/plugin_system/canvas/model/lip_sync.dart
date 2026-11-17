@@ -3,17 +3,12 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
 
-// lip_sync.dart turns a voice-over into mouth shapes by frame, for a 3D
-// character's mouth (elements/character_performance.dart).
-//
-// With the words heard (the [SpokenWord]s of the word cues), each word is
-// spelt into shapes sharing its time. With only the sound, each frame's
-// loudness sets how open the mouth is: rougher, but language-free.
-//
-// Either way the mouths are tidied as an animator would: none shorter than
-// a couple of frames (it flickers), each a frame before its sound (the eye
-// expects the shape first), and a closed mouth for M, B and P never dropped:
-// a "b" without the lips meeting is the mistake everybody sees.
+// lip_sync.dart turns a voice-over into mouth shapes by frame for a 3D
+// character's mouth (elements/character_performance.dart): from the words
+// heard, each word spelt into shapes; from the sound alone, loudness sets
+// how open the mouth is. The mouths are then tidied: none shorter than a
+// couple of frames (it flickers), each a frame before its sound (the eye
+// expects the shape first), and a closed mouth for M, B and P never dropped.
 
 /// MouthShape is one of the mouths speech is drawn with: the Hanna-Barbera
 /// letters A to H, and [rest] (X), which leaves the face's own mouth.
@@ -39,7 +34,6 @@ enum MouthShape {
 /// MouthKey is one mouth, from [frame] until the next.
 typedef MouthKey = ({int frame, MouthShape shape});
 
-/// LipSyncFeel is how the mouths are tidied.
 class LipSyncFeel {
   /// shortest is the fewest frames a mouth is held for.
   final int shortest;
@@ -53,8 +47,8 @@ class LipSyncFeel {
   const LipSyncFeel({this.shortest = 2, this.lead = 1, this.pause = 0.25});
 }
 
-/// mouthsOfWord is the shapes [word] is said with, in order, guessed from
-/// its spelling. That is rough, but the shapes are few and forgiving.
+/// mouthsOfWord is the shapes [word] is said with, guessed from its
+/// spelling: rough, but the shapes are few and forgiving.
 List<MouthShape> mouthsOfWord(String word) {
   var w = word.toLowerCase().replaceAll(RegExp(r"[^a-z]"), "");
   // A final silent e: "make", "home", "time" -- but not "the" or "be".
@@ -94,8 +88,7 @@ const _a = MouthShape.closed,
     _h = MouthShape.tongue;
 
 /// _rules is how spellings sound, longest first so "ough" is tried before
-/// "ou" and "o". A spelling with no shapes is said without moving the mouth
-/// from the last one.
+/// "ou" and "o". A spelling with no shapes keeps the last mouth.
 const List<(String, List<MouthShape>)> _rules = [
   ("ough", [_e]),
   ("augh", [_e]),
@@ -161,7 +154,7 @@ const List<(String, List<MouthShape>)> _rules = [
   ("h", []),
 ];
 
-/// _weight is how long a shape is held, against the others in its word:
+/// _weight is how long a shape is held against the others in its word:
 /// vowels are the long part of a syllable.
 int _weight(MouthShape s) => switch (s) {
       MouthShape.open || MouthShape.wide || MouthShape.round => 3,
@@ -172,8 +165,7 @@ int _weight(MouthShape s) => switch (s) {
 bool _isVowel(MouthShape s) =>
     s == MouthShape.open || s == MouthShape.wide || s == MouthShape.round;
 
-/// mouthsFromWords is the mouths for [words], in their own frames, tidied
-/// by [feel] at [frameRate].
+/// mouthsFromWords is the mouths for [words], tidied by [feel].
 List<MouthKey> mouthsFromWords(List<SpokenWord> words,
     {required int frameRate, LipSyncFeel feel = const LipSyncFeel()}) {
   var out = <MouthKey>[];
@@ -183,7 +175,7 @@ List<MouthKey> mouthsFromWords(List<SpokenWord> words,
     var shapes = mouthsOfWord(w.text);
     if (shapes.isEmpty) continue;
     // Too many shapes for the time: keep the closures and the vowels, which
-    // are what the eye reads, and drop the rest.
+    // the eye reads, and drop the rest.
     var most = math.max(1, length ~/ math.max(1, feel.shortest));
     if (shapes.length > most) {
       var kept = [
@@ -215,12 +207,10 @@ List<MouthKey> mouthsFromWords(List<SpokenWord> words,
   return tidyMouths(out, feel);
 }
 
-/// mouthsFromLoudness is the mouths for a recording whose [peaks] (nought to
-/// one, evenly across [seconds]) start at [startFrame].
-///
-/// Louder is more open. A sharp, brief dip mid-speech closes the lips (where
-/// m, b and p mostly are); a long stretch at one loudness alternates two
-/// shapes so a held vowel does not freeze the face.
+/// mouthsFromLoudness is the mouths for a recording whose [peaks] (0 to 1,
+/// evenly across [seconds]) start at [startFrame]. Louder is more open; a
+/// sharp brief dip mid-speech closes the lips (m, b, p); a long even stretch
+/// alternates two shapes so a held vowel does not freeze the face.
 List<MouthKey> mouthsFromLoudness(Float32List peaks, double seconds,
     {required int startFrame,
     required int frameRate,
@@ -280,13 +270,11 @@ List<MouthKey> mouthsFromLoudness(Float32List peaks, double seconds,
   return tidyMouths(out, feel);
 }
 
-/// mouthsFromWordsHeard is [words]' mouths kept to the voice that says them,
-/// whose [peaks] (nought to one, evenly across [seconds]) start at frame 0:
-/// the words choose each shape, the sound when the mouth moves -- shut
-/// wherever it is quiet, and where it sounds but the words have the mouth
-/// at rest, opened as loud as it is. Words timed by their length alone
-/// drift from what is heard (Ken, 2026-11-10: "the lip sync ... looks very
-/// off compared to the words they are saying"); the sound does not.
+/// mouthsFromWordsHeard is [words]' mouths kept to the voice saying them,
+/// whose [peaks] (0 to 1, evenly across [seconds]) start at frame 0: the
+/// words choose each shape, the sound when the mouth moves -- shut where it
+/// is quiet, opened as loud as it is where the words have it at rest. Words
+/// timed by length alone drift from what is heard; the sound does not.
 List<MouthKey> mouthsFromWordsHeard(
     List<SpokenWord> words, Float32List peaks, double seconds,
     {required int frameRate, LipSyncFeel feel = const LipSyncFeel()}) {
@@ -347,8 +335,8 @@ List<MouthKey> tidyMouths(List<MouthKey> keys, LipSyncFeel feel) {
         out.removeLast();
       } else if (out.last.shape == MouthShape.closed ||
           k.shape == MouthShape.rest) {
-        // After a closure, or for a rest (a phrase must end closed), wait
-        // until the shape before has had its frames.
+        // After a closure, or for a rest (a phrase must end closed), wait until
+        // the shape before has had its frames.
         k = (frame: out.last.frame + feel.shortest, shape: k.shape);
       } else {
         continue;

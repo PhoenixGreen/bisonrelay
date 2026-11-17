@@ -1,26 +1,22 @@
 part of 'canvas_mixer.dart';
 
-// canvas_mixer_motion.dart is an element's strip in the mixer, beside the
-// sound channels': its animation slots, one per cue row as theirs are, and
-// its layers' faders.
-//
-// A slot's triangle launches it; its name picks it into the Animation
-// panel; dragged, it goes to another slot (this element's: moved; another's:
-// copied) or onto the timeline. An empty slot pressed stops the element's
-// clips; double-clicked, it offers a ready-made motion.
+// canvas_mixer_motion.dart is an element's mixer strip: its animation slots,
+// one per cue row as channels have, and its layers' faders. A slot's
+// triangle launches it; its name picks it; dragged, it moves (same element)
+// or copies (another) or goes onto the timeline. An empty slot stops the
+// element's clips; double-clicked, it makes a new clip.
 
-/// motionStripKey is [id]'s strip's key among the narrow ones (see
-/// CanvasController.narrowStrips): not a channel's.
+/// motionStripKey is [id]'s key among the narrow strips
+/// (CanvasController.narrowStrips).
 String motionStripKey(String id) => "motion:$id";
 
-/// _elementStrip is [e]'s strip: narrow, as a channel's can be, with its
-/// faders named by layer alone.
+/// _elementStrip is [e]'s narrow strip, faders named by layer alone.
 Widget _elementStrip(CanvasController controller, MixerLook theme,
     CanvasElement e, _Bands bands, ScrollController scroll) {
   var key = motionStripKey(e.id);
   var narrow = controller.narrowStrips.contains(key);
-  // Pressed anywhere, as a channel's strip is: the element picked, and no
-  // channel with it but its own sound's, the two being one thing.
+  // Pressed anywhere: the element is picked, with only its own sound's
+  // channel, the two being one thing.
   void pick() {
     if (!(controller.selection.length == 1 &&
         controller.selection.first == e.id)) {
@@ -119,9 +115,9 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
           )));
 }
 
-/// _ElementSoundBand is an element's sound in its strip's devices band: a
-/// channel of its own to give it, or, with one, where that goes (the master,
-/// or a return shared with others as a group bus).
+/// _ElementSoundBand is an element's sound in its devices band: a button to
+/// give it a channel or, with one, where it goes (master, or a return as a
+/// group bus).
 class _ElementSoundBand extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -204,8 +200,8 @@ class _ElementSoundBand extends StatelessWidget {
         ),
       ),
     );
-    // The label only where there is room for it over the menu: a band
-    // squeezed short keeps the menu.
+    // The label shows only with room over the menu; a short band keeps the
+    // menu.
     return LayoutBuilder(builder: (context, box) {
       var label = Text("Sound goes to", style: small, maxLines: 1);
       var labelled = box.maxHeight >=
@@ -218,8 +214,7 @@ class _ElementSoundBand extends StatelessWidget {
   }
 }
 
-/// _MotionSlot is one of an element's slots: a clip, coloured by what it is
-/// for, or empty.
+/// _MotionSlot is one element slot: a clip coloured by purpose, or empty.
 class _MotionSlot extends StatefulWidget {
   final CanvasController controller;
   final String element;
@@ -258,20 +253,20 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
 
   CanvasController get c => widget.controller;
 
-  /// _pick picks [clip]: shown in the Chain where it is open, without
-  /// opening it (Ken: a single click doesn't open the Chain).
+  /// _pick shows [clip] in the Chain where that is open, without opening it:
+  /// a single click doesn't open the Chain.
   void _pick(MotionClip clip) {
     c.pickMotion(widget.element, clip.id);
     _keys.requestFocus();
   }
 
-  /// _open opens [clip] in the Chain: a double-click, or its menu's Open.
+  /// _open opens [clip] in the Chain: double-click or menu Open.
   void _open(MotionClip clip) {
     c.pickMotion(widget.element, clip.id);
     c.animationOpen = true;
   }
 
-  /// _keys has the keyboard once the slot is clicked: see SlotKeys.
+  /// _keys has the keyboard once clicked: see SlotKeys.
   final FocusNode _keys = FocusNode(debugLabel: "motionSlot");
 
   @override
@@ -351,8 +346,7 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
           onPressed: () => c.clearMotionSlot(widget.element, widget.row),
           child: const Text("Take it out of the slot"),
         ),
-        // With a sound of its own: linked, the two launch together (Ken,
-        // 2026-11-10).
+        // With its own sound, linked: the two launch together.
         if (c.soundChannelOf(widget.element) != null)
           MenuItemButton(
             key: const ValueKey("motionSlotLink"),
@@ -375,7 +369,7 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
       // Empty: the well (slot_face.dart).
       body = const SlotFace(side: SlotSide.motion);
     } else {
-      // In its row's colour (Ken, 2026-11-10).
+      // In its row's colour.
       var col = c.rowColour(widget.element);
       var lit = state == MotionSlotState.playing ||
           state == MotionSlotState.stopping ||
@@ -435,7 +429,7 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
         ),
       );
     }
-    // Linked to its sound: a short mark down to it (the approved design).
+    // Linked to its sound: a short mark down to it.
     if (clip != null && m.isLinked(widget.row)) {
       body = Stack(clipBehavior: Clip.none, children: [
         Positioned.fill(child: body),
@@ -492,8 +486,8 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
             },
             onPointerCancel: (_) => _menuAt = null,
             child: GestureDetector(
-              // Empty, double-clicked: a new clip in it at once, picked --
-              // double-clicked again, set up in the Chain (Ken).
+              // Empty, double-clicked: a new clip, picked; double-clicked
+              // again, set up in the Chain.
               onDoubleTap: clip == null ? () => _make(null, open: false) : null,
               child: MouseRegion(cursor: SystemMouseCursors.click, child: body),
             ),
@@ -504,15 +498,13 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
   }
 }
 
-/// motionHalfHeight is the motion half's on every strip, wide or narrow, so
-/// the sound halves under them start on one line (the approved design).
+/// motionHalfHeight is the motion half on every strip, so the sound halves
+/// below start on one line.
 const motionHalfHeight = 78.0;
 
-/// _MotionHalf is an element strip's motion: MOTION and how much of it is
-/// seen; a bar for how much of each layer plays, striped when pinned; the
-/// layer cross-fader, blending the free layers (Shift snaps to one); and a
-/// chip for each layer, pressed to pin it -- in place of three sliders
-/// (Ken, 2026-11-08: "the cross-fader with pins is enough").
+/// _MotionHalf is an element strip's motion: MOTION and how much is seen; a
+/// bar per layer's share, striped when pinned; the cross-fader blending the
+/// free layers (Shift snaps to one); and a chip per layer to pin it.
 class _MotionHalf extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -575,8 +567,7 @@ class _MotionHalf extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(width: 2),
-                // Smaller rather than cut, on a narrow strip at a large
-                // text size.
+                // Shrunk rather than cut on a narrow strip at large text.
                 Expanded(
                   child: Align(
                     alignment: Alignment.centerRight,
@@ -658,8 +649,7 @@ class _MotionHalf extends StatelessWidget {
   }
 }
 
-/// _MotionLine is the motion half on a minimised mixer: the motion switch,
-/// a thin cross-fader and how much is seen, on one line.
+/// _MotionLine is the motion half on a minimised mixer, on one line.
 class _MotionLine extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -706,8 +696,8 @@ class _MotionLine extends StatelessWidget {
   }
 }
 
-/// _MotionAmount is how much of the element's motion is seen, as a
-/// percentage dragged up or down; double-clicked, all of it.
+/// _MotionAmount is how much motion is seen, as a percentage dragged up or
+/// down; double-clicked, all of it.
 class _MotionAmount extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -740,10 +730,9 @@ class _MotionAmount extends StatelessWidget {
   }
 }
 
-/// _CrossFader is the layer cross-fader's track: a tick for each free layer
-/// and the thumb where it stands. Pressed or dragged, it moves there; Shift
-/// snaps it to a layer. With fewer than two free layers there is nothing to
-/// blend, and it is dimmed.
+/// _CrossFader is the cross-fader track: a tick per free layer and the
+/// thumb. Pressed or dragged, it moves there; Shift snaps to a layer. With
+/// fewer than two free layers it is dimmed.
 class _CrossFader extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -766,8 +755,8 @@ class _CrossFader extends StatelessWidget {
           fade: m.fade,
           ticks: free,
           live: free > 1,
-          // Hollow until the fader sets the layers' weights: a new element
-          // plays every layer in full, which is no place on the fader.
+          // Hollow until the fader sets the weights: a new element plays
+          // every layer in full, which is no place on the fader.
           set: listEquals(m.weights, crossFade(m.layersInUse, m.pins, m.fade)),
           theme: theme),
     );
@@ -857,8 +846,8 @@ class _CrossFaderPainter extends CustomPainter {
       old.set != set;
 }
 
-/// _WeightBar is how much of one layer plays, filling from the bottom;
-/// striped when the layer is pinned.
+/// _WeightBar is how much one layer plays, filling from the bottom; striped
+/// when pinned.
 class _WeightBar extends StatelessWidget {
   final double weight;
   final bool pinned;
@@ -909,8 +898,8 @@ class _WeightBarPainter extends CustomPainter {
       old.weight != weight || old.pinned != pinned || old.well != well;
 }
 
-/// _LayerChip is a layer's name under the cross-fader: pressed, it pins
-/// the layer, or unpins it.
+/// _LayerChip is a layer's name under the cross-fader; pressed, it toggles
+/// the pin.
 class _LayerChip extends StatelessWidget {
   final String name;
   final bool pinned;

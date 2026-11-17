@@ -3,19 +3,12 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// code_element.dart is a Code panel on a canvas (Ken, 2026-11-15: "a
-// text/coding panel on the canvas ... split screen and a file area to show
-// how the code works together"): a little project of files, shown as an
-// editor would show it -- a window bar, the files down the side, and one to
-// three panes, each with its own tabs -- for teaching how code is written
-// and how files use each other.
-//
-// It can type itself in (CodeTyping) and light lines with a note beside
-// them (CodeStep), both on the scene's clock, so a lesson plays the same in
-// the app and in an export. A Run panel (code_run_element.dart) runs it.
-//
-// Everything here is plain data; when what is shown at a moment is worked
-// out in code_timing.dart, and drawn in render/code_painter.dart.
+// code_element.dart is a Code panel: a little project of files shown as an
+// editor shows it (window bar, files down the side, one to three panes with
+// tabs), for teaching how code is written and how files use each other. It
+// can type itself in (CodeTyping) and light lines with a note (CodeStep) on
+// the scene's clock, so a lesson plays the same in an export. A Run panel
+// runs it. Timing is code_timing.dart; drawing render/code_painter.dart.
 
 /// CodeLanguage is what a file is written in, by its name's ending.
 enum CodeLanguage {
@@ -29,8 +22,7 @@ enum CodeLanguage {
 
   final String label;
 
-  /// grammar is its highlighting grammar's name (see code_highlight.dart);
-  /// empty for none.
+  /// grammar is its highlighting grammar (code_highlight.dart), or empty.
   final String grammar;
 
   /// indent is what Tab puts in.
@@ -52,8 +44,8 @@ enum CodeLanguage {
   }
 }
 
-/// CodeKind is what a project is (Ken, 2026-11-15: "the user can choose the
-/// code type in the Settings panel"): what it starts with, and what runs it.
+/// CodeKind is what a project is, chosen in the Settings panel: what it
+/// starts with, and what runs it.
 enum CodeKind {
   web("Web page", CodeLayout.oneOverTwo, ["index.html", "style.css", "app.js"]),
   python("Python", CodeLayout.one, ["main.py"]),
@@ -63,14 +55,13 @@ enum CodeKind {
 
   final String label;
 
-  /// layout and files are what an empty project of it starts with: one
-  /// pane for each file, as far as the layout has panes.
+  /// layout and files are what an empty project of it starts with: one pane
+  /// for each file, as far as the layout has panes.
   final CodeLayout layout;
   final List<String> files;
   const CodeKind(this.label, this.layout, this.files);
 
-  /// of is what [files] look like they are, for a project saved before it
-  /// had a kind of its own.
+  /// of is what [files] look like, for a project saved without a kind.
   static CodeKind of(List<CodeFile> files) {
     bool has(CodeLanguage l) => files.any((f) => f.language == l);
     if (has(CodeLanguage.html)) return web;
@@ -86,7 +77,7 @@ enum CodeKind {
   }
 }
 
-/// CodeLayout is how the panes sit: the five the prototype offered.
+/// CodeLayout is how the panes sit.
 enum CodeLayout {
   one("One pane", 1),
   twoSide("Two side by side", 2),
@@ -98,9 +89,8 @@ enum CodeLayout {
   final int panes;
   const CodeLayout(this.label, this.panes);
 
-  /// evenColumns and evenRows are its panes' sizes when nobody has dragged
-  /// the lines between them: the columns across (of the bottom row, for one
-  /// over two), and the rows down.
+  /// evenColumns and evenRows are the panes' undragged sizes: columns
+  /// across (the bottom row's, for one over two), and rows down.
   List<double> get evenColumns => switch (this) {
         twoSide || oneOverTwo => const [1, 1],
         threeSide => const [1, 1, 1],
@@ -123,9 +113,8 @@ enum CodeTheme {
   const CodeTheme(this.label);
 }
 
-/// codeFileColours are the colours files are given in turn: each file's tab,
-/// its square in the file list, and its name underlined where other files
-/// use it.
+/// codeFileColours are the files' colours in turn: each one's tab, its
+/// square in the file list, and its name underlined where used.
 const codeFileColours = [
   Color(0xFFE8835A),
   Color(0xFF5B9BFF),
@@ -252,9 +241,8 @@ class CodeTyping {
       : const CodeTyping(on: false);
 }
 
-/// CodeStep lights lines [from] to [to] of [file] from [at] seconds for
-/// [length], with [note] beside them; the pane holding the file shows it
-/// while it is lit.
+/// CodeStep lights lines [from] to [to] of [file] from [at] for [length]
+/// seconds, with [note]; the pane holding the file shows it meanwhile.
 class CodeStep {
   final double at;
   final double length;
@@ -318,12 +306,10 @@ class CodeStep {
   }
 }
 
-/// CodeElement is the element itself.
 class CodeElement extends CanvasElement {
   /// title is the project's name, on the window bar.
   final String title;
 
-  /// project is what the project is: see CodeKind.
   final CodeKind project;
   final List<CodeFile> files;
   final CodeLayout layout;
@@ -335,8 +321,7 @@ class CodeElement extends CanvasElement {
   final List<double> rows;
   final CodeTheme theme;
 
-  /// fontSize is the code's size on the page; the window's own parts (its
-  /// bar, tabs, file list) are sized from it.
+  /// fontSize is the code's size; the bar, tabs and file list follow it.
   final double fontSize;
   final bool showFiles;
 
@@ -347,7 +332,7 @@ class CodeElement extends CanvasElement {
   final bool windowBar;
 
   /// playbar puts play controls in its window bar: back to the start, play
-  /// and pause, and where its lesson has got to (Ken, 2026-11-15).
+  /// and pause, and how far its lesson has got.
   final bool playbar;
   final CodeTyping typing;
   final List<CodeStep> steps;
@@ -355,10 +340,8 @@ class CodeElement extends CanvasElement {
   /// dim darkens the other lines of a pane while lines are lit in it.
   final bool dim;
 
-  /// start is its code as it began -- kept the first time it is typed into
-  /// on the canvas or in the Code Studio (typedInto) -- for Reset to go
-  /// back to (Ken: "if the student makes a mistake editing the code it
-  /// can go back to the initial version"); null until then.
+  /// start is its code as first typed into (typedInto), for Reset to go
+  /// back to after a student's mistake; null until then.
   final List<CodeFile>? start;
 
   const CodeElement(
@@ -448,9 +431,8 @@ class CodeElement extends CanvasElement {
           dim: dim ?? this.dim,
           start: clearStart ? null : start ?? this.start);
 
-  /// startedAs is it begun again as an empty project of [k]: its kind's
-  /// files, empty, each in a pane of its own as far as there are panes;
-  /// nothing typed in or lit. Its look and box stay.
+  /// startedAs is it begun again as an empty project of [k], a file a pane
+  /// as far as there are panes, nothing typed or lit; look and box stay.
   CodeElement startedAs(CodeKind k) {
     var made = [
       for (var (i, name) in k.files.indexed)
@@ -491,13 +473,12 @@ class CodeElement extends CanvasElement {
     return null;
   }
 
-  /// shownPanes is its panes as many as its layout has, any missing empty.
+  /// shownPanes is as many panes as its layout has, any missing empty.
   List<CodePane> get shownPanes => [
         for (var i = 0; i < layout.panes; i++)
           i < panes.length ? panes[i] : const CodePane(),
       ];
 
-  /// newFileId is an id no file of it has.
   String newFileId() {
     var n = files.length + 1;
     while (file("f$n") != null) {
@@ -510,18 +491,16 @@ class CodeElement extends CanvasElement {
   CodeElement withFile(CodeFile f, {int pane = 0}) =>
       copyWith(files: [...files, f]).openTab(pane, f.id);
 
-  /// withFileText is it with file [id]'s text [text].
   CodeElement withFileText(String id, String text) => copyWith(files: [
         for (var f in files) f.id == id ? f.copyWith(text: text) : f,
       ]);
 
-  /// typedInto is it with file [id]'s text [text], typed by hand: its code
-  /// as it was kept first, as the [start] Reset goes back to.
+  /// typedInto is it with file [id]'s text [text], typed by hand, keeping its
+  /// first code as the [start] Reset goes back to.
   CodeElement typedInto(String id, String text) =>
       (start == null ? copyWith(start: files) : this).withFileText(id, text);
 
-  /// changedFromStart is whether its code is no longer as it began: Reset
-  /// shows only then.
+  /// changedFromStart is whether its code differs from its start (Reset).
   bool get changedFromStart {
     var s = start;
     if (s == null) return false;
@@ -536,8 +515,8 @@ class CodeElement extends CanvasElement {
     return false;
   }
 
-  /// reset is it with its code as it began again; its tabs on files it
-  /// no longer has closed. Its start is kept, to go back to again.
+  /// reset is it with its code as it began, closing tabs on files it no
+  /// longer has. Its start is kept, to go back to again.
   CodeElement get reset {
     var s = start;
     if (s == null) return this;
@@ -551,8 +530,7 @@ class CodeElement extends CanvasElement {
     ]);
   }
 
-  /// withoutFile is it without file [id]: out of every pane, its steps
-  /// gone.
+  /// withoutFile is it without file [id]: out of every pane, its steps gone.
   CodeElement withoutFile(String id) => copyWith(
         files: [
           for (var f in files)
@@ -571,9 +549,8 @@ class CodeElement extends CanvasElement {
         ],
       );
 
-  /// withLayout is it laid out as [next], keeping every open tab: fewer
-  /// panes fold their tabs into the last one; more panes each take a file
-  /// not yet open, or a spare tab from the pane with most.
+  /// withLayout is it laid out as [next], every tab kept: fewer panes fold
+  /// tabs into the last; more each take an unopened file or a spare tab.
   CodeElement withLayout(CodeLayout next) {
     var ps = [
       for (var p in panes) p.copyWith(tabs: [...p.tabs])
@@ -623,7 +600,7 @@ class CodeElement extends CanvasElement {
         for (var (k, q) in shownPanes.indexed) k == i ? p : q,
       ]);
 
-  /// openTab opens file [id] in pane [pane] (after the tab it shows), and
+  /// openTab opens file [id] in pane [pane], after the tab shown, and
   /// shows it.
   CodeElement openTab(int pane, String id) {
     var ps = shownPanes;
@@ -635,8 +612,7 @@ class CodeElement extends CanvasElement {
         pane, CodePane(tabs: [...p.tabs]..insert(at, id), active: id));
   }
 
-  /// closeTab closes file [id]'s tab in pane [pane]; the tab beside it is
-  /// shown in its place.
+  /// closeTab closes file [id]'s tab in [pane], showing the one beside it.
   CodeElement closeTab(int pane, String id) {
     var ps = shownPanes;
     if (pane < 0 || pane >= ps.length) return this;

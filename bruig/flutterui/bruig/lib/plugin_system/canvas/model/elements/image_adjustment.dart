@@ -7,17 +7,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 // image_adjustment.dart is what an adjustment layer does to the layers under
 // it, drawn by shaders/adjust.frag (see adjust_painter.dart). Each kind lists
 // its settings as AdjustParams, so the panel is built from the list and a
-// saved document holds only the settings that were moved.
+// document holds only the settings that were moved.
 
-/// AdjustParam is one number an adjustment is set by.
 class AdjustParam {
   final String key;
   final String label;
   final double min, max, initial;
   final int decimals;
 
-  /// percent is whether the stored fraction is shown and typed as a
-  /// percentage.
+  /// percent is whether the stored fraction is shown and typed as a percent.
   final bool percent;
 
   const AdjustParam(this.key, this.label, this.min, this.max, this.initial,
@@ -95,8 +93,7 @@ enum AdjustKind {
       this == photoFilter || this == keepColour || this == blackWhite;
 }
 
-/// CurveChannel is which curve of the four is meant: all three channels at
-/// once, or one of them.
+/// CurveChannel is which curve: all three channels at once, or one.
 enum CurveChannel {
   rgb("RGB"),
   red("Red"),
@@ -107,7 +104,6 @@ enum CurveChannel {
   const CurveChannel(this.label);
 }
 
-/// ImageAdjustment is one adjustment layer's settings.
 class ImageAdjustment {
   final AdjustKind kind;
 
@@ -134,7 +130,7 @@ class ImageAdjustment {
     this.curves = const {},
   });
 
-  /// value is the setting [key] as it is, or as the kind starts it.
+  /// value is setting [key] as it is, or as the kind starts it.
   double value(String key) {
     var given = values[key];
     if (given != null) return given;
@@ -171,8 +167,7 @@ class ImageAdjustment {
     return copyWith(values: {...values, key: v});
   }
 
-  /// withCurve is this with [channel]'s curve set to [points], sorted and
-  /// held to the square.
+  /// withCurve is this with [channel]'s curve [points], sorted, in the square.
   ImageAdjustment withCurve(CurveChannel channel, List<Offset> points) {
     var sorted = [
       for (var p in points) Offset(p.dx.clamp(0.0, 1.0), p.dy.clamp(0.0, 1.0))

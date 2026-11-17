@@ -2,14 +2,14 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// gltf_pack.dart packs a multi-file glTF (the .gltf, its buffers and its
-// pictures, as Poly Haven serves them) into one .glb, which the library keeps
-// and a sent canvas carries. Buffers are joined into the one binary chunk,
-// each picture a buffer view of its own; nothing is decoded.
+// gltf_pack.dart packs a multi-file glTF (the .gltf, its buffers and
+// pictures, as Poly Haven serves them) into one .glb for the library and a
+// sent canvas. Buffers are joined into one chunk, each picture a buffer
+// view of its own; nothing is decoded.
 
-/// packGltf is the .gltf [gltf] -- its text -- as a .glb, its files found
-/// by [files]: each by the address the .gltf names it by. Null where a
-/// file it needs is missing or it cannot be read.
+/// packGltf is the .gltf text [gltf] as a .glb, its files found in [files]
+/// by the address the .gltf names. Null where a file is missing or
+/// unreadable.
 Uint8List? packGltf(String gltf, Map<String, Uint8List> files) {
   Map<String, dynamic> json;
   try {
@@ -37,7 +37,7 @@ Uint8List? packGltf(String gltf, Map<String, Uint8List> files) {
     }
   }
 
-  // Each buffer where it now starts in the one.
+  // Each buffer's start in the joined one.
   var starts = <int>[];
   var buffers = json["buffers"] is List ? json["buffers"] as List : const [];
   for (var b in buffers) {

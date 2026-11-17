@@ -19,9 +19,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
     show panelRow, cell, CanvasQuickStrip;
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 
-// audio_settings.dart is an Audio element's settings, in the order one is set
-// up: the sound (first, since an empty Audio element does nothing), how it
-// plays, what the reader can do to it, then what the speaker looks like.
+// audio_settings.dart is an Audio element's settings in setup order: the
+// sound (an empty element does nothing), playing, reader controls, look.
 
 List<Widget> audioSettings(
   BuildContext context,
@@ -30,12 +29,11 @@ List<Widget> audioSettings(
   SettingsWrite write,
   VoidCallback begin,
   VoidCallback commit, {
-  /// background is a backdrop's sound, which is never drawn: nothing to
-  /// press, no icon, no box.
+  /// background is a backdrop's sound, never drawn: nothing to press, no
+  /// icon, no box.
   bool background = false,
 
-  /// panel lays the sections out as every rebuilt element's are (Ken,
-  /// 2026-11-11: batch 5).
+  /// panel lays the sections out as every element panel does.
   bool panel = false,
 }) {
   // An instrument: its own settings, a keyboard and a part.
@@ -60,8 +58,8 @@ List<Widget> audioSettings(
     // A speaker plays a sound, not notes: no MIDI files here.
     var source = await pickCanvasAudio(context, controller, midi: false);
     if (source == null) return;
-    // Read again: the element may have been edited while the file dialog
-    // was open, and writing the stale one back would undo that.
+    // Read again: the element may have been edited while the dialog was
+    // open, and writing the stale one back would undo that.
     var current = controller.document.elementById(e.id);
     if (current is! AudioElement) return;
     now(current.copyWith(
@@ -116,8 +114,8 @@ List<Widget> audioSettings(
         const CanvasHint(
             "No sound device could be opened, so nothing will be heard. "
             "Check that one is connected and not in use."),
-      // One line per file: its name, the part of it that plays, and where
-      // it sits in the list. More than one file is a playlist.
+      // A line per file: its name, the part that plays, and its place in
+      // the list. More than one file is a playlist.
       for (var (i, source) in list.indexed) ...[
         const CanvasLineBreak(),
         CanvasChip(
@@ -139,9 +137,8 @@ List<Widget> audioSettings(
         CanvasNumberField(
           key: ValueKey("audioEnd$i"),
           label: "End",
-          // Nought is "to the end", and shows as the end where the length
-          // is known -- a field reading 0 beside a start of 10 reads as a
-          // range that is backwards.
+          // Nought is "to the end", shown as the end where the length is
+          // known: 0 beside a start of 10 reads as a backwards range.
           value: source.end > 0 ? source.end : source.length,
           min: 0,
           max: source.length > 0 ? source.length : 36000,
@@ -176,9 +173,8 @@ List<Widget> audioSettings(
     rule: false,
     tooltip: "Fades, and where it starts",
     row: [
-      // In percent, as every volume is (the quick strip's, a transition
-      // sound's). A sound on the timeline goes to twice -- six decibels up;
-      // a speaker's is where its own control starts, which tops out at one.
+      // In percent, as every volume. A timeline sound goes to twice (+6 dB);
+      // a speaker's tops out at one.
       CanvasNumberField(
         key: const ValueKey("audioVolume"),
         label: "Volume",
@@ -207,8 +203,8 @@ List<Widget> audioSettings(
           value: clip.autoplay,
           onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
         ),
-      // The one setting only the master can mean -- see
-      // MediaClip.acrossPages -- so it is only offered there.
+      // Only the master can mean this (see MediaClip.acrossPages), so it is
+      // only offered there.
       if (across && !clip.timed) ...[
         CanvasToggle(
           key: const ValueKey("audioAcross"),
@@ -220,8 +216,8 @@ List<Widget> audioSettings(
             ? "Keeps playing as the ${word.many} change."
             : "Stops when the ${word.one} changes."),
       ],
-      // The timeline is for a backdrop's sound, which is a soundtrack; a
-      // speaker is something a reader presses, which is the opposite.
+      // The timeline is for a backdrop's sound, a soundtrack; a speaker is
+      // something a reader presses, the opposite.
       if (background) ...[
         const CanvasLineBreak(),
         ...timelineControls(controller, clip,
@@ -265,9 +261,8 @@ List<Widget> audioSettings(
           : "Fades are seconds, at the start and end of each file."),
     ],
   );
-  // A backdrop's sound or one on the timeline: its groups, laid into
-  // whatever section shows it -- not a speaker on the canvas, so no
-  // controls of a reader's, no icon, no box, no arrival.
+  // A backdrop's or timeline sound: its groups only, as it is no speaker on
+  // the canvas (no reader controls, icon, box or arrival).
   if (background) {
     return [
       soundGroup,
@@ -279,8 +274,8 @@ List<Widget> audioSettings(
             write(e.copyWith(clip: c));
           },
           commit: commit),
-      // The sound's channel in the mix, beside the master: its level, its
-      // effects -- opening here, in place -- and what it ducks.
+      // The sound's mix channel beside the master: its level, its effects
+      // (opening in place) and what it ducks.
       if (background && clip.timed)
         CanvasMixer.section(
             key: ValueKey(
@@ -430,13 +425,13 @@ List<Widget> audioSettings(
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
               remember: "audio", rule: false),
         ]),
-    // How it comes in, loops and goes: the Chain's Motion view (Ken,
-    // 2026-11-08), not a section here.
+    // How it comes in, loops and goes is the Chain's Motion view, not a
+    // section here.
   ];
   if (!panel) return all;
   var [sound, placement, controls, icon, box] = all;
-  // What it plays and how in Content, its placement and the reader's
-  // buttons folds under it; the speaker's icon in Look, its box a fold.
+  // What it plays in Content, with placement and reader buttons folded
+  // under it; the speaker's icon in Look, its box a fold.
   return [
     elementPanel(context, controller, e, write, begin, commit,
         quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
@@ -507,9 +502,8 @@ List<Widget> audioSettings(
   ];
 }
 
-/// _fitted is [e] made wide enough for the controls it has, or square again
-/// when it has none beside the icon. Worked out from the layout's own
-/// proportions (see audioParts) so a volume bar arrives at a usable width.
+/// _fitted is [e] made wide enough for its controls, or square with none,
+/// from audioParts' proportions, so a volume bar arrives usable.
 AudioElement _fitted(AudioElement e) {
   var pad = e.box.pad;
   var side = math.max(1.0, e.height - pad.top - pad.bottom);

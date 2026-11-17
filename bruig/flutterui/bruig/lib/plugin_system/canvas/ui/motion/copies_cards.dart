@@ -14,21 +14,14 @@ import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
-// copies_cards.dart is an element's Instances and Drawing in its Chain, as
-// the chain prototype draws them (Ken, 2026-11-08).
-//
-// Instances is the first card of the chain: the element and its copies, the
-// picker for what the rest of the chain edits. Placed once it says so, with
-// Reuse… and + Place another. Reused, it lists the copies -- the element
-// first, for all of them -- with what each has of its own; it adds copies
-// (a click on the canvas places each), lays them out, and says how they
-// differ: by order, at random, from the middle. Picked, a copy's own start,
-// speed, size, turn, opacity and colour are its knobs, with a dot where they
-// are its own and Revert to take them back.
-//
-// Drawing is where the element becomes pixels: the copies drawn as the page
-// draws them, its Size, and whether it is drawn once and stamped at each
-// copy or drawn for each.
+// copies_cards.dart is an element's Instances and Drawing cards in its
+// Chain. Instances is the chain's first card: the element and its copies,
+// picking what the rest of the chain edits. Reused, it lists the copies (the
+// element first, for all of them) with what each has of its own, adds and
+// lays them out, and says how they differ; a picked copy's own values are
+// its knobs, dotted where its own, with Revert. Drawing is where the element
+// becomes pixels: the copies as the page draws them, its Size, and whether
+// it is drawn once and stamped at each copy or drawn for each.
 
 const _instancesAccent = Color(0xFF6FA8FF);
 
@@ -67,8 +60,7 @@ class InstancesCard extends StatelessWidget {
     var muted = TextStyle(fontSize: 10.5, height: 1.4, color: studio.muted);
     void place() => controller.placingCopies = placing ? null : element;
 
-    // Not reused yet: a slim card, its two ways to start -- the full card
-    // once there are copies (Ken, 2026-11-12: less in the way).
+    // Not reused yet: a slim card with its two ways to start.
     if (set == null && ChainPanelStyle.on(context)) {
       return Container(
         width: 104 * scale,
@@ -235,8 +227,7 @@ class InstancesCard extends StatelessWidget {
       onFold: onFold,
       width: (set == null ? 250 : 430) * scale,
       height: height,
-      // Its copies listed down its left, the full height; its settings
-      // beside them.
+      // Its copies listed down its left, full height; its settings beside.
       displayBeside: true,
       besideDisplay: 250,
       besideSettings: 320,
@@ -261,8 +252,7 @@ class InstancesCard extends StatelessWidget {
     );
   }
 
-  /// _copyKnob is [v] of the picked copies: their own, or as the set has it,
-  /// turned to be their own.
+  /// _copyKnob is [v] of the picked copies, made their own when turned.
   Widget _copyKnob(CopyValue v, Color ink, DeviceTier tier) {
     var value = controller.copyValue(element, v);
     var own = controller.copyOwnOf(element, v.name) != null;
@@ -341,9 +331,8 @@ class CopyButton extends StatelessWidget {
   }
 }
 
-/// _VaryRow is one way the copies differ: its name, a bar for each copy as
-/// far as it goes, how -- the same, by order, at random, from the middle --
-/// and by at most how much.
+/// _VaryRow is one way the copies differ: its name, a bar for each copy, how
+/// (the same, by order, at random, from the middle) and by at most how much.
 class _VaryRow extends StatelessWidget {
   final CanvasController controller;
   final String element;
@@ -431,8 +420,7 @@ class _VaryRow extends StatelessWidget {
   }
 }
 
-/// _VaryBars is a bar for each copy, as tall as [what] goes for it: flat
-/// where they are all the same.
+/// _VaryBars is a bar for each copy as tall as [what] is; flat if alike.
 class _VaryBars extends CustomPainter {
   final InstanceSet set;
   final VaryWhat what;
@@ -462,10 +450,9 @@ class _VaryBars extends CustomPainter {
       old.set != set || old.what != what || old.accent != accent;
 }
 
-/// _CopiesTable is the element and its copies, a row each: the element's
-/// for all of them, then each copy's place, start and speed as it plays,
-/// a dot where it has something of its own. Clicked, a row is what the
-/// chain edits; Shift picks more.
+/// _CopiesTable is the element (for all) and its copies, a row each: each
+/// copy's place, start and speed, dotted where it has its own. Clicked, a
+/// row is what the chain edits; Shift picks more.
 class _CopiesTable extends StatelessWidget {
   final CanvasController controller;
   final String element;
@@ -488,8 +475,7 @@ class _CopiesTable extends StatelessWidget {
         fontSize: 10.5,
         color: s.text,
         fontFeatures: const [FontFeature.tabularFigures()]);
-    // #, Where, Starts, Speed, Own: the number and the dot narrow, the
-    // place widest.
+    // #, Where, Starts, Speed, Own: number and dot narrow, the place widest.
     Widget cellsOf(List<Widget> c) => Row(children: [
           SizedBox(width: 30, child: c[0]),
           Expanded(flex: 5, child: c[1]),
@@ -587,10 +573,9 @@ class _CopiesTable extends StatelessWidget {
   }
 }
 
-/// DrawingCard is where [element] becomes pixels: between its moves and its
-/// looks. Its screen is the element drawn as the page draws it -- every
-/// copy, picked ones ringed -- with its Size and, reused, whether it is
-/// drawn once and stamped at each copy or drawn for each.
+/// DrawingCard is where [element] becomes pixels, between moves and looks:
+/// the element as the page draws it (picked copies ringed), its Size and,
+/// reused, whether it is drawn once and stamped or drawn for each copy.
 class DrawingCard extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;

@@ -8,37 +8,26 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:flutter/foundation.dart';
 
-// decode.dart reads a sound file as 48kHz stereo floats, a block at a time,
-// for the mix engine to play.
-//
-// It calls miniaudio, compiled into SoLoud's plugin, directly: flutter_soloud
-// has no call that hands back a file's samples (readSamples is one level per
-// point, for waveforms). MP3, WAV and FLAC use miniaudio's own decoders, Ogg
-// Vorbis the libvorbis backend SoLoud registers; anything else falls back to
-// ffmpeg (see [ffmpegTrack]).
-//
-// The structures handed across are miniaudio 0.11's, measured against
-// flutter_soloud 4.1.7's header on arm64 and x86_64: ma_decoder_config is
-// 144 bytes with the custom backend list at 120 and its count at 128;
-// ma_decoder is 552 bytes and is given far more room. If flutter_soloud is
-// upgraded, measure again.
+// decode.dart reads sound files as 48kHz stereo floats for the mix, calling
+// miniaudio inside SoLoud's plugin directly (flutter_soloud cannot return
+// samples); ffmpeg for anything else (see [ffmpegTrack]). The structs are
+// miniaudio 0.11's, measured against flutter_soloud 4.1.7 on arm64 and
+// x86_64: ma_decoder_config 144 bytes (backends at 120, count at 128),
+// ma_decoder 552 and given more. Measure again on upgrading flutter_soloud.
 
-/// TrackSource is a sound the engine reads from.
 abstract class TrackSource {
   /// frames is how long it is, in frames at mixRate.
   int get frames;
 
-  /// read fills [l] and [r] from where it is, up to [n] frames, and says how
-  /// many it filled: fewer at the end.
+  /// read fills [l] and [r] with up to [n] frames and returns how many:
+  /// fewer at the end.
   int read(Float32List l, Float32List r, int n);
 
-  /// seek moves to [frame].
   void seek(int frame);
 
   void close();
 }
 
-/// MemoryTrack is samples already in memory.
 class MemoryTrack implements TrackSource {
   final Float32List l, r;
   int _at = 0;
@@ -135,13 +124,12 @@ class _Miniaudio {
   void release(ffi.Pointer p) => free(p.cast(), ffi.nullptr);
 }
 
-/// miniaudioLibrary overrides where the library is loaded from, for a test
-/// that decodes real files with a built copy of the plugin.
+/// miniaudioLibrary overrides where the library is loaded from, for tests
+/// decoding real files with a built copy of the plugin.
 @visibleForTesting
 String? miniaudioLibrary;
 
-/// _miniaudio is the library, or null where it cannot be loaded (tests,
-/// the web).
+/// _miniaudio is the library, or null where it cannot load (tests, web).
 _Miniaudio? get _miniaudio => _loaded ??= _load();
 _Miniaudio? _loaded;
 
@@ -161,8 +149,7 @@ _Miniaudio? _load() {
   }
 }
 
-/// readWhole is [file] decoded whole at mixRate, or null where the decoder
-/// cannot read it.
+/// readWhole is [file] decoded whole at mixRate, or null.
 (Float32List, Float32List)? readWhole(String file) {
   var track = FileTrack.open(file);
   if (track == null) return null;
@@ -203,7 +190,6 @@ Future<(Float32List, Float32List)?> readWholeAway(String file) {
 /// canDecode is whether files can be decoded here at all.
 bool get canDecode => _miniaudio != null;
 
-/// FileTrack is a file decoded as it is read.
 class FileTrack implements TrackSource {
   final _Miniaudio _ma;
   final ffi.Pointer<ffi.Uint8> _decoder;
@@ -221,7 +207,7 @@ class FileTrack implements TrackSource {
   FileTrack._(this._ma, this._decoder, this._config, this._buffer, this._count,
       this._vtables, this.frames);
 
-  /// open decodes [path], or returns null where it cannot be.
+  /// open decodes [path], or returns null where it cannot.
   static FileTrack? open(String path) {
     var ma = _miniaudio;
     if (ma == null) return null;
@@ -329,12 +315,9 @@ class FileTrack implements TrackSource {
   }
 }
 
-/// ffmpegDecode is [path], or [length] seconds of it from [from], decoded
-/// by ffmpeg as 48kHz stereo; null where ffmpeg cannot read it.
-///
-/// A mono file is copied to both sides at full level, as the editor plays
-/// it: ffmpeg's own upmix is 3dB down. So only files of more than two
-/// channels are folded by ffmpeg.
+/// ffmpegDecode is [path], or [length] seconds from [from], as 48kHz stereo
+/// by ffmpeg, or null. Mono is copied to both sides at full level (ffmpeg's
+/// upmix is 3dB down); only over two channels does ffmpeg fold.
 Future<(Float32List, Float32List)?> ffmpegDecode(String ffmpeg, String path,
     {double? from, double? length}) async {
   Future<ProcessResult> run(bool fold) => Process.run(
@@ -378,8 +361,8 @@ Future<(Float32List, Float32List)?> ffmpegDecode(String ffmpeg, String path,
   return (l, r);
 }
 
-/// ffmpegTrack is [path] decoded whole by ffmpeg, for a file miniaudio
-/// cannot read, such as Ogg Opus. Null where ffmpeg cannot read it either.
+/// ffmpegTrack is [path] decoded whole by ffmpeg, for files miniaudio
+/// cannot read, such as Ogg Opus. Null where ffmpeg cannot either.
 Future<MemoryTrack?> ffmpegTrack(String ffmpeg, String path) async {
   var pcm = await ffmpegDecode(ffmpeg, path);
   return pcm == null ? null : MemoryTrack(pcm.$1, pcm.$2);

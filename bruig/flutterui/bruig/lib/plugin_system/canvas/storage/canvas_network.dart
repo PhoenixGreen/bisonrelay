@@ -4,13 +4,11 @@ import 'dart:typed_data';
 import 'package:bruig/config.dart';
 import 'package:flutter/foundation.dart';
 
-// canvas_network.dart is how the canvas reaches the network: whether it may
-// (a proxy configured means no), and the one way a request is made.
-//
-// Somebody who has set a proxy here has said how their machine should reach
-// the internet, very often through Tor. Dart's own client speaks HTTP
-// proxies, not SOCKS, so a request from the canvas would bypass it; rather
-// than that, a canvas with a proxy configured refuses to fetch and says why.
+// canvas_network.dart is how the canvas reaches the network: whether it may,
+// and the one way a request is made. A configured proxy (often Tor) is how
+// somebody has said their machine reaches the internet; Dart's client speaks
+// HTTP proxies, not SOCKS, so a canvas request would bypass it. With a proxy
+// configured, the canvas refuses to fetch and says why.
 
 /// proxiedForTest stands in for the answer in a test, which has no config
 /// file to read -- and no config reads as proxied, which refuses everything.

@@ -4,23 +4,17 @@ import 'dart:typed_data';
 
 import 'package:flutter/painting.dart';
 
-// pdf_writer.dart writes a PDF of pictures, one to a page: a catalogue, a
-// page tree, and per page an image (with a soft mask where it has
-// transparency) and a content stream that draws it. No fonts.
-//
-// The pages are rasters on purpose: a vector PDF would be a second renderer,
-// and could not draw photographs, procedural backgrounds or blurs anyway.
-// The publish sheet's scale is the print resolution.
+// pdf_writer.dart writes a PDF of pictures, one a page, soft-masked where
+// clear, with no fonts. Rasters on purpose: a vector PDF would be a second
+// renderer, and could not draw photographs, patterns or blurs anyway.
 
-/// PdfPage is the size of the sheet in points (1/72 inch) and the margin
-/// round the picture.
+/// PdfPage is the sheet's size in points (1/72 inch) and its margin.
 class PdfPage {
   final String label;
   final double width;
   final double height;
 
-  /// margin is the white edge on a paper size; zero for a page cut to the
-  /// canvas.
+  /// margin is a paper size's white edge; zero for a page cut to the canvas.
   final double margin;
 
   const PdfPage(this.label, this.width, this.height, {this.margin = 0});
@@ -32,7 +26,7 @@ class PdfPage {
   PdfPage get turned => PdfPage(label, height, width, margin: margin);
 }
 
-/// PdfPaper is what the publish sheet offers.
+/// PdfPaper is the paper choices the publish sheet offers.
 enum PdfPaper {
   canvas("Same as the canvas"),
   a4("A4"),
@@ -41,8 +35,7 @@ enum PdfPaper {
   final String label;
   const PdfPaper(this.label);
 
-  /// turns is whether this paper has an orientation to choose: a page cut
-  /// to the canvas does not.
+  /// turns is whether this paper has an orientation to choose.
   bool get turns => this != PdfPaper.canvas;
 }
 
@@ -109,9 +102,8 @@ Uint8List writePdf(List<PdfPicture> pictures, {required PdfPage page}) {
   var out = _PdfBuilder();
   out.header();
 
-  // Object numbers are handed out up front, as a page names the image that
-  // follows it: catalogue 1, page tree 2, then per page the page, image,
-  // content stream and, where needed, the mask.
+  // Object numbers are handed out first, as a page names the image after
+  // it: catalogue 1, pages 2, then each page, image, content and mask.
   var pageRefs = <int>[];
   var next = 3;
   var plan = <(int, int, int, int, Uint8List, Uint8List?, Rect)>[];
@@ -191,8 +183,7 @@ Uint8List writePdf(List<PdfPicture> pictures, {required PdfPage page}) {
   return out.finish();
 }
 
-/// _fit is the largest rectangle of [size]'s shape that fits in [into],
-/// centred.
+/// _fit is the largest centred rectangle of [size]'s shape in [into].
 Rect _fit(Size size, Rect into) {
   if (into.width <= 0 || into.height <= 0) return into;
   var scale = (into.width / size.width) < (into.height / size.height)
@@ -216,12 +207,11 @@ String _n(double value) {
   return text.isEmpty || text == "-" ? "0" : text;
 }
 
-/// _PdfBuilder collects the objects and remembers where each one started.
+/// _PdfBuilder collects the objects and remembers where each one starts.
 class _PdfBuilder {
   final BytesBuilder _bytes = BytesBuilder();
 
-  /// _offsets is object number to byte offset, for the cross-reference
-  /// table.
+  /// _offsets is object number to byte offset, for the xref table.
   final Map<int, int> _offsets = {};
 
   void header() {
@@ -238,8 +228,7 @@ class _PdfBuilder {
 
   void stream(int number, String dict, Uint8List data) {
     _offsets[number] = _bytes.length;
-    // The length goes in the dictionary before the data, so the data must
-    // be complete first.
+    // The length precedes the data, so the data must be complete first.
     var head = dict.substring(0, dict.length - 3);
     _bytes.add(ascii
         .encode("$number 0 obj\n$head /Length ${data.length} >>\nstream\n"));

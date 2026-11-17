@@ -8,15 +8,13 @@ import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// data_reshape.dart is the Data Studio's "A new sheet from this one" (Ken,
-// 2026-11-17, the improvements report's second item): the same numbers in
-// another shape -- long, wide, grouped, or joined with another sheet -- as
-// a sheet that follows this one (sheet_reshape.dart). And, on a sheet made
-// so, what it is made from and a way to stop it following.
+// data_reshape.dart is the Data Studio's "A new sheet from this one": the
+// same numbers in another shape (long, wide, grouped, or joined with
+// another sheet) as a sheet that follows this one (sheet_reshape.dart);
+// and, on a sheet made so, its source and a way to stop it following.
 
-/// SheetReshapePart is the side panel's part for sheet [sheet]: what it is
-/// made from, if it is, and the recipe for a new sheet made from it.
-/// [onOpen] shows the sheet made (or the source).
+/// SheetReshapePart is the side panel's part for [sheet]: its source, if
+/// any, and a new sheet's recipe; [onOpen] shows the one made.
 class SheetReshapePart extends StatefulWidget {
   final CanvasController controller;
   final DataSheet sheet;
@@ -66,9 +64,8 @@ class _SheetReshapePartState extends State<SheetReshapePart> {
   }
 
   /// _guess is the columns most sheets mean: the words and dates kept on
-  /// every row of a long one; a row a name, a column a date, filled from
-  /// the last numbers, for a wide one; grouped by the first words that
-  /// repeat.
+  /// every row of a long one; a row a name, a column a date, filled from the
+  /// last numbers, for a wide one; grouped by the first words that repeat.
   void _guess() {
     var g = s.used;
     if (g.cols <= 0 || s.cells.isEmpty) return;
@@ -123,9 +120,8 @@ class _SheetReshapePartState extends State<SheetReshapePart> {
         (_kind != ReshapeKind.join || _other.isNotEmpty) &&
         preview.length > 1;
 
-    // A section's groups (data_studio_side.dart): what this one is made
-    // from, then the new sheet's shape as pictures, what it reads, and a
-    // look at what it will be before it is made.
+    // A section's groups (data_studio_side.dart): its source, the new
+    // shape as pictures, what it reads, and a look before it is made.
     return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -302,8 +298,7 @@ class _SheetReshapePartState extends State<SheetReshapePart> {
         ]);
   }
 
-  /// _shapes is the four shapes a new sheet can take, as pictures: each a
-  /// tile, the one chosen lit.
+  /// _shapes is a new sheet's four shapes as tiles, the chosen one lit.
   Widget _shapes(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
     (IconData, String, String) said(ReshapeKind k) => switch (k) {

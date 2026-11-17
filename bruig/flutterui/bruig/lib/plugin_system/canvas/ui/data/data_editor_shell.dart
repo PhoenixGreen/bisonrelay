@@ -5,13 +5,11 @@ import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// data_editor_shell.dart is the frame round a block of data being edited:
-// the switch between pasted text and a grid, the height it has been dragged
-// to, and the grip that drags it; one frame for the chart's numbers and the
-// table's cells. Both choices are kept for the session as well as on disk:
-// the panel is rebuilt on every selection and a fresh State reads the
-// stored preference asynchronously, so without the session copy a dragged
-// height was lost every time.
+// data_editor_shell.dart is the frame round a block of data being edited
+// (a chart's numbers, a table's cells): the text/grid switch, the height it
+// is dragged to, and the grip. Both are kept for the session as well as on
+// disk: the panel rebuilds on every selection and a fresh State reads the
+// stored preference asynchronously, which would lose a dragged height.
 
 const double _minHeight = 70;
 
@@ -19,35 +17,31 @@ const double _minHeight = 70;
 /// panel scrolls and a grid scrolling inside it fights it for the wheel.
 const double _maxHeight = 1200;
 
-/// editorHeight is how tall the box is: what was dragged this session, or
-/// else the larger of the rows it holds and [stored]. [stored] is a floor,
-/// not the answer: it is one number shared by every table, so a height
-/// chosen for three rows must not make twenty scroll. A drag this session is
-/// obeyed exactly, shorter or taller.
+/// editorHeight is how tall the box is: what was dragged this session, else
+/// the larger of the rows it holds and [stored]. [stored] is a floor, not
+/// the answer: one number shared by every table, so a height chosen for
+/// three rows must not make twenty scroll. A drag is obeyed exactly.
 double editorHeight({double? dragged, double? stored, double wanted = 0}) {
   if (dragged != null) return dragged.clamp(_minHeight, _maxHeight);
   var floor = stored ?? 132;
   return math.max(floor, wanted).clamp(_minHeight, _maxHeight);
 }
 
-/// CanvasDataEditorShell is the frame; [text] and [grid] are what goes in it.
+/// CanvasDataEditorShell is the frame; [text] and [grid] go in it.
 class CanvasDataEditorShell extends StatefulWidget {
-  /// remember names where this editor's chosen view is kept. Each editor
-  /// passes its own, so a chart and a table are switched separately.
+  /// remember names where this editor's chosen view is kept, so a chart and
+  /// a table are switched separately.
   final String remember;
 
-  /// scope names the one element whose height is kept: its id. Separate from
-  /// [remember] because grid or text is a way of working, kept per editor,
-  /// while the height belongs to what is in the box.
+  /// scope is the element whose height is kept, by id: apart from
+  /// [remember], since grid or text is per editor, height per content.
   final String scope;
 
-  /// wanted is how tall the grid would be if nothing cut it off: enough for
-  /// every row. The box grows to it, up to [_maxHeight], until the grip is
-  /// dragged; a chosen height is then kept.
+  /// wanted is how tall the grid would be uncut: enough for every row. The
+  /// box grows to it, up to [_maxHeight], until the grip is dragged.
   final double wanted;
 
-  /// gridTooltip and textTooltip name the two views in the switch between
-  /// them -- "Edit the cells in a grid" reads better than "Grid".
+  /// gridTooltip and textTooltip name the two views in the switch.
   final String gridTooltip;
   final String textTooltip;
 
@@ -58,8 +52,8 @@ class CanvasDataEditorShell extends StatefulWidget {
   final Widget Function(BuildContext) text;
   final Widget Function(BuildContext) grid;
 
-  /// below is drawn under the grip, for anything that describes what is in
-  /// the editor rather than being part of it -- a chart's series, say.
+  /// below is drawn under the grip, for what describes the editor's contents
+  /// rather than being part of them: a chart's series, say.
   final List<Widget> below;
 
   const CanvasDataEditorShell({
@@ -86,17 +80,15 @@ void forgetDataEditorsForTest() {
 }
 
 class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
-  /// _grids, _stored and _dragged are what each named editor was left at, for
-  /// this run of the app (see the top of the file). A height read from disk
-  /// and one dragged this sitting are kept apart: see editorHeight.
+  /// _grids, _stored and _dragged are each editor's state this run; a disk
+  /// height and a dragged one are kept apart (see editorHeight).
   static final Map<String, bool> _grids = {};
   static final Map<String, double> _stored = {};
   static final Map<String, double> _dragged = {};
 
   bool get _grid => _grids[widget.remember] ?? false;
 
-  /// _mine is where this editor's height is kept: its own name and the
-  /// element it is showing.
+  /// _mine is where this editor's height is kept: its name and element.
   String get _mine => widget.scope.isEmpty
       ? widget.remember
       : "${widget.remember}.${widget.scope}";
@@ -121,8 +113,7 @@ class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
   @override
   void didUpdateWidget(CanvasDataEditorShell old) {
     super.didUpdateWidget(old);
-    // A different element in the same panel: its height is its own and has to
-    // be read for itself.
+    // Another element in the same panel: read its own height.
     if (old.scope != widget.scope && !_stored.containsKey(_mine)) _restore();
   }
 

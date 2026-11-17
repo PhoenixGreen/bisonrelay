@@ -10,18 +10,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonStr;
 
 // mix.dart is the mix settings: each channel strip and the master strip.
-//
-// media/mix/dsp.dart is the arithmetic that runs them. A mix also plays
-// through Web Audio (interactive EPUB), so each setting is defined here in
-// terms both can be told exactly:
-//
-// - the EQ is RBJ biquads, which dsp.dart runs and Web Audio's
-//   BiquadFilterNode is;
-// - balance is a gain per side ([ChannelMix.gains]), not a "pan" each
-//   player would read by its own law;
-// - the compressor and limiter take the parameters both share.
+// media/mix/dsp.dart runs them, and an interactive EPUB plays them through
+// Web Audio, so each setting is defined so both are told it exactly: the EQ
+// is RBJ biquads (Web Audio's BiquadFilterNode), balance is a gain per side
+// ([ChannelMix.gains]) rather than a pan law, and the compressor and limiter
+// take only the parameters both share.
 
-/// EqKind is what a band of the EQ does: a cut, a shelf or a bell.
 enum EqKind { lowCut, lowShelf, bell, highShelf, highCut }
 
 /// EqSlot is one of the EQ's eight bands, in order up the spectrum.
@@ -54,7 +48,6 @@ class EqBand {
   final double q;
   final bool on;
 
-  /// slope is a cut's steepness in dB an octave: one of [eqSlopes].
   final int slope;
 
   const EqBand(this.freq,
@@ -87,10 +80,8 @@ class EqBand {
 }
 
 /// Eq is a channel EQ of eight bands: a low cut, a low shelf, four bells, a
-/// high shelf and a high cut, then a gain.
-///
-/// Gains are limited to ±12 dB, as far as SoLoud's band EQ can follow. Older
-/// three-band files' "low", "mid" and "high" are still those slots.
+/// high shelf and a high cut, then a gain. Gains are limited to ±12 dB.
+/// Older three-band files' "low", "mid" and "high" are still those slots.
 class Eq {
   final bool on;
   final EqBand lowCut;
@@ -145,8 +136,7 @@ class Eq {
         EqSlot.highCut => copyWith(highCut: b),
       };
 
-  /// shaping is whether [slot] changes anything: on, and a cut or non-zero
-  /// gain.
+  /// shaping is whether [slot] is on and is a cut or has non-zero gain.
   bool shaping(EqSlot slot) {
     var b = band(slot);
     return b.on && (slot.isCut || b.gainDb != 0);
@@ -279,16 +269,14 @@ class Dynamics {
   /// kneeDb is the width of the knee at the threshold; nought is hard.
   final double kneeDb;
 
-  /// mix is the wet share: one is all compressed, less is parallel
-  /// compression.
+  /// mix is the wet share: one all compressed, less parallel compression.
   final double mix;
 
   /// autoGain makes up what is taken off, on top of [makeupDb].
   final AutoGain autoGain;
 
-  /// source is the channel, by key, whose sound it listens to rather than
-  /// its own -- a sidechain: a kick pumping a pad, a voice pushing the music
-  /// down live -- or "" for its own. See [sidechain].
+  /// source is the key of a channel it listens to instead of its own -- a
+  /// sidechain, as a kick pumping a pad -- or "" for its own.
   final String source;
 
   const Dynamics({
@@ -366,8 +354,7 @@ class Dynamics {
         stereo: jsonInt(json["stereo"], 0).clamp(0, 2),
       );
 
-  /// reducedDb is [input] dB after threshold, ratio and knee, before
-  /// makeup.
+  /// reducedDb is [input] dB after threshold, ratio and knee, before makeup.
   double reducedDb(double input) {
     var t = threshold, r = math.max(1.0, ratio), k = kneeDb;
     if (k <= 0) return input <= t ? input : t + (input - t) / r;
@@ -397,8 +384,7 @@ enum DuckCurve {
   /// smooth is an S curve, gentlest at both ends.
   smooth("Smooth"),
 
-  /// natural is even in decibels rather than in level, as an ear hears an
-  /// even fade.
+  /// natural is even in decibels, as an ear hears an even fade.
   natural("Natural");
 
   final String label;
@@ -412,19 +398,17 @@ enum DuckCurve {
 /// wherever a strip is named by key: its meters, its chain.
 const sceneBusKey = "\u0000scene";
 
-/// Ducking is a channel (a voice) turning the others down while it is
-/// heard. It is set on the voice; every other channel is ducked except those
-/// in [except]. The dips are worked out from the voice's recordings, not a
-/// live meter, so editing and export agree and the dips can be drawn. See
-/// duckEnvelopes in audio_tools.dart.
+/// Ducking is a channel (a voice) turning every other channel, but those in
+/// [except], down while it is heard. The dips are worked out from the
+/// voice's recordings, not a live meter, so editing and export agree and
+/// the dips can be drawn. See duckEnvelopes in audio_tools.dart.
 class Ducking {
   final bool on;
 
   /// depthDb is how far the other channels sink, below nought.
   final double depthDb;
 
-  /// attack and release are seconds to sink before a line and to come back
-  /// after it.
+  /// attack and release are seconds to sink before a line and recover after.
   final double attack;
   final double release;
 
@@ -482,7 +466,6 @@ class Ducking {
       );
 }
 
-/// ChannelMix is one channel strip.
 /// maxChainDevices is the most devices a chain is read with: each holds
 /// buffers once played (a delay's are seconds long), and a received canvas
 /// could otherwise ask for tens of thousands.
@@ -497,12 +480,10 @@ class ChannelMix {
   final Eq eq;
   final Dynamics comp;
 
-  /// duck is how this channel turns the others down. See [Ducking].
   final Ducking duck;
 
-  /// compFirst is whether the compressor comes before the EQ, stored so
-  /// playing and exporting agree. Kept in step with [order], which says
-  /// where each goes among the devices too.
+  /// compFirst is whether the compressor comes before the EQ, kept in step
+  /// with [order] and stored so playing and exporting agree.
   final bool compFirst;
 
   /// order is the strip's chain as it was last arranged: device ids, and
@@ -522,8 +503,7 @@ class ChannelMix {
         if (comp.sidechain case var c?) c,
       };
 
-  /// sends is how much of this channel also goes to each return, by return
-  /// id, in dB. A return not listed is sent nothing.
+  /// sends is how much goes to each return, by id, in dB; unlisted is none.
   final Map<String, double> sends;
 
   /// surround is where this channel is heard in a surround mix (null: the
@@ -532,8 +512,7 @@ class ChannelMix {
   final SurroundPan? surround;
   final double? lfeDb;
 
-  /// devices are the channel's own devices, in order, before its EQ and
-  /// compressor. See devices.dart.
+  /// devices are its own devices, in order, before its EQ and compressor.
   final List<MixDevice> devices;
 
   /// speech is the channel's Speech device, if any. See speech_spec.dart.
@@ -543,16 +522,13 @@ class ChannelMix {
   /// a MIDI channel's notes. See media/vocaliser.dart.
   final VocaliserSpec? vocaliser;
 
-  /// automation is the channel's automation lanes. See automation.dart.
   final List<AutomationLane> automation;
 
-  /// output is where the channel goes after its fader: "" the master, or a
-  /// return's id (all of it, as a group bus). A missing return means the
-  /// master.
+  /// output is where it goes after its fader: a return's id (all of it, as
+  /// a group bus), or "" or a missing return for the master.
   final String output;
 
-  /// frozen, when it is, is the start of the chain rendered into its sounds
-  /// -- see FrozenChain -- and what to put back when it is unfrozen.
+  /// frozen is the chain's start rendered into its sounds (see FrozenChain).
   final FrozenChain? frozen;
 
   /// removed are the strip's own parts taken out of its chain, as any
@@ -792,16 +768,14 @@ const List<String> removableParts = [
   stripDucked
 ];
 
-/// FrozenChain is a channel's chain frozen up to a step, as the
-/// prototype's "Freeze the chain up to here": each of its sounds rendered
-/// through the chain's start, once, and played from that copy -- the steps
-/// it went through switched off, so they are not run twice.
+/// FrozenChain is a channel's chain frozen up to a step: each of its sounds
+/// rendered once through the chain's start and played from that copy, the
+/// steps it went through switched off so they are not run twice.
 class FrozenChain {
   /// upTo is the last step frozen: a device's id, chainEq or chainComp.
   final String upTo;
 
-  /// wasOn is each step frozen, and whether it was switched on: as they
-  /// are put back.
+  /// wasOn is whether each step frozen was on, to put it back so.
   final Map<String, bool> wasOn;
 
   /// playlists are each sound's own files before, by element id, as
@@ -811,7 +785,6 @@ class FrozenChain {
   const FrozenChain(
       {required this.upTo, required this.wasOn, required this.playlists});
 
-  /// steps are the steps frozen.
   Set<String> get steps => wasOn.keys.toSet();
 
   Map<String, dynamic> toJson() => {
@@ -884,17 +857,14 @@ class MasterMix {
   final double target;
   final bool normalise;
 
-  /// compFirst is whether the glue comes before the EQ. The limiter is
-  /// always last.
+  /// compFirst is whether the glue comes before the EQ.
   final bool compFirst;
 
-  /// order and chain: see ChannelMix.order. The limiter is not in it: it is
-  /// always last.
+  /// order: see ChannelMix.order. The limiter is always last, not in it.
   final List<String> order;
   List<String> get chain => chainOrder(devices, order, compFirst);
 
-  /// devices are the master's own devices, in order, before its EQ and
-  /// glue.
+  /// devices are the master's own devices, in order, before EQ and glue.
   final List<MixDevice> devices;
 
   const MasterMix({
@@ -1060,8 +1030,7 @@ _Biquad _pass(double freq, double q, double fs, {required bool high}) {
 double _biquadDb(_Biquad q, double f, double fs) {
   var (b0, b1, b2, a0, a1, a2) = q;
   var w = 2 * math.pi * f / fs;
-  // |H(e^jw)|: numerator magnitude over denominator, each a quadratic in
-  // e^-jw.
+  // |H(e^jw)|: numerator over denominator magnitude, each quadratic in e^-jw.
   double mag(double c0, double c1, double c2) {
     var re = c0 + c1 * math.cos(w) + c2 * math.cos(2 * w);
     var im = -(c1 * math.sin(w) + c2 * math.sin(2 * w));
@@ -1073,16 +1042,13 @@ double _biquadDb(_Biquad q, double f, double fs) {
   return 20 * math.log(num / den) / math.ln10;
 }
 
-/// chainEq and chainComp are a strip's EQ and compressor in its order (see
-/// ChannelMix.order).
+/// chainEq and chainComp are a strip's EQ and compressor in ChannelMix.order.
 const String chainEq = "eq", chainComp = "comp";
 
-/// chainOrder is the order a strip runs in, from its [devices], the [order]
-/// it was last arranged in and [compFirst]: what is in [order], in that
-/// order, of what is still there; the EQ and the compressor, where it does
-/// not have them, last (the compressor first if [compFirst]); and a device
-/// it does not have -- one just put on -- before the EQ and compressor
-/// where they are last, or else at the end.
+/// chainOrder is the order a strip runs in: what of [order] is still there,
+/// in order; then the EQ and compressor if [order] lacks them (compressor
+/// first if [compFirst]). A device new to [order] goes before an EQ and
+/// compressor placed last, else at the end.
 List<String> chainOrder(
     List<MixDevice> devices, List<String> order, bool compFirst) {
   var ids = [for (var i = 0; i < devices.length; i++) deviceIdAt(devices, i)];
@@ -1108,6 +1074,5 @@ List<String> chainOrder(
   return out;
 }
 
-/// compFirstIn is whether [chain] has the compressor before the EQ.
 bool compFirstIn(List<String> chain) =>
     chain.indexOf(chainComp) < chain.indexOf(chainEq);

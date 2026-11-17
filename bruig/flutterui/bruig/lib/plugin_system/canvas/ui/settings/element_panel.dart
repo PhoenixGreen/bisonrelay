@@ -15,22 +15,17 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:flutter/material.dart';
 
-// element_panel.dart is the panel every rebuilt element's settings share
-// (Ken, 2026-11-11: "all consistent"; the Text panel's prototype set it): a
-// quick strip of what is changed most, then Content, Look, Layout, Motion
-// and More, always in that order, an empty one left out -- drawn at the
-// prototype's measure (CanvasDense). An element says what goes where with
-// PanelBits; the panel adds what every element has: where it is (Layout),
-// its looks (Look), how it arrives and leaves (Motion), and its presets
-// (More).
+// element_panel.dart is the panel every element's settings share: a quick
+// strip, then Content, Look, Layout, Motion and More, in that order, empty
+// ones dropped. Elements place settings with PanelBits; the panel adds
+// position, looks, arrival and leaving, and presets.
 
-/// PanelSection is one of a rebuilt panel's sections. Motion's bits go under
-/// its arrival and leaving: what an element adds to how it comes in (a
-/// table's rows in turn).
+/// PanelSection is a panel section. Motion's bits go under arrival and
+/// leaving: what an element adds to coming in (a table's rows in turn).
 enum PanelSection { content, look, layout, motion, more }
 
 /// PanelBit is what an element puts in one of its panel's sections: its
-/// groups, and a word on them for the section's heading.
+/// groups, and a word on them for the heading.
 class PanelBit extends StatelessWidget {
   final PanelSection into;
   final String summary;
@@ -43,9 +38,8 @@ class PanelBit extends StatelessWidget {
       Column(mainAxisSize: MainAxisSize.min, children: children);
 }
 
-/// sectionContents is what an older panel's section [w] holds, to lay its
-/// settings straight into a rebuilt panel's section rather than as a fold
-/// inside it (a sound's file and playback, in its Content).
+/// sectionContents is an older panel section's contents, laid straight
+/// into a panel section rather than folded in it.
 List<Widget> sectionContents(Widget w) => w is CanvasSection ? w.children : [w];
 
 /// looksSaid is [e]'s looks on all of it, by name, for a heading.
@@ -74,12 +68,10 @@ String motionSaid(CanvasElement e) {
   ].join(", ").replaceFirstMapped(RegExp(r"^."), (m) => m[0]!.toUpperCase());
 }
 
-/// elementPanel is [e]'s settings as the Text panel's are laid out: [quick]
-/// over its sections, each section the [bits] put into it with what every
-/// element has besides. [contentOpen] starts Content open: an element's
-/// Content that is why its settings are opened (a path's points). [parts]
-/// goes over everything (a picture's layers); [position], where given,
-/// is Layout's own place in the plain position group's (a picture's tools).
+/// elementPanel is [e]'s settings: [quick] over sections holding [bits]
+/// plus what every element has. [contentOpen] opens Content (a path's
+/// points); [parts] goes over everything (a picture's layers); [position]
+/// replaces Layout's position group (a picture's tools).
 Widget elementPanel(
   BuildContext context,
   CanvasController controller,
@@ -157,8 +149,8 @@ Widget elementPanel(
                 .join(" · "),
             children: [
               MotionSummary(controller: controller, element: e),
-              // How it comes in and goes, chosen here as in its Chain: its
-              // own arrival and way out, each its family and which of them.
+              // Its arrival and way out, each a family and a choice, as in
+              // its Chain.
               if (animates)
                 CanvasControlGroup(
                     key: ValueKey("${kind}MotionPick"),

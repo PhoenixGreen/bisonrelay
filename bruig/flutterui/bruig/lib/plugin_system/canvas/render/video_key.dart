@@ -7,10 +7,10 @@ import 'package:flutter/painting.dart';
 
 // video_key.dart takes the green out of a video frame, on the GPU.
 //
-// The shader (chroma_key.frag) is run into an image of the frame's own size,
-// and the picture painter draws that, so crop, framing, filter and overlay
-// apply as to a cut-out photograph. Keyed images are kept for a few calls:
-// the painter asks on every repaint, and a paused video is the same frame.
+// The shader (chroma_key.frag) renders into an image of the frame's size,
+// which the picture painter draws, so crop, framing, filter and overlay apply
+// as to a cut-out photograph. Keyed images are kept for a few calls: the
+// painter asks on every repaint, and a paused video is the same frame.
 
 class VideoKey {
   static ui.FragmentProgram? _program;
@@ -19,12 +19,11 @@ class VideoKey {
   /// ready says the shader is loaded. Until it is, frames are drawn unkeyed.
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
-  /// load reads the shader, once. Safe to call as often as liked; the stage
-  /// calls it when it opens and repaints when it has landed.
+  /// load reads the shader, once; safe to call repeatedly. The stage calls
+  /// it when it opens and repaints when it lands.
   static Future<void> load() async {
-    // The program, not the loading, is what is kept: a load begun
-    // where it never finishes (a test's own time, gone) would leave
-    // every later wait for it waiting for ever.
+    // The program is kept, not the loading: a load begun where it never
+    // finishes (a finished test's clock) would leave every later wait hung.
     if (_program != null || _unloadable) return;
     try {
       _program = await ui.FragmentProgram.fromAsset("shaders/chroma_key.frag");
@@ -86,7 +85,6 @@ class VideoKey {
     return out;
   }
 
-  /// forgetForTest empties the cache between tests.
   @visibleForTesting
   static void forgetForTest() {
     for (var entry in _cache) {

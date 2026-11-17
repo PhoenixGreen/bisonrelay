@@ -8,18 +8,13 @@ import 'package:bruig/plugin_system/canvas/render/procedural/noise.dart';
 import 'package:flutter/painting.dart';
 
 // blockchain.dart draws the Blockchain style, one way per [BlockchainMode]:
-// a chain of blocks, a network of nodes, a ledger of lines, a Merkle tree, a
-// field of blocks seen from above, and a globe.
+// a chain, a network, a ledger, a Merkle tree, a block field, and a globe.
 //
-// A pure function of the frame, the spec and the time. Every block, node and
-// line is known by a number (its place in the chain, its cell, its row) and
-// everything about it is hashed from that number, so a block keeps its hash
-// as it scrolls and a frame is the same picture on every machine.
-//
-// Main is the structure (blocks, links, nodes, text); Accent is what is
-// happening: the newest block, a confirmation, a transaction in flight.
+// A pure function of frame, spec and time. Everything is hashed from its
+// number (chain place, cell, row), so a block keeps its hash as it scrolls
+// and a frame is the same on every machine. Main is the structure; Accent is
+// what is happening (newest block, a confirmation, a transaction).
 
-/// paintBlockchain draws [spec] into [rect] at time [t].
 void paintBlockchain(
     ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   switch (spec.choice("mode")) {
@@ -42,11 +37,9 @@ Color _a(Color c, double a) => c.withValues(alpha: (c.a * a).clamp(0.0, 1.0));
 
 double _frac(double v) => v - v.floorToDouble();
 
-/// _mixed is a hash that keeps nearby inputs apart in every argument.
-///
-/// The shared [hash] adds its inputs before mixing, so columns a fixed seed
-/// apart pick the same rows (every ledger column lit at one height). Here
-/// each input is mixed in on its own.
+/// _mixed is a hash that keeps nearby inputs apart in every argument. The
+/// shared [hash] adds its inputs first, so columns a fixed seed apart would
+/// pick the same rows.
 double _mixed(int a, int b, int c) {
   var h = a * 0x9E3779B1;
   h = (h ^ (h >> 15)) + b * 0x85EBCA77;
@@ -67,7 +60,6 @@ String _hex(int seed, int a, int b, int n) {
   return out.toString();
 }
 
-/// _withCommas is [n] written the way a block height is.
 String _withCommas(int n) {
   var s = n.abs().toString();
   var out = StringBuffer();
@@ -80,11 +72,9 @@ String _withCommas(int n) {
 
 final Map<String, TextPainter> _texts = {};
 
-/// _text draws [s] in a monospaced face, its left edge at [at] -- or, with
-/// [centred], its middle -- and its middle on the line.
-///
-/// Painters are cached: a scrolling ledger is the same few hundred lines
-/// drawn a little higher every frame.
+/// _text draws [s] monospaced, its left edge (or middle, with [centred]) at
+/// [at] and its middle on the line. Painters are cached: a scrolling ledger
+/// is the same few hundred lines drawn a little higher every frame.
 double _text(ui.Canvas canvas, String s, Offset at, double size, Color color,
     {bool centred = false}) {
   if (size < 3 || color.a <= 0.01) return 0;
@@ -117,8 +107,7 @@ double _text(ui.Canvas canvas, String s, Offset at, double size, Color color,
 // Blocks and the links between them
 // --------------------------------------------------------------------------
 
-/// _BlockLook is how one block is drawn: its shape, colours, and how far it
-/// stands out.
+/// _BlockLook is how one block is drawn: shape, colours, depth.
 class _BlockLook {
   final int shape;
   final double depth;
@@ -126,14 +115,13 @@ class _BlockLook {
   final Color fill;
   final double stroke;
 
-  /// base is what a solid block is shaded from -- the background -- or null
-  /// for one drawn as a translucent outline.
+  /// base is the colour a solid block is shaded from (the background), or
+  /// null for a translucent outline.
   final Color? base;
   const _BlockLook(this.shape, this.depth, this.line, this.fill, this.stroke,
       [this.base]);
 }
 
-/// _block draws one block with its front face at [face].
 void _block(ui.Canvas canvas, Rect face, _BlockLook look) {
   var stroke = Paint()
     ..style = PaintingStyle.stroke
@@ -152,8 +140,8 @@ void _block(ui.Canvas canvas, Rect face, _BlockLook look) {
       canvas.drawRRect(r, fill);
       canvas.drawRRect(r, stroke);
     default:
-      // A cube seen from a little above and to the right: the front, then
-      // the top and the side going back from it, lit from above.
+      // A cube seen from a little above and right: the front, then the top
+      // and side going back, lit from above.
       var d = Offset(look.depth * 0.8, -look.depth * 0.6);
       var top = Path()
         ..moveTo(face.left, face.top)
@@ -179,9 +167,8 @@ void _block(ui.Canvas canvas, Rect face, _BlockLook look) {
   }
 }
 
-/// _solidBlock is a block drawn as a solid thing, lit from above: its top
-/// catching the light, its side in shade, its front fading down, and a
-/// bright edge where the top meets the front.
+/// _solidBlock is a block lit from above: top catching the light, side in
+/// shade, front fading down, a bright edge where top meets front.
 void _solidBlock(
     ui.Canvas canvas, Rect face, _BlockLook look, Color base, Paint stroke) {
   var tint = look.fill.withValues(alpha: 1);
@@ -224,7 +211,6 @@ void _solidBlock(
       canvas.drawPath(side, stroke);
       canvas.drawRect(face, stroke);
   }
-  // The lit edge.
   canvas.drawLine(
       face.topLeft,
       face.topRight,
@@ -234,9 +220,8 @@ void _solidBlock(
             .withValues(alpha: look.line.a));
 }
 
-/// _blockText is a block's height, its hash and its transactions, inside
-/// [face] -- or, where the block is too small to read, the transactions
-/// alone, as bars.
+/// _blockText is a block's height, hash and transactions inside [face];
+/// where too small to read, the transactions alone, as bars.
 void _blockText(
     ui.Canvas canvas, Rect face, int seed, int id, Color color, bool words) {
   var b = face.width;
@@ -251,7 +236,6 @@ void _blockText(
         b * 0.1,
         _a(color, 0.75));
   }
-  // The transactions, as bars of differing length.
   var rows = words && b >= 34 ? 3 : 4;
   var top = words && b >= 34 ? face.top + b * 0.55 : face.top + pad;
   var step = (face.bottom - pad - top) / rows;
@@ -267,7 +251,7 @@ void _blockText(
   }
 }
 
-/// _link joins two blocks: from [a] to [b], drawn as [style] says.
+/// _link joins [a] to [b] as [style] says.
 void _link(
     ui.Canvas canvas, Offset a, Offset b, int style, double size, Color color) {
   var len = (b - a).distance;
@@ -342,9 +326,9 @@ void _pulse(ui.Canvas canvas, Offset at, double r, Color color) {
 // Chain
 // --------------------------------------------------------------------------
 
-/// _chain is rows of blocks, each linked to the one before it, the newest
-/// arriving from the right and the chain moving off to the left -- laid flat
-/// in rows, in rows at different depths, or running away into the picture.
+/// _chain is rows of blocks, each linked to the one before, the newest
+/// arriving from the right: laid flat, at different depths, or running away
+/// into the picture.
 void _chain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var short = math.min(rect.width, rect.height);
   var b0 = math.max(10.0, short * spec.scale * 2.4);
@@ -357,8 +341,8 @@ void _chain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var bright = spec.intensity;
   var layout = spec.choice("layout");
 
-  /// block draws block [k] of the chain seeded [seed] with its front face
-  /// [face], dimmed by [dim], and the link from it to [next].
+  /// block draws block [k] of chain [seed] at [face], dimmed by [dim], with
+  /// its link to [next].
   void block(
       int seed, int k, Rect face, double dim, Offset? next, double wave) {
     var b = face.width;
@@ -397,9 +381,8 @@ void _chain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 
   if (layout == 2) {
-    // Running away into the picture: from a block at the near corner,
-    // shrinking towards a point high on the far side -- and, with more than
-    // one chain, others running alongside it.
+    // Running away into the picture: from the near corner, shrinking toward
+    // a point high on the far side, with any other chains alongside.
     var vanish =
         Offset(rect.right - rect.width * 0.12, rect.top + rect.height * 0.28);
     const focal = 4.0;
@@ -445,8 +428,8 @@ void _chain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         band * (r + 0.5) +
         (hash(seed, 1, 1) - 0.5) * band * 0.4 * spec.variation +
         depth * 0.3;
-    // Each chain at its own pace, so the rows do not march in step -- and
-    // the far ones slower, as things further off seem to move.
+    // Each chain at its own pace so rows do not march in step, far ones
+    // slower.
     var speed = (0.25 + hash(seed, 2, 2) * 0.35 * (0.3 + spec.variation)) * s;
     var along = t * speed + hash(seed, 3, 3) * 50;
     var first = (along - 1).floor();
@@ -467,12 +450,12 @@ void _chain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // --------------------------------------------------------------------------
 
 /// _network is nodes joined to their neighbours, with transactions moving
-/// along the links between them.
+/// along the links.
 void _network(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var short = math.min(rect.width, rect.height);
   var long = math.max(rect.width, rect.height);
-  // One node to a cell of a grid, shaken out of line: spread evenly enough
-  // to fill the frame, and loosely enough not to look like a grid.
+  // One node per grid cell, shaken out of line: even enough to fill the
+  // frame, loose enough not to look like a grid.
   var cell = short * (0.26 - spec.density * 0.19);
   var cols = (rect.width / cell).ceil() + 2;
   var rows = (rect.height / cell).ceil() + 2;
@@ -508,8 +491,8 @@ void _network(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var line = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = math.max(0.7, size * 0.18);
-  // Each node to its nearest few within reach -- a mesh rather than a
-  // tangle, which is what joining everything within reach gives.
+  // Each node to its nearest few within reach: a mesh, not the tangle that
+  // joining everything within reach gives.
   var drawn = <int>{};
   for (var a = 0; a < nodes.length; a++) {
     var near = <(double, int)>[];
@@ -591,7 +574,7 @@ void _network(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // --------------------------------------------------------------------------
 
 /// _ledger is columns of records scrolling up, the newest arriving at the
-/// bottom and still resolving.
+/// bottom, still resolving.
 void _ledger(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var short = math.min(rect.width, rect.height);
   var size = math.max(5.0, short * spec.scale * 0.6);
@@ -623,8 +606,7 @@ void _ledger(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var x = rect.left + c * colW + margin;
 
       String s;
-      // Each line laid out to the width of its column, so the columns read
-      // as columns rather than as ragged text.
+      // Each line fits its column's width, so columns read as columns.
       var row = id * 7 + 3;
       switch (kind) {
         case 0:
@@ -645,8 +627,8 @@ void _ledger(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       }
       if (s.length > chars) s = s.substring(0, chars);
 
-      // The newest lines are still being worked out: some of their
-      // characters change from one moment to the next.
+      // The newest lines are still resolving: some characters change from
+      // moment to moment.
       var fromBottom = (rect.bottom - y) / lineH;
       if (spec.animated && fromBottom < 2.5) {
         var b = StringBuffer();
@@ -683,9 +665,9 @@ void _ledger(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // Merkle tree
 // --------------------------------------------------------------------------
 
-/// _merkle is a tree of hashes: the transactions along the bottom, each
-/// pair hashed into the one above, up to the root -- and one leaf's proof,
-/// the path from it to the root, lit.
+/// _merkle is a tree of hashes: transactions along the bottom, each pair
+/// hashed into the one above, up to the root, with one leaf's proof path
+/// lit.
 void _merkle(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var levels = spec.p("levels").round().clamp(2, 7);
   var leaves = 1 << (levels - 1);
@@ -773,8 +755,8 @@ void _merkle(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // Block field
 // --------------------------------------------------------------------------
 
-/// _field is ground covered in blocks, seen from above at an angle, each
-/// stack its own height -- a city of blocks.
+/// _field is ground covered in stacks of blocks, seen from above at an
+/// angle: a city of blocks.
 void _field(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var short = math.min(rect.width, rect.height);
   var e = math.max(6.0, short * spec.scale * 1.5);
@@ -786,9 +768,8 @@ void _field(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var present = 0.3 + spec.density * 0.7;
   var stroke = math.max(0.6, e * 0.03);
 
-  // The ground's grid seen corner on: [s] counts rows going back into the
-  // picture and [d] places across it. Back to front, so that nearer stacks
-  // are drawn over the ones behind them.
+  // The ground's grid seen corner on: [s] counts rows back into the
+  // picture, [d] places across. Back to front, so nearer stacks overdraw.
   var across = (rect.width / halfW / 2).ceil() + 2;
   var rows = ((rect.height + rise) / halfH).ceil() + 4;
   var origin = Offset(rect.center.dx, rect.top - halfH * 2);
@@ -862,9 +843,8 @@ void _field(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 // Globe
 // --------------------------------------------------------------------------
 
-/// _globe is the network laid round the world: a planet of dots turning
-/// slowly, with nodes on it and transactions arcing between them above its
-/// surface.
+/// _globe is the network round a slowly turning planet of dots, with
+/// transactions arcing between nodes above its surface.
 void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var short = math.min(rect.width, rect.height);
   var radius = short * 0.4 * math.pow(spec.scale / 0.05, 0.35).toDouble();
@@ -876,8 +856,8 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var ct = math.cos(tilt), st = math.sin(tilt);
   var noise = ValueNoise(spec.seed + 5);
 
-  /// at is a point on the globe -- or [lift] above it -- on the page, and
-  /// how far it faces the viewer.
+  /// at is a point on the globe (or [lift] above it) on the page, and how
+  /// far it faces the viewer.
   (Offset, double) at(double lat, double lon, [double lift = 0]) {
     var r = 1 + lift;
     var x = math.cos(lat) * math.sin(lon + yaw) * r;
@@ -887,7 +867,6 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     return (centre + Offset(x, -y2) * radius, z2);
   }
 
-  // The atmosphere, and the planet's dark body inside it.
   canvas.drawCircle(
       centre,
       radius * 1.3,
@@ -911,8 +890,8 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
           Color.lerp(bg, const Color(0xFF000000), 0.3)!,
         ]));
 
-  // The land, as dots on a grid of latitude and longitude: only where a
-  // field says there is land, so the globe has continents to it.
+  // Land as dots on a latitude/longitude grid, only where the "landmass"
+  // field says, so the globe has continents.
   var land = spec.on("landmass");
   var dots = <double>[];
   var backDots = <double>[];
@@ -923,8 +902,8 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     for (var i = 0; i < n; i++) {
       var lon = i / n * math.pi * 2;
       if (land) {
-        // Sampled on the sphere itself rather than on the map, so the land
-        // has no seam and no bands running round the poles.
+        // Sampled on the sphere, not the map, so the land has no seam and
+        // no bands round the poles.
         var px = math.cos(lat) * math.cos(lon),
             py = math.cos(lat) * math.sin(lon);
         var pz = math.sin(lat);
@@ -933,8 +912,8 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         if (f < 0.53) continue;
       }
       var (p, z) = at(lat, lon);
-      // Brightest facing the viewer and fading towards the edge, which is
-      // what makes a disc of dots a ball.
+      // Brightest facing the viewer, fading toward the edge: a disc of dots
+      // made a ball.
       (z > 0.45 ? dots : (z > 0 ? edgeDots : backDots))
         ..add(p.dx)
         ..add(p.dy);
@@ -963,7 +942,6 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         ..strokeCap = StrokeCap.round
         ..color = _a(fg, 0.75 * bright));
 
-  // The nodes, and the arcs between them.
   var count = 8 + (spec.density * 26).round();
   var nodes = [
     for (var i = 0; i < count; i++)
@@ -981,8 +959,7 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var (lat1, lon1) = nodes[(hash(spec.seed, k, 4) * count).floor() % count];
     var (lat2, lon2) = nodes[(hash(spec.seed, k, 5) * count).floor() % count];
     if (lat1 == lat2 && lon1 == lon2) continue;
-    // Along the great circle between them, rising above the surface the
-    // further apart they are.
+    // Along the great circle, rising higher the further apart they are.
     var a = [
       math.cos(lat1) * math.cos(lon1),
       math.cos(lat1) * math.sin(lon1),
@@ -1014,7 +991,6 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       line.color = _a(ac, bright * (0.12 + 0.6 * front));
       canvas.drawLine(p0, p1, line);
     }
-    // A transaction on its way.
     var f =
         _frac(t * (0.18 + hash(spec.seed, k, 6) * 0.2) + hash(spec.seed, k, 7));
     var (p, z) = pts[(f * segs).floor().clamp(0, segs)];

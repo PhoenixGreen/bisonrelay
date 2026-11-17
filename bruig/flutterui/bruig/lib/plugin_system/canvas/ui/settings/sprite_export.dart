@@ -20,17 +20,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
-// sprite_export.dart is a sprite taken out of the canvas, and a character
-// brought into one: its sheet laid out an animation to a row, with notes an
-// engine reads -- Aseprite's -- or an animation as a GIF; and a character on
-// the canvas drawn frame by frame, turned each way if wanted, into a sheet.
+// sprite_export.dart exports a sprite (an Aseprite-style sheet, or a GIF)
+// and makes one from a canvas character drawn frame by frame.
 
-/// SheetRow is one row of a sheet laid out for export: an animation, the
-/// way it faces, and its frames -- each drawn flipped or not.
+/// SheetRow is one exported sheet row: an animation, its facing, and its
+/// frames, each flipped or not.
 typedef SheetRow = ({String name, List<(int, bool)> frames, double fps, bool loop});
 
-/// exportRows is [e]'s animations laid out a row each -- and, with
-/// directions, a row for each way it faces -- in the order they are.
+/// exportRows is [e]'s animations a row each, and with directions a row per
+/// facing, in order.
 List<SheetRow> exportRows(SpriteElement e) => [
       for (var a in e.actions)
         for (var f in e.directions ? SpriteFacing.values : const [SpriteFacing.front])
@@ -43,10 +41,8 @@ List<SheetRow> exportRows(SpriteElement e) => [
             ),
     ];
 
-/// exportSheet is [e] laid out for an engine: every animation a row of
-/// cells as big as its biggest frame, each frame standing on the bottom of
-/// its cell -- the picture's .png, and its notes as Aseprite writes them,
-/// each row a tag, called [image].
+/// exportSheet is [e] for an engine: each animation a row of cells as big as
+/// its biggest frame, as a .png and Aseprite notes called [image].
 Future<(Uint8List, String)?> exportSheet(SpriteElement e, ui.Image sheet, {String image = "sprite.png"}) async {
   var rows = exportRows(e);
   if (rows.isEmpty) return null;
@@ -109,8 +105,7 @@ Future<(Uint8List, String)?> exportSheet(SpriteElement e, ui.Image sheet, {Strin
 }
 
 /// exportGif is animation [action] of [e] as a GIF, each frame as long as
-/// its speed says, on a cell as big as its biggest frame; facing the way
-/// it faces.
+/// its speed says, on a cell as big as its biggest frame, facing its way.
 Future<Uint8List?> exportGif(SpriteElement e, ui.Image sheet, String action) async {
   var a = e.actionNamed(action);
   if (a == null) return null;
@@ -140,8 +135,8 @@ Future<Uint8List?> exportGif(SpriteElement e, ui.Image sheet, String action) asy
   return encodeGif(frames, loop: a.loop ? 0 : 1);
 }
 
-/// spriteFacings is the way a character is turned for each way a sprite
-/// faces: a quarter round to its left faces the page's left.
+/// spriteFacings is how a character is turned for each sprite facing: a
+/// quarter round to its left faces the page's left.
 const Map<SpriteFacing, double> spriteFacings = {
   SpriteFacing.front: 0,
   SpriteFacing.left: 90,
@@ -149,12 +144,10 @@ const Map<SpriteFacing, double> spriteFacings = {
   SpriteFacing.right: -90,
 };
 
-/// spriteFromCharacter is [e] made of [who], a character: [count] frames from
-/// [from], [step] canvas frames apart, each in a cell [cell] pixels tall and,
-/// with [directions], a row for each way a sprite can face; played at the
-/// canvas's own speed. Each frame is drawn on its own once all it needs has
-/// loaded: a 3D character's scene drawn twice into one picture shows only the
-/// last.
+/// spriteFromCharacter is [e] made of character [who]: [count] frames from
+/// [from], [step] apart, [cell] pixels tall, a row per facing with
+/// [directions]. Each frame is drawn alone once loaded, as a 3D scene drawn
+/// twice into one picture shows only the last.
 Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CanvasElement who,
     {required int from,
     int count = 8,
@@ -163,8 +156,8 @@ Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CanvasElement who,
     bool directions = false,
     int cell = 128,
     CanvasImageSource? images}) async {
-  // Room round the box for arms out and hair up: a drawn figure is drawn
-  // past its box. A 3D one is drawn inside it.
+  // Room round the box for arms out and hair up: a drawn figure spills past
+  // its box. A 3D one stays inside.
   var b = who.bounds;
   var room = who is Character3dElement
       ? b
@@ -179,8 +172,8 @@ Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CanvasElement who,
     var turned = !directions
         ? who
         : switch (who) {
-            // A quarter turn to its left, seen from a camera gone a quarter
-            // round to its right: half turns, as its view is set.
+            // A quarter turn left, seen from a camera a quarter round to its
+            // right: half turns, as its view is set.
             Character3dElement c => c.copyWith(turn: c.turn + spriteFacings[f]! / 180),
             _ => who,
           };
@@ -234,7 +227,7 @@ Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CanvasElement who,
   );
 }
 
-/// SpriteExportGroup saves the sprite out: its sheet with its notes, or an
+/// SpriteExportGroup saves the sprite: its sheet with notes, or an
 /// animation as a GIF.
 class SpriteExportGroup extends StatefulWidget {
   final CanvasController controller;
@@ -315,8 +308,8 @@ class SpriteExportGroupState extends State<SpriteExportGroup> {
       );
 }
 
-/// CharacterSpriteMaker makes the sprite of a character on the canvas: so
-/// many of its frames from the playhead, turned each way or not.
+/// CharacterSpriteMaker makes a canvas character's sprite: some frames from
+/// the playhead, turned each way or not.
 class CharacterSpriteMaker extends StatefulWidget {
   final CanvasController controller;
   final SpriteElement sprite;

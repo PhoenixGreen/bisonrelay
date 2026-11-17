@@ -1,15 +1,11 @@
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 
-// chart_words.dart is a chart's live words (prototype v6): anything in
-// braces in its title, description or a note is worked out from the
-// numbers it draws, and changes when they do -- after a refresh, from step
-// to step, and while it plays through its dates. "{leader by Points} top on
-// {most Points}" reads "Man City top on 9".
-//
-// The words: {leader by X} and {last by X} (who has the most and the least
-// of series X); {most X} and {least X}; {average of X} and {total of X};
-// {X of NAME} (NAME's X); {date} (the date it is showing); {count} (how
-// many it shows). X is a series' name, as the key says it.
+// chart_words.dart is a chart's live words: anything in braces in its
+// title, description or a note is worked out from the numbers it draws,
+// and changes with them: "{leader by Points} top on {most Points}" reads
+// "Man City top on 9". The words: {leader by X}, {last by X} (who has the
+// most and least of series X), {most X}, {least X}, {average of X}, {total
+// of X}, {X of NAME}, {date} (the date shown) and {count} (how many shown).
 
 /// liveWords is [text] with every {word} worked out from [data]; a word it
 /// cannot work out is left as {?word}, so the mistake shows.

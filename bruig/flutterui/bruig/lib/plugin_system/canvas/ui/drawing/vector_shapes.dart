@@ -195,9 +195,8 @@ List<VectorPath> _paths(VectorShapeKind kind, Rect r,
         VectorPath([at(0.05, 0.5), at(0.95, 0.5)]),
       ];
     case VectorShapeKind.heart:
-      // Two lobes and a point, each lobe a pair of curves, drawn in a unit
-      // box and stretched so the curves (not the points inside them) fill
-      // the box dragged.
+      // Two lobes and a point, drawn in a unit box and stretched so the curves
+      // (not the points inside them) fill the box dragged.
       VectorNode n(double x, double y,
               {double ix = 0, double iy = 0, double ox = 0, double oy = 0}) =>
           VectorNode(x, y, inX: ix, inY: iy, outX: ox, outY: oy);

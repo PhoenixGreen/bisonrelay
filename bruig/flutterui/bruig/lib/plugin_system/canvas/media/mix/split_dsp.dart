@@ -5,10 +5,9 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show dbToGain;
 
-// split_dsp.dart is a Split running: its sound into branches side by side,
-// each through its own devices, and back together -- all of it into each
-// (in parallel), its middle and its sides, its left and its right, or its
-// lows and its highs (a Linkwitz-Riley crossover, which sums back flat).
+// split_dsp.dart is a Split running: the sound into side-by-side branches
+// and back, split as parallel, mid/side, left/right, or lows/highs (a
+// Linkwitz-Riley crossover, which sums back flat).
 
 /// highPass is a Butterworth high-pass at [hz], as a Biquad's coefficients.
 List<double> highPass(double hz, {double sampleRate = 48000}) {
@@ -25,7 +24,7 @@ List<double> highPass(double hz, {double sampleRate = 48000}) {
   ];
 }
 
-/// _Branch is one branch running: its devices, its level, its buffers.
+/// _Branch is one branch running: its devices, level and buffers.
 class _Branch {
   SplitBranch spec;
   List<DeviceProcessor?> chain;
@@ -84,16 +83,15 @@ class SplitProcessor implements DeviceProcessor, Tunable {
   List<_Branch> _branches = [];
   String _structure = "";
 
-  /// The crossover: two Butterworth sections each way, for the lows and
-  /// for the highs.
+  /// The crossover: two Butterworth sections each way.
   List<Biquad> _lows = [], _highs = [];
 
   SplitProcessor(MixDevice d) {
     tune(d);
   }
 
-  /// _count is how many branches it runs: two, but in parallel as many as
-  /// it has (none passes the sound through as it was).
+  /// _count is how many branches run: two, or in parallel as many as it
+  /// has (none passes the sound through unchanged).
   int _count(MixDevice d) => _modeOf(d) == 0 ? d.branches.length : 2;
 
   static int _modeOf(MixDevice d) => d.value("mode").round();
@@ -123,8 +121,8 @@ class SplitProcessor implements DeviceProcessor, Tunable {
     _crossover = crossover;
   }
 
-  /// inner are its branches' running devices, for a sidechain to be fed:
-  /// see MixGraph.finish.
+  /// inner are its branches' running devices, for sidechain feeding (see
+  /// MixGraph.finish).
   Iterable<DeviceProcessor> get inner => [
         for (var b in _branches)
           for (var p in b.chain)
@@ -138,7 +136,7 @@ class SplitProcessor implements DeviceProcessor, Tunable {
           : null;
 
   /// tuneInner sets device [j] of branch [b] to [d] in place, keeping its
-  /// state: a modulator moving one of its knobs (see StripProcessor).
+  /// state, as a modulator moves its knobs (see StripProcessor).
   void tuneInner(int b, int j, MixDevice d) {
     if (b >= _branches.length || j >= _branches[b].chain.length) return;
     if (_branches[b].chain[j] case Tunable running) running.tune(d);
@@ -152,8 +150,8 @@ class SplitProcessor implements DeviceProcessor, Tunable {
     }
     switch (_mode ?? 0) {
       case 1:
-        // Its middle into the first, its sides into the second, each as a
-        // mono pair; put back as left and right.
+        // Middle into the first, sides into the second, each a mono pair;
+        // put back as left and right.
         var mid = _branches[0], side = _branches[1];
         for (var i = 0; i < n; i++) {
           var m = (l[i] + r[i]) / 2, s = (l[i] - r[i]) / 2;
@@ -168,7 +166,7 @@ class SplitProcessor implements DeviceProcessor, Tunable {
           r[i] = m - s;
         }
       case 2:
-        // Its left into the first, its right into the second.
+        // Left into the first, right into the second.
         var left = _branches[0], right = _branches[1];
         for (var i = 0; i < n; i++) {
           left.l[i] = left.r[i] = l[i];
@@ -181,7 +179,7 @@ class SplitProcessor implements DeviceProcessor, Tunable {
           r[i] = (right.l[i] + right.r[i]) / 2;
         }
       case 3:
-        // Its lows into the first, its highs into the second.
+        // Lows into the first, highs into the second.
         var low = _branches[0], high = _branches[1];
         low.l.setRange(0, n, l);
         low.r.setRange(0, n, r);
@@ -200,7 +198,7 @@ class SplitProcessor implements DeviceProcessor, Tunable {
           r[i] = low.r[i] + high.r[i];
         }
       default:
-        // All of it into each, and the branches summed.
+        // All into each, the branches summed.
         for (var b in _branches) {
           b.l.setRange(0, n, l);
           b.r.setRange(0, n, r);

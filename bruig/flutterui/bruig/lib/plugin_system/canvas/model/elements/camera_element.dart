@@ -1,36 +1,21 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 
-// camera_element.dart is a Camera: the part of the page that is shown.
-// Added to a scene, its frame, filled out to the page, is what plays, is
-// exported and is looked through; it is moved by clips as any element is.
-// Without one, the whole page is shown.
-//
-// Its box is the frame, kept to the page's shape. A clip's size is how
-// close it is (2 is twice as close) rather than how big the frame is; its
-// across and down move where it looks, its "on" aims it at another element.
-// Never drawn into the picture: on the canvas it is a frame over the page
-// (see StagePainter), and cameraFrame in motion_document.dart is how it
-// frames.
-//
-// In a scene on a 3D stage it is the stage's camera, from its own [view],
-// moved by its clips: a turn orbits round what it looks at, a size dollies
-// it closer, an "on" aims it. See camera_3d.dart.
+// camera_element.dart is a Camera: the part of the page shown, played and
+// exported, moved by clips. Its box is the frame, in the page's shape; a
+// clip's size is how close (2 twice as close). Never drawn into the
+// picture; on a 3D stage it is the stage's camera (camera_3d.dart).
 
-/// CameraElement is a Camera; see the top of this file.
-///
-/// Its lens (Ken, 2026-11-14): depth of field, parallax, a vignette and
-/// motion blur, which the picture is drawn with through it -- in the app,
-/// a video and a book alike. Its roll is its own angle (its turn and its
-/// clips' turn). Focus, blur and vignette can be keyed: a keyframe's value
-/// of that name (see CameraLook) wins over the setting here.
+/// CameraElement is a Camera, with a lens: depth of field, parallax, a
+/// vignette and motion blur, drawn alike in the app, a video and a book.
+/// Its roll is its own angle plus its clips' turn. Focus, blur and vignette
+/// can be keyed: a keyframe's value of that name (see CameraLook) wins.
 class CameraElement extends CanvasElement {
-  /// view is where it stands in 3D, or null for the stage's own camera
-  /// until it is given one.
+  /// view is where it stands in 3D, or null for the stage's own camera.
   final StageCamera? view;
 
-  /// focus is the depth that is sharp (see ElementBase.depth): nought, the
-  /// page. Where [focusOn] names an element, its depth instead.
+  /// focus is the depth that is sharp (see ElementBase.depth), nought being
+  /// the page; where [focusOn] names an element, that element's depth.
   final double focus;
   final String focusOn;
 
@@ -51,12 +36,9 @@ class CameraElement extends CanvasElement {
   /// along, 0..1: a shutter open that share of the frame.
   final double motionBlur;
 
-  /// aim is a chart it frames (Ken, 2026-11-17, the improvements report's
-  /// sixth item): its id, or "" for none; [aimAt] what of it -- "" the
-  /// whole chart, "item:Arsenal" one mark by name, "top:3" the largest
-  /// three, "leader" whoever leads, followed through a race. [aimFill] is
-  /// how much of the frame that takes, 0.2..0.95. A keyframe's "aim" value
-  /// eases between its own framing (0) and the aim (1, where unkeyed).
+  /// aim is a framed chart's id, or ""; [aimAt] what of it ("" all,
+  /// "item:Arsenal", "top:3", "leader"); [aimFill] how much of the frame,
+  /// 0.2..0.95. A keyed "aim" eases from its framing (0) to the aim (1).
   final String aim;
   final String aimAt;
   final double aimFill;
@@ -113,8 +95,7 @@ class CameraElement extends CanvasElement {
   CameraElement withView(StageCamera? view) =>
       copyWith(view: view, clearView: view == null);
 
-  /// hasLens is whether anything of its lens is set: what the picture
-  /// is drawn with through it beyond its framing.
+  /// hasLens is whether anything of its lens is set beyond its framing.
   bool get hasLens =>
       blur > 0 || parallax > 0 || vignette > 0 || motionBlur > 0;
 

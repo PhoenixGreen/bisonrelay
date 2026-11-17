@@ -46,10 +46,9 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 // element_factory.dart makes a new element of each kind, in one place for
-// both the Design Elements panel's tap and its drag, so the two never
-// differ. Every new element arrives with something in it, obviously
-// placeholder ("Text", "Week 1"): an empty chart or a blank text box looks
-// like a bug.
+// both the Elements panel's tap and its drag, so the two never differ. Each
+// arrives with obvious placeholder content: an empty chart or a blank text
+// box looks like a bug.
 
 /// defaultSizeFor is how big a new element starts, sized to the document so
 /// it is neither bigger than a small canvas nor a speck on a large one.
@@ -67,24 +66,20 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.chart => Size(wide * 0.6, short * 0.6),
     ElementKind.table => Size(wide * 0.55, short * 0.4),
     ElementKind.button => Size(short * 0.32, short * 0.11),
-    // Wide enough for a figure with words either side of it, and tall enough
-    // for the row of buttons a live one can carry.
+    // Room for words either side of the figure and a live one's buttons.
     ElementKind.counter => Size(wide * 0.34, short * 0.22),
-    // A round speaker, the size of a thumb on a phone-shaped canvas. Its
-    // mute switch and volume bar widen it when they are turned on.
+    // A round speaker; its mute switch and volume bar widen it when on.
     ElementKind.audio => Size(short * 0.12, short * 0.12),
-    // 16:9, half the canvas across -- the shape nearly every video is. The
-    // box takes the file's own shape when one is added.
+    // 16:9, half the canvas across; the box takes the file's own shape when
+    // one is added.
     ElementKind.video => Size(wide * 0.5, wide * 0.5 * 9 / 16),
     ElementKind.background => Size(wide * 0.6, short * 0.5),
-    // A team, not a player: the box is the half of the pitch the formation is
-    // laid out in, so it wants most of the canvas rather than a dot's worth.
+    // A team, not a player: the box is the half pitch the formation is laid
+    // out in.
     ElementKind.player => Size(wide * 0.46, short * 0.86),
-    // A path is a route across the design rather than an object on it, so it
-    // arrives large enough to be worth curving.
+    // A route across the design, large enough to be worth curving.
     ElementKind.path => Size(wide * 0.5, short * 0.4),
-    // Standing, most of the page's height, about as wide as a person with
-    // their arms a little out is for their height.
+    // Standing, most of the page's height, arms a little out.
     ElementKind.character3d => Size(short * 0.34, short * 0.7),
     // The whole page: a stage is the set the scene is played on.
     ElementKind.stage => Size(wide, short),
@@ -96,15 +91,13 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.sprite => Size(short * 0.3, short * 0.3),
     // Most of the page: a map is the scene, its box a window onto it.
     ElementKind.tileMap => Size(wide * 0.8, short * 0.8),
-    // The whole page: shown as it is until it is moved or drawn in closer.
+    // The whole page, until it is moved or drawn in closer.
     ElementKind.camera => Size(wide, short),
-    // A square, a third of the page high: a model fitted whole in it.
+    // A square: a model is fitted whole in it.
     ElementKind.object3d => Size(short * 0.4, short * 0.4),
-    // A module's panel, at the rack's scale.
     ElementKind.synth =>
       synthPanelOf(SynthModuleKind.osc).size * synthUnit(document),
-    // A card that fits above the starting rack's keyboard, as the
-    // prototype's did.
+    // A card that fits above the starting rack's keyboard.
     ElementKind.synthTask => const Size(270, 160) * synthUnit(document),
     // As a clockwork one stands: taller than wide.
     ElementKind.metronome => Size(short * 0.22, short * 0.35),
@@ -164,9 +157,8 @@ CanvasElement newElement(
 
   switch (kind) {
     case ElementKind.text:
-      // Proportions held to begin with, so dragging a corner scales the type,
-      // spacing and pieces with the box, as a card should. Let go of, the box
-      // changes and its contents keep their size.
+      // Proportions held, so dragging a corner scales the type with the box.
+      // Unlocked, the box changes and its contents keep their size.
       return TextElement(base.copyWith(lockAspect: true),
           text: "Text",
           textSpec: TextSpec(
@@ -182,8 +174,7 @@ CanvasElement newElement(
       return ImageElement(base.copyWith(lockAspect: true));
 
     case ElementKind.vector:
-      // Proportions held, as a picture's are: a drawing pulled out of shape
-      // looks wrong the same way.
+      // Proportions held, as a picture's are.
       return VectorElement(base.copyWith(lockAspect: true));
 
     case ElementKind.shape:
@@ -196,9 +187,8 @@ CanvasElement newElement(
       return LineElement(base, strokeWidth: unit * 0.18);
 
     case ElementKind.chart:
-      // Its title and axis titles there to fill in, but hidden until they
-      // are: a new chart said "Chart title", "Value" and "Category" until
-      // each was turned off (Ken's privacy video, 2026-11-11).
+      // Title and axis titles there to fill in, but hidden until shown, so
+      // placeholder words never reach a finished chart.
       return ChartElement(base,
           title: "Chart title",
           titleBox: const ChartLabel(show: false),
@@ -221,9 +211,8 @@ CanvasElement newElement(
           ));
 
     case ElementKind.counter:
-      // A hundred, counting up from nothing, written plainly: the count itself
-      // is the placeholder that shows what this is. Making it a page number is
-      // a switch in its settings (see positionGroup).
+      // Counting 0 to 100: the count itself is the placeholder. A page number
+      // is a switch in its settings (see positionGroup).
       return CounterElement(base,
           from: 0,
           to: 100,
@@ -245,13 +234,11 @@ CanvasElement newElement(
 
     case ElementKind.video:
       // No background of its own: a keyed video must be see-through where the
-      // screen was. The empty element draws its own dark ground until a video
-      // is in it.
+      // screen was. Empty, it draws a dark ground of its own.
       return VideoElement(base.copyWith(lockAspect: true));
 
     case ElementKind.table:
-      // In the colours the canvas is already in, rather than a look of its
-      // own that has to be undone cell by cell.
+      // In the canvas's colours, not a look to undo cell by cell.
       return tableInColours(
           TableElement(base,
               cellSpec:
@@ -306,8 +293,7 @@ CanvasElement newElement(
       );
 
     case ElementKind.player:
-      // Sized to cover half a pitch, which a formation is laid out against; at
-      // the usual size eleven players would sit on top of each other.
+      // Dots sized to the half pitch, so eleven players do not overlap.
       var dot = size.height * 0.16;
       var team = TeamElement(
         base.copyWith(name: "Team"),
@@ -322,9 +308,8 @@ CanvasElement newElement(
         ),
         nameGap: dot * 0.2,
       ).withFormation(TeamFormation.f442);
-      // Standing on the pitch straight away where there is one -- the
-      // first, which is the canvas's own background where that is one. A
-      // team dropped onto a pitch is a team for that pitch.
+      // Linked to the first pitch where there is one (the canvas's own
+      // background first): a team dropped onto a pitch plays on it.
       var pitches = pitchChoices(document);
       if (pitches.isEmpty) return team;
       var p = pitches.first;
@@ -337,9 +322,8 @@ CanvasElement newElement(
     case ElementKind.tileMap:
       return TileMapElement(base.copyWith(name: "Tile map"));
 
-    // Not offered by Add any more: a stage is a kind of background. Kept so
-    // that asking for one still gives one -- a Background element showing
-    // its stage, over the whole page.
+    // Not offered by Add: a stage is a kind of background. Asking for one
+    // gives a Background element showing its stage over the whole page.
     case ElementKind.stage:
       return BackgroundElement(
           base.copyWith(
@@ -351,11 +335,9 @@ CanvasElement newElement(
           backdrop: BackdropKind.stage,
           stage: const StageElement(ElementBase(id: "")));
 
-    // A score of the first instrument there is, if there is one; with none,
-    // it says so in its settings.
+    // A score's first part if there is a score, else the first instrument;
+    // with none, it says so in its settings.
     case ElementKind.sheet:
-      // A score's first part if there is a score, else the first
-      // instrument.
       for (var s in document.scores) {
         for (var p in s.parts) {
           if (document.elementById(p.channel) is! AudioElement) continue;
@@ -374,8 +356,7 @@ CanvasElement newElement(
       return SheetElement(base.copyWith(name: "Sheet music"),
           follows: first?.id ?? "", title: first?.name ?? "");
 
-    // A box for a model: given one from the library's 3D objects -- see
-    // elementForAsset.
+    // A box for a model from the library's 3D objects (see elementForAsset).
     case ElementKind.object3d:
       return Object3dElement(base.copyWith(name: "3D object"));
 
@@ -388,9 +369,8 @@ CanvasElement newElement(
     case ElementKind.metronome:
       return MetronomeElement(base.copyWith(name: "Metronome"));
 
-    // An empty web page to write in, at a size read across the room on a
-    // 1080p page; its kind is chosen in its settings, and the examples are
-    // its presets (code_starters.dart).
+    // An empty web page, at a size read across the room; its kind is chosen
+    // in its settings, and the examples are presets (code_starters.dart).
     case ElementKind.code:
       return CodeElement(base.copyWith(name: "Code"),
               fontSize: codeFontFor(document))
@@ -422,9 +402,8 @@ CanvasElement newElement(
               "");
 
     case ElementKind.camera:
-      // On the whole page, where it shows everything, to be drawn in and
-      // moved from there (see CameraElement); on a 3D stage, where the stage's
-      // camera is (see camera_3d.dart).
+      // Over the whole page (see CameraElement); on a 3D stage, where the
+      // stage's camera is (see camera_3d.dart).
       var drawn = document.drawnBackground;
       return CameraElement(
           base.copyWith(
@@ -454,11 +433,11 @@ CanvasElement newElement(
           backdrop: BackdropKind.parallax,
           parallax: parallaxLooks.first.scenery);
 
-    // Placed from the library with its design; this is only the box -- see
-    // CanvasController.placeCharacter3d.
+    // Only the box: the library places it with its design (see
+    // CanvasController.placeCharacter3d).
     case ElementKind.character3d:
-      // On the stage, where there is one: a scene with a set is played on
-      // it. Each new one a step along from the last, not on top of it.
+      // On the stage where there is one, each new one a step along from the
+      // last rather than on top of it.
       var stage = stagesIn(document.elements,
               backdrop: document.drawnBackground)
           .firstOrNull
@@ -476,8 +455,8 @@ CanvasElement newElement(
   }
 }
 
-/// synthUnit is how big a synth module's panel unit is on [document]: a
-/// rack of the prototype's seven fits the page.
+/// synthUnit is a synth module panel unit on [document], so that the
+/// seven-module starting rack fits the page.
 double synthUnit(CanvasDocument document) =>
     math.min(document.size.width / 1150, document.size.height / 760);
 
@@ -499,16 +478,15 @@ SynthModuleElement synthModule(
       values: values);
 }
 
-/// synthRack is the prototype's starting rack (Ken approved, 2026-11-14):
-/// a keyboard, an oscillator, an envelope, a filter, an LFO, an amp and a
-/// speaker, the keyboard's pitch patched into the oscillator, through the
-/// amp to the speaker -- the rest there to be patched in. Centred on
-/// [center]; the speaker's channel [channel].
+/// synthRack is the starting rack: keyboard, oscillator, envelope, filter,
+/// LFO, amp and speaker, with keyboard pitch to oscillator, through the amp
+/// to the speaker, and the rest left to patch. Centred on [center]; the
+/// speaker plays on [channel].
 List<SynthModuleElement> synthRack(CanvasDocument document,
     {Offset? center, required String channel}) {
   var u = synthUnit(document);
   var mid = center ?? document.size.rect.center;
-  // The prototype's places, in its rack's units (1150 by 760), centred.
+  // Places in rack units (1150 by 760), centred.
   var origin = mid - const Offset(575, 380) * u;
   Offset at(double x, double y) => origin + Offset(x, y) * u;
   var ids = {
@@ -537,7 +515,7 @@ List<SynthModuleElement> synthRack(CanvasDocument document,
         var e = m.copyWith(
             inputs: inputs[m.id] ?? const {},
             channel: m.module == SynthModuleKind.out ? channel : null);
-        // Where students reset to: as it starts.
+        // The starting state is what students reset to.
         return e.startHere();
       }(),
   ];

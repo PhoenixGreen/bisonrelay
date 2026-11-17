@@ -5,16 +5,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 
-// element_animation.dart is how a shape or a picture arrives and leaves:
-// the same idea as a text element's arrival, placed and sized on the
-// timeline.
-//
-// Not a second animation system: the motions are the text animator's (see
-// MotionSpec), the easing is a chart's, and it plays on the same reveal and
-// close channels. Only the list is its own, shorter than text's: nothing
-// scoped to letters, lines or parts, and no drawn marks.
+// element_animation.dart is how a shape or a picture arrives and leaves,
+// placed and sized on the timeline as a text element's arrival is. Not a
+// second animation system: the motions are the text animator's (MotionSpec),
+// the easing a chart's, on the same reveal and close channels. Only the
+// list is its own, shorter: nothing scoped to letters, lines or parts.
 
-/// ElementAnimationFamily groups the presets, so choosing is "what kind" and
+/// ElementAnimationFamily groups the presets, so choosing is "what kind"
 /// then "which one" rather than one list of twenty.
 enum ElementAnimationFamily {
   fade("Fade"),
@@ -28,9 +25,8 @@ enum ElementAnimationFamily {
   const ElementAnimationFamily(this.label);
 }
 
-/// ElementAnimationPreset is the list a shape or a picture chooses from.
-/// Named as the text element's are where the movement is the same, so a
-/// headline and the picture beside it can arrive alike.
+/// ElementAnimationPreset is a shape's or picture's list, named as text's
+/// where the movement is the same, so they can arrive alike.
 enum ElementAnimationPreset {
   none("None", ElementAnimationFamily.fade, TextMotion.fade),
 
@@ -101,7 +97,6 @@ enum ElementAnimationPreset {
     this.wants,
   });
 
-  /// spec is the motion and its numbers, which is all the painter needs.
   MotionSpec get spec =>
       MotionSpec(motion, dx: dx, dy: dy, from: from, turns: turns);
 
@@ -120,9 +115,9 @@ enum ElementAnimationPreset {
       ];
 }
 
-/// AnimationDirection is where a moving arrival comes in from -- or a wipe
-/// starts -- in place of the preset's own: one control, rather than a preset
-/// for every way round. [dx] and [dy] point from where the element ends up
+/// AnimationDirection is where a moving arrival comes in from, or a wipe
+/// starts, in place of the preset's own: one control, not a preset for
+/// every way round. [dx] and [dy] point from where the element ends up
 /// toward where it starts.
 enum AnimationDirection {
   left("From the left", -1, 0),
@@ -153,7 +148,6 @@ enum AnimationDirection {
   }
 }
 
-/// ElementAnimation is one element's arrival and exit.
 class ElementAnimation {
   final ElementAnimationPreset preset;
 
@@ -167,25 +161,23 @@ class ElementAnimation {
   final EffectSpec effect;
   final ChartEase ease;
 
-  /// length is how many frames a new arrival is laid down with, or 0 for the
-  /// usual two seconds. The timeline holds where it actually is: see
-  /// CanvasController.elementAnimationSpan.
+  /// length is the frames a new arrival is laid down with, or 0 for two
+  /// seconds; see CanvasController.elementAnimationSpan.
   final int length;
 
-  /// loop is what it goes on doing after it has arrived -- or instead of
-  /// arriving: see ElementLoop.
+  /// loop is what it does after arriving, or instead: see ElementLoop.
   final ElementLoop loop;
 
-  /// direction is where a moving arrival comes in from, or a wipe starts,
-  /// or null for the preset's own.
+  /// direction is where a moving arrival comes in from, or a wipe starts, or
+  /// null for the preset's own.
   final AnimationDirection? direction;
 
   /// strength is how far it moves, how much it grows or how far it turns,
   /// against the preset's own: 1 is the preset as it is.
   final double strength;
 
-  /// exitDirection and exitStrength are the same for the way out, its own,
-  /// so a thing can come in from the left and go out to the right.
+  /// exitDirection and exitStrength are the same for the way out, so a thing
+  /// can come in from the left and go out to the right.
   final AnimationDirection? exitDirection;
   final double exitStrength;
 
@@ -206,8 +198,8 @@ class ElementAnimation {
   bool get on => preset != ElementAnimationPreset.none;
   bool get closes => exit != ElementAnimationPreset.none;
 
-  /// any is whether there is anything to it at all -- an arrival, an exit or
-  /// a loop: whether it is worth saving.
+  /// any is whether there is anything to it (an arrival, an exit or a loop):
+  /// whether it is worth saving.
   bool get any => on || closes || loop.on;
 
   /// cuts is whether the effect settings mean anything for what is chosen.
@@ -222,13 +214,12 @@ class ElementAnimation {
   bool get scales =>
       preset.motion == TextMotion.grow || exit.motion == TextMotion.grow;
 
-  /// scaleFor is where [preset] actually starts from: whatever has been set,
-  /// or the preset's own number when nothing has.
+  /// scaleFor is where [preset] starts from: as set, or its own number.
   double scaleFor(ElementAnimationPreset preset) =>
       scale > 0 ? scale : preset.from;
 
   /// directed is whether a direction means anything for what is chosen: a
-  /// thing that slides in, or is wiped on -- or out.
+  /// thing that slides in, or is wiped on or out.
   bool get directed => _directs(preset) || _directs(exit);
 
   /// arrivalDirected, arrivalStrengthens, exitDirected and exitStrengthens
@@ -257,7 +248,7 @@ class ElementAnimation {
           ? AnimationDirection.left
           : AnimationDirection.of(p.dx, p.dy));
 
-  /// specFor is [p]'s motion as this animation plays it -- turned to its
+  /// specFor is [p]'s motion as this animation plays it: turned to its
   /// direction, and moved, grown and turned as far as its strength says.
   MotionSpec specFor(ElementAnimationPreset p) {
     var dx = p.dx, dy = p.dy;
@@ -280,7 +271,6 @@ class ElementAnimation {
         turns: p.turns * strength);
   }
 
-  /// spec is the motion of what is playing -- see specFor.
   MotionSpec get spec => specFor(preset);
 
   /// progressAt eases [reveal] the way this animation asks for. No stagger:
@@ -288,8 +278,8 @@ class ElementAnimation {
   double progressAt(double reveal) =>
       on ? ease.apply(reveal.clamp(0.0, 1.0)) : reveal.clamp(0.0, 1.0);
 
-  /// leaving is this animation as it is played on the way out, with the way
-  /// out's own direction and strength.
+  /// leaving is this animation as played on the way out, with the way out's
+  /// own direction and strength.
   ElementAnimation get leaving => copyWith(
       preset: exit,
       direction: exitDirection,

@@ -12,17 +12,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:path/path.dart' as path;
 
-// stock_client.dart makes the requests a stock search needs: the search
-// itself, a preview to listen to, and the file when one is used.
-//
-// Behind the same two gates as a table's data (see canvas_data.dart):
-// nothing is fetched unless the reader has turned fetching on, and nothing
-// at all while a proxy is set. Both are decided by the caller and handed in.
-// Keys, where a library needs one, are the reader's own, kept on this
-// machine by CanvasApiKeys and never written into anything shared.
-//
-// A search answer is kept for a day: Pixabay's terms ask for that, and it
-// saves a free tier's allowance on every library.
+// stock_client.dart makes stock searches' requests, behind the same gates
+// as a table's data (canvas_data.dart): only with fetching on, never through
+// a proxy. Keys are the reader's own, kept on this machine by
+// CanvasApiKeys, never written into anything shared. Answers are cached a
+// day, as Pixabay's terms ask.
 
 /// StockKeys reads and writes the keys, filed under each library's host.
 class StockKeys {
@@ -44,9 +38,8 @@ class StockKeys {
   static Future<void> forget(StockSource s) => save(s, "", "");
 }
 
-/// pct is RFC 3986 percent-encoding, which OAuth signs over. Dart's own
-/// encodeComponent leaves ! * ' ( ) alone, so the server would compute a
-/// different signature.
+/// pct is RFC 3986 percent-encoding, which OAuth signs over. Dart's
+/// encodeComponent leaves ! * ' ( ) alone, so the signatures would differ.
 String pct(String s) {
   var out = StringBuffer();
   for (var b in utf8.encode(s)) {
@@ -60,9 +53,9 @@ String pct(String s) {
   return out.toString();
 }
 
-/// oauthHeader signs a GET of [uri] with a consumer [key] and [secret] alone:
-/// OAuth 1.0a, two-legged, HMAC-SHA1, as the Noun Project asks. [nonce] and
-/// [timestamp] are for a test to fix; left out, they are fresh.
+/// oauthHeader signs a GET of [uri] with [key] and [secret]: two-legged
+/// OAuth 1.0a HMAC-SHA1, as the Noun Project asks. [nonce] and [timestamp]
+/// are for tests.
 String oauthHeader(Uri uri, String key, String secret,
     {String? nonce, int? timestamp}) {
   var random = math.Random.secure();
@@ -93,10 +86,9 @@ String oauthHeader(Uri uri, String key, String secret,
   return "OAuth ${header.entries.map((e) => '${pct(e.key)}="${pct(e.value)}"').join(", ")}";
 }
 
-/// StockClient is the network side of the stock libraries. Replaced in tests
-/// -- see [instance] -- so the sidebar can be driven with nothing connected.
+/// StockClient is the network side of the stock libraries, replaced in
+/// tests (see [instance]) so the sidebar runs with nothing connected.
 class StockClient {
-  /// instance is the client the sidebar uses.
   static StockClient instance = StockClient();
 
   /// cacheFor is how long a search answer is kept.
@@ -127,8 +119,8 @@ class StockClient {
             await StockKeys.key(source), await StockKeys.secret(source));
       }
       var (status, body) = await getText(request.uri, headers);
-      // Freesound moved its search in 2025; an older server answers the
-      // old address only.
+      // Freesound's search moved in 2025; an older server answers only the
+      // old address.
       if (status == 404 && source == StockSource.freesound) {
         var older = request.uri.replace(path: "/apiv2/search/text/");
         (status, body) = await getText(older, headers);
@@ -146,16 +138,15 @@ class StockClient {
     }
   }
 
-  /// polyHavenAgent is who asks Poly Haven, as its API asks every app to
-  /// say: the app's name.
+  /// polyHavenAgent names the app to Poly Haven, as its API asks.
   static const polyHavenAgent = "BisonRelay-Canvas/1.0";
   static const _polyHavenHeaders = {"User-Agent": polyHavenAgent};
 
-  /// _maxTextBytes is the most an answer from a library may be: a page of
-  /// results, or Poly Haven's whole catalogue, is a few megabytes.
+  /// _maxTextBytes caps a library's answer: a page of results, or Poly
+  /// Haven's whole catalogue, is a few megabytes.
   static const _maxTextBytes = 32 * 1024 * 1024;
 
-  /// _jsonOf is [uri]'s answer read, kept as searches are -- or null.
+  /// _jsonOf is [uri]'s answer, cached as searches are, or null.
   Future<Object?> _jsonOf(Uri uri) async {
     var key = uri.toString();
     var text = await _cached(key);
@@ -172,9 +163,8 @@ class StockClient {
     }
   }
 
-  /// _polyHaven is a page of Poly Haven's models: its catalogue of them,
-  /// in the order its search puts them -- or, searching for nothing, the
-  /// most downloaded first. See polyHavenPage.
+  /// _polyHaven is a page of Poly Haven's models in its search order, or
+  /// most downloaded first for an empty search. See polyHavenPage.
   Future<StockPage> _polyHaven(StockQuery q) async {
     var catalogue = await _jsonOf(
         Uri.https("api.polyhaven.com", "/assets", {"t": "models"}));
@@ -195,9 +185,8 @@ class StockClient {
     return polyHavenPage(catalogue, slugs, page: q.page);
   }
 
-  /// fetchPolyHavenModel saves Poly Haven's model [slug] to [to] as a .glb:
-  /// its glTF at the smallest size it comes in, with every file it needs,
-  /// packed into one -- see packGltf. Whether it could.
+  /// fetchPolyHavenModel saves model [slug] to [to] as a .glb of its
+  /// smallest glTF, files packed in (see packGltf). Whether it could.
   Future<bool> fetchPolyHavenModel(String slug, File to,
       {required int maxBytes,
       required bool allowFetching,
@@ -242,7 +231,7 @@ class StockClient {
     return true;
   }
 
-  /// _bytesOf is [uri] read whole, or null: refused, failed or larger than
+  /// _bytesOf is [uri] read whole, or null: refused, failed or over
   /// [maxBytes].
   Future<Uint8List?> _bytesOf(Uri uri, int maxBytes) async {
     var client = canvasHttpClient();
@@ -280,12 +269,12 @@ class StockClient {
         _ => "${s.from} answered $status.",
       };
 
-  /// thumbnail is a result's small picture, shown from the library's own
-  /// server and kept only in the image cache.
+  /// thumbnail is a result's small picture, from the library's server,
+  /// kept only in the image cache.
   ImageProvider thumbnail(String url) => NetworkImage(url);
 
-  /// getText is one GET: its status, and its body when it is 200. Status 0
-  /// is no answer at all.
+  /// getText is one GET: its status, and its body on 200. Status 0 is no
+  /// answer.
   @protected
   Future<(int, String)> getText(Uri uri, Map<String, String> headers) async {
     var client = canvasHttpClient();
@@ -299,8 +288,8 @@ class StockClient {
       var bytes = await readCapped(response, _maxTextBytes);
       return bytes == null ? (0, "") : (200, utf8.decode(bytes));
     } catch (exception) {
-      // Its type only: an HttpException's text carries the address, and the
-      // address carries the user's key.
+      // Its type only: an HttpException's text has the address, which has
+      // the user's key.
       debugPrint("Stock search failed: ${exception.runtimeType}");
       return (0, "");
     } finally {
@@ -308,8 +297,8 @@ class StockClient {
     }
   }
 
-  /// download saves [url] to [to], or returns false -- refused, failed, or
-  /// larger than [maxBytes].
+  /// download saves [url] to [to], or returns false: refused, failed, or
+  /// over [maxBytes].
   Future<bool> download(String url, File to,
       {required int maxBytes,
       required bool allowFetching,
@@ -357,8 +346,7 @@ class StockClient {
     }
   }
 
-  /// _cacheDir is beside the library, dotted so the library listing skips
-  /// it.
+  /// _cacheDir is beside the library, dotted so its listing skips it.
   Future<Directory> _cacheDir() async =>
       Directory(path.join(await CanvasStorage.libraryDir(), ".stock-cache"));
 
@@ -390,8 +378,7 @@ class StockClient {
       var dir = await _cacheDir();
       await dir.create(recursive: true);
       await writeWholeText(path.join(dir.path, "${_hash(key)}.json"), text);
-      // And out with the old, while here: a day's searches are small, a
-      // year's are not.
+      // Old answers cleared while here: a day's are small, a year's not.
       await for (var f in dir.list()) {
         if (f is File && now.difference(await f.lastModified()) >= cacheFor) {
           await f.delete();

@@ -3,29 +3,23 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 
-// image_placement.dart answers where a picture's pixels land inside an
-// element, and where a point on the element lands in the picture.
-//
-// The painter uses it to draw and the retouching brush uses it backwards, to
-// map a stroke onto pixels; one implementation keeps them in agreement.
+// image_placement.dart is where a picture's pixels land in an element, and
+// back: the painter draws with it, the retouching brush maps strokes with
+// it, so one implementation keeps them in agreement.
 
-/// ImagePlacement is the source rectangle of the picture and the destination
-/// rectangle on the canvas that it is drawn into.
+/// ImagePlacement is the picture's source rectangle and where it is drawn.
 class ImagePlacement {
-  /// src is in the picture's own pixels, after the crop and after whatever
-  /// [ImageFit.cover] trimmed off.
+  /// src is in the picture's pixels, after the crop and [ImageFit.cover].
   final Rect src;
 
   /// dst is where those pixels go, in the element's coordinates.
   final Rect dst;
 
-  /// whole is the picture the fit had to work with. [window] is the part of
-  /// it the fit chose, and [src] is what is left of that after the crop.
-  /// Reframing uses it to show what is outside the frame.
+  /// whole is the picture the fit had to work with; [window] is the part
+  /// the fit chose, and [src] what is left of that after the crop.
   final Rect whole;
 
-  /// window is what the fit and the framing chose, before the crop: what
-  /// reframing moves about.
+  /// window is what fit and framing chose before the crop; reframing moves it.
   final Rect window;
 
   ImagePlacement(this.src, this.dst, [Rect? whole, Rect? window])
@@ -38,8 +32,8 @@ class ImagePlacement {
   Offset get slack => Offset(math.max(0, whole.width - window.width),
       math.max(0, whole.height - window.height));
 
-  /// wholeDst is where the whole picture would be drawn: what reframing shows
-  /// faintly round the frame. Measured from [src] and [dst] (not [window]),
+  /// wholeDst is where the whole picture would be drawn, shown faintly round
+  /// the frame while reframing. Measured from [src] and [dst], not [window],
   /// so it lines up with the drawn part whatever was cropped.
   Rect get wholeDst {
     if (src.width <= 0 || src.height <= 0) return dst;
@@ -70,10 +64,8 @@ class ImagePlacement {
   double scaleToImage() => dst.width <= 0 ? 1 : src.width / dst.width;
 }
 
-/// placeImage works out where [imageSize] goes inside [rect].
-///
-/// [framing] is used only by [ImageFit.cover], the only fit with slack to
-/// move. See [ImageFraming].
+/// placeImage works out where [imageSize] goes inside [rect]. [framing] is
+/// used only by [ImageFit.cover], the only fit with slack to move.
 ImagePlacement placeImage(
   Size imageSize,
   Rect rect,

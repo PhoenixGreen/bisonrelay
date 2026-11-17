@@ -5,20 +5,16 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart'
     show DeviceKind, MixDevice;
 
-// analysers.dart is what the Chain's analysers hear, where they are in the
-// chain, changing nothing: the latest of the sound itself -- for the Scope
-// (its wave over a few milliseconds) and the Stereo Image (left against
-// right, and how alike they are) -- and its loudness as broadcast meters
-// read it (BS.1770: momentary, short-term and integrated LUFS) with its
-// true peak (between the samples, four times over).
+// analysers.dart is what the Chain's analysers hear, unchanged: the latest
+// sound for the Scope and Stereo Image, and BS.1770 loudness (momentary,
+// short-term, integrated LUFS) with a 4x oversampled true peak.
 
 /// Wave is the latest of a sound, left and right, oldest first: as many
-/// points as are drawn, taken evenly from the stretch listened to.
+/// points as are drawn, taken evenly from the stretch heard.
 typedef Wave = (Float32List, Float32List);
 
-/// LoudnessReading is a loudness meter's reading, in LUFS -- the last 400ms,
-/// the last three seconds, and everything since it began (gated) -- and the
-/// highest true peak since, in dBTP. Minus infinity for silence.
+/// LoudnessReading is LUFS over 400 ms, three seconds and gated since start,
+/// and the highest true peak in dBTP. Minus infinity for silence.
 typedef LoudnessReading = ({
   double momentary,
   double shortTerm,
@@ -29,7 +25,7 @@ typedef LoudnessReading = ({
 /// WaveTap keeps the last [frames] of what passes it, both sides, to be
 /// read as a [Wave] of at most [points].
 class WaveTap implements DeviceProcessor, Tunable {
-  /// kind is the analyser it listens for: a Scope, or a Stereo Image.
+  /// kind is the analyser it listens for: a Scope or a Stereo Image.
   final DeviceKind kind;
   int frames;
   final int points;
@@ -45,8 +41,7 @@ class WaveTap implements DeviceProcessor, Tunable {
   static int framesOf(MixDevice device) =>
       (device.value("time") / 1000 * mixRate).round();
 
-  /// tune follows a Scope's Time, keeping a longer or shorter stretch; its
-  /// Zoom is only how it is drawn.
+  /// tune follows a Scope's Time; its Zoom is only how it is drawn.
   @override
   void tune(MixDevice device) {
     if (kind != DeviceKind.scope) return;
@@ -80,9 +75,8 @@ class WaveTap implements DeviceProcessor, Tunable {
   }
 }
 
-/// TruePeak is the highest level a sound reaches between its samples as
-/// well as on them: each side resampled four times over by a windowed-sinc
-/// interpolator, as BS.1770's Annex 2 has it.
+/// TruePeak is the highest level between samples as well as on them: each
+/// side oversampled 4x by windowed sinc, per BS.1770 Annex 2.
 class TruePeak {
   static const int _taps = 12;
   static final List<Float64List> _phases = _design();
@@ -135,8 +129,8 @@ class TruePeak {
 
 /// LoudnessTap measures what passes it: see [LoudnessReading].
 class LoudnessTap implements DeviceProcessor, Tunable {
-  /// tune changes nothing: its Target is only where the reading aims, and
-  /// what it has measured is kept.
+  /// tune changes nothing: Target is only where the reading aims, and what
+  /// has been measured is kept.
   @override
   void tune(MixDevice device) {}
 
@@ -158,7 +152,6 @@ class LoudnessTap implements DeviceProcessor, Tunable {
             : 20 * math.log(_peak.peak) / math.ln10,
       );
 
-  /// reset starts it measuring again.
   void reset() {
     _meter.reset();
     _peak.reset();
@@ -166,7 +159,7 @@ class LoudnessTap implements DeviceProcessor, Tunable {
 }
 
 /// correlation is how alike [wave]'s two sides are: one the same, nought
-/// unrelated, minus one opposite (heard as mono, they cancel).
+/// unrelated, minus one opposite (cancelling in mono).
 double correlation(Wave wave) {
   var (l, r) = wave;
   var lr = 0.0, ll = 0.0, rr = 0.0;

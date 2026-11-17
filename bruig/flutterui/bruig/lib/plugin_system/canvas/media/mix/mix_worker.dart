@@ -21,17 +21,11 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SpeakerGroup;
 import 'package:flutter_soloud/flutter_soloud.dart';
 
-// mix_worker.dart runs the mix in an isolate of its own. It renders ahead
-// and pushes to SoLoud's stream from there, so a frame the UI takes too long
-// over cannot leave the speakers without sound. The editor's side
-// (DartAudioEngine) sends it what changes and reads back, every few
-// milliseconds, a snapshot: how far ahead it is, its load, where each voice
-// is, and the meters the screen is showing.
-//
-// Messages are lists, the first item naming what they are. Everything sent
-// is plain data -- mixes, parts, records -- copied between the isolates.
+// mix_worker.dart runs the mix in its own isolate, rendering ahead and
+// pushing to SoLoud's stream, so a slow UI frame cannot starve the
+// speakers. DartAudioEngine sends changes as lists naming their kind, and
+// reads back a snapshot (lead, load, voices, meters) every few milliseconds.
 
-/// MixSnapshot is the worker's state as last reported.
 class MixSnapshot {
   /// at is when it was taken, in microseconds on the reporting clock.
   final int at;
@@ -44,18 +38,18 @@ class MixSnapshot {
   final Map<String, Float32List?> spectra;
   final Map<String, (double, double)?> pitches;
 
-  /// taps are each watched channel's levels at each step of its strip, and
+  /// taps are each watched channel's levels at each strip step, and
   /// reductions its compressor's: the meters between devices.
   final Map<String, List<(double, double)>> taps;
   final Map<String, double> reductions;
 
-  /// waves are each watched analyser's latest sound, by "kind:channel", and
+  /// waves are each watched analyser's latest sound, by "kind:channel";
   /// loudness each watched Loudness's reading, by channel.
   final Map<String, Wave?> waves;
   final Map<String, LoudnessReading?> loudness;
 
   /// scopes are each watched device's sound in and out, by
-  /// "channel|device": see device_scope.dart.
+  /// "channel|device" (see device_scope.dart).
   final Map<String, ScopeReading?> scopes;
 
   const MixSnapshot(this.at, this.ahead, this.load, this.voices, this.levels,
@@ -69,7 +63,7 @@ class MixSnapshot {
   static const empty = MixSnapshot(0, 0, 0, {}, {}, {}, {});
 }
 
-/// master is the key the master's meters go by in a snapshot.
+/// snapshotMaster is the key of the master's meters in a snapshot.
 const String snapshotMaster = "";
 
 /// mixWorkerMain is the worker isolate's entry: [port] is where it answers.
@@ -111,8 +105,8 @@ class _Worker {
   final Map<String, (CoreVoice, LiveInstrument)> live = {};
   final Set<String> watchLevels = {}, watchSpectra = {}, watchPitches = {};
 
-  /// watchWaves are the analysers whose sound is on screen, as (kind,
-  /// channel); watchLoudness the channels whose Loudness is.
+  /// watchWaves are the analysers on screen, as (kind, channel);
+  /// watchLoudness the channels whose Loudness is.
   final Set<(DeviceKind, String)> watchWaves = {};
   final Set<String> watchLoudness = {};
 
@@ -124,8 +118,8 @@ class _Worker {
   final Set<(String, String)> watchScopes = {};
   String? fontPath;
 
-  /// sliceFonts are the banks of instruments of slices, sent from the
-  /// editor with each one's first note.
+  /// sliceFonts are slices instruments' banks, sent by the editor with each
+  /// one's first note.
   final Map<String, SoundFont> sliceFonts = {};
   SoundFont? _font;
   bool _fontTried = false;
@@ -133,8 +127,8 @@ class _Worker {
   SoundHash? _stream;
   int _pushed = 0;
 
-  /// _quietSince is when nothing has been heard since, on [_clock], or null
-  /// while something is.
+  /// _quietSince is when silence began, on [_clock], or null while
+  /// something sounds.
   int? _quietSince;
   bool held = false, _renewing = false;
   double _load = 0;
@@ -143,8 +137,8 @@ class _Worker {
 
   static const int block = 512;
 
-  /// lead is how far ahead it renders: a steady 50ms. Ken heard a shorter
-  /// one, changed as live notes came and went, as worse: the timing moved.
+  /// lead is how far ahead it renders: a steady 50ms. A shorter lead that
+  /// varied with live notes was audibly worse: the timing moved.
   static const double lead = 0.05;
 
   static const int _limitBytes = 1 << 30;
@@ -157,8 +151,8 @@ class _Worker {
     _wake();
   }
 
-  /// _wake sets the pump and the reports going, after a rest: anything the
-  /// editor sends may start a sound. See _park.
+  /// _wake restarts the pump and reports after a rest: anything the editor
+  /// sends may start a sound. See _park.
   void _wake() {
     _quietSince = null;
     _pump ??= Timer.periodic(const Duration(milliseconds: 5), (_) => _fill());
@@ -166,13 +160,10 @@ class _Worker {
         Timer.periodic(const Duration(milliseconds: 20), (_) => _snapshot());
   }
 
-  /// _park rests after a second of quiet: one last report, its meters down,
-  /// and then nothing at all -- no timers, no messages -- until the editor
-  /// sends something. Left running, the reports woke the editor fifty times
-  /// a second for as long as the app was open.
+  /// _park rests after a second of quiet: a last report with meters down,
+  /// then nothing until the editor sends, so it does not wake the editor.
   void _park() {
-    // Its meters to silence first: the last report is what is read until
-    // it wakes again.
+    // Meters to silence first: the last report is read until it wakes.
     core.graph.quiet();
     _snapshot();
     _pump?.cancel();
@@ -180,15 +171,15 @@ class _Worker {
     _pump = _report = null;
   }
 
-  /// _silent is whether nothing can be heard: no voice, or only paused ones
+  /// _silent is whether nothing can be heard: no voices, or only paused ones
   /// and instruments with no note sounding.
   bool get _silent => core.voices.every((v) {
         var t = v.track;
         return v.paused || (t is LiveInstrument && t.sampler.sounding == 0);
       });
 
-  // Safe off the main isolate once the main one has started the engine --
-  // see SoLoudIsolate. Experimental in flutter_soloud; pinned to 4.1.7.
+  // Safe off the main isolate once it started the engine (SoLoudIsolate).
+  // Experimental in flutter_soloud; pinned to 4.1.7.
   // ignore: experimental_member_use
   final _ffi = SoLoudIsolate.instance.bindings;
 
@@ -208,11 +199,8 @@ class _Worker {
   void _fill() {
     var hash = _stream;
     if (held || _renewing) return;
-    // A second with nothing to be heard -- or nowhere to send it -- and it
-    // rests: once its tails have rung out too, or after twenty seconds of
-    // one that never does (Ken's systems review, 2026-11-08: a long
-    // reverb was cut off at a second, and the rest of it heard on the next
-    // play).
+    // A second of silence (or nowhere to send) and it rests, once tails ring
+    // out or after twenty seconds, so a long reverb is not cut.
     if (hash == null || _silent) {
       var now = _clock.elapsedMicroseconds;
       _quietSince ??= now;
@@ -340,8 +328,8 @@ class _Worker {
         _stream = m[1] as SoundHash;
         _pushed = 0;
         _renewing = false;
-        // Whether the stream can be reached from here at all: the editor
-        // runs the mix itself where it cannot.
+        // Whether the stream can be reached from here: where not, the
+        // editor runs the mix itself.
         var reached = false;
         try {
           reached = streamAnswered(_ffi.getStreamTimeConsumed(_stream!).error);
@@ -462,8 +450,7 @@ class _Worker {
         var channel = m[1] as String;
         var part = m[2] as InstrumentPart;
         var useFont = m[5] as bool;
-        // An instrument of slices plays its own bank, sent with its first
-        // note.
+        // A slices instrument plays its own bank, sent with its first note.
         var kit = part.sound == InstrumentSound.slices ? part.slices : null;
         if (kit != null && m.length > 6 && m[6] is SoundFont) {
           sliceFonts[kit.key] = m[6] as SoundFont;
@@ -487,7 +474,7 @@ class _Worker {
           ..shape = part.shape
           ..patch = part.sound == InstrumentSound.patch ? part.patch : null
           ..noteOn(m[3] as int, m[4] as int);
-        // Into the next block now, rather than at the pump's next tick.
+        // Into the next block now, not at the pump's next tick.
         _fill();
       case "noteOff":
         live[m[1]]?.$2.sampler.noteOff(m[2] as int);
@@ -510,13 +497,12 @@ class _Worker {
   }
 }
 
-/// streamAnswered is whether [error], SoLoud's answer to a call on the
-/// stream, is no error. By name: the type is not exported, and it prints
-/// as "PlayerErrors.noError (No error)", so its text is no test.
+/// streamAnswered is whether [error] from SoLoud's stream is no error, by
+/// name: the type is not exported and its text is not stable.
 bool streamAnswered(Enum error) => error.name == "noError";
 
 /// extrapolated is where a voice reported at [frame] is [elapsedMicros]
-/// later, playing: on by the time passed, never past [cap].
+/// later while playing, never past [cap].
 int extrapolated(int frame, int elapsedMicros, {int? cap}) {
   var on = frame + (elapsedMicros * mixRate / 1e6).round();
   return cap == null ? on : math.min(on, cap);

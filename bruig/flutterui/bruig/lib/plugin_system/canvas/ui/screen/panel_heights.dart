@@ -1,12 +1,11 @@
 import 'dart:math' as math;
 
-// panel_heights.dart sizes the panels stacked under the canvas (mixer,
-// effects, timeline) as one: never taller than the room under the settings
-// bar and, once they fill it, kept filling it. A panel made taller takes the
-// free room, then the room of the panels over it, nearest first, down to each
-// one's least; made shorter while the stack fills the room, the panel over it
-// takes what it gives up, so the top stays pinned under the bar. Only the top
-// panel's own edge, dragged down, lets the stack come away from it.
+// panel_heights.dart sizes the panels stacked under the canvas as one: never
+// taller than the room under the settings bar and, once they fill it, kept
+// filling it. A panel grown takes free room, then the panels over it,
+// nearest first, to each one's least; shrunk, the panel over it takes the
+// room, so the top stays under the bar. Only the top edge dragged down
+// lets the stack come away from it.
 
 /// resizePanel is [heights] -- panels top to bottom, none shorter than its
 /// [least] -- with panel [index]'s top edge dragged so it would be [wanted]
@@ -45,10 +44,9 @@ List<double> resizePanel(List<double> heights, List<double> least, int index,
   return out;
 }
 
-/// fitPanels is [heights] made to fit [room] -- a window made shorter, a
-/// panel opened -- the top ones giving way first, each down to its [least];
-/// and then, where they still do not fit, the [collapsible] one -- the
-/// timeline -- shut to [collapsed], its bar alone.
+/// fitPanels is [heights] fitted to [room] (a shorter window, a panel
+/// opened): the top ones give way first, each to its [least], and then the
+/// [collapsible] one (the timeline) shuts to [collapsed], its bar alone.
 List<double> fitPanels(List<double> heights, List<double> least, double room,
     {int? collapsible, double collapsed = 0}) {
   var out = [...heights];

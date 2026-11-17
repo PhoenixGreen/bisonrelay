@@ -10,10 +10,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
 // effects_settings.dart is a texture layer's settings, and the effects on
-// any layer -- see image_effects.dart.
+// any layer (see image_effects.dart).
 
-/// _fields are the number fields for [params], read and written through
-/// [value] and [set].
+/// _fields are the number fields for [params], read and written by [value]
+/// and [set].
 List<Widget> _fields(
         String prefix,
         List<AdjustParam> params,
@@ -48,8 +48,8 @@ List<Widget> textureSettings(
     {bool kindPicker = true}) {
   var texture = layer.texture;
   ImageLayer changed(TextureSpec next) {
-    // A new kind brings its own usual blend, unless the blend has been
-    // chosen by hand -- told apart by its still being the old kind's.
+    // A new kind brings its usual blend unless the blend was chosen by
+    // hand, told by its not being the old kind's.
     var blend = next.kind != texture.kind &&
             layer.blend == LayerBlend.fromName(texture.kind.blend)
         ? LayerBlend.fromName(next.kind.blend)
@@ -125,8 +125,8 @@ List<Widget> textureSettings(
   ];
 }
 
-/// effectsGroups is the picked layer's effects: one to add, and each one
-/// on it with its settings.
+/// effectsGroups is the picked layer's effects: one to add, and each one on
+/// it with its settings.
 List<Widget> effectsGroups(
     CanvasController controller,
     ImageElement e,
@@ -164,7 +164,7 @@ List<Widget> effectsGroups(
               for (var k in EffectKind.values)
                 if (!effects.any((f) => f.kind == k)) (k, k.label)
             ],
-            // Each one seen on the canvas as the pointer passes over it.
+            // Each previewed on the canvas as the pointer passes.
             onPreview: (k) => controller.tryElement(
                 k == null ? null : with_([...effects, LayerEffect(kind: k)])),
             onChanged: (k) {
@@ -212,15 +212,13 @@ List<Widget> effectsGroups(
   ];
 }
 
-/// _openEffects is which effects have their settings open, for each layer,
-/// for this run of the app: the panel is rebuilt on every edit, and a
-/// setting opened has to stay open through the edit it was opened for.
+/// _openEffects is each layer's open effects this run: the panel rebuilds
+/// on every edit, and an opened setting must stay open through it.
 final Map<String, Set<EffectKind>> _openEffects = {};
 
-/// EffectTiles is a layer's effects as tiles. The first press on one puts
-/// the effect on and opens its settings; later presses open and shut the
-/// settings, and only the switch in them turns it off. A tick marks an
-/// effect that is on; a lit tile has its settings open.
+/// EffectTiles is a layer's effects as tiles: the first press adds and
+/// opens one; later presses open and shut it, and only its switch turns it
+/// off. A tick marks one on; a lit tile is open.
 class EffectTiles extends StatefulWidget {
   final CanvasController controller;
   final ImageElement element;
@@ -275,7 +273,7 @@ class _EffectTilesState extends State<EffectTiles> {
           help: "Press one to put it on and open its settings; press it again "
               "to shut them -- the effect stays on, ticked. Turn it off with "
               "the switch in its settings.",
-          // One line that scrolls, as the tools do, not rows squeezed in.
+          // One scrolling line, as the tools are, not squeezed rows.
           scrolls: true,
           tileWidth: 84,
           multiple: true,

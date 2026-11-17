@@ -15,14 +15,12 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:flutter/painting.dart';
 
-// asset_elements.dart is an asset from the library made into the element that
-// shows it: a picture into an Image element, a video into a Video element, a
-// sound into an Audio element. One place, so an asset clicked in the sidebar
-// and one dragged onto the canvas arrive the same.
+// asset_elements.dart makes a library asset into the element that shows it:
+// picture to Image, video to Video, sound to Audio. One place, so an asset
+// clicked in the sidebar and one dropped on the canvas arrive the same.
 
 /// elementForAsset is [asset] as a new element on [document], centred on
-/// [center] (the middle of the page without one), and the shape the picture
-/// or the video is.
+/// [center] (the page's middle without one), shaped like the asset.
 CanvasElement elementForAsset(LibraryAsset asset, CanvasDocument document,
     {Offset? center}) {
   CanvasElement shaped(CanvasElement e) {
@@ -68,10 +66,9 @@ CanvasElement elementForAsset(LibraryAsset asset, CanvasDocument document,
   }
 }
 
-/// channelClip is a sound on the timeline: [source] from frame [at], on the
-/// channel [channel] called [channelName], playing through [mix] -- the
-/// channel's strip, which every sound on it carries. Not drawn: it is heard,
-/// and seen on the timeline. Named after its file.
+/// channelClip is a sound on the timeline: [source] from frame [at], on
+/// [channel] called [channelName], playing through its strip [mix]. Not
+/// drawn, and named after its file.
 AudioElement channelClip(
   CanvasDocument document,
   int at, {
@@ -125,8 +122,7 @@ Future<LibraryAsset?> droppedAsset(Object? data) async => switch (data) {
     };
 
 /// modelClips is a 3D object's own [animations] as its clips, "From the
-/// model", one in each slot: each the animation's own length, round and
-/// round, as a model's walk or idle is.
+/// model", one per slot, each looping at the animation's own length.
 ElementMotion modelClips(String element, List<ModelAnimation> animations) =>
     modelClipsOnto(ElementMotion.none, element, animations);
 

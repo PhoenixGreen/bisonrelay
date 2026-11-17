@@ -7,27 +7,26 @@ import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:flutter/foundation.dart';
 
 // procedural_cache.dart keeps generated backgrounds as pictures, so the
-// editor draws each once rather than once a frame. A generated background is
-// the most expensive thing on a canvas, and the editor repaints for every
-// pointer move and panel rebuild. The exporter does not use this: it wants
-// exact pixels at its own size and renders each frame once anyway.
+// editor draws each once rather than every frame: they are the most
+// expensive thing on a canvas, and the editor repaints on every pointer
+// move. The exporter does not use it: it wants exact pixels at its own size
+// and renders each frame once anyway.
 
 /// ProceduralCache is a few backgrounds, rasterised, oldest out first.
-///
-/// More than one canvas can draw at once: facing pages, both scenes of a
-/// transition, and a page turn's four leaves plus the next spread's two
-/// warmed ahead. Too small a cache makes them evict each other every frame,
-/// which shows as flicker. Each is megabytes, so no more than that.
+/// Several canvases can draw at once (facing pages, both scenes of a
+/// transition, a page turn's four leaves plus the next spread's two warmed
+/// ahead); too small a cache makes them evict each other every frame, which
+/// flickers. Each is megabytes, so no more than that.
 class ProceduralCache extends ChangeNotifier {
-  /// _keep is how many are held: six, for a page turn (see the class doc).
+  /// _keep is how many are held: six, for a page turn.
   static const int _keep = 6;
 
   /// _images is the rasters, least recently asked for first: a Dart map
   /// keeps insertion order, so re-inserting a key moves it to the end.
   final Map<String, ui.Image> _images = {};
 
-  /// _making is the keys being rasterised, so a slow generator is not started
-  /// again on every frame while the first one is still running.
+  /// _making is the keys being rasterised, so a slow generator is not
+  /// started again every frame while it runs.
   final Set<String> _making = {};
 
   bool _disposed = false;
@@ -49,7 +48,7 @@ class ProceduralCache extends ChangeNotifier {
 
   /// keyFor is what makes two requests the same: the design, the size, the
   /// moment (for a background that moves), and which of its pictures have
-  /// arrived -- an icon arrives late, and without it in the key the first,
+  /// arrived -- an icon arrives late, and without it in the key the
   /// icon-less raster would be kept for ever.
   static String keyFor(ProceduralSpec spec, ui.Size size, double time,
           [CanvasImageSource? images]) =>
@@ -79,13 +78,11 @@ class ProceduralCache extends ChangeNotifier {
   }
 
   /// imageFor is the picture to draw, or null when there is not one yet.
-  ///
-  /// Asking for one that is not ready starts it and, when [standIn], hands
-  /// back the most recent raster of the same pixel size while it is made: a
-  /// background one raster out of date is invisible, whereas the caller
-  /// generating it itself every frame until the raster lands stalls a drag
-  /// (the Metal texture shades every pixel). Never a raster of another
-  /// size, which would show as a stretched background.
+  /// Asking for one not ready starts it and, when [standIn], hands back the
+  /// latest raster of the same pixel size meanwhile: a raster one frame
+  /// stale is invisible, whereas generating it every frame until it lands
+  /// stalls a drag (the Metal texture shades every pixel). Never another
+  /// size's raster, which would show stretched.
   ui.Image? imageFor(ProceduralSpec spec, ui.Size size, double time,
       [CanvasImageSource? images, bool make = true, bool standIn = true]) {
     // A moving background is a new picture every frame; caching would only
@@ -136,7 +133,6 @@ class ProceduralCache extends ChangeNotifier {
       }
       _images.remove(key)?.dispose();
       _images[key] = image;
-      // Oldest out once over [_keep].
       while (_images.length > _keep) {
         var oldest = _images.keys.first;
         _images.remove(oldest)?.dispose();
@@ -159,10 +155,9 @@ class ProceduralCache extends ChangeNotifier {
     return null;
   }
 
-  /// warm starts [spec] being rasterised at [size] if it is not held, for a
-  /// backdrop about to be needed. Otherwise its first frame shows
-  /// [imageFor]'s stand-in, which during playback is a page's paper flashing
-  /// the colour of the page before it.
+  /// warm starts [spec] rasterising at [size] if it is not held, for a
+  /// backdrop about to be needed; otherwise its first frame shows
+  /// [imageFor]'s stand-in, flashing the previous page's colour in playback.
   void warm(ProceduralSpec spec, ui.Size size, [CanvasImageSource? images]) {
     if (moves(spec) || size.width < 1 || size.height < 1) return;
     var key = keyFor(spec, size, 0, images);

@@ -102,8 +102,9 @@ so on). A change goes through `apply` or one of the helpers built on it
 
 Widgets read the controller and call it; they do not change the document
 themselves. Settings panels are built from `ui/settings/panel_kit.dart` and
-`element_panel.dart` (`CanvasSection`, `elementPanel`, rows and steppers), so every element's
-panel looks and behaves alike.
+`element_panel.dart` (`CanvasSection`, `elementPanel`, rows and steppers), so
+every element's panel looks and behaves alike; `ui/settings/README.md` says
+how a panel is laid out.
 
 Drawing is cached where it is expensive: procedural backgrounds
 (`ProceduralCache`), rasterised elements during a gesture (`RasterCache`) and

@@ -15,16 +15,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// motion_curves.dart is the Motion view's Curves (Ken, 2026-11-08: "make sure
-// you use the design we built, including how the curves panel works"): the
-// chain prototype's curve editor. Every value the clip moves is drawn over
-// the clip's length, each scaled to fit so all can be seen at once; Speed
-// shows how fast each changes instead. Drag a key to move it (Alt: without
-// snapping), double-click a line to add one, right-click a key to remove it.
-// The values are listed down the left, the picked key's settings on the
-// right, and the element's other instances can be drawn faint behind.
+// motion_curves.dart is the Motion view's Curves: every value the clip
+// moves drawn over the clip's length, each scaled to fit so all can be seen
+// at once; Speed shows how fast each changes instead. Drag a key to move it
+// (Alt: without snapping), double-click a line to add one, right-click a
+// key to remove it. Values are listed down the left, the picked key's
+// settings on the right; the element's other instances can be drawn faint.
 
-/// curveColour is each value's line.
+/// curveColour is each value's line colour.
 Color curveColour(MotionProp p) => switch (p) {
       MotionProp.x => const Color(0xFF5CC6B8),
       MotionProp.y => const Color(0xFF7FC8F8),
@@ -85,16 +83,14 @@ class _MotionCurvesState extends State<MotionCurves>
   Offset _dragStart = Offset.zero;
   bool _alt = false;
 
-  /// _handle is a handle being dragged: the key whose ease it is (an ease
-  /// is how a key is reached), which of its two, and where the key before
-  /// and the key were when it was taken.
+  /// _handle is a handle dragged: the key whose ease it is, which of two,
+  /// and where the key before and the key were when it was taken.
   (_Pick, int, Offset, Offset)? _handle;
 
   /// _scrub is whether a drag is moving the playhead; _pan the view.
   bool _scrub = false, _pan = false;
 
-  /// _cursor is the ruler's own place, in the clip's seconds, for a clip
-  /// with no place on the timeline to move the playhead along.
+  /// _cursor is the ruler's own place, for a clip not on the timeline.
   double? _cursor;
   final FocusNode _focus = FocusNode(debugLabel: "motionCurves");
 
@@ -392,8 +388,7 @@ class _MotionCurvesState extends State<MotionCurves>
         return lo + view.n(y, area) * (hi - lo);
       }
 
-      // Each ease's handles, where shown: how each key is reached from the
-      // one before, on each line it moves.
+      // Each ease's handles, where shown: how each key is reached.
       var handles = <CurveHandles>[];
       if (curvesShowHandles && !_speed) {
         for (var p in _shown) {
@@ -449,8 +444,7 @@ class _MotionCurvesState extends State<MotionCurves>
             child: GestureDetector(
               key: const ValueKey("curvesGraph"),
               behavior: HitTestBehavior.opaque,
-              // From where it was pressed, not where the drag was noticed: a
-              // key is small.
+              // From where it was pressed, not noticed: a key is small.
               dragStartBehavior: DragStartBehavior.down,
               onTapUp: (d) {
                 if (d.localPosition.dy < top) {
@@ -571,7 +565,7 @@ class _MotionCurvesState extends State<MotionCurves>
                   var t = (was.t + dt).clamp(0.0, len);
                   if (_snap && !_alt) t = (t / _grid).round() * _grid;
                   var value = was.value;
-                  // A number moves up and down too; a place keeps where it is.
+                  // A number moves up and down too; a place stays put.
                   if (!_speed && value is MotionNumber) {
                     var y = yOf(p, value.value) +
                         (d.localPosition.dy - _dragStart.dy);
@@ -807,8 +801,7 @@ class _CurvesPainter extends CustomPainter {
   final double len, grid;
   final double? playhead;
 
-  /// ownCursor is whether [playhead] is the editor's own cursor rather
-  /// than the timeline's: drawn fainter.
+  /// ownCursor is whether [playhead] is the editor's own: drawn fainter.
   final bool ownCursor;
   final List<CurveHandles> handles;
   final CurveView view;
@@ -836,8 +829,7 @@ class _CurvesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = studio.display);
-    // The grid: a line each quarter beat, brighter on the beat; the
-    // ruler's seconds along the top.
+    // The grid: a line each quarter beat, brighter on it; seconds on top.
     var fine = Paint()..color = Colors.white.withValues(alpha: 0.03);
     var beat = Paint()..color = Colors.white.withValues(alpha: 0.08);
     var n = 0;
@@ -865,8 +857,7 @@ class _CurvesPainter extends CustomPainter {
       tp.paint(canvas, Offset(xOf(t) + 3, 5));
     }
     double value(MotionProp p, double t) => speed ? rate(p, t) : sample(p, t);
-    // Read along what is shown, two pixels at a time, so a close look
-    // stays smooth.
+    // Read along what is shown two pixels at a time, smooth up close.
     Path line(MotionProp p, double shift) {
       var path = Path();
       var started = false;

@@ -5,16 +5,12 @@ import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:flutter/painting.dart';
 
-// code_painter.dart draws a Code panel (code_element.dart) as the prototype
-// drew it: a window bar, the files down the side, and its panes, each with
-// its tabs over its code -- line numbers, the code coloured by what it is,
-// typed as far as the scene has got, lit lines with their note beside them
-// and the rest dimmed.
-//
-// codeBoxes is where everything is, in page units; the stage answers
-// presses (a tab, a line between panes, a file) from the same boxes.
+// code_painter.dart draws a Code panel (code_element.dart): a window bar,
+// the files down the side, and its panes, each with tabs over its code
+// (line numbers, coloured code typed as far as the scene has got, lit lines
+// with their note, the rest dimmed). codeBoxes is where everything is, in
+// page units; the stage answers presses from the same boxes.
 
-/// CodeColours is a theme's colours.
 class CodeColours {
   final Color bg, bar, side, line, fg, dim, gutter;
   final Color keyword, string, number, comment, function, type, tag, attr;
@@ -138,7 +134,6 @@ StrutStyle codeStrut(double fontSize) => StrutStyle(
 
 final Map<double, (double, double)> _measures = {};
 
-/// codeCharWidth is one letter's width in code [fontSize] high.
 double codeCharWidth(double fontSize) => _measure(fontSize).$1;
 
 /// _measure is a letter's width, and the letter spacing that makes a tab
@@ -186,9 +181,9 @@ List<CodeRun> _runsOf(CodeElement e, CodeFile file, String text) {
   return out;
 }
 
-/// codeSpan is [text]'s first [count] letters as [file] in [e] colours
-/// them: by role, other files' names underlined in their colour, and tabs
-/// four letters wide. The painter and the stage's editor both use it.
+/// codeSpan is [text]'s first [count] letters coloured as [file] in [e]: by
+/// role, other files' names underlined, tabs four letters wide. The painter
+/// and the stage's editor both use it.
 TextSpan codeSpan(
     CodeElement e, CodeFile file, String text, int count, CodeColours c,
     {double? fontSize}) {
@@ -226,14 +221,12 @@ TextSpan codeSpan(
   return TextSpan(style: codeStyle(fs, c.fg), children: spans);
 }
 
-/// CodePlayPart is a part of a Code panel's playbar.
-/// reset puts its code back as it began (CodeElement.reset): shown only
-/// once it has changed, with or without a lesson to play.
+/// CodePlayPart is a part of a Code panel's playbar. reset puts its code
+/// back as it began (CodeElement.reset), shown only once it has changed.
 enum CodePlayPart { reset, full, restart, play, track }
 
-/// codePlaybar is where [e]'s playbar's parts are in its window bar [bar]:
-/// its lesson's, where it has one and shows them, and Reset, where its code
-/// has changed; empty where there is no room.
+/// codePlaybar is where [e]'s playbar parts are in window bar [bar]: the
+/// lesson's, and Reset where its code changed; empty with no room.
 Map<CodePlayPart, Rect> codePlaybar(CodeElement e, Rect? bar) {
   if (bar == null) return const {};
   var fs = e.fontSize;
@@ -264,9 +257,8 @@ Map<CodePlayPart, Rect> codePlaybar(CodeElement e, Rect? bar) {
   return out;
 }
 
-/// _paintPlaybar draws [e]'s playbar: back to the start, play or pause, its
-/// lesson's track with the typing's end and each lit step marked, and the
-/// time.
+/// _paintPlaybar draws [e]'s playbar: back to the start, play or pause, the
+/// lesson's track with the typing's end and lit steps marked, and the time.
 void _paintPlaybar(Canvas canvas, CodeElement e, CodeColours c,
     Map<CodePlayPart, Rect> parts, double seconds, bool playing,
     {bool full = false}) {
@@ -301,7 +293,7 @@ void _paintPlaybar(Canvas canvas, CodeElement e, CodeColours c,
   }
   var span = lessonSpan(e);
   if (span == null || !parts.containsKey(CodePlayPart.full)) return;
-  // Full code: the whole of it, by nobody's clock -- lit while it shows.
+  // Full code: the whole of it, by nobody's clock, lit while it shows.
   var f = parts[CodePlayPart.full]!;
   canvas.drawRRect(RRect.fromRectAndRadius(f, Radius.circular(fs * 0.35)),
       Paint()..color = full ? codeMark : c.line);
@@ -373,7 +365,6 @@ void _paintPlaybar(Canvas canvas, CodeElement e, CodeColours c,
       Offset(t.right + fs * 0.6, t.center.dy), fs * 0.72, c.dim);
 }
 
-/// CodeTabBox is a tab: [file]'s, its box and its close box.
 class CodeTabBox {
   final String file;
   final Rect rect;
@@ -381,7 +372,6 @@ class CodeTabBox {
   const CodeTabBox(this.file, this.rect, this.close);
 }
 
-/// CodePaneBox is a pane: its box, its tab row, its tabs and its code.
 class CodePaneBox {
   final int index;
   final Rect rect;
@@ -400,7 +390,6 @@ class CodeDividerBox {
   const CodeDividerBox(this.hit, this.columns, this.index);
 }
 
-/// CodeBoxes is where everything of a Code panel is, on the page.
 class CodeBoxes {
   final Rect box;
   final Rect? bar;
@@ -416,7 +405,6 @@ class CodeBoxes {
 double _uiSize(CodeElement e) => e.fontSize * 0.86;
 double _tabHeight(CodeElement e) => e.fontSize * 2.3;
 
-/// codeTextPad is the space above a pane's first line.
 double codeTextPad(CodeElement e) => e.fontSize * 0.7;
 
 double _nameWidth(String name, double size) {
@@ -430,8 +418,7 @@ double _nameWidth(String name, double size) {
   return w;
 }
 
-/// paneRects is [e]'s panes laid in [area] by its shares, and the lines
-/// between them.
+/// paneRects is [e]'s panes laid in [area] by its shares, and lines between.
 (List<Rect>, List<CodeDividerBox>) paneRects(CodeElement e, Rect area) {
   List<double> fr(List<double> s) {
     var sum = s.fold(0.0, (a, b) => a + b);
@@ -494,7 +481,6 @@ double _nameWidth(String name, double size) {
   return (rects, divs);
 }
 
-/// codeBoxes lays [e] out in [box].
 CodeBoxes codeBoxes(CodeElement e, Rect box) {
   var fs = e.fontSize;
   var barH = e.windowBar ? fs * 2.6 : 0.0;
@@ -542,26 +528,23 @@ CodeBoxes codeBoxes(CodeElement e, Rect box) {
   return CodeBoxes(box, bar, fileList, rows, area, panes, divs);
 }
 
-/// CodeShow is what the stage adds to a Code panel's drawing: the tab each
-/// pane was shown by hand (while paused), and a pane being edited, which
-/// the editor covers.
+/// CodeShow is what the stage adds to a Code panel: the tab each pane shows
+/// by hand (while paused), and a pane being edited, which the editor covers.
 class CodeShow {
   final Map<int, String> picked;
   final int editing;
 
-  /// playing is whether the canvas is playing: its playbar shows pause.
+  /// playing is whether the canvas is playing: the playbar shows pause.
   final bool playing;
 
   /// full shows the whole of its code and every lit step at once, by
   /// nobody's clock (its playbar's Full code button).
   final bool full;
 
-  /// scroll is each pane scrolled by hand, in lines, over what the scene
-  /// has it showing.
+  /// scroll is each pane scrolled by hand, in lines, over what the scene shows.
   final Map<int, double> scroll;
 
-  /// onStage is whether it is drawn on the stage, where its playbar can
-  /// be pressed: not in a video or a book.
+  /// onStage is whether it is on the stage, where its playbar can be pressed.
   final bool onStage;
   const CodeShow(
       {this.onStage = false,
@@ -573,7 +556,7 @@ class CodeShow {
 }
 
 /// codeShowOf is how the stage shows each Code panel, set by the
-/// controller; null -- in an export -- each plays by its clock alone.
+/// controller; null in an export, where each plays by its clock alone.
 CodeShow Function(CodeElement e)? codeShowOf;
 
 void _text(Canvas canvas, String t, Offset at, double size, Color colour,
@@ -598,7 +581,6 @@ void _text(Canvas canvas, String t, Offset at, double size, Color colour,
   tp.dispose();
 }
 
-/// paintCode draws [e] in [box] at [seconds] into its scene.
 void paintCode(Canvas canvas, Rect box, CodeElement e,
     {double seconds = 0, CodeShow show = const CodeShow()}) {
   var c = CodeColours.of(e.theme);
@@ -609,7 +591,6 @@ void paintCode(Canvas canvas, Rect box, CodeElement e,
   canvas.clipRRect(RRect.fromRectAndRadius(box, radius));
   canvas.drawRect(box, Paint()..color = c.bg);
 
-  // The window bar: three dots and the project's name.
   if (b.bar case var bar?) {
     canvas.drawRect(bar, Paint()..color = c.bar);
     for (var i = 0; i < 3; i++) {
@@ -630,7 +611,6 @@ void paintCode(Canvas canvas, Rect box, CodeElement e,
   var plan = codePlan(e);
   var open = {for (var p in e.shownPanes) ...p.tabs};
 
-  // The files, down the side.
   if (b.fileList case var list?) {
     canvas.drawRect(list, Paint()..color = c.side);
     canvas.drawRect(Rect.fromLTWH(list.right - 1, list.top, 1, list.height),
@@ -664,12 +644,10 @@ void paintCode(Canvas canvas, Rect box, CodeElement e,
     }
   }
 
-  // The panes.
   var lit = litSteps(e, seconds);
   for (var pane in b.panes) {
     _paintPane(canvas, e, c, pane, plan, lit, seconds, show);
   }
-  // The lines between them.
   var (rects, _) = paneRects(e, b.panesArea);
   var line = Paint()..color = c.line;
   for (var r in rects) {
@@ -683,9 +661,8 @@ void paintCode(Canvas canvas, Rect box, CodeElement e,
   canvas.restore();
 }
 
-/// codeScrollLines is how many lines pane [pane] is scrolled down at
-/// [seconds]: enough to keep the line being typed in view, or a lit
-/// line's start; else none.
+/// codeScrollLines is how many lines pane [pane] is scrolled at [seconds]:
+/// enough to keep the line being typed in view, or a lit line's start.
 int codeScrollLines(CodeElement e, CodePaneBox pane, String file, int typed,
     String text, List<CodeStep> lit) {
   var lh = codeLineHeight(e.fontSize);
@@ -713,7 +690,6 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
       : shownFile(e, pane.index, seconds, plan,
           picked: show.picked[pane.index]);
 
-  // Its tabs.
   canvas.drawRect(pane.tabRow, Paint()..color = c.side);
   canvas.drawRect(
       Rect.fromLTWH(
@@ -749,7 +725,6 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
         ui,
         on ? c.fg : c.dim,
         weight: on ? FontWeight.w500 : FontWeight.w400);
-    // Its close cross.
     var x = t.close.deflate(t.close.width * 0.32);
     var pen = Paint()
       ..color = c.dim
@@ -782,7 +757,7 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
 
   var typed = show.full ? f.text.length : typedCount(e, f.id, seconds, plan);
   var span = plan.files[f.id];
-  // The caret only in the file being typed now, not one waiting its turn.
+  // The caret only in the file being typed, not one waiting its turn.
   var typing = typed < f.text.length &&
       span != null &&
       seconds >= span.$1 &&
@@ -807,8 +782,7 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
           : codeScrollLines(e, pane, f.id, typed, f.text, lit).toDouble());
   var top = pane.code.top + pad - scroll * lh;
 
-  // Lit lines: a band, a marker, the rest dimmed (for the first), and the
-  // note beside them.
+  // Lit lines: a band, a marker, the rest dimmed (for the first), the note.
   for (var s in here) {
     var from = s.from.clamp(1, allLines.length),
         to = s.to.clamp(from, allLines.length);
@@ -820,9 +794,8 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
         Paint()..color = codeMark);
   }
 
-  // The line numbers, as far as it is typed.
-  // One block for the lines in view, right-aligned: laid out once, not a
-  // line at a time.
+  // The line numbers, as far as it is typed: one right-aligned block for
+  // the lines in view, laid out once rather than a line at a time.
   if (e.lineNumbers) {
     var first = math.max(0, ((pane.code.top - top) / lh).floor());
     var last = math.min(lines, ((pane.code.bottom - top) / lh).ceil() + 1);
@@ -841,7 +814,6 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
     }
   }
 
-  // The code, typed so far.
   var tp = TextPainter(
       text: codeSpan(e, f, f.text, typed, c),
       strutStyle: codeStrut(fs),
@@ -893,9 +865,9 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
 
 int _shownLength(TextPainter tp) => tp.text?.toPlainText().length ?? 0;
 
-/// _paintNote draws a lit line's note: a marker-yellow label pointing at
-/// the lines, beside them at [x] (their middle at [y]) where it fits, else
-/// just under them ([below]) at the pane's right, pointing up.
+/// _paintNote draws a lit line's note: a marker-yellow label beside the
+/// lines at [x] (their middle at [y]) where it fits, else under them
+/// ([below]) at the pane's right, pointing up.
 void _paintNote(Canvas canvas, String note, double x, double y, double below,
     Rect pane, double fs) {
   var tp = TextPainter(
@@ -937,7 +909,6 @@ void _paintNote(Canvas canvas, String note, double x, double y, double below,
   tp.dispose();
 }
 
-/// CodeHit is what a press on a Code panel landed on.
 sealed class CodeHit {
   const CodeHit();
 }
@@ -1005,8 +976,7 @@ CodeHit? codeHitAt(CodeElement e, Offset point) {
 }
 
 /// codeTabDrop is where a tab dropped at [point] goes: the pane, and the
-/// place among its tabs (by which tab's middle it is before); null off the
-/// panes.
+/// place among its tabs; null off the panes.
 (int, int)? codeTabDrop(CodeElement e, Offset point) {
   var b = codeBoxes(e, e.bounds);
   for (var p in b.panes) {
@@ -1023,8 +993,7 @@ CodeHit? codeHitAt(CodeElement e, Offset point) {
 CodeElement codeDividerDragged(CodeElement e, CodeDividerBox d, Offset point) =>
     codeDividerDraggedIn(e, d, point, codeBoxes(e, e.bounds).panesArea);
 
-/// codeDividerDraggedIn is the same for panes laid out in [area] (the Code
-/// Studio's, in its own pixels).
+/// codeDividerDraggedIn is the same in [area] (the Code Studio's pixels).
 CodeElement codeDividerDraggedIn(
     CodeElement e, CodeDividerBox d, Offset point, Rect area) {
   var shares = [...(d.columns ? e.columns : e.rows)];
@@ -1071,9 +1040,8 @@ double codeScrollRoom(CodeElement e, int pane, String file) {
   return math.max(0, f.text.split("\n").length - fits + 1);
 }
 
-/// codeShownScroll is how far pane [pane] of [e] is scrolled now, in
-/// lines: by hand where it has been, else as the scene has it at
-/// [seconds].
+/// codeShownScroll is how far pane [pane] of [e] is scrolled, in lines: by
+/// hand where it has been, else as the scene has it at [seconds].
 double codeShownScroll(CodeElement e, int pane, double seconds, CodeShow show) {
   var b = codeBoxes(e, e.bounds);
   if (pane < 0 || pane >= b.panes.length) return 0;

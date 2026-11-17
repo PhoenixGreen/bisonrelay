@@ -7,10 +7,9 @@ import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
 import 'package:flutter/widgets.dart';
 
-// preset_pair.dart is an arrival's, a leaving's or a loop's preset chosen
-// in two steps (Ken, 2026-11-12): "Preset" its family -- Fade, Slide,
-// Scale -- and "Kind" which of them -- Fade up. The list is a lot shorter
-// and grouped as the presets are. The same two, in the Chain and in the
+// preset_pair.dart is an arrival's, a leaving's or a loop's preset chosen in
+// two steps, "Preset" its family (Fade, Slide) and "Kind" which of them (Fade
+// up), so each list is short. The same pair serves the Chain and the
 // settings panel.
 
 /// PresetOption is one preset, by its value, name and family.

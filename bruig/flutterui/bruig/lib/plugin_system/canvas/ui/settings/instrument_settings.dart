@@ -17,10 +17,9 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-// instrument_settings.dart is an instrument's settings: its sound, the
-// keyboard it is drawn as, its part and, as any sound's, where it is heard
-// from. The part is played into its clip's file whenever it changes (see
-// CanvasController.renderParts), so nothing here has to ask for it.
+// instrument_settings.dart is an instrument's sound, keyboard, part and
+// placement. The part renders to its clip's file whenever it changes (see
+// CanvasController.renderParts).
 
 List<Widget> instrumentSettings(
   BuildContext context,
@@ -130,8 +129,8 @@ List<Widget> instrumentSettings(
                 ],
                 onChanged: (s) => set(part.copyWith(sound: s)),
               ),
-              // The keys lit as they sound: the right hand's, and the left
-              // hand's on a part of two staves (a piano's).
+              // The keys lit as they sound: the right hand's, and the left's
+              // on a two-stave part (a piano's).
               CanvasColorButton(
                 key: const ValueKey("instrumentLit"),
                 label: "Keys lit",
@@ -261,8 +260,8 @@ class _BankStatusState extends State<_BankStatus> {
     soundBankReady().then((r) {
       if (mounted) setState(() => _ready = r);
     });
-    // A fetch already going -- started from this panel before it was shut
-    // -- is shown, not offered again.
+    // A fetch already running (started before the panel was shut) is shown,
+    // not offered again.
     _progress = soundBankProgress.value;
     soundBankProgress.addListener(_heard);
   }
@@ -289,8 +288,8 @@ class _BankStatusState extends State<_BankStatus> {
   Future<void> _download() async {
     var controller = widget.controller;
     var ok = await downloadSoundBank();
-    // The parts are played with the bank whether or not this panel is
-    // still open to say so.
+    // The parts are rendered with the bank whether or not this panel is
+    // still open.
     if (ok) await controller.renderParts();
     if (!mounted) return;
     setState(() => _ready = ok);
@@ -339,8 +338,8 @@ class _BankStatusState extends State<_BankStatus> {
   }
 }
 
-/// _MidiKeyboard chooses the MIDI keyboard that plays the instruments: the
-/// one selected, or the first there is. See MidiInput.
+/// _MidiKeyboard chooses the MIDI keyboard that plays instruments: the one
+/// selected, or the first there is. See MidiInput.
 class _MidiKeyboard extends StatefulWidget {
   const _MidiKeyboard();
 

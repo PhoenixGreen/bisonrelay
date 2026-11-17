@@ -7,16 +7,13 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
-// speech_finish.dart is what is done to a Speech device's lines once they
-// are spoken, on every engine: joined with pauses that follow the speed,
-// then given the finish (a little room, the speaker boost). The finish runs
-// after the voice, so changing it needs nothing spoken again.
-//
-// Kept light on purpose: heavier warmth or room makes the voices sound
-// artificial. A voice starts dry; the most room is a small one, a tenth wet.
+// speech_finish.dart finishes a Speech device's lines on every engine:
+// joined with speed-following pauses, then a little room and the speaker
+// boost, applied after the voice so changing them respeaks nothing. Kept
+// light, as heavier warmth or room sounds artificial.
 
-/// lineGap is the pause between two lines, at [speed]: shorter as it is
-/// faster, by more than the words are.
+/// lineGap is the pause between two lines at [speed]: shorter when faster,
+/// by more than the words are.
 double lineGap(double speed) => 0.35 / math.pow(speed.clamp(0.5, 2.0), 1.5);
 
 /// joinLines puts [takes] end to end, a pause between each two.
@@ -30,7 +27,7 @@ SpokenAudio joinLines(List<SpokenAudio> takes, double speed) {
 }
 
 /// _boost is the speaker boost's tone: a low cut under the voice, a little
-/// more body and a little more presence.
+/// more body and presence.
 const _boost = Eq(
   on: true,
   lowCut: EqBand(70),
@@ -38,8 +35,8 @@ const _boost = Eq(
   presence: EqBand(4500, gainDb: 1.5, q: 0.8),
 );
 
-/// _evenly is its compression: gentle, so the quiet words come up rather
-/// than the loud ones being pressed flat.
+/// _evenly is its compression: gentle, so quiet words come up rather than
+/// loud ones being flattened.
 const _evenly = Dynamics(
     on: true,
     threshold: -24,
@@ -48,9 +45,8 @@ const _evenly = Dynamics(
     releaseMs: 140,
     kneeDb: 8);
 
-/// finished is [take] with [room] round it -- nought dry, one a small room
-/// clearly heard -- and the speaker boost where [boost]. Its words are
-/// where they were; a room's tail makes it a little longer.
+/// finished is [take] with [room] (nought dry, one a small room) and the
+/// speaker boost where [boost]. Words stay put; a tail lengthens it.
 SpokenAudio finished(SpokenAudio take,
     {required double room, required bool boost}) {
   room = room.clamp(0.0, 1.0);
@@ -72,9 +68,8 @@ SpokenAudio finished(SpokenAudio take,
     })).process(l, r, n);
     _roomTone(l, r, room);
   }
-  // An even level, line to line, under a ceiling: with the boost, the
-  // voice's own loudness brought to a voice-over's; without, only kept
-  // from clipping.
+  // An even level under a ceiling: with the boost, brought to a
+  // voice-over's loudness; without, only kept from clipping.
   if (boost) {
     var g = _toLevel(l, -19);
     for (var i = 0; i < n; i++) {
@@ -83,8 +78,8 @@ SpokenAudio finished(SpokenAudio take,
     }
   }
   Limiter(-1).process(l, r, n);
-  // The limiter's look-ahead delays the sound by five milliseconds: put
-  // back, so the words stay where they were.
+  // The limiter's 5ms look-ahead delays the sound: taken back, so the words
+  // stay where they were.
   var ahead = (0.005 * mixRate).round();
   l.setRange(0, n - ahead, l, ahead);
   r.setRange(0, n - ahead, r, ahead);
@@ -93,8 +88,8 @@ SpokenAudio finished(SpokenAudio take,
   return SpokenAudio(l, r, take.words, exact: take.exact);
 }
 
-/// _roomTone is the quiet of a room, under the voice: noise, its highs
-/// rolled off, sixty decibels down at most.
+/// _roomTone is a room's quiet under the voice: noise, highs rolled off,
+/// sixty decibels down at most.
 void _roomTone(Float32List l, Float32List r, double room) {
   var random = math.Random(7);
   var level = 0.0012 * room;
@@ -107,9 +102,8 @@ void _roomTone(Float32List l, Float32List r, double room) {
   }
 }
 
-/// _toLevel is the gain that brings the voice's loudness -- measured where
-/// it speaks, not its silences -- to [db] decibels, within twelve of where
-/// it is.
+/// _toLevel is the gain bringing the voice's loudness (measured where it
+/// speaks, not its silences) to [db] decibels, within twelve of where it is.
 double _toLevel(Float32List l, double db) {
   var sum = 0.0;
   var count = 0;

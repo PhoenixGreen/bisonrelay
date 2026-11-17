@@ -5,11 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 
 // instances.dart is an element reused: drawn many times -- twenty coins --
 // as one element, one channel and one row, each instance (a copy) with its
-// own place and start. Every copy uses the element's settings unless it has
-// its own (Ken, 2026-11-08, replacing the movable split of rule 3): its own
-// start, speed, size, turn, opacity or colour, or its own value of any knob
-// of the element's chain -- each kept in ElementInstance.own, shown with a
-// dot and taken back with Revert.
+// own place and start. A copy uses the element's settings unless it has its
+// own start, speed, size, turn, opacity, colour or chain knob value, kept
+// in ElementInstance.own, shown with a dot and taken back with Revert.
 
 /// VaryHow is how a setting differs from instance to instance.
 enum VaryHow {
@@ -25,8 +23,8 @@ enum VaryHow {
       values.where((h) => h.name == name).firstOrNull ?? same;
 }
 
-/// VaryWhat is a setting that can differ from instance to instance, with
-/// how far it goes at most.
+/// VaryWhat is a setting that can differ between instances, with its
+/// furthest reach.
 enum VaryWhat {
   /// starts: seconds later, at most.
   starts("Starts", 0, 10, 0.5, "s"),
@@ -46,15 +44,14 @@ enum VaryWhat {
   const VaryWhat(this.label, this.min, this.max, this.initial, this.unit);
 }
 
-/// Vary is how one setting differs: how, and by at most how much.
 class Vary {
   final VaryHow how;
   final double amount;
   const Vary(this.how, this.amount);
 }
 
-/// CopyValue is one of a copy's own settings -- what it has instead of the
-/// element's -- by its key in ElementInstance.own, with its range.
+/// CopyValue is one of a copy's own settings, by its key in
+/// ElementInstance.own, with its range.
 enum CopyValue {
   start("Starts", 0, 30, 0, "s"),
   speed("Speed", 0.05, 4, 1, "×"),
@@ -69,14 +66,13 @@ enum CopyValue {
   const CopyValue(this.label, this.min, this.max, this.initial, this.unit);
 }
 
-/// deviceOwnKey is the key in ElementInstance.own of a copy's own value of
-/// [param] of the chain's device [device] (its id).
+/// deviceOwnKey is the ElementInstance.own key of a copy's own value of
+/// [param] of the chain device with id [device].
 String deviceOwnKey(String device, String param) => "dev:$device:$param";
 
-/// ElementInstance is one instance: its own id, kept as instances come and
-/// go (a game's collected coin is this id), its place from the element's,
-/// how much later than the others it starts, and what else it has of its
-/// own (see CopyValue and deviceOwnKey).
+/// ElementInstance is one instance: its id, kept as instances come and go
+/// (a game's collected coin is this id), its offset from the element, its
+/// start delay, and its own values (see CopyValue and deviceOwnKey).
 class ElementInstance {
   final String id;
   final double dx, dy;
@@ -94,11 +90,11 @@ class ElementInstance {
           start: start ?? this.start,
           own: own ?? this.own);
 
-  /// withOwn is it with [key] its own [value]; null takes it back.
+  /// withOwn sets [key] to its own [value]; null takes it back.
   ElementInstance withOwn(String key, double? value) => copyWith(
       own: value == null ? ({...own}..remove(key)) : {...own, key: value});
 
-  /// reverted is it with nothing of its own but its place.
+  /// reverted keeps only its place.
   ElementInstance get reverted => ElementInstance(id, dx: dx, dy: dy);
 
   Map<String, dynamic> toJson() => {
@@ -126,14 +122,12 @@ class ElementInstance {
   }
 }
 
-/// instanceKey names instance [instance] of element [element] wherever a
-/// game keeps its state by name: a coin collected is gone by this.
+/// instanceKey names an instance wherever a game keeps state by name: a
+/// collected coin is gone by this.
 String instanceKey(String element, String instance) => "$element#$instance";
 
-/// maxInstances is the most instances an element has.
 const int maxInstances = 500;
 
-/// InstanceLayout is how Lay out places the instances.
 enum InstanceLayout {
   line("In a line"),
   grid("In a grid"),
@@ -152,8 +146,8 @@ class InstanceSet {
   final Map<VaryWhat, Vary> vary;
   final int seed;
 
-  /// each is whether every copy is drawn on its own, though they are alike
-  /// but for where they are: the Drawing device's "Each its own".
+  /// each draws every copy on its own even when they differ only in place:
+  /// the Drawing device's "Each its own".
   final bool each;
 
   const InstanceSet(
@@ -164,10 +158,9 @@ class InstanceSet {
 
   int get count => items.length;
 
-  /// indexOf is where the copy [id] is among them, or -1.
+  /// indexOf is copy [id]'s index, or -1.
   int indexOf(String id) => items.indexWhere((x) => x.id == id);
 
-  /// own is copy [i]'s own value of [key], or null.
   double? _own(int i, CopyValue v) =>
       i < 0 || i >= items.length ? null : items[i].own[v.name];
 
@@ -192,8 +185,8 @@ class InstanceSet {
 
   double _by(VaryWhat w, int i) => share(w, i) * varyOf(w).amount;
 
-  /// startOf is how many seconds later than the element instance [i]
-  /// starts: its own, or as the set varies it.
+  /// startOf is the seconds after the element that instance [i] starts: its
+  /// own, or as the set varies it.
   double startOf(int i) =>
       _own(i, CopyValue.start) ??
       (i < items.length ? items[i].start : 0) + _by(VaryWhat.starts, i);
@@ -204,13 +197,11 @@ class InstanceSet {
   double sizeOf(int i) =>
       _own(i, CopyValue.size) ?? math.max(0.05, 1 + _by(VaryWhat.size, i));
 
-  /// hueOf is how many degrees instance [i]'s colours are turned.
+  /// hueOf is degrees instance [i]'s colours are turned.
   double hueOf(int i) => _own(i, CopyValue.colour) ?? _by(VaryWhat.colour, i);
 
-  /// turnOf is how many degrees more instance [i] is turned.
   double turnOf(int i) => _own(i, CopyValue.turn) ?? 0;
 
-  /// opacityOf is how much of instance [i] is seen.
   double opacityOf(int i) => _own(i, CopyValue.opacity) ?? 1;
 
   /// valueOf is instance [i]'s [v] as it plays: its own, or the set's.
@@ -223,22 +214,21 @@ class InstanceSet {
         CopyValue.colour => hueOf(i),
       };
 
-  /// uniform is whether the instances differ only in where they are: drawn
-  /// once and stamped at each place.
+  /// uniform is whether the instances differ only in place: drawn once and
+  /// stamped at each.
   bool get uniform =>
       !each &&
       items.every((x) => x.start == 0 && x.own.isEmpty) &&
       VaryWhat.values
           .every((w) => varyOf(w).how == VaryHow.same || varyOf(w).amount == 0);
 
-  /// withCopy is it with copy [id] changed by [change].
   InstanceSet withCopy(
           String id, ElementInstance Function(ElementInstance) change) =>
       copyWith(items: [
         for (var x in items) x.id == id ? change(x) : x,
       ]);
 
-  /// withNewCopy is it with one more copy, at [dx], [dy] from the element.
+  /// withNewCopy adds a copy at [dx], [dy] from the element.
   InstanceSet withNewCopy(double dx, double dy) {
     if (items.length >= maxInstances) return this;
     var taken = {for (var x in items) x.id};
@@ -249,7 +239,7 @@ class InstanceSet {
     return copyWith(items: [...items, ElementInstance("i$n", dx: dx, dy: dy)]);
   }
 
-  /// without is it without the copies [ids]; at least one is kept.
+  /// without removes the copies [ids]; at least one is kept.
   InstanceSet without(Set<String> ids) {
     var left = [
       for (var x in items)
@@ -303,9 +293,9 @@ class InstanceSet {
     return copyWith(items: out);
   }
 
-  /// laidOut is the instances placed by [layout], [gap] apart -- [columns]
-  /// across in a grid; a circle's [gap] is the step round it; a scatter's
-  /// over a square [gap] times the count's root on a side.
+  /// laidOut places the instances by [layout], [gap] apart: [columns] across
+  /// in a grid, [gap] the step round a circle, a scatter over a square [gap]
+  /// times the count's root on a side.
   InstanceSet laidOut(InstanceLayout layout,
       {double gap = 60, int columns = 5}) {
     var n = items.length;

@@ -4,16 +4,14 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:flutter/painting.dart';
 
-// loop_effects.dart draws the loops that are more than a move: light swept
-// through an element, its colours turned, a glow, sparkles, its outline
-// drawn and run round, a ripple, a glitch. Each is given the element as a
-// closure -- [body] draws it, as many times as the effect needs -- so one
-// implementation serves a shape, a picture, a drawing and a table alike.
+// loop_effects.dart draws the loops that are more than a move: a light
+// sweep, turned colours, a glow, sparkles, an outline drawn and run round, a
+// ripple, a glitch. Each takes the element as a closure ([body], drawn as
+// many times as needed), so one implementation serves every element.
 
-/// paintLoopEffect draws [body] -- an element in [bounds] -- with [loop]
-/// at [p] of the way round its [round]th go. [outline] is the element's own
-/// outline, for the loops that run along it; [seed] keeps its sparkles and
-/// glitches its own.
+/// paintLoopEffect draws [body] (an element in [bounds]) with [loop] at [p] of
+/// the way round its [round]th go. [outline] is the element's outline, for
+/// loops that run along it; [seed] keeps its sparkles and glitches its own.
 void paintLoopEffect(ui.Canvas canvas, Rect bounds, ElementLoop loop, double p,
     int round, int seed, Path outline, void Function() body) {
   var room = bounds.inflate(math.max(bounds.width, bounds.height));
@@ -54,8 +52,7 @@ void paintLoopEffect(ui.Canvas canvas, Rect bounds, ElementLoop loop, double p,
       body();
       _sparkles(canvas, bounds, colour, p, round, seed, s);
     case LoopPreset.neonFlicker:
-      // Mostly lit, now and then a stutter: a few frames' worth of the cycle
-      // in which it drops low and comes back, different each go round.
+      // Mostly lit, now and then a stutter, different each go round.
       var step = (p * 30).floor();
       var noise = _noise(seed, round * 31 + step);
       var lit = noise > 0.22 * math.min(2, s) ? 1.0 : 0.25 + noise;
@@ -110,8 +107,7 @@ void paintLoopEffect(ui.Canvas canvas, Rect bounds, ElementLoop loop, double p,
       for (var m in outline.computeMetrics()) {
         var head = m.length * p;
         var tail = m.length * 0.18;
-        // The tail in eight pieces, fading towards its end; the head with
-        // a glow round it.
+        // The tail in eight pieces, fading to its end; a glow round the head.
         for (var i = 0; i < 8; i++) {
           var a = head - tail * (i + 1) / 8, b = head - tail * i / 8;
           var piece = _wrapped(m, a, b);
@@ -189,9 +185,8 @@ void paintLoopEffect(ui.Canvas canvas, Rect bounds, ElementLoop loop, double p,
   }
 }
 
-/// _sweep lays the loop's band across the layer, over what is in it only:
-/// a bright soft band for a shimmer, a band of its colour -- or its
-/// gradient's colours -- for a wave.
+/// _sweep lays the loop's band across the layer, over what is in it only: a
+/// bright soft band for a shimmer, a band of its colour or gradient for a wave.
 void _sweep(
     ui.Canvas canvas, Rect room, Rect bounds, ElementLoop loop, double p) {
   var a = loop.angle * math.pi / 180;
@@ -237,8 +232,8 @@ void _sweep(
         ..shader = ui.Gradient.linear(from, to, colours, stops));
 }
 
-/// _sparkles draws twinkling four-pointed glints over [bounds]: their
-/// places new each go round, each glint with a moment of its own to shine.
+/// _sparkles draws twinkling four-pointed glints over [bounds], placed anew
+/// each go round, each with its own moment to shine.
 void _sparkles(ui.Canvas canvas, Rect bounds, Color colour, double p, int round,
     int seed, double s) {
   var count = (5 + 3 * s).round().clamp(2, 14);
@@ -269,8 +264,7 @@ void _sparkles(ui.Canvas canvas, Rect bounds, Color colour, double p, int round,
   }
 }
 
-/// _trimmed is the first [q] of every run of [path], as a pen drawing it
-/// would have got.
+/// _trimmed is the first [q] of every run of [path], as a pen drawing it.
 Path _trimmed(Path path, double q) {
   var out = Path();
   for (var m in path.computeMetrics()) {
@@ -280,9 +274,7 @@ Path _trimmed(Path path, double q) {
   return out;
 }
 
-/// _wrapped is the stretch of [m] from [a] to [b], round again from its
-/// start where [a] is before it -- a closed outline's tail running back
-/// past where it began.
+/// _wrapped is [m] from [a] to [b], round from its start where [a] is later.
 Path _wrapped(ui.PathMetric m, double a, double b) {
   var out = Path();
   if (b <= 0 && !m.isClosed) return out;
@@ -298,9 +290,8 @@ Path _wrapped(ui.PathMetric m, double a, double b) {
   return out;
 }
 
-/// _noise is a number from 0 to 1 that stays the same for the same [seed]
-/// and [n] -- the same sparkle in the same place every time the frame is
-/// drawn.
+/// _noise is 0 to 1, the same for the same [seed] and [n], so a sparkle is
+/// in the same place every time the frame is drawn.
 double _noise(int seed, int n) {
   var x = (seed * 374761393 + n * 668265263) & 0x7fffffff;
   x = ((x ^ (x >> 13)) * 1274126177) & 0x7fffffff;

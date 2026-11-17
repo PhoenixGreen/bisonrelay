@@ -10,15 +10,13 @@ import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:path/path.dart' as path;
 
 // vroid_assets.dart fetches the characters the Character Studio builds from:
-// four of pixiv's VRoid sample characters, released CC0, as bodies, and four
-// more kept only for their hair. Each is fetched the first time it is wanted
-// (the bodies when the Studio first opens, a hairstyle's source when it is
-// first picked), turned from VRM 0.x into VRM 1.0 (vrm_convert.dart), and
-// kept in the library. Fetched from GitHub at a pinned commit, and not at all
-// through a proxy (canvas_network.dart).
+// four of pixiv's CC0 VRoid samples as bodies, and four kept only for their
+// hair. Each is fetched when first wanted, converted from VRM 0.x to 1.0
+// (vrm_convert.dart), and kept in the library. Fetched from GitHub at a
+// pinned commit, and never through a proxy (canvas_network.dart).
 
-/// VroidModel is one character to fetch: its name in the samples, and
-/// whether it is kept whole or only for its hair.
+/// VroidModel is one character to fetch: its sample name, whether only its
+/// hair is kept, and its rough size.
 typedef VroidModel = ({String id, bool hairOnly, int bytes});
 
 /// vroidBodies are the bodies every character is built from.
@@ -29,8 +27,7 @@ const List<VroidModel> vroidBodies = [
   (id: "HairSample_Male", hairOnly: false, bytes: 18481892),
 ];
 
-/// vroidHairSources are the characters kept only for their hair, for the
-/// hairstyles the bodies do not have.
+/// vroidHairSources are characters kept only for hairstyles the bodies lack.
 const List<VroidModel> vroidHairSources = [
   (id: "Sendagaya_Shino", hairOnly: true, bytes: 15074328),
   (id: "Sendagaya_Shibu", hairOnly: true, bytes: 17049284),
@@ -38,11 +35,11 @@ const List<VroidModel> vroidHairSources = [
   (id: "Sakurada_Fumiriya", hairOnly: true, bytes: 19342280),
 ];
 
-/// vroidBodiesBytes is about how much the bodies are, for saying so.
+/// vroidBodiesBytes is roughly how big the bodies are, to tell the user.
 int get vroidBodiesBytes => vroidBodies.fold(0, (s, m) => s + m.bytes);
 
 class VroidAssets {
-  /// _base is the samples, pinned to a commit: what is fetched never changes.
+  /// _base is the samples pinned to a commit, so what is fetched never changes.
   static const String _base =
       "https://raw.githubusercontent.com/madjin/vrm-samples/"
       "e16eb187100149a315ad92c3c9968f1d5baa6c7d/vroid/beta";
@@ -54,12 +51,11 @@ class VroidAssets {
   }
 
   /// isModel is whether [id] is one of the models above: a body's id comes
-  /// from documents other people send, and only these ever become paths.
+  /// from received documents, and only these ever become paths.
   static bool isModel(String id) =>
       vroidBodies.any((m) => m.id == id) ||
       vroidHairSources.any((m) => m.id == id);
 
-  /// modelPath is where [id], converted, is kept.
   static Future<String> modelPath(String id) async {
     if (!isModel(id)) throw ArgumentError.value(id, "id", "not a VRoid model");
     return path.join(await dir(), "$id.vrm");
@@ -70,8 +66,7 @@ class VroidAssets {
     return path.join(await dir(), "$id.version");
   }
 
-  /// installed is whether [id] is here, converted the way this version of
-  /// the app converts.
+  /// installed is whether [id] is here, converted as this app version does.
   static Future<bool> installed(String id) async {
     if (inTestsUnaimed) return false;
     try {
@@ -83,15 +78,13 @@ class VroidAssets {
     }
   }
 
-  /// missing is which of [models] are not here yet.
   static Future<List<VroidModel>> missing(List<VroidModel> models) async => [
         for (final m in models)
           if (!await installed(m.id)) m,
       ];
 
-  /// install fetches each of [models] not here yet and converts it, saying
-  /// how far along it is to [progress] as a share from nought to one.
-  /// Throws a message fit to show when it cannot.
+  /// install fetches and converts each of [models] not here yet, reporting
+  /// progress from nought to one to [progress]. Throws a message fit to show.
   static Future<void> install(List<VroidModel> models,
       {void Function(double)? progress}) async {
     final todo = await missing(models);
@@ -135,8 +128,7 @@ class VroidAssets {
     }
   }
 
-  /// remove deletes every fetched character, for when they are no longer
-  /// wanted.
+  /// remove deletes every fetched character.
   static Future<void> remove() async {
     try {
       await Directory(await dir()).delete(recursive: true);
@@ -144,8 +136,8 @@ class VroidAssets {
   }
 }
 
-/// _convertChecked converts [bytes], once it has made sure the file says it
-/// is CC0: what is kept and built on must be free to use.
+/// _convertChecked converts [bytes] after checking the file says it is CC0:
+/// what is kept and built on must be free to use.
 Uint8List _convertChecked(Uint8List bytes, bool hairOnly) {
   if (!isVrm0(bytes)) throw "A fetched character is not a VRM 0 file.";
   final jl = ByteData.sublistView(bytes).getUint32(12, Endian.little);

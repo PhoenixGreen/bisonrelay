@@ -3,15 +3,13 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// cast_panel.dart is the Cast in the sidebar (Ken, 2026-11-10): the
-// document's elements kept once -- a game's hero -- each with linked copies
-// in its scenes. The element picked can be added to it, linking it and its
-// copies in every other scene; a copy picked says what it is linked to, and
-// can be let go. A member clicked is a copy of it placed on the canvas. See
-// model/cast.dart for what a copy shares and what is its own.
+// cast_panel.dart is the Cast in the sidebar: the document's elements kept
+// once (a game's hero), each with linked copies in its scenes. The picked
+// element can be added, linking it and its copies in every other scene; a
+// copy picked says what it is linked to, and can be let go. A member
+// clicked places a copy on the canvas. See model/cast.dart.
 
-/// CastPanel lists the Cast, for a click to place a linked copy, with the
-/// picked element's link above it.
+/// CastPanel lists the Cast, a click placing a linked copy; the link above.
 class CastPanel extends StatelessWidget {
   final CanvasController controller;
   const CastPanel({required this.controller, super.key});

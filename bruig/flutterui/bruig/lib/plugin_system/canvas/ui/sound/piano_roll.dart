@@ -26,13 +26,8 @@ import 'package:flutter/services.dart';
 
 // piano_roll.dart is the piano roll: a MIDI clip's notes, or a MIDI
 // channel's part, on a grid of keys and beats, with a lane under them for
-// each note's velocity or a controller's curve. It opens in the effects
-// panel in place of the chain (see CanvasController.openPianoRoll), as
-// Ableton's clip view does.
-//
-// A press on the grid draws a note (or picks one), a drag draws a longer one
-// or moves or stretches those picked, a right-click takes one out. The ruler
-// holds the playhead: where Play starts and a paste lands. Everything here
+// note velocity or a controller's curve. It opens in the effects panel in
+// place of the chain (see CanvasController.openPianoRoll). Everything here
 // is in beats; the controller converts a part's seconds (rollContent,
 // setRollContent). A drag is one change to undo.
 
@@ -67,8 +62,7 @@ class RollLane {
   int get hashCode => Object.hash(control, setting);
 }
 
-/// _keysW is the keys' width, and the lanes' panels' under them: room for
-/// what a lane shows, chosen there.
+/// _keysW is the keys' width, and that of the lanes' panels under them.
 const double _keysW = 84;
 const double _rulerH = 22;
 
@@ -107,8 +101,7 @@ class PianoRoll extends StatefulWidget {
 
 enum _Drag { none, draw, move, resize, box, paint, erase }
 
-/// _Tool is what a press on the grid does: draw a note (or a chord),
-/// select and move, paint a run of notes, erase, split a note, mute one.
+/// _Tool is what a press on the grid does; knife splits a note.
 enum _Tool { draw, select, paint, erase, knife, mute }
 
 /// rollChords are what Draw draws for each note, by the semitones above
@@ -149,11 +142,9 @@ class _PianoRollState extends State<PianoRoll> {
   bool _fold = false;
   bool _scale = true;
 
-  /// _lanes are the lanes under the notes -- one, or two -- each the
-  /// notes' velocity or a controller's curve; _lanesOpen whether they show,
-  /// or only their headings.
+  /// _lanes are the lanes under the notes (one or two), each velocity or a
+  /// controller's curve; _lanesOpen whether they show, or only headings.
   final List<RollLane> _lanes = [RollLane.velocity];
-  // Folded to begin with, as Ken asked: opened when they are wanted.
   bool _lanesOpen = false;
 
   /// _laneTall is each lane's height, as its edge was dragged -- as tall as
@@ -172,8 +163,7 @@ class _PianoRollState extends State<PianoRoll> {
   double _zoomNow = 0, _zoomSpan = 1;
   double? _pinchFrom;
 
-  /// _rowH and _beatW are the grid's measures: a key's height, a beat's
-  /// width -- the width zoomed with the slider.
+  /// _rowH is a key's height and _beatW a beat's width, zoomed by the slider.
   static const double _rowH = 12;
   double _beatW = 48;
 
@@ -210,10 +200,9 @@ class _PianoRollState extends State<PianoRoll> {
     c.addListener(_changed);
   }
 
-  /// _changes tells the roll to be built again: on every change the canvas
-  /// tells of but the playhead moving on, which only its line follows (see
-  /// _HeadPainter). Ken's systems review, 2026-11-08: every note was laid
-  /// out again at every frame of play.
+  /// _changes tells the roll to rebuild: on every canvas change but the
+  /// playhead moving on, which only its line follows (see _HeadPainter), so
+  /// the notes are not laid out again at every frame of play.
   final ValueNotifier<int> _changes = ValueNotifier(0);
 
   void _changed() {
@@ -222,9 +211,8 @@ class _PianoRollState extends State<PianoRoll> {
   }
 
   /// _built is the roll as last built, handed back while nothing it shows
-  /// has changed -- whatever holds it is built again at every frame of
-  /// play. Let go of on a change of its own, of what it is given, or of
-  /// what it inherits.
+  /// has changed, since whatever holds it rebuilds every frame of play. Let
+  /// go on a change of its own, of what it is given, or of what it inherits.
   Widget? _built;
 
   @override
@@ -277,8 +265,7 @@ class _PianoRollState extends State<PianoRoll> {
 
   // ---- What it shows
 
-  /// _scaleOf is the scale lit on the rows: the channel's Scale effect's,
-  /// where it has one, or C major.
+  /// _scaleOf is the scale lit on the rows: the channel's Scale's, or C major.
   (int, List<int>) _scaleOf() {
     var part = c.instrumentOf(c.pianoRoll!.channel)?.instrument;
     var effect = part?.effects
@@ -431,8 +418,7 @@ class _PianoRollState extends State<PianoRoll> {
       ..addAll([for (var i = 0; i < content.notes.length; i++) i]));
   }
 
-  /// _quantise moves the picked notes -- or every one, with none picked --
-  /// onto the grid, and their lengths to whole steps of it.
+  /// _quantise moves the picked notes (or all) and their lengths onto the grid.
   void _quantise() {
     var content = c.rollContent;
     if (content == null) return;
@@ -519,7 +505,6 @@ class _PianoRollState extends State<PianoRoll> {
       return KeyEventResult.handled;
     }
     switch (e.logicalKey) {
-      // The tools by their keys, as the toolbar shows them.
       case LogicalKeyboardKey.keyV:
         setState(() => _tool = _Tool.select);
       case LogicalKeyboardKey.keyD:
@@ -604,8 +589,7 @@ class _PianoRollState extends State<PianoRoll> {
         _selected.clear();
         return;
       case _Tool.mute:
-        // It -- or, picked among others, all those picked -- muted, or
-        // played again.
+        // It, or all those picked with it, muted or played again.
         if (hit == null) return;
         var which = _selected.length > 1 && _selected.contains(hit.$1)
             ? {..._selected}
@@ -747,8 +731,7 @@ class _PianoRollState extends State<PianoRoll> {
     return keys[(at + rows).clamp(0, keys.length - 1)];
   }
 
-  /// _paintAt puts a note of [key] on the grid step under [p], once per
-  /// step a Paint drag passes.
+  /// _paintAt puts a note of [key] on the step under [p], once per step.
   void _paintAt(Offset p, int key) {
     var content = c.rollContent;
     if (content == null) return;
@@ -771,7 +754,6 @@ class _PianoRollState extends State<PianoRoll> {
     ], transient: true);
   }
 
-  /// _eraseAt takes out the note under [p].
   void _eraseAt(Offset p, List<int> keys) {
     var content = c.rollContent;
     if (content == null) return;
@@ -816,8 +798,7 @@ class _PianoRollState extends State<PianoRoll> {
             });
           }
           return LayoutBuilder(builder: (context, box) {
-            // The zoom: from the closest to the whole of it in the width
-            // there is -- 32 bars or one.
+            // The zoom: from the closest to the whole of it (32 bars or one).
             var gridW = math.max(40.0, box.maxWidth - _keysW);
             // The farthest is the whole of it, at no more than 48 a beat:
             // a short clip shown at its ordinary size, not stretched.
@@ -849,11 +830,9 @@ class _PianoRollState extends State<PianoRoll> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _toolbar(look, content, t),
-                    // The ruler, over the grid.
                     SizedBox(
                       height: _rulerH,
                       child: Row(children: [
-                        // The keys' corner, named as the prototype's.
                         SizedBox(
                           width: _keysW,
                           child: Padding(
@@ -867,8 +846,8 @@ class _PianoRollState extends State<PianoRoll> {
                           child: SingleChildScrollView(
                             controller: _ruler,
                             scrollDirection: Axis.horizontal,
-                            // Pressed or dragged, the playhead goes there,
-                            // to the grid.
+                            // Pressed or dragged, the playhead
+                            // goes there, on the grid.
                             child: MouseRegion(
                               cursor: SystemMouseCursors.click,
                               child: GestureDetector(
@@ -933,14 +912,15 @@ class _PianoRollState extends State<PianoRoll> {
                                     scrollDirection: Axis.horizontal,
                                     child: GestureDetector(
                                       key: const ValueKey("rollGrid"),
-                                      // Pressed and dragged, never swiped past: two fingers on
-                                      // a trackpad would draw notes as they scrolled.
+                                      // Not swiped: two fingers scrolling on
+                                      // a trackpad would draw notes.
                                       supportedDevices: dragPointers,
                                       behavior: HitTestBehavior.opaque,
                                       onTapUp: (d) => _tapGrid(
                                           d.localPosition, content, keys),
-                                      // Right-clicked, a note is taken out: a double-click would
-                                      // hold back every note drawn while it waited.
+                                      // A right-click takes a note out: a
+                                      // double-click's wait would hold back
+                                      // every note drawn.
                                       onSecondaryTapUp: (d) {
                                         var hit = _hit(d.localPosition,
                                             content.notes, keys);
@@ -988,8 +968,8 @@ class _PianoRollState extends State<PianoRoll> {
                             ]),
                       ),
                     ),
-                    // The lanes: velocity, or a controller, each chosen in its
-                    // panel at the left; the edge above them drags their height.
+                    // The lanes, each chosen in its panel at the left; the edge
+                    // above them drags their height.
                     if (showLanes && open) ...[
                       _laneEdge(look, laneH, tallest),
                       for (var (i, lane) in _lanes.indexed)
@@ -1026,9 +1006,8 @@ class _PianoRollState extends State<PianoRoll> {
     return c.session.at(t.channel, t.row!);
   }
 
-  /// _laneChoices are what a lane can show, with their names: velocity,
-  /// each controller -- and, for a clip, each setting of its channel, as
-  /// an envelope of the clip's.
+  /// _laneChoices are what a lane can show, named: velocity, each controller
+  /// and, for a clip, each of its channel's settings as an envelope.
   List<(RollLane, String)> _laneChoices() {
     var t = c.pianoRoll;
     var channel = t == null
@@ -1078,8 +1057,7 @@ class _PianoRollState extends State<PianoRoll> {
         ),
       );
 
-  /// _foldedLanes is the lanes folded away: a bar naming them, opened again
-  /// from its arrow.
+  /// _foldedLanes is a bar naming the folded lanes; its arrow opens them.
   Widget _foldedLanes(MixerLook look, {required bool canOpen}) {
     var studio = look.studio;
     return Container(
@@ -1159,8 +1137,6 @@ class _PianoRollState extends State<PianoRoll> {
               icon("rollLaneRemove", Icons.close, "Take this lane away",
                   () => setState(() => _lanes.removeAt(i))),
           ]),
-          // What it shows, as the prototype lists them: each a line, the
-          // one shown lit.
           Column(
             key: ValueKey(i == 0 ? "rollLane" : "rollLane2"),
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1316,7 +1292,6 @@ class _PianoRollState extends State<PianoRoll> {
           ..sort((a, b) => a.$1.compareTo(b.$1));
         _writeControls({...content.controls, control: next});
       },
-      // Right-clicked, a point is taken out.
       onSecondaryTapUp: (d) {
         var i = pointAt(d.localPosition);
         if (i == null) return;
@@ -1356,9 +1331,8 @@ class _PianoRollState extends State<PianoRoll> {
   }
 
   /// _settingArea is a clip's envelope of one of its channel's settings,
-  /// under its notes: drawn and changed as a controller's curve is, its
-  /// points a beat and a height up the setting's range -- one of its own
-  /// length drawn again and again along the clip.
+  /// under its notes and edited as a controller's curve: points a beat and
+  /// a height up the setting's range, its own length repeated along the clip.
   Widget _settingArea(String key, MixerLook look, double width, double laneH) {
     var clip = _clip;
     var t = c.pianoRoll;
@@ -1407,7 +1381,6 @@ class _PianoRollState extends State<PianoRoll> {
         c.editClip((x) => x.withCurve(
             key, [...x.curveOf(key), (beatAt(p.dx), valueAt(p.dy))]));
       },
-      // Right-clicked, a point is taken out.
       onSecondaryTapUp: (d) {
         var i = pointAt(d.localPosition);
         if (i == null) return;
@@ -1445,7 +1418,6 @@ class _PianoRollState extends State<PianoRoll> {
   Widget _toolbar(MixerLook look, RollContent content, double zoom) {
     var studio = look.studio;
     var small = TextStyle(fontSize: 11, color: studio.text);
-    // The prototype's toolbar buttons: flat, the one on filled.
     Widget pill(String label, bool on, VoidCallback onTap,
             {Key? key, String? tip}) =>
         Material(
@@ -1471,8 +1443,6 @@ class _PianoRollState extends State<PianoRoll> {
         height: 18,
         margin: const EdgeInsets.symmetric(horizontal: 4),
         color: studio.edge);
-    // The prototype's drop-downs: as wide as what is picked, and a list
-    // under it.
     Widget drop<T>(Key key, T value, List<(String, T)> items,
             ValueChanged<T> onChanged) =>
         MenuAnchor(
@@ -1516,8 +1486,7 @@ class _PianoRollState extends State<PianoRoll> {
               ),
           ],
         );
-    // The prototype's Transform and Generate: the notes' tools, on those
-    // picked or every one, grouped.
+    // Transform and Generate: the notes' tools, on those picked or all.
     Widget toolMenu(
             String key, String label, List<(String, List<NoteTool>)> groups) =>
         MenuAnchor(
@@ -1578,8 +1547,6 @@ class _PianoRollState extends State<PianoRoll> {
                 key: const ValueKey("clipPreview")),
             const SizedBox(width: 8),
           ],
-          // The tools, as the prototype groups them: an icon each and the
-          // key that picks it.
           Container(
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
@@ -1643,7 +1610,6 @@ class _PianoRollState extends State<PianoRoll> {
               key: const ValueKey("rollQuantise"),
               tip: "Onto the grid: the notes picked, or every one"),
           gap(),
-          // The scale: lit, folded to, kept to.
           ChainIcon("scale", size: 14, color: studio.muted),
           const SizedBox(width: 4),
           pill("Show", _scale, () => setState(() => _scale = !_scale),
@@ -1655,7 +1621,6 @@ class _PianoRollState extends State<PianoRoll> {
           pill("Keep in key", _keep, () => setState(() => _keep = !_keep),
               key: const ValueKey("rollKeep")),
           gap(),
-          // What Draw draws, and another channel's notes behind.
           ChainIcon("chord", size: 14, color: studio.muted),
           const SizedBox(width: 4),
           drop(
@@ -1757,7 +1722,6 @@ class _PianoRollState extends State<PianoRoll> {
                 tip: "Back to the channel's effects"),
           ],
         ];
-    // The right end, as the prototype keeps it: the edits and the zoom.
     Widget iconButton(String key, String icon, VoidCallback onTap) => InkWell(
           key: ValueKey(key),
           borderRadius: BorderRadius.circular(5),
@@ -1812,8 +1776,7 @@ class _PianoRollState extends State<PianoRoll> {
       decoration:
           BoxDecoration(border: Border(bottom: BorderSide(color: studio.edge))),
       child: LayoutBuilder(builder: (context, box) {
-        // Room enough, the right end keeps to the right; short of it, it
-        // follows the rest.
+        // With room, the right end keeps right; short of it, it follows on.
         var pinned = box.maxWidth >= 640;
         var scroll = SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -1832,8 +1795,7 @@ class _PianoRollState extends State<PianoRoll> {
     );
   }
 
-  /// _status is the roll's foot, as the prototype has it: how many notes,
-  /// the tool and the grid, and what the tool does.
+  /// _status is the roll's foot: note count, tool, grid, what the tool does.
   Widget _status(MixerLook look, RollContent content) {
     var studio = look.studio;
     var picked = _selected.length;
@@ -2019,7 +1981,7 @@ class _GridPainter extends CustomPainter {
     required this.studio,
   });
 
-  /// _note is a note's colour: the prototype's MIDI orange.
+  /// _note is a note's colour, the MIDI orange.
   static const _note = Color(0xFFD08F3E);
 
   @override
@@ -2042,7 +2004,6 @@ class _GridPainter extends CustomPainter {
           Offset(size.width, (i + 1) * rowH),
           Paint()..color = const Color(0xFF22242A));
     }
-    // Columns: the grid, the beats, the bars.
     var cols = (beats / grid).round();
     for (var i = 0; i <= cols; i++) {
       var b = i * grid;
@@ -2060,10 +2021,8 @@ class _GridPainter extends CustomPainter {
                     ? const Color(0xFF3A3D44)
                     : const Color(0xFF26282D));
     }
-    // Past a clip's end, shaded.
     canvas.drawRect(Rect.fromLTRB(beats * beatW, 0, size.width, size.height),
         Paint()..color = const Color(0x66000000));
-    // Another channel's notes, faint, behind these.
     for (var n in ghosts) {
       var row = keys.indexOf(n.key);
       if (row < 0) continue;
@@ -2087,8 +2046,8 @@ class _GridPainter extends CustomPainter {
           math.max(4, n.length * beatW - 1), rowH - 2);
       var v = n.velocity / 127;
       var picked = selected.contains(i);
-      // The prototype's notes: the MIDI orange, as solid as the note is
-      // likely to play, a line along its foot as long as it is hard.
+      // The MIDI orange, as solid as the note is likely to play, and a line
+      // along its foot as long as it is hard.
       if (!n.muted) {
         canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(2)),
             Paint()..color = _note.withValues(alpha: 0.35 + 0.65 * n.chance));
@@ -2105,7 +2064,6 @@ class _GridPainter extends CustomPainter {
             ..strokeWidth = picked ? 1.5 : 1
             ..color =
                 picked ? Colors.white : Color.lerp(_note, Colors.black, 0.35)!);
-      // Its name, where it is long enough to hold it.
       if (r.width >= 26 && rowH >= 11) {
         var name = TextPainter(
             text: TextSpan(
@@ -2134,11 +2092,10 @@ class _GridPainter extends CustomPainter {
   bool shouldRepaint(_GridPainter old) => true;
 }
 
-/// _HeadPainter is the playhead over the grid -- a line, brighter while it
-/// plays -- or over the ruler, a marker: painted again each time it moves
-/// on (CanvasController.playheadMoved), with nothing under it built again.
-/// pianoRollBuilds counts the roll built, for a test that playing does not
-/// build it again at every frame.
+/// _HeadPainter is the playhead over the grid (a line, brighter while it
+/// plays) or over the ruler (a marker), repainted as it moves
+/// (CanvasController.playheadMoved) with nothing under it rebuilt.
+/// pianoRollBuilds counts builds, for a test that play does not rebuild.
 @visibleForTesting
 int pianoRollBuilds = 0;
 
@@ -2223,7 +2180,6 @@ class _CurvePainter extends CustomPainter {
     canvas.drawRect(
         Offset.zero & size, Paint()..color = const Color(0xFF141518));
     double y(double v) => 4 + (1 - v) * (size.height - 8);
-    // Where it rests, for reference.
     canvas.drawLine(Offset(0, y(rest)), Offset(size.width, y(rest)),
         Paint()..color = studio.edge);
     if (points.isEmpty) return;

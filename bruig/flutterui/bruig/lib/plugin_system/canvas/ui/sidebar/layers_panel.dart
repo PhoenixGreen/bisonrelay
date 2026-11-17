@@ -17,14 +17,14 @@ class CanvasLayersPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => CanvasWatch<String>(
         listenable: controller,
-        // Only what the list shows: the controller notifies on every pixel of
-        // a drag, which changes none of it.
+        // Only what the list shows: the controller notifies on every pixel
+        // of a drag, which changes none of it.
         select: () => _shape(),
         builder: (context, _) => _layerList(),
       );
 
-  /// _shape is everything the list is drawn from, as one string, so it can be
-  /// compared with == on every notification (see CanvasWatch).
+  /// _shape is everything the list is drawn from, as one string, so it can
+  /// be compared with == on every notification (see CanvasWatch).
   String _shape() {
     var document = controller.document;
     // The background row's state too (style, colour, whether the shared
@@ -46,8 +46,8 @@ class CanvasLayersPanel extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
       children: [
-        // Reversed: the document stores paint order (last is frontmost), and
-        // the list shows what is on top at the top.
+        // Reversed: the document stores paint order (last is frontmost),
+        // and the list shows what is on top at the top.
         for (var i = elements.length - 1; i >= 0; i--)
           // Sounds on the timeline are on its channels, not the canvas.
           if (!isTimelineSound(elements[i]))
@@ -57,20 +57,17 @@ class CanvasLayersPanel extends StatelessWidget {
               index: i,
               key: ValueKey(elements[i].id),
             ),
-        // The background is always the bottom row: it is painted before any
-        // element and cannot be reordered.
+        // The background is always the bottom row: painted first, fixed.
         CanvasBackgroundLayerRow(controller: controller),
       ],
     );
   }
 }
 
-/// CanvasBackgroundLayerRow is the canvas's own background, shown as the
-/// bottom layer, with no reorder or lock controls.
-///
-/// It can be switched off only on the shared canvas (a master that carries
-/// just a logo, over scenes with their own backdrops); on an ordinary canvas
-/// that would leave the editor's own colour showing.
+/// CanvasBackgroundLayerRow is the canvas's own background, the bottom
+/// layer, with no reorder or lock controls. It can be switched off only on
+/// the shared canvas (a master carrying just a logo over scenes with their
+/// own backdrops); elsewhere that would leave the editor's colour showing.
 class CanvasBackgroundLayerRow extends StatelessWidget {
   final CanvasController controller;
   const CanvasBackgroundLayerRow({required this.controller, super.key});
@@ -178,8 +175,7 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
   /// click. Read off the pointer event, the gesture system's clock.
   Duration? _lastPress;
 
-  /// _doubleClick is how soon a second press must follow: Flutter's
-  /// kDoubleTapTimeout.
+  /// _doubleClick is how soon a second press must follow (kDoubleTapTimeout).
   static const Duration _doubleClick = Duration(milliseconds: 300);
 
   @override
@@ -213,8 +209,7 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
     setState(() => _renaming = null);
     field.dispose();
 
-    // An empty name means "use the kind's label" in the model, so clearing
-    // the field puts the default back.
+    // An empty name means the kind's label, so clearing restores the default.
     if (keep && next != element.name) {
       controller.replaceElement(element.withBase(name: next));
     }
@@ -228,8 +223,8 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
     var index = widget.index;
 
     var row = Material(
-      // Its own Material inside the list: the sidebar's let the highlight
-      // spill over other sections and stay put when the list scrolled.
+      // Its own Material inside the list: the sidebar's would let the
+      // highlight spill over other sections and stay put on scroll.
       type: MaterialType.transparency,
       child: InkWell(
         onTap: () => pickLayer(controller, element.id),
@@ -251,8 +246,8 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
             ),
             const SizedBox(width: 6),
             Expanded(child: _name(theme, selected)),
-            // Buttons as well as the drag: they show the direction, reach the far
-            // end of a long list, and are the only keyboard way to reorder.
+            // Buttons as well as the drag: they show the direction, reach
+            // the far end of a long list, and are the keyboard's way.
             _rowButton(
                 theme,
                 Icons.keyboard_arrow_up,
@@ -278,8 +273,8 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
               () => controller
                   .replaceElement(element.withBase(visible: !element.visible)),
             ),
-            // Filled and tinted when locked, outlined when not: the two padlock
-            // outlines were indistinguishable at this size.
+            // Filled and tinted when locked, outlined when not: two padlock
+            // outlines are indistinguishable at this size.
             _rowButton(
               theme,
               element.locked ? Icons.lock : Icons.lock_open_outlined,
@@ -288,8 +283,7 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
                   .replaceElement(element.withBase(locked: !element.locked)),
               active: element.locked,
             ),
-            // Duplicate rather than copy, which changed nothing visible. Cmd-C
-            // still copies.
+            // Duplicate rather than copy, which shows nothing; Cmd-C copies.
             _rowButton(
               theme,
               Icons.control_point_duplicate_outlined,
@@ -312,14 +306,13 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
       ),
     );
 
-    // A row being renamed is not draggable: the drag would take focus
-    // from the field on the press.
+    // A row being renamed is not draggable: a drag would take its focus.
     if (_renaming != null) return row;
 
     return _draggable(theme, row, index);
   }
 
-  /// _name is the layer's name, or the field renaming it. Double-clicked to
+  /// _name is the layer's name, or the field renaming it: double-clicked to
   /// rename, rather than a sixth button on every row.
   Widget _name(ThemeNotifier theme, bool selected) {
     var colour = element.visible
@@ -361,10 +354,9 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
       );
     }
 
-    // A Listener reading the clock rather than GestureDetector.onDoubleTap,
-    // which holds the arena open for the double-tap window and so would
-    // select every layer late. The Listener is out of the arena, so it
-    // cannot fight the long press that picks the row up either.
+    // A Listener reading the clock, not GestureDetector.onDoubleTap, which
+    // holds the arena open for the double-tap window, selecting late. Out of
+    // the arena, it cannot fight the long press that picks the row up.
     return Listener(
       onPointerDown: (event) {
         var previous = _lastPress;
@@ -388,11 +380,10 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
     );
   }
 
-  /// _draggable makes the row something to pick up and drop on.
-  ///
-  /// A long press to start, so the list can still be scrolled past. Draggable
-  /// rather than ReorderableListView, which moves a row by GlobalKey during
-  /// layout and so cannot carry tooltips (a framework error).
+  /// _draggable makes the row something to pick up and drop on, with a long
+  /// press so the list can still be scrolled. Draggable rather than
+  /// ReorderableListView, which moves a row by GlobalKey during layout and
+  /// so cannot carry tooltips (a framework error).
   Widget _draggable(ThemeNotifier theme, Widget row, int index) {
     // What the pointer carries: the row's look, without its controls.
     Widget feedback() => Material(
@@ -482,13 +473,11 @@ class _CancelRenameIntent extends Intent {
   const _CancelRenameIntent();
 }
 
-/// _layerAnchor is the layer last clicked on its own, where a Shift-click
-/// runs a range from.
+/// _layerAnchor is the layer last clicked alone, where Shift-click starts.
 String? _layerAnchor;
 
-/// pickLayer is a click on layer [id]: on its own, one layer; with Cmd or
-/// Ctrl, that layer added or taken away; with Shift, every layer from the
-/// one last clicked to this one.
+/// pickLayer is a click on layer [id]: alone, one layer; with Cmd or Ctrl,
+/// it toggled; with Shift, every layer from the last clicked to it.
 void pickLayer(CanvasController controller, String id) {
   var keys = HardwareKeyboard.instance;
   if (keys.isMetaPressed || keys.isControlPressed) {

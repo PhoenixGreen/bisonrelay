@@ -6,12 +6,10 @@ import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 
 // code_starters.dart is the examples a Code panel can start from, as its
-// built-in presets (Ken, 2026-11-15: "the current options should probably
-// be presets as they already have pre-built animations and code"): a small
-// project in each language, laid out in panes, typing itself in, with a few
-// lines lit to explain it.
+// built-in presets (they come with animation and code already built): a
+// small project in each language, laid out in panes, typing itself in,
+// with a few lines lit to explain it.
 
-/// CodeStarter is one of them.
 class CodeStarter {
   final String key;
   final String title;
@@ -24,8 +22,7 @@ class CodeStarter {
   /// panes is each pane's tabs, by the files' places in [files].
   final List<List<int>> panes;
 
-  /// steps are (file, from, to, note, seconds after the typing ends,
-  /// length).
+  /// steps are (file, from, to, note, seconds after typing ends, length).
   final List<(int, int, int, String, double, double)> steps;
 
   /// entry is the file a Run panel starts from, by its place.

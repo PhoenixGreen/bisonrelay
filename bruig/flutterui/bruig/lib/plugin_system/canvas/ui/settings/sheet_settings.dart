@@ -23,9 +23,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
     show panelRow, cell, CanvasQuickStrip;
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 
-// sheet_settings.dart is Sheet music's settings: the instrument whose part
-// it engraves, and practising it -- how, which hand, how fast -- with the
-// take's score while one goes.
+// sheet_settings.dart is Sheet music's settings: the engraved part, and
+// practising it (how, which hand, how fast).
 
 List<Widget> sheetSettings(
   BuildContext context,
@@ -34,8 +33,7 @@ List<Widget> sheetSettings(
   SettingsWrite write,
   VoidCallback begin,
   VoidCallback commit, {
-  /// panel lays the sections out as every rebuilt element's are (Ken,
-  /// 2026-11-11: batch 5).
+  /// panel lays the sections out as every element panel does.
   bool panel = false,
 }) {
   void now(SheetElement next) {
@@ -134,7 +132,7 @@ List<Widget> sheetSettings(
                 key: const ValueKey("sheetPaper"),
                 label: "Paper",
                 color: e.paper,
-                // Down to none: the music on whatever is behind it.
+                // Down to none: the music on whatever is behind.
                 allowAlpha: true,
                 onChanged: (c) => now(e.copyWith(paper: c)),
               ),
@@ -202,8 +200,8 @@ List<Widget> sheetSettings(
                       label: label,
                       value: on,
                       onChanged: (v) => now(set(v))),
-              // Which bars it shows and plays (Ken, 2026-11-14: "show bars 5
-              // to 8"): nought for the score's own first or last.
+              // Which bars it shows and plays: nought for the score's own
+              // first or last.
               if (e.score.isNotEmpty) ...[
                 CanvasNumberField(
                   key: const ValueKey("sheetFromBar"),
@@ -239,8 +237,8 @@ List<Widget> sheetSettings(
                     "The bars it shows and plays: its Play starts at the "
                     "first and stops at the end of the last."),
               ],
-              // Its frame: corners, a border, and room round the music --
-              // filled with its paper.
+              // Its frame: corners, border, and room round the music, filled
+              // with its paper.
               boxGroup(
                   e.box.copyWith(fill: e.paper),
                   (box) => write(e.copyWith(box: box, paper: box.fill)),
@@ -370,8 +368,8 @@ List<Widget> sheetSettings(
                 options: [for (var h in PracticeHands.values) (h, h.label)],
                 onChanged: (h) => now(e.copyWith(hands: h)),
               ),
-              // How fast it plays, on its playbar and in a take: slower to
-              // learn it, back to real time after.
+              // Playback speed on its playbar and in a take: slower to learn,
+              // back to real time after.
               CanvasSlider(
                 key: const ValueKey("practiceTempo"),
                 label: "Speed",
@@ -398,8 +396,8 @@ List<Widget> sheetSettings(
                 value: e.click,
                 onChanged: (v) => controller.setSheetClick(e, v),
               ),
-              // A score part's playhead, by hand (Ken, 2026-11-14): to a
-              // note pressed on the sheet, or a note at a time.
+              // A score part's playhead moved by hand: to a note pressed on
+              // the sheet, or a note at a time.
               if (e.score.isNotEmpty) ...[
                 CanvasTextButton(
                   key: const ValueKey("sheetStart"),
@@ -433,8 +431,8 @@ List<Widget> sheetSettings(
                   onChanged: (v) => now(e.copyWith(playhead: v)),
                 ),
                 if (controller.sheetKeyboard(e) case var keys?) ...[
-                  // The part's own instrument, drawn as the one it is
-                  // played on: keys, a guitar's or a bass's neck, pads.
+                  // The part's instrument drawn as the one it is played on:
+                  // keys, a guitar's or bass's neck, pads.
                   CanvasDropdown<InstrumentLook>(
                     key: const ValueKey("sheetInstrumentLook"),
                     label: "Instrument",
@@ -499,8 +497,8 @@ List<Widget> sheetSettings(
   ];
   if (!panel) return all;
   var [sheet, practice] = all;
-  // The part it shows in Content, with how it is practised a fold under it
-  // that stays open; the paper and ink are also in the quick strip.
+  // The part in Content, with a fold for practising that stays open; paper
+  // and ink are also in the quick strip.
   return [
     elementPanel(context, controller, e, write, begin, commit,
         quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
@@ -543,8 +541,8 @@ List<Widget> sheetSettings(
   ];
 }
 
-/// _importScore asks for a MusicXML file and puts its notes into the part
-/// [e] shows -- saying why not, where it cannot.
+/// _importScore asks for a MusicXML file and puts its notes into [e]'s
+/// part, saying why not where it cannot.
 Future<void> _importScore(
     BuildContext context, CanvasController controller, SheetElement e) async {
   var messenger = ScaffoldMessenger.maybeOf(context);
@@ -585,7 +583,7 @@ Future<void> _exportScore(
       fileName: "$name.musicxml",
       bytes: bytes);
   if (at == null) return;
-  // Written here as well: on the desktop the dialog only names the place.
+  // Written here too: on desktop the dialog only names the place.
   await File(at).writeAsBytes(bytes);
   messenger?.showSnackBar(SnackBar(content: Text("Saved to $at")));
 }

@@ -4,13 +4,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 
 // text_document.dart is a text element whose words come from the Writing
-// library rather than from the canvas.
-//
-// The words are *copied* into the element rather than read at drawing time:
-// a canvas must draw the same on a machine without the library, and a
-// painter cannot wait for a disk. The document is read while the canvas is
-// open, its text saved with the element, and the reference kept so it can
-// be read again when it changes.
+// library. The words are copied into the element, not read while drawing:
+// a canvas must draw the same without the library, and a painter cannot
+// wait for a disk. The reference is kept so changes can be read again.
 
 /// MarkdownKind is a piece of markdown a document-backed element honours.
 enum MarkdownKind {
@@ -24,11 +20,11 @@ enum MarkdownKind {
   final String label;
 
   /// scale, weight, slanted, underlined and color are each kind's default
-  /// look, used until a MarkdownLook overrides it.
+  /// look, until a MarkdownLook overrides it.
   final double scale;
   final int? weight;
 
-  /// slanted is italic; named so because a value of this enum is italic.
+  /// slanted is italic, which a value of this enum is named.
   final bool slanted;
   final bool underlined;
   final Color? color;
@@ -41,16 +37,13 @@ enum MarkdownKind {
       this.color});
 }
 
-/// MarkdownLook is whether one kind of markdown is honoured and how it is
-/// drawn.
-///
-/// Everything but [on] is an override; null falls back to the kind's
-/// default or the element's own type settings.
+/// MarkdownLook is whether one kind of markdown is honoured and how drawn.
+/// All but [on] are overrides; null falls back to the kind's default or the
+/// element's type.
 class MarkdownLook {
   final bool on;
 
-  /// scale is the size against the element's own, or null for the kind's
-  /// default (MarkdownKind.scale).
+  /// scale is size against the element's own, or null for the kind's.
   final double? scale;
   final Color? color;
   final int? weight;
@@ -130,17 +123,15 @@ class MarkdownLook {
       );
 }
 
-/// MarkdownAllow is which pieces of markdown a document-backed element
-/// honours, and how each of them is drawn.
-///
-/// Each kind is allowed separately. Marks not allowed are *stripped* rather
-/// than left showing as written.
+/// MarkdownAllow is which kinds of markdown a document-backed element
+/// honours, each separately, and how each is drawn. Marks not allowed are
+/// stripped, not shown as written.
 class MarkdownAllow {
   final Map<MarkdownKind, MarkdownLook> looks;
 
   const MarkdownAllow({this.looks = const {}});
 
-  /// lookFor is how [kind] is drawn: the default look until one is set.
+  /// lookFor is [kind]'s look, or the default until one is set.
   MarkdownLook lookFor(MarkdownKind kind) =>
       looks[kind] ?? const MarkdownLook();
 
@@ -170,22 +161,20 @@ class MarkdownAllow {
   }
 }
 
-/// TextDocumentRef says which document in the Writing library a text element
-/// takes its words from.
+/// TextDocumentRef is the Writing library document a text takes words from.
 class TextDocumentRef {
-  /// folder is "" for the top level. The library is one level deep.
+  /// folder is "" for the top level; the library is one level deep.
   final String folder;
   final String name;
 
-  /// markdown is whether the document's formatting is honoured at all. Off,
-  /// every mark is stripped and the element's own styling applies.
+  /// markdown is whether formatting is honoured. Off, every mark is stripped
+  /// and the element's own styling applies.
   final bool markdown;
 
   final MarkdownAllow allow;
 
-  /// wasText is what the element said before the document took the words
-  /// over, restored when the document is taken away. Lives here because it
-  /// exists only while a document does.
+  /// wasText is the element's words before the document, restored when the
+  /// document is removed. Lives here as it exists only while a document does.
   final String wasText;
 
   const TextDocumentRef({
@@ -198,7 +187,7 @@ class TextDocumentRef {
 
   bool get on => name.isNotEmpty;
 
-  /// says is the document in words, for a settings panel to show.
+  /// says is the document's name, for a settings panel.
   String get says => folder.isEmpty ? name : "$folder / $name";
 
   TextDocumentRef copyWith({
@@ -236,21 +225,16 @@ class TextDocumentRef {
       );
 }
 
-/// readDocument turns a markdown file into the words a text element draws and
-/// the parts that style them.
-///
-/// A deliberately small subset: two heading levels, bold, italic, underline
-/// and links. Quotes and lists lose their marks and keep their words; code
-/// fence lines are dropped.
-///
-/// [markdown] off strips every mark and returns no parts (the default). See
-/// MarkdownAllow.
+/// readDocument turns markdown into the words a text draws and the parts
+/// that style them. A small subset: two heading levels, bold, italic,
+/// underline and links. Quotes and lists keep their words; code fence lines
+/// are dropped. [markdown] off strips every mark and returns no parts.
 (String, List<TextPart>) readDocument(String raw,
     {bool markdown = false, MarkdownAllow allow = const MarkdownAllow()}) {
   var out = StringBuffer();
   var parts = <TextPart>[];
 
-  // words counts the words written so far, since parts are word ranges.
+  // Parts are word ranges, so count the words written.
   var words = 0;
   var inWord = false;
 
@@ -263,7 +247,7 @@ class TextDocumentRef {
     }
   }
 
-  // styled writes text and records a part covering the words it added.
+  // styled writes text with a part covering its words.
   void styled(String text, TextPart Function(int from, int to) make) {
     var from = words + 1;
     write(text);
@@ -276,8 +260,7 @@ class TextDocumentRef {
       inWord = false;
     }
 
-    // Block marks, taken off the front of the line. A heading becomes a part
-    // covering the whole line.
+    // Block marks, off the front of the line; a heading styles the line.
     var heading = 0;
     var text = line;
     if (text.startsWith("## ")) {
@@ -291,7 +274,6 @@ class TextDocumentRef {
     } else if (RegExp(r"^\s*([-*+]|\d+\.)\s+").hasMatch(text)) {
       text = text.replaceFirst(RegExp(r"^\s*([-*+]|\d+\.)\s+"), "");
     } else if (text.trim().startsWith("```")) {
-      // A fence is not words at all.
       continue;
     }
 
@@ -300,8 +282,8 @@ class TextDocumentRef {
     var wants = allow.allows(headingKind);
     var headingFrom = words + 1;
 
-    // The inline marks. One pass over the line, longest marker first, so
-    // "**" is not read as two "*".
+    // Inline marks in one pass, longest marker first, so "**" is not read
+    // as two "*".
     var i = 0;
     var plain = StringBuffer();
     void flush() {

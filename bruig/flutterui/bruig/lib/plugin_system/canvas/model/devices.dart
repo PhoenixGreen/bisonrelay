@@ -3,15 +3,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
-// devices.dart is the effects a channel's chain can hold beyond its strip --
-// a reverb, a delay -- and the returns they usually live on.
-//
-// A device is a kind and its settings by name, each a number with a range
-// and a default: the processors in media/mix/dsp.dart read them and the panel
-// draws a knob for each.
+// devices.dart is the effects a channel's chain can hold beyond its strip,
+// and the returns they usually live on. A device is a kind and its settings
+// by name, each a number with a range and default: media/mix/dsp.dart reads
+// them and the panel draws a knob for each.
 
-/// DeviceParam is one setting of a device: its name in the file, what it is
-/// called on the knob, its range and its default, and how it is shown.
+/// DeviceParam is one device setting: its file name, knob label, range,
+/// default, and how it is shown.
 class DeviceParam {
   final String id;
   final String label;
@@ -19,21 +17,19 @@ class DeviceParam {
   final double max;
   final double initial;
 
-  /// unit is how the knob reads: "ms", "Hz", "dB", "x", "bits", "/s" (so
-  /// many a second), "#" (a
-  /// count), "st" (semitones), "note" (a MIDI note, by name), or "" for a
-  /// share, shown as a percentage.
+  /// unit is how the knob reads: "ms", "Hz", "dB", "x", "bits", "/s" (per
+  /// second), "#" (a count), "st" (semitones), "note" (a MIDI note), or ""
+  /// for a share shown as a percentage.
   final String unit;
 
-  /// choices are the names of a setting that is one of a few -- a filter's
-  /// kind, an LFO's shape -- its value their index. Empty for a number.
+  /// choices name the options of a setting that is one of a few (a filter's
+  /// kind), its value their index. Empty for a number.
   final List<String> choices;
   const DeviceParam(this.id, this.label, this.min, this.max, this.initial,
       [this.unit = "", this.choices = const []]);
 
   bool get isChoice => choices.isNotEmpty;
 
-  /// reading is [v] as its knob says it.
   String reading(double v) {
     if (isChoice) return choices[v.round().clamp(0, choices.length - 1)];
     return switch (unit) {
@@ -57,7 +53,7 @@ class DeviceParam {
       "×" => "×${v.toStringAsFixed(2)}",
       "/s" => "${v.toStringAsFixed(2)}/s",
       "LUFS" => "${v >= 0 ? "" : "−"}${v.abs().round()} LUFS",
-      // A colour kept as ARGB (Design's): its hex.
+      // An ARGB colour (Design's), as hex.
       "argb" =>
         "#${(v.toInt() & 0xFFFFFF).toRadixString(16).padLeft(6, "0").toUpperCase()}",
       _ => "${(v * 100).round()}%",
@@ -84,33 +80,29 @@ const _scales = [
 ];
 
 /// vocoderCarriers are what a vocoder's voice is laid onto: hiss, a buzz on
-/// one note, a buzz that follows the voice's own pitch, or another channel
-/// -- an instrument playing the chords, say.
+/// one note, a buzz following the voice's pitch, or another channel.
 const vocoderCarriers = ["Noise", "Buzz", "Follow pitch", "Channel"];
 
-/// deviceExtras are the settings any device may have beyond its knobs, set
-/// from its ⋯ menu as the prototype's: Oversample (a drive's) and Works on
-/// (the whole sound, only its middle, or only its sides).
+/// deviceExtras are settings beyond a device's knobs, set from its ⋯ menu:
+/// Oversample (a drive's) and Works on (whole, middle or sides).
 const List<DeviceParam> deviceExtras = [
   DeviceParam("oversample", "Oversample", 1, 4, 1, "x"),
   DeviceParam("stereo", "Works on", 0, 2, 0, "", ["Both sides", "Mid", "Side"]),
-  // Out: how loud what it gives on is, after it -- the prototype's trim at
-  // the foot of every effect.
+  // Out: the level after it, the trim at the foot of every effect.
   DeviceParam("out", "Out", -12, 12, 0, "dB"),
 ];
 
 /// carrierFromChannel is the Carrier setting that takes another channel.
 const int carrierFromChannel = 3;
 
-/// paramShown is whether [p] does anything for [device] as it is set: a
-/// vocoder's Note only for a buzz on one note.
+/// paramShown is whether [p] does anything for [device] as set: a vocoder's
+/// Note only for a buzz on one note.
 bool paramShown(MixDevice device, DeviceParam p) => switch ((device.kind, p.id)) {
       (DeviceKind.vocoder, "note") => device.value("carrier").round() == 1,
       _ => true,
     };
 
-/// deviceAbout is what [kind] does, in a few words: what a device's "?"
-/// shows.
+/// deviceAbout is what [kind] does in a few words, for the device's "?".
 String deviceAbout(DeviceKind kind) => switch (kind) {
       DeviceKind.reverb =>
         "A room round the sound: Size is how big, Damping how dull its walls, "
@@ -160,8 +152,7 @@ String deviceAbout(DeviceKind kind) => switch (kind) {
             "side by side, middle and sides, left and right, or lows and highs.",
     };
 
-/// listensOnly is whether [kind] only listens -- an analyser: a tuner, a
-/// spectrum, a scope -- and changes nothing it is given.
+/// listensOnly is whether [kind] is an analyser that changes nothing.
 bool listensOnly(DeviceKind kind) => kind.group == DeviceGroup.analysers;
 
 /// DeviceGroup is where a device is listed when one is added.
@@ -184,7 +175,6 @@ enum DeviceGroup {
   const DeviceGroup(this.label);
 }
 
-/// DeviceKind is what a device does.
 enum DeviceKind {
   reverb("Reverb", DeviceGroup.space, [
     DeviceParam("size", "Size", 0, 1, 0.7),
@@ -304,19 +294,16 @@ enum DeviceKind {
   /// MixDevice.mods and modulation.dart).
   lfo("LFO", DeviceGroup.modulators, lfoParams),
 
-  /// follower makes no sound either: it moves other devices' knobs by how
-  /// loud its own sound is where it stands, or another channel's (its
-  /// source).
+  /// follower makes no sound: it moves other knobs by how loud its own sound
+  /// is, or another channel's (its source).
   follower("Follower", DeviceGroup.modulators, followerParams),
 
-  /// macro is eight knobs, each turning any knobs of the chain it is given:
-  /// one move for many.
+  /// macro is eight knobs, each turning any chain knobs it is given.
   macro("Macro", DeviceGroup.modulators, macroParams),
 
-  /// split runs its sound through branches side by side -- each its own
-  /// chain of devices (MixDevice.branches) -- and sums them again: all of
-  /// it into each, or its middle and sides, left and right, or lows and
-  /// highs apart.
+  /// split runs its sound through parallel branches, each its own chain
+  /// (MixDevice.branches), and sums them: all of it into each, or split into
+  /// middle and sides, left and right, or lows and highs.
   split("Split", DeviceGroup.utility, [
     DeviceParam("mode", "Splits", 0, 3, 0, "",
         ["In parallel", "Mid / Side", "Left / Right", "Low / High"]),
@@ -331,18 +318,17 @@ enum DeviceKind {
   DeviceParam param(String id) => params.firstWhere((p) => p.id == id,
       orElse: () => deviceExtras.firstWhere((p) => p.id == id));
 
-  /// oversamples is whether it can be run oversampled (its ⋯ menu's
-  /// Oversample): a drive, whose harmonics would otherwise fold back down.
+  /// oversamples is whether it offers Oversample: a drive, whose harmonics
+  /// would otherwise fold back down.
   bool get oversamples =>
       this == DeviceKind.saturator || this == DeviceKind.overdrive;
 
-  /// hasOut is whether it has an Out trim (see deviceExtras): every effect
-  /// that changes the sound and has no output level of its own.
+  /// hasOut is whether it has an Out trim: every effect that changes sound
+  /// and has no output level of its own.
   bool get hasOut =>
       worksOnSides && !params.any((p) => p.id == "output" || p.id == "gain");
 
-  /// worksOnSides is whether it can be given only the middle or only the
-  /// sides of the sound (its ⋯ menu's Works on): one that changes sound.
+  /// worksOnSides is whether it offers Works on: one that changes sound.
   bool get worksOnSides =>
       !modulates &&
       group != DeviceGroup.analysers &&
@@ -350,38 +336,38 @@ enum DeviceKind {
       this != DeviceKind.utility &&
       this != DeviceKind.autoPan;
 
-  /// modulates is whether it moves other devices' knobs (see MixDevice.mods)
-  /// rather than making or changing sound.
+  /// modulates is whether it moves other knobs (MixDevice.mods) rather than
+  /// making or changing sound.
   bool get modulates => group == DeviceGroup.modulators;
 
   static DeviceKind? fromName(String? name) =>
       values.where((k) => k.name == name).firstOrNull;
 }
 
-/// MixDevice is one device in a chain: what it is, whether it is on, and
-/// any settings that are not its kind's defaults.
+/// MixDevice is one device in a chain: its kind, whether on, and settings
+/// that differ from its kind's defaults.
 class MixDevice {
   final DeviceKind kind;
   final bool on;
   final Map<String, double> values;
 
-  /// id is the device's own name within its chain, kept when it moves, so
-  /// that a lane or a fold follows the device and not its place: see
-  /// withDeviceIds. "" until the chain is next written.
+  /// id names the device in its chain and moves with it, so a lane or fold
+  /// follows the device, not its place (withDeviceIds). "" until the chain
+  /// is next written.
   final String id;
 
-  /// source is the channel a device takes a second sound from -- a
-  /// vocoder's carrier -- by key, or "" for none.
+  /// source is the key of the channel giving a second sound (a vocoder's
+  /// carrier), or "" for none.
   final String source;
 
-  /// mods are the knobs a modulator (an LFO) moves: see modulation.dart.
+  /// mods are the knobs a modulator moves: see modulation.dart.
   final List<ModTarget> mods;
 
-  /// branches are a split's chains, side by side: see DeviceKind.split.
+  /// branches are a split's parallel chains.
   final List<SplitBranch> branches;
 
-  /// variations are a macro's saved settings -- its knobs' values, each a
-  /// variation -- to come back to (see the Macros card's Variation).
+  /// variations are a macro's saved knob settings (the Macros card's
+  /// Variation).
   final List<Map<String, double>> variations;
 
   const MixDevice(this.kind,
@@ -393,9 +379,8 @@ class MixDevice {
       this.branches = const [],
       this.variations = const []});
 
-  /// sidechain is the channel this device hears beside its own, or null:
-  /// a vocoder set to take its carrier from a channel that is chosen, or a
-  /// gate opened by another channel's sound.
+  /// sidechain is the channel this device hears besides its own, or null: a
+  /// vocoder's chosen carrier, or a gate opened by another channel.
   String? get sidechain => !on || source.isEmpty
       ? null
       : switch (kind) {
@@ -406,7 +391,6 @@ class MixDevice {
           _ => null,
         };
 
-  /// value is setting [id], or its default.
   double value(String id) {
     var p = kind.param(id);
     return (values[id] ?? p.initial).clamp(p.min, p.max).toDouble();
@@ -528,23 +512,20 @@ class MixDevice {
   int get hashCode => Object.hash(kind, on, source, id, values.length);
 }
 
-/// deviceIdAt is device [i]'s id in [chain]: its own, or "d<i>" for one
-/// that has none yet -- the id withDeviceIds would give it, which is also
-/// how a lane saved before devices had ids, "device:<i>:…", finds it.
+/// deviceIdAt is device [i]'s id in [chain], or "d<i>" where it has none:
+/// what withDeviceIds would give, which is also how a lane saved as
+/// "device:<i>:…" finds it.
 String deviceIdAt(List<MixDevice> chain, int i) =>
     chain[i].id.isEmpty ? "d$i" : chain[i].id;
 
-/// deviceKey is the mixer's name for the device with [id] -- how a strip
-/// opens it, folds it and scrolls to it -- `dev:<id>`, so it follows the
-/// device when the chain is put in another order.
+/// deviceKey is the mixer's key for device [id], `dev:<id>`, by which a
+/// strip opens, folds and scrolls to it, following it through reorders.
 String deviceKey(String id) => "dev:$id";
 
-/// deviceKeyId is the device id in a deviceKey, or null for another key
-/// ("eq", "speech", "midi0").
+/// deviceKeyId is the device id in a deviceKey, or null for another key.
 String? deviceKeyId(String key) =>
     key.startsWith("dev:") && key.length > 4 ? key.substring(4) : null;
 
-/// deviceIndexOf is where the device with [id] is in [chain], or -1.
 int deviceIndexOf(List<MixDevice> chain, String id) {
   for (var i = 0; i < chain.length; i++) {
     if (deviceIdAt(chain, i) == id) return i;
@@ -552,10 +533,9 @@ int deviceIndexOf(List<MixDevice> chain, String id) {
   return -1;
 }
 
-/// withDeviceIds is [chain] with an id on every device. A chain with none
-/// yet -- one saved before ids -- gets them by place, "d0", "d1"…; a device
-/// added to a chain that has them gets one never used in it, so a lane
-/// left from a device taken out can't land on the new one.
+/// withDeviceIds puts an id on every device. A chain with none gets them by
+/// place ("d0", "d1"…); a device added to a chain with ids gets one never
+/// used in it, so a lane left by a removed device can't land on it.
 List<MixDevice> withDeviceIds(List<MixDevice> chain) {
   if (chain.every((d) => d.id.isNotEmpty)) return chain;
   if (chain.every((d) => d.id.isEmpty)) {
@@ -569,8 +549,8 @@ List<MixDevice> withDeviceIds(List<MixDevice> chain) {
   return [for (var d in chain) d.id.isEmpty ? d.withId("d${next++}") : d];
 }
 
-/// tempoSynced is [devices] with each LFO set to Sync given its rate at
-/// [bpm], as the engine -- which knows no tempo -- runs it.
+/// tempoSynced gives each Sync LFO in [devices] its rate at [bpm], since
+/// the engine knows no tempo.
 List<MixDevice> tempoSynced(List<MixDevice> devices, double bpm,
         {int beatsPerBar = 4}) =>
     devices.any((d) => d.kind == DeviceKind.lfo && d.value("sync") > 0)
@@ -583,14 +563,13 @@ List<MixDevice> tempoSynced(List<MixDevice> devices, double bpm,
           ]
         : devices;
 
-/// branchDeviceId names device [device] in branch [branch] of split
-/// [split] (each by its id or place) for a modulator to move one of its
-/// knobs: see ModTarget.device.
+/// branchDeviceId names a device in a split's branch (each part by id or
+/// place) so a modulator can move its knobs: see ModTarget.device.
 String branchDeviceId(String split, int branch, String device) =>
     "$split/$branch/$device";
 
-/// branchDevicePath is a name branchDeviceId made, taken apart; null for a
-/// device of the chain itself.
+/// branchDevicePath takes a branchDeviceId apart; null for a device of the
+/// chain itself.
 (String, int, String)? branchDevicePath(String id) {
   var parts = id.split("/");
   if (parts.length != 3) return null;
@@ -598,11 +577,10 @@ String branchDeviceId(String split, int branch, String device) =>
   return b == null ? null : (parts[0], b, parts[2]);
 }
 
-/// maxBranches is the most branches a split has.
 const int maxBranches = 4;
 
-/// SplitBranch is one of a split's chains: its devices in order, how loud
-/// it comes back, and whether it is heard at all.
+/// SplitBranch is one split chain: its devices, return level, and whether
+/// heard.
 class SplitBranch {
   final List<MixDevice> devices;
   final double gainDb;
@@ -637,8 +615,8 @@ class SplitBranch {
     );
   }
 
-  /// structure is what of it a running split is made of: a changed
-  /// setting is retuned, a device added or switched remade.
+  /// structure is what a running split is built from: a changed setting is
+  /// retuned, a device added or switched rebuilds.
   String get structure => [
         for (var (i, d) in devices.indexed)
           "${deviceIdAt(devices, i)}:${d.kind.name}:${d.on}:${d.source}"
@@ -657,8 +635,8 @@ class SplitBranch {
   int get hashCode => Object.hash(gainDb, mute, devices.length);
 }
 
-/// splitBranchNames are a split's branches' names in [mode] (see
-/// DeviceKind.split): two of them, but in parallel as many as [count].
+/// splitBranchNames are a split's branch names in [mode]: two, or [count]
+/// in parallel mode.
 List<String> splitBranchNames(int mode, int count) => switch (mode) {
       1 => const ["Mid", "Side"],
       2 => const ["Left", "Right"],
@@ -666,17 +644,17 @@ List<String> splitBranchNames(int mode, int count) => switch (mode) {
       _ => [for (var i = 0; i < count; i++) "Branch ${String.fromCharCode(65 + i)}"],
     };
 
-/// ReturnChannel is a return: a channel fed by the others' sends rather than
-/// by sounds of its own -- one reverb every channel feeds a little of, rather
-/// than a reverb on each. Its devices run first, then its strip.
+/// ReturnChannel is a channel fed by others' sends, not sounds of its own:
+/// one reverb every channel feeds a little of. Its devices run first, then
+/// its strip.
 class ReturnChannel {
   final String id;
   final String name;
   final List<MixDevice> devices;
   final ChannelMix mix;
 
-  /// pre is whether its sends are taken before each channel's fader, so the
-  /// fader does not change how much is sent.
+  /// pre takes sends before each channel's fader, so the fader does not
+  /// change them.
   final bool pre;
 
   const ReturnChannel(this.id,
@@ -724,22 +702,19 @@ class ReturnChannel {
 
   String toKey() => toJson().toString();
 
-  /// chainMix is its strip with its devices on it: what runs, its EQ and
-  /// compressor among its devices in the order they were put, as a
-  /// channel's (ChannelMix.chain).
+  /// chainMix is its strip with its devices, EQ and compressor among them in
+  /// order, as a channel's (ChannelMix.chain).
   ChannelMix get chainMix => mix.copyWith(devices: devices);
 }
 
-/// returnLetter is the letter a return goes by, from its place: A, B, C.
+/// returnLetter is a return's letter from its place: A, B, C.
 String returnLetter(int index) =>
     index < 26 ? String.fromCharCode(65 + index) : "R${index + 1}";
 
-/// defaultReturns are the two every document starts with: a reverb and a
-/// delay.
+/// defaultReturns are a new document's reverb and delay.
 const List<ReturnChannel> defaultReturns = [
   ReturnChannel("returnA", name: "Reverb", devices: [MixDevice(DeviceKind.reverb)]),
   ReturnChannel("returnB", name: "Delay", devices: [MixDevice(DeviceKind.delay)]),
 ];
 
-/// maxReturns is the most returns a document can have.
 const int maxReturns = 8;

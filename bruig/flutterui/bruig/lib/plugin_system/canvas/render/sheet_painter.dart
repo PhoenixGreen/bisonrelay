@@ -12,21 +12,18 @@ import 'package:bruig/plugin_system/canvas/model/notation.dart';
 import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:flutter/painting.dart';
 
-// sheet_painter.dart engraves a Score (see model/notation.dart) in Bravura,
-// the SMuFL music font.
+// sheet_painter.dart engraves a Score (model/notation.dart) in Bravura, the
+// SMuFL music font. Bars are laid out in systems as wide as the element,
+// spaced by note length, and shown a page of lines at a time (pageLines).
 //
-// Bars are laid out in systems as wide as the element, spaced by how long
-// their notes are, and shown a page of lines at a time, turned as it plays
-// (see pageLines).
-//
-// Measures are in staff spaces, the gap between two lines. Bravura's em is
-// four spaces (a staff's height), so glyphs are drawn at four spaces' size.
+// Measures are in staff spaces. Bravura's em is four spaces (a staff's
+// height), so glyphs are drawn at four spaces' size.
 
 /// NoteMark is how a note went when it was practised.
 enum NoteMark { right, wrong, missed }
 
-/// SheetMarks is what practising has to show on a score: each note's mark,
-/// the notes being waited for, and the wrong keys played at each note.
+/// SheetMarks is what practising shows on a score: each note's mark, the
+/// notes awaited, and the wrong keys played at each note.
 class SheetMarks {
   final Map<int, NoteMark> marks;
   final Set<int> waiting;
@@ -37,7 +34,6 @@ class SheetMarks {
       this.wrongKeys = const {}});
 }
 
-/// SheetLook is the score's colours and title.
 class SheetLook {
   final Color paper, ink;
   final String title;
@@ -52,14 +48,13 @@ const _wrong = Color(0xFFE5484D);
 const _next = Color(0xFF3D7EFF);
 const _missed = Color(0xFF9AA0AA);
 
-/// _System is one line of bars.
 class _System {
   final List<int> bars;
   final List<double> widths;
   _System(this.bars, this.widths);
 }
 
-/// _xs is where each moment of a bar is across it, from its start: every
+/// _xs is where each moment of a bar sits across it, from its start: every
 /// time any staff has something, spaced by how long until the next.
 List<(double, double)> _xs(Bar bar, double space) {
   var times = <double>{};
@@ -88,8 +83,7 @@ double _barWidth(Bar bar, double space) {
 }
 
 /// paintSheet engraves [score] inside [bounds], [lines] systems to a page,
-/// the playhead [at] quarters in -- or null for none -- with [marks] from
-/// practising.
+/// the playhead [at] quarters in (null for none), with practice [marks].
 void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
     {double? at,
     int lines = 2,
@@ -101,8 +95,7 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
   canvas.drawRect(bounds, Paint()..color = look.paper);
   var grand = score.staves.length > 1;
   var titleHeight = look.title.isEmpty ? 0.0 : bounds.height * 0.1;
-  // A page of systems to the height: each 22 spaces for two staves, 13 for
-  // one.
+  // A page of systems: 22 spaces each for two staves, 13 for one.
   var systemSpaces = grand ? 22.0 : 13.0;
   var space = ((bounds.height - titleHeight) / (lines * systemSpaces))
       .clamp(2.0, 18.0);
@@ -128,8 +121,8 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
             bounds.top + (titleHeight - t.height) / 2 + space * 0.5));
   }
 
-  // Bars into systems: as many as fit, then stretched to the width. Each
-  // line starts with its clef and key signature.
+  // As many bars per system as fit, stretched to the width; each line
+  // starts with its clef and key signature.
   var header = space * 5.5 + _keyWidth(score.fifths, space);
   var systems = <_System>[];
   var current = <int>[], widths = <double>[];
@@ -148,7 +141,6 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
   }
   if (current.isNotEmpty) systems.add(_System(current, widths));
 
-  // The page the playhead is on. See pageLines.
   var barAt = at == null ? 0 : (at / score.barQuarters).floor();
   var playing = 0;
   for (var (i, s) in systems.indexed) {
@@ -165,8 +157,7 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
     var y = top + k * systemSpaces * space + space * 4;
     _paintSystem(canvas, score, s, index == 0, left, right, y, space,
         last: index == systems.length - 1, at: at, marks: marks, ink: look.ink);
-    // Where the turned lines meet the one still being played: a faint
-    // rule under the last of the next page's.
+    // A faint rule where the turned lines meet the one still playing.
     var below = k + 1 < shown.length ? shown[k + 1] : null;
     if (below != null && below < index) {
       var ruleY = y + (systemSpaces - 4.5) * space;
@@ -182,9 +173,9 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
 }
 
 /// pageLines is which system each of a page's [lines] slots shows, top to
-/// bottom, with the playhead on system [playing] of [count]; null past the
-/// end. While the last line of a page plays, the slots above it already show
-/// the next page's, so the reader can look ahead, as a half-page turn does.
+/// bottom, with system [playing] of [count] playing; null past the end.
+/// While a page's last line plays, the slots above already show the next
+/// page, so the reader can look ahead, as a half-page turn does.
 List<int?> pageLines(int playing, int lines, int count) {
   var first = playing ~/ lines * lines;
   var turned =
@@ -198,8 +189,8 @@ List<int?> pageLines(int playing, int lines, int count) {
   ];
 }
 
-/// _glyph draws Bravura's [code] with its baseline at [x], [y], [space] to
-/// a staff space, in [colour].
+/// _glyph draws Bravura's [code] with its baseline at [x], [y], at [space]
+/// to a staff space.
 void _glyph(
     ui.Canvas canvas, int code, double x, double y, double space, Color colour,
     {double scale = 1}) {
@@ -229,14 +220,13 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
   var thin = Paint()
     ..color = ink
     ..strokeWidth = math.max(1, space * 0.16);
-  // Each staff's bottom line.
   var bottoms = <Staff, double>{};
   for (var (i, staff) in score.staves.indexed) {
     bottoms[staff] = y + 4 * space + i * 10 * space;
   }
   var systemTop = y, systemBottom = bottoms.values.reduce(math.max);
   // The last system keeps its natural spacing and ends at its final
-  // barline rather than running on to the edge.
+  // barline rather than running to the edge.
   var lineEnd = right;
   if (last) {
     var head = space * 0.8 +
@@ -269,7 +259,6 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
     }
   }
   x += space * 4;
-  // The key signature, on every line.
   for (var staff in score.staves) {
     _paintKey(canvas, score.fifths, staff, x, bottoms[staff]!, space, ink);
   }
@@ -282,7 +271,6 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
     }
     x += space * 3;
   }
-  // Stretched to the width, except the last.
   var natural = system.widths.reduce((a, b) => a + b);
   var stretch = last ? 1.0 : math.max(1.0, (right - x) / natural);
 
@@ -292,7 +280,6 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
     var xs = {
       for (var (t, px) in _xs(bar, space)) t: x + px * stretch,
     };
-    // Its number, over the first bar of the system.
     if (k == 0) {
       var n = TextPainter(
         text: TextSpan(
@@ -308,8 +295,8 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
     }
     for (var staff in score.staves) {
       var all = bar.staves[staff] ?? const <Written>[];
-      // Each voice on its own -- its ties, its beams -- and, two in the
-      // bar, the upper's stems up and the lower's down.
+      // Each voice on its own (ties, beams); with two in the bar, the
+      // upper's stems up and the lower's down.
       var voices = <int, List<Written>>{};
       for (var w in all) {
         (voices[w.voice] ??= []).add(w);
@@ -363,7 +350,6 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
               x + space * 0.4, systemTop, x + space * 0.9, systemBottom),
           Paint()..color = ink);
     }
-    // The playhead, where it is in this bar.
     if (at case var t?
         when t >= bar.start && t < bar.start + score.barQuarters) {
       var into = t - bar.start;
@@ -393,13 +379,12 @@ int _signGlyph(int alter) => switch (alter) {
       _ => 0xE261, // natural
     };
 
-/// _keyWidth is how much room a key signature of [fifths] takes.
 double _keyWidth(int fifths, double space) =>
     fifths == 0 ? 0 : fifths.abs() * space * 1.05 + space * 0.6;
 
-/// _paintKey draws the key signature of [fifths] on [staff] from [x]: the
-/// sharps F C G D A E B, or the flats B E A D G C F, each on its own line or
-/// space -- the bass clef's a third lower.
+/// _paintKey draws the key signature of [fifths] on [staff] from [x]:
+/// sharps F C G D A E B or flats B E A D G C F, the bass clef's a third
+/// lower.
 void _paintKey(ui.Canvas canvas, int fifths, Staff staff, double x,
     double bottom, double space, Color ink) {
   if (fifths == 0) return;
@@ -415,9 +400,8 @@ void _paintKey(ui.Canvas canvas, int fifths, Staff staff, double x,
   }
 }
 
-/// beamGroups are [items]' quavers and semiquavers that share a beat --
-/// a dotted crotchet in a compound time -- two or more together, by index:
-/// beamed rather than each flagged.
+/// beamGroups are [items]' quavers and semiquavers that share a beat (a
+/// dotted crotchet in compound time), two or more, by index.
 List<List<int>> beamGroups(List<Written> items, Score score) {
   var compound = score.beatUnit == 8 && score.beatsPerBar % 3 == 0;
   var beat = compound ? 1.5 : 4 / score.beatUnit;
@@ -443,10 +427,9 @@ List<List<int>> beamGroups(List<Written> items, Score score) {
   return groups;
 }
 
-/// _paintBeam draws a beamed group: each note's stem, all one way, to a
-/// beam slanted with the tune -- by no more than a space -- and kept clear
-/// of every head; a second beam between semiquavers, and a short one for a
-/// semiquaver beside a quaver.
+/// _paintBeam draws a beamed group: stems all one way to a beam slanted
+/// with the tune by at most a space and clear of every head; a second beam
+/// between semiquavers, a stub for a semiquaver beside a quaver.
 void _paintBeam(ui.Canvas canvas, List<(Written, double)> group, double bottom,
     double space, Color ink, SheetMarks marks,
     {bool? up}) {
@@ -523,16 +506,14 @@ void _paintBeam(ui.Canvas canvas, List<(Written, double)> group, double bottom,
     if (nextShort) {
       bar(x, stemX(notes[i + 1].x), 1);
     } else if (!prevShort) {
-      // Alone: a stub toward its neighbour.
       var toward = i + 1 < notes.length ? space : -space;
       bar(math.min(x, x + toward), math.max(x, x + toward), 1);
     }
   }
 }
 
-/// _paintTuplet draws a triplet's 3 on its stems' side -- by the beam,
-/// where there is one -- clear of every head and stem, with a bracket where
-/// they are not one beamed group.
+/// _paintTuplet draws a triplet's 3 on its stems' side, clear of every head
+/// and stem, with a bracket unless the group is one beamed group.
 void _paintTuplet(ui.Canvas canvas, List<(Written, double)> group,
     double bottom, double space, Color ink,
     {required bool beamed, bool? up}) {
@@ -587,7 +568,6 @@ void _paintTuplet(ui.Canvas canvas, List<(Written, double)> group,
       pen);
 }
 
-/// _glyphWidth is how wide Bravura's [code] is drawn at [space].
 double _glyphWidth(int code, double space) => (TextPainter(
       text: TextSpan(
           text: String.fromCharCode(code),
@@ -606,7 +586,6 @@ void _digits(
   }
 }
 
-/// _colourOf is how a written note is coloured by practising.
 Color _colourOf(Written item, Color ink, SheetMarks marks) {
   NoteMark? mark;
   for (var n in item.notes) {
@@ -621,7 +600,6 @@ Color _colourOf(Written item, Color ink, SheetMarks marks) {
   };
 }
 
-/// _stepsOf is where each of [item]'s keys sits on [staff].
 List<int> _stepsOf(Written item, Staff staff) => item.steps.isNotEmpty
     ? item.steps
     : [for (var k in item.keys) staffStep(k, staff).$1];
@@ -639,8 +617,8 @@ void _paintWritten(ui.Canvas canvas, Written item, Staff staff, double x,
       >= 0.5 => 0xE4E6,
       _ => 0xE4E7,
     };
-    // A whole rest hangs from the fourth line; the rest sit on the middle
-    // -- higher for an upper voice's, lower for a lower's, with two.
+    // A whole rest hangs from the fourth line; others sit on the middle,
+    // higher for an upper voice, lower for a lower one.
     var step = (item.base >= 4 ? 6 : 4) + restShift;
     _glyph(canvas, code, x, yOf(step), space, ink.withValues(alpha: 0.85));
     return;
@@ -668,8 +646,8 @@ void _paintWritten(ui.Canvas canvas, Written item, Staff staff, double x,
   }
   for (var (j, step) in steps.indexed) {
     _glyph(canvas, head, x, yOf(step), space, colour);
-    // Its sharp, flat or natural -- only where the key and the bar so far
-    // do not already say it. See Written.accidentals.
+    // Its accidental, only where the key and the bar so far do not already
+    // say it (Written.accidentals).
     var sign = j < item.accidentals.length ? item.accidentals[j] : null;
     if (item.accidentals.isEmpty && isBlackKey(item.keys[j])) sign = 1;
     if (sign != null) {
@@ -690,8 +668,8 @@ void _paintWritten(ui.Canvas canvas, Written item, Staff staff, double x,
           _wrong.withValues(alpha: 0.55));
     }
   }
-  // The stem: up from below the middle line, down from above it -- drawn
-  // with its beam, where it has one. See _paintBeam.
+  // The stem: up below the middle line, down above it; drawn with its beam
+  // where it has one (_paintBeam).
   if (item.base < 4 && !beamed) {
     var up = upGiven ?? (low + high) / 2 < 4;
     var stem = Paint()
@@ -733,16 +711,16 @@ void _paintWritten(ui.Canvas canvas, Written item, Staff staff, double x,
 }
 
 /// sheetMarksOf is what practising has marked on [e], set by the editor
-/// while practising (as vectorSoloOf is). Null, as in an export or a
-/// thumbnail, draws a clean score.
+/// (as vectorSoloOf is). Null, as in an export or thumbnail, draws a clean
+/// score.
 SheetMarks Function(SheetElement e)? sheetMarksOf;
 
 Score? _score;
 (List<MidiNote>, String)? _scoreFor;
 
-/// sheetFifths is the key [part] is written in: [chosen] where one was
-/// chosen; else its Scale effect's -- the major key it shares notes with --
-/// where it has one in a major or minor mode; else heard in its notes.
+/// sheetFifths is the key [part] is written in: [chosen] if given; else the
+/// relative major of its Scale effect in a major or minor mode; else heard
+/// in its notes.
 int sheetFifths(InstrumentPart part, int? chosen) {
   if (chosen != null) return chosen;
   var scale = part.effects
@@ -763,9 +741,8 @@ int sheetFifths(InstrumentPart part, int? chosen) {
   return keyFifthsOf(part.notes);
 }
 
-/// sheetScore is [part] written out in [audio]'s tempo and metre, in the
-/// key of [fifths]. The last one is cached, since the same part is drawn on
-/// every frame it plays.
+/// sheetScore is [part] written out in [audio]'s tempo and metre, in key
+/// [fifths]. The last is cached, as the same part is drawn every frame.
 Score sheetScore(InstrumentPart part, AudioSettings audio, {int? fifths}) {
   var key = sheetFifths(part, fifths);
   var metre = "${audio.tempo}|${audio.beatsPerBar}|${audio.beatUnit}|$key";
@@ -781,8 +758,8 @@ Score sheetScore(InstrumentPart part, AudioSettings audio, {int? fifths}) {
       fifths: key);
 }
 
-/// paintSheetElement draws Sheet music [e] on [frame]: the part of the
-/// instrument it follows, the playhead where that part has got to.
+/// paintSheetElement draws Sheet music [e] on [frame]: its instrument part,
+/// the playhead where that part has got to.
 void paintSheetElement(ui.Canvas canvas, Rect bounds, SheetElement e,
     CanvasDocument? document, int frame) {
   var look = SheetLook(paper: e.paper, ink: e.ink, title: e.title);

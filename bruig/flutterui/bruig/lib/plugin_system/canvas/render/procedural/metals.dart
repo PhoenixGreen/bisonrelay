@@ -1,9 +1,8 @@
 part of 'generators.dart';
 
-// metals.dart is the Metal texture's finishes other than brushed (which is
-// _metal in generators.dart): a lit height-and-colour lattice like the
-// surfaces, plus a mirror term (see _shadeLattice). Rust and damage apply to
-// every finish.
+// metals.dart is the Metal texture's finishes other than brushed (_metal in
+// generators.dart): a lit height-and-colour lattice like the surfaces, plus
+// a mirror term (see _shadeLattice). Rust and damage apply to every finish.
 
 /// MetalFinish is the Metal texture's "finish" setting.
 abstract final class MetalFinish {

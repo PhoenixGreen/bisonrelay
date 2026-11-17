@@ -4,16 +4,14 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/score_edit.dart';
 
-// score_roll.dart is a score part in the piano roll (Ken, 2026-11-14: "would
-// it be possible to also edit the score from the piano roll?"). The roll
-// shows the part as written -- each bar once, in quarters, ties joined --
-// and what is drawn there is written back as notation: only the bars whose
-// notes changed are written again, new notes on the sixteenth grid, held
-// notes tied, overlaps as a second voice, every marking kept at its beat,
-// and a velocity drawn kept on the note without changing the dynamic.
+// score_roll.dart is a score part in the piano roll. The roll shows the part
+// as written (each bar once, in quarters, ties joined), and what is drawn is
+// written back as notation: only changed bars, new notes on the sixteenth
+// grid, held notes tied, overlaps as a second voice, markings kept at their
+// beat, and a drawn velocity kept on the note without changing the dynamic.
 
 /// WrittenNote is a note of a part as written: when (quarters from the
-/// score's start, each bar once), on which staff, from which event.
+/// start, each bar once), its staff and its event.
 typedef WrittenNote = ({MidiNote note, int staff, String event});
 
 /// barStarts are each bar's start in quarters, and the end after the last.
@@ -26,7 +24,7 @@ List<double> barStarts(MusicScore s) {
 }
 
 /// _velocityOf is how hard [e] plays with [dyn] in force, by its marks
-/// alone: what a velocity drawn in the roll is told apart from.
+/// alone: what a drawn velocity is told apart from.
 int _velocityOf(ScoreEvent e, Dynamic dyn) {
   var v = (e.dyn != null && !e.dyn!.lasting ? e.dyn! : dyn).velocity;
   if (e.articulations.contains(Articulation.accent)) v += 18;
@@ -35,8 +33,7 @@ int _velocityOf(ScoreEvent e, Dynamic dyn) {
 }
 
 /// writtenNotes are [part]'s notes as written: each bar once, ties joined,
-/// sounding keys (a transposing part as it sounds), velocity as marked or
-/// drawn.
+/// sounding keys, velocity as marked or drawn.
 List<WrittenNote> writtenNotes(MusicScore s, String part) {
   var p = s.partById(part);
   if (p == null || p.strum) return const [];
@@ -87,8 +84,8 @@ List<WrittenNote> writtenNotes(MusicScore s, String part) {
   return out;
 }
 
-/// _Piece is a note's part in one bar: from and to (quarters into the
-/// bar), whether it is tied in from the bar before and on to the next.
+/// _Piece is a note's share of one bar: from and to (quarters in), and
+/// whether it ties in from before and on to the next.
 typedef _Piece = ({
   int key,
   double from,
@@ -120,9 +117,8 @@ String _sig(List<_Piece> ps) {
   return l.join(",");
 }
 
-/// withRollNotes is [s] with [part]'s notes as [notes] say (quarters from
-/// the start, as written, sounding keys): bars added at the end for notes
-/// past it, and every bar whose notes changed written again.
+/// withRollNotes is [s] with [part]'s notes as [notes] (quarters, sounding
+/// keys): bars added past the end, and each changed bar rewritten.
 MusicScore withRollNotes(MusicScore s, String part, List<MidiNote> notes) {
   var p = s.partById(part);
   if (p == null || p.strum) return s;
@@ -131,8 +127,7 @@ MusicScore withRollNotes(MusicScore s, String part, List<MidiNote> notes) {
       a.key == b.key &&
       (a.start - b.start).abs() < 1e-6 &&
       (a.length - b.length).abs() < 1e-6;
-  // New notes on the sixteenth grid; notes as they were, left as they were
-  // (a triplet stays one).
+  // New notes on the sixteenth grid; unchanged notes left (a triplet stays).
   double q(double t) => (t * 4).round() / 4;
   var drawn = [
     for (var n in notes)
@@ -184,8 +179,7 @@ MusicScore withRollNotes(MusicScore s, String part, List<MidiNote> notes) {
   return s;
 }
 
-/// _rewriteBar writes [pieces] into [part]'s [staff] [bar] as notation,
-/// keeping what was marked there at its beat.
+/// _rewriteBar writes [pieces] into [part]'s [staff] [bar], markings kept.
 MusicScore _rewriteBar(MusicScore s, String part, int staff, int bar,
     List<_Piece> pieces, int transpose) {
   var barQ = s.barQuarters(bar);
@@ -220,8 +214,8 @@ MusicScore _rewriteBar(MusicScore s, String part, int staff, int bar,
       chords[i].keys.add(pc);
     }
   }
-  // Into two voices: each chord in the first free; a third overlap cuts
-  // the second voice's last short.
+  // Into two voices: each chord in the first free; a third overlap cuts the
+  // second voice's last short.
   var voices =
       <List<({double from, double to, bool tiedOn, List<_Piece> keys})>>[
     [],
@@ -297,9 +291,8 @@ MusicScore _rewriteBar(MusicScore s, String part, int staff, int bar,
     }
     if (t < barQ - 1e-6) rests(t, barQ);
   }
-  // The markings, each at its beat: on the new event there; lyrics on the
-  // next note in the beat, chords and dynamics on the next event in the
-  // bar; else gone.
+  // Each marking at its beat, on the new event there; else lyrics on the
+  // beat's next note, chords and dynamics on the bar's next event; else gone.
   int? at(double time, {int? voice, bool note = false, double? until}) {
     int? best;
     for (var (i, m) in made.indexed) {

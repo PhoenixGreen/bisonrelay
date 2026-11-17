@@ -6,15 +6,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:flutter/painting.dart';
 
-// image_mask_painter.dart draws a picture's mask (see image_mask.dart).
-//
-// The mask is recorded in the picture's own pixels (the subject as alpha,
-// then every mark in order), rasterised and refined once (see maskImage),
-// and drawn through the picture's placement as a layer whose blend keeps the
-// picture only where the mask is.
+// image_mask_painter.dart draws a picture's mask (image_mask.dart): recorded
+// in the picture's pixels (the subject as alpha, then every mark), rasterised
+// and refined once (maskImage), and drawn through the placement as a layer
+// whose blend keeps the picture only where the mask is.
 
-/// _subjectAlpha turns a grey mask picture into alpha: white kept, black
-/// gone, whatever colour -- the colour is never looked at, only the alpha.
+/// _subjectAlpha turns a grey mask into alpha: white kept, black gone.
 const _subjectAlpha = ColorFilter.matrix([
   0, 0, 0, 0, 255, //
   0, 0, 0, 0, 255, //
@@ -29,9 +26,8 @@ class _Recorded {
   _Recorded(this.subject, this.size, this.picture);
 }
 
-/// _recorded is the recordings of the masks last drawn, most recent last.
-/// A bounded cache rather than a field on the mask: undo history keeps every
-/// mask there has been.
+/// _recorded is the recordings of the masks last drawn, most recent last: a
+/// bounded cache, since undo history keeps every mask there has been.
 final Map<ImageMask, _Recorded> _recorded = LinkedHashMap.identity();
 const int _recordedMost = 16;
 
@@ -64,7 +60,6 @@ ui.Picture maskPicture(ImageMask mask, Size size, ui.Image? subject) {
   return picture;
 }
 
-/// _Rastered is a mask drawn into pixels: what it was drawn for, and them.
 class _Rastered {
   final ui.Image? subject;
   final Size size;
@@ -76,12 +71,10 @@ class _Rastered {
   _Rastered(this.subject, this.size, this.area, this.image, this.over);
 }
 
-/// _rastered is the masks last drawn, as pixels, most recent last; disposed
-/// as they fall out.
+/// _rastered is the masks last drawn as pixels, latest last; disposed on exit.
 final Map<ImageMask, _Rastered> _rastered = LinkedHashMap.identity();
 
-/// clearMaskRasters lets go of every mask kept as pixels: see
-/// clearRenderCaches.
+/// clearMaskRasters lets go of every mask kept as pixels.
 void clearMaskRasters() {
   for (var r in _rastered.values) {
     r.image.dispose();
@@ -95,9 +88,7 @@ const double _maskSide = 2048;
 
 /// maskImage is [mask] for a picture of [size] pixels as pixels (white is
 /// kept), at most [_maskSide] across, cut to [area] (the crop) and refined.
-/// [over] is the part of the picture, in its own pixels, the image covers:
-/// the area plus the refining's spread.
-///
+/// [over] is the part of the picture, in its own pixels, the image covers.
 /// Rasterised once because replaying every blurred dab each frame is far too
 /// slow. Refined here, in picture pixels, because a filter applied where a
 /// moving picture is drawn snaps to whole screen pixels and the edge shakes.
@@ -130,8 +121,7 @@ const double _maskSide = 2048;
   canvas.scale(w / over.width, h / over.height);
   canvas.translate(-over.left, -over.top);
   // Clipped to the drawn part, so a crop's mask does not reach over the
-  // frame. A hard clip: an anti-aliased one leaves a hairline of picture
-  // round every faded edge.
+  // frame. A hard clip: an anti-aliased one leaves a hairline of picture.
   canvas.clipRect(area, doAntiAlias: false);
   canvas.drawPicture(maskPicture(mask, size, subject));
   if (refine != null) canvas.restore();
@@ -167,7 +157,6 @@ void paintMaskMarks(
   }
 }
 
-/// paintMaskMark draws one mark onto a mask of [size] pixels.
 void paintMaskMark(ui.Canvas canvas, MaskMark mark, Size size) {
   if (mark.points.isEmpty) return;
   Offset at(Offset f) => Offset(f.dx * size.width, f.dy * size.height);
@@ -197,9 +186,9 @@ void paintMaskMark(ui.Canvas canvas, MaskMark mark, Size size) {
                 const [Color(0x00FFFFFF), Color(0xFFFFFFFF)])
             : ui.Gradient.linear(
                 from, to, const [Color(0xFFFFFFFF), Color(0x00FFFFFF)]);
-        // A gradient clamps past its ends, so one rectangle covers the lot.
-        // Drawn past the picture's edges, or the half-covered edge pixels
-        // leave a hairline; the mask is clipped where it is used.
+        // A gradient clamps past its ends, so one rectangle covers the lot,
+        // drawn past the picture's edges or the edge pixels leave a
+        // hairline; the mask is clipped where it is used.
         canvas.drawRect(_beyond(Offset.zero & size), Paint()..shader = shader);
       }
   }
@@ -210,8 +199,7 @@ void paintMaskMark(ui.Canvas canvas, MaskMark mark, Size size) {
 /// leaves a part-covered pixel along them.
 Rect _beyond(Rect r) => r.inflate(math.max(4, r.longestSide * 0.01));
 
-/// _paintDabs lays a brush stroke down as dabs along its path, each as wide
-/// as the pen was pressed there.
+/// _paintDabs lays a stroke down as dabs along its path, sized by pressure.
 void _paintDabs(
     ui.Canvas canvas, MaskMark mark, Size size, Offset Function(Offset) at) {
   var full = mark.radius * math.min(size.width, size.height);
@@ -247,9 +235,8 @@ void _paintDabs(
   }
 }
 
-/// refineFilter is [refine] as filters on the layer the mask is drawn in,
-/// with [scale] canvas units to a picture pixel. Null when there is nothing
-/// to do.
+/// refineFilter is [refine] as filters on the mask's layer, with [scale]
+/// canvas units to a picture pixel; null when there is nothing to do.
 ui.ImageFilter? refineFilter(MaskRefine refine, double scale) {
   var steps = <ui.ImageFilter>[];
   var shift = refine.shift * scale;
@@ -304,8 +291,8 @@ Matrix4Like pictureToPlacement(ImagePlacement placement) {
 typedef Matrix4Like = ({double sx, double sy, double dx, double dy});
 
 /// paintMaskLayer draws [mask] as alpha where [placement] draws the picture,
-/// with [blend] -- dstIn to keep a picture already drawn only where the mask
-/// is, or anything else to see the mask itself.
+/// with [blend]: dstIn keeps a picture already drawn only where the mask
+/// is; anything else shows the mask itself.
 void paintMaskLayer(ui.Canvas canvas, ImageMask mask, Size picture,
     ui.Image? subject, ImagePlacement placement,
     {BlendMode blend = BlendMode.dstIn, Rect? bounds}) {
@@ -318,7 +305,6 @@ void paintMaskLayer(ui.Canvas canvas, ImageMask mask, Size picture,
       bounds ?? placement.dst.inflate(reach), Paint()..blendMode = blend);
   canvas.translate(m.dx, m.dy);
   canvas.scale(m.sx, m.sy);
-  // See maskImage.
   var (:image, :over) = maskImage(mask, picture, subject, area: placement.src);
   canvas.drawImageRect(
       image,

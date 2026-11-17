@@ -10,27 +10,24 @@ import 'package:crypto/crypto.dart';
 
 export 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
 
-// instrument.dart is an instrument's part: the notes it plays, the sound it
-// plays them with, and the keyboard it is drawn as.
-//
-// An instrument is an Audio element with a part. Its notes are rendered
-// (media/synth/sampler.dart) into an ordinary sound file, its clip's file, so
-// everywhere else it is a sound like any other and a canvas sent to someone
-// without the sound bank still plays. Played live it is the sampler itself,
-// on the same channel.
+// instrument.dart is an instrument's part: the notes, the sound they are
+// played with, and the keyboard it is drawn as. An instrument is an Audio
+// element whose notes are rendered (media/synth/sampler.dart) into its
+// clip's sound file, so everywhere else it is an ordinary sound and plays
+// for someone without the sound bank. Played live it is the sampler itself.
 
-/// MidiNote is one note: which key (MIDI's numbering, middle C is 60),
-/// when and for how long (seconds in a part, beats in a clip), and how hard.
+/// MidiNote is one note: its key (MIDI numbering, middle C 60), when and
+/// how long (seconds in a part, beats in a clip), and how hard.
 class MidiNote {
   final int key;
   final double start;
   final double length;
   final int velocity;
 
-  /// muted is a note kept but not played: drawn hollow.
+  /// muted is a note kept but not played; drawn hollow.
   final bool muted;
 
-  /// chance is how likely it is to play each time round, nought to one:
+  /// chance is how likely it plays each time round, nought to one, rolled
   /// the same each time for the same note (see InstrumentPart.played).
   final double chance;
 
@@ -90,10 +87,9 @@ class MidiNote {
   int get hashCode => Object.hash(key, start, length, velocity, muted, chance);
 }
 
-/// notesHeard is [notes] as they play: without the muted, and each with a
-/// chance below one kept or not by a roll that is the same each time for
-/// the same note, so a part sounds the same played and exported. [notes]
-/// itself where every note plays.
+/// notesHeard is [notes] as they play: muted ones dropped, and each with a
+/// chance below one kept or not by a roll fixed per note, so a part sounds
+/// the same played and exported.
 List<MidiNote> notesHeard(List<MidiNote> notes) {
   if (notes.every((n) => !n.muted && n.chance >= 1)) return notes;
   return [
@@ -102,7 +98,7 @@ List<MidiNote> notesHeard(List<MidiNote> notes) {
   ];
 }
 
-/// _roll is a number from nought to one for [n]: its key and its start.
+/// _roll is a number from nought to one from [n]'s key and start.
 double _roll(MidiNote n) {
   var x = (n.key * 73856093 ^ (n.start * 1000).round() * 19349663) & 0xFFFFFFFF;
   x ^= x >> 15;
@@ -113,19 +109,17 @@ double _roll(MidiNote n) {
   return x / 0xFFFFFFFF;
 }
 
-/// InstrumentSound is what an instrument's notes are played with.
 enum InstrumentSound {
-  /// builtin is the small piano of our own: always there.
+  /// builtin is our own small piano: always there.
   builtin("Built-in piano"),
 
-  /// bank is the General MIDI sound bank, once it has been downloaded.
+  /// bank is the General MIDI sound bank, once downloaded.
   bank("MuseScore General"),
 
-  /// slices are a sound cut at its hits, each played by a key of its own:
-  /// see SliceKit.
+  /// slices is a sound cut at its hits, a key per slice: see SliceKit.
   slices("Slices of a sound"),
 
-  /// patch is a synth of modules patched together on the canvas: see
+  /// patch is a synth of modules patched on the canvas: see
   /// InstrumentPart.patch and synth_patch.dart.
   patch("Synth patch");
 
@@ -136,21 +130,20 @@ enum InstrumentSound {
       values.firstWhere((s) => s.name == name, orElse: () => builtin);
 }
 
-/// SliceKit is an instrument made of a sound cut into slices -- a clip
-/// sliced "into a note clip" or "into drum pads", as the prototype's -- each
-/// slice played by its own key, at its own pitch, to its end.
+/// SliceKit is an instrument made of a sound cut into slices (a clip
+/// sliced into a note clip or drum pads), each played by its own key, at
+/// its own pitch, to its end.
 class SliceKit {
-  /// assetId is the stored sound; cuts are where it is cut, in seconds
-  /// into it, first and last included: slice i runs from cuts[i] to
-  /// cuts[i + 1].
+  /// assetId is the stored sound; cuts are where it is cut, in seconds,
+  /// first and last included: slice i runs from cuts[i] to cuts[i + 1].
   final String assetId;
   final List<double> cuts;
 
   /// keys are the key each slice is played by, in order.
   final List<int> keys;
 
-  /// oneShot is whether a slice plays to its end once struck, as a drum
-  /// pad's does, rather than stopping when its key is let go.
+  /// oneShot plays a slice to its end once struck, like a drum pad, rather
+  /// than stopping when its key is let go.
   final bool oneShot;
   const SliceKit(this.assetId, this.cuts, this.keys, {this.oneShot = false});
 
@@ -193,7 +186,7 @@ class SliceKit {
   int get hashCode => key.hashCode;
 }
 
-/// InstrumentLook is what an instrument is played on, and drawn as.
+/// InstrumentLook is what an instrument is played on and drawn as.
 enum InstrumentLook {
   keyboard("Keyboard", 0, 0),
   drums("Drum pads", 128, 0),
@@ -211,8 +204,8 @@ enum InstrumentLook {
       values.firstWhere((l) => l.name == name, orElse: () => keyboard);
 }
 
-/// drumPads are the pads of a drum kit, in rows from the top: General
-/// MIDI's key for each, and its name.
+/// drumPads are a drum kit's pads in rows from the top: General MIDI key
+/// and name.
 const drumPads = <(int, String)>[
   (49, "Crash"),
   (51, "Ride"),
@@ -239,8 +232,8 @@ const bassStrings = [28, 33, 38, 43];
 /// frets is how many frets a neck is drawn with.
 const frets = 15;
 
-/// fretFor is where [key] is played on [strings]: the string and fret
-/// nearest the nut that has it, or null for a key the neck has not.
+/// fretFor is the string and fret nearest the nut that plays [key] on
+/// [strings], or null if the neck has not got it.
 (int, int)? fretFor(int key, List<int> strings) {
   (int, int)? best;
   for (var (i, open) in strings.indexed) {
@@ -251,63 +244,60 @@ const frets = 15;
   return best;
 }
 
-/// InstrumentPart is an instrument's part.
 class InstrumentPart {
   final InstrumentSound sound;
 
   /// look is what it is played on: a keyboard, drum pads, a neck.
   final InstrumentLook look;
 
-  /// bank and program are the General MIDI sound, where [sound] is the bank:
+  /// bank and program are the General MIDI sound where [sound] is the bank;
   /// program 0 is the grand piano.
   final int bank, program;
 
-  /// withLook is played on [look]: its General MIDI sound with it.
+  /// withLook is played on [look], with its General MIDI sound.
   InstrumentPart withLook(InstrumentLook look) =>
       copyWith(look: look, bank: look.bank, program: look.program);
 
-  /// lowKey and keys are the keyboard drawn: its lowest key and how many,
-  /// to the eighty-eight of a piano.
+  /// lowKey and keys are the keyboard drawn: its lowest key and how many, up
+  /// to a piano's eighty-eight.
   final int lowKey, keys;
 
   final List<MidiNote> notes;
 
-  /// controls are its controllers' curves -- expression, the mod wheel,
-  /// pitch bend and the rest -- in seconds, as its notes are.
+  /// controls are its controller curves (expression, mod wheel, pitch bend
+  /// and the rest), in seconds as its notes are.
   final Map<MidiControl, List<ControlPoint>> controls;
 
-  /// effects are the channel's MIDI effects, in order: what is done to the
-  /// notes before they are played. See midi_effects.dart.
+  /// effects are the channel's MIDI effects, applied in order to the notes
+  /// before they play. See midi_effects.dart.
   final List<MidiEffect> effects;
 
-  /// input is where the channel's notes come from live: "" for every MIDI
-  /// input, [noInput] for none, or one keyboard's name.
+  /// input is where live notes come from: "" for every MIDI input, [noInput]
+  /// for none, or one keyboard's name.
   final String input;
 
-  /// monitor is when what comes in is heard -- see MidiMonitor.
+  /// monitor is when live input is heard: see MidiMonitor.
   final MidiMonitor monitor;
 
   /// rendered is the [signature] the clip's file was rendered from, so it is
   /// rendered again only when that changes.
   final String rendered;
 
-  /// shape is how it plays its sound: its envelope, filter, LFO and voices.
-  /// See instrument_shape.dart.
+  /// shape is its envelope, filter, LFO and voices: see
+  /// instrument_shape.dart.
   final InstrumentShape shape;
 
-  /// quantise and swing are its feel as it plays, as the prototype's Note
-  /// clips card: how far (0 to 1) each note is pulled onto the sixteenth
-  /// grid, and how far every second sixteenth is pushed late (at 1, a third
-  /// of a step). The notes themselves are left as drawn.
+  /// quantise and swing are its feel as it plays: how far (0 to 1) each note
+  /// is pulled onto the sixteenth grid, and how far every second sixteenth is
+  /// pushed late (1 is a third of a step). The notes stay as drawn.
   final double quantise, swing;
 
   /// patch is the synth patch it plays where its sound is
   /// [InstrumentSound.patch]: the modules on the canvas wired to it.
   final SynthPatch? patch;
 
-  /// score is the score part its notes are made from, as
-  /// "scoreId/partId" (see music_score.dart), or "" for notes of its own.
-  /// Made from a score, its notes are the score's: edited there, not here.
+  /// score is the score part its notes come from, as "scoreId/partId" (see
+  /// music_score.dart), or "" for its own. A score's notes are edited there.
   final String score;
 
   bool get fromScore => score.isNotEmpty;
@@ -339,11 +329,10 @@ class InstrumentPart {
   /// slices are what it plays where its sound is [InstrumentSound.slices].
   final SliceKit? slices;
 
-  /// highKey is the keyboard's top key.
   int get highKey => lowKey + keys - 1;
 
-  /// length is how long the part plays: to the end of its last note, and
-  /// the release after it.
+  /// length is how long the part plays: to its last note's end plus the
+  /// release.
   double get length => notes.isEmpty
       ? 0
       : notes.map((n) => n.end).reduce(math.max) + releaseTail;
@@ -351,8 +340,8 @@ class InstrumentPart {
   /// releaseTail is how long a note is let ring after its end.
   static const double releaseTail = 1.5;
 
-  /// name is the sound's name: its General MIDI name in the bank, or the
-  /// built-in piano.
+  /// name is the sound's General MIDI name in the bank, or the built-in
+  /// piano.
   String get name => sound == InstrumentSound.slices
       ? "Slices"
       : sound == InstrumentSound.builtin
@@ -366,9 +355,9 @@ class InstrumentPart {
               ? "Drum kit"
               : gmPrograms[program.clamp(0, 127)];
 
-  /// signature is a short hash of what the part sounds like: the same
-  /// signature is the same file. Worked out once per part (parts never
-  /// change): every edit asks whether each part needs playing again.
+  /// signature is a short hash of how the part sounds: the same signature is
+  /// the same file. Cached per part (parts never change), since every edit
+  /// asks whether each part needs playing again.
   String get signature => _signatures[this] ??= _sign();
 
   static final Expando<String> _signatures = Expando();
@@ -385,28 +374,28 @@ class InstrumentPart {
       for (var e in effects)
         if (e.on) e.toString(),
       if (controls.isNotEmpty) controlsToJson(controls),
-      // As it is by default, nothing: a part from before keeps its file.
+      // Nothing by default, so a part saved without a shape keeps its file.
       if (!shape.plain) shape.toJson(),
       if (grooved) "groove $quantise $swing",
     ]);
     return sha256.convert(utf8.encode(text)).toString().substring(0, 16);
   }
 
-  /// signatureAt is [signature] at a tempo of [secondsPerBeat] a beat: an
-  /// arpeggiator's steps follow the tempo, so its part sounds different at
-  /// another. Without one, the tempo changes nothing.
+  /// signatureAt is [signature] at [secondsPerBeat]: an arpeggiator's steps
+  /// follow the tempo, so its part sounds different at another. Without one
+  /// the tempo changes nothing.
   String signatureAt(double secondsPerBeat) =>
       arpeggiatorOf(effects) == null && !grooved
           ? signature
           : "$signature@${secondsPerBeat.toStringAsFixed(4)}";
 
-  /// needsPlayingAt is whether the part's file is not this part's at a
-  /// tempo of [secondsPerBeat] a beat (see [signatureAt]).
+  /// needsPlayingAt is whether the part's file is stale at [secondsPerBeat]
+  /// (see [signatureAt]).
   bool needsPlayingAt(double secondsPerBeat) =>
       notes.isNotEmpty && rendered != signatureAt(secondsPerBeat);
 
-  /// played is the part as its instrument plays it: its notes through its
-  /// effects, at [secondsPerBeat] a beat.
+  /// played is the part as heard: its notes through its effects, at
+  /// [secondsPerBeat].
   InstrumentPart played(double secondsPerBeat) {
     var heard = groovedNotes(notesHeard(notes), secondsPerBeat,
         quantise: quantise, swing: swing);
@@ -521,10 +510,9 @@ class InstrumentPart {
       );
 }
 
-/// groovedNotes is [notes] (in seconds, at [secondsPerBeat] a beat) with a
-/// feel: each pulled [quantise] of the way onto the nearest sixteenth, and
-/// those on every second sixteenth pushed [swing] of a third of a step late.
-/// Each keeps its length; with neither, [notes] as they are.
+/// groovedNotes is [notes] (in seconds) with a feel: each pulled
+/// [quantise] of the way onto the nearest sixteenth, and every second
+/// sixteenth pushed [swing] of a third of a step late. Lengths are kept.
 List<MidiNote> groovedNotes(List<MidiNote> notes, double secondsPerBeat,
     {double quantise = 0, double swing = 0}) {
   if (notes.isEmpty || (quantise <= 0 && swing <= 0)) return notes;
@@ -535,7 +523,7 @@ List<MidiNote> groovedNotes(List<MidiNote> notes, double secondsPerBeat,
       () {
         var step = (n.start / grid).round();
         var start = n.start + (step * grid - n.start) * quantise;
-        // Swung only what sits on an off-beat sixteenth once pulled in.
+        // Swing only what sits on an off-beat sixteenth once pulled in.
         if (swing > 0 && step.isOdd && (start - step * grid).abs() < grid / 4) {
           start += swing * grid / 3;
         }
@@ -547,9 +535,8 @@ List<MidiNote> groovedNotes(List<MidiNote> notes, double secondsPerBeat,
 /// noInput is a MIDI channel's input when it takes none.
 const noInput = "none";
 
-/// MidiMonitor is when a MIDI channel plays what comes in, as Ableton's
-/// Monitor: always, only while it is armed, or never -- its clips and its
-/// part alone.
+/// MidiMonitor is when a MIDI channel plays live input, as Ableton's
+/// Monitor: always, only while armed, or never (its clips and part alone).
 enum MidiMonitor {
   input("In", "Always plays what comes in"),
   auto("Auto", "Plays what comes in while it is armed"),
@@ -570,7 +557,6 @@ const keyboards = <(String, int, int)>[
   ("88 keys, a piano", 21, 88),
 ];
 
-/// isBlackKey is whether [key] is a black key.
 bool isBlackKey(int key) => const {1, 3, 6, 8, 10}.contains(key % 12);
 
 /// gmPrograms are General MIDI's 128 sounds, by program number.
@@ -705,9 +691,9 @@ const gmPrograms = [
   "Gunshot",
 ];
 
-/// MidiControl is one of the controllers a part can carry besides its
-/// notes, as a curve under them in the piano roll -- each a MIDI controller,
-/// or pitch bend, which MIDI keeps apart.
+/// MidiControl is a controller a part carries besides its notes, drawn as
+/// a curve in the piano roll: a MIDI controller, or pitch bend, which MIDI
+/// keeps apart.
 enum MidiControl {
   expression("Expression", 11, 1),
   modulation("Modulation", 1, 0),
@@ -721,8 +707,8 @@ enum MidiControl {
   /// cc is its MIDI controller number; -1 for pitch bend.
   final int cc;
 
-  /// rest is where it sits when nothing moves it, nought to one: pitch
-  /// bend and pan in the middle, volume at General MIDI's hundred.
+  /// rest is its value when nothing moves it, nought to one: pitch bend and
+  /// pan in the middle, volume at General MIDI's hundred.
   final double rest;
   const MidiControl(this.label, this.cc, this.rest);
 
@@ -730,13 +716,12 @@ enum MidiControl {
       values.where((c) => c.cc == cc).firstOrNull;
 }
 
-/// ControlPoint is a point on a controller's curve: when, in the part's
-/// time -- seconds for a part, beats for a clip -- and the value there,
-/// nought to one. Between two points the value goes in a straight line.
+/// ControlPoint is a point on a controller curve: time (seconds in a part,
+/// beats in a clip) and value, nought to one. Straight lines between.
 typedef ControlPoint = (double, double);
 
-/// controlAt is [points]' value at [t]: the first's before it, the last's
-/// after it, a straight line between -- or [rest] with no points at all.
+/// controlAt is [points]' value at [t]: held flat before the first and
+/// after the last, or [rest] with no points.
 double controlAt(List<ControlPoint> points, double t, double rest) {
   if (points.isEmpty) return rest;
   if (t <= points.first.$1) return points.first.$2;
@@ -751,9 +736,8 @@ double controlAt(List<ControlPoint> points, double t, double rest) {
 }
 
 /// ControlCursor reads [points] as controlAt does, for times that only go
-/// on -- a part rendered from its start -- from where it last was rather
-/// than from the curve's start each time (Ken's systems review, 2026-11-08:
-/// a long take's mod wheel was read from its first point at every block).
+/// forward (a part rendered from its start), from where it last was rather
+/// than the curve's start, so a long take is not rescanned every block.
 class ControlCursor {
   final List<ControlPoint> points;
   final double rest;

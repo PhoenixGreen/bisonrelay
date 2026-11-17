@@ -4,9 +4,8 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // character_touchup_panel.dart is the Character Studio's Touch up: the body
-// shaped by hand, and the skin and clothes painted, with a brush dragged
-// over the character on the stage, where the sliders and decals do not
-// reach. See character_sculpt.dart.
+// shaped and the skin and clothes painted with a brush dragged over the
+// character, where sliders and decals do not reach (character_sculpt.dart).
 
 /// touchUpPartId is the list's id for Touch up.
 const String touchUpPartId = "touchup";
@@ -20,8 +19,7 @@ enum TouchMode {
   const TouchMode(this.label);
 }
 
-/// TouchBrush is the brush the next stroke is drawn with. Not kept: each
-/// stroke keeps its own.
+/// TouchBrush is the next stroke's brush; each stroke keeps its own.
 class TouchBrush {
   final TouchMode mode;
   final SculptTool tool;
@@ -31,7 +29,6 @@ class TouchBrush {
   /// how far a shaping stroke goes, nought to one.
   final double size, strength;
 
-  /// colour, opacity and softness are a paint stroke's.
   final int colour;
   final double opacity, softness;
   final bool mirror;
@@ -72,9 +69,8 @@ class TouchBrush {
       );
 }
 
-/// paintColours are the paints offered: skin tones for blush and shading,
-/// lip and eye colours, ink for tattoos and markings, and bright face
-/// paint.
+/// paintColours are the paints offered: skin tones, lip and eye colours,
+/// ink for tattoos and markings, and bright face paint.
 const List<int> paintColours = [
   0x1b1a22, 0x3d2a24, 0x7a4a3a, 0xc98a72, 0xe8b4a0, 0xf4f1ea, //
   0x9c3a32, 0xd0506a, 0xe88aa8, 0x6a3d6e, 0x263552, 0x3a7ac0,

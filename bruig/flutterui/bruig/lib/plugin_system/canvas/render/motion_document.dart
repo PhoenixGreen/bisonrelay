@@ -27,9 +27,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
     show pathPointsOf, wholeLoopOf;
 
-// motion_document.dart joins clips to a document: where every placed clip in
-// the scene plays, worked out once per scene, and an element's pose with its
-// clips' moves on top of any legacy keyframe track it kept (see
+// motion_document.dart joins clips to a document: where every placed clip
+// in the scene plays, worked out once per scene, and an element's pose with
+// its clips' moves on top of any legacy keyframe track it kept (see
 // model/motion_convert.dart). See motion.dart and motion_pose.dart.
 
 /// _times keeps each scene's resolved placements, by its list of
@@ -38,7 +38,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
 final Expando<(int, int, Object, Object?, MotionTimes)> _times =
     Expando("motionTimes");
 
-/// motionTimesOf is where every placed clip among [doc]'s elements plays --
+/// motionTimesOf is where every placed clip among [doc]'s elements plays,
 /// and the master's, which play under the scene.
 MotionTimes motionTimesOf(CanvasDocument doc) {
   var elements = doc.elements;
@@ -64,11 +64,10 @@ MotionTimes motionTimesOf(CanvasDocument doc) {
   return times;
 }
 
-/// masterTimesOf is where the master's own clips play, under a run of
-/// scenes: on the run's clock, as the master is drawn (see paintCanvasDocument)
-/// -- the run's length its end, its own markers its markers -- not on the
-/// scene's (Ken's systems review, 2026-11-08). Null where the master is not
-/// drawn on that clock: no scenes, a book, or the master being edited.
+/// masterTimesOf is where the master's own clips play under a run of
+/// scenes: on the run's clock (its length the end, its markers the master's
+/// own), as paintCanvasDocument draws it, not the scene's. Null where the
+/// master is not on that clock: no scenes, a book, or the master edited.
 MotionTimes? masterTimesOf(CanvasDocument doc) {
   var master = doc.masterScene;
   if (master == null || doc.editingMaster || !doc.hasScenes || doc.isPages) {
@@ -113,9 +112,8 @@ MotionTimes _timesFor(CanvasDocument doc, CanvasElement e) {
 }
 
 /// placedPlaying is whether a placement of clip [clipId] on [e]'s timeline
-/// is playing on [frame] -- the playhead inside its span, its pins followed
-/// -- for its slot to light as a launched one does (Ken, 2026-11-10: the
-/// title dropping in, its slot never showed it playing).
+/// is playing on [frame] (the playhead inside its span, its pins followed),
+/// so its slot lights as a launched one does.
 bool placedPlaying(
     CanvasDocument doc, CanvasElement e, String clipId, int frame) {
   var placed = [
@@ -133,16 +131,14 @@ bool placedPlaying(
   return false;
 }
 
-/// settledFrameOf is the frame [doc] opens on: everything arrived, by the
-/// clips that play its arrivals.
+/// settledFrameOf is the frame [doc] opens on: everything arrived.
 int settledFrameOf(CanvasDocument doc) {
   var last = 0;
   var times = motionTimesOf(doc);
   var rate = math.max(1, doc.frameRate);
   for (var e in doc.elements) {
-    // A Code panel has arrived once it is typed in, and its Run panel once
-    // it has run (when the typing ends, or as the scene starts): a page or
-    // a book shows the code whole, and what it made.
+    // A Code panel has arrived once typed in, and its Run panel once it has
+    // run: a page or a book shows the code whole, and what it made.
     if (e is CodeElement && e.typing.on) {
       last = math.max(last, (codePlan(e).end * rate).ceil());
     }
@@ -164,13 +160,11 @@ int settledFrameOf(CanvasDocument doc) {
   return last.clamp(0, math.max(0, doc.frames - 1)).toInt();
 }
 
-/// boxOf is [e]'s box as it is set.
 Rect boxOf(CanvasElement e) => Rect.fromLTWH(e.x, e.y, e.width, e.height);
 
 /// motionSceneOf is what places are worked out against in [doc]: its page,
-/// its elements' boxes, and -- for "on" -- where each is drawn on [frame],
-/// with what it plays from its slots in [live] (Ken's systems review,
-/// 2026-11-08: "on" a launched element went where its timeline had it).
+/// its elements' boxes, and, for "on", where each is drawn on [frame],
+/// including what it plays from its slots in [live].
 MotionScene motionSceneOf(CanvasDocument doc, int frame,
         {int depth = 0, LiveMotion? live}) =>
     MotionScene(
@@ -196,9 +190,8 @@ MotionScene motionSceneOf(CanvasDocument doc, int frame,
             },
     );
 
-/// motionPoseIn is what [e]'s placed clips make of it on [frame] of [doc]
-/// -- [live] what it plays from its slots, and [all] what everything does,
-/// for a place "on" another.
+/// motionPoseIn is what [e]'s placed clips make of it on [frame] of [doc];
+/// [live] is what it plays from its slots, [all] what everything does.
 MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
     {MotionLive? live, double clock = 0, int depth = 0, LiveMotion? all}) {
   var motion = e.base.motion;
@@ -211,32 +204,28 @@ MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
       replaces: motion.clips.any((c) => c.kind == MotionKind.camera));
 }
 
-/// LiveMotion is what each element is playing from its slots at this moment,
-/// on [clock] (see ui/motion/motion_player.dart). Handed to the renderer by whoever
-/// runs it; an export has nothing playing and is drawn from the timeline.
+/// LiveMotion is what each element plays from its slots now, on [clock]
+/// (motion_player.dart). An export plays nothing, drawn from the timeline.
 abstract class LiveMotion {
   double get clock;
 
-  /// running is how long the game has been going, in seconds -- or null,
-  /// not in a game. What moves for ever (a Wiggle, an Oscillate, a Follow
-  /// path's laps, an LFO) goes by it in a game, rather than by the
-  /// timeline's frame: a level plays on through a stop on its timeline and
-  /// past its end, and its wind platforms with it (see _seconds).
+  /// running is how long the game has been going, in seconds, or null
+  /// outside a game. What moves for ever (a Wiggle, a Follow path's laps,
+  /// an LFO) goes by it in a game rather than by the timeline's frame: a
+  /// level plays on through a stop on its timeline and past its end.
   double? get running;
 
-  /// pointer is where the pointer is over the page, in its coordinates, for
-  /// a Look at that faces it -- or null, off the page, or in an export.
+  /// pointer is where the pointer is over the page, for a Look at that
+  /// faces it; null off the page, or in an export.
   Offset? get pointer;
 
-  /// of is what [element] is playing from its slots, or null for an
-  /// element on its timeline.
+  /// of is what [element] plays from its slots, or null if on its timeline.
   MotionLive? of(String element);
 }
 
-/// MotionPreview is what plays live, with one element's motion chain shown
-/// as it stands at one join -- its first [upto] pose devices -- for the
-/// Chain's "Preview from here". Handed to the stage as its LiveMotion; an
-/// export has none, and draws every chain whole.
+/// MotionPreview is what plays live, with one element's motion chain as it
+/// stands at one join (its first [upto] pose devices), for the Chain's
+/// "Preview from here". An export has none, and draws every chain whole.
 class MotionPreview implements LiveMotion {
   final LiveMotion? playing;
   final String element;
@@ -257,19 +246,15 @@ class MotionPreview implements LiveMotion {
   MotionLive? of(String element) => playing?.of(element);
 }
 
-/// liveShifted is [live] seen [seconds] later (earlier, negative): what is
-/// playing the same, its clock moved. For asking where something live was a
-/// moment ago, as the frames before this one ask of the timeline.
+/// liveShifted is [live] seen [seconds] later (earlier, negative): the same
+/// plays, its clock moved. For asking where something live was a moment ago.
 LiveMotion liveShifted(LiveMotion live, double seconds) =>
     _ShiftedLive(live, seconds);
 
-/// liveForCopy is [live] as a copy of an element reused sees it (Ken,
-/// 2026-11-08: launched from their slots, the copies moved as one): each
-/// clip playing started [start] seconds later and going at [speed] -- the
-/// clock the same, each play's start moved so that what it has played is
-/// the copy's share of it, holding its first moment until its start.
-/// A clip played once has ended for the copy only when its own share of it
-/// has: its clips are read from [motion].
+/// liveForCopy is [live] as a copy of a reused element sees it, so launched
+/// copies do not move as one: each clip later by [start] and at [speed],
+/// holding its first moment until then. A one-shot ends for the copy only
+/// once its own share has; its clips are read from [motion].
 LiveMotion liveForCopy(
         LiveMotion live, double start, double speed, ElementMotion motion) =>
     start == 0 && speed == 1 ? live : _CopyLive(live, start, speed, motion);
@@ -303,8 +288,7 @@ class _CopyLive implements LiveMotion {
       if (p == null) return null;
       var played = math.max(0.0, now - p.start - start) * speed;
       var clip = motion.clip(p.clip);
-      // Ended for the element; for a copy that started later, only once it
-      // has played its own way through.
+      // Ended for the element; for a later copy, once through its own way.
       var ended = p.ended &&
           (clip == null ||
               clip.loop ||
@@ -318,8 +302,8 @@ class _CopyLive implements LiveMotion {
 }
 
 /// _CopyPlays is [live] as one copy of element [id] sees it: what the copy
-/// plays of its own, by [key] in [raw], laid over the element's, layer by
-/// layer -- an empty layer of the copy's is the element's.
+/// plays of its own, by [key] in [raw], laid over the element's layer by
+/// layer; an empty layer of the copy's is the element's.
 class _CopyPlays implements LiveMotion {
   final LiveMotion live, raw;
   final String id, key;
@@ -372,18 +356,12 @@ class _ShiftedLive implements LiveMotion {
   MotionLive? of(String element) => live.of(element);
 }
 
-/// poseWithMotion is [e]'s pose on [frame]: its track's, if it kept one, with
-/// its clips' moves on top -- from its slots where [live] has it off its
-/// timeline -- and then its pose devices', each asking the ones to its left
-/// (see motion_devices.dart). With [upto], only the first that many of its
-/// pose devices: the chain as it stands at that join. Without [doc] (a lone
-/// element drawn), its track alone.
-///
-/// [instance] is which of an element reused (see instances.dart) -- its
-/// place, start and size put on at its Instances device (rule 3); null for
-/// the element as it is placed, as one.
-///
-/// [frameRate] is the rate a lone element is drawn at, for its loop.
+/// poseWithMotion is [e]'s pose on [frame]: its track's, if kept, with its
+/// clips' moves on top (from its slots where [live] has it off its
+/// timeline), then its pose devices', each asking those to its left
+/// (motion_devices.dart); with [upto], only that many. Without [doc] (a lone
+/// element), its track alone. [instance] is which copy of a reused element
+/// (instances.dart), null for the element; [frameRate] a lone element's.
 Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
     {LiveMotion? live, int? upto, int? instance, int? frameRate}) {
   if (doc == null) {
@@ -411,7 +389,7 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
               doc: doc, spans: phaseSpansOf(e, doc)));
     }
   }
-  // Drawn at its Drawing's size -- a copy's own, where it has one.
+  // Drawn at its Drawing's size, a copy's own where it has one.
   var m = e.base.motion;
   var size = m.drawSize;
   if (m.instances case var set?
@@ -421,13 +399,11 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
   return size == 1 ? pose : pose.copyWith(scale: pose.scale * size);
 }
 
-/// stampsCopies is whether [e]'s copies can be drawn once and stamped at
-/// each place (InstanceSet.uniform): alike in their own values, and with
-/// nothing that works each one out from where it is or who it is -- a
-/// Wiggle each its own, a Look at, a Follow path, a Spring after another
-/// element, a clip's key at a place (off the page's edge, beside another),
-/// or a copy playing a clip of its own (Ken's systems review, 2026-11-08:
-/// stamped, every copy wiggled as one and a touched coin never popped).
+/// stampsCopies is whether [e]'s copies can be drawn once and stamped at each
+/// place (InstanceSet.uniform): alike in their own values, with nothing working
+/// each one out from where or who it is (a Wiggle each its own, a Look at, a
+/// Follow path, a Spring after another element, a key at a place, a copy
+/// playing a clip of its own). Stamped, those would all move as one.
 bool stampsCopies(CanvasElement e, LiveMotion? live) {
   var m = e.base.motion;
   var set = m.instances;
@@ -456,17 +432,15 @@ bool stampsCopies(CanvasElement e, LiveMotion? live) {
   return true;
 }
 
-/// _seconds is the time on [frame] for what moves for ever: in a game, how
-/// long the game has been going (see LiveMotion.running); otherwise the
-/// timeline's own.
+/// _seconds is the time on [frame] for what moves for ever: in a game, the
+/// game's time (LiveMotion.running); otherwise the timeline's.
 double _seconds(int frame, CanvasDocument doc, LiveMotion? live) =>
     live?.running ?? frame / math.max(1, doc.frameRate);
 
-/// phaseSpansOf is when [e]'s arrival, leaving and loop play, in seconds:
-/// what its devices' phase keys are timed by (MotionDevice.phaseKeys). The
-/// loop runs from its arrival's end to its leaving's start -- or where its
-/// own loop says -- one go round its own loop's cycle long, or two seconds.
-/// None where none of its devices has phase keys or plays in a clip.
+/// phaseSpansOf is when [e]'s arrival, leaving and loop play, in seconds,
+/// timing its devices' phase keys. The loop runs from the arrival's end to
+/// the leaving's start (or as its loop says), a cycle or two seconds long.
+/// None where no device has phase keys or plays in a clip.
 PhaseSpans phaseSpansOf(CanvasElement e, CanvasDocument? doc) {
   var m = e.base.motion;
   if (!m.devices.any((d) =>
@@ -536,11 +510,10 @@ bool movesAtAll(CanvasElement e) {
 }
 
 /// _withLoop is [pose] with [e]'s moving loop on it (see ElementLoop): its
-/// move and fade the pose's own, so what follows the element -- a Look at,
-/// a Spring, its trail, its box on the stage, a copy -- sees them; its turn
-/// and size about the loop's own pivot as channels the renderer turns it
-/// by. One motion path: the loop is not put on again as it is drawn. A
-/// copy's loop starts as much later as the copy does.
+/// move and fade the pose's own, so what follows the element (a Look at, a
+/// Spring, its trail, its stage box, a copy) sees them; its turn and size
+/// about the loop's pivot as channels the renderer turns it by. The loop is
+/// not put on again as it is drawn. A copy's loop starts as late as it does.
 Keyframe _withLoop(CanvasElement e, int frame, int rate, int last,
     Keyframe pose, int? instance) {
   var loop = wholeLoopOf(e);
@@ -569,8 +542,7 @@ Keyframe _withLoop(CanvasElement e, int frame, int rate, int last,
 }
 
 /// withOwnValues is [d] as copy [instance] of [set] has it: each knob it has
-/// a value of its own for (see deviceOwnKey) set to that. As it is for the
-/// element, or one placed once.
+/// its own value for (see deviceOwnKey) set to that.
 MotionDevice withOwnValues(MotionDevice d, InstanceSet? set, int? instance) {
   if (set == null || instance == null || instance < 0) return d;
   if (instance >= set.count) return d;
@@ -585,17 +557,16 @@ MotionDevice withOwnValues(MotionDevice d, InstanceSet? set, int? instance) {
   return out;
 }
 
-/// _pulled is [e]'s pose on [frame] after pose device [i] of [devices]:
-/// what the device makes of what those to its left give it -- asked, by a
-/// device that changes time, for another moment (rule 2).
+/// _pulled is [e]'s pose on [frame] after pose device [i] of [devices]: what
+/// the device makes of what those to its left give it, asked for another
+/// moment by a device that changes time.
 Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
     LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
   if (i < 0) return _clipPose(e, frame, doc, live);
-  // Kept for this document, where nothing plays live: a Spring asks for
-  // the sixteen frames before each it is asked for, a Squash and a Time
-  // the one before, and the next frame asks for nearly all of them again
-  // (Ken's systems review, 2026-11-08). Not where Follow sound reads a
-  // recording's shape from outside the document.
+  // Kept for this document, where nothing plays live: a Spring asks for the
+  // sixteen frames before each, a Squash and a Time the one before, and the
+  // next frame asks for nearly all of them again. Not where Follow sound
+  // reads a recording's shape from outside the document.
   if (live != null ||
       devices.any((d) => d.kind == MotionDeviceKind.followSound)) {
     return _pulledNow(e, frame, doc, live, devices, i, instance);
@@ -614,16 +585,15 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
 }
 
 /// _pulledKept is each element's poses worked out by _pulled, for the
-/// document and the chain they were worked out in: by copy, device and
-/// frame.
+/// document and chain they were worked out in: by copy, device and frame.
 final Expando<
         (CanvasDocument, List<MotionDevice>, Map<(int?, int, int), Keyframe>)>
     _pulledKept = Expando("pulled");
 
 Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
     LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
-  // Its knobs where its LFOs have them at this moment -- and, for one copy
-  // of an element reused, where that copy has its own (see instances.dart).
+  // Its knobs where its LFOs have them now, and, for one copy of a reused
+  // element, where that copy has its own (see instances.dart).
   var d = withOwnValues(
       motionModulated(
           devices[i], e.base.motion.devices, _seconds(frame, doc, live),
@@ -639,27 +609,26 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
       if (instance >= set.count) {
         return _pulled(e, frame, doc, live, devices, i - 1, null);
       }
-      // What is left of it is the same for every instance, asked at this
-      // one's own moment: later by its start -- holding its first frame
-      // before then, never wrapping round -- and at its own speed.
+      // What is left is the same for every instance, asked at this one's
+      // moment: later by its start (holding its first frame before then,
+      // never wrapping round) and at its own speed.
       var rate = math.max(1, doc.frameRate).toDouble();
       var t = frame / rate;
       var at = math.max(0.0, t - set.startOf(instance)) * set.speedOf(instance);
       // Live from its slots, on their own clock: each clip playing seen as
-      // this copy plays it -- later by its start, at its speed.
+      // this copy plays it, later by its start, at its speed.
       var shifted = live == null
           ? null
           : liveForCopy(live, set.startOf(instance), set.speedOf(instance),
               e.base.motion);
-      // And what this copy plays of its own -- a coin's pop when it alone is
-      // taken -- over the element's, layer by layer, on the real clock.
+      // And what this copy plays of its own (a coin's pop when it alone is
+      // taken) over the element's, layer by layer, on the real clock.
       var own = instanceKey(e.id, set.items[instance].id);
       if (live != null && shifted != null && live.of(own) != null) {
         shifted = _CopyPlays(shifted, live, e.id, own);
       }
-      // Its clips worked out from where this copy stands: a place such as
-      // "off the left edge" is past the page's edge from the copy, not
-      // from the element (Ken: Slide in left copies on the page).
+      // Its clips worked out from where this copy stands: "off the left
+      // edge" is past the page's edge from the copy, not from the element.
       var item = set.items[instance];
       var here = item.dx == 0 && item.dy == 0
           ? e
@@ -675,8 +644,8 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
     case MotionDeviceKind.time:
       var rate = math.max(1, doc.frameRate).toDouble();
       var t = frame / rate, tt = retimed(d, t);
-      // Continue: past its stretch, on at the speed it ended going -- its
-      // last two frames inside it, as what ends there may let go at once.
+      // Continue: past its stretch, on at the speed it ended going (its last
+      // two frames inside it, as what ends there may let go at once).
       var every = d.value("every");
       var last = (every * rate).round() - 1;
       if (d.value("loop").round() == 3 && tt * rate > last && last > 0) {
@@ -712,7 +681,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
       var t = _seconds(frame, doc, live);
       var f = d.value("speed"), a = d.value("amount");
-      // Each instance its own wiggle, when asked: rule 3.
+      // Each instance its own wiggle, when asked.
       var seed = d.value("seed").round() == 1 && (instance ?? -1) >= 0
           ? instance! * 7.31 + 1
           : 0.0;
@@ -794,8 +763,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
       var t = _seconds(frame, doc, live);
       var u = d.value("start") + t / d.value("lap");
       // Round again from the start, stopped at the end, or there and back:
-      // a bat over a chasm patrols it rather than leaping back to its start
-      // -- facing back the way it comes, where it turns with the path.
+      // a patrol, facing back the way it comes where it turns with the path.
       var loop = d.value("loop").round();
       var back = loop == 2 && u % 2 > 1;
       u = switch (loop) {
@@ -869,9 +837,8 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
   }
 }
 
-/// motionSoundPeaks is where Follow sound reads a recording's shape -- its
-/// loudness along it -- by asset: the editor's, which reads them as they are
-/// asked for. Null, as for a lone element drawn, follows nothing.
+/// motionSoundPeaks is where Follow sound reads a recording's loudness, by
+/// asset: the editor's. Null (a lone element drawn) follows nothing.
 Float32List? Function(String assetId)? motionSoundPeaks;
 
 /// _alongPath is the point [u] of the way along [points] (nought to one,
@@ -900,7 +867,6 @@ Float32List? Function(String assetId)? motionSoundPeaks;
 /// elements looking at each other would ask for ever.
 int _looking = 0;
 
-/// _centreOf is the middle of element [id] on [frame], as it moves.
 /// lookAtCamera is the target a Look at is given to face the camera.
 const lookAtCamera = "@camera";
 
@@ -908,9 +874,8 @@ const lookAtCamera = "@camera";
 /// is over the page (see LiveMotion.pointer).
 const lookAtPointer = "@pointer";
 
-/// PointerLive is nothing playing from its slots, with the pointer over
-/// the page: what the stage hands the renderer for a Look at the pointer --
-/// or, [running], a game going with nothing played from the slots.
+/// PointerLive is nothing playing from slots, with the pointer over the
+/// page, for a Look at the pointer; with [running], a game going.
 class PointerLive implements LiveMotion {
   @override
   final Offset? pointer;
@@ -925,9 +890,8 @@ class PointerLive implements LiveMotion {
   MotionLive? of(String element) => null;
 }
 
-/// facesPointer is whether anything in [doc] looks at the pointer: only
-/// then is the pointer handed to the renderer, and the stage drawn again
-/// as it moves.
+/// facesPointer is whether anything in [doc] looks at the pointer: only then is
+/// the pointer handed to the renderer, and the stage drawn again as it moves.
 bool facesPointer(CanvasDocument doc) => [
       ...doc.elements,
       ...?doc.masterScene?.elements,
@@ -936,13 +900,9 @@ bool facesPointer(CanvasDocument doc) => [
         d.kind == MotionDeviceKind.lookAt &&
         d.target == lookAtPointer));
 
-/// _cameraCentre is the middle of what the scene's camera shows on
-/// [frame], or of the page with none.
-/// _cameraCentre and _centreOf are where the camera looks, and where
-/// element [id] is, on [frame] -- what plays from slots ([live]) moving them
-/// too, so a Look at or a Spring after a launched element follows it where
-/// it is, not where its timeline would have it (Ken's systems review,
-/// 2026-11-08).
+/// _cameraCentre and _centreOf are where the camera looks (else the page's
+/// middle) and where element [id] is on [frame], moved by what plays from
+/// slots ([live]) too, so a Look at a launched element follows it.
 Offset? _cameraCentre(CanvasDocument doc, int frame, {LiveMotion? live}) {
   if (_looking > 3) return doc.size.rect.center;
   _looking++;
@@ -966,9 +926,9 @@ Offset? _centreOf(CanvasDocument doc, String id, int frame,
   }
 }
 
-/// motionSpeedAt is how fast [e] is going on [frame], in the page's pixels a
-/// second, as its chain stands after its first [upto] pose devices: for the
-/// meters between them. With it, the pose there.
+/// motionSpeedAt is how fast [e] is going on [frame], in page pixels a
+/// second, as its chain stands after its first [upto] pose devices (for the
+/// meters between them), with the pose there.
 (double, Keyframe) motionSpeedAt(CanvasElement e, int frame, CanvasDocument doc,
     {int? upto, LiveMotion? live}) {
   var rate = math.max(1, doc.frameRate).toDouble();
@@ -980,9 +940,8 @@ Offset? _centreOf(CanvasDocument doc, String id, int frame,
   return (math.sqrt(dx * dx + dy * dy) * rate, now);
 }
 
-/// motionModulated is [d] with what the modulators of [chain] add to its
-/// knobs [t] seconds in (see modulation.dart): its LFOs, and its followers
-/// of [doc]'s channels; as it is where none moves it.
+/// motionModulated is [d] with what [chain]'s modulators add to its knobs
+/// [t] seconds in (modulation.dart): LFOs and followers of [doc]'s channels.
 MotionDevice motionModulated(MotionDevice d, List<MotionDevice> chain, double t,
     {CanvasDocument? doc, PhaseSpans spans = PhaseSpans.none}) {
   // Its keyed settings as they are now, then moved by its modulators.
@@ -1022,8 +981,7 @@ MotionDevice motionModulated(MotionDevice d, List<MotionDevice> chain, double t,
   return next;
 }
 
-/// _followed is how loud follower [l]'s channel is [t] seconds into
-/// [doc], times its gain: nought to one.
+/// _followed is how loud follower [l]'s channel is at [t], times gain, 0..1.
 double _followed(MotionDevice l, double t, CanvasDocument? doc) {
   var peaks = motionSoundPeaks;
   if (doc == null || peaks == null || l.target.isEmpty) return 0;
@@ -1033,10 +991,9 @@ double _followed(MotionDevice l, double t, CanvasDocument? doc) {
       .clamp(0.0, 1.0);
 }
 
-/// retimed is the moment a Time device asks the devices to its left for,
-/// at [t] seconds: shifted, sped up or slowed, held to every few frames
-/// (as stop motion is), and looped -- cycled or there and back -- over its
-/// Every.
+/// retimed is the moment a Time device asks the devices to its left for, at
+/// [t] seconds: shifted, sped or slowed, held to every few frames (as stop
+/// motion is), and looped over its Every.
 double retimed(MotionDevice d, double t) {
   var tt = (t + d.value("offset")) * d.value("speed");
   var every = d.value("every");
@@ -1130,20 +1087,18 @@ extension MovedElement on CanvasElement {
 CameraElement? cameraOf(CanvasDocument doc) =>
     doc.elements.whereType<CameraElement>().where((c) => c.visible).firstOrNull;
 
-/// poseAimAt is how far [cam] is turned to its aim on [frame] by its keys,
-/// or null where they don't say.
+/// poseAimAt is how far [cam] is keyed to turn to its aim, or null.
 double? poseAimAt(CameraElement cam, int frame, CanvasDocument doc) =>
     poseWithMotion(cam, frame, doc).values["aim"];
 
 // The last aimed framing worked out: a frame asks for it more than once.
 ((CameraElement, int, CanvasDocument), (double, Offset))? _aimedLast;
 
-/// cameraFraming is how [cam] frames the page on [frame]: a zoom -- never
-/// less than one, so the page is always filled -- and the point it is
-/// centred on, held in far enough that the picture stays on the page. Its
-/// box's width is how much it shows; its clips move where it looks and how
-/// close: see CameraElement. Rolled, it comes in close enough that the
-/// turned frame's corners stay on the page too.
+/// cameraFraming is how [cam] frames the page on [frame]: a zoom (never
+/// under one, so the page is always filled) and the point it is centred on,
+/// held in far enough that the picture stays on the page. Its box's width is
+/// how much it shows (see CameraElement). Rolled, it comes in close enough
+/// that the turned frame's corners stay on the page too.
 (double, Offset) cameraFraming(CameraElement cam, int frame, CanvasDocument doc,
     {LiveMotion? live}) {
   var page = doc.size.rect;
@@ -1153,8 +1108,7 @@ double? poseAimAt(CameraElement cam, int frame, CanvasDocument doc) =>
       1.0, page.width / math.max(1.0, box.width) * math.max(0.01, pose.scale));
   var roll = cam.rotation + pose.rotate;
   var c = box.center + Offset(pose.dx, pose.dy);
-  // Turned towards part of a chart it aims at, by its keyed "aim" (all the
-  // way, unkeyed): camera_aim.dart.
+  // Turned to the part of a chart it aims at by its "aim" (camera_aim.dart).
   if (cam.aim.isNotEmpty) {
     var key = (cam, frame, doc);
     if (_aimedLast?.$1 == key) {
@@ -1187,8 +1141,7 @@ double cameraRollCover(double degrees, Size page) {
 }
 
 /// cameraHalfExtents are half the width and height, on the page, of what a
-/// camera [zoom] times close and rolled [degrees] takes in: its frame's
-/// turned box.
+/// camera [zoom] times close and rolled [degrees] takes in.
 (double, double) cameraHalfExtents(double zoom, double degrees, Size page) {
   var w = page.width / zoom, h = page.height / zoom;
   if (degrees % 360 == 0) return (w / 2, h / 2);
@@ -1198,8 +1151,7 @@ double cameraRollCover(double degrees, Size page) {
 }
 
 /// CameraLook is a camera's lens on one frame: its settings, with what its
-/// keyframes pin of them by name ("focus", "blur", "vignette"), and its
-/// roll. See CameraElement.
+/// keyframes pin by name ("focus", "blur", "vignette"), and its roll.
 class CameraLook {
   final double roll;
   final double focus;
@@ -1242,9 +1194,8 @@ CameraLook cameraLookAt(CameraElement cam, int frame, CanvasDocument doc,
 }
 
 /// parallaxed is how something at [depth] is framed through a camera [zoom]
-/// times close, centred on [focus], on a [page] with [strength] of
-/// parallax: the far closer to still -- less zoom, nearer the page's own
-/// middle -- the near more. The camera's own framing where flat.
+/// times close, centred on [focus], with [strength] of parallax: the far
+/// closer to still, the near more. The camera's own framing where flat.
 (double, Offset) parallaxed(
     double zoom, Offset focus, Rect page, double depth, double strength) {
   var k = (1 - strength * depth).clamp(0.05, 3.0);
@@ -1276,9 +1227,8 @@ Rect cameraFrame(CameraElement cam, int frame, CanvasDocument doc,
       seconds: frame / math.max(1, doc.frameRate));
 }
 
-/// cameraMostZoom is the closest [doc]'s camera ever comes: its frame, and
-/// the largest size any of its clips is keyed to -- one if it has none. For
-/// what is drawn ahead, to be sharp under it.
+/// cameraMostZoom is the closest [doc]'s camera ever comes (one if never
+/// closer), so what is drawn ahead is sharp under it.
 double cameraMostZoom(CanvasDocument doc) {
   var cam = cameraOf(doc);
   if (cam == null) return 1;
@@ -1292,9 +1242,9 @@ double cameraMostZoom(CanvasDocument doc) {
   return (math.max(1.0, base) * most).clamp(1.0, 8.0);
 }
 
-/// isStageScene is whether [doc]'s scene is played on a 3D stage -- its
-/// background's, or a Background element showing one: a Camera there lives
-/// in the scene rather than framing the page. See camera_3d.dart.
+/// isStageScene is whether [doc]'s scene is played on a 3D stage (its
+/// background's, or a Background element showing one): a Camera there
+/// lives in the scene rather than framing the page. See camera_3d.dart.
 bool isStageScene(CanvasDocument doc) =>
     doc.drawnBackground.isStage ||
     doc.elements.any((e) => e is BackgroundElement && e.isStage);

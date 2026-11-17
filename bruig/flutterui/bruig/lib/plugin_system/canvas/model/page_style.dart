@@ -7,12 +7,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 
-// page_style.dart is a whole page in one of the data styles (Ken,
-// 2026-11-17, the improvements report's fifth item): the charts and
-// tables, and the words around them -- headings in its heading face,
-// running words in its body face, small print in its quiet ink -- so one
-// click turns an infographic from Editorial to Broadcast. And a page's
-// data laid out in a few grids that fill it.
+// page_style.dart puts a whole page in one data style -- its charts and
+// tables, headings in the heading face, running words in the body face,
+// small print in the quiet ink -- so one click restyles an infographic. It
+// also lays a page's data out in a few grids that fill it.
 
 /// textInStyle is [t] in [s] by how big it is against the page's largest
 /// words, [largest]: a heading, running words, or small print.
@@ -27,9 +25,9 @@ TextElement textInStyle(TextElement t, DataStyle s, double largest) {
           color: small ? s.dim : s.ink));
 }
 
-/// pageInStyle is a page's [elements] in [s]: every chart and table in it
-/// (charts on their own ground where they had one), every text by its
-/// size. Anything else is left as it is.
+/// pageInStyle is a page's [elements] in [s]: every chart and table (charts
+/// on their own ground where they had one), every text by its size; the
+/// rest unchanged.
 List<CanvasElement> pageInStyle(List<CanvasElement> elements, DataStyle s) {
   var largest = elements
       .whereType<TextElement>()
@@ -61,8 +59,8 @@ enum PageLayout {
   const PageLayout(this.label);
 }
 
-/// pageLayoutRects is where [n] views go on a page [page] in [layout]: in
-/// [area] (below the page's heading, inside its margins), [gap] apart.
+/// pageLayoutRects is where [n] views go in [layout] within [area] (below
+/// the page's heading, inside its margins), [gap] apart.
 List<Rect> pageLayoutRects(int n, PageLayout layout, Rect area, double gap) {
   if (n <= 0) return const [];
   List<Rect> grid(int cols) {
@@ -151,17 +149,16 @@ List<Rect> reportLayoutRects(List<String> kinds, Rect area, double gap) {
   return out;
 }
 
-/// snapToBaseline is [r] with its edges on a baseline grid of [unit]: a
-/// page's parts line up, across and down.
+/// snapToBaseline is [r] with its edges on a baseline grid of [unit], so a
+/// page's parts line up.
 Rect snapToBaseline(Rect r, double unit) {
-  // Where it starts and how big it is, each snapped: views of the same
-  // size stay the same size.
+  // Start and size snapped separately: views of one size stay one size.
   double s(double v) => (v / unit).round() * unit;
   return Rect.fromLTWH(s(r.left), s(r.top), s(r.width), s(r.height));
 }
 
 /// layoutArea is where a page's data goes: inside margins a twentieth of
-/// its width, from [top] (below its heading) down.
+/// its width, from [top] down.
 Rect layoutArea(Size page, double top) {
   var margin = page.width * 0.05;
   var t = math.max(margin, top);

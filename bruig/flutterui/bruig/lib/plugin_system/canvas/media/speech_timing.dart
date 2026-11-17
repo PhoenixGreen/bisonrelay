@@ -3,17 +3,14 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
-// speech_timing.dart is where a take's words are, for an engine that does
-// not say: the voice's pauses are found and matched in order to the stops,
-// commas and beats written, and the words between are spread by length
-// across the time spoken. Length alone drifts (half a second ten words on)
-// because pauses are not words. Used for lip sync and Phrasing.
+// speech_timing.dart times a take's words for an engine that does not: the
+// voice's pauses are matched in order to written stops and beats, words
+// spread by length between them, as length alone drifts. For lip sync and
+// Phrasing.
 
-/// voicePauses is where the voice paused in [sound], at the mix rate: from
-/// and to where it speaks, and each pause between, in seconds. A pause is
-/// 60ms or more 20dB under its loud part -- the voice's own pauses are not
-/// silent, but a breath's noise or a room's, and how loud that is goes
-/// with how loud it speaks.
+/// voicePauses is where the voice starts, ends and pauses in [sound], in
+/// seconds: a pause is 60ms or more 20dB under its loud part, as breath
+/// and room noise follow how loud it speaks.
 ({double from, double to, List<(double, double)> pauses}) voicePauses(
     Float32List sound) {
   var db = _levels(sound);
@@ -32,7 +29,7 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
       if (start < 0) start = f;
       end = f + 1;
     } else if (start >= 0 && (f > last || f - end >= 2)) {
-      // A blip of 20ms or less within it is the pause still.
+      // A blip of 20ms or less within it is still the pause.
       if (end - start >= 6) pauses.add((start * 0.01, end * 0.01));
       start = -1;
     }
@@ -40,7 +37,7 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
   return (from: first * 0.01, to: (last + 1) * 0.01, pauses: pauses);
 }
 
-/// _levels is [sound]'s loudness, in dB, each 10ms of it at the mix rate.
+/// _levels is [sound]'s loudness in dB per 10ms, at the mix rate.
 List<double> _levels(Float32List sound) => [
       for (var at = 0; at + 480 <= sound.length; at += 480)
         () {
@@ -52,8 +49,8 @@ List<double> _levels(Float32List sound) => [
         }(),
     ];
 
-/// timeWords is [words] timed across [sound], at the mix rate, and the
-/// pause after each word the voice paused after. See the file comment.
+/// timeWords is [words] timed across [sound] (mix rate), and the pause
+/// after each word the voice paused after. See the file comment.
 ({List<TimedWord> words, Map<int, (double, double)> after}) timeWords(
     Float32List sound, List<String> words) {
   var (:from, :to, :pauses) = voicePauses(sound);
@@ -67,8 +64,8 @@ List<double> _levels(Float32List sound) => [
     last = b;
   }
   spoken += to - last;
-  // A word as long as its letters; a stop, a comma and a beat where the
-  // voice should pause -- a beat most of all.
+  // A word weighs its letters; a stop, comma or beat where the voice
+  // should pause, a beat most.
   var weights = [
     for (var w in words)
       w.replaceAll(RegExp(r"[^\p{L}\p{N}]", unicode: true), "").length + 1.0
@@ -92,9 +89,8 @@ List<double> _levels(Float32List sound) => [
                   : 0.7
         ),
   ];
-  // Matched in order, the cheapest way: a stop far from its pause costs,
-  // as does a stop the voice did not pause at, by how much it should
-  // have, and a pause nothing written is at, by its length.
+  // Matched in order, cheapest: a stop far from its pause costs, as do an
+  // unpaused stop and an unwritten pause.
   var n = stops.length, m = pauses.length;
   var cost = List.generate(n + 1, (_) => List.filled(m + 1, double.infinity));
   var back = List.generate(n + 1, (_) => List.filled(m + 1, 0));
@@ -129,8 +125,8 @@ List<double> _levels(Float32List sound) => [
         matched[stops[--i].$1] = --j;
     }
   }
-  // The real time a moment of the time spoken is: after each pause before
-  // it -- and the one at it, for a word starting there.
+  // The real time of a moment of spoken time: after each pause before it,
+  // and the one at it for a word starting there.
   double real(double t, {required bool starting}) {
     var r = from + t;
     for (var (k, p) in at.indexed) {
@@ -141,7 +137,7 @@ List<double> _levels(Float32List sound) => [
     return r;
   }
 
-  // The words between two pauses matched spread across the time spoken
+  // Words between two matched pauses are spread across the spoken time
   // between them.
   var timed = <TimedWord>[];
   var first = 0;
@@ -173,9 +169,8 @@ List<double> _levels(Float32List sound) => [
   );
 }
 
-/// quietestNear is the quietest moment of [sound], at the mix rate, within
-/// [within] seconds of [at]: where a beat goes that the voice did not
-/// pause for, between two words rather than in one.
+/// quietestNear is the quietest moment of [sound] (mix rate) within
+/// [within] seconds of [at]: where an unpaused beat goes, between words.
 double quietestNear(Float32List sound, double at, {double within = 0.4}) {
   var db = _levels(sound);
   if (db.length < 3) return at.clamp(0, sound.length / 48000);

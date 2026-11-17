@@ -55,8 +55,7 @@ const _notColours = {
 /// _rgb is a colour's red, green and blue, without its opacity.
 int _rgb(int argb) => argb & 0xFFFFFF;
 
-/// _looksLikeColour is whether [v] could be a colour at all: an integer with
-/// some opacity in it.
+/// _looksLikeColour is whether [v] could be a colour: an int with opacity.
 bool _looksLikeColour(Object? v) =>
     v is int && v >= 0x01000000 && v <= 0xFFFFFFFF;
 

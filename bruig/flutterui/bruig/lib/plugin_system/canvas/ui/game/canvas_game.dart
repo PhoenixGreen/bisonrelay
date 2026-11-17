@@ -22,18 +22,12 @@ import 'package:gamepads/gamepads.dart';
 // canvas_game.dart is a canvas played as a game: keys and controllers read
 // as the document's actions, each played element moved by them a step at a
 // time (falling and landing on what is solid), the view following the
-// player, and the canvas as it now looks, for the stage to draw.
-//
-// What is not played moves as its clips move it -- placed on the timeline,
-// or launched live from its slots (see motion_player.dart) -- and is solid,
-// touched and pressed where they have it.
-//
-// Nothing here is written into the document: stopped, everything is where
-// it was put.
+// player. What is not played moves as its clips move it and is solid,
+// touched and pressed where set. Nothing is written into the document:
+// stopped, everything is where it was put.
 
-/// GameInput is what is held down: keys by id, and each controller's
-/// inputs. Controllers go to the players in the order they were first used,
-/// one each; any more go to the first player.
+/// GameInput is what is held: keys by id, and controllers, handed to the
+/// players in first-used order; any extra go to the first.
 class GameInput {
   final Set<int> keys = {};
   final Set<String> _was = {};
@@ -50,10 +44,9 @@ class GameInput {
           if ((i < players ? i + 1 : 1) == player) ...?_pads[id],
       };
 
-  /// pad is what the first player's controllers hold down.
   Set<PadInput> get pad => padOf(1);
 
-  /// down is whether [action] is held -- by [player]'s controller, or a key.
+  /// down is whether [action] is held, by [player]'s controller or a key.
   bool down(ControlAction action, [int player = 1]) =>
       action.keys.any(keys.contains) ||
       (action.pad.isNotEmpty && action.pad.any(padOf(player).contains));
@@ -140,9 +133,8 @@ class GameInput {
   }
 }
 
-/// GameBody is a played element as it is now: how far it has moved from
-/// where it was put, how fast it is going, whether it stands on something,
-/// and which way it faces.
+/// GameBody is a played element now: moved how far, how fast, whether
+/// standing on something, and which way it faces.
 class GameBody {
   Offset at = Offset.zero;
   Offset velocity = Offset.zero;
@@ -153,9 +145,8 @@ class GameBody {
   /// moved); a character turns to it.
   Offset heading = Offset.zero;
 
-  /// move3d is the name of the motion a 3D character is moving with (null,
-  /// standing), and [since] the game's clock when it began, so it runs on
-  /// unbroken.
+  /// move3d is the motion a 3D character is moving with (null, standing),
+  /// and [since] the game's clock when it began, so it runs on unbroken.
   String? move3d;
   double since = 0;
 
@@ -165,9 +156,8 @@ class GameBody {
   double struckAt = 0;
 
   /// leapAt is the game's clock when a 3D player was told to jump, while it
-  /// crouches before it leaves the ground (see leapWindup); null otherwise.
-  /// fellAt is when it began coming down, and landedAt when it touched
-  /// down: for its Fall and Land.
+  /// crouches before leaving the ground (see leapWindup); fellAt when it
+  /// began coming down, landedAt when it touched down: for its Fall and Land.
   double? leapAt;
   double fellAt = 0, landedAt = -1e9;
 
@@ -176,7 +166,6 @@ class GameBody {
       strike != null && clock - struckAt < strikeSeconds(strike!);
 }
 
-/// strikeSeconds is how long a strike takes, once through.
 double strikeSeconds(String strike) =>
     strike == "Kick" ? kickSeconds : punchSeconds;
 
@@ -184,22 +173,20 @@ double strikeSeconds(String strike) =>
 /// points: a kick further than a punch.
 double strikeReach(String strike) => strike == "Kick" ? 56 : 36;
 
-/// GameRun is a game going.
 class GameRun extends ChangeNotifier {
   final GameInput input = GameInput();
   final Map<String, GameBody> bodies = {};
   Offset camera = Offset.zero;
 
   /// viewZoom is how close the view is, and viewFocus the point on the page
-  /// it is centred on: following the player as close as its PlaySpec.zoom
-  /// says, drawn back as it moves (PlaySpec.zoomOut), each eased. Null
-  /// before anything is followed.
+  /// it centres on: following the player as close as PlaySpec.zoom says,
+  /// drawn back as it moves (PlaySpec.zoomOut), each eased. Null before
+  /// anything is followed.
   double viewZoom = 1;
   Offset? viewFocus;
 
-  /// framing is how the view frames the page, as the stage frames by a
-  /// scene's camera (see sceneFraming): a zoom and the point it centres on,
-  /// or null for the page as it is.
+  /// framing is the view's zoom and centre, as a scene's camera frames (see
+  /// sceneFraming), or null for the page as it is.
   (double, Offset)? get framing => switch (viewFocus) {
         var f? when viewZoom > 1.001 => (viewZoom, f),
         _ => null,
@@ -240,9 +227,8 @@ class GameRun extends ChangeNotifier {
 
   GameBody _body(String id) => bodies.putIfAbsent(id, GameBody.new);
 
-  /// _ground is each tile map's ground as last worked out (its layers, where
-  /// it stood, and the boxes), kept while neither changes rather than redone
-  /// sixty times a second.
+  /// _ground is each tile map's last ground (layers, place, boxes), kept
+  /// while unchanged rather than redone sixty times a second.
   final Map<String, (List<TileLayer>, Rect, List<Rect>)> _ground = {};
 
   List<Rect> _groundOf(TileMapElement map, Rect box) {
@@ -255,19 +241,17 @@ class GameRun extends ChangeNotifier {
     return boxes;
   }
 
-  /// _live is what plays live from the slots on this step (see
-  /// motion_player.dart), or null.
+  /// _live is what the slots play live on this step, or null.
   LiveMotion? _live;
 
-  /// _boxOf is where [e] is on [frame]: moved by its clips -- on the
-  /// timeline, or live -- as well as its keyframes.
+  /// _boxOf is where [e] is on [frame]: moved by its clips (on the timeline,
+  /// or live) as well as its keyframes.
   Rect _boxOf(CanvasDocument doc, CanvasElement e, int frame) => !movesAtAll(e)
       ? e.boundsAt(frame)
       : e.movedBoundsAt(frame, doc, live: _live);
 
-  /// _boxesOf is where [e] is on [frame], by name: its own box, or -- an
-  /// element reused -- each instance's not gone (see instanceKey), each
-  /// a pickup, a hazard or a platform of its own.
+  /// _boxesOf is where [e] is on [frame], by name: its box, or each of a
+  /// reused element's instances not gone (see instanceKey).
   Map<String, Rect> _boxesOf(CanvasDocument doc, CanvasElement e, int frame) {
     var set = e.base.motion.instances;
     if (set == null) return {e.id: _boxOf(doc, e, frame)};
@@ -283,8 +267,8 @@ class GameRun extends ChangeNotifier {
   /// as not there: a blinking laser at its dim, a coin not yet faded up.
   static const fadedOut = 0.2;
 
-  /// _presentOf is _boxesOf less each that its motion -- clips, keyframes, a
-  /// loop -- has faded below [fadedOut]: what can be touched or hit. Only a
+  /// _presentOf is _boxesOf less each that its motion (clips, keyframes, a
+  /// loop) has faded below [fadedOut]: what can be touched or hit. Only a
   /// fade the element moves by counts: one left at opacity 0 on purpose (an
   /// unseen trap) is there still.
   Map<String, Rect> _presentOf(CanvasDocument doc, CanvasElement e, int frame) {
@@ -317,8 +301,8 @@ class GameRun extends ChangeNotifier {
     _live = live;
     if (!_started) _begin(doc);
     clock += dt;
-    // Each player's controls. One keyboard is shared: the first player's keys
-    // that another player has are that player's.
+    // Each player's controls. One keyboard is shared: the first player's
+    // keys that another player has are that player's.
     var players = doc.players;
     input.players = players.reduce(math.max);
     var claimed = {
@@ -354,9 +338,8 @@ class GameRun extends ChangeNotifier {
           ..._groundOf(e, _boxOf(doc, e, frame)),
     ];
     // A moving solid (a platform moved by keyframes or clips) carries what
-    // stands on it. On the timeline, only while it goes on a frame or two:
-    // not as it loops back to its start, or jumps. Live, on the slots' own
-    // clock, always.
+    // stands on it: on the timeline only while it moves on a frame or two,
+    // not as it loops back or jumps; live, on the slots' clock, always.
     var onward =
         _frameWas != null && frame >= _frameWas! && frame - _frameWas! <= 2;
     _frameWas = frame;
@@ -396,8 +379,8 @@ class GameRun extends ChangeNotifier {
             body.leapAt = clock;
           }
           if (body.leapAt case var at?) {
-            // Up after its crouch -- or at once, run off the edge as it
-            // crouched: a jump pressed at a ledge's end is still a jump.
+            // Up after its crouch, or at once if run off the edge mid-crouch: a
+            // jump pressed at a ledge's end is still a jump.
             if (!body.onGround || clock - at >= windup - 1e-9) {
               body.velocity = Offset(
                   body.velocity.dx, -math.sqrt(2 * spec.gravity * spec.jump));
@@ -416,7 +399,7 @@ class GameRun extends ChangeNotifier {
           break;
       }
       if (dx != 0) body.facing = dx.sign;
-      // A punch or a kick, one at a time (Ken, 2026-11-10).
+      // A punch or a kick, one at a time.
       if (spec.as == PlayAs.platformer || spec.as == PlayAs.topDown) {
         for (var (action, kind) in const [
           ("punch", "Punch"),
@@ -443,9 +426,8 @@ class GameRun extends ChangeNotifier {
         }
       }
     }
-    // The view follows the player (between the players, where there are
-    // more): across always, up and down only for a game seen from above; never
-    // left of where the canvas starts.
+    // The view follows the player(s): across always, up and down only seen
+    // from above; never left of the canvas's start.
     if (followed.isNotEmpty) {
       var f = followed.reduce((a, b) => a + b) / followed.length.toDouble();
       var topDown = doc.elements
@@ -491,8 +473,7 @@ class GameRun extends ChangeNotifier {
     }
   }
 
-  /// counts are where each of the game's counts has got to, by id; gone is
-  /// the pickups taken, by id.
+  /// counts are each game count's value, by id; gone the pickups taken.
   final Map<String, int> counts = {};
   final Set<String> gone = {};
 
@@ -510,8 +491,7 @@ class GameRun extends ChangeNotifier {
   /// they were put: a gate opened. Gone when the game stops.
   final Set<String> toggled = {};
 
-  /// shown is whether [e] is there in the game: as it was put, unless a
-  /// press has turned it.
+  /// shown is whether [e] is there in the game: as put, unless toggled.
   bool shown(CanvasElement e) => e.visible != toggled.contains(e.id);
 
   /// toggle shows [id] if it is hidden, and hides it if not.
@@ -549,11 +529,8 @@ class GameRun extends ChangeNotifier {
   int countOf(CanvasDocument doc, String id) =>
       counts[id] ?? doc.counts.where((c) => c.id == id).firstOrNull?.start ?? 0;
 
-  /// _begin starts the game from the beginning: every count at its start,
-  /// every pickup back, every player where it was put.
-  /// _frame eases the view toward the zoom [lead] asks for -- less as it
-  /// moves, across or in the air -- centred on [at], where it is on the
-  /// page: at once, the first time.
+  /// _frame eases the view toward [lead]'s zoom (less while moving), centred
+  /// on [at]; at once the first time.
   void _frame(PlaySpec lead, GameBody body, Offset at, double dt) {
     var moving = math.max(
         (body.velocity.dx.abs() / math.max(1.0, lead.speed)).clamp(0.0, 1.0),
@@ -574,6 +551,8 @@ class GameRun extends ChangeNotifier {
   /// counts at their starts, and everything taken, opened and hit put back.
   void startOver(CanvasDocument doc) => _begin(doc);
 
+  /// _begin starts the game from the beginning: every count at its start,
+  /// every pickup back, every player where it was put.
   void _begin(CanvasDocument doc) {
     _started = true;
     counts
@@ -595,9 +574,8 @@ class GameRun extends ChangeNotifier {
   /// at its [PlaySpec.hits], it is defeated.
   final Map<String, int> hitsTaken = {};
 
-  /// strikeArea is where [kind] thrown by a player at [box] reaches: in
-  /// front of it the way it faces (seen from above, the way it goes), a
-  /// punch at its chest, a kick lower and further.
+  /// strikeArea is where [kind] reaches from [box]: ahead the way it faces,
+  /// a punch chest high, a kick lower and further.
   static Rect strikeArea(Rect box, String kind, GameBody body,
       {bool topDown = false}) {
     var reach = strikeReach(kind);
@@ -616,9 +594,8 @@ class GameRun extends ChangeNotifier {
         : Rect.fromLTRB(box.center.dx, top, box.right + reach, bottom);
   }
 
-  /// _strike is [player] throwing [kind]: everything that can be hit in
-  /// its reach is -- each copy of one reused its own -- and what has taken
-  /// all the hits it takes is defeated.
+  /// _strike is [player] throwing [kind]: all in reach is hit (each reused
+  /// copy on its own), and what has taken all its hits is defeated.
   void _strike(CanvasDocument doc, int frame, CanvasElement player,
       GameBody body, String kind) {
     var area = strikeArea(player.boundsAt(frame).shift(body.at), kind, body,
@@ -717,8 +694,7 @@ class GameRun extends ChangeNotifier {
 
   Rect _touchOf(CanvasElement e, Rect box) => gameTouchArea(e, box);
 
-  /// _startsOnTouch is whether [e] has a clip that starts when a player
-  /// touches it.
+  /// _startsOnTouch is whether [e] has a clip started by a player's touch.
   static bool _startsOnTouch(CanvasElement e) => e.base.motion.clips
       .any((c) => c.triggers.any((t) => t.kind == ClipTriggerKind.touched));
 
@@ -793,17 +769,17 @@ class GameRun extends ChangeNotifier {
   }
 
   /// view is [doc] as the game has it now: each played element moved, a
-  /// sprite walking, standing or jumping the way it faces, everything but
-  /// the backgrounds seen from the camera, and the parallax moved with it.
+  /// sprite walking, standing or jumping the way it faces, everything but the
+  /// backgrounds seen from the camera, and the parallax moved with it.
   CanvasDocument view(CanvasDocument doc,
       {int frame = 0, bool Function(String id)? playing}) {
     var shifted = <CanvasElement>[];
     for (var e in doc.elements) {
-      // A pickup taken is gone until the game starts again -- once a clip
-      // it started (a coin's pop) has played.
+      // A pickup taken is gone until the game starts again, once a clip it
+      // started (a coin's pop) has played.
       if (gone.contains(e.id) && !(playing?.call(e.id) ?? false)) continue;
-      // An element reused: its instances taken are gone, the rest stay --
-      // each one taken until the clip its touch started has played.
+      // An element reused: its instances taken are gone, the rest stay,
+      // each taken one until its touch's clip has played.
       if (e.base.motion.instances case var set?
           when !(playing?.call(e.id) ?? false)) {
         var left = [
@@ -829,8 +805,7 @@ class GameRun extends ChangeNotifier {
       // Shown or hidden by a press.
       if (toggled.contains(e.id)) base = base.copyWith(visible: !e.visible);
       // A played element is the game's, not the timeline's: its keyframes
-      // and its clips' places on the timeline set aside. Its clips stay, to
-      // be launched live.
+      // and clips' timeline places set aside. Its clips stay, to launch live.
       if (body != null) {
         base = base.copyWith(
             clearTrack: true, motion: base.motion.copyWith(placed: const []));
@@ -854,8 +829,7 @@ class GameRun extends ChangeNotifier {
       out = out.withScene(out.at, out.scene.copyWith(background: b));
     }
     if (out.master case var m? when out.masterOn) {
-      // The HUD's own shown or hidden elements (a "You win!"), which are not
-      // seen from the camera.
+      // The HUD's toggled elements (a "You win!"), not seen by the camera.
       if (m.elements.any((e) => toggled.contains(e.id))) {
         m = m.copyWith(elements: [
           for (var e in m.elements)
@@ -905,9 +879,8 @@ class GameRun extends ChangeNotifier {
             : moving
                 ? named(["walk", "run", "move"])
                 : named(["idle", "stand"]));
-    // Turned the way it goes whether or not it was drawn with a way to face:
-    // a pack's figure, its frames all walking right, faces left by being
-    // mirrored.
+    // Turned the way it goes even if drawn one way: a pack's figure,
+    // walking right in its frames, faces left mirrored.
     return s.copyWith(
         action: action ?? s.action,
         cues: const [],
@@ -929,9 +902,9 @@ class GameRun extends ChangeNotifier {
         ..since = body.struckAt;
       return;
     }
-    // A jump as it goes: the crouch and the rise (Leap, from the press),
-    // the way down (Fall, from the top), and the knees taking the landing
-    // (Land) -- where it lands standing; landing running, it runs on.
+    // A jump as it goes: the crouch and rise (Leap, from the press), the
+    // way down (Fall, from the top), and the knees taking the landing
+    // (Land) where it lands standing; landing running, it runs on.
     var was = body.move3d;
     var rising = airborne && body.velocity.dy < 0;
     if (!airborne && (was == "Leap" || was == "Fall")) body.landedAt = clock;
@@ -956,14 +929,13 @@ class GameRun extends ChangeNotifier {
 
   /// _moving3d is 3D character [c] moving as [body] is, with the motion
   /// _move3dOf chose, its feet keeping up with the ground; turned side on the
-  /// way it goes, and in a game seen from above, its back to the reader going
-  /// up. Its scene's own motions give way to the game's; standing, it does
-  /// what it was made to.
+  /// way it goes, or, seen from above, its back to the reader going up. Its
+  /// scene's motions give way to the game's; standing, it does what it was
+  /// made to.
   Character3dElement _moving3d(
       Character3dElement c, GameBody body, int frameRate, int frame) {
     var h = body.heading;
-    // Its view's turn, in half turns: a quarter round puts its side to the
-    // reader.
+    // Its turn in half turns: a quarter round shows its side.
     var turn = h == Offset.zero
         ? c.turn
         : h.dy < 0 && h.dx == 0
@@ -989,8 +961,7 @@ class GameRun extends ChangeNotifier {
         MotionClip3d(
             kind: kind,
             start: start,
-            // A strike once through, as quick as it is; a landing as long
-            // as the knees take it.
+            // A strike once through; a landing as the knees take it.
             length: strike
                 ? strikeSeconds(kind)
                 : kind == "Land"
@@ -1020,9 +991,8 @@ class GameRun extends ChangeNotifier {
   }
 }
 
-/// GameEvent is something the game asks of the canvas: a sound element
-/// played from its start, another scene, an element pressed, the game
-/// started again, or ended.
+/// GameEvent is what the game asks of the canvas: a sound, another scene,
+/// an element pressed, a restart, or the end.
 class GameEvent {
   final String? sound;
 
@@ -1033,8 +1003,7 @@ class GameEvent {
   final bool restart;
   final String? press;
 
-  /// touched is an element a player has started to touch, whose clips
-  /// start on a touch.
+  /// touched is an element newly touched, whose clips start on a touch.
   final String? touched;
 
   /// hit is an element (or one copy of one reused, by its key) a player
@@ -1045,8 +1014,8 @@ class GameEvent {
   final (String, int)? counted;
   final bool stop;
 
-  /// soundFrom is where across the page [sound] is set off -- the instance
-  /// of an element reused that was touched -- or null for its own place.
+  /// soundFrom is where across the page [sound] is set off (the instance of
+  /// an element reused that was touched), or null for its own place.
   final double? soundFrom;
   const GameEvent(
       {this.sound,
@@ -1061,20 +1030,16 @@ class GameEvent {
       this.stop = false});
 }
 
-/// gameTouchArea is the part of [box] ([e]'s, where it is now) a game
-/// touches: a sprite's drawn part unless it is set to be touched all over;
-/// all of anything else.
+/// gameTouchArea is what of [box] a game touches: a sprite's drawn part,
+/// unless touched all over; all of anything else.
 Rect gameTouchArea(CanvasElement e, Rect box) =>
     e is SpriteElement && !e.base.play.touchWhole ? e.touchIn(box) : box;
 
-/// tileGround is [map]'s solid layers' tiles on [frame] as boxes on the
-/// canvas, only those inside the map's box. Each run of tiles along a row is
-/// one box, so a player walking along it never catches on a seam. A solid
-/// layer is taken to move with the rest of the map: its parallax is not
-/// followed.
-///
-/// [at] is where the map is, where it is not where its keyframes put it: as
-/// its clips have it.
+/// tileGround is [map]'s solid layers' tiles on [frame] as canvas boxes,
+/// only those inside the map's box. Each run of tiles along a row is one
+/// box, so a player never catches on a seam. A solid layer moves with the
+/// map: its parallax is not followed. [at] is where the map is, where its
+/// clips put it elsewhere than its keyframes.
 List<Rect> tileGround(TileMapElement map, int frame, {Rect? at}) {
   var rows = <int, Set<int>>{};
   var (c0, r0, c1, r1) = map.window;

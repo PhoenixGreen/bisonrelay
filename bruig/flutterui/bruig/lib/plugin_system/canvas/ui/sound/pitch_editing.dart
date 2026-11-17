@@ -18,29 +18,29 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
 // pitch_editing.dart is what the Pitch editor does to a channel's
-// recording: read its pitch once, find its notes, change them, and make
-// the recording again from the original with them -- a moment after the
-// last change, as the Phrasing editor shapes a take.
+// recording: read its pitch once, find its notes, change them, and remake
+// the recording from the original with them a moment after the last
+// change, as the Phrasing editor shapes a take.
 
 /// _tracks are recordings' pitch tracks as read, by asset: a MIDI note
 /// every 20ms, null where nothing is voiced.
 final Map<String, List<double?>> _tracks = {};
 final Set<String> _reading = {};
 
-/// _unread are the recordings whose pitch could not be read: said so,
-/// rather than "Reading its pitch…" for ever.
+/// _unread are the recordings whose pitch could not be read, so the editor
+/// says so rather than "Reading its pitch…" for ever.
 final Set<String> _unread = {};
 
 /// pitchTracksRead goes up as each recording's pitch is read, for an
-/// editor waiting on one to draw it.
+/// editor waiting to draw one.
 final ValueNotifier<int> pitchTracksRead = ValueNotifier(0);
 
-/// _renders are each controller's waits before making a recording again.
+/// _renders are each controller's waits before remaking a recording.
 final Expando<Timer> _renders = Expando("pitchRenders");
 
-/// _asSung are, by controller, the channels heard as sung -- the Pitch
-/// editor's Hear: As sung -- each with the recording made from its notes,
-/// to go back to.
+/// _asSung are, by controller, the channels heard as sung (the Pitch
+/// editor's Hear: As sung), each with the recording made from its notes to
+/// go back to.
 final Expando<Map<String, String>> _asSung = Expando("pitchAsSung");
 
 /// pitchTrackSeed puts [track] in for [assetId], as read: for tests.
@@ -48,16 +48,15 @@ final Expando<Map<String, String>> _asSung = Expando("pitchAsSung");
 void pitchTrackSeed(String assetId, List<double?> track) =>
     _tracks[assetId] = track;
 
-/// _recordingOf is the recording [source] was made from: before its notes
-/// were moved, and before any clip settings over it.
+/// _recordingOf is the recording [source] was made from, before its notes
+/// were moved or any clip settings applied.
 String _recordingOf(MediaSource source) =>
     source.pitch?.original ?? source.clip?.sound?.assetId ?? source.assetId;
 
 extension PitchEditing on CanvasController {
-  /// notesToMidi makes a MIDI channel playing [key]'s recording's notes --
-  /// as edited in the Pitch editor, or as sung -- each on the nearest note
-  /// of the scale [root] and [steps] give (every note, with none), from
-  /// where the recording starts: the prototype's Auto-tune "Notes to MIDI".
+  /// notesToMidi makes a MIDI channel playing [key]'s recording's notes, as
+  /// edited or as sung, each on the nearest note of the scale [root] and
+  /// [steps] give (any note, with none), from where the recording starts.
   /// Answers why not, or null.
   String? notesToMidi(String key, {int root = 0, List<int> steps = const []}) {
     var e = pitchElementOf(key);
@@ -92,8 +91,8 @@ extension PitchEditing on CanvasController {
     return null;
   }
 
-  /// pitchElementOf is the sound on channel [key] the Pitch editor works
-  /// on: its first, with a recording.
+  /// pitchElementOf is the sound on channel [key] the Pitch editor works on:
+  /// its first with a recording.
   AudioElement? pitchElementOf(String key) {
     var lane = timelineChannels.where((c) => c.key == key).firstOrNull;
     for (var l in lane?.lanes ?? const []) {
@@ -106,13 +105,11 @@ extension PitchEditing on CanvasController {
     return null;
   }
 
-  /// pitchSourceOf is that sound's recording.
   MediaSource? pitchSourceOf(String key) =>
       pitchElementOf(key)?.clip.playlist.first;
 
-  /// pitchTrackOf is the pitch of [key]'s recording as it was made, every
-  /// 20ms, or null while it is being read (asked once; see
-  /// pitchTracksRead).
+  /// pitchTrackOf is the pitch of [key]'s recording as made, every 20ms, or
+  /// null while it is read (asked once; see pitchTracksRead).
   List<double?>? pitchTrackOf(String key) {
     var source = pitchSourceOf(key);
     if (source == null) return null;
@@ -122,8 +119,8 @@ extension PitchEditing on CanvasController {
     return null;
   }
 
-  /// pitchWordsOf is the words said in [key]'s recording, timed in it --
-  /// where it is a take its Speech spoke -- for the notes' lyrics, or null.
+  /// pitchWordsOf is the words timed in [key]'s recording, where it is a
+  /// take its Speech spoke, for the notes' lyrics; or null.
   List<TimedWord>? pitchWordsOf(String key) {
     var source = pitchSourceOf(key);
     var spec = speechOf(key);
@@ -144,8 +141,8 @@ extension PitchEditing on CanvasController {
     return null;
   }
 
-  /// pitchUnreadable is whether [key]'s recording's pitch could not be
-  /// read: its file missing, or not a sound.
+  /// pitchUnreadable is whether [key]'s recording's pitch could not be read:
+  /// its file missing, or not a sound.
   bool pitchUnreadable(String key) {
     var source = pitchSourceOf(key);
     if (source == null) return false;
@@ -170,8 +167,8 @@ extension PitchEditing on CanvasController {
     }
   }
 
-  /// pitchPlayhead is where the playhead is in [key]'s recording, in
-  /// seconds from the start of its file, or null where it is not over it.
+  /// pitchPlayhead is where the playhead is in [key]'s recording, in seconds
+  /// from its file's start, or null where it is not over it.
   double? pitchPlayhead(String key) {
     var e = pitchElementOf(key);
     var source = e?.clip.playlist.first;
@@ -181,12 +178,12 @@ extension PitchEditing on CanvasController {
     return t < source.start || t > end ? null : t;
   }
 
-  /// pitchEditOf is [key]'s recording's notes, as edited, or null where
-  /// they have not been found yet.
+  /// pitchEditOf is [key]'s recording's notes as edited, or null before they
+  /// are found.
   PitchEdit? pitchEditOf(String key) => pitchSourceOf(key)?.pitch;
 
-  /// findPitchNotes finds [key]'s recording's notes, to edit: from its
-  /// pitch once read. True where they are there to edit.
+  /// findPitchNotes finds [key]'s recording's notes from its pitch, once
+  /// read. True where they are there to edit.
   bool findPitchNotes(String key) {
     var source = pitchSourceOf(key);
     if (source == null) return false;
@@ -200,9 +197,9 @@ extension PitchEditing on CanvasController {
     return true;
   }
 
-  /// editPitch changes [key]'s recording's notes: an undo step, or --
-  /// [transient] -- part of a drag that is. The recording is made again a
-  /// moment after the last change.
+  /// editPitch changes [key]'s recording's notes: an undo step, or, when
+  /// [transient], part of a drag that is. The recording is remade a moment
+  /// after the last change.
   void editPitch(String key, PitchEdit Function(PitchEdit edit) change,
       {bool transient = false}) {
     var source = pitchSourceOf(key);
@@ -212,12 +209,12 @@ extension PitchEditing on CanvasController {
     _renderSoon(key);
   }
 
-  /// pitchHeardAsSung is whether [key]'s recording is heard as sung, its
-  /// notes as they were: see hearPitchAsSung.
+  /// pitchHeardAsSung is whether [key]'s recording is heard as sung: see
+  /// hearPitchAsSung.
   bool pitchHeardAsSung(String key) => _asSung[this]?.containsKey(key) ?? false;
 
-  /// hearPitchAsSung plays [key]'s recording as sung, or -- not [asSung]
-  /// -- as its notes make it: to hear the difference. Not a change to undo.
+  /// hearPitchAsSung plays [key]'s recording as sung, or as its notes make
+  /// it, to hear the difference. Not a change to undo.
   void hearPitchAsSung(String key, bool asSung) {
     var source = pitchSourceOf(key);
     var edit = source?.pitch;
@@ -246,8 +243,8 @@ extension PitchEditing on CanvasController {
   void _setSource(String key, MediaSource next, {bool transient = false}) {
     var e = pitchElementOf(key);
     if (e == null) return;
-    // A sound that is a clip: what the notes make is what its clip is made
-    // from, its settings over them.
+    // A sound that is a clip: the notes make what its clip is made from, its
+    // settings over them.
     if (e.clip.playlist.first.clip != null) {
       setTimelineRecording(e, next.assetId,
           pitch: next.pitch,
@@ -268,10 +265,9 @@ extension PitchEditing on CanvasController {
         const Duration(milliseconds: 300), () => unawaited(renderPitch(key)));
   }
 
-  /// renderPitch makes [key]'s recording again with its notes as they are,
-  /// where they have changed since it was last made: from the original, the
-  /// notes changed said at their pitches, the rest as it was. Not an undo
-  /// step of its own: what is undone is the change to the notes.
+  /// renderPitch remakes [key]'s recording from the original where its notes
+  /// changed since, the changed notes at their pitches, the rest as it was.
+  /// Not an undo step: what is undone is the change to the notes.
   Future<void> renderPitch(String key) async {
     var edit = pitchEditOf(key);
     if (edit == null || !edit.stale) return;

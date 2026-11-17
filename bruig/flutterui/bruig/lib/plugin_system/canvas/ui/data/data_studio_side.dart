@@ -4,27 +4,20 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart' as pp;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// data_studio_side.dart is the Data Studio's sidebars' one shape (Ken,
-// 2026-11-17, the sidebar prototype approved: "The prototype is great,
-// let's build it"): a header saying what is being changed, with the way
-// back up; a quick strip of what is changed most; then sections that fold,
-// each saying what is set in it while shut. Built from the canvas panel's
-// own kit (CanvasSection, CanvasStepper, CanvasSegmented...) inside
-// CanvasDense, so the Studio and the element panel look alike. The Sheet,
-// Table and Charts tabs all build on this.
-//
-// The keys the Studio's tests have long found things by are kept: a choice
-// is still `studioPill-<id>-<value>`, a colour's swatches `<id>-<rrggbb>`.
+// data_studio_side.dart is the one shape of the Data Studio's sidebars: a
+// header saying what is being changed, with the way back up; a strip of
+// what is changed most; then folding sections, each saying while shut what
+// is set in it. Built from the canvas panel's own kit inside CanvasDense, so
+// the Studio and the element panel look alike. The tests' keys are kept: a
+// choice is `studioPill-<id>-<value>`, a colour's swatches `<id>-<rrggbb>`.
 
-/// StudioSide is a sidebar: its [header], then the [quick] strip and the
-/// [body]'s sections, scrolled.
+/// StudioSide is a sidebar: [header], then [quick] and [body], scrolled.
 class StudioSide extends StatelessWidget {
   final Widget header;
   final List<Widget> quick;
   final List<Widget> body;
 
-  /// scrollKey names the scroll, by what is picked, so it starts at the top
-  /// when the pick changes.
+  /// scrollKey names the scroll by pick, so a new pick starts at the top.
   final Key? scrollKey;
 
   /// footer is pinned under the scroll: a run of steps' Back and Next.
@@ -70,19 +63,16 @@ class StudioSide extends StatelessWidget {
   }
 }
 
-/// StudioSideHeader says what the sidebar is changing: a picture of its
-/// kind, the way to it (Table › Column · Pts), each step clickable, its
-/// name, and a button up a level.
+/// StudioSideHeader says what is being changed: its kind's picture, the
+/// way to it (Table › Column · Pts), its name, and a button up.
 class StudioSideHeader extends StatelessWidget {
   final IconData icon;
 
-  /// crumbs are the steps to what is picked, the last being it; a step
-  /// with a press goes back to it.
+  /// crumbs are the steps to the pick, the last it; one pressed goes back.
   final List<(String, VoidCallback?)> crumbs;
   final String title;
   final VoidCallback? onUp;
 
-  /// titleKey names the title for the tests.
   final Key? titleKey;
 
   /// crumbKey names each step: `<crumbKey>-<i>`.
@@ -205,9 +195,8 @@ Widget studioSection(
         action: action,
         children: _lifted(children));
 
-/// _lifted is a section's [children] with what an unnamed group is for
-/// moved up to the section's own "?": a "?" alone on a line under the
-/// controls reads as stray.
+/// _lifted moves an unnamed group's "?" up to the section's own: a lone
+/// "?" under the controls reads as stray.
 List<Widget> _lifted(List<Widget> children) {
   var out = <Widget>[];
   var helps = <String>[];
@@ -311,7 +300,6 @@ Widget studioStepper(
       onCommit: onCommit);
 }
 
-/// studioText is a line of words to type.
 Widget studioText(
         {required Key key,
         String label = "",
@@ -370,10 +358,10 @@ class StudioSwitchRow extends StatelessWidget {
   }
 }
 
-/// StudioColourField is a colour as one row -- the colour and its name --
-/// whose palette opens under it when pressed (the prototype's: a dropdown,
-/// not a popup; Ken's settings rule): the style's own colours first, then
-/// the theme's, then any colour, and "as made" where it can have none.
+/// StudioColourField is a colour as one row, the colour and its name, whose
+/// palette drops down under it when pressed: the style's own colours
+/// first, then the theme's, then any colour, and "as made" where it can
+/// have none.
 class StudioColourField extends StatefulWidget {
   /// id keys the field and each swatch: `<id>-<rrggbb>`, `<id>-made`.
   final String id;
@@ -547,8 +535,8 @@ class _StudioColourFieldState extends State<StudioColourField> {
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        // Held to its own size: a row cell's fill would
-                        // stretch it across a line it has no width in.
+                        // Held to its own size: a row cell's fill would stretch
+                        // it across a line it has no width in.
                         Tooltip(
                           message: "Any colour",
                           child: SizedBox(
@@ -584,8 +572,8 @@ class _StudioColourFieldState extends State<StudioColourField> {
   }
 }
 
-/// StudioItem is one of a list -- a style on a table, a highlight, a note,
-/// a view of a sheet: its mark, its name and what it reaches, an eye to
+/// StudioItem is one of a list (a style on a table, a highlight, a note, a
+/// view of a sheet): its mark, its name and what it reaches, an eye to
 /// switch it off, and a press to open it. Hovered, it says so, for the
 /// stage to light what it reaches.
 class StudioItem extends StatelessWidget {
@@ -737,9 +725,8 @@ Widget studioButton(String label,
         IconData? icon,
         bool primary = false,
         String tooltip = ""}) =>
-    // As wide as its words at whatever text size: the kit's own width is
-    // guessed from the number of letters, and cut "Back" short at a larger
-    // text size.
+    // As wide as its words at any text size: the kit guesses its width
+    // from the number of letters, which cuts words short at a larger size.
     IntrinsicWidth(
       child: CanvasCellFill(
         child: CanvasTextButton(
@@ -770,8 +757,7 @@ class StudioNote extends StatelessWidget {
       );
 }
 
-/// StudioPartButton is one of a chart's parts, to go to it: its name and
-/// what it is set to.
+/// StudioPartButton goes to one of a chart's parts: its name and setting.
 class StudioPartButton extends StatelessWidget {
   final String label, says;
   final VoidCallback onTap;

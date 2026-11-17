@@ -3,21 +3,14 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// vrm_convert.dart turns a VRM 0.x character (the glTF extension "VRM") into
-// VRM 1.0 (VRMC_vrm, VRMC_springBone, VRMC_materials_mtoon), which is what
-// the character renderer reads.
-//
-// VRM 0.x characters face -z and VRM 1.0 ones +z. The half turn about y is
-// built into the file -- vertices, normals, tangents, morph targets, bones,
-// skin matrices, collider offsets -- so the result is a plain VRM 1.0
-// character, with no turned root.
-//
-// There is no official migration document. The material, expression,
-// humanoid and spring-bone rules follow three-vrm's own VRM 0 compatibility
-// code (MIT), which every VRM 0 viewer on the web agrees with.
+// vrm_convert.dart turns a VRM 0.x character into VRM 1.0 (VRMC_vrm,
+// VRMC_springBone, VRMC_materials_mtoon), which the character renderer reads.
+// VRM 0.x faces -z and VRM 1.0 +z: the half turn about y is built into the
+// file (vertices, normals, tangents, morphs, bones, skins, colliders), with
+// no turned root. Material, expression, humanoid and spring-bone rules follow
+// three-vrm's VRM 0 compatibility code (MIT); there is no official guide.
 
-/// VrmConvertError is a file that is not a VRM 0.x character this can turn
-/// into VRM 1.0.
+/// VrmConvertError is a file that is not a VRM 0.x character it can turn.
 class VrmConvertError implements Exception {
   final String message;
   VrmConvertError(this.message);
@@ -25,11 +18,9 @@ class VrmConvertError implements Exception {
   String toString() => message;
 }
 
-/// vrmConvertVersion is the conversion's version: a character converted by
-/// a different version is converted again.
+/// vrmConvertVersion is bumped to have stored characters converted again.
 const int vrmConvertVersion = 1;
 
-/// isVrm0 is whether [glb] is a VRM 0.x character.
 bool isVrm0(Uint8List glb) {
   try {
     return (_Glb.read(glb).json['extensions'] as Map?)?.containsKey('VRM') ??

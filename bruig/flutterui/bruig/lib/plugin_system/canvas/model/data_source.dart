@@ -2,14 +2,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:intl/intl.dart';
 
 // data_source.dart is where a table's or a chart's numbers came from, when
-// they were not typed: a general mapping from JSON to rows (a handful of
-// paths), filled in by the presets in data_presets.dart.
-//
-// No credential is kept here. A canvas is shared, so an API key stays on the
-// reader's machine (storage/canvas_api_keys.dart); the document holds only
-// the URL and the paths.
+// they were not typed: a general mapping from JSON to rows, filled in by the
+// presets in data_presets.dart. No credential is kept here: a canvas is
+// shared, so an API key stays on the reader's machine
+// (storage/canvas_api_keys.dart) and the document holds only URL and paths.
 
-/// DataKind is where the numbers come from.
 enum DataKind {
   /// typed is the ordinary case: the cells are the data.
   typed("Typed in"),
@@ -70,12 +67,10 @@ class SourceColumn {
   /// the most recent game off from the ones before it.
   final String divider;
 
-  /// template builds a cell out of other fields instead of taking one.
-  ///
-  /// Anything in braces is a path into the record and is replaced by what is
-  /// there: "{team.tla} ({points})" gives "MCI (6)". Everything outside the
-  /// braces is written as it stands. Substitution only: no arithmetic or
-  /// conditions. [path] is ignored when this is set.
+  /// template builds a cell out of other fields instead of taking one: each
+  /// {path} is replaced by what the record has there, so
+  /// "{team.tla} ({points})" gives "MCI (6)". Substitution only, no
+  /// arithmetic or conditions. [path] is ignored when this is set.
   final String template;
 
   /// divide scales a number on the way in, such as atoms to DCR. The scaled
@@ -139,8 +134,8 @@ class SourceColumn {
         path: jsonString(json["p"], ""),
         picture: jsonBool(json["pic"], false),
         keep: jsonBool(json["keep"], false),
-        // A form guide's games: a handful. A received canvas's million was
-        // filled in one at a time from the front.
+        // A form guide's games: a handful. A received canvas's million would
+        // be filled in one at a time.
         spread: jsonInt(json["spread"], 0).clamp(0, 50),
         divider: jsonString(json["div"], ""),
         template: jsonString(json["tpl"], ""),
@@ -168,7 +163,6 @@ class DataSource {
   /// order never changes.
   final int matchColumn;
 
-  /// shape is how the response is laid out. See [DataShape].
   final DataShape shape;
 
   /// preset is which named recipe filled the paths in, kept so the settings
@@ -286,12 +280,10 @@ class DataSource {
       );
 }
 
-/// asRowKey turns what is written in a cell into something an address can ask
-/// for: lower case, hyphens for spaces, nothing else.
-///
-/// "Bitcoin Cash" becomes bitcoin-cash, CoinGecko's id. It is a guess: the
-/// few it gets wrong (BNB is binancecoin, XRP is ripple) come back missing
-/// rather than wrong, and the refresh says which.
+/// asRowKey turns a cell into something an address can ask for: lower case,
+/// hyphens for spaces, nothing else. "Bitcoin Cash" becomes bitcoin-cash,
+/// CoinGecko's id. A guess: the few it gets wrong (BNB is binancecoin) come
+/// back missing rather than wrong, and the refresh says which.
 String asRowKey(String cell) {
   var out = StringBuffer();
   for (var rune in cell.trim().toLowerCase().runes) {
@@ -310,11 +302,8 @@ final RegExp _letterOrDigit = RegExp(r"[a-z0-9]");
 final RegExp _trailingDashes = RegExp(r"-+$");
 
 /// movedIndex is where the thing at [index] ends up when the column at
-/// [from] is moved to [to].
-///
-/// Anything that refers to a column by number (which column a chart draws,
-/// which identifies a row, which headings are hidden) must go through this
-/// when the columns move, or it silently points at a different column.
+/// [from] is moved to [to]. Anything that refers to a column by number must
+/// go through this when the columns move, or it silently points at another.
 int movedIndex(int index, int from, int to) {
   if (index == from) return to;
   if (from < to) return index > from && index <= to ? index - 1 : index;
@@ -328,11 +317,9 @@ int? indexAfterRemoval(int index, int removed) {
   return index > removed ? index - 1 : index;
 }
 
-/// valueAtPath walks a dotted path into decoded JSON.
-///
-/// Numbers are list indices; everything else is a key. Anything missing
-/// gives null rather than throwing, so a changed API is a blank cell, not a
-/// broken canvas.
+/// valueAtPath walks a dotted path into decoded JSON: numbers are list
+/// indices, anything else a key. Anything missing gives null rather than
+/// throwing, so a changed API is a blank cell, not a broken canvas.
 dynamic valueAtPath(dynamic json, String path) {
   if (path.isEmpty) return json;
   dynamic at = json;
@@ -350,14 +337,11 @@ dynamic valueAtPath(dynamic json, String path) {
   return at;
 }
 
-/// rowsFromJson turns a decoded document into table rows, header first.
-///
-/// Returns an empty list when the path does not lead to a list, which a
-/// caller shows as "nothing came back" rather than replacing good rows.
-///
-/// [raw] leaves date columns as the timestamps they arrived as, for a chart
-/// that picks points by date: a formatted date such as "Feb 26" cannot be
-/// parsed back. The raw rows are used immediately and never stored.
+/// rowsFromJson turns a decoded document into table rows, header first, or
+/// an empty list when the path does not lead to a list (shown as "nothing
+/// came back" rather than replacing good rows). [raw] leaves date columns
+/// as their timestamps, for a chart that picks points by date; raw rows are
+/// used at once and never stored.
 List<List<String>> rowsFromJson(dynamic json, DataSource source,
     {bool raw = false}) {
   if (source.columns.isEmpty) return const [];
@@ -381,10 +365,8 @@ List<List<String>> rowsFromJson(dynamic json, DataSource source,
   ];
 }
 
-/// _rowsFromColumns reads parallel arrays: one array per column, row i being
-/// the i-th of each.
-///
-/// The length is the shortest array's: a source read mid-write (dcrdata's
+/// _rowsFromColumns reads parallel arrays, row i the i-th of each. The
+/// length is the shortest array's: a source read mid-write (dcrdata's
 /// timestamps one ahead of its values) would otherwise end on an empty value.
 List<List<String>> _rowsFromColumns(dynamic json, DataSource source) {
   var at = valueAtPath(json, source.rowsPath);
@@ -436,11 +418,9 @@ String _scaled(dynamic value, SourceColumn column) {
   return _text(value);
 }
 
-/// asDate reads a timestamp however it was sent.
-///
-/// Seconds and milliseconds since the epoch are told apart by size: seconds
-/// do not reach 1e11 until the year 5138, and milliseconds passed it in 1973.
-/// Anything else is left to DateTime.parse, which covers ISO strings.
+/// asDate reads a timestamp however it was sent. Seconds and milliseconds
+/// since the epoch are told apart by size: seconds do not reach 1e11 until
+/// 5138, milliseconds passed it in 1973. Else DateTime.parse (ISO strings).
 DateTime? asDate(dynamic value) {
   if (value is num) {
     var n = value.toDouble();
@@ -457,19 +437,14 @@ DateTime? asDate(dynamic value) {
 }
 
 /// fillTemplate replaces every {path} in [template] with what the record has
-/// there. See [SourceColumn.template].
-///
-/// A path that leads nowhere becomes empty rather than being left as braces.
+/// there, or empty where it leads nowhere. See [SourceColumn.template].
 String fillTemplate(String template, dynamic record) =>
     template.replaceAllMapped(RegExp(r"\{([^{}]*)\}"),
         (m) => _text(valueAtPath(record, m.group(1)!.trim())));
 
-/// spreadValue lays a comma-separated value out as a row of results. See
-/// [SourceColumn.spread].
-///
-/// Public so football_form.dart lays out a form guide built from fixtures
-/// exactly as one from the response. The newest entries are kept when there
-/// are too many.
+/// spreadValue lays a comma-separated value out as a row of results (see
+/// [SourceColumn.spread]), keeping the newest when there are too many.
+/// Public so football_form.dart lays out a guide built from fixtures alike.
 String spreadValue(String value, SourceColumn column) {
   if (column.spread <= 0) return value;
   var results = [for (var part in value.split(",")) part.trim()]
@@ -550,12 +525,10 @@ class TableLink {
       );
 }
 
-/// keepColumns puts back the columns marked [SourceColumn.keep] from the rows
-/// that were there before.
-///
-/// [before] is the table as it stood, header included; [after] is what has
-/// just arrived. Rows are matched on [DataSource.matchColumn], so a badge
-/// follows its team. A row with no match keeps whatever the source sent.
+/// keepColumns puts back the columns marked [SourceColumn.keep] from the
+/// table as it stood ([before], header included) into what has just arrived
+/// ([after]). Rows match on [DataSource.matchColumn], so a badge follows its
+/// team; a row with no match keeps what the source sent.
 List<List<String>> keepColumns(
   List<List<String>> before,
   List<List<String>> after,
@@ -596,12 +569,9 @@ List<List<String>> keepColumns(
   return out;
 }
 
-/// keepHeaders puts the table's existing column names back over the ones the
-/// source supplied.
-///
-/// Rules that colour cells name their column, so renamed headers would
-/// switch them off. Columns the table did not have before take the source's
-/// name.
+/// keepHeaders puts the table's existing column names back over the
+/// source's: rules that colour cells name their column, so renamed headers
+/// would switch them off. New columns take the source's name.
 List<List<String>> keepHeaders(
   List<List<String>> before,
   List<List<String>> after, {

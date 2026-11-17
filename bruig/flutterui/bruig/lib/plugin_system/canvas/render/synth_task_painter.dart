@@ -6,12 +6,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dar
 import 'package:flutter/painting.dart';
 
 // synth_task_painter.dart draws a synth task card (see
-// synth_task_element.dart) as the prototype's: warm paper, the task, two
-// buttons -- ▶ Hear the target, Check my patch -- and its checks, each
-// ticked green as the patch meets it or an amber ring while it doesn't.
-//
-// Laid out 300 units across (synthTaskLayout), scaled to the box's width;
-// the stage's presses read the same layout.
+// synth_task_element.dart): warm paper, the task, two buttons -- Hear the
+// target, Check my patch -- and its checks, ticked green as the patch meets
+// each or an amber ring while it doesn't. Laid out 300 units across
+// (synthTaskLayout) and scaled to the box; the stage's presses read the
+// same layout.
 
 const synthTaskWidth = 300.0;
 const _pad = 14.0;
@@ -72,7 +71,6 @@ SynthTaskLayout synthTaskLayout(SynthTaskElement e, CanvasDocument? doc) {
 /// synthTaskScale is how big a card unit is in [box].
 double synthTaskScale(Rect box) => box.width / synthTaskWidth;
 
-/// paintSynthTask draws [e] in [box].
 void paintSynthTask(
     ui.Canvas canvas, Rect box, SynthTaskElement e, CanvasDocument? doc) {
   var s = synthTaskScale(box);
@@ -153,7 +151,6 @@ void _button(ui.Canvas canvas, Rect r, String label, bool on) {
   tp.paint(canvas, r.center - Offset(tp.width / 2, tp.height / 2));
 }
 
-/// SynthTaskButton is a card's button.
 enum SynthTaskButton { hear, check }
 
 /// synthTaskButtonAt is the button of [e] under [point], in document

@@ -3,17 +3,12 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
-// automation.dart is a channel's automation: lanes, each one setting of the
-// channel -- its volume, its pan, a send, a knob of one of its devices --
-// and the points it moves through along the timeline, in seconds counted as
-// a clip's start is, from the start of its scene. Between two points the
-// setting goes in a straight line; before the first and after the last it
-// stays where they are.
-//
-// Played, a channel's mix at a moment is its own with each automated
-// setting put in -- see automatedAt. A setting moved by hand is left where
-// the hand put it until it is handed back, as Ableton does: see
-// CanvasController.backToArrangement.
+// automation.dart is a channel's automation: lanes, each moving one setting
+// (volume, pan, a send, a device's knob) through points along the timeline,
+// in seconds from the start of its scene. Between points the setting goes
+// in a straight line; outside them it holds. Played, the mix is its own with
+// each lane put in (automatedAt). A setting moved by hand stays until handed
+// back, as in Ableton: see CanvasController.backToArrangement.
 
 /// AutomationPoint is a point of a lane: seconds, and the setting's value
 /// there, in its own units -- decibels, a pan, a knob's value.
@@ -23,10 +18,9 @@ enum AutomationKind { volume, pan, send, device }
 
 /// AutomationTarget is what a lane moves, read from its id: `volume`,
 /// `pan`, `send:<return id>`, or `device:<device id>:<kind>:<setting>` -- a
-/// device by its lasting id (see MixDevice.id) and its kind, so the lane
-/// follows the device when it moves, and moves nothing once it is taken out.
-/// A lane saved before devices had ids names it by place, `device:<i>:…`,
-/// which is read as the id `d<i>` that place is given (see withDeviceIds).
+/// device by its lasting id (see MixDevice.id) and kind, so the lane follows
+/// it when it moves and moves nothing once it is taken out. An older lane's
+/// `device:<i>:…` names a place, read as the id `d<i>` (see withDeviceIds).
 class AutomationTarget {
   final AutomationKind kind;
   final String send;
@@ -99,7 +93,7 @@ class AutomationTarget {
             : setting!.initial,
       };
 
-  /// silent is a volume or a send at the bottom: nothing.
+  /// silent is the bottom of a volume or a send: nothing.
   static const double silent = -90;
 
   /// height is [v] up a lane, nought at the bottom to one at the top: a
@@ -124,7 +118,7 @@ class AutomationTarget {
     }
   }
 
-  /// valueAt is the value at [h] up a lane: height turned back.
+  /// valueAt is the value at [h] up a lane: [height] turned back.
   double valueAt(double h) {
     h = h.clamp(0.0, 1.0);
     switch (kind) {
@@ -150,7 +144,6 @@ class AutomationTarget {
   static bool _log(DeviceParam p) =>
       (p.unit == "Hz" || p.unit == "ms") && p.max / math.max(p.min, 0.01) > 20;
 
-  /// reading is [v] as the setting reads.
   String reading(double v) => switch (kind) {
         AutomationKind.volume || AutomationKind.send => v <= -60
             ? "−∞ dB"
@@ -187,9 +180,8 @@ class AutomationTarget {
 }
 
 /// faderTravel is where [db] sits along the fader, nought at the top to one
-/// at the bottom: most of the travel where mixing happens, between minus
-/// thirty and the top. The mixer's fader is drawn on it -- see
-/// faderPosition.
+/// at the bottom, most of the travel between minus thirty and the top. The
+/// mixer's fader is drawn on it: see faderPosition.
 double faderTravel(double db) =>
     db <= -60 ? 1 : math.pow((6 - db) / 66, 0.6).toDouble().clamp(0.0, 1.0);
 
@@ -329,12 +321,11 @@ List<AutomationTarget> automationTargets(
     ];
 
 /// ClipAutomation is a slot clip's envelope of one of its channel's
-/// settings -- the volume, a send, a device's knob -- moved while the clip
-/// plays, then back to where it was when it stops. Its points are each a
-/// beat into the clip and a height up the setting's range, nought to one,
-/// as the clip's own gain and pan envelopes are. [length] is its own
-/// length in beats, going round and round however long the clip is, as an
-/// LFO does -- or null to go with the clip's loop.
+/// settings, moved while the clip plays and put back when it stops. Its
+/// points are a beat into the clip and a height up the setting's range,
+/// nought to one, as the clip's gain and pan envelopes are. [length] is its
+/// own length in beats, looping as an LFO does, or null to follow the clip's
+/// loop.
 class ClipAutomation {
   final String target;
   final List<(double, double)> points;
@@ -407,11 +398,10 @@ class ClipAutomation {
   int get hashCode => Object.hash(target, length, points.length);
 }
 
-/// clipAutomatedAt is [mix] with a playing clip's envelopes put in, over
-/// whatever the timeline's lanes had: [beat] is where the clip is in
-/// itself, round its loop, and [elapsed] the beats since it was launched,
-/// for an envelope of its own length. Those in [except], held by a hand,
-/// are left.
+/// clipAutomatedAt is [mix] with a playing clip's envelopes put in over the
+/// timeline's lanes: [beat] is where the clip is in itself, round its loop,
+/// and [elapsed] the beats since launch, for an envelope of its own length.
+/// Those in [except], held by a hand, are left.
 ChannelMix clipAutomatedAt(
     ChannelMix mix, List<ClipAutomation> lanes, double beat, double elapsed,
     {Set<String> except = const {}}) {

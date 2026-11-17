@@ -29,34 +29,21 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// data_charts_design.dart is the Data Studio's Charts tab (Ken, 2026-11-15:
-// "design the data in to visual data / chart data ... very visual and
-// flexible so users can design a wide range of data visuals and even
-// multiple data displays from the same data set"; prototypes v5 and v6).
-//
-// On the left, the sheet's columns and the charts of it. Along the top, the
-// slots: what labels the marks (and whether rows with the same label are
-// brought together), the values, a column to colour by, a column of dates
-// to play through, and the kind of chart. In the middle the chart, drawn
-// as the canvas draws it: click its title, its key, its plot, the labels
-// along a side, a series, or one mark, and the panel on the right is about
-// that. The chart's own panel has which rows it shows and its highlights.
-//
+// data_charts_design.dart is the Data Studio's Charts tab. On the left, the
+// sheet's columns and its charts; along the top, the slots (labels, values,
+// colour by, play through, kind); in the middle the chart as the canvas
+// draws it, where clicking a part picks what the right-hand panel is about.
 // The marks are found by the painter itself (ChartPart, chart_common.dart),
-// so what is clicked is what was drawn. Every change goes through the
-// controller as one step to undo.
+// so what is clicked is what was drawn; each change is one undo step.
 
-/// ChartsDesign is the Charts tab for the charts of one sheet.
 class ChartsDesign extends StatefulWidget {
   final CanvasController controller;
   final String sheetId;
   final ChartElement chart;
   final ValueChanged<String> onPickChart;
 
-  /// startInGallery opens on the gallery, its design taking the place of
-  /// [chart] rather than adding another: the sheet's first chart, chosen
-  /// from the designs rather than made plain and then made again (found
-  /// making the Charts canvas, 2026-11-17).
+  /// startInGallery opens on the gallery, its design replacing [chart]: a
+  /// first chart is chosen from the designs, not made plain then remade.
   final bool startInGallery;
   const ChartsDesign(
       {required this.controller,
@@ -137,8 +124,7 @@ class ChartsDesignState extends State<ChartsDesign>
   /// chart (ChartsDesign.startInGallery) rather than adding one.
   bool _replacing = false;
 
-  // The gallery (Ken, 2026-11-17; prototype v7): the kind opened, the
-  // starting design picked, and what the cards are filtered by.
+  // The gallery: the kind opened, the design picked, the cards' filter.
   ChartType? _galleryKind;
   int? _galleryPreset;
   ChartQuestion? _galleryQuestion;
@@ -150,7 +136,7 @@ class ChartsDesignState extends State<ChartsDesign>
       vsync: this, duration: const Duration(milliseconds: 1600), value: 1)
     ..addListener(() => setState(() {}));
 
-  /// _boardOn shows every view of the sheet together (prototype v5's board).
+  /// _boardOn shows every view of the sheet together.
   bool _boardOn = false;
   final FocusNode _focus = FocusNode();
 
@@ -189,10 +175,9 @@ class ChartsDesignState extends State<ChartsDesign>
     super.dispose();
   }
 
-  // ---- Motion: a preview, and steps.
+  // Motion: a preview, and steps.
 
-  /// _playable is whether the chart can move: it plays through a column of
-  /// dates, or has steps.
+  /// _playable is whether the chart moves: through dates, or by steps.
   bool get _playable => e.sheet!.through >= 0 || e.steps.length > 1;
 
   /// _shown is the chart as the stage draws it: playing, while previewing.
@@ -210,8 +195,8 @@ class ChartsDesignState extends State<ChartsDesign>
     return chartPlaying(playing, s, _preview.value * playLength(playing, s));
   }
 
-  /// _gliding is whether the stage was drawing a glide at the last tick, so
-  /// the tick after it ends draws the numbers themselves.
+  /// _gliding is whether the stage drew a glide at the last tick, so the
+  /// tick after it ends draws the numbers themselves.
   bool _gliding = false;
 
   void _glideTick() {
@@ -241,8 +226,7 @@ class ChartsDesignState extends State<ChartsDesign>
     _preview.forward(from: 0);
   }
 
-  /// _stepsSaved is the chart's steps with the one being worked on saved
-  /// from its own fields.
+  /// _stepsSaved is the steps, the one worked on saved from its fields.
   List<ChartStep> _stepsSaved() => [
         for (var k = 0; k < e.steps.length; k++) stepOf(e, k),
       ];
@@ -348,7 +332,7 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  // ---- Writing.
+  // Writing.
 
   void _set(ChartElement next) {
     _end();
@@ -377,7 +361,7 @@ class ChartsDesignState extends State<ChartsDesign>
         _offering = null;
       });
 
-  // ---- The sheet's columns, as the chart's range has them.
+  // The sheet's columns, as the chart's range has them.
 
   String _columnName(int col) {
     var s = _sheet;
@@ -458,10 +442,9 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  // ---- Checks: what makes a chart hard to read, each with a fix.
+  // Checks: what makes a chart hard to read, each with a fix.
 
-  /// _checks is what might make the chart hard to read, each with the fixes
-  /// that would help (prototype v5-v6's checks).
+  /// _checks is what might make the chart hard to read, with fixes.
   List<(String, List<(String, VoidCallback)>)> _checks() {
     var s = _sheet;
     if (s == null) return const [];
@@ -487,8 +470,7 @@ class ChartsDesignState extends State<ChartsDesign>
         ]
       ));
     }
-    // Labels said more than once and nothing bringing them together: only
-    // the last of each is drawn.
+    // Labels repeated and nothing gathering them: only each last shows.
     if (l.group.isEmpty && l.through < 0 && !(l.colourBy >= 0 && n > 0)) {
       var g = l.range, seen = <String>{}, twice = false;
       for (var r = g.r0 + 1; r <= g.r1; r++) {
@@ -587,7 +569,7 @@ class ChartsDesignState extends State<ChartsDesign>
     ];
   }
 
-  // ---- Left: columns and charts.
+  // Left: columns and charts.
 
   Widget _left(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
@@ -701,9 +683,9 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  // ---- The board: every view of the sheet together.
+  // The board: every view of the sheet together.
 
-  /// _views is the tables and charts of this sheet on the page being made.
+  /// _onPage is the tables and charts of this sheet on the page being made.
   List<CanvasElement> get _onPage => [
         for (var v in c.document.elements)
           if (linkOf(v)?.sheet == widget.sheetId) v
@@ -800,8 +782,8 @@ class ChartsDesignState extends State<ChartsDesign>
 
   PageLayout _pageLayout = PageLayout.rows2;
 
-  // What each column holds, as the gallery reads it: worked out again only
-  // when the sheet or the range changes.
+  // What each column holds, as the gallery reads it: worked out again
+  // only when the sheet or the range changes.
   DataSheet? _kindsOf;
   CellRange? _kindsRange;
   List<ColumnKind> _kindsCache = const [];
@@ -819,8 +801,7 @@ class ChartsDesignState extends State<ChartsDesign>
   Widget _chip(BuildContext context, int col) {
     final colors = ThemeNotifier.of(context).colors;
     var numbers = _numbers(col);
-    // A column of weeks or years says so, as the gallery reads it as when
-    // (found making the Charts canvas: "123 Week").
+    // A column of weeks or years says so: the gallery reads it as when.
     var when = _kindOf(col) == ColumnKind.dates;
     return Material(
       color: colors.surfaceContainerHigh,
@@ -933,7 +914,7 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  // ---- Suggestions: a new chart chosen by how it looks with your numbers.
+  // Suggestions: a new chart chosen by how it looks with your numbers.
 
   /// _startingPicks are the columns ticked when the gallery opens: the one
   /// naming the rows (or a date) and the last of numbers.
@@ -943,8 +924,7 @@ class ChartsDesignState extends State<ChartsDesign>
     var g = _link.range;
     var kinds = columnKinds(s, g);
     var date = kinds.indexOf(ColumnKind.dates);
-    // The names column that names the rows best (a team's name, not its
-    // code or its form: namingScore).
+    // The column naming the rows best (a name, not a code: namingScore).
     var name = -1;
     var most = 0.0;
     for (var (col, k) in kinds.indexed) {
@@ -963,9 +943,8 @@ class ChartsDesignState extends State<ChartsDesign>
     ];
   }
 
-  // ---- The gallery: every kind of chart, built from the ticked columns.
+  // The gallery: every kind of chart, built from the ticked columns.
 
-  /// _picks is the ticked columns, sorted by what they hold.
   Picks? get _picks {
     var s = _sheet, g = _gallery;
     if (s == null || g == null) return null;
@@ -1113,8 +1092,8 @@ class ChartsDesignState extends State<ChartsDesign>
       for (var k in shown)
         if (k.reads(p) == null) k
     ];
-    // The best fit for the ticked columns first, as the suggestions had it;
-    // then by how well each suits them (kindFit), a poor one saying why.
+    // The best fit for the ticked columns first; then by how well each
+    // suits them (kindFit), a poor one saying why.
     var suits = {for (var k in fit) k.type: kindFit(k, p)};
     var order = {for (var (i, k) in fit.indexed) k.type: i};
     fit.sort((a, b) {
@@ -1192,8 +1171,8 @@ class ChartsDesignState extends State<ChartsDesign>
                         key: ValueKey("chartsKindSays-${k.type.name}"),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        // A warning in amber: the theme's tertiary is a
-                        // panel fill, and words in it vanish.
+                        // A warning in amber: the theme's tertiary is a panel
+                        // fill, and words in it vanish.
                         style: TextStyle(
                             fontSize: 11.5,
                             color: fits && suit.why == null
@@ -1479,9 +1458,8 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  /// _makePreset puts [chart] -- a starting design made from the ticked
-  /// columns -- on the canvas as a chart of this sheet, one step to undo,
-  /// and opens it.
+  /// _makePreset puts [chart], made from the ticked columns, on the canvas
+  /// as one of this sheet's charts, one undo step, and opens it.
   void _makePreset(ChartElement chart) {
     var s = _sheet;
     if (s == null) return;
@@ -1496,9 +1474,7 @@ class ChartsDesignState extends State<ChartsDesign>
       c.replaceElement(chart.rebase(made.base));
       id = made.id;
     }
-    // Its arrival laid on the timeline: a preset with no keyframes to time
-    // it draws nothing different (found building the report's morph: no
-    // gallery design arrived).
+    // Its arrival laid on the timeline, or a preset draws no different.
     if (chart.animation.on) {
       if (c.document.elementById(id) case ChartElement now) {
         c.applyChartAnimation(now, chart.animation.preset);
@@ -1512,7 +1488,7 @@ class ChartsDesignState extends State<ChartsDesign>
     widget.onPickChart(id);
   }
 
-  // ---- The slots.
+  // The slots.
 
   Widget _shelf(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
@@ -1635,8 +1611,7 @@ class ChartsDesignState extends State<ChartsDesign>
                     ],
                     onChanged: (v) => _setLink(l.copyWith(at: v))),
             ]),
-            // Which rows and in what order: what the chart reads, beside
-            // the rest of it (Ken, 2026-11-17: moved up from the sidebar).
+            // Which rows, in what order: beside the rest it reads.
             slot("Rows", [
               _Menu<String>(
                   key: const ValueKey("chartsRows"),
@@ -1730,7 +1705,7 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  // ---- The stage.
+  // The stage.
 
   Widget _stage(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
@@ -1823,14 +1798,8 @@ class ChartsDesignState extends State<ChartsDesign>
   /// stageAt is a point of the chart's own, on the stage.
   Offset stageAt(Offset local) => _o + local * _k;
 
-  // ---- The panel.
-
-  // ---- The panel: the Studio's sidebar (data_studio_side.dart; Ken,
-  // 2026-11-17, the sidebar prototype): the way to the part picked in its
-  // header, what is changed most in a strip under it, then sections that
-  // fold, each saying what is set in it. Which rows and their order are in
-  // the slot bar, with the rest of what the chart reads (Ken: "sound
-  // right").
+  // The panel: the Studio's sidebar (data_studio_side.dart), the part
+  // picked in its header, a strip of the most used, folding sections.
 
   String _pickName(ChartPick p) {
     var data = e.data;
@@ -1930,8 +1899,7 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  /// _markLabel is what mark [i] is of: its category, or on a split chart,
-  /// whose small chart it is.
+  /// _markLabel is mark [i]'s category, or on a split chart, its panel.
   String _markLabel(int i) {
     var data = e.data;
     if (data.panels.isNotEmpty) {
@@ -1943,7 +1911,6 @@ class ChartsDesignState extends State<ChartsDesign>
   static String _num(double v) =>
       v == v.roundToDouble() ? "${v.round()}" : v.toStringAsFixed(2);
 
-  /// _hint is what a group is for, behind its "?".
   Widget _hint(BuildContext context, String text) => CanvasHint(text);
 
   /// _styleColours are the colours of the chart's style, offered first.
@@ -1984,7 +1951,6 @@ class ChartsDesignState extends State<ChartsDesign>
           onChanged: live,
           onCommit: _end);
 
-  /// _field is a line of words in a group, as wide as the line.
   Widget _field(Widget f) => SizedBox(width: double.infinity, child: f);
 
   /// _menu is a choice among many, as the kit's dropdown.
@@ -2083,7 +2049,7 @@ class ChartsDesignState extends State<ChartsDesign>
               studioGroup(
                   "",
                   [
-                    // The six styles (Ken, 2026-11-17: they replace the Looks).
+                    // The six styles.
                     DataStylePicker(
                         key: const ValueKey("chartsStyles"),
                         element: e,
@@ -2205,9 +2171,8 @@ class ChartsDesignState extends State<ChartsDesign>
                         text: "Top",
                         colour: const Color(0xFF2FE08A)))
                   ),
-                  // Bound to the data by name: on the largest, or between
-                  // the first two by size (Ken, 2026-11-17: the report's
-                  // fourth item).
+                  // Bound by name: on the largest, or between the two
+                  // largest.
                   (
                     "+ Callout",
                     const ValueKey("chartsAddCallout"),
@@ -2234,8 +2199,7 @@ class ChartsDesignState extends State<ChartsDesign>
                 ]),
               ]),
             ]),
-        // Every part by name, so the axis or the key is found without
-        // hunting for it on the chart (the prototype's Parts).
+        // Every part by name, found without hunting on the chart.
         studioSection(
             remember: "charts.parts",
             icon: Icons.widgets_outlined,
@@ -2270,8 +2234,7 @@ class ChartsDesignState extends State<ChartsDesign>
               summary: e.type.label,
               open: true,
               children: kind),
-        // Sharp at any size, its words still words (the improvements
-        // report's vector export).
+        // Sharp at any size, its words still words.
         studioSection(
             remember: "charts.save",
             icon: Icons.save_alt,
@@ -2313,8 +2276,7 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  /// _middle is a number halfway up the chart's first numbers, for a
-  /// highlight of those above it.
+  /// _middle is halfway up the first numbers, for a highlight above it.
   double _middle() {
     var d = e.data;
     if (d.series.isEmpty || d.categories.isEmpty) return 0;
@@ -2330,8 +2292,7 @@ class ChartsDesignState extends State<ChartsDesign>
     _pick(ChartPick("highlight", index: e.highlights.length));
   }
 
-  /// _motionParts is how it moves once it has arrived: through its steps
-  /// or dates, at what pace.
+  /// _motionParts is how it moves once arrived: steps or dates, and pace.
   List<Widget> _motionParts(BuildContext context) => [
         if (e.steps.length > 1)
           studioGroup("", [
@@ -2393,9 +2354,8 @@ class ChartsDesignState extends State<ChartsDesign>
         ]),
       ];
 
-  /// _kindParts are the settings only some kinds of chart have: a pie's
-  /// shape, a doughnut's hole and the words in it, a pictogram's icons.
-  /// (A kind's ways are "Drawn as", in the strip at the top.)
+  /// _kindParts are settings only some kinds have: a pie's shape, a
+  /// doughnut's hole and words, a pictogram's icons.
   List<Widget> _kindParts(BuildContext context) => [
         if (e.type == ChartType.pie || e.type == ChartType.donut)
           studioGroup("", [
@@ -2932,9 +2892,8 @@ class ChartsDesignState extends State<ChartsDesign>
     );
   }
 
-  /// _designParts are the ways its marks are drawn beyond its type
-  /// (ChartDesign): tracks, values inside, names above; steps; quadrants,
-  /// a trend, joined points.
+  /// _designParts are how its marks are drawn beyond its type (ChartDesign):
+  /// tracks, values inside, names above, steps, quadrants, trend, joins.
   List<Widget> _designParts(BuildContext context) {
     var d = e.design;
     void put(ChartDesign next) => _set(e.copyWith(design: next));
@@ -3360,9 +3319,8 @@ class ChartsDesignState extends State<ChartsDesign>
   }
 }
 
-/// _ChartStage draws the chart as the canvas does, fitted to the stage, and
-/// outlines what is hovered and picked; it hands back where the painter
-/// put each part.
+/// _ChartStage draws the chart as the canvas does, fitted, outlining what
+/// is hovered and picked, and notes where each part was put.
 class _ChartStage extends CustomPainter {
   final ChartElement e;
   final double k;
@@ -3453,7 +3411,6 @@ class _ChartStage extends CustomPainter {
       old.accent != accent;
 }
 
-/// _Menu is a dropdown of (value, name) choices.
 class _Menu<T> extends StatelessWidget {
   final T value;
   final List<(T, String)> options;
@@ -3501,7 +3458,6 @@ class _Menu<T> extends StatelessWidget {
   }
 }
 
-/// _SlotChip is a column in a slot, with a cross to take it out.
 class _SlotChip extends StatelessWidget {
   final String label;
   final VoidCallback? onRemove;
@@ -3537,15 +3493,13 @@ class _SlotChip extends StatelessWidget {
   }
 }
 
-/// _Field is a one-line field that keeps what is typed while the panel
-/// rebuilds under it.
+/// _Field is a one-line field keeping its typing while the panel rebuilds.
 class _Field extends StatefulWidget {
   final String text, hint;
   final ValueChanged<String> onChanged;
 
-  /// words are live words to put in with a press (chart_words.dart), as
-  /// (what the button says, what it puts in); [reads] says what the field
-  /// reads now, worked out.
+  /// words are live words a press puts in (chart_words.dart), as (button,
+  /// inserted); [reads] what the field reads now.
   final List<(String, String)> words;
   final String Function(String)? reads;
   const _Field(
@@ -3647,9 +3601,8 @@ class _FieldState extends State<_Field> {
   }
 }
 
-/// startedChart is a chart just made of a sheet, set to read it as a person
-/// would start: labelled by the column that names its rows (the longest
-/// distinct words, a team's name), showing its last column of numbers.
+/// startedChart is a new sheet chart set as a person would start: labelled
+/// by the column naming its rows, showing its last numbers.
 CanvasElement startedChart(CanvasController c, CanvasElement made) {
   var link = linkOf(made);
   var sheet = link == null ? null : c.sheetById(link.sheet);
@@ -3670,12 +3623,10 @@ CanvasElement startedChart(CanvasController c, CanvasElement made) {
   return next;
 }
 
-/// ColumnKind is what a column of a sheet holds, for the suggestions:
-/// numbers; dates (a column the rows come in runs of, or headed so); or
-/// names.
+/// ColumnKind is what a sheet column holds, for the suggestions: numbers,
+/// dates (rows come in runs of it, or headed so), or names.
 enum ColumnKind { numbers, dates, names, empty }
 
-/// columnKinds is each column of [range]'s kind.
 List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
   var datey = RegExp(r"date|week|month|year|day|time|season|round|period",
       caseSensitive: false);
@@ -3700,9 +3651,8 @@ List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
         var head = sheetShown(sheet, range.r0, range.c0 + col);
         var numbers = values.whereType<double>().toList();
         if (numbers.length * 2 > values.length) {
-          // Whole numbers that count time -- weeks 1 to 38, seasons, years
-          // -- are when, not how much (found making the Charts canvas: no
-          // line could be drawn of points by season).
+          // Whole numbers that count time (weeks 1 to 38, seasons, years) are
+          // when, not how much, so a line can be drawn by season.
           var whole = numbers.length == values.length &&
               numbers.every((v) => v == v.roundToDouble());
           var years = whole && numbers.every((v) => v >= 1800 && v <= 2200);
@@ -3714,9 +3664,8 @@ List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
               : ColumnKind.numbers;
         }
         var words = [for (var v in values) "$v"];
-        // Runs: each value comes as one block of rows, more than one long --
-        // a long sheet's weeks or dates. Words in runs that don't read as
-        // dates ("Top four", "Chasing") are groups: names.
+        // Runs: each value one block of rows, longer than one (weeks,
+        // dates). Runs of words that are not dates ("Top four") are names.
         var runs = <String>[];
         for (var w in words) {
           if (runs.isEmpty || runs.last != w) runs.add(w);
@@ -3733,7 +3682,7 @@ List<ColumnKind> columnKinds(DataSheet sheet, CellRange range) {
 }
 
 /// ChartIdea is one suggestion: its name, why it suits, and the chart it
-/// makes -- a kind, a way of reading the sheet, and any highlights.
+/// makes (a kind, a way of reading the sheet, any highlights).
 class ChartIdea {
   final String name, why, title;
   final ChartType type;
@@ -3742,8 +3691,7 @@ class ChartIdea {
   const ChartIdea(this.name, this.why, this.type, this.link,
       {this.title = "", this.highlights = const []});
 
-  /// preview is the chart as it would look, for its card, the size of
-  /// [like].
+  /// preview is the chart as it would look on its card, [like]'s size.
   ChartElement preview(DataSheet sheet, ChartElement like) {
     var chart = ChartElement(
         ElementBase(id: "idea", width: like.width, height: like.height),
@@ -3758,10 +3706,10 @@ class ChartIdea {
 }
 
 /// chartIdeas is what the ticked columns [picks] of [range] could be drawn
-/// as, the best fit first (prototype v6's suggestions): a date with names
-/// and a number, a race, a line each, totals; a date and a number, totals
-/// and averages; names and one number, ranked bars, columns, a lollipop, a
-/// donut; two numbers, a scatter, side by side, a slope.
+/// as, best fit first: a date with names and a number, a race, a line each,
+/// totals; a date and a number, totals and averages; names and a number,
+/// ranked bars, columns, a lollipop, a donut; two numbers, a scatter, side
+/// by side, a slope.
 List<ChartIdea> chartIdeas(DataSheet sheet, CellRange range, List<int> picks) {
   var kinds = columnKinds(sheet, range);
   String name(int col) {
@@ -3908,7 +3856,6 @@ class _ViewThumb extends CustomPainter {
       !identical(old.e, e) || old.ground != ground;
 }
 
-/// _Thumb draws a suggestion's chart fitted to its card.
 /// _PlayThumb is [e] fitted on [ground], [reveal] of the way arrived.
 class _PlayThumb extends CustomPainter {
   final ChartElement e;
@@ -3939,6 +3886,7 @@ class _PlayThumb extends CustomPainter {
       !identical(old.e, e) || old.ground != ground || old.reveal != reveal;
 }
 
+/// _Thumb draws a suggestion's chart fitted to its card.
 class _Thumb extends CustomPainter {
   final ChartElement e;
   final Color ground;

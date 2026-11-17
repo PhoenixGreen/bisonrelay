@@ -9,10 +9,9 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// vector_layers.dart is a drawing's layers: each shape, or each run of
-// shapes combined into one, as a layer, following ImageLayersList. Shut, a
-// strip, front first; opened, a list, front at the top. Pressing a layer
-// picks it and opens the drawing; pressed again it is let go, for every shape.
+// vector_layers.dart is a drawing's layers (a shape, or a combined run),
+// after ImageLayersList. Pressing one picks it and opens the drawing;
+// again lets it go.
 
 /// VectorLayersList is [element]'s layers. [onChanged] writes a change to
 /// the drawing as one step.
@@ -62,23 +61,22 @@ class _VectorLayersListState extends State<VectorLayersList> {
     }
   }
 
-  /// _picked is the first shape of the layer picked, or -1 for none: only
-  /// while the drawing is open, as a picture's layers are.
+  /// _picked is the picked layer's first shape, or -1: only while the
+  /// drawing is open, as with a picture's layers.
   int get _picked {
     if (controller.vectorEditing != e.id) return -1;
     var at = controller.vectorShape;
     return at < 0 ? -1 : groupOf(e, at);
   }
 
-  /// _pick picks the layer starting at [start], opening the drawing to do
-  /// it -- or, picked already, lets it go: every shape, as none picked is.
+  /// _pick picks the layer starting at [start], opening the drawing, or if
+  /// already picked lets it go: every shape, as with none picked.
   void _pick(int start) {
     if (controller.vectorEditing != e.id) controller.editVector(e.id);
     controller.pickVectorShape(_picked == start ? -1 : start);
   }
 
-  /// _pickAll picks the whole drawing -- no layer, every shape at once --
-  /// opening it to do it.
+  /// _pickAll picks the whole drawing (no layer, every shape), opening it.
   void _pickAll() {
     if (controller.vectorEditing != e.id) controller.editVector(e.id);
     controller.pickVectorShape(-1);
@@ -94,13 +92,13 @@ class _VectorLayersListState extends State<VectorLayersList> {
         child: CustomPaint(painter: _WholePainter(e)),
       );
 
-  /// _change is [e] with the layer at [start] given [edit] -- set on its
-  /// first shape, which speaks for a combined run.
+  /// _change is [e] with [edit] on the layer at [start], set on its first
+  /// shape, which speaks for a combined run.
   void _change(int start, VectorShape Function(VectorShape) edit) =>
       widget.onChanged(e.withShape(start, edit(e.shapes![start])));
 
-  /// _span is the shapes of the layer starting at [start]: it and whatever
-  /// is combined into it.
+  /// _span is the layer's shapes from [start]: it and whatever is combined
+  /// into it.
   (int, int) _span(int start) {
     var starts = groupStarts(e);
     var at = starts.indexOf(start);
@@ -117,14 +115,14 @@ class _VectorLayersListState extends State<VectorLayersList> {
   void _duplicate(int start) {
     var (from, to) = _span(start);
     var shapes = [...e.shapes!];
-    // In front of the one copied, and picked, as a copied picture layer is.
+    // In front of the original, and picked, as a copied picture layer is.
     shapes.insertAll(to, shapes.sublist(from, to));
     widget.onChanged(e.copyWith(shapes: shapes));
     controller.pickVectorShape(to);
   }
 
-  /// _name is what the layer [index] -- in drawing order, back first -- is
-  /// called: its words, while it is still text, or its number.
+  /// _name is layer [index]'s name (drawing order, back first): its words
+  /// while still text, or its number.
   String _name(VectorDrawn d, int index) {
     if (d.style.liveText case var t?) {
       var words = t.text.trim().replaceAll(RegExp(r"\s+"), " ");
@@ -142,8 +140,8 @@ class _VectorLayersListState extends State<VectorLayersList> {
     var muted = theme.colors.onSurfaceVariant;
     var picked = _picked;
 
-    // Backspace or Delete takes out the layer picked -- here, where the
-    // click that picked it put the keys.
+    // Backspace or Delete removes the picked layer, here, where the click
+    // that picked it put the keys.
     return Focus(
       debugLabel: "vectorLayers",
       onKeyEvent: (node, event) {
@@ -191,7 +189,7 @@ class _VectorLayersListState extends State<VectorLayersList> {
                                       size: 18, color: muted),
                                 ),
                                 const SizedBox(width: 4),
-                                // Giving way before the buttons beside it,
+                                // Giving way first to the buttons beside it,
                                 // in the narrowest sidebar.
                                 Flexible(
                                   child: Text("Layers",
@@ -218,7 +216,7 @@ class _VectorLayersListState extends State<VectorLayersList> {
                         ),
                       ),
                       // Solo: only the picked layer can be worked on, the
-                      // rest held as if locked, whichever is picked.
+                      // rest held as if locked.
                       CanvasIconButton(
                         key: const ValueKey("vectorLayersSolo"),
                         tight: true,
@@ -234,8 +232,8 @@ class _VectorLayersListState extends State<VectorLayersList> {
                           controller.vectorSolo = !controller.vectorSolo;
                         },
                       ),
-                      // The picked layer taken out, from the strip as well
-                      // as the list: a tablet has no Delete key.
+                      // Removes the picked layer, from the strip as well as
+                      // the list: a tablet has no Delete key.
                       CanvasIconButton(
                         key: const ValueKey("vectorLayersDelete"),
                         tight: true,
@@ -254,8 +252,8 @@ class _VectorLayersListState extends State<VectorLayersList> {
                         ),
                       ),
                     ]),
-                    // What a layer is made with, as a picture's kinds are
-                    // shown: picking one takes up its tool.
+                    // What a layer is made with, shown as a picture's kinds
+                    // are: picking one takes up its tool.
                     if (_adding)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
@@ -326,8 +324,7 @@ class _VectorLayersListState extends State<VectorLayersList> {
             child: Column(children: [
               _wholeThumb(60, 42, theme),
               const SizedBox(height: 2),
-              // Short enough to read whole on a chip; the list says it in
-              // full.
+              // Short enough for a chip; the list says it in full.
               Text("Drawing",
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -640,8 +637,8 @@ class _VectorLayersListState extends State<VectorLayersList> {
                   () => _remove(start),
                   label: "Delete"),
             ],
-            // Locked, it is kept as it is while the others are worked on:
-            // nothing on the canvas picks it.
+            // Locked, it is held while the others are worked on: nothing on
+            // the canvas picks it.
             tap(
                 "vectorLayerLock-$start",
                 style.locked

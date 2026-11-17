@@ -30,15 +30,11 @@ import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
 // chain_panel.dart is the Chain: one panel under the canvas for what is
-// picked, its sound -- the chain of effects -- or its motion -- the
-// animation -- switched in its header. It took the place of the Effects and
-// Animation panels, and its two views are what they were (see
-// CanvasController.chainShowsMotion); the devices of both are to become one
-// kind of card in it.
+// picked, showing its sound (the chain of effects) or its motion (the
+// animation), switched in its header (CanvasController.chainShowsMotion).
 
 /// ChainPanel is the Chain, [height] tall: a header with its Sound | Motion
-/// switch, which also takes a drag to resize it (see [onResize]), over the
-/// view it is on.
+/// switch, which also takes a drag to resize it, over the view it is on.
 class ChainPanel extends StatefulWidget {
   final CanvasController controller;
   final double height;
@@ -46,7 +42,6 @@ class ChainPanel extends StatefulWidget {
   /// onResize is the header dragged up or down: the height asked for.
   final ValueChanged<double> onResize;
 
-  /// headerHeight is the header's height, switch and all.
   static const double headerHeight = 30;
 
   const ChainPanel(
@@ -65,17 +60,15 @@ class _ChainPanelState extends State<ChainPanel> {
   /// _copied is a chain copied by the header's ⋯, to paste into another.
   static List<MixDevice>? _copied;
 
-  /// _copiedMotion is an element's motion chain copied, to paste on
-  /// another's.
+  /// _copiedMotion is an element's motion chain copied, to paste on another's.
   static List<MotionDevice>? _copiedMotion;
 
-  /// _dragFrom is the height and the pointer's place when a drag of the
-  /// header began; measured from there, so no move between frames is lost.
+  /// _dragFrom is the height and the pointer's place when a header drag
+  /// began; measured from there, so no move between frames is lost.
   (double, double)? _dragFrom;
 
-  /// _chainHeight is the height the chain had when an editor was opened
-  /// from its tabs -- an editor wants more room, so a short panel grows to
-  /// [editorLeast] -- to go back to when the chain is shown again.
+  /// _chainHeight is the chain's height when an editor opened from its tabs
+  /// (growing a short panel to [editorLeast]), to return to after.
   double? _chainHeight;
 
   /// editorLeast is how tall an editor opens the panel, at the least.
@@ -88,8 +81,7 @@ class _ChainPanelState extends State<ChainPanel> {
     var body = (widget.height - ChainPanel.headerHeight)
         .clamp(0.0, double.infinity)
         .toDouble();
-    // No tips on hover, as the prototype has none: what needs saying is
-    // behind each device's "?".
+    // No tips on hover: what needs saying is behind each device's "?".
     return TooltipVisibility(
       visible: false,
       child: SizedBox(
@@ -109,9 +101,8 @@ class _ChainPanelState extends State<ChainPanel> {
             onVerticalDragEnd: (_) => _dragFrom = null,
             child: MouseRegion(
               cursor: SystemMouseCursors.resizeUpDown,
-              // Its own size whatever the app's text size, as the
-              // prototype's bar and the mixer's are: the bar is a fixed
-              // height, and larger words outgrew it (Ken).
+              // Its own size whatever the app's text size, as the mixer's
+              // is: the bar is a fixed height, and larger words outgrow it.
               child: MediaQuery.withNoTextScaling(
                 child: Container(
                   height: ChainPanel.headerHeight,
@@ -120,23 +111,17 @@ class _ChainPanelState extends State<ChainPanel> {
                     color: look.studio.panel,
                     border: Border(bottom: BorderSide(color: look.studio.edge)),
                   ),
-                  // One row, as the prototype has it: what it shows, its sound
-                  // or motion, its views; then how tall it is.
+                  // One row: what it shows, sound or motion, views, height.
                   child: LayoutBuilder(
                       builder: (context, bar) => Row(children: [
-                            // What it shows and its views take what room is
-                            // spare; its
-                            // heights and the rest keep to the far right.
+                            // What it shows and its views take the spare
+                            // room; its heights and the rest keep right.
                             Expanded(
-                              // Narrow, its name gives way and its switch is
-                              // its
-                              // marks alone (Ken: the header ran over, narrow).
+                              // Narrow, its name gives way; switch marks only.
                               child: LayoutBuilder(
                                   builder: (context, box) => Row(children: [
                                         // Its name gives way first, to a
-                                        // share of the room (Ken: the
-                                        // filter was hidden with room for
-                                        // it).
+                                        // share, so the filter keeps room.
                                         ConstrainedBox(
                                             constraints: BoxConstraints(
                                                 maxWidth: (box.maxWidth * 0.25)
@@ -151,9 +136,8 @@ class _ChainPanelState extends State<ChainPanel> {
                                             onChanged: (m) =>
                                                 c.showChain(motion: m)),
                                         // Its views, then a word on what it
-                                        // shows and what it is doing, in one
-                                        // row: all shown where there is
-                                        // room, scrolled where not.
+                                        // shows, in one row, scrolled when
+                                        // there is not the room.
                                         Expanded(
                                           child: SingleChildScrollView(
                                             key: const ValueKey("chainTabs"),
@@ -239,8 +223,7 @@ extension on _ChainPanelState {
     }
     var notes = c.instrumentChannel(key);
     var channel = c.timelineChannels.any((l) => l.key == key);
-    // No clip in a slot: its sound on the timeline, as a clip (Ken: the two
-    // are interchangeable).
+    // No clip in a slot: its timeline sound, as a clip (they interchange).
     if (firstClip == null && !notes && c.timelineSoundOf(key) != null) {
       firstClip = timelineRow;
     }
@@ -250,9 +233,8 @@ extension on _ChainPanelState {
     var speechOn = c.speechShown;
     var pitchOn = c.pitchShown;
     var instrumentOn = c.instrumentShown;
-    // No Pitch tab, as the prototype has none (Ken): pitch is the device's
-    // that has it -- a voice's Speech's Phrasing button, Auto-tune's way
-    // into the Pitch editor.
+    // No Pitch tab: pitch belongs to the device that has it (a voice's
+    // Speech's Phrasing button, Auto-tune's way into the Pitch editor).
     var voice = channel && !notes && c.speechOf(key) != null;
     Widget tab(String id, String label, IconData icon, bool on,
             VoidCallback onTap) =>
@@ -304,8 +286,7 @@ extension on _ChainPanelState {
 }
 
 extension on _ChainPanelState {
-  /// _motionTabs are the motion view's: its chain, and the Curves of the
-  /// clip it shows, as the prototype has them.
+  /// _motionTabs are the motion view's: its chain, and the clip's Curves.
   List<Widget> _motionTabs(MixerLook look) {
     var e = c.selected;
     var m = e?.base.motion;
@@ -315,16 +296,14 @@ extension on _ChainPanelState {
             if (s.isNotEmpty) s,
           for (var p in m?.placed ?? const <ClipPlacement>[]) p.clip,
         ].firstOrNull;
-    // Its own keyframes, which have Curves of their own (Ken, 2026-11-14:
-    // a camera's keyframes had no Curves to open).
+    // Its own keyframes, which have Curves too (a camera's keyframes too).
     var target = e == null ? null : c.keyframeTarget;
     var keyed = target != null &&
         !target.points &&
         target.player == null &&
         target.track.keys.length >= 2;
     var curvesOn = c.motionCurvesShown || c.trackCurvesShown;
-    // A clip's Curves where a clip is picked, or where there are no
-    // keyframes of its own to show instead.
+    // A clip's Curves where one is picked or there are no own keyframes.
     void curves() {
       if (e == null) return;
       if (clip != null && (c.pickedMotion != null || !keyed)) {
@@ -358,10 +337,9 @@ extension on _ChainPanelState {
             on: curvesOn,
             look: look,
             onTap: curves),
-      // The Keys strip, opened over the cards and shut again (Ken,
-      // 2026-11-12). Always there, beside Curves (Ken, 2026-11-14): from the
-      // Curves it goes back to the chain with the keys showing; on the
-      // chain it shows and hides them.
+      // The Keys strip, opened over the cards and shut again, always beside
+      // Curves: from the Curves it goes back to the chain with the keys
+      // showing; on the chain it shows and hides them.
       if (e != null) ...[
         const SizedBox(width: 6),
         _KeysToggle(
@@ -396,8 +374,7 @@ extension on _ChainPanelState {
             ),
         ]),
       ],
-      // Copies picked: what the chain edits is theirs alone (Ken,
-      // 2026-11-08), with a way back to all of them.
+      // Copies picked: the chain edits theirs alone, with a way back to all.
       if (e != null && c.copiesPicked(e.id)) ...[
         const SizedBox(width: 8),
         Container(
@@ -428,8 +405,7 @@ extension on _ChainPanelState {
     ];
   }
 
-  /// _copiesName is which of [e]'s copies the chain edits: "Editing #3
-  /// only", or how many.
+  /// _copiesName is which copies the chain edits: "Editing #3 only", or count.
   String _copiesName(CanvasElement e) {
     var set = e.base.motion.instances;
     var picked = c.pickedCopiesOf(e.id);
@@ -461,9 +437,8 @@ extension on _ChainPanelState {
   }
 
   /// _chips are what the chain is doing beyond its settings, each a chip
-  /// that undoes it, as the prototype's header has them: heard from a join,
-  /// knobs held off their automation, the canvas showing part of a chain --
-  /// and how far the chain delays the sound.
+  /// that undoes it: heard from a join, knobs held off their automation, the
+  /// canvas showing part of a chain, and how far the chain delays the sound.
   List<Widget> _chips(MixerLook look, bool motion) {
     var owner = _soundOwner;
     var delay = owner == null ? 0.0 : _delayOf(owner);
@@ -513,9 +488,7 @@ extension on _ChainPanelState {
 
   /// _sizeControls are the header's right end: how much each device shows
   /// at this height, the heights to pick from, filling the window, and the
-  /// rest behind its "more" button.
-  ///
-  /// [narrow] leaves out its word on the devices' size, for the room.
+  /// rest behind "more". [narrow] leaves out the devices' size word.
   List<Widget> _sizeControls(MixerLook look, {bool narrow = false}) {
     // The devices' room: the panel less its header and the lane's padding,
     // as the strip's devices are given it.
@@ -686,9 +659,8 @@ extension on _ChainPanelState {
                 onPressed: _ChainPanelState._copiedMotion == null
                     ? null
                     : () {
-                        // After its own, each with an id of its own; a
-                        // modulator still moving what it moved where the
-                        // pasted ids allow.
+                        // After its own, each with a new id; a modulator
+                        // moves what it moved where the ids allow.
                         var id = c.selected!.id;
                         var own = c.motionDevicesOf(id);
                         var copied = _ChainPanelState._copiedMotion!;
@@ -776,7 +748,7 @@ String? chainNote(CanvasController c) {
       "${clip.isSound ? "" : " · layer ${clip.layer + 1}"} · ${clip.kind.label}";
 }
 
-/// _tabIcons are the prototype's icons for the Chain's views, by key.
+/// _tabIcons are the icons for the Chain's views, by key.
 const _tabIcons = {
   "chainTabDevices": "split",
   "chainTabMotionChain": "split",
@@ -786,8 +758,8 @@ const _tabIcons = {
   "chainTabSpeech": "voice",
 };
 
-/// _chainKindColours are the colours of what the Chain can show, as the
-/// prototype has them: a channel's by what it plays, a bus's, an element's.
+/// _chainKindColours are the colours of what the Chain can show: a
+/// channel's by what it plays, a bus's, an element's.
 const _chainKindColours = {
   "Audio": Color(0xFF4F8FD6),
   "Video": Color(0xFF4F8FD6),
@@ -799,8 +771,8 @@ const _chainKindColours = {
   "Scene": Color(0xFF5A9FA8),
 };
 
-/// _ChainWho is the header's start: what the Chain shows -- its colour,
-/// name and kind -- and, pressed, a list to pick something else from.
+/// _ChainWho is the header's start: what the Chain shows (its colour, name
+/// and kind) and, pressed, a list to pick something else from.
 class _ChainWho extends StatelessWidget {
   final CanvasController controller;
   final MixerLook look;
@@ -869,8 +841,8 @@ class _ChainWho extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         onTap: () => menu.isOpen ? menu.close() : menu.open(),
         child: LayoutBuilder(builder: (context, box) {
-          // Squeezed, its parts go: what kind it is, then its name, then
-          // its mark -- the arrow to pick another kept longest.
+          // Squeezed, its parts go: what kind it is, then its name, then its
+          // mark; the arrow to pick another is kept longest.
           var room = box.maxWidth;
           if (room < 26) return const SizedBox(width: 0, height: 24);
           return Container(
@@ -1046,8 +1018,7 @@ class _KeysToggle extends StatelessWidget {
       );
 }
 
-/// _Segments is a row of joined buttons, the one on filled: the header's
-/// heights.
+/// _Segments is a row of joined buttons, the on one filled: header heights.
 class _Segments extends StatelessWidget {
   final MixerLook look;
 
@@ -1084,9 +1055,7 @@ class _Segments extends StatelessWidget {
       );
 }
 
-/// _IconChip is a small square button of the header's: filled when [on].
-/// _TextChip is a word in the header that does something when pressed --
-/// or, without [onTap], just says it.
+/// _TextChip is a header word that acts when pressed, or without [onTap] says.
 class _TextChip extends StatelessWidget {
   final String id, text;
   final String? tip;
@@ -1169,15 +1138,13 @@ class _IconChip extends StatelessWidget {
       );
 }
 
-/// _ChainSwitch is the header's Sound | Motion: which of the picked
-/// thing's chains the panel shows.
+/// _ChainSwitch is the header's Sound | Motion: which chain is shown.
 class _ChainSwitch extends StatelessWidget {
   final bool motion;
   final MixerLook look;
   final ValueChanged<bool> onChanged;
 
-  /// compact shows its marks alone, its words in their tooltips: a narrow
-  /// header's.
+  /// compact shows its marks alone, words in tooltips: a narrow header's.
   final bool compact;
   const _ChainSwitch(
       {required this.motion,

@@ -1,13 +1,11 @@
 part of '../canvas_controller.dart';
 
-// Scenes, and the word cues across them.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Part of CanvasController (state in canvas_controller.dart): scenes, and
+// the word cues across them.
 
 extension CanvasScenes on CanvasController {
-  /// playAll is whether Play runs the whole document or the scene in front of
-  /// the reader. A mode rather than a second button: the answer is usually
-  /// the same for a whole sitting.
+  /// playAll is whether Play runs the whole document or the scene shown: a
+  /// mode, not a second button, as the answer rarely changes in a sitting.
   bool get playAll => _playAll;
 
   set playAll(bool value) {
@@ -26,18 +24,16 @@ extension CanvasScenes on CanvasController {
   /// (see paintSequenceFrame).
   int? get previewAt => _previewAt;
 
-  /// previewTransitionAfter plays the join between a scene and the next one:
-  /// a little of the scene before it, the transition, and a little of the
-  /// scene after.
+  /// previewTransitionAfter plays the join after scene [index]: a little of
+  /// the scene before, the transition, and a little of the scene after.
   void previewTransitionAfter(int index, {bool exact = false}) {
     var document = _document;
     var scenes = document.allScenes;
     if (scenes.length < 2) return;
 
-    // On the shared canvas the bar edits the default every scene starts from,
-    // and there is no "this scene" to be after, so the first join stands for
-    // all of them.
-    // From a join's own slot, that join.
+    // On the shared canvas the bar edits the default every scene starts
+    // from, with no "this scene" to be after, so the first join stands for
+    // all; from a join's own slot ([exact]), that join.
     if (document.editingMaster && !exact) index = 0;
     if (index < 0 || index >= scenes.length - 1) return;
 
@@ -56,10 +52,9 @@ extension CanvasScenes on CanvasController {
     notifyListeners();
   }
 
-  /// joinPlaying is whether the transition after scene [join] is playing:
+  /// joinPlaying is whether the transition after scene [join] is playing --
   /// previewed from its slot, passed through as every scene plays, or gone
-  /// through in a game -- for its slot to light as a launched one does (Ken,
-  /// 2026-11-10: "the play button doesn't show when they are playing").
+  /// through in a game -- for its slot to light as a launched one does.
   bool joinPlaying(int join) {
     var doc = _document;
     if (join < 0 || join >= doc.allScenes.length - 1) return false;
@@ -119,8 +114,7 @@ extension CanvasScenes on CanvasController {
     apply(next, transient: transient);
   }
 
-  /// setSceneLength sets the length of the scene being edited -- the
-  /// timeline's Length field.
+  /// setSceneLength sets the edited scene's length: the timeline's Length.
   void setSceneLength(int frames, {bool transient = false}) =>
       apply(_document.copyWith(frames: frames), transient: transient);
 
@@ -146,9 +140,8 @@ extension CanvasScenes on CanvasController {
         for (var c in cues) c.id == id ? c.copyWith(name: name) : c,
       ]));
 
-  /// moveCue puts cue [id] at [frame] of the run, and every element tied to
-  /// it moves by as much: its keyframes and its clip placements, wherever in
-  /// the run it is.
+  /// moveCue puts cue [id] at [frame] of the run, moving every element tied
+  /// to it (keyframes and clip placements) by as much, wherever it is.
   void moveCue(String id, int frame, {bool transient = false}) {
     var cue = cues.where((c) => c.id == id).firstOrNull;
     if (cue == null) return;
@@ -218,8 +211,7 @@ extension CanvasScenes on CanvasController {
     var rate = math.max(1, _document.frameRate);
     var length = source.length > 0 ? source.length : 0.0;
     if (length <= 0) return 0;
-    // Where the clip's own time starts in the run: on the master its frame
-    // is the run's; on a scene, it is counted from that scene's start.
+    // Where the clip's own time starts in the run: see _clipOffset.
     var offset = 0;
     for (var (i, scene) in _document.allScenes.indexed) {
       if (scene.elements.any((e) => e.id == clip.id)) {
@@ -251,12 +243,10 @@ extension CanvasScenes on CanvasController {
   List<SpokenWord> get words => _document.words;
 
   /// hearWords listens to the voice on [clip] and keeps what it says, word
-  /// by word, then names the clip's cues by the words they start on -- and
-  /// finds those cues first if it has none. Null when it worked; otherwise
-  /// what stopped it, said for the reader.
-  ///
-  /// [model] is where the speech model is, when the caller has just fetched
-  /// it somewhere other than its usual place.
+  /// by word, then names the clip's cues by the words they start on, finding
+  /// those cues first if it has none. Null when it worked, else what stopped
+  /// it, for the reader. [model] is where the speech model is, when the
+  /// caller has just fetched it somewhere other than its usual place.
   Future<String?> hearWords(AudioElement clip, {String? model}) async {
     var source = clip.clip.playlist.firstOrNull;
     if (source == null) return "That sound has nothing in it to hear.";
@@ -319,8 +309,7 @@ extension CanvasScenes on CanvasController {
   }
 
   /// _clipOffset is where [clip]'s own time starts in the run: on the master
-  /// its frames are the run's; on a scene, they count from that scene's
-  /// start.
+  /// its frames are the run's; on a scene, from that scene's start.
   int _clipOffset(CanvasElement clip) {
     for (var (i, scene) in _document.allScenes.indexed) {
       if (scene.elements.any((e) => e.id == clip.id)) {
@@ -332,11 +321,10 @@ extension CanvasScenes on CanvasController {
 
   /// dimOthers fades everything already on the canvas down to [to] of
   /// itself as element [id] arrives, over [over] frames, and leaves it
-  /// there. Returns how many it dimmed. One step to undo.
-  ///
-  /// "Down to", not "by", so an element dimmed for an earlier beat does not
-  /// sink further. What has not arrived yet or has gone is left alone, as are
-  /// things that are not drawn (a sound, the backdrop).
+  /// there: "down to", not "by", so what an earlier beat dimmed does not
+  /// sink further. What has not arrived or has gone, and what is not drawn
+  /// (a sound, the backdrop), is left. Returns how many it dimmed. One step
+  /// to undo.
   int dimOthers(String id, {double to = 0.3, int over = 12}) {
     var me = _document.elements.where((e) => e.id == id).firstOrNull;
     if (me == null) return 0;
@@ -406,8 +394,7 @@ extension CanvasScenes on CanvasController {
     ].take(most).toList();
   }
 
-  /// wordInContext is [word] with the words either side of it, to tell one
-  /// "the" from another.
+  /// wordInContext is [word] with its neighbours, to tell one "the" apart.
   String wordInContext(SpokenWord word) {
     var i = words.indexOf(word);
     if (i < 0) return word.text;
@@ -440,9 +427,8 @@ extension CanvasScenes on CanvasController {
     ]);
   }
 
-  /// _everyElement is [doc] with [f] applied to every element of every
-  /// scene and of the master. [f] is told the frame of the run its element's
-  /// own frames count from.
+  /// _everyElement is [doc] with [f] applied to every element of every scene
+  /// and the master, told the run frame its element's frames count from.
   CanvasDocument _everyElement(CanvasDocument doc,
       CanvasElement Function(CanvasElement e, int start) f) {
     var scenes = [
@@ -480,15 +466,13 @@ extension CanvasScenes on CanvasController {
     return null;
   }
 
-  /// sceneAt is which one is being edited, and onMaster whether the shared
-  /// canvas is showing instead of any of them.
+  /// sceneAt is the scene being edited; onMaster whether the master shows.
   int get sceneAt => _document.at;
 
   bool get onMaster => _document.editingMaster;
 
-  /// goToScene shows another canvas. Not an undo step: which scene is shown
-  /// is where the reader is, not an edit. The selection is cleared, since
-  /// its elements are on the canvas being left.
+  /// goToScene shows another canvas, clearing the selection. Not an undo
+  /// step: which scene is shown is where the reader is, not an edit.
   void goToScene(int index) {
     var next = _document.goToScene(index).copyWith(onMaster: false);
     if (identical(next, _document)) return;
@@ -514,8 +498,7 @@ extension CanvasScenes on CanvasController {
     return at.clamp(0, math.max(0, scene.frames - 1)).toInt();
   }
 
-  /// showMaster puts the shared canvas in front of the reader, making one if
-  /// there is none and switching it on if it is off.
+  /// showMaster shows the shared canvas, making it or switching it on.
   void showMaster() {
     var next = _document;
     if (next.master == null) {
@@ -526,8 +509,7 @@ extension CanvasScenes on CanvasController {
     _afterSceneChange();
   }
 
-  /// masterOn switches the shared canvas on and off. Off, it is kept: turning
-  /// it off is not the same as throwing away what is on it.
+  /// masterOn switches the shared canvas on and off; off, it is kept.
   set masterOn(bool value) {
     if (_document.masterOn == value) return;
     var next = _document.copyWith(masterOn: value);
@@ -555,9 +537,8 @@ extension CanvasScenes on CanvasController {
     notifyListeners();
   }
 
-  /// pasteScene puts the copied scene in after the one being looked at, with
-  /// fresh ids for the scene and its elements so it can be told apart from
-  /// the original.
+  /// pasteScene puts the copied scene after the one being looked at, with
+  /// fresh ids for it and its elements.
   void pasteScene() {
     var from = CanvasController._sceneClipboard;
     if (from == null) return;
@@ -573,11 +554,10 @@ extension CanvasScenes on CanvasController {
     _afterSceneChange();
   }
 
-  /// setShape changes the shape of the page, keeping the layout of the shape
-  /// being left. The one route a ratio change takes: both shapes join the
-  /// document's targets, which marks them in the ratio list and is what a new
-  /// element is laid out for. A document only ever one shape keeps an empty
-  /// list.
+  /// setShape changes the page's shape, keeping the layout of the one left.
+  /// The one route a ratio change takes: both shapes join the document's
+  /// targets, marked in the ratio list and what a new element is laid out
+  /// for. A document only ever one shape keeps an empty list.
   void setShape(CanvasSize next, {int? frameRate}) {
     var was = _document.size;
     if (shapeKey(was) == shapeKey(next) && frameRate == null) {
@@ -594,12 +574,10 @@ extension CanvasScenes on CanvasController {
     apply(moved.copyWith(targets: targets.length > 1 ? targets : const []));
   }
 
-  /// setKind is whether this document is scenes or pages.
-  ///
-  /// Choosing pages also sets the shape, the rate and the transition, but
-  /// only where they have not been decided already (a canvas already on
-  /// paper, a rate typed by hand). Nothing is undone on the way back: called
-  /// Scenes again, a document keeps its paper, rate and covers.
+  /// setKind is whether this document is scenes or pages. Pages also sets
+  /// the shape, rate and transition where not already decided (a canvas on
+  /// paper, a rate typed by hand); nothing is undone going back to Scenes,
+  /// which keeps its paper, rate and covers.
   void setKind(CanvasKind kind) {
     if (_document.kind == kind) return;
     // What the size is estimated as follows what the document now is: a
@@ -635,10 +613,8 @@ extension CanvasScenes on CanvasController {
           kind: kind,
           frameRate: rate,
           frames: frames,
-          // A piece of sound starts with no canvas -- Ratio "None" -- and
-          // anything else always has one.
+          // A piece of sound starts with no canvas (Ratio "None").
           hasCanvas: !kind.isAudio);
-      // The estimate from what the document now is.
       apply(next.copyWith(
           estimate: next.estimate.copyWith(
               format: kind.isAudio
@@ -677,8 +653,8 @@ extension CanvasScenes on CanvasController {
     endInteraction();
   }
 
-  /// setAudio changes the document's sound settings: its tempo, metre,
-  /// structure, grid and how it is published.
+  /// setAudio changes the document's tempo, metre, structure, grid and how
+  /// it is published.
   void setAudio(AudioSettings next, {bool transient = false}) {
     var doc = _document.copyWith(audio: next);
     // A structure longer than the timeline makes the timeline long enough
@@ -714,7 +690,6 @@ extension CanvasScenes on CanvasController {
     ]));
   }
 
-  /// goToSection moves the playhead to where section [index] starts.
   void goToSection(int index) {
     var a = _document.audio;
     if (index < 0 || index >= a.sections.length) return;
@@ -724,8 +699,8 @@ extension CanvasScenes on CanvasController {
         .toInt();
   }
 
-  /// setHasCanvas gives the document a picture or takes it away -- the
-  /// Ratio "None" of a piece of sound. See CanvasDocument.hasCanvas.
+  /// setHasCanvas gives the document a picture or takes it away: a piece of
+  /// sound's Ratio "None". See CanvasDocument.hasCanvas.
   void setHasCanvas(bool has) {
     if (_document.hasCanvas == has) return;
     apply(_document.copyWith(hasCanvas: has));
@@ -752,8 +727,8 @@ extension CanvasScenes on CanvasController {
         at: next.at).copyWith(targets: left.length > 1 ? left : const []));
   }
 
-  /// resetShape lays this shape out again from another one, by scale: the
-  /// same seeding a first visit to a shape gets.
+  /// resetShape lays this shape out again from shape [from] by scale, as a
+  /// first visit to a shape is.
   void resetShape(String from) {
     var here = _document.size;
     var was = sizeForShape(from, here);
@@ -865,9 +840,8 @@ extension CanvasScenes on CanvasController {
     apply(_document.withScene(index, list[index].copyWith(masterOff: off)));
   }
 
-  /// setSceneCover marks a page as the front or the back of the document: at
-  /// most one of each, since the numbering and the pairing are read from
-  /// these marks.
+  /// setSceneCover marks a page as the front or back of the document: at
+  /// most one of each, as numbering and pairing are read from these marks.
   void setSceneCover(int index, PageCover cover) {
     var list = _document.allScenes;
     if (index < 0 || index >= list.length) return;
@@ -883,8 +857,8 @@ extension CanvasScenes on CanvasController {
     apply(_document.withScenes(next, at: _document.at));
   }
 
-  /// setSceneTransition gives a scene its own way of giving way to the next,
-  /// or takes it back to the document's default.
+  /// setSceneTransition gives a scene its own transition, or null for the
+  /// document's default.
   void setSceneTransition(int index, SceneTransition? transition,
       {bool transient = false}) {
     var list = _document.allScenes;
@@ -899,10 +873,9 @@ extension CanvasScenes on CanvasController {
   }
 
   /// cameraView is whether the canvas shows the scene through its camera
-  /// while paused -- stepped and scrubbed, as well as played -- so a camera
-  /// can be set up by looking. On while a camera is being set, off at the
-  /// next press on the canvas, since the page is drawn moved and a press
-  /// would land somewhere other than it looks.
+  /// while paused (stepped and scrubbed, as well as played), to set a
+  /// camera up by looking. On while a camera is being set, off at the next
+  /// press, since the page is drawn moved and a press would land elsewhere.
   bool get cameraView => _cameraView;
 
   set cameraView(bool on) {
@@ -911,8 +884,7 @@ extension CanvasScenes on CanvasController {
     notifyListeners();
   }
 
-  /// setSceneCamera gives scene [index] a slow move, or holds it still with
-  /// null. See SceneCamera.
+  /// setSceneCamera gives scene [index] a slow move, or null for still.
   void setSceneCamera(int index, SceneCamera? camera,
       {bool transient = false}) {
     var list = _document.allScenes;
@@ -927,8 +899,8 @@ extension CanvasScenes on CanvasController {
         transient: transient);
   }
 
-  /// soundEveryTransition puts [like]'s sound -- its file, volume and lead
-  /// -- on the default transition and on every scene's own, as one change.
+  /// soundEveryTransition puts [like]'s sound (file, volume, lead) on the
+  /// default transition and every scene's own, as one change.
   void soundEveryTransition(SceneTransition like) {
     SceneTransition sounded(SceneTransition t) => t.copyWith(
         sound: like.sound,
@@ -957,8 +929,7 @@ extension CanvasScenes on CanvasController {
   CanvasDocument _timed(CanvasDocument next) => next.keepingStarts(_document);
 
   /// setDefaultTransition changes what every scene without one of its own
-  /// uses. It lives on the master canvas, which is where the things shared by
-  /// every scene live.
+  /// uses. It lives on the master, with the things every scene shares.
   void setDefaultTransition(SceneTransition transition,
       {bool transient = false}) {
     var master =

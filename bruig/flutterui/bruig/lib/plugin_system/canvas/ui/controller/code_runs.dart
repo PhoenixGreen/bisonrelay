@@ -1,10 +1,10 @@
 part of '../canvas_controller.dart';
 
 // Part of CanvasController: Run panels run (code_run_element.dart). A run
-// is asked of [CanvasController.codeRunHost] -- the app's own browser and
-// interpreters (media/code_run_host.dart), a fake in the tests -- and what
-// it prints shows on the panel as it comes; when it is done its output and
-// a picture of its preview are kept in the element, one change to undo.
+// is asked of [CanvasController.codeRunHost] (the app's browser and
+// interpreters, a fake in tests); what it prints shows as it comes, and
+// when done its output and a picture of its preview are kept in the
+// element as one undo step.
 
 /// CodeRunOutcome is what a run made: what it printed, and a picture of its
 /// preview (PNG bytes; null for none).
@@ -22,12 +22,11 @@ abstract class CodeRunHost {
 }
 
 extension CanvasCodeRuns on CanvasController {
-  /// codeRunning is whether Run panel [id] is running now.
   bool codeRunning(String id) => _codeRuns.containsKey(id);
 
-  /// codeRunShowFor is how the stage shows Run panel [e]: running, and what
-  /// it has printed so far; or open live, its run's output and what has
-  /// been printed since.
+  /// codeRunShowFor is how the stage shows Run panel [e]: running and what
+  /// it has printed, or open live with its run's output and what has been
+  /// printed since.
   CodeRunShow codeRunShowFor(CodeRunElement e) {
     var now = _codeRanNow.contains(e.id) || _codeFull.contains(e.code);
     if (_codeLive?.$1 == e.id) {
@@ -41,13 +40,13 @@ extension CanvasCodeRuns on CanvasController {
     return CodeRunShow(now: now);
   }
 
-  /// codeLive is the Run panel whose preview is open to be used, by id.
+  /// codeLive is the id of the Run panel whose preview is open to be used.
   String? get codeLive => _codeLive?.$1;
 
   /// liveCode opens Run panel [e]'s preview to be used: its page live over
-  /// it, or its Flutter app's own widgets. Only one run here, and making
-  /// something to look at: a run that came with a received canvas is its
-  /// sender's code, run by nobody here until Run is pressed.
+  /// it, or its Flutter app's widgets. Only on the user's own action: a run
+  /// that came with a received canvas is its sender's code, and nobody here
+  /// runs it until Run is pressed.
   void liveCode(CodeRunElement e) {
     if (_codeLive?.$1 == e.id || e.result == null) return;
     if (!_codeRunHere.contains(e.id)) return;
@@ -68,7 +67,7 @@ extension CanvasCodeRuns on CanvasController {
   }
 
   /// endLiveCode shuts the live preview, keeping what it printed and a
-  /// picture of it as it was left in place of its run's: one change.
+  /// picture of it in place of its run's, as one change.
   Future<void> endLiveCode() async {
     var live = _codeLive;
     if (live == null) return;
@@ -90,7 +89,7 @@ extension CanvasCodeRuns on CanvasController {
     }
   }
 
-  /// runCode runs Run panel [e]'s code now, and keeps what came of it.
+  /// runCode runs Run panel [e]'s code now and keeps the outcome.
   Future<void> runCode(CodeRunElement e) async {
     if (codeRunning(e.id)) return;
     var code = _document.elementById(e.code);
@@ -113,8 +112,8 @@ extension CanvasCodeRuns on CanvasController {
               CodeLog("Code can't be run here.", kind: CodeLogKind.note)
             ])
           : await host.run(runner, code, entry, size, (l) {
-              // A program that prints for ever fills neither the screen nor
-              // the canvas file: the first [maxCodeLogs] lines are kept.
+              // Only the first [maxCodeLogs] lines are kept, so a program
+              // that prints for ever fills neither screen nor file.
               if (logs.length >= maxCodeLogs) return;
               logs.add(l.capped);
               _codeViewChanged();

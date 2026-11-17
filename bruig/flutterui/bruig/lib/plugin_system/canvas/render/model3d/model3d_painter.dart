@@ -6,9 +6,8 @@ import 'package:bruig/plugin_system/canvas/render/model3d/model_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:flutter/painting.dart';
 
-// model3d_painter.dart draws a 3D object: its model, from the store that
-// keeps a scene for each, posed by what its clips play -- or, where 3D
-// cannot be drawn here or it is still being read, a box saying so.
+// model3d_painter.dart draws a 3D object posed by its clips, or a box
+// saying why not where 3D cannot be drawn or it is still being read.
 
 /// CanvasModelSource keeps the 3D objects' scenes.
 abstract class CanvasModelSource {
@@ -67,8 +66,8 @@ void paintObject3d(ui.Canvas canvas, Rect box, Object3dElement e, Object? images
       pixelRatio: (scale * screen).clamp(0.25, math.max(0.25, most)));
 }
 
-/// _standIn is a box drawn as a cube where the model will be, with what
-/// is happening said under it: something to find and pick meanwhile.
+/// _standIn is a box drawn as a cube where the model will be, with what is
+/// happening said under it: something to find and pick meanwhile.
 void _standIn(ui.Canvas canvas, Rect box, Object3dElement e,
     {required String says}) {
   var ink = Paint()

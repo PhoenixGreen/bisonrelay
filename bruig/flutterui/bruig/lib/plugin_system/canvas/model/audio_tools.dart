@@ -8,14 +8,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
-// audio_tools.dart is the arithmetic behind the timeline's sound tools:
-// ducking music under a voice.
-// Pure, so it can be tested without a sound card, and so the tools write
-// ordinary clips and envelopes that play and export as anything else does.
+// audio_tools.dart is the arithmetic behind the timeline's sound tools,
+// such as ducking music under a voice. Pure, so it tests without a sound
+// card and the tools write ordinary clips and envelopes.
 
-/// speechSpans is when somebody is speaking in a recording whose shape is
-/// [peaks] across [seconds]: each stretch of sound, with pauses shorter than
-/// [gap] bridged, as (from, to) in seconds.
+/// speechSpans is each stretch of sound in a recording shaped [peaks] over
+/// [seconds], pauses shorter than [gap] bridged, as (from, to) in seconds.
 List<(double, double)> speechSpans(Float32List peaks, double seconds,
     {double gap = 0.35, double floor = 0.08}) {
   if (peaks.isEmpty || seconds <= 0) return const [];
@@ -41,12 +39,9 @@ List<(double, double)> speechSpans(Float32List peaks, double seconds,
   return spans;
 }
 
-/// duckEnvelope is the volume envelope that sinks a clip to [gain] for
-/// every span of [spans] -- each in seconds from the clip's start --
-/// sinking over [attack] before a span and rising over [release] after it.
-///
-/// Spans whose dips would meet are one dip: the music does not bob up for a
-/// breath between two lines.
+/// duckEnvelope sinks a clip to [gain] for every span (seconds from its
+/// start), over [attack] before and [release] after. Dips that would meet
+/// are one, so the music does not bob up for a breath between lines.
 List<GainPoint> duckEnvelope(List<(double, double)> spans,
     {double gain = 0.25,
     double attack = 0.15,
@@ -66,16 +61,15 @@ List<GainPoint> duckEnvelope(List<(double, double)> spans,
       merged.add(s);
     }
   }
-  // A straight line is two points; a curve is laid down as several, so
-  // playing it and exporting it -- both of which join points with straight
-  // lines -- follow the same shape.
+  // A curve is laid down as several points, so playing and exporting (both
+  // joining points with straight lines) follow the same shape.
   const steps = 8;
   double shaped(double t) => switch (curve) {
         DuckCurve.smooth => t * t * (3 - 2 * t),
         _ => t,
       };
   double level(double t) => curve == DuckCurve.natural
-      // Even in decibels: from 1 to [gain] along a straight line in dB.
+      // Even in decibels: a straight line in dB from 1 to [gain].
       ? math.pow(gain, t).toDouble()
       : 1 + (gain - 1) * shaped(t);
   var many = curve == DuckCurve.smooth || curve == DuckCurve.natural;
@@ -99,8 +93,8 @@ List<GainPoint> duckEnvelope(List<(double, double)> spans,
   ];
 }
 
-/// multiplyEnvelopes is [a] and [b] applied one after the other: their
-/// product at every point either has, joined by straight lines between.
+/// multiplyEnvelopes is [a] then [b]: their product at every point of
+/// either, joined by straight lines.
 List<GainPoint> multiplyEnvelopes(List<GainPoint> a, List<GainPoint> b) {
   if (a.isEmpty) return b;
   if (b.isEmpty) return a;
@@ -112,8 +106,8 @@ List<GainPoint> multiplyEnvelopes(List<GainPoint> a, List<GainPoint> b) {
   ];
 }
 
-/// TimedSound is one sound on the run's timeline: its element, where its
-/// own timeline starts in the run, and the channel it is on.
+/// TimedSound is one sound on the run: its element, where its timeline
+/// starts in the run, and its channel.
 typedef TimedSound = ({
   CanvasElement element,
   MediaClip clip,
@@ -121,8 +115,8 @@ typedef TimedSound = ({
   String channel
 });
 
-/// timedSounds is every sound on the document's timeline, wherever it is --
-/// the master, each scene, the transitions -- placed in the run.
+/// timedSounds is every sound on the document's timeline (master, scenes,
+/// transitions), placed in the run.
 List<TimedSound> timedSounds(CanvasDocument doc) {
   TimedSound? of(CanvasElement e, int offset) {
     var clip = switch (e) {
@@ -152,14 +146,13 @@ List<TimedSound> timedSounds(CanvasDocument doc) {
   ];
 }
 
-/// _timedOf keeps each document's timed sounds, worked out once: a channel
-/// followed is asked about on every frame.
+/// _timedOf caches each document's timed sounds: a followed channel is
+/// asked about every frame.
 final Expando<List<TimedSound>> _timedOf = Expando("timedSounds");
 
-/// channelLevelAt is how loud [channel] is [seconds] into [doc]'s run,
-/// nought to one, from its recordings' shapes ([peaksOf]; a sound not read
-/// yet is silent) -- averaged over the [window] of seconds before, as a
-/// smoothed meter would read. The same playing and exported, as ducking is.
+/// channelLevelAt is how loud [channel] is [seconds] into the run, 0 to 1,
+/// from its recordings' [peaksOf] (unread is silent), averaged over the
+/// [window] before, as a smoothed meter. The same played and exported.
 double channelLevelAt(CanvasDocument doc, String channel, double seconds,
     Float32List? Function(String assetId) peaksOf,
     {double window = 0}) {
@@ -189,17 +182,15 @@ double channelLevelAt(CanvasDocument doc, String channel, double seconds,
   return loudest.clamp(0.0, 1.0);
 }
 
-/// duckEnvelopes is how far each channel is turned down, over the whole
-/// run, by the channels that duck the others -- see Ducking. Keyed by
-/// channel, in seconds of the run; a channel nothing ducks is not in it.
-///
-/// [peaksOf] is a recording's shape, or null where it has not been read; a
-/// sound not yet read ducks nothing until it has been.
+/// duckEnvelopes is how far each channel is turned down over the run by the
+/// ducking channels (see Ducking), by channel, in run seconds; a channel
+/// nothing ducks is absent. [peaksOf] is null for an unread recording,
+/// which ducks nothing until read.
 Map<String, List<GainPoint>> duckEnvelopes(
     CanvasDocument doc, Float32List? Function(String assetId) peaksOf) {
   var rate = math.max(1, doc.frameRate).toDouble();
   var sounds = timedSounds(doc);
-  // The channels that duck, each with when it is speaking.
+  // The ducking channels, each with when it speaks.
   var ducking = <String, Ducking>{};
   var speech = <String, List<(double, double)>>{};
   for (var s in sounds) {

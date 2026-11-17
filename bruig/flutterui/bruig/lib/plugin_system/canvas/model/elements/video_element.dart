@@ -10,23 +10,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
 export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
     show LayerBlend;
 
-// video_element.dart is a moving picture on a canvas.
-//
-// Two kinds of source, deliberately not equals:
-//
-// - **A file** is footage the canvas owns. It is decoded frame by frame and
-//   drawn by the same renderer as everything else, so it can be keyed, graded,
-//   cut to a shape and exported. Its sound plays through the audio engine, in
-//   step with the picture.
-// - **A link** (YouTube, Vimeo, anything else) is somebody else's video. It
-//   shows a poster and opens the video when pressed. Those services' terms
-//   forbid downloading or altering what they host, and a published canvas
-//   would carry the video to everyone it was sent to, so a link is never
-//   decoded, keyed or exported as footage.
-//
-// How the picture is drawn (shape, crop, filter, overlay, outline, box) is an
-// image element's look, held whole in [VideoElement.look], set by the same
-// controls and drawn by the same painter.
+// video_element.dart is a moving picture on a canvas, from one of two
+// sources. A file is footage the canvas owns: decoded frame by frame, drawn
+// by the shared renderer, so it can be keyed, graded and exported, its
+// sound in step through the audio engine. A link (YouTube, Vimeo...) shows
+// a poster and opens the video when pressed: never decoded, keyed or
+// exported, as those services' terms forbid downloading or altering it.
 
 /// VideoControl is one thing a reader can do to the video from the canvas.
 enum VideoControl {
@@ -49,15 +38,12 @@ enum VideoControl {
   }
 }
 
-/// ChromaKey takes one colour out of the picture -- a green screen.
-///
-/// Worked on the GPU, frame by frame, before the look is applied (see
-/// video_key.dart): the image element's CPU background removal is far too
-/// slow for every frame.
+/// ChromaKey takes one colour out of the picture -- a green screen. Worked
+/// on the GPU per frame, before the look (video_key.dart): the image
+/// element's CPU background removal is far too slow for every frame.
 class ChromaKey {
   final bool on;
 
-  /// color is the screen's colour.
   final Color color;
 
   /// tolerance is how far from [color] a pixel may be and still be removed,
@@ -65,8 +51,8 @@ class ChromaKey {
   final double tolerance;
   final double softness;
 
-  /// spill is how much of the screen's colour is taken back out of what is
-  /// kept, against the green fringe light bounced off the screen leaves.
+  /// spill takes the screen's colour back out of what is kept, against the
+  /// green fringe bounced off the screen.
   final double spill;
 
   const ChromaKey({
@@ -127,8 +113,8 @@ enum VideoHost {
   }
 }
 
-/// linkAt is [url] with a start time written into it, the way each host
-/// reads one. Only the start: neither host takes an end in a watch address.
+/// linkAt is [url] with a start time written in the host's way. Only the
+/// start: neither host takes an end in a watch address.
 String linkAt(String url, double start) {
   if (start <= 0) return url;
   var seconds = start.floor();
@@ -147,30 +133,27 @@ String linkAt(String url, double start) {
   }
 }
 
-/// VideoElement is a video on the canvas, from files or a link.
 class VideoElement extends CanvasElement {
-  /// clip is the files, their ranges, fades, loop and volume, as an Audio
-  /// element has. See MediaClip.
+  /// clip is the files, their ranges, fades, loop and volume (MediaClip).
   final MediaClip clip;
 
-  /// link is a video somewhere else, instead of files. See the top of this
-  /// file.
+  /// link is a video somewhere else, instead of files.
   final String link;
 
-  /// linkStart is where the linked video opens, in seconds.
+  /// linkStart is in seconds.
   final double linkStart;
 
   final ChromaKey key;
 
-  /// look is how the picture is drawn: an image element's settings, whose
-  /// own picture is the poster of a link video and unused for a file. Its
-  /// base is ignored -- see [picture], which puts this element's on it.
+  /// look is how the picture is drawn, as an image element's settings; its
+  /// picture is a link's poster, unused for a file. Its base is ignored: see
+  /// [picture].
   final ImageElement look;
 
   final List<VideoControl> controls;
 
-  /// accent colours the controls: the played part of the bar, switches that
-  /// are on.
+  /// accent colours the controls: the bar's played part, switches that are
+  /// on.
   final Color accent;
 
   final ElementAnimation animation;
@@ -179,7 +162,7 @@ class VideoElement extends CanvasElement {
   /// suit overlays shot on black (light leaks, flares).
   final LayerBlend blend;
 
-  /// edges softens the box's edges and fades it out. See EdgeMask.
+  /// edges softens the box's edges and fades it out.
   final EdgeMask edges;
 
   const VideoElement(
@@ -207,7 +190,7 @@ class VideoElement extends CanvasElement {
   bool has(VideoControl control) => controls.contains(control);
 
   /// picture is [look] on this element's base, for the image painter and
-  /// image settings, which work crops and padding out from the box.
+  /// settings, which work crops and padding out from the box.
   ImageElement get picture => look.rebase(base) as ImageElement;
 
   /// withPicture takes the look back from an edited [picture], and its box

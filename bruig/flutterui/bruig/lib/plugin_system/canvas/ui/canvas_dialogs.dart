@@ -71,10 +71,8 @@ Future<int?> askForFrameRate(BuildContext context, {required int initial}) {
 /// askForName puts up a one-field dialog for a name, [initial] filled in,
 /// and waits for it: null when cancelled or dismissed.
 ///
-/// The field's controller belongs to the dialog and goes with it. Disposed
-/// by the caller as soon as the answer came back, it was used again while
-/// the dialog animated away ("A TextEditingController was used after being
-/// disposed", then a cascade of build assertions).
+/// The field's controller belongs to the dialog and is disposed with it:
+/// the dialog still uses it while it animates away after answering.
 Future<String?> askForName(
   BuildContext context, {
   required String title,

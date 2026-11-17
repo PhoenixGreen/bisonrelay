@@ -28,23 +28,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// data_table_design.dart is the Data Studio's Table tab (Ken, 2026-11-15:
-// "a design view that allows me to visually improve the way tables ... look
-// ... select cells or rows or columns or tables ... and be given options to
-// customise"; prototype https://claude.ai/artifact/JyqWLMrdCunvo9GReCzYyq).
-//
-// The table is drawn large, as the canvas draws it, with a tab over each
-// column and beside each row (lettered and numbered as its sheet is). Click a
-// cell, a tab, or round the table, and the panel on the right is about that:
-// the table's look and its styles; the header; a column's width and the
-// styles reaching it; a row; a cell and the styles on it in the order they
-// apply. A style -- one of the table's rules -- is listed by name, lights up
-// everything it reaches when hovered, and opens to its reach and its look.
-//
-// Every change goes through the controller as one step to undo, so the
-// canvas follows at once.
+// data_table_design.dart is the Data Studio's Table tab: the table drawn
+// large, as the canvas draws it, with a tab over each column and beside
+// each row (lettered and numbered as its sheet is). Clicking a cell, a tab
+// or round the table picks what the right-hand panel is about. A style (one
+// of the table's rules) lights everything it reaches when hovered. Every
+// change goes through the controller as one undo step.
 
-/// TableDesign is the Table tab for one table.
 class TableDesign extends StatefulWidget {
   final CanvasController controller;
   final TableElement table;
@@ -71,16 +61,14 @@ class _TableDesignState extends State<TableDesign> {
   TablePart? _hover;
   int? _hoverStyle;
 
-  // The gallery of designs (Ken, 2026-11-17; prototype v7): open, the kind
-  // opened, the design picked, and what they're filtered by.
+  // The gallery: open, the kind opened, the design picked, the filter.
   bool _gallery = false;
   String? _galleryKind;
   int? _galleryPreset;
   ChartUse? _galleryUse;
 
-  // Making a style (prototype v3): pointing is "click what to style";
-  // options are what it could reach, offered from the click, hovered to see
-  // them lit; made is the step after, its look.
+  // Making a style: pointing ("click what to style"), then options it
+  // could reach, lit when hovered, then its look.
   bool _pointing = false;
   List<ReachOption>? _options;
   int? _optionHover;
@@ -92,8 +80,7 @@ class _TableDesignState extends State<TableDesign> {
   /// _copied is a look copied from a style or a cell, to paste on another.
   TableCellStyle? _copied;
 
-  /// _dragging is the column whose right edge is being dragged, and the
-  /// widths it started from.
+  /// _dragging is the column whose edge is dragged, and its start widths.
   int? _dragging;
   List<double> _dragFrom = const [];
   double _dragX = 0;
@@ -128,7 +115,7 @@ class _TableDesignState extends State<TableDesign> {
         TablePartKind.table => true,
       };
 
-  // ---- Writing: one change is one undo step; a drag is one too.
+  // Writing: one change is one undo step; a drag is one too.
 
   void _set(TableElement next) {
     _end();
@@ -177,8 +164,7 @@ class _TableDesignState extends State<TableDesign> {
         _pointing = false;
       });
 
-  /// _make is an option chosen: the style is made with a look that shows,
-  /// and opened at its look.
+  /// _make makes the chosen option's style with a visible look, opened.
   void _make(ReachOption o) {
     _newStyle(o.rule.copyWith(style: lookFor(o.rule)));
     setState(() => _made = true);
@@ -190,8 +176,7 @@ class _TableDesignState extends State<TableDesign> {
         _optionHover = null;
       });
 
-  /// _up is Esc: from a cell to its row's... the table; from a style to the
-  /// part it was reached from is not known, so to the table.
+  /// _up is Esc: up to the table.
   void _up() {
     if (_pointing || _options != null) return _cancelNew();
     _pick(switch (_picked.kind) {
@@ -206,7 +191,7 @@ class _TableDesignState extends State<TableDesign> {
     _pick(TablePart.style(t.rules.length));
   }
 
-  // ---- Names for the parts, as the sheet names them when there is one.
+  // Names for the parts, as the sheet names them when there is one.
 
   String _columnLetter(int col) {
     var link = linkOf(t);
@@ -260,7 +245,7 @@ class _TableDesignState extends State<TableDesign> {
   }
 
   /// _crumbs is the bar over the stage: what can be done there, and the
-  /// designs. The way to what is picked is in the sidebar's header now.
+  /// designs. The way to what is picked is in the sidebar's header.
   Widget _crumbs(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
     return SizedBox(
@@ -294,7 +279,7 @@ class _TableDesignState extends State<TableDesign> {
     );
   }
 
-  // ---- The gallery of designs.
+  // The gallery of designs.
 
   Color get _ground =>
       dataStyleNamed(t.style)?.ground ?? c.document.background.spec.background;
@@ -536,7 +521,7 @@ class _TableDesignState extends State<TableDesign> {
     );
   }
 
-  // ---- The stage.
+  // The stage.
 
   Widget _stage(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
@@ -633,9 +618,8 @@ class _TableDesignState extends State<TableDesign> {
     });
   }
 
-  /// _clicked is a click on the stage: with shift on a row tab, that row
-  /// added to (or taken from) the rows picked; while pointing, what to style;
-  /// otherwise the part, picked.
+  /// _clicked is a stage click: shift on a row tab toggles that row; while
+  /// pointing, what to style; otherwise the part, picked.
   void _clicked(_Geom g, Offset at) {
     _focus.requestFocus();
     var p = g.partAt(at, t) ?? TablePart.table;
@@ -671,10 +655,7 @@ class _TableDesignState extends State<TableDesign> {
     if (p.kind == TablePartKind.row) setState(() => _rows = [p.row]);
   }
 
-  // ---- The panel: the Studio's sidebar (data_studio_side.dart; Ken,
-  // 2026-11-17, the sidebar prototype): the way to what is picked in its
-  // header, what is changed most in a strip under it, then sections that
-  // fold, each saying what is set in it.
+  // The panel: the Studio's sidebar (data_studio_side.dart).
 
   /// _trail is the way to what is picked, from the table.
   List<TablePart> get _trail {
@@ -831,7 +812,6 @@ class _TableDesignState extends State<TableDesign> {
         const <Widget>[]
       );
 
-  /// _hint is what a group is for, behind its "?".
   Widget _hint(BuildContext context, String text) => CanvasHint(text);
 
   /// _note is words that must be seen: a state, a warning.
@@ -896,9 +876,8 @@ class _TableDesignState extends State<TableDesign> {
           onChanged: live,
           onCommit: _end);
 
-  /// _styleList is styles [indices], each a row: its name and reach, an eye
-  /// to switch it off, a mark when it does nothing. Hovered, everything it
-  /// reaches lights up on the table.
+  /// _styleList is styles [indices] as rows: name and reach, an eye, a mark
+  /// when it does nothing; hovered, all it reaches lights up.
   List<Widget> _styleList(BuildContext context, List<int> indices) => [
         for (var i in indices)
           StudioItem(
@@ -1051,8 +1030,8 @@ class _TableDesignState extends State<TableDesign> {
                 ]),
               ]),
             ]),
-        // The cells' face, size and colour are in the strip at the top;
-        // the header row's here, beside them.
+        // The cells' face, size and colour are in the strip at the top; the
+        // header row's here, beside them.
         studioSection(
             remember: "table.words",
             icon: Icons.title,
@@ -1144,8 +1123,8 @@ class _TableDesignState extends State<TableDesign> {
                     onChanged: (v) => _set(t.copyWith(zebra: v))),
               ]),
               studioGroup("Padding", [
-                // One figure until somebody wants four: a title row often
-                // wants more above and below.
+                // One figure until somebody wants four: a title row often wants
+                // more above and below.
                 studioSeg<bool>(
                     id: "tablePadSides",
                     value: t.evenPadding,
@@ -1325,8 +1304,7 @@ class _TableDesignState extends State<TableDesign> {
                   ]),
               ]),
             ]),
-        // Sharp at any size, its words still words (the improvements
-        // report's vector export).
+        // Sharp at any size, its words still words.
         studioSection(
             remember: "table.save",
             icon: Icons.save_alt,
@@ -1390,8 +1368,7 @@ class _TableDesignState extends State<TableDesign> {
   }
 
   /// _rowsShown is which of its sheet's rows the table shows, and in what
-  /// order: its own, the sheet left as it is (moved here from the Sheet
-  /// tab's side panel, Ken 2026-11-16).
+  /// order: its own, the sheet left as it is.
   Widget _rowsShown(BuildContext context, SheetLink link) {
     var sheet = c.sheetById(link.sheet)!;
     void set(SheetLink next) => _set(withLink(t, next) as TableElement);
@@ -1650,10 +1627,8 @@ class _TableDesignState extends State<TableDesign> {
     );
   }
 
-  /// _wordsGuide gathers the styles about words in one column -- the Form
-  /// column's W, D and L boxes (prototype v2's Form guide) -- so their
-  /// boxes are set side by side, a line a word, and their size and corners
-  /// together.
+  /// _wordsGuide gathers one column's word styles (a Form column's W, D, L)
+  /// so their boxes, size and corners are set side by side.
   List<Widget> _wordsGuide(BuildContext context, int col) {
     var words = [
       for (var i in stylesOnColumn(t, col))
@@ -2221,8 +2196,7 @@ class _TableDesignState extends State<TableDesign> {
     ]);
   }
 
-  /// _whenPart is a style's number condition: "only where Points is 9 or
-  /// more", or a way to add one.
+  /// _whenPart is a style's number condition ("Points 9 or more"), or Add.
   List<Widget> _whenPart(BuildContext context, int i, TableRule rule) {
     var numeric = [
       for (var col = 0; col < t.columnCount; col++)
@@ -2312,9 +2286,8 @@ class _TableDesignState extends State<TableDesign> {
   }
 }
 
-/// _Geom is where the table and its tabs are on the stage: the table scaled
-/// to the stage's width (no larger than 125%), the column tabs over it, the
-/// row tabs left of it.
+/// _Geom is where the table (scaled to the stage, at most 125%) and its
+/// tabs are on the stage.
 class _Geom {
   final double k;
   final Offset o;

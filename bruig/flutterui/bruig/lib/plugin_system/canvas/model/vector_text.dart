@@ -71,8 +71,7 @@ VectorTextLayout layoutVectorText(VectorText t, Offset origin, FontPick pick) {
   return VectorTextLayout(runs, carets, face.ascender * k, -face.descender * k);
 }
 
-/// _run is one contour of a letter as a closed run of points, placed by
-/// [at].
+/// _run is a letter's contour as a closed run of points, placed by [at].
 VectorPath? _run(GlyphContour c, Offset Function(Offset) at) {
   if (c.segments.isEmpty) return null;
   var nodes = <VectorNode>[VectorNode(at(c.start).dx, at(c.start).dy)];

@@ -11,22 +11,20 @@ import 'package:bruig/plugin_system/canvas/storage/stock/kenney_tiles.dart' show
 import 'package:path/path.dart' as path;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// tiled_maps.dart is a Tile map to and from Tiled's own files -- a map as
-// .tmx or .tmj, its tilesets in it or beside it as .tsx or .tsj -- the
-// format Godot, and most engines, take maps in. Read: its tilesets, each
-// tile's animation and its wang sets (Tiled's terrains), its tile layers,
-// and the tiles stood on its object layers. Written: the same, as .tmj,
-// each set's sheet a picture beside it. A tile's three flips are the
-// same three bits in both; a wang set's eight places are a tag's, in the
-// same order.
+// tiled_maps.dart reads and writes Tile maps as Tiled files (.tmx/.tmj
+// maps, .tsx/.tsj tilesets inside or beside), the format Godot and most
+// engines take. Read: tilesets, tile animations, wang sets (Tiled's
+// terrains), tile layers and object-layer tiles. Written: the same as
+// .tmj, each sheet a picture beside it. Flip bits and wang places map
+// one-to-one onto ours.
 
-/// TiledRead is a map read: its tile sets, its layers, how many cells
-/// across and down, and anything it had that a Tile map has not.
+/// TiledRead is a map read: tile sets, layers, size in cells, and anything
+/// it had that a Tile map has not.
 typedef TiledRead = ({List<TileSource> sources, List<TileLayer> layers, int width, int height, List<String> left});
 
-/// readTiledMap reads [text], a Tiled map -- .tmx, or .tmj when [json] --
-/// with [file] finding what it names beside it: tilesets and pictures, by
-/// their path from it. Its pictures are stored and put in the library.
+/// readTiledMap reads [text] (.tmx, or .tmj when [json]), with [file]
+/// finding tilesets and pictures by their path from it. Its pictures are
+/// stored and put in the library.
 Future<TiledRead?> readTiledMap(String text, {required bool json, required Future<Uint8List?> Function(String path) file}) async {
   var map = json ? _fromJson(text) : _fromXml(text);
   if (map == null) return null;
@@ -80,8 +78,8 @@ Future<TiledRead?> readTiledMap(String text, {required bool json, required Futur
       for (var o in l.objects!) {
         var t = refOf(o.gid);
         if (t == null) continue;
-        // Tiled stands a tile object on its bottom left; a thing here on
-        // the middle of its bottom.
+        // Tiled stands a tile object on its bottom left; ours on its bottom
+        // middle.
         objects.add(TileObject((o.x + o.w / 2) / map.tileW, o.y / map.tileH, TileStamp.one(t)));
       }
       if (l.objects!.length > objects.length) left.add("shapes and words on ${l.name}");
@@ -99,9 +97,8 @@ Future<TiledRead?> readTiledMap(String text, {required bool json, required Futur
   return (sources: sources, layers: layers, width: map.width, height: map.height, left: left);
 }
 
-/// _source is [ts]'s picture stored and made a tile set: one sheet as it
-/// is, or a set of single pictures laid out on one -- with its tiles' ids
-/// to their places on it.
+/// _source stores [ts]'s pictures as a tile set: one sheet as it is, or
+/// single pictures laid out on one, with its tiles' ids to their places.
 Future<(TileSource, Map<int, int>?)?> _source(_Tileset ts, Future<Uint8List?> Function(String) file) async {
   if (ts.image.isNotEmpty) {
     var bytes = await file(ts.image);
@@ -153,13 +150,13 @@ Future<ui.Image?> _decode(Uint8List bytes) async {
   }
 }
 
-/// writeTiledMap is [e] as a Tiled .tmj, with the file each of its sets'
-/// sheets is to be written to beside it -- named [names] -- in its order.
-/// Its cells are counted from its top left painted, or from nought.
+/// writeTiledMap is [e] as a Tiled .tmj, each set's sheet to be written
+/// beside it as [names], in order. Cells count from its top-left painted
+/// cell, or nought.
 String writeTiledMap(TileMapElement e, List<String> names) {
   var first = e.sources.isEmpty ? null : e.sources.first;
   var tw = first?.tileW ?? 16, th = first?.tileH ?? 16;
-  // Where the map starts, and how big it is: every cell, every thing.
+  // Where the map starts and how big it is: every cell and thing.
   int c0 = 0, r0 = 0, c1 = 0, r1 = 0;
   var things = <(TileLayer, List<(double, double, TileRef)>)>[];
   for (var l in e.layers) {
@@ -170,7 +167,7 @@ String writeTiledMap(TileMapElement e, List<String> names) {
       r1 = math.max(r1, rowOf(k));
     }
     if (l.isObjects) {
-      // Each tile of a thing an object of its own, by its bottom left.
+      // Each tile of a thing is its own object, by its bottom left.
       var tiles = [
         for (var o in l.objects)
           for (var (dc, dr, t) in o.stamp.cells)
@@ -210,7 +207,7 @@ String writeTiledMap(TileMapElement e, List<String> names) {
       "x": 0,
       "y": 0,
       if (l.tint != null) "tintcolor": hex(l.tint!, alpha: true),
-      // Ground in a game: the property a Tiled map's loaders look for.
+      // Ground in a game: the property Tiled map loaders look for.
       if (l.solid)
         "properties": [
           {"name": "solid", "type": "bool", "value": true}
@@ -285,7 +282,7 @@ String writeTiledMap(TileMapElement e, List<String> names) {
                   for (var t in set.terrains)
                     {"name": t.name, "color": hex(t.color), "tile": t.sample ?? -1, "probability": 1},
                 ],
-                // Tiled's colours count from one, nothing nought.
+                // Tiled's colours count from one; nought is none.
                 "wangtiles": [
                   for (var tag in set.tags.entries)
                     {
@@ -329,10 +326,10 @@ class _Tileset {
   final String source, name, image;
   final int tileW, tileH, margin, spacing;
 
-  /// images is a set of single pictures' own, by tile id.
+  /// images is a set of single pictures, by tile id.
   final Map<int, String> images;
 
-  /// frames is each animated tile's frames: their ids and how long each.
+  /// frames is each animated tile's frames: ids and durations.
   final Map<int, List<(int, int)>> frames;
   final List<_Wang> wangs;
   _Tileset(this.firstGid,
@@ -347,8 +344,8 @@ class _Tileset {
       this.frames = const {},
       this.wangs = const []});
 
-  /// withDir is it with the pictures it names counted from [dir] -- that of
-  /// the tileset's own file -- not the map's.
+  /// withDir is it with its pictures counted from [dir] (the tileset file's
+  /// folder), not the map's.
   _Tileset withDir(String dir) => _Tileset(firstGid,
       name: name,
       image: _picture(dir, image),
@@ -360,8 +357,8 @@ class _Tileset {
       frames: frames,
       wangs: wangs);
 
-  /// _picture is [name] counted from [dir], or empty where it is not a
-  /// picture near the map (see [nearFile]).
+  /// _picture is [name] from [dir], or empty if not a picture near the map
+  /// (see [nearFile]).
   static String _picture(String dir, String name) =>
       nearFile(dir, name, only: pictureExtensions) ?? "";
 
@@ -414,15 +411,15 @@ class _Layer {
   final double opacity;
   final ui.Color? tint;
 
-  /// solid is whether it has a true "solid" or "collides" property: its
-  /// tiles ground in a game.
+  /// solid is whether it has a true "solid" or "collides" property: its tiles
+  /// are ground in a game.
   final bool solid;
   _Layer(this.name, this.width, this.data,
       {this.x = 0, this.y = 0, this.objects, this.visible = true, this.opacity = 1, this.tint, this.solid = false});
 }
 
-/// _solidNames are the layer properties that make a Tiled layer solid: its
-/// own, and the one Phaser's and others' maps use.
+/// _solidNames are the layer properties that make a Tiled layer solid:
+/// its own, and the one Phaser and others use.
 const _solidNames = {"solid", "collides", "collision"};
 
 TerrainMode _mode(String? type) => switch (type) {
@@ -439,7 +436,7 @@ ui.Color _colour(String? s, ui.Color or) {
   return ui.Color(h.length == 6 ? 0xFF000000 | v : v);
 }
 
-/// _gids is a layer's data: written out, or in base64, packed or not.
+/// _gids is a layer's data: plain, or base64, compressed or not.
 List<int> _gids(Object? data, String? encoding, String? compression) {
   if (data is List) return [for (var v in data) v is num ? v.toInt() : 0];
   if (data is! String) return const [];
@@ -644,8 +641,7 @@ _Tileset? _tilesetXml(_X? t, int firstGid) {
       ]);
 }
 
-/// _X is an element of a Tiled XML file: its name, its attributes, what is
-/// in it, and its words.
+/// _X is a Tiled XML element: name, attributes, children and text.
 class _X {
   final String name;
   final Map<String, String> a;
@@ -656,7 +652,7 @@ class _X {
   _X? kid(String name) => kids.where((k) => k.name == name).firstOrNull;
 }
 
-/// _parseXml is [s] read as XML -- as plain as Tiled writes it -- or null.
+/// _parseXml is [s] read as XML, as plain as Tiled writes it, or null.
 _X? _parseXml(String s) {
   var tag = RegExp(r"<(/?)([A-Za-z_][\w.-]*)((?:\s+[\w:.-]+\s*=\s*(?:" "\"[^\"]*\"" r"|'[^']*'))*)\s*(/?)>");
   var attr = RegExp(r"([\w:.-]+)\s*=\s*(?:" "\"([^\"]*)\"" r"|'([^']*)')");
@@ -666,7 +662,7 @@ _X? _parseXml(String s) {
       .replaceAll("&quot;", '"')
       .replaceAll("&apos;", "'")
       .replaceAll("&amp;", "&");
-  // Comments and the declaration are left out before the tags are read.
+  // Comments and the declaration are stripped before reading tags.
   s = s.replaceAll(RegExp(r"<!--.*?-->", dotAll: true), "").replaceAll(RegExp(r"<\?.*?\?>|<!DOCTYPE[^>]*>", dotAll: true), "");
   _X? root;
   var open = <_X>[];
@@ -691,17 +687,15 @@ _X? _parseXml(String s) {
   return root;
 }
 
-/// pictureExtensions are the files a map, a tileset or a sprite sheet's
-/// notes may name as its picture.
+/// pictureExtensions are what a map, tileset or sprite sheet may name as
+/// its picture.
 const pictureExtensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"};
 
-/// nearFile is [name], as a map, tileset or sheet in [dir] names another
-/// file, made a path: or null where it reaches further than [dir] and the
-/// folder it is in (a project's "../tilesets" is near), names a whole path,
-/// or, given [only], is not one of those kinds. Such files come from other
-/// people, and one naming ../../Pictures/anything, or /Users/them/anything,
-/// would otherwise copy that file into a canvas the reader may send on
-/// (security review, 2026-11-17).
+/// nearFile is the path [name] means from a file in [dir], or null where it
+/// reaches beyond [dir] and its parent (a project's "../tilesets" is near),
+/// is absolute, or with [only] is not one of those kinds. Such files come
+/// from other people: naming ../../Pictures/x or /Users/them/x would copy
+/// that file into a canvas the reader may send on.
 String? nearFile(String dir, String name, {Set<String>? only}) {
   if (name.isEmpty || path.isAbsolute(name) || name.contains(":")) return null;
   if (only != null && !only.contains(path.extension(name).toLowerCase())) {

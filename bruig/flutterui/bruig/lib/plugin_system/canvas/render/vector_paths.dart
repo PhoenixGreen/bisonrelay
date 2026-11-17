@@ -7,10 +7,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 // a vector drawing's own paths: each outline as nodes with smooth handles,
 // the points that add nothing left out.
 
-/// vectorPathsOf is [path] as a drawing's paths: each of its outlines run
-/// round finely, then thinned to the points it turns at -- within
-/// [tolerance] of where it was -- each given handles to curve through as
-/// smoothly as it ran.
+/// vectorPathsOf is [path] as a drawing's paths: each outline run round
+/// finely, thinned to the points it turns at (within [tolerance]), each
+/// given handles to curve through as smoothly as it ran.
 List<VectorPath> vectorPathsOf(Path path, {double tolerance = 0.35}) {
   var out = <VectorPath>[];
   for (var metric in path.computeMetrics()) {

@@ -15,14 +15,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// score_studio.dart is the Score Studio (Ken, 2026-11-14): a score written
-// as MuseScore writes one, given the whole page as the Character Studio is.
-// Instruments down the left, the score on paper in the middle, palettes and
-// the picked note's settings on the right, what the keys do along the
-// bottom. Every change is the score's, made through the controller, so each
-// is one step to undo and every part's channel follows it.
-//
-// The approved prototype is its board: sheet-music-prototype/index.html.
+// score_studio.dart is the Score Studio, a full-page MuseScore-style score
+// editor: instruments left, paper centre, palettes and the picked note's
+// settings right, key hints below. Each change goes through the controller
+// as one undo step that every part's channel follows.
 
 /// scoreDurations are the values the toolbar offers, with MuseScore's keys
 /// and the Bravura note each is drawn with.
@@ -34,7 +30,6 @@ const scoreDurations = <(double, String, int, String)>[
   (0.25, "16th", 0xE1D9, "3"),
 ];
 
-/// ScorePalette is a tab of the palettes.
 enum ScorePalette {
   clefs("Clefs"),
   keys("Keys"),
@@ -101,7 +96,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
   @visibleForTesting
   double get scale => _scale;
 
-  /// placeOf is where on the paper event [id] is drawn: for tests.
+  /// placeOf is where on the paper event [id] is drawn.
   @visibleForTesting
   Offset placeOf(String id) =>
       _engraved!.hits
@@ -111,7 +106,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
       _scale;
 
   /// staffPlace is where on the paper [pitch] at [at] in [bar] of [part]'s
-  /// [staff] would be written: for tests.
+  /// [staff] would be written.
   @visibleForTesting
   Offset staffPlace(String part, int staff, int bar, double at, String pitch) {
     var es = _engraved!;
@@ -126,8 +121,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
     return Offset(x, y) * _scale;
   }
 
-  /// handlePlace is where on the paper the picked marking's handle [i] is:
-  /// for tests.
+  /// handlePlace is where on the paper the picked marking's handle [i] is.
   @visibleForTesting
   Offset handlePlace(int i) {
     var pm = _markPick!;
@@ -136,8 +130,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
     return scoreMarkHandles(hit, _engraved!.options.space)[i] * _scale;
   }
 
-  /// barlinePlace is where on the paper bar [bar]'s closing line is: for
-  /// tests.
+  /// barlinePlace is where on the paper bar [bar]'s closing line is.
   @visibleForTesting
   Offset barlinePlace(int bar) =>
       _engraved!.hits
@@ -146,8 +139,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
           .center *
       _scale;
 
-  /// markPlace is where on the paper event [id]'s marking [kind] is drawn:
-  /// for tests.
+  /// markPlace is where on the paper event [id]'s marking [kind] is drawn.
   @visibleForTesting
   Offset markPlace(String id, String kind) =>
       _engraved!.hits
@@ -219,7 +211,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
   // ------------------------------------------------------------- note input
 
   /// pitchFor is [letter] (0 C to 6 B) in the key, in the octave nearest
-  /// the last note written (or the middle of the cursor's staff).
+  /// the last note (or the middle of the cursor's staff).
   Pitch pitchFor(int letter) {
     var s = score!;
     var cur = cursor!;
@@ -304,8 +296,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
     }
     var s = score;
     if (s == null) return KeyEventResult.ignored;
-    // Typing in a field (a title, a lyric on the score) is typing, not the
-    // Studio's keys.
+    // Typing in a field (a title, a lyric) is not the Studio's keys.
     if (FocusManager.instance.primaryFocus != _focus) {
       return KeyEventResult.ignored;
     }
@@ -593,9 +584,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
     );
   }
 
-  /// _music is a Bravura glyph in a toolbar button, its baseline at
-  /// [baseline] of the button's height: drawn, not set as text, so that no
-  /// text size can push a quaver's flag out of the top (Ken, 2026-11-14).
+  /// _music is a Bravura glyph in a toolbar button, drawn rather than set
+  /// as text, so no text size can push a quaver's flag out of the top.
   Widget _music(BuildContext context, int code,
           {double size = 18, double baseline = 0.78}) =>
       CustomPaint(
@@ -692,8 +682,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
                         fontWeight: FontWeight.w700, color: colors.onSurface))),
             const SizedBox(width: 4),
           ],
-          // On the note picked: a chord symbol or a lyric typed on the
-          // score, a strum turned down or up.
+          // On the note picked: a chord symbol or lyric typed on the score,
+          // a strum turned down or up.
           if (e != null && sel != null) ...[
             gap(),
             StudioPill(
@@ -723,8 +713,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
                   onTap: () => edit(s.setStrum(sel!, Strum.up))),
             ],
           ],
-          // Bars widened or narrowed by their bar lines: all back as wide as
-          // their notes ask, at once (Ken, 2026-11-15).
+          // Bars resized by their bar lines: all back to the width their
+          // notes ask, at once.
           if (s.bars.any((b) => b.width != 1)) ...[
             gap(),
             StudioPill(
@@ -836,9 +826,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Center(
             child: Stack(clipBehavior: Clip.none, children: [
-              // A press on a marking (or a picked one's handle) is a drag
-              // from the start, so the page's scroll cannot take it; one
-              // that does not move is a click after all (see _dragEnd).
+              // A press on a marking or handle is a drag from the start, so
+              // the scroll cannot take it; unmoved, it is a click (_dragEnd).
               RawGestureDetector(
                 behavior: HitTestBehavior.opaque,
                 gestures: {
@@ -889,8 +878,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
 
   // ----------------------------------------- typing on the score
 
-  /// _typing is a lyric (kind "lyr", its verse) or a chord symbol (kind
-  /// "ch") being typed on the score, on event [event].
+  /// _typing is a lyric (kind "lyr", its verse) or chord symbol (kind "ch")
+  /// being typed on event [event].
   ({String kind, String event, int verse})? _typing;
   late final _typed = TextEditingController();
   late final _typedFocus = FocusNode(debugLabel: "scoreInline");
@@ -923,7 +912,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
   }
 
   /// startTyping opens the lyric ([kind] "lyr", [verse]) or chord ("ch")
-  /// editor on event [id], with what it says now.
+  /// editor on event [id], with its current text.
   void startTyping(String kind, String id, {int verse = 0}) {
     var s = score;
     var e = s?.event(id);
@@ -959,8 +948,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
     }
   }
 
-  /// _typeOn writes what is typed and moves to the next note (a lyric) or
-  /// event (a chord) in the staff, as MuseScore's space and hyphen do.
+  /// _typeOn writes what is typed and moves to the next note (lyric) or
+  /// event (chord) in the staff, as MuseScore's space and hyphen do.
   void _typeOn(String text) {
     _commitTyped(text);
     var t = _typing!;
@@ -1019,8 +1008,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
                 borderSide: BorderSide(color: colors.primary, width: 2)),
           ),
           onChanged: (t) {
-            // A space moves on; so, for a lyric, does a hyphen, which is
-            // kept: the word goes on into the next note.
+            // A space moves on; for a lyric so does a hyphen, which is kept,
+            // the word running into the next note.
             if (t.endsWith(" ")) {
               _typeOn(t.trim());
             } else if (!chord && t.endsWith("-") && t.trim().length > 1) {
@@ -1036,8 +1025,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
 
   // ----------------------------------------- pressing the paper
 
-  /// _markPick is the marking picked (a dynamic, a hairpin): drawn with the
-  /// handles that size or stretch it.
+  /// _markPick is the marking picked (a dynamic, a hairpin), drawn with its
+  /// size and stretch handles.
   ({String kind, String id})? _markPick;
 
   DateTime _lastTap = DateTime(0);
@@ -1146,9 +1135,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
     }
   }
 
-  /// _lineAt is the chord line over a staff ("ch") or a lyric line under it
-  /// ("lyr", its verse) at [p], with the event nearest across: a note for a
-  /// lyric, anything for a chord.
+  /// _lineAt is the chord line ("ch") or lyric line ("lyr", verse) at [p],
+  /// with the nearest event: a note for a lyric, anything for a chord.
   (String, String, int)? _lineAt(MusicScore s, EngravedScore es, Offset p) {
     var sp = es.options.space;
     for (var h in es.hits) {
@@ -1183,9 +1171,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
     return null;
   }
 
-  /// _chooseShape offers the places on the neck event [id]'s chord can be
-  /// played, the common one first (Ken, 2026-11-14: "specify in the studio
-  /// which chord position should be used").
+  /// _chooseShape offers the neck positions event [id]'s chord can be
+  /// played at, the common one first.
   Future<void> _chooseShape(MusicScore s, String id, Offset global) async {
     var e = s.event(id);
     var chord = e?.chord;
@@ -1239,15 +1226,14 @@ class _ScoreStudioState extends State<ScoreStudio> {
 
   // ----------------------------------------- dragging on the paper
 
-  /// _handle is a picked marking's handle being dragged: which (0 a
-  /// dynamic's corner or a hairpin's start, 1 a hairpin's end), and the
-  /// marking's rect and size when it began.
+  /// _handle is the dragged handle (0 a dynamic's corner or hairpin's
+  /// start, 1 a hairpin's end), with the marking's starting rect and size.
   int? _handle;
   Rect _handleRect = Rect.zero;
   double _handleWas = 1;
 
-  /// _grabs is whether a press at [p] is on a marking, or on the picked
-  /// marking's handle: a drag to claim at once.
+  /// _grabs is whether a press at [p] is on a marking or the picked one's
+  /// handle: a drag to claim at once.
   bool _grabs(EngravedScore es, Offset p) {
     if (es.markAt(p) != null) return true;
     if (es.barlineAt(p) != null) return true;
@@ -1269,8 +1255,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
 
   Offset _pressGlobal = Offset.zero, _pressAt = Offset.zero;
 
-  /// _barDrag is a bar line being dragged: its bar, the bar's width factor
-  /// when it began, and how wide the bar was drawn.
+  /// _barDrag is a bar line being dragged: its bar, the bar's starting
+  /// width factor, and its drawn width.
   ({int bar, double was, double px})? _barDrag;
   double _travelled = 0;
 
@@ -1378,8 +1364,8 @@ class _ScoreStudioState extends State<ScoreStudio> {
                 : s.movedBarMark(m.bar, kind, to));
   }
 
-  /// _noteTimeAt is the note start nearest [p] across, in the staff of
-  /// hairpin [m].
+  /// _noteTimeAt is the note start nearest [p] across, in hairpin [m]'s
+  /// staff.
   ScoreTime? _noteTimeAt(MusicScore s, EngravedScore es, ScoreHit m, Offset p) {
     ScoreTime? best;
     var bestD = double.infinity;
@@ -1856,8 +1842,7 @@ class _ScoreStudioState extends State<ScoreStudio> {
 }
 
 /// _MarkDrag is a pan that claims its pointer at once where [grabs] says
-/// the press is on something to drag (a marking), so that the scroll the
-/// paper is in never takes it.
+/// the press is on a marking, so the paper's scroll never takes it.
 class _MarkDrag extends PanGestureRecognizer {
   bool Function(Offset local)? grabs;
 
@@ -1924,8 +1909,7 @@ class _ScorePainter extends CustomPainter {
       old.state.playhead != state.playhead;
 }
 
-/// _TextBox is a text field that says what it holds when it is done with:
-/// on Enter, or when it loses the focus.
+/// _TextBox is a text field that reports its text on Enter or losing focus.
 class _TextBox extends StatefulWidget {
   final String value;
   final ValueChanged<String> onDone;

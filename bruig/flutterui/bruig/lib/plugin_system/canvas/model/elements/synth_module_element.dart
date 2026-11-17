@@ -3,31 +3,19 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 
-// synth_module_element.dart is one synth module on a canvas (Ken,
-// 2026-11-14: "instrument components ... as separate, placeable canvas
-// elements ... chainable on the canvas with patch cables"): a keyboard, an
-// oscillator, an envelope, a filter, an LFO, an amp, a mixer, noise or a
-// speaker, drawn as a hardware panel (Analogue) or a soft synth's
-// (Digital).
-//
-// A cable is kept by the module it goes into: each input names the module
-// (by element id) and output it comes from, as a SynthModule's inputs do.
-// Every module on the canvas is one patch; each speaker plays it on a
-// hidden instrument channel of its own (see synth_channels.dart), so it is
-// heard, mixed and recorded as any instrument is.
-//
-// A teacher sets a starting point -- settings and cables -- and a student
-// can always get back to it (↺); a module can be locked so its settings
-// stay as set.
+// synth_module_element.dart is one synth module on a canvas (keyboard,
+// oscillator, envelope, filter, LFO, amp, mixer, noise or speaker), drawn
+// as a hardware or soft-synth panel and patched by cables. A cable is kept
+// by the module it goes into, as a SynthModule's inputs are. The canvas's
+// modules are one patch; each speaker plays it on a hidden instrument
+// channel (synth_channels.dart), heard and mixed as any instrument is.
 
-/// SynthLook is how a module is drawn.
 enum SynthLook {
   /// analogue is a Eurorack-style panel: printed legends, corner screws,
   /// skirted knobs, a phosphor screen.
   analogue("Analogue"),
 
-  /// digital is a soft synth's panel: dark, glowing arc knobs, big
-  /// screens.
+  /// digital is a soft synth's panel: dark, glowing knobs, big screens.
   digital("Digital");
 
   final String label;
@@ -43,16 +31,14 @@ class SynthModuleElement extends CanvasElement {
   final Map<String, double> values;
   final Map<String, String> choices;
 
-  /// inputs are the cables into it: each input's source, a module by
-  /// element id and its output.
+  /// inputs are the cables in: each input's source module and output.
   final Map<String, SynthPlug> inputs;
 
-  /// start is the teacher's starting point -- settings and cables -- that
-  /// ↺ goes back to; null, the kind's own settings and no cables.
+  /// start is the teacher's starting point (settings and cables) that ↺ goes
+  /// back to; null, the kind's own settings and no cables.
   final SynthModule? start;
 
-  /// fixed locks its settings for students: drawn dimmed, its knobs not
-  /// turned (Ken's "Lock").
+  /// fixed locks its settings for students: dimmed, knobs not turned.
   final bool fixed;
 
   final SynthLook look;
@@ -60,8 +46,7 @@ class SynthModuleElement extends CanvasElement {
   /// channel is, on a speaker, the hidden instrument channel it plays on.
   final String channel;
 
-  /// big makes its screen big, for a teacher to show what it does and draw
-  /// beside it (Ken, 2026-11-15).
+  /// big makes its screen big, for a teacher to show and draw beside.
   final bool big;
 
   const SynthModuleElement(
@@ -163,14 +148,12 @@ class SynthModuleElement extends CanvasElement {
           channel: channel ?? this.channel,
           big: big ?? this.big);
 
-  /// withValue and withChoice are it with one setting changed.
   SynthModuleElement withValue(String name, double v) =>
       copyWith(values: {...values, name: v});
   SynthModuleElement withChoice(String name, String v) =>
       copyWith(choices: {...choices, name: v});
 
-  /// plugged and unplugged are it with a cable into [input] from [from],
-  /// or none.
+  /// plugged and unplugged are it with or without a cable into [input].
   SynthModuleElement plugged(String input, SynthPlug from) =>
       copyWith(inputs: {...inputs, input: from});
   SynthModuleElement unplugged(String input) =>
@@ -228,14 +211,13 @@ class SynthKnob {
   const SynthKnob(this.key, this.label, this.min, this.max, this.show,
       {this.step = 0, this.log = false});
 
-  /// turn is where [v] is on the knob, nought to one.
+  /// turn is where [v] is on the knob, nought to one; at is the reverse.
   double turn(double v) {
     var x = v.clamp(min, max);
     if (log) return (math.log(x / min) / math.log(max / min)).clamp(0.0, 1.0);
     return max == min ? 0 : (x - min) / (max - min);
   }
 
-  /// at is the value at [t] round the knob.
   double at(double t) {
     t = t.clamp(0.0, 1.0);
     var x = log ? min * math.pow(max / min, t) : min + t * (max - min);
@@ -300,8 +282,7 @@ final synthKnobs = <SynthModuleKind, List<SynthKnob>>{
   SynthModuleKind.out: [SynthKnob("volume", "Volume", 0, 1, _pct)],
 };
 
-/// synthChoiceNames are what each choosing setting's options are called
-/// on a panel.
+/// synthChoiceNames are each choosing setting's options' panel names.
 const synthChoiceNames = <String, String>{
   "sine": "Sin",
   "triangle": "Tri",

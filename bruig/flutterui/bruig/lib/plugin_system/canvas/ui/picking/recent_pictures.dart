@@ -28,8 +28,7 @@ class _RecentPicturesDialog extends StatefulWidget {
 }
 
 class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
-  /// _ids is what is in the store, newest first, or null while it is being
-  /// read.
+  /// _ids is the store's contents, newest first; null while being read.
   List<String>? _ids;
 
   @override
@@ -92,7 +91,6 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
   }
 }
 
-/// _Thumbnail draws one stored picture.
 class _Thumbnail extends StatelessWidget {
   final String id;
   final VoidCallback onTap;

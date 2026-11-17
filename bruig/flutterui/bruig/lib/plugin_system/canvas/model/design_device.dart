@@ -34,23 +34,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// design_device.dart is the Chain's Design device (Ken, 2026-11-12): the
-// element's own settings, animated in its arrival, leaving and loop or
-// independently. The settings panel sets how each rests; Design keys them.
-//
-// Two kinds of setting:
-//  - its place -- Across, Down, Turn, Size, Opacity, Skew -- kept on the
-//    device, as a move from where it rests: nought (one for Size and
-//    Opacity) leaves it be. Joined to the pose after the pose devices.
-//  - the element's own -- a text's font size, a shape's fill, a line's
-//    curve -- as its panel has them: they rest at the panel's value and
-//    are only changed where keyed. Each kind of element says which it has,
-//    and how each is read and written, in one table (designTable): "+
-//    Setting", where they rest and how they are drawn all read it, so a
-//    new element only fills in its table (Ken: "a full list of settings").
+// design_device.dart is the Chain's Design device: the element's own
+// settings, animated in arrival, leaving, loop or independently. The panel
+// sets where each rests; Design keys them. Place settings (Across, Down,
+// Turn, Size, Opacity, Skew) live on the device as a move from rest, joined
+// to the pose after the pose devices. Element settings rest at the panel's
+// value; designTable lists each kind's, so a new element fills in only that.
 
-/// designParams are every setting Design can animate, of any element.
-/// Which an element offers is designChoices.
+/// designParams are every setting Design can animate; designChoices says
+/// which an element offers.
 const designParams = [
   DeviceParam("x", "Across", -4000, 4000, 0, "px"),
   DeviceParam("y", "Down", -4000, 4000, 0, "px"),
@@ -133,8 +125,8 @@ const designParams = [
   DeviceParam("cell", "Tile size", 2, 512, 32, "px"),
   DeviceParam("light", "Light", 0, 4294967295, 0, "argb"),
   DeviceParam("lightTo", "Light to", 0, 4294967295, 0, "argb"),
-  // Synth modules' knobs, by kind (see synthKnobs): keyed, the sound turns
-  // with them (see synth_channels.dart).
+  // Synth module knobs, by kind (see synthKnobs): keyed, the sound turns
+  // with them.
   DeviceParam("synth.osc.octave", "Octave", -2, 2, 0, "#"),
   DeviceParam("synth.osc.detune", "Fine", -50, 50, 0, "#"),
   DeviceParam("synth.osc.level", "Level", 0, 1, 0.8),
@@ -167,16 +159,14 @@ const designParams = [
 String synthDesignId(SynthModuleKind kind, String key) =>
     "synth.${kind.name}.$key";
 
-/// designPlace are Design's settings kept on the device: moves from where
-/// the element rests.
+/// designPlace are the settings kept on the device: moves from rest.
 const designPlace = {"x", "y", "turn", "size", "opacity", "skewX", "skewY"};
 
 /// designShownDefault is what a new Design card shows.
 const designShownDefault = ["x", "y", "turn", "size", "opacity"];
 
-/// DesignSetting is one of an element's own settings as Design animates
-/// it: which, the group its panel shows it in, and how it is read and
-/// written.
+/// DesignSetting is one element setting as Design animates it: which, its
+/// panel group, and how it is read and written.
 class DesignSetting {
   final String id;
   final String group;
@@ -189,8 +179,8 @@ double _argb(Color c) => c.toARGB32().toDouble();
 Color _colour(double v) => Color(v.toInt());
 int _weight(double v) => ((v / 100).round() * 100).clamp(100, 900);
 
-/// _type is a TextSpec's settings Design animates, read from and written
-/// to the spec [of] gives and [put] lays back: one family of words.
+/// _type is a TextSpec's settings, read from [of]'s spec and written back
+/// by [put].
 List<DesignSetting> _type(
   String group,
   TextSpec Function(CanvasElement e) of,
@@ -232,14 +222,12 @@ List<DesignSetting> _box(
           (e, v) => put(e, of(e).copyWith(padding: v))),
     ];
 
-/// _orNone is a colour that may be left off -- a drawing's tint, a tile
-/// map's light -- as Design reads it: clear where there is none, so keying
-/// it starts from nothing.
+/// _orNone reads a colour that may be off (a drawing's tint) as clear where
+/// there is none, so keying it starts from nothing.
 double _orNone(Color? c) => c == null ? 0 : _argb(c);
 
-/// _picture is a picture's own look Design animates, read from and written
-/// to the ImageElement [of] gives and [put] lays back: a photograph's, or
-/// the one a video is drawn with.
+/// _picture is a picture's look, read from [of]'s ImageElement and written
+/// back by [put]: a photograph's, or a video's.
 List<DesignSetting> _picture(
   ImageElement Function(CanvasElement e) of,
   CanvasElement Function(CanvasElement e, ImageElement i) put,
@@ -270,9 +258,8 @@ List<DesignSetting> _picture(
       ..._box((e) => of(e).box, (e, b) => put(e, of(e).copyWith(box: b))),
     ];
 
-/// designTable is [e]'s own settings Design animates, grouped as its
-/// settings panel groups them. A camera has its place only: its view is
-/// read where the stage is filmed, not where elements are drawn.
+/// designTable is [e]'s own animatable settings, grouped as its panel. A
+/// camera has only its place: its view is read where the stage is filmed.
 List<DesignSetting> designTable(CanvasElement e) => switch (e) {
       TextElement _ => [
           ..._type("Letters", (e) => (e as TextElement).textSpec,
@@ -609,8 +596,7 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
       _ => const [],
     };
 
-/// _pattern is a background's pattern Design animates: its colours and its
-/// numbers, as the Pattern section has them.
+/// _pattern is a background pattern's colours and numbers.
 List<DesignSetting> _pattern() {
   ProceduralSpec of(CanvasElement e) => (e as BackgroundElement).spec;
   CanvasElement put(CanvasElement e, ProceduralSpec s) =>
@@ -637,7 +623,7 @@ List<DesignSetting> _pattern() {
   ];
 }
 
-/// _stage is the 3D stage a background carries, as Design animates it.
+/// _stage is a background's 3D stage.
 List<DesignSetting> _stage() {
   StageElement of(CanvasElement e) => (e as BackgroundElement).stage!;
   CanvasElement put(CanvasElement e, StageElement s) =>
@@ -654,8 +640,7 @@ List<DesignSetting> _stage() {
   ];
 }
 
-/// _scenery is the parallax scenery a background carries: where its view
-/// looks, as Design animates it.
+/// _scenery is where a background's parallax scenery looks.
 List<DesignSetting> _scenery() {
   ParallaxElement of(CanvasElement e) => (e as BackgroundElement).parallax!;
   CanvasElement put(CanvasElement e, ParallaxElement p) =>
@@ -677,8 +662,7 @@ List<DesignSetting> _scenery() {
 DesignSetting? _settingOf(CanvasElement e, String id) =>
     designTable(e).where((s) => s.id == id).firstOrNull;
 
-/// designChoices are the settings Design offers for [e], grouped as its
-/// settings panel groups them: the "+ Setting" list.
+/// designChoices are the "+ Setting" list for [e], grouped as its panel.
 List<(String, List<String>)> designChoices(CanvasElement e) {
   var groups = <String, List<String>>{
     "Place": const ["x", "y", "turn", "size", "opacity", "skewX", "skewY"],
@@ -689,24 +673,22 @@ List<(String, List<String>)> designChoices(CanvasElement e) {
   return [for (var MapEntry(:key, :value) in groups.entries) (key, value)];
 }
 
-/// designRest is setting [id] of [e] as its settings panel has it: where
-/// it rests, and what a first key starts from. Place settings rest on
-/// [d] itself.
+/// designRest is setting [id] as the panel has it: where it rests and a
+/// first key starts. Place settings rest on [d].
 double designRest(CanvasElement e, MotionDevice d, String id) {
   if (designPlace.contains(id)) return d.value(id);
   return _settingOf(e, id)?.read(e) ?? d.kind.param(id).initial;
 }
 
-/// designValueAt is setting [id] of [e] at [t] seconds: by Design's keys
-/// playing then, or where it rests.
+/// designValueAt is setting [id] at [t] seconds: keyed, or at rest.
 double designValueAt(CanvasElement e, MotionDevice d, String id, double t,
         {PhaseSpans spans = PhaseSpans.none}) =>
     d.liveIn(id, t, spans) != null
         ? d.valueAt(id, t, spans: spans)
         : designRest(e, d, id);
 
-/// designPose is [pose] moved by Design [d] as it is now ([d] already at
-/// the moment: see MotionDevice.at).
+/// designPose is [pose] moved by [d], already at its moment
+/// (MotionDevice.at).
 Keyframe designPose(Keyframe pose, MotionDevice d) {
   var x = d.value("x"), y = d.value("y"), turn = d.value("turn");
   var size = d.value("size"), opacity = d.value("opacity");
@@ -719,9 +701,8 @@ Keyframe designPose(Keyframe pose, MotionDevice d) {
       opacity: (pose.opacity * opacity).clamp(0.0, 1.0).toDouble());
 }
 
-/// designed is [e] with its own settings as Design has them at [t]
-/// seconds: those keyed and playing then, and its skew. Itself where
-/// Design changes nothing.
+/// designed is [e] with Design's keyed settings and skew at [t] seconds, or
+/// itself where Design changes nothing.
 CanvasElement designed(CanvasElement e, MotionDevice d, double t,
     {PhaseSpans spans = PhaseSpans.none}) {
   var now = d.at(t, spans: spans);
@@ -736,8 +717,8 @@ CanvasElement designed(CanvasElement e, MotionDevice d, double t,
   return out;
 }
 
-/// designWritten is [e] with its own setting [id] made [v], as its settings
-/// panel would make it: what a Design setting not keyed changes. Itself for
-/// a setting of Design's own (see designPlace) or one it does not have.
+/// designWritten is [e] with setting [id] made [v] as its panel would: what
+/// an unkeyed Design setting changes. Itself for a place setting or one it
+/// lacks.
 CanvasElement designWritten(CanvasElement e, String id, double v) =>
     _settingOf(e, id)?.write(e, v) ?? e;

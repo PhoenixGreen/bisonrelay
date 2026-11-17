@@ -10,9 +10,9 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// preset_panels.dart is the saved scenes and the saved elements, as two lists
-// in the Presets sidebar. Using one adds it: an element to the canvas in view,
-// a scene after the one in view (see CanvasController.addScenes).
+// preset_panels.dart is the saved scenes and the saved elements, as two
+// lists in the Presets sidebar. Using one adds it: an element to the canvas
+// in view, a scene after the one in view (see CanvasController.addScenes).
 
 /// ScenePresetsPanel is the scenes somebody has saved.
 class ScenePresetsPanel extends StatefulWidget {
@@ -78,8 +78,8 @@ class _ScenePresetsPanelState extends State<ScenePresetsPanel> {
             name: preset.name,
             icon: Icons.movie_outlined,
             says: _says(preset),
-            // Sized to the page it is arriving on, so a scene made on a banner
-            // does not hang off a square canvas.
+            // Sized to the page it is arriving on, so a scene made on a
+            // banner does not hang off a square canvas.
             onUse: () =>
                 widget.controller.addScenes(preset.buildScenes(on: _page())),
             onRename: (name) => store.rename(preset, name),
@@ -96,8 +96,7 @@ class _ScenePresetsPanelState extends State<ScenePresetsPanel> {
   }
 }
 
-/// ElementPresetsPanel is the elements somebody has saved, and the ones that
-/// ship with the app.
+/// ElementPresetsPanel is the elements saved, and those shipped with the app.
 class ElementPresetsPanel extends StatefulWidget {
   final CanvasController controller;
 
@@ -124,8 +123,7 @@ class ElementPresetsPanel extends StatefulWidget {
 class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
   ElementPresetStore get store => ElementPresetStore.instance;
 
-  /// _kind is the filter: null for all of them. It offers only the kinds
-  /// there are presets for.
+  /// _kind is the filter, null for all; it offers only kinds with presets.
   ElementKind? _kind;
 
   @override
@@ -158,8 +156,7 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
     ];
     var kinds = <ElementKind>{for (var p in all) p.kind}.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
-    // A filter on a kind that has just lost its last preset would show an
-    // empty list with no way to tell why.
+    // A filter on a kind just emptied would show a list with no reason why.
     var kind = kinds.contains(_kind) ? _kind : null;
     var showing = [
       for (var p in all)
@@ -196,9 +193,8 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
             name: preset.name,
             icon: iconForKind(preset.kind),
             says: preset.kind.label,
-            // Sized to the page and centred on it, so a headline made for a
-            // 1920-wide banner does not arrive 1920 wide. See
-            // ElementPreset.buildFor.
+            // Sized to the page and centred, so a headline made for a
+            // 1920-wide banner does not arrive 1920 wide (buildFor).
             onUse: () => widget.controller.addElement(preset.buildFor(_page())),
             // The ones that ship with the app are not the reader's to lose.
             onRename:
@@ -210,13 +206,11 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
   }
 }
 
-/// SavedCanvasPresets is the canvases somebody has saved, under the ones that
-/// ship with the app.
+/// SavedCanvasPresets is the canvases saved, under those that ship.
 class SavedCanvasPresets extends StatefulWidget {
   final CanvasController controller;
 
-  /// onOpen starts a new document from a preset; what to do about unsaved
-  /// work is the screen's decision.
+  /// onOpen starts a new document from a preset; unsaved work is the screen's.
   final void Function(CanvasDocument document) onOpen;
 
   /// query keeps only the presets whose names have it in them.
@@ -273,8 +267,7 @@ class _SavedCanvasPresetsState extends State<SavedCanvasPresets> {
           name: preset.name,
           icon: Icons.dashboard_outlined,
           says: _says(preset),
-          // Tapped, it starts a document of its own; its menu adds its scenes
-          // to the open one instead.
+          // Tapped, it starts a document; its menu adds its scenes instead.
           onUse: () {
             var document = preset.buildDocument();
             if (document != null) widget.onOpen(document);
@@ -304,8 +297,7 @@ bool presetMatches(String name, String query) {
   return words.every(lower.contains);
 }
 
-/// presetList is a list of presets: scrolling on its own, or, [embedded] in
-/// another list, as tall as it is.
+/// presetList is presets scrolling alone, or as tall as it is [embedded].
 Widget presetList({required bool embedded, required List<Widget> children}) =>
     embedded
         ? Column(
@@ -314,8 +306,8 @@ Widget presetList({required bool embedded, required List<Widget> children}) =>
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
             children: children);
 
-/// CanvasSubHeading is a quieter heading inside a panel, for the line between
-/// what ships with the app and what has been saved.
+/// CanvasSubHeading is a quieter heading inside a panel, between what ships
+/// with the app and what has been saved.
 class CanvasSubHeading extends StatelessWidget {
   final String text;
   const CanvasSubHeading(this.text, {super.key});

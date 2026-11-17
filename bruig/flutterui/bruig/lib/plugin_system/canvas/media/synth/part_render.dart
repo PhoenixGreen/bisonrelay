@@ -11,12 +11,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// part_render.dart renders an instrument's part to sound ahead of time,
-// and fetches the sound bank it is played with.
-//
-// The bank is MuseScore General (MIT; its licence goes with what is made
-// from it), downloaded on first use to the Canvas library's soundbanks
-// folder. Until then the built-in piano plays.
+// part_render.dart renders an instrument's part to sound ahead of time, and
+// fetches the sound bank it is played with: MuseScore General (MIT; its
+// licence goes with what is made from it), downloaded on first use to the
+// Canvas library's soundbanks folder. Until then the built-in piano plays.
 
 /// soundBankUrl is where the bank comes from: MuseScore's own mirror.
 const soundBankUrl =
@@ -31,7 +29,6 @@ const soundBankBytes = 215614036;
 Future<String> soundBankPath() async => path.join(
     await CanvasStorage.libraryDir(), canvasSoundBankFolder, "MuseScore_General.sf2");
 
-/// soundBankReady is whether the bank has been downloaded.
 Future<bool> soundBankReady() async {
   var file = File(await soundBankPath());
   return await file.exists() && await file.length() == soundBankBytes;
@@ -43,10 +40,9 @@ final ValueNotifier<double?> soundBankProgress = ValueNotifier(null);
 
 Future<bool>? _fetching;
 
-/// downloadSoundBank fetches the bank, telling [progress] how much of it
-/// has arrived, nought to one. True once it is there. Asked again while it
-/// is being fetched, it is the same fetch: two into one file would each
-/// undo the other.
+/// downloadSoundBank fetches the bank, telling [progress] how much has
+/// arrived, nought to one; true once it is there. Asked again mid-fetch, it
+/// is the same fetch: two into one file would undo each other.
 Future<bool> downloadSoundBank({void Function(double share)? progress}) {
   void heard() => progress?.call(soundBankProgress.value ?? 0);
   if (progress != null) soundBankProgress.addListener(heard);
@@ -97,7 +93,7 @@ SoundFont? _loaded;
 String? _loadedFrom;
 
 /// loadedSoundBank is the bank once read, at once: what a key pressed
-/// plays on, without asking the disk where the bank is every time.
+/// plays on, without asking the disk each time.
 SoundFont? get loadedSoundBank => _loaded;
 
 /// loadSoundBank is the bank, read once and kept. Null where it has not
@@ -148,9 +144,8 @@ Future<SoundFont?> loadSoundBank() async {
     for (var e in part.controls.entries)
       if (e.value.isNotEmpty) (e.key, ControlCursor(e.value, e.key.rest)),
   ];
-  // How many notes hold each key: two overlapping on one key -- a chord's
-  // and a scale's both landing there, or drawn so -- are let go by the last
-  // of them, as keys played live are, not cut short by the first.
+  // How many notes hold each key: two overlapping on one key are let go by
+  // the last of them, as keys played live are, not cut short by the first.
   var holding = <int, int>{};
   // Knobs turned as it plays: the patch set again at each lane step.
   var patch = part.sound == InstrumentSound.patch ? part.patch : null;

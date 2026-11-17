@@ -74,7 +74,6 @@ abstract final class Gen {
   };
 }
 
-/// SfSample is one sample's header.
 class SfSample {
   final String name;
   final int start, end, loopStart, loopEnd, rate;
@@ -114,7 +113,6 @@ class _Instrument {
   _Instrument(this.name, this.global, this.zones);
 }
 
-/// SfPreset is one preset, chosen by bank and program number.
 class SfPreset {
   final String name;
   final int bank, program;
@@ -123,7 +121,6 @@ class SfPreset {
   SfPreset._(this.name, this.bank, this.program, this._global, this._zones);
 }
 
-/// SoundFont is a bank, read.
 class SoundFont {
   /// samples are all the bank's 16-bit sample data, end to end.
   final Int16List samples;
@@ -244,7 +241,7 @@ class SoundFont {
         Int16List.fromList(data), [preset], [instrument], headers, "Slices");
   }
 
-  /// read reads a bank from its bytes.  /// read reads a bank from its bytes. It throws a FormatException for a
+  /// read reads a bank from its bytes. It throws a FormatException for a
   /// file that is not a bank, and may throw a RangeError for a truncated
   /// one.
   static SoundFont read(Uint8List bytes) {

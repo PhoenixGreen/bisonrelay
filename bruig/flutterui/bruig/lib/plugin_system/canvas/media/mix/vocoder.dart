@@ -6,12 +6,9 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 
-// vocoder.dart is a classic channel vocoder. The channel's own sound (the
-// modulator) is split into bands, and each band's envelope is laid onto the
-// same band of the carrier: noise, a buzz, or another channel.
-//
-// Each carrier band is first normalised by its own envelope, up to
-// [_maxEven], so a carrier with little in a band still carries the voice.
+// vocoder.dart is a channel vocoder: each band's envelope of the channel's
+// sound laid on the carrier's band (noise, buzz, or a channel). Carrier
+// bands are normalised up to [_maxEven], so a thin carrier still carries.
 
 const double _rate = 48000;
 
@@ -19,7 +16,7 @@ const double _rate = 48000;
 const double _maxEven = 8;
 
 /// _Band is one band of a bank: a fourth-order band-pass (two sections)
-/// and a follower of how loud it is.
+/// and a level follower.
 class _Band {
   final List<double> c;
   // Two sections' state, transposed direct form II.
@@ -63,8 +60,8 @@ List<double> _bandPass(double hz, double q) {
 double _coef(double ms) => math.exp(-1 / (ms / 1000 * _rate));
 
 class Vocoder implements Sidechained, Readable, Tunable {
-  /// reading is each band's voice, then each band's carrier, as loud as it
-  /// is now: what its screen draws.
+  /// reading is each band's voice level, then each band's carrier level,
+  /// for its screen.
   @override
   Float32List get reading => Float32List.fromList([
         for (var b in _voice) b.env,
@@ -77,8 +74,8 @@ class Vocoder implements Sidechained, Readable, Tunable {
   double _note, _up, _down, _unvoiced, _mix;
   final List<_Band> _voice, _carry;
 
-  /// _shape is what its bands were made from: their count, their range and
-  /// the formant shift. Changed, they are made again (see tune).
+  /// _shape is what its bands were made from (count, range, formant shift);
+  /// a change remakes them (see tune).
   (int, double, double, double) _shape = (0, 0, 0, 0);
 
   // The voice's highs, for the hiss of an s or a t the carrier lacks.
@@ -89,8 +86,8 @@ class Vocoder implements Sidechained, Readable, Tunable {
   Float32List _side = Float32List(1024);
   int _fed = 0;
 
-  /// _sideAt is where in the carrier fed this stretch reads from: a strip
-  /// whose modulators move knobs runs a short stretch at a time.
+  /// _sideAt is where this stretch reads the fed carrier: a modulated strip
+  /// runs a short stretch at a time.
   int _sideAt = 0;
 
   // The buzz's phase and step, easing to [_toStep] when following the voice.
@@ -119,9 +116,8 @@ class Vocoder implements Sidechained, Readable, Tunable {
     _step = _toStep = 440 * math.pow(2, (_note - 69) / 12) / _rate;
   }
 
-  /// _makeBands makes its bands as [d] sets them -- each as loud as the
-  /// one it replaces, where there are as many, so a knob turned does not
-  /// drop the sound.
+  /// _makeBands makes [d]'s bands, each as loud as the one it replaces where
+  /// the count is unchanged, so a turned knob does not drop the sound.
   void _makeBands(MixDevice d) {
     var bands = d.value("bands").round();
     var low = d.value("low"), high = d.value("high");
@@ -146,10 +142,8 @@ class Vocoder implements Sidechained, Readable, Tunable {
     }
   }
 
-  /// tune takes [d]'s settings as it plays: its levels and times in place,
-  /// its bands made again only where their count, range or formant moved
-  /// -- so a knob turned, or an LFO on one, does not start it again (Ken's
-  /// systems review, 2026-11-08).
+  /// tune takes [d]'s settings live, remaking bands only where count, range
+  /// or formant changed, so knobs and LFOs do not restart it.
   @override
   void tune(MixDevice d) {
     _carrier = d.value("carrier").round();
@@ -196,8 +190,8 @@ class Vocoder implements Sidechained, Readable, Tunable {
     return _seed / 0x7fffffff - 1;
   }
 
-  /// _saw is a band-limited saw: the polyBLEP correction rounds off the
-  /// jump that would otherwise alias.
+  /// _saw is a band-limited saw: polyBLEP rounds off the jump that would
+  /// alias.
   double _saw() {
     _step += (_toStep - _step) * 0.002;
     var t = _phase, dt = _step;
@@ -264,7 +258,7 @@ class Vocoder implements Sidechained, Readable, Tunable {
       l[i] = l[i] * (1 - _mix) + wet * _mix;
       r[i] = r[i] * (1 - _mix) + wet * _mix;
     }
-    // Read on from here, until what was fed has run out.
+    // Read on from here until what was fed runs out.
     _sideAt += n;
     if (_sideAt >= _fed) _fed = 0;
   }

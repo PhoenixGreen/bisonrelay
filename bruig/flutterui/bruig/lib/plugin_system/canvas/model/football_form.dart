@@ -1,32 +1,21 @@
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 
-// football_form.dart works out each club's recent results from the fixtures.
-//
-// football-data.org's standings "form" field is null on the free plan, but
-// the matches resource (free) lists every finished game. A form guide is
-// those grouped by club in date order, most recent last. It costs one more
-// request out of the ten a minute allowed.
-//
-// Everything here is pure; the fetching is the caller's (see
+// football_form.dart works out each club's recent results from the
+// fixtures. football-data.org's standings "form" is null on the free plan,
+// but the free matches resource lists every finished game: one more request
+// of the ten a minute allowed. Pure; the fetching is the caller's (see
 // storage/canvas_data.dart).
 
-/// FootballForm is every club's recent results, by every name the club is
-/// known by.
-///
-/// Several keys per club: a table's column may hold the short name, the full
-/// name or the three-letter abbreviation.
+/// FootballForm is every club's recent results, keyed by every name the club
+/// goes by: a table may hold the short name, full name or abbreviation.
 typedef FootballForm = Map<String, String>;
 
 /// _key is a club's name as looked up, ignoring case and outer spaces.
 String _key(String name) => name.trim().toLowerCase();
 
-/// footballForms reads the matches resource into a form guide per club.
-///
-/// [count] is how many games a guide holds; footballFormFromResults passes
-/// the form column's room.
-///
-/// Matches with no score are ignored whatever their status says: a list of
-/// finished games can still carry a postponed one.
+/// footballForms reads the matches resource into a form guide per club of
+/// [count] games. Matches with no score are ignored whatever their status:
+/// a list of finished games can still carry a postponed one.
 FootballForm footballForms(dynamic json, {int count = 5}) {
   var matches = valueAtPath(json, "matches");
   if (matches is! List) return const {};
@@ -76,11 +65,9 @@ FootballForm footballForms(dynamic json, {int count = 5}) {
   return out;
 }
 
-/// fillFootballForm writes the guide into the rows.
-///
-/// The column filled is whichever is mapped to "form". Rows are found by the
-/// source's match column (the club's name), falling back to any column that
-/// looks like a name. A club with no finished games keeps what was there.
+/// fillFootballForm writes the guide into the column mapped to "form". Rows
+/// are found by the source's match column (the club's name), else any column
+/// that looks like a name. A club with no finished games keeps what it had.
 List<List<String>> fillFootballForm(
   List<List<String>> rows,
   DataSource source,
@@ -128,10 +115,7 @@ List<List<String>> fillFootballForm(
 
 /// footballFormFromResults fills the form column from the fixtures, fetched
 /// with [get] from the standings address with the resource swapped (so it
-/// follows the table's competition).
-///
-/// A failure leaves the rows as they were: the rest of the table is still
-/// correct.
+/// follows the table's competition). A failure leaves the rows as they were.
 Future<List<List<String>>> footballFormFromResults(
   List<List<String>> rows,
   DataSource source,

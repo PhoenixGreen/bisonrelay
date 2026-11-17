@@ -3,10 +3,8 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart' show getCrc32;
 
-/// opaquePng is [rgba] (straight, width by height) as a PNG with no alpha
-/// channel: a book's cover. Flutter's own PNGs always carry alpha, and an
-/// e-reader's library makes its thumbnail from the cover; one without
-/// transparency leaves it nothing to guess about.
+/// opaquePng is straight [rgba] as a PNG with no alpha, for a book cover:
+/// Flutter's PNGs carry alpha, and e-readers thumbnail the cover.
 Uint8List opaquePng(Uint8List rgba, int width, int height) {
   // Each row: filter 0 (none), then its pixels' red, green and blue, laid
   // over black where they are not wholly opaque.

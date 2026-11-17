@@ -11,24 +11,21 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// team_photo_editor.dart is where each player's face is picked out of one
-// photo of the whole squad: the photo, with a circle on it for every player
-// -- the shape their portrait token is -- each moved, sized and turned until
-// it is round that player's face.
+// team_photo_editor.dart picks each player's face from one squad photo with
+// a circle per player (their token's shape), moved, sized and turned.
 
-/// TeamPhotoEditor shows [team]'s team photo with every player's crop on it.
-/// One is chosen at a time: tap a circle, or pick the player from the list;
-/// drag it to move it, its edge handle to size it, the handle above it to
-/// turn it. The photo zooms (scroll, pinch, the zoom buttons, or Focus) and,
-/// zoomed, drags from anywhere off the circle. Shift-scroll sizes the circle.
+/// TeamPhotoEditor shows [team]'s photo with every player's crop, one
+/// chosen at a time: drag, edge handle sizes, top handle turns. The photo
+/// zooms (scroll, pinch, buttons, Focus) and pans off the circle;
+/// shift-scroll sizes the circle.
 class TeamPhotoEditor extends StatefulWidget {
   final TeamElement team;
   final VoidCallback begin;
   final void Function(TeamElement) write;
   final VoidCallback commit;
 
-  /// images is where the photo is read from: the canvas's own picture store
-  /// unless one is given, as a test gives one.
+  /// images is where the photo is read from: the canvas's picture store
+  /// unless given, as tests do.
   final CanvasImageSource? images;
 
   const TeamPhotoEditor({
@@ -46,11 +43,11 @@ class TeamPhotoEditor extends StatefulWidget {
 
 enum _Grab { move, size, turn, pan }
 
-/// teamPhotoMargin is the room left round the photo, so the handles of a
-/// circle at its very edge can still be reached.
+/// teamPhotoMargin is the room round the photo, so a circle's handles at
+/// the very edge stay reachable.
 const double teamPhotoMargin = 22;
 
-/// teamPhotoMaxZoom is as far in as the photo goes.
+/// teamPhotoMaxZoom is the deepest zoom.
 const double teamPhotoMaxZoom = 12;
 
 class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
@@ -58,13 +55,12 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
   int _chosen = 0;
   _Grab? _grab;
 
-  /// _live is the circle being dragged, as the drag has left it -- two moves
-  /// can arrive before the team written by the first has come back -- and as
-  /// it is kept: without a size of its own until it is sized.
+  /// _live is the dragged circle as the drag left it, as two moves can
+  /// arrive before the first write returns; sizeless until sized.
   PhotoCrop? _live;
 
-  /// _zoom and _pan are how far in the photo is shown and where: one is the
-  /// whole photo, and the pan is in the editor's own pixels.
+  /// _zoom and _pan are how far in and where the photo is shown: one is the
+  /// whole photo, the pan in editor pixels.
   double _zoom = 1;
   Offset _pan = Offset.zero;
 
@@ -87,7 +83,7 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
 
   TeamElement get team => widget.team;
 
-  /// _people is the players who can have a face: everybody but the ball.
+  /// _people is the players who can have a face: all but the ball.
   List<int> get _people => [
         for (var i = 0; i < team.players.length; i++)
           if (!team.players[i].ball) i,
@@ -99,8 +95,8 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
     return people.contains(_chosen) ? _chosen : people.first;
   }
 
-  /// _raw is player [i]'s crop as it is kept: their own where they have one,
-  /// and otherwise where the guess puts them, with no size of its own.
+  /// _raw is player [i]'s kept crop: their own, or else the guessed place,
+  /// sizeless.
   PhotoCrop _raw(int i, double aspect) {
     var own = team.players[i].crop;
     if (own != null) return own;
@@ -111,8 +107,8 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
   void _setCrop(int i, PhotoCrop crop) =>
       widget.write(team.withPlayer(i, team.players[i].copyWith(crop: crop)));
 
-  /// _view is where the photo is in the editor: its top-left corner and how
-  /// many editor pixels an image pixel is.
+  /// _view is where the photo sits in the editor: top-left corner and
+  /// editor pixels per image pixel.
   ({Offset origin, double scale}) _view(Size box, double iw, double ih) {
     var base = math.min((box.width - 2 * teamPhotoMargin) / iw,
         (box.height - 2 * teamPhotoMargin) / ih);
@@ -127,8 +123,8 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
     var k = next / _zoom;
     var c = box.center(Offset.zero);
     setState(() {
-      // A point p on the screen is c + (q - c) * zoom + pan for the photo's
-      // own q, so holding p still means scaling the pan about it.
+      // A screen point p is c + (q - c) * zoom + pan for photo point q, so
+      // holding p still means scaling the pan about it.
       _pan = (at - c) - ((at - c) - _pan) * k;
       _zoom = next;
       if (_zoom <= 1.0001) _pan = Offset.zero;
@@ -227,9 +223,8 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
             child: GestureDetector(
               key: const ValueKey("teamPhotoEditor"),
               behavior: HitTestBehavior.opaque,
-              // What is grabbed is what was under the pointer when it went
-              // down, not where it had got to by the time it counted as a
-              // drag: a handle is smaller than that distance.
+              // Grab what was under pointer-down, as a handle is smaller than
+              // the drag threshold.
               dragStartBehavior: DragStartBehavior.down,
               onTapUp: (d) {
                 var best = hit(d.localPosition);
@@ -253,8 +248,8 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
                     _grab = _Grab.size;
                   } else if ((toImage(p) - c).distance <= r * 1.1 &&
                       hit(p) == who) {
-                    // Inside it -- and not nearer another player's middle,
-                    // where two circles overlap.
+                    // Inside it, and not nearer another player's middle where
+                    // circles overlap.
                     _grab = _Grab.move;
                   }
                 }
@@ -330,7 +325,7 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
             ),
           ),
           const SizedBox(height: 6),
-          // The view of the photo: how far in, and back out again.
+          // The photo's zoom: in, and back out.
           CanvasWrap(children: [
             CanvasNumberField(
               key: const ValueKey("teamPhotoZoom"),
@@ -375,8 +370,8 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
                       }),
             ),
 
-            // Every circle's starting size, which each player's own size
-            // then starts from.
+            // Every circle's starting size, from which each player's own
+            // starts.
             CanvasNumberField(
               key: const ValueKey("teamPhotoDefaultSize"),
               label: "Circle size",
@@ -475,8 +470,8 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
   }
 }
 
-/// _PhotoPainter draws the team photo and every player's circle on it: the
-/// chosen one bright, with its handles, the rest faint with their numbers.
+/// _PhotoPainter draws the team photo and every player's circle: the chosen
+/// one bright with handles, the rest faint with numbers.
 class _PhotoPainter extends CustomPainter {
   final ui.Image image;
   final Offset origin;
@@ -502,7 +497,7 @@ class _PhotoPainter extends CustomPainter {
     canvas.drawImageRect(image, Rect.fromLTWH(0, 0, iw, ih), dst,
         Paint()..filterQuality = FilterQuality.medium);
 
-    // Everything but the chosen face a little darker, so it stands out.
+    // Everything but the chosen face slightly darker, so it stands out.
     PhotoCrop? mine;
     for (var (i, c, _) in crops) {
       if (i == chosen) mine = c;
@@ -551,7 +546,7 @@ class _PhotoPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5
         ..color = const Color(0xFFFFFFFF);
-      // Which way is up in the token, and the handle that turns it.
+      // Which way is up in the token, and its turning handle.
       var turnAt = centre + up * (r + 16);
       canvas.drawLine(
           centre + up * r,
@@ -561,7 +556,7 @@ class _PhotoPainter extends CustomPainter {
             ..color = accent);
       canvas.drawCircle(turnAt, 5, handle);
       canvas.drawCircle(turnAt, 5, ring);
-      // The handle that sizes it.
+      // The sizing handle.
       var sizeAt = centre + across * r;
       canvas.drawRect(
           Rect.fromCenter(center: sizeAt, width: 9, height: 9), handle);
@@ -584,8 +579,8 @@ class _PhotoPainter extends CustomPainter {
       ].any((x) => x);
 }
 
-/// _CropPreview is the chosen player's token as it will be drawn: their part
-/// of the photo, in a circle.
+/// _CropPreview is the chosen player's token as drawn: their part of the
+/// photo, in a circle.
 class _CropPreview extends StatelessWidget {
   final ui.Image image;
   final PhotoCrop crop;

@@ -6,17 +6,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-// vrm_shape.dart shapes a VRoid body by its CharacterShape: smooth changes
-// to the mesh where a part of it is -- the eyes, the jaw, the bum -- and the
-// skeleton itself longer, wider or bigger. Every change is worked out from
-// the mesh as made, so each setting is a setting and not a step: the same
-// shape always gives the same body.
-//
-// Where things are is found from the mesh itself: the eyes from the eye
-// meshes, the nose tip as the face's most forward point between the eyes
-// and the mouth, the bum as the body's most rearward point between the hips
-// and the thighs. Plain Dart, so it is tested without a GPU; vrm_scene.dart
-// puts the result on the screen.
+// vrm_shape.dart shapes a VRoid body by its CharacterShape: smooth mesh
+// changes where a part is (eyes, jaw, bum) and a longer, wider or bigger
+// skeleton. Every change is worked out from the mesh as made, so the same
+// shape always gives the same body. Landmarks are found from the mesh
+// itself. Plain Dart, so it is tested without a GPU; vrm_scene.dart draws
+// the result.
 
 vm.Vector3 _v3(double x, double y, double z) => vm.Vector3(x, y, z);
 
@@ -27,7 +22,6 @@ class FaceSide {
   const FaceSide(this.ear, this.cheek, this.jaw, this.brow);
 }
 
-/// FaceLandmarks are where the face's features are, in the mesh's space.
 class FaceLandmarks {
   /// fwd is which way along z the face looks: 1 or -1.
   final double fwd;
@@ -58,12 +52,12 @@ class FaceLandmarks {
 /// BodyPoints are places on the body to shape it where the bones are, in
 /// the mesh's space.
 class BodyPoints {
-  /// u is the body's size against a grown woman's, for the body changes
-  /// measured in metres.
+  /// u is the body's size against a grown woman's, for changes measured in
+  /// metres.
   final double u;
 
-  /// bustC and bustTip are the middle and the tip of the bust where the
-  /// model has one (VRoid's J_Sec_R_Bust bones), and bustR its size.
+  /// bustC and bustTip are the bust's middle and tip where the model has
+  /// one (VRoid's J_Sec_R_Bust bones); bustR is its size.
   final vm.Vector3? bustC, bustTip;
   final double bustR;
   final vm.Vector3 bum, pec, abs, navel, chestR, waist, hips, belly;
@@ -82,12 +76,11 @@ class BodyPoints {
       this.belly);
 }
 
-/// Deformer is one change to the mesh.
 sealed class Deformer {
   const Deformer();
 
-  /// key says what the change is exactly, so a mesh whose changes are the
-  /// same as last time is left alone.
+  /// key identifies the change exactly, so a mesh whose changes match last
+  /// time is left alone.
   String get key;
 }
 
@@ -108,7 +101,6 @@ class Blob extends Deformer {
   /// reversed.
   final bool mirror;
 
-  /// irisOnly keeps it to the iris and its highlight.
   final bool irisOnly;
   const Blob(this.c, this.r,
       {this.scale,
@@ -125,10 +117,9 @@ class Blob extends Deformer {
       'b${_k(c)}|${_k(r)}|${_k(scale)}|${_k(t)}|$rz|$mirror|$irisOnly';
 }
 
-/// StrokeDeformer is one stroke of the sculpting brush (character_sculpt.dart):
-/// the surface near the stroke raised or lowered along the way it faced
-/// there, or pressed flat. Each spot is moved once, by the stroke's point
-/// nearest it, so a stroke drawn slowly is no deeper than one drawn fast.
+/// StrokeDeformer is one sculpting-brush stroke (character_sculpt.dart):
+/// nearby surface raised, lowered or flattened. Each spot moves once, by the
+/// stroke's nearest point, so a slow stroke is no deeper than a fast one.
 class StrokeDeformer extends Deformer {
   final SculptStroke stroke;
 
@@ -136,7 +127,7 @@ class StrokeDeformer extends Deformer {
   final double side;
   const StrokeDeformer(this.stroke, {this.side = 1});
 
-  /// of are the deformers [strokes] make: each, and its mirror image.
+  /// of is each of [strokes] and its mirror image.
   static List<StrokeDeformer> of(List<SculptStroke> strokes) => [
         for (final s in strokes)
           if (s.points.isNotEmpty) ...[
@@ -168,13 +159,11 @@ class Radial extends Deformer {
   String get key => 'r${_k(a)}|${_k(b)}|${bones.join(",")}|$k';
 }
 
-/// FootGrow grows a foot by [k] about the floor under its ankle [ankle], so
-/// it stays on the floor and its toes reach further. Longer and wider by all
-/// of [k] up to the ankle, fading over a band just above it, so a boot's
-/// shaft is not stretched; and taller by a curve that is nought at the sole
-/// and at the ankle, so nothing is pushed up past the ankle into the shaft.
-/// Each depends on height alone, the same for the skin and a boot over it,
-/// so the boot still covers the skin.
+/// FootGrow grows a foot by [k] about the floor under [ankle], so it stays
+/// on the floor. Length and width grow fully up to the ankle and fade just
+/// above it, so a boot's shaft is not stretched; height grows by a curve
+/// that is nought at the sole and the ankle. Each depends on height alone,
+/// so a boot still covers the skin under it.
 class FootGrow extends Deformer {
   final vm.Vector3 ankle;
   final double k, u;
@@ -182,23 +171,20 @@ class FootGrow extends Deformer {
   @override
   String get key => 'f${_k(ankle)}|$k|$u';
 
-  /// across is how much of the growth in length and width a point at
-  /// height [y] takes.
+  /// across is how much of the length and width growth height [y] takes.
   double across(double y) {
-    // Whole up to the ankle -- the instep is below it -- and gone a little
-    // above, where skin and boot both run upright, at the same heights.
+    // Whole up to the ankle (the instep is below it), gone a little above,
+    // where skin and boot both run upright.
     final t = ((ankle.y + 0.03 * u - y) / (0.03 * u)).clamp(0.0, 1.0);
     return t * t * (3 - 2 * t);
   }
 
-  /// up is where a point at height [y] goes.
   double up(double y) =>
       y <= 0 || y >= ankle.y ? y : y + k * y * (1 - y / ankle.y);
 }
 
-/// Bum pushes the bum back along the line of the body seen from the side:
-/// fuller above or below, rounder, lifted -- and only where the body faces
-/// back.
+/// Bum pushes the bum back along the body's side profile: fuller above or
+/// below, rounder, lifted, only where the body faces back.
 class Bum extends Deformer {
   final vm.Vector3 c;
   final double h, w, back, u, size, round, upper, lower, lift, width;
@@ -214,39 +200,37 @@ class Bum extends Deformer {
       'u${_k(c)}|$h|$w|$back|$u|$size|$round|$upper|$lower|$lift|$width';
 }
 
-/// BoneChange is a bone moved from its place at rest, and drawn bigger or
-/// smaller by [scale] (the same every way, so it turns as it did).
+/// BoneChange is a bone moved from rest and drawn bigger or smaller by
+/// [scale] (uniform, so it turns as it did).
 class BoneChange {
   final vm.Vector3 translation;
   final double scale;
   const BoneChange(this.translation, this.scale);
 }
 
-/// Proportions are the skeleton's changes: each bone changed, by name, and
-/// how much bigger the whole character is.
+/// Proportions are the skeleton's changes: each bone's, by name, and the
+/// whole character's scale.
 class Proportions {
   final Map<String, BoneChange> bones;
   final double height;
   const Proportions(this.bones, this.height);
 }
 
-/// ShapeGroup is the primitives of one mesh that share their vertices and
-/// are shaped alike, so are shaped once and drawn from one buffer.
+/// ShapeGroup is a mesh's primitives that share vertices and are shaped
+/// alike, so shaped once and drawn from one buffer.
 class ShapeGroup {
   final VrmMeshNode node;
   final VrmVertices vertices;
   final bool iris;
   final List<int> primitives;
 
-  /// used are the vertices any of them draws, and triangles their
-  /// triangles, together.
+  /// used are the vertices any of them draws; triangles, their triangles.
   final Int32List used;
   final Uint32List triangles;
   ShapeGroup(this.node, this.vertices, this.iris, this.primitives, this.used,
       this.triangles);
 }
 
-/// Shaped is a group's vertices as shaped.
 class Shaped {
   final Float32List positions, normals;
   const Shaped(this.positions, this.normals);
@@ -267,8 +251,8 @@ abstract final class VroidBone {
   static String foot(String s) => 'J_Bip_${s}_Foot';
 }
 
-/// VrmShapeRig is one body ready to shape: its mesh, where its features
-/// are, and its primitives grouped.
+/// VrmShapeRig is one body ready to shape: its mesh, its features and its
+/// grouped primitives.
 class VrmShapeRig {
   final VrmMeshData data;
   final FaceLandmarks? face;
@@ -316,7 +300,6 @@ class VrmShapeRig {
     return out;
   }
 
-  /// deformers are the changes [s] makes to [region].
   List<Deformer> deformers(VrmRegion region, CharacterShape s) {
     final out = <Deformer>[];
     final L = face;
@@ -644,7 +627,6 @@ class VrmShapeRig {
       out.add(Blob(B.navel, _v3(rx * sz * 1.6, ry * sz * 1.6, 0.012 * u),
           t: _v3(0, 0, F * rise * 0.006 * u * (0.4 + V('navel.depth')))));
     }
-    // Body fat: a softer, fuller middle.
     if (fat != 0) {
       out.add(Blob(B.belly, _v3(0.15 * u, 0.12 * u, 0.14 * u),
           t: _v3(0, -0.006 * u * math.max(0, fat), F * 0.03 * u * fat)));
@@ -709,7 +691,6 @@ class VrmShapeRig {
             0.06 * mus +
             0.08 * V('muscle.traps') +
             0.06 * fat);
-    // Bigger or smaller feet, grown from the floor under the ankle.
     final feet = (1 + 0.25 * V('feet.size')) * (1 + 0.35 * V('figure.feet'));
     if ((feet - 1).abs() > 1e-4) {
       for (final sd in const ['L', 'R']) {
@@ -719,8 +700,7 @@ class VrmShapeRig {
     }
   }
 
-  /// shape is [g]'s vertices changed by [ds] (its region's deformers), or
-  /// null when none of them touches it: it is as made.
+  /// shape is [g]'s vertices changed by [ds], or null when none touches it.
   Shaped? shape(ShapeGroup g, List<Deformer> ds) {
     final vs = g.vertices, o = vs.positions, on = vs.normals;
     final a = Float32List.fromList(o);
@@ -776,10 +756,9 @@ class VrmShapeRig {
                 : math.pow(1 - (t / w) * (t / w), 2).toDouble();
             final across = bell(wv, 1.5),
                 facing = ((nb + 0.1) / 0.6).clamp(0.0, 1.0);
-            // A full curve over the middle, more above or below, a rounder
-            // peak; lifting carries the curve up and tucks the fold under.
-            // Above its fullest point it fades into the small of the back,
-            // so there is no shelf.
+            // A full curve over the middle, more above or below; lifting
+            // carries it up and tucks the fold under. Above its fullest
+            // point it fades into the back, so there is no shelf.
             final hl = h - 0.2 * d.lift;
             final above = h > 0 ? bell(h, 1.15) : 1.0;
             var prof = 0.7 * d.size * bell(hl, 1.2) +
@@ -856,8 +835,8 @@ class VrmShapeRig {
     return Shaped(a, _normals(g, a, moved));
   }
 
-  /// _stroke moves what of [g] is near stroke [d], in [a]: the shape so far.
-  /// True if it moved anything.
+  /// _stroke moves what of [g] is near stroke [d] in the shape so far [a];
+  /// true if it moved anything.
   static bool _stroke(StrokeDeformer d, ShapeGroup g, Float32List a,
       Float32List on, Uint8List moved) {
     final st = d.stroke, r = st.radius, r2 = r * r, sd = d.side;
@@ -895,7 +874,6 @@ class VrmShapeRig {
       if (x < lox || x > hix || y < loy || y > hiy || z < loz || z > hiz) {
         continue;
       }
-      // The stroke's nearest point.
       var best = r2, k0 = -1;
       for (var k = 0; k < n; k++) {
         final dx = x - px[k], dy = y - py[k], dz = z - pz[k];
@@ -936,8 +914,8 @@ class VrmShapeRig {
     return any;
   }
 
-  /// _normals are the normals again where the shape moved, shared across
-  /// texture seams, and the file's own everywhere else.
+  /// _normals recomputes normals where the shape moved, shared across
+  /// texture seams; the file's own elsewhere.
   static Float32List _normals(ShapeGroup g, Float32List a, Uint8List moved) {
     final vs = g.vertices, on = vs.normals;
     final na = Float32List.fromList(on);
@@ -989,8 +967,8 @@ class VrmShapeRig {
     return na;
   }
 
-  /// proportions are [s]'s changes to the skeleton: longer, wider, bigger,
-  /// with the feet put back on the floor however the legs changed.
+  /// proportions are [s]'s skeleton changes, with the feet put back on the
+  /// floor however the legs changed.
   Proportions proportions(CharacterShape s) {
     double V(String p) => s.effective(p);
     final bones = <String, BoneChange>{};
@@ -1042,12 +1020,12 @@ class VrmShapeRig {
       change(VroidBone.upperLeg(sd),
           axes: _v3(1 + 0.25 * V('body.hips'), 1, 1));
       change(VroidBone.lowerLeg(sd), pos: leg);
-      // The foot is grown in the mesh (FootGrow), not by its bone: a bone
-      // drawn bigger would stretch a boot between the leg and the foot.
+      // The foot grows in the mesh (FootGrow), not its bone: a bigger bone
+      // would stretch a boot between leg and foot.
       change(VroidBone.foot(sd), pos: leg);
     }
-    // Then the feet back on the floor exactly: the hips go up or down by
-    // however far the foot now is from where it was made.
+    // Feet back on the floor exactly: hips move by however far the foot
+    // is from where it was made.
     final hips = data.bones[VroidBone.hips],
         restY = data.bindPos[VroidBone.foot('L')]?.y;
     if (hips != null && restY != null) {
@@ -1078,8 +1056,7 @@ class VrmShapeRig {
   double? _modelY(String name, Map<String, BoneChange> bones) =>
       _transform(name, bones)?.getTranslation().y;
 
-  /// _scaleAbove is how much bigger than made the bones above [name] draw
-  /// it.
+  /// _scaleAbove is how much bigger than made the bones above [name] draw it.
   double _scaleAbove(String name, Map<String, BoneChange> bones) {
     final p = data.bones[name]?.parent;
     if (p == null) return 1;
@@ -1088,8 +1065,8 @@ class VrmShapeRig {
   }
 }
 
-/// findFaceLandmarks finds where the face's features are, from the face's
-/// own parts; null for a body with no face mesh.
+/// findFaceLandmarks finds the face's features from its own parts; null for
+/// a body with no face mesh.
 FaceLandmarks? findFaceLandmarks(VrmMeshData data) {
   List<vm.Vector3> pts(VrmPart part) {
     final seen = <VrmVertices, Set<int>>{};
@@ -1215,8 +1192,8 @@ BodyPoints? findBodyPoints(VrmMeshData data, double F) {
       }
     }
   }
-  // The body's own surface: the front or back of it at a place, for putting
-  // shapes where the body actually is.
+  // The front or back of the body's surface at a place, for putting shapes
+  // where the body actually is.
   double? surf(double x, double y, double dir, [double? r]) {
     final rr = r ?? 0.022 * u;
     double? best;
@@ -1232,8 +1209,7 @@ BodyPoints? findBodyPoints(VrmMeshData data, double F) {
   vm.Vector3? bustC, bustTip;
   var bustR = 0.0;
   if (b1 != null && b2 != null) {
-    // On the side at +x, as every pair of shapes is measured outward from
-    // the middle there.
+    // On the +x side, where every pair is measured outward from the middle.
     bustC = (b1 + b2) * 0.5
       ..x = ((b1.x + b2.x) / 2).abs();
     bustTip = b2.clone()..x = b2.x.abs();
@@ -1276,14 +1252,13 @@ BodyPoints? findBodyPoints(VrmMeshData data, double F) {
   );
 }
 
-/// HairRole is what a piece of hair is: the fringe in front of the face, the
-/// tails hanging well out to the sides, or the rest -- the back and sides.
+/// HairRole is a piece of hair's role: the fringe, tails hanging well out
+/// to the sides, or the rest (back and sides).
 enum HairRole { front, back, tails }
 
-/// hairRoleOf says what [p], a primitive of hair, is, from where its strands
-/// lie against the face [L]: tails reach out past the face and well below
-/// the chin; the fringe stands in front of the face and does not reach far
-/// below it.
+/// hairRoleOf classifies [p], a hair primitive, by its strands against the
+/// face [L]: tails reach past the face and well below the chin; the fringe
+/// is in front of the face and not far below it.
 HairRole hairRoleOf(VrmPrimitive p, FaceLandmarks L) {
   final es = L.es, F = L.fwd, pos = p.vertices.positions;
   if (p.used.isEmpty || es <= 0) return HairRole.back;

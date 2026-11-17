@@ -4,14 +4,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 
 // image_effects.dart holds the effects done to a layer as it is drawn
-// (shadow, glow, blur) and what a texture layer draws (grain, paper, ...).
-// Both list their settings per kind as AdjustParams, so the panel is built
-// from the lists and a document holds only what was moved.
-//
-// Distances are thousandths of the frame's shorter side, so a shadow scales
-// with the picture.
+// (shadow, glow, blur) and what a texture layer draws (grain, paper...).
+// Both list their settings per kind as AdjustParams. Distances are
+// thousandths of the frame's shorter side, so a shadow scales with the
+// picture.
 
-/// EffectKind is something done to a layer as it is drawn.
 enum EffectKind {
   dropShadow("Drop shadow", [
     AdjustParam("angle", "Angle", 0, 360, 135, percent: false),
@@ -55,8 +52,7 @@ enum EffectKind {
   static EffectKind fromName(String? name) => values
       .firstWhere((k) => k.name == name, orElse: () => EffectKind.dropShadow);
 
-  /// behind is whether the effect is drawn under the layer rather than
-  /// done to it.
+  /// behind is whether it is drawn under the layer, not done to it.
   bool get behind => this == dropShadow || this == outerGlow;
 
   bool get usesColour =>
@@ -66,7 +62,6 @@ enum EffectKind {
       this == outerGlow ? const Color(0xFFFFE9A8) : const Color(0xFF000000);
 }
 
-/// LayerEffect is one effect on a layer.
 class LayerEffect {
   final EffectKind kind;
   final bool on;
@@ -175,7 +170,7 @@ enum TextureKind {
   final String label;
   final int mode;
 
-  /// blend is the blend a new layer of this texture starts with, by name --
+  /// blend is the blend a new layer of this texture starts with, by name:
   /// grain lies over a picture, paper under its colours.
   final String blend;
   final List<AdjustParam> params;
@@ -201,7 +196,6 @@ enum TextureKind {
   bool get usesSecond => this == lightLeak;
 }
 
-/// TextureSpec is what a texture layer draws.
 class TextureSpec {
   final TextureKind kind;
   final Map<String, double> values;

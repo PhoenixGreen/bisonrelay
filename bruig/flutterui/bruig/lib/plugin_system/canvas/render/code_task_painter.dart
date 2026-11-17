@@ -5,12 +5,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart
 import 'package:flutter/painting.dart';
 
 // code_task_painter.dart draws a Code task card (code_task_element.dart):
-// its title over a rule in its accent, what to do, a row for each check --
-// ticked as the code meets it, looked at as it is typed -- its Check
-// button, and once checked, whether it passed.
-//
-// codeTaskLayout is where everything is, in page units: the stage presses
-// the button from it, and a card is sized to it.
+// its title over a rule in its accent, what to do, a row for each check
+// (ticked as the code meets it), its Check button, and once checked,
+// whether it passed. codeTaskLayout is where everything is, in page units:
+// the stage presses the button from it, and a card is sized to it.
 
 const _ui = "Inter";
 const _card = Color(0xFFFFFFFF);
@@ -31,11 +29,10 @@ class CodeTaskShow {
 }
 
 /// codeTaskShowOf is how the stage shows each card, set by the controller;
-/// null -- in an export -- each is unchecked.
+/// null in an export, where each is unchecked.
 CodeTaskShow Function(CodeTaskElement e)? codeTaskShowOf;
 
-/// CodeTaskLayout is where a card's parts are, from its top left, in page
-/// units.
+/// CodeTaskLayout is where a card's parts are from its top left, page units.
 class CodeTaskLayout {
   final double height;
   final Rect button;
@@ -59,8 +56,7 @@ TextPainter _words(String t, double size, Color c, double width,
   return tp;
 }
 
-/// codeTaskLayout lays [e] out [width] wide; [banner] is the result line's
-/// words, where one shows.
+/// codeTaskLayout lays [e] out [width] wide; [banner] is the result's words.
 CodeTaskLayout codeTaskLayout(CodeTaskElement e, double width,
     {String? banner}) {
   var ts = e.textSize, pad = ts * 1.2, inner = width - pad * 2;
@@ -91,12 +87,10 @@ CodeTaskLayout codeTaskLayout(CodeTaskElement e, double width,
   return CodeTaskLayout(y + pad, button, rows);
 }
 
-/// codeTaskButtonAt is whether [point] on the page is on [e]'s button.
 bool codeTaskButtonAt(CodeTaskElement e, Offset point) =>
     codeTaskLayout(e, e.width).button.shift(e.bounds.topLeft).contains(point);
 
-/// codeTaskResult is what a checked card says, and whether it passed:
-/// null while it is not checked.
+/// codeTaskResult is a checked card's words and whether it passed, or null.
 (String, bool)? codeTaskResult(
     CodeTaskElement e, CanvasDocument? doc, CodeTaskShow show) {
   if (!show.checked) return null;
@@ -116,7 +110,6 @@ bool codeTaskButtonAt(CodeTaskElement e, Offset point) =>
         );
 }
 
-/// paintCodeTask draws [e] in [box].
 void paintCodeTask(
     Canvas canvas, Rect box, CodeTaskElement e, CanvasDocument? doc,
     {CodeTaskShow show = const CodeTaskShow()}) {
@@ -196,7 +189,6 @@ void paintCodeTask(
     t.dispose();
   }
 
-  // The button.
   var b = RRect.fromRectAndRadius(l.button, Radius.circular(ts * 0.6));
   canvas.drawRRect(
       b,
@@ -209,7 +201,6 @@ void paintCodeTask(
       canvas, l.button.center - Offset(label.width / 2, label.height / 2));
   label.dispose();
 
-  // Whether it passed.
   if (result case (var words, var passed)) {
     var top = l.button.bottom + ts * 0.9;
     var t = _words(words, ts, _ink, inner - ts * 1.6, weight: FontWeight.w600);

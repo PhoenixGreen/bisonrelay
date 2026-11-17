@@ -19,7 +19,6 @@ import 'package:flutter/material.dart';
 /// sceneStripLead is the gap between the ruler and the boxes.
 const double sceneStripLead = 4;
 
-/// sceneBoxHeight is how tall each scene's box is.
 const double sceneBoxHeight = 30;
 
 /// sceneStripHeight is the room the strip takes between the ruler and the
@@ -197,8 +196,8 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
         ));
       }
       // The transitions over the joins: a bar for the frames each takes, its
-      // right end a grip. What a transition gains is taken from the scene before
-      // it, so nothing later in the run moves. See setSceneTransition.
+      // right end a grip. What a transition gains comes from the scene
+      // before it, so nothing later in the run moves. See setSceneTransition.
       for (var i = 0; i + 1 < scenes.length; i++) {
         var t = document.transitionAfter(i);
         if (!t.on) continue;
@@ -261,8 +260,7 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
       },
       child: Container(
         clipBehavior: Clip.antiAlias,
-        // In its own colour (the approved design), a little more of it
-        // where the playhead is.
+        // In its own colour, a little more of it where the playhead is.
         decoration: BoxDecoration(
           color: Color.lerp(colors.surfaceContainerHighest, sceneTint(index),
               current ? 0.45 : 0.3),
@@ -324,8 +322,7 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
   }
 
   /// _lengthOf is a scene's length as the ruler counts: bars, for a piece
-  /// of sound counted in them (as the prototype's scenes say "N bars");
-  /// otherwise frames.
+  /// of sound counted in them; otherwise frames.
   String _lengthOf(int frames) {
     var document = controller.document;
     var perBar = document.audio.secondsPerBar * document.frameRate;
@@ -348,8 +345,7 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
       Positioned.fill(
         child: IgnorePointer(
           child: Container(
-            // From the scene before's colour to the next's, its edge dashed
-            // (the approved design).
+            // From the scene before's colour to the next's, its edge dashed.
             foregroundDecoration:
                 _DashedEdge(held ? colors.primary : const Color(0x55FFFFFF)),
             decoration: BoxDecoration(
@@ -437,8 +433,8 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
   }
 }
 
-/// sceneTint is scene [index]'s colour, by its place in the run (the approved
-/// design tints each scene): the same scene the same colour everywhere.
+/// sceneTint is scene [index]'s colour by its place in the run: the same
+/// scene the same colour everywhere.
 Color sceneTint(int index) => _sceneTints[index % _sceneTints.length];
 
 const _sceneTints = [

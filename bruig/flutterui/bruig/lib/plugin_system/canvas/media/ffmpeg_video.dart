@@ -7,16 +7,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-// ffmpeg_video.dart is everything the canvas asks ffmpeg about a video: what
-// it is, a still from it, its sound, and its frames one after another.
-//
-// ffmpeg rather than the platform's player because the frames must come
-// back as pictures scene_renderer.dart can draw, key and grade: a player's
-// own texture cannot be keyed, cut to a shape or exported.
-//
-// Found by ffmpegPath. Without it a video is shown as its stored poster.
+// ffmpeg_video.dart is all the canvas asks ffmpeg about a video: what it
+// is, a still, its sound, and its frames. ffmpeg, not the platform player,
+// because frames must be pictures scene_renderer.dart can key, grade, cut
+// and export. Without ffmpeg a video shows its stored poster.
 
-/// VideoProbe is what a file turned out to be.
 class VideoProbe {
   final double duration;
   final int width;
@@ -33,17 +28,13 @@ class VideoProbe {
   });
 }
 
-/// ffmpegInput is ffmpeg's arguments for reading the file at [path]: local
-/// files only, so a received file that is really a playlist cannot make
-/// ffmpeg fetch from the network.
+/// ffmpegInput reads local files only, so a received "video" that is a
+/// playlist cannot make ffmpeg fetch from the network.
 List<String> ffmpegInput(String path) =>
     ["-protocol_whitelist", "file", "-i", path];
 
-/// probeVideo asks ffmpeg what [path] is, or returns null where it is not a
-/// video it can read.
-///
-/// From ffmpeg's own report on stderr rather than ffprobe, which is not
-/// installed everywhere ffmpeg is.
+/// probeVideo asks ffmpeg what [path] is, or null. Read from ffmpeg's
+/// stderr, as ffprobe is not always installed with it.
 Future<VideoProbe?> probeVideo(String ffmpeg, String path) async {
   try {
     var run = await Process.run(ffmpeg, ["-hide_banner", ...ffmpegInput(path)]);
@@ -102,8 +93,8 @@ Future<Uint8List?> posterOf(String ffmpeg, String path,
   }
 }
 
-/// extractSound writes [path]'s audio to [to] as FLAC, which the audio engine
-/// opens and which loses nothing. False where there was none to take.
+/// extractSound writes [path]'s audio to [to] as lossless FLAC, which the
+/// audio engine opens. False where there was none.
 Future<bool> extractSound(String ffmpeg, String path, String to) async {
   try {
     var run = await Process.run(ffmpeg, [
@@ -117,21 +108,19 @@ Future<bool> extractSound(String ffmpeg, String path, String to) async {
   }
 }
 
-/// VideoFrame is one decoded picture and the moment in the file it is of.
+/// VideoFrame is one decoded picture and its moment in the file.
 class VideoFrame {
   final double time;
   final ui.Image image;
   const VideoFrame(this.time, this.image);
 }
 
-/// FrameReader hands out a file's frames in order.
 abstract class FrameReader {
   /// next is the next frame, or null once there are no more.
   Future<VideoFrame?> next();
   void close();
 }
 
-/// FrameSource opens a reader on a file from a moment, at a size and rate.
 abstract class FrameSource {
   Future<FrameReader?> open(String path,
       {required double from,
@@ -176,12 +165,10 @@ class _FfmpegReader implements FrameReader {
   final int height;
   final double fps;
 
-  /// frameBytes is one picture's worth of stdout.
   final int frameBytes;
 
-  /// _ready is frames read and not yet asked for. Bounded: reading is paused
-  /// while it is full, so a paused video does not decode its whole length
-  /// into memory in the background.
+  /// _ready is frames read and not yet asked for. Bounded, so a paused video
+  /// does not decode its whole length into memory.
   final Queue<Uint8List> _ready = Queue();
   static const _ahead = 6;
   final BytesBuilder _partial = BytesBuilder(copy: false);
@@ -252,9 +239,8 @@ class _FfmpegReader implements FrameReader {
   }
 }
 
-/// decodeSize is how large to decode a [source]-sized video to be drawn at
-/// about [wanted] -- never larger than the file, never wider than
-/// [maxWidth], and even on both sides, which the decoder's scaler needs.
+/// decodeSize is the decode size for drawing [source] at about [wanted]:
+/// no larger than the file or [maxWidth], and even, as the scaler needs.
 (int, int) decodeSize(ui.Size source, ui.Size wanted, {int maxWidth = 1280}) {
   if (source.width <= 0 || source.height <= 0) return (2, 2);
   var width = math.min(source.width,
@@ -264,8 +250,8 @@ class _FfmpegReader implements FrameReader {
   return (even(width), even(height));
 }
 
-/// filePeaks is [path]'s peak level in [count] even steps across the file,
-/// nought to one, for a waveform; null where ffmpeg cannot read it.
+/// filePeaks is [path]'s peak level in [count] even steps, nought to one,
+/// for a waveform; null where ffmpeg cannot read it.
 Future<Float32List?> filePeaks(String ffmpeg, String path,
     {int count = 2400}) async {
   try {

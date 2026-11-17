@@ -3,24 +3,21 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 
-// stage_geometry.dart is how big the things grabbed on the stage are, and the
-// names of the handles. Shared so the painter and the hit-testing read the same
-// numbers: a handle drawn at one size and hit-tested at another is somewhere
-// it appears not to be. All are screen pixels, so handles keep their size at
-// every zoom.
+// stage_geometry.dart is the sizes of what is grabbed on the stage and the
+// names of the handles, shared so the painter and the hit-testing agree. All
+// are screen pixels, so handles keep their size at every zoom.
 
-/// handleSize is a resize handle's side, in screen pixels.
+/// handleSize is a resize handle's side.
 const double handleSize = 9;
 
-/// handleHitSlop grows the target past what is drawn (a 9px square is a fifth
-/// of a fingertip). Kept modest: a press moves nothing until it has travelled
-/// (CanvasStageState._dragThreshold), so a miss costs only a click, while a
-/// larger slop steals presses meant for elements a few pixels away.
+/// handleHitSlop grows the target past what is drawn. Kept modest: a press
+/// moves nothing until it has travelled (CanvasStageState._dragThreshold), so
+/// a miss costs only a click, while a larger slop steals presses meant for
+/// elements nearby.
 const double handleHitSlop = 6;
 
-/// strokeHitSlop is the same allowance for a line, kept separate: it decides
-/// how much empty canvas beside a line counts as on it, and too much steals
-/// clicks meant for what is behind.
+/// strokeHitSlop is how much empty canvas beside a line counts as on it; too
+/// much steals clicks meant for what is behind.
 const double strokeHitSlop = 7;
 
 /// rotateHandleGap is how far above the selection the rotate ring sits.
@@ -47,27 +44,23 @@ enum StageHandle {
       this == bottomLeft || this == bottomCenter || this == bottomRight;
 }
 
-/// flowGripSize is how big a text box's flow grips are drawn: smaller than a
-/// resize grip, which is reached for more often and sits on the same outline.
+/// flowGripSize is a text box's flow grip size: smaller than a resize grip,
+/// which is reached for more often and sits on the same outline.
 const double flowGripSize = 4;
 
 /// flowGripHitSlop grows a flow grip's target past what is drawn, as
-/// handleHitSlop does, but less: its neighbour is a resize handle, which is
-/// the one being reached for.
+/// handleHitSlop does for a resize handle.
 const double flowGripHitSlop = 8;
 
-/// TextFlowGrips is what a selected text box shows about its overflow: where
-/// the two dots are, and what they have to say.
+/// TextFlowGrips is what a selected text box shows about its overflow.
 class TextFlowGrips {
-  /// inAt is the incoming dot, which says whether words arrive from another box;
-  /// outAt is the outgoing one, dragged to send them on. Each sits half way
-  /// between two resize handles (top-left and middle-left; middle-right and
-  /// bottom-right), away from the corners.
+  /// inAt is the incoming dot; outAt the outgoing one, dragged to send words
+  /// on. Each sits half way between two resize handles, off the corners.
   final Offset inAt;
   final Offset outAt;
 
-  /// overflowing is whether there are words this box is not showing, which
-  /// makes the out grip red so hidden text is never silent.
+  /// overflowing is whether this box hides words, which turns the out grip
+  /// red so hidden text is never silent.
   final bool overflowing;
 
   /// receiving is whether something flows into this box, and linked whether
@@ -97,15 +90,14 @@ class TextFlowGrips {
   int get hashCode => Object.hash(inAt, outAt, overflowing, receiving, linked);
 }
 
-/// FlowLine is one link between two text boxes, as drawn. Its own thing
-/// rather than part of a box's grips, because either end's box being selected
-/// (or kept in sight) is reason to draw it.
+/// FlowLine is one drawn link between two text boxes. Not part of a box's
+/// grips: either end's box being selected is reason to draw it.
 class FlowLine {
   final Offset from;
   final Offset to;
 
-  /// overflowing is whether the box the words leave has more than it can show,
-  /// which draws the line red.
+  /// overflowing is whether the box the words leave overflows, which draws
+  /// the line red.
   final bool overflowing;
 
   const FlowLine(this.from, this.to, {this.overflowing = false});
@@ -121,19 +113,16 @@ class FlowLine {
   int get hashCode => Object.hash(from, to, overflowing);
 }
 
-/// rulerThickness is how deep a ruler strip is, in screen pixels, shared by
-/// the painter and the stage's hit-testing.
+/// rulerThickness is how deep a ruler strip is.
 const double rulerThickness = 18;
 
-/// guideGrabSlop is how near a guide the pointer has to be to take hold of
-/// it: tighter than a handle's, since a hairline guide lies over things the
-/// reader may be aiming at instead.
+/// guideGrabSlop is how near a guide a press must be to take it: tighter
+/// than a handle's, since a guide lies over things that may be aimed at.
 const double guideGrabSlop = 4;
 
-/// rulerStep picks the gap between numbered ticks: always a whole multiple of
-/// [every] (the grid's spacing), so each number has a grid line under it, and
-/// the smallest of 1, 2, 5, 10 ... multiples that leaves the numbers about
-/// [wanted] pixels apart at this zoom.
+/// rulerStep picks the gap between numbered ticks: the smallest 1, 2, 5, 10
+/// ... multiple of [every] (the grid's spacing, so each number has a grid
+/// line under it) that leaves numbers about [wanted] pixels apart.
 double rulerStep(double scale, double every, {double wanted = 80}) {
   if (!every.isFinite || every <= 0) every = 100;
   if (!scale.isFinite || scale <= 0) return every;
@@ -177,9 +166,9 @@ class RulerBands {
   }
 }
 
-/// rulerBandsFor lays the strips against the edges of the page, not the
-/// window, so the ruler sits beside what it measures whatever the window
-/// size. Clamped inside the viewport, for a page zoomed to fill it.
+/// rulerBandsFor lays the strips against the page's edges, not the window's,
+/// so the ruler sits beside what it measures; clamped inside the viewport
+/// for a page zoomed to fill it.
 RulerBands rulerBandsFor(Rect page, Size viewport, CanvasRulers rulers) {
   const t = rulerThickness;
   double x0 = page.left.clamp(0.0, math.max(0.0, viewport.width));

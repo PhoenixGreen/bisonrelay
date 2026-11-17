@@ -1,9 +1,9 @@
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// studio_controls.dart is the Character Studio's controls, in the look of its
-// prototype: small capital headings, rows of pills, sliders with their value
-// beside them, and round colour swatches, coloured from the app's theme.
+// studio_controls.dart is the Character Studio's controls: small capital
+// headings, rows of pills, sliders with their value beside them, and round
+// colour swatches, coloured from the app's theme.
 
 /// StudioLabel is a heading over a group of controls.
 class StudioLabel extends StatelessWidget {
@@ -77,7 +77,7 @@ class StudioPill extends StatelessWidget {
             if (icon != null)
               Icon(icon, size: label.isEmpty ? 16 : 14, color: ink),
             if (icon != null && label.isNotEmpty) const SizedBox(width: 4),
-            // Wrapping where it is long, as a plain label did.
+            // Wraps where it is long.
             if (label.isNotEmpty)
               Flexible(
                 child: Text(label,

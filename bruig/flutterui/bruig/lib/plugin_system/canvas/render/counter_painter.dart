@@ -7,18 +7,14 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
 // counter_painter.dart draws a counter: a formatted number with words either
-// side of it, in a box, over whatever buttons it carries.
-//
-// The number and words are painted as one line of styled runs, not three
-// pieces, so the line centres as the number's width changes.
+// side, in a box, over whatever buttons it carries. The number and words are
+// one line of styled runs, so the line centres as the number's width changes.
 
-/// counterGap is the space between the buttons, and between them and the
-/// number above.
+/// counterGap is the space between the buttons, and above them to the number.
 const double counterGap = 8;
 
 /// counterButtonRects is where a counter's buttons are, in document space.
-///
-/// The stage hit-tests with it, so there is only one calculation.
+/// The stage hit-tests with it, so there is one calculation.
 List<Rect> counterButtonRects(CounterElement e, Rect bounds) {
   if (e.buttons.isEmpty) return const [];
   var inner = e.box.inner(bounds);
@@ -47,9 +43,8 @@ List<Rect> counterButtonRects(CounterElement e, Rect bounds) {
   ];
 }
 
-/// _placed turns a fraction-of-the-box placement into a point.
-///
-/// Measured from the middle, so nought is centred.
+/// _placed turns a fraction-of-the-box placement into a point, measured
+/// from the middle, so nought is centred.
 Offset _placed(Rect inner, Offset at) => Offset(
       inner.center.dx + inner.width * at.dx,
       inner.center.dy + inner.height * at.dy,
@@ -67,21 +62,18 @@ double counterButtonHeight(CounterElement e, Rect inner) {
 /// _unit scales the fixed gaps with the element's size.
 double _unit(Rect inner) => math.max(0.2, inner.shortestSide / 120);
 
-/// paintCounter draws one, showing [value].
-///
-/// [value] is handed in: it comes from the animation or from a live clock
-/// in the controller.
+/// paintCounter draws one, showing [value], which comes from the animation
+/// or from a live clock in the controller.
 void paintCounter(
   ui.Canvas canvas,
   Rect bounds,
   CounterElement e,
   double value, {
-  /// pressed is which button is lit, if any: the one under the pointer on the
-  /// stage, and none at all in an exported picture.
+  /// pressed is the lit button: the one under the pointer; none in an export.
   int pressed = -1,
 
-  /// running is whether it is counting now, for the start/stop label. Null
-  /// falls back to the element's own running setting.
+  /// running is whether it is counting now, for the start/stop label; null
+  /// falls back to the element's own setting.
   bool? running,
 }) {
   if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -98,7 +90,6 @@ void paintCounter(
           buttons.first.top - counterGap * _unit(inner));
 
   if (room.height > 0) {
-    // See counterFitScale.
     var scale = e.fit ? counterFitScale(e, room, value) : 1.0;
     var number = _scaled(e.numberSpec, scale);
     var affix = _scaled(e.affixSpec, scale);
@@ -148,14 +139,12 @@ void paintCounter(
   }
 }
 
-/// _spacer is the gap between the number and a word, as a stretch of text.
-///
-/// A space at [gap] ems of the number's type, or null for no gap.
+/// _spacer is the gap between the number and a word: a space at [gap] ems
+/// of the number's type, or null for no gap.
 (String, TextSpec)? _spacer(double gap, TextSpec number) => gap <= 0
     ? null
     : (" ", number.copyWith(fontSize: math.max(0.1, number.fontSize * gap)));
 
-/// _paintLoose writes one of the words at a placement of its own.
 void _paintLoose(
     ui.Canvas canvas, Rect inner, String text, TextSpec spec, Offset at) {
   if (text.isEmpty) return;
@@ -174,11 +163,9 @@ void _paintLoose(
       clip: true);
 }
 
-/// counterFitScale is how much the type has to come down for the whole count
-/// to fit the room it has.
-///
-/// Measured at both ends of the count and the value showing (a point mid
-/// count can exceed either end), so the figures do not resize as they count.
+/// counterFitScale is how much the type comes down for the whole count to fit
+/// its room. Measured at both ends of the count and the value showing (a point
+/// mid-count can exceed either end), so figures do not resize as they count.
 double counterFitScale(CounterElement e, Rect room, double value) {
   if (room.width <= 0 || room.height <= 0) return 1;
   var widest = 0.0, tallest = 0.0;
@@ -222,16 +209,14 @@ Size _measure(CounterElement e, double value) {
   return size;
 }
 
-/// _scaled is one spec at a fraction of its size, letter spacing included.
+/// _scaled is [spec] at [scale] of its size, letter spacing included.
 TextSpec _scaled(TextSpec spec, double scale) => scale >= 0.999
     ? spec
     : spec.copyWith(
         fontSize: spec.fontSize * scale,
         letterSpacing: spec.letterSpacing * scale);
 
-/// _labelFor is what one button says.
-///
-/// The start/stop button says what it would do next.
+/// _labelFor is what one button says; start/stop says what it would do next.
 String _labelFor(CounterElement e, CounterButton button, bool running) =>
     switch (button) {
       CounterButton.startStop => running ? "Stop" : "Start",

@@ -6,14 +6,12 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
-// media_timeline_settings.dart is putting a video or a sound on the
-// timeline, shared by both so they read the same. A timed clip plays with the
-// playhead from its frame, is scrubbed with it, and goes into an exported
-// video. See MediaClip.timed.
+// media_timeline_settings.dart puts a video or sound on the timeline: a
+// timed clip plays and scrubs with the playhead and is exported. See
+// MediaClip.timed.
 
-/// timelineControls is the switch, the frame it starts at and, where the
-/// clip runs past the end of the timeline, a button that makes room for it.
-/// [key] prefixes the widgets' keys.
+/// timelineControls is the switch, the start frame and, where the clip runs
+/// past the timeline's end, a button making room. [key] prefixes the keys.
 List<Widget> timelineControls(
   CanvasController controller,
   MediaClip clip, {
@@ -26,8 +24,8 @@ List<Widget> timelineControls(
   var rate = document.frameRate <= 0 ? 1 : document.frameRate;
   var lasts = (clip.runLength * rate).ceil();
   var ends = clip.at + lasts;
-  // The master's timeline is the whole run, whose length is its scenes'; it
-  // cannot be lengthened from here.
+  // The master's timeline is the whole run, its length its scenes'; it
+  // cannot be lengthened here.
   var short = !document.editingMaster &&
       clip.loop == MediaLoop.none &&
       ends > document.frames &&
@@ -44,7 +42,7 @@ List<Widget> timelineControls(
       CanvasNumberField(
         key: ValueKey("${key}At"),
         label: "From frame",
-        // One-based on screen, the same as the timeline's own frame field.
+        // One-based on screen, as the timeline's own frame field.
         value: (clip.at + 1).toDouble(),
         min: 1,
         max: maxFrameCount.toDouble() * 100,

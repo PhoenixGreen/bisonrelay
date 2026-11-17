@@ -10,16 +10,15 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:flutter/painting.dart';
 
-// text_flow.dart runs one piece of text through a line of boxes.
-//
-// The words belong to the head of the chain; every box after it draws what
-// would not fit in the one before. Worked out at drawing time rather than
-// stored, because where the words break depends on the box's size, type,
-// columns and padding, all of which change during a drag.
+// text_flow.dart runs one piece of text through a line of boxes. The words
+// belong to the head of the chain; each later box draws what would not fit
+// in the one before. Worked out when drawn rather than stored, since where
+// words break depends on size, type, columns and padding, which change
+// during a drag.
 
 /// TextFlow is one box's share of a chain.
 class TextFlow {
-  /// text is what this box draws -- the whole of it for a box on its own.
+  /// text is what this box draws: all of it for a box on its own.
   final String text;
 
   /// overflows is whether there are words this box could not show: what
@@ -27,11 +26,10 @@ class TextFlow {
   /// after it, so hidden text is never silent.
   final bool overflows;
 
-  /// receiving is whether these words came from another box.
   final bool receiving;
 
-  /// head is the element the words belong to, which is this one for a box at
-  /// the start of a chain or on its own.
+  /// head is the element the words belong to: this one at the start of a
+  /// chain or on its own.
   final String head;
 
   /// parts are the styled runs that apply to the words this box draws,
@@ -78,9 +76,9 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
   var head = chain.first;
   var text = head.displayText;
 
-  // Walk the chain from the head, each box taking what fits and passing the
-  // rest on; the boxes differ in width and type, so each is laid out in turn.
-  // How the words are broken is the head's business for every box.
+  // Walk the chain from the head, each box taking what fits and passing on
+  // the rest; boxes differ in width and type, so each is laid out in turn.
+  // How words break is the head's business for every box.
   var tidy = head.columns.noBlankStart;
 
   var at = 0;
@@ -117,8 +115,7 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
 }
 
 /// wouldLoop is whether pointing [from] at [to] would make a ring of boxes,
-/// which has no first box to start reading from. Refused rather than
-/// resolved.
+/// which has no first box to read from. Refused rather than resolved.
 bool wouldLoop(TextElement from, String to, CanvasDocument doc) {
   if (to == from.id) return true;
   var seen = <String>{from.id};
@@ -141,14 +138,13 @@ TextElement? flowSourceOf(TextElement e, CanvasDocument? doc) {
   return null;
 }
 
-/// _isTarget is whether anything flows into this box.
 bool _isTarget(TextElement e, CanvasDocument doc) =>
     flowSourceOf(e, doc) != null;
 
 /// _chainTo is every box from the head of the chain up to and including [e].
 List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
-  // Back to the head first. The guard is needed: a document with a ring
-  // (from an older build, or edited by hand) would otherwise hang the painter.
+  // Back to the head first, guarded: a document with a ring (edited by
+  // hand, say) must not hang the painter.
   var head = e;
   var seen = <String>{e.id};
   while (true) {

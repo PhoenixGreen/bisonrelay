@@ -3,19 +3,15 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
 
-// pitch_retune.dart makes a recording again with its notes moved (see
-// pitch_edit.dart): each note changed is said again by PSOLA -- slices a
-// period of the voice long, laid the new period apart, so the voice keeps
-// its own sound -- at the pitch asked for, moment by moment, and its timing
-// as it was; everything else is copied as it was. A changed note meets the
-// rest over 10ms margins, cross-faded, so nothing clicks.
+// pitch_retune.dart remakes a recording with its notes moved (see
+// pitch_edit.dart): changed notes are said again by PSOLA, keeping the
+// voice's sound and timing; the rest is copied, cross-faded over 10ms.
 
 /// hzOf is a MIDI note's frequency.
 double hzOf(double midi) => 440 * math.pow(2, (midi - 69) / 12).toDouble();
 
-/// retuneTake is [source] -- mono, at [rate] -- with [notes] done, read
-/// against [track]: its pitch every [frame] seconds as a MIDI note, null
-/// where nothing is voiced.
+/// retuneTake is [source] (mono, [rate]) with [notes] done, against
+/// [track]: its pitch every [frame] seconds as a MIDI note, null unvoiced.
 Float32List retuneTake(
     Float32List source, List<double?> track, List<PitchNote> notes,
     {double rate = 48000, double frame = 0.02}) {
@@ -24,8 +20,8 @@ Float32List retuneTake(
   var slow = driftTrack(track);
   for (var (k, n) in notes.indexed) {
     if (!n.edited) continue;
-    // From where it is heard to start -- moved by Quantise timing or its
-    // edge dragged -- or sung, to where it is heard or sung to end.
+    // From the heard start (moved by Quantise timing or a dragged edge) or
+    // the sung one, to the heard or sung end.
     var a = (math.min(n.start, n.heardStart) * rate).round() - margin;
     var b = (math.max(n.end, n.heardEnd) * rate).round() + margin;
     a = a.clamp(0, source.length);
@@ -68,11 +64,9 @@ List<double?> driftTrack(List<double?> track) {
   ];
 }
 
-/// pitchHeardAt is where note [n] is heard [t] seconds into the original,
-/// where it was sung at [sung] and drifting at [drift] (see driftTrack):
-/// its drawn pitch, or its target with as much of its drift and vibrato as
-/// is kept -- glided into from [before] over its slide, and reached from
-/// the pitch sung over its retune.
+/// pitchHeardAt is note [n]'s pitch [t] seconds in, sung at [sung],
+/// drifting at [drift]: its drawn pitch, or its target plus kept drift and
+/// vibrato, glided from [before] and reached from [sung] over its retune.
 double pitchHeardAt(PitchNote n, double t, double sung, double drift,
     {double? before}) {
   if (n.drawnAt(t) case var drawn?) return drawn;
@@ -114,7 +108,7 @@ Float32List _retune(Float32List source, List<double?> track, List<double?> slow,
   // (deeper), its pitch still the marks' spacing.
   var colour = math.pow(2, n.formant / 12).toDouble();
 
-  // The source's marks, a period of its voice apart.
+  // The source's marks, a voice period apart.
   var marks = <double>[];
   for (var m = a.toDouble(); m < b;) {
     marks.add(m);
@@ -125,8 +119,8 @@ Float32List _retune(Float32List source, List<double?> track, List<double?> slow,
   var k = 0;
   var u = a.toDouble();
   while (u < b) {
-    // Where in the original this moment is heard from: its own sound
-    // stretched from where it is moved to; silence before it, moved later.
+    // Where in the original this moment is heard from: stretched from where
+    // it is moved to; silence before it if moved later.
     var from = n.sourceAt(u / rate);
     if (from == null) {
       u += rate / hzOf(n.target);
@@ -166,7 +160,7 @@ Float32List _retune(Float32List source, List<double?> track, List<double?> slow,
   var faded = n.fadeIn > 0 || n.fadeOut > 0;
   for (var i = 0; i < out.length; i++) {
     if (weight[i] > 1e-6) out[i] = out[i] / math.max(1.0, weight[i]) * gain;
-    // Faded in from where it is heard to start, out to where it ends.
+    // Faded in from its heard start, out to its end.
     if (faded) {
       var t = (a + i) / rate;
       if (t >= n.heardStart && t <= n.heardEnd) out[i] *= n.fadeAt(t);

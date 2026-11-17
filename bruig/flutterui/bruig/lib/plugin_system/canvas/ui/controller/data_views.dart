@@ -1,14 +1,12 @@
 part of '../canvas_controller.dart';
 
-// Part of CanvasController: the Data element's views (data_sheet.dart): a
-// table or a chart of a range of one of the canvas's sheets, switched
-// between the two, or pointed at another sheet. Keeping each in step with
-// its sheet is data_sync.dart's, in apply.
+// Part of CanvasController: the Data element's views (data_sheet.dart), a
+// table or chart of a range of a sheet. Keeping each in step with its
+// sheet is data_sync.dart's job, in apply.
 
 extension CanvasDataViews on CanvasController {
-  /// stylePage puts the page being made in [style] (page_style.dart): its
-  /// charts and tables, its words by their size, and its ground. One change
-  /// to undo (Ken, 2026-11-17, the improvements report's fifth item).
+  /// stylePage puts the page in [style] (page_style.dart): its charts and
+  /// tables, its words by size, and its ground. One undo step.
   void stylePage(DataStyle style) {
     var before = _document.elements;
     var after = pageInStyle(before, style);
@@ -23,8 +21,8 @@ extension CanvasDataViews on CanvasController {
     if (mine) endInteraction();
   }
 
-  /// layOutPage puts [views] over the page in [layout], filling it below
-  /// where the first of them starts. One change to undo.
+  /// layOutPage arranges [views] over the page in [layout], filling it
+  /// below where the first starts. One undo step.
   void layOutPage(List<CanvasElement> views, PageLayout layout) {
     if (views.isEmpty) return;
     var page = _document.size.size;
@@ -41,7 +39,7 @@ extension CanvasDataViews on CanvasController {
                       : "chart"
           ], area, gap)
         : pageLayoutRects(views.length, layout, area, gap);
-    // On a baseline grid, a sixtieth of the page's height: lined up.
+    // On a baseline grid of a sixtieth of the page's height.
     var unit = page.height / 60;
     rects = [for (var r in rects) snapToBaseline(r, unit)];
     var mine = _interaction == null;
@@ -57,10 +55,9 @@ extension CanvasDataViews on CanvasController {
   DataSheet? sheetById(String id) =>
       _document.sheets.where((s) => s.id == id).firstOrNull;
 
-  /// showDataAs shows Data element [e] as [kind] -- a table or a chart --
-  /// in its place, of the same range of the same sheet; a chart labelled by
-  /// the range's first column of words and drawing its columns of numbers.
-  /// One change to undo.
+  /// showDataAs shows Data element [e] as [kind] (table or chart) in its
+  /// place, of the same range; a chart is labelled by the range's first
+  /// column of words and draws its columns of numbers. One undo step.
   void showDataAs(CanvasElement e, ElementKind kind) {
     if (e.kind == kind || !isDataView(e)) return;
     if (kind != ElementKind.table && kind != ElementKind.chart) return;
@@ -78,10 +75,9 @@ extension CanvasDataViews on CanvasController {
     replaceElement(withLink(e, _linkFor(e, SheetLink(id, sheet.used))));
   }
 
-  /// showRange points Data element [e] at [range] of the sheet it shows,
-  /// as a new view of that range would be: which rows it shows and how
-  /// they are ordered start again, since its columns are no longer the
-  /// ones they named.
+  /// showRange points Data element [e] at [range] of its sheet, as a new
+  /// view would be: its row filter and order start again, since its
+  /// columns are no longer the ones they named.
   void showRange(CanvasElement e, CellRange range) {
     var link = linkOf(e);
     if (link == null || !isDataView(e)) return;

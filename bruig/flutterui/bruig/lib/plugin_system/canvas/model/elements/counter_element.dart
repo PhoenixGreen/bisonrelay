@@ -6,16 +6,14 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// counter_element.dart is a number that counts: either across the timeline
-// (a figure animating up in a video) or, with [CounterElement.keyed] off, in
-// real time (a clock, stopwatch, countdown or metronome). One element because
-// both are a formatted number with words either side in a box; only where the
-// number comes from differs. The number is a value, not text, so it can be
-// formatted with separators or as a time.
+// counter_element.dart is a number that counts: across the timeline (a
+// figure animating up in a video) or, with [CounterElement.keyed] off, in
+// real time (a clock, stopwatch, countdown or metronome). Both are a
+// formatted number with words either side in a box; only the number's
+// source differs. It is a value, not text, so it formats as a time too.
 
-/// CounterSeparator is how the digits are grouped and punctuated. Grouping
-/// and decimal point are one setting because they are one convention
-/// (1.234,56 vs 1,234.56), and the time formats are not grouping at all.
+/// CounterSeparator is how digits are grouped and pointed, one convention
+/// (1.234,56 vs 1,234.56); the time formats are not grouping at all.
 enum CounterSeparator {
   none("1234.5", "None"),
   comma("1,234.5", "Thousands in commas"),
@@ -30,8 +28,7 @@ enum CounterSeparator {
   final String description;
   const CounterSeparator(this.label, this.description);
 
-  /// isTime is whether the value is a number of seconds rather than a
-  /// quantity.
+  /// isTime is whether the value is seconds rather than a quantity.
   bool get isTime => this == minutes || this == hours;
 
   static CounterSeparator fromName(String? name) => values.firstWhere(
@@ -40,28 +37,24 @@ enum CounterSeparator {
       );
 }
 
-/// CounterSource is where a live counter's number comes from. A keyed
-/// counter (see [CounterElement.keyed]) reads the timeline instead, except
-/// for [game], which is always live.
+/// CounterSource is where a live counter's number comes from; a keyed one
+/// reads the timeline instead, except [game], which is always live.
 enum CounterSource {
   /// run counts from the start value towards the end at the element's rate
-  /// a second: a countdown, stopwatch or metronome depending on the ends and
-  /// the rate.
+  /// a second: a countdown, stopwatch or metronome by the ends and rate.
   run("Counts", "From the start value to the end at a rate you set"),
 
   /// clock is the time of day in seconds since midnight; choosing it sets a
-  /// time separator, since plain it is meaningless.
+  /// time separator, since plain it means nothing.
   clock("The time", "The time of day on the reader's own clock"),
 
-  /// page is the number of the page this is drawn on, for a document of
-  /// pages (see CanvasDocument.pageNumberAt). Put one on the master canvas
-  /// and every page wears it.
+  /// page is the number of the page this is drawn on (see
+  /// CanvasDocument.pageNumberAt): on the master canvas, every page wears it.
   page("The page number",
       "The number of the page it is drawn on, for a document of pages"),
 
   /// game is one of the numbers a game keeps (coins, lives), or its start
-  /// value while the game is not being played. See CounterElement.gameCount
-  /// and GameCount.
+  /// value while the game is not played. See CounterElement.gameCount.
   game("A game count", "One of the numbers the game keeps: coins, lives");
 
   final String label;
@@ -90,14 +83,12 @@ enum CounterButton {
   }
 }
 
-/// CounterElement is the element itself.
 class CounterElement extends CanvasElement {
   /// from and to are the two ends of the count, either way round.
   final double from;
   final double to;
 
-  /// decimals is how many figures after the point, and [separator] is how the
-  /// rest is punctuated.
+  /// decimals is figures after the point; [separator] the punctuation.
   final int decimals;
   final CounterSeparator separator;
 
@@ -106,43 +97,37 @@ class CounterElement extends CanvasElement {
   final String before;
   final String after;
 
-  /// gap is the space between the number and the words either side, in the
-  /// number's ems so it holds when [fit] shrinks the type.
+  /// gap is the space between the number and its words, in the number's ems
+  /// so it holds when [fit] shrinks the type.
   final double gap;
 
-  /// loose lets the words be placed anywhere in the box instead of on the
-  /// number's line, at [beforeAt] and [afterAt]: fractions of the box from
-  /// its middle, so -0.5 is the left or top edge and 0.5 the right or bottom.
+  /// loose lets the words go anywhere in the box instead of on the number's
+  /// line, at [beforeAt] and [afterAt]: fractions of the box from its middle
+  /// (-0.5 the left or top edge, 0.5 the right or bottom).
   final bool loose;
   final Offset beforeAt;
   final Offset afterAt;
 
-  /// numberSpec is the number's type and [affixSpec] the words', usually
-  /// smaller.
+  /// numberSpec is the number's type, [affixSpec] the (smaller) words'.
   final TextSpec numberSpec;
   final TextSpec affixSpec;
 
-  /// numberStyle and wordStyle are the document's named text styles (see
-  /// CanvasDocument.textStyles) the number and words are set in, or empty
-  /// for their own specs.
+  /// numberStyle and wordStyle are named document text styles (see
+  /// CanvasDocument.textStyles), or empty for their own specs.
   final String numberStyle;
   final String wordStyle;
 
-  /// box is the background, border, radius and padding round the whole thing.
   final BoxSpec box;
 
-  /// fit shrinks the type until the whole count fits the box. The size is
-  /// chosen from the widest value the count will reach, not the one showing,
-  /// so the figures do not change size as they count.
+  /// fit shrinks the type to fit the widest value the count reaches, so the
+  /// figures keep their size as they count.
   final bool fit;
 
-  /// keyed is whether the number is read off the timeline (its count clips,
-  /// or a legacy track's keys). Off, the counter runs in real time and the
-  /// buttons work.
+  /// keyed reads the number off the timeline (count clips, or a legacy
+  /// track); off, it runs in real time and the buttons work.
   final bool keyed;
 
-  /// source, rate and loop are the live counter's settings; rate is in
-  /// units a second.
+  /// source, rate (units a second) and loop are the live settings.
   final CounterSource source;
   final double rate;
   final bool loop;
@@ -150,11 +135,9 @@ class CounterElement extends CanvasElement {
   /// gameCount is the game count shown, by id, for [CounterSource.game].
   final String gameCount;
 
-  /// mirrored puts a page number on the outside edge of the leaf: on a
-  /// left-hand leaf it is drawn mirrored about the page's middle, so both
-  /// sides of a spread match and a centred number stays centred. Only read
-  /// for a page number on a left-hand leaf; see pageIsLeft in
-  /// canvas_pages.dart.
+  /// mirrored puts a page number on the leaf's outside edge: on a left-hand
+  /// leaf it is mirrored about the page's middle, so a spread's sides match
+  /// and a centred number stays centred. See pageIsLeft in canvas_pages.dart.
   final bool mirrored;
 
   /// running is whether a live counter is counting before anything is
@@ -164,13 +147,11 @@ class CounterElement extends CanvasElement {
   /// buttons are the controls drawn under the number, in this order.
   final List<CounterButton> buttons;
 
-  /// buttonSpec and buttonBox are how those controls are drawn.
   final TextSpec buttonSpec;
   final BoxSpec buttonBox;
 
-  /// looseButtons lets the buttons be placed anywhere in the box instead of
-  /// in a row along the bottom, each at [buttonAt]: a fraction of the box
-  /// from its middle, like [beforeAt].
+  /// looseButtons lets the buttons go anywhere in the box instead of in a
+  /// row along the bottom, each at [buttonAt], placed like [beforeAt].
   final bool looseButtons;
   final List<Offset> buttonAt;
 
@@ -178,7 +159,6 @@ class CounterElement extends CanvasElement {
   /// row, buttons share the width and size to their labels.
   final Size buttonSize;
 
-  /// animation is how the whole element arrives and leaves.
   final ElementAnimation animation;
 
   const CounterElement(
@@ -226,30 +206,26 @@ class CounterElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.counter;
 
-  /// span is how far the count travels.
   double get span => to - from;
 
   /// valueAtFraction is the number [t] of the way through the count.
   double valueAtFraction(double t) => from + span * t.clamp(0.0, 1.0);
 
-  /// format writes [value] with this counter's decimals and separator.
   String format(double value) => formatCounter(value, decimals, separator);
 
   /// textFor is the whole line: words before, the number, words after.
   String textFor(double value) => "$before${format(value)}$after";
 
   /// placedButton is where loose button [i] sits, as a fraction of the box
-  /// from its middle. Unplaced ones are spread down the middle so they do not
-  /// stack on one another.
+  /// from its middle; unplaced ones spread down the middle, not stacked.
   Offset placedButton(int i) {
     if (i < buttonAt.length) return buttonAt[i];
     var count = buttons.isEmpty ? 1 : buttons.length;
     return Offset(0, 0.3 - (count - 1 - i) * 0.18);
   }
 
-  /// live is whether this counter runs in real time. A page number never
-  /// does (it is read off its page); a game count always does, whatever
-  /// [keyed] says, since a new counter starts keyed.
+  /// live is whether it runs in real time: a page number never; a game count
+  /// always, whatever [keyed] says, since a new counter starts keyed.
   bool get live =>
       source == CounterSource.game || (!keyed && source != CounterSource.page);
 
@@ -469,8 +445,8 @@ Offset _offsetFromJson(dynamic raw) => raw is List && raw.length == 2
     ? Offset(jsonDouble(raw[0], 0), jsonDouble(raw[1], 0))
     : Offset.zero;
 
-/// formatCounter writes a number the way a counter writes it. A free
-/// function so the settings panel can preview a choice without an element.
+/// formatCounter writes a number as a counter writes it: a free function
+/// so the settings panel can preview a choice without an element.
 String formatCounter(double value, int decimals, CounterSeparator separator) {
   var places = decimals.clamp(0, 8);
   if (separator.isTime) return _asTime(value, places, separator);
@@ -506,7 +482,7 @@ String _grouped(String digits, String mark) {
 }
 
 /// _asTime writes a number of seconds as a clock reads it: a field is
-/// padded to two figures only when something comes before it (1:57, 1:02:05).
+/// padded to two figures only after another (1:57, 1:02:05).
 String _asTime(double value, int places, CounterSeparator separator) {
   var negative = value < 0;
   // Whole seconds as a clock shows them; with figures after the point,
@@ -535,9 +511,9 @@ String _asTime(double value, int places, CounterSeparator separator) {
 }
 
 /// stackedWithMaster is a page's elements with the master's under them,
-/// except its page numbers, which go over so a full-page picture cannot hide
-/// them. Both the renderer and the EPUB layers use this order. With [over],
-/// all of the master goes over the page (a game's HUD).
+/// except its page numbers, which go over so a full-page picture cannot
+/// hide them; the renderer and the EPUB layers share this order. With
+/// [over], all of the master goes over the page (a game's HUD).
 List<CanvasElement> stackedWithMaster(
         List<CanvasElement> master, List<CanvasElement> page,
         {bool over = false}) =>

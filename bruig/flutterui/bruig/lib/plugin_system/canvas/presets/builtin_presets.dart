@@ -10,23 +10,18 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 import 'package:flutter/material.dart';
 
-// builtin_presets.dart is the canvases the Presets tab starts you from.
-//
-// A preset is a whole document copied into the editor with no link back, so
-// no saved canvas depends on one. Each shows a different kind of canvas (a
-// still design, data, a diagram).
+// builtin_presets.dart is the Presets tab's starting canvases: each a
+// whole document copied in with no link back, so none depends on one.
 
-/// CanvasPreset is one starting point.
 class CanvasPreset {
-  /// id is stable: a saved "last used preset" refers to it, whatever the
-  /// label.
+  /// id is stable: a saved "last used preset" names it, whatever its label.
   final String id;
   final String label;
   final String description;
   final IconData icon;
 
-  /// build makes a fresh document. A function rather than a value, so each
-  /// canvas started from it gets its own element ids.
+  /// build makes a fresh document: a function, not a value, so each canvas
+  /// started from it gets its own element ids.
   final CanvasDocument Function() build;
 
   const CanvasPreset({
@@ -38,8 +33,7 @@ class CanvasPreset {
   });
 }
 
-/// builtinPresets is the list, in the order the tab shows them, emptiest
-/// first.
+/// builtinPresets is the list, in the tab's order, emptiest first.
 final List<CanvasPreset> builtinPresets = [
   CanvasPreset(
     id: "empty",
@@ -234,8 +228,7 @@ CanvasDocument footballCanvas() {
     ),
   );
 
-  // The painter's own mapping, so players placed in metres land on the
-  // lines it draws.
+  // The painter's mapping, so players placed in metres meet its lines.
   var metrics = pitchRect(rect, PitchSport.football);
   var diameter = metrics.m(3.2);
 
@@ -283,8 +276,7 @@ CanvasDocument footballCanvas() {
           fontSize: diameter * 0.46,
           weight: 700,
           color: const Color(0xFFFFFFFF),
-          // Outlined rather than shadowed, to read over both light and dark
-          // mowing stripes.
+          // Outlined, not shadowed, to read over light and dark stripes.
           outlineWidth: diameter * 0.035,
           outlineColor: const Color(0xCC0A1A0A),
         ),

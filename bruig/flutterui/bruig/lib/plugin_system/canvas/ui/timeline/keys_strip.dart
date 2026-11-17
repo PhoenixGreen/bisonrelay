@@ -22,22 +22,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// keys_strip.dart is the Chain's Keys strip (Ken, 2026-11-12, the approved
-// chain prototype): opened from the Chain's header and laid over its cards,
-// the whole width. A ruler of the scene with what the voice says, the
-// element's arrival, loop and leaving, its own keyframes, and a row for each
-// setting of its chain that has keys -- each key coloured by where it plays.
-// Pick a key to change it in the inspector on the right; drag it to retime
-// it; double-click a row to add one; Delete takes it away. Click or drag the
-// ruler to move the playhead. It took the Keyframes card's place.
-//
-// Ken, 2026-11-12, editing an arrival's start and end: it could not be
-// zoomed, nor its clips moved or stretched, nor its clips row made taller.
-// Pinch (or ⌘-scroll) zooms about the pointer, a sideways swipe (or
-// shift-scroll) pans, double-clicking the ruler fits the scene again. An
-// arrival or a leaving is dragged by its body to move it and by an end to
-// lengthen or shorten it, as on the timeline; the clips row's bottom edge
-// drags it taller.
+// keys_strip.dart is the Chain's Keys strip, opened from the Chain's header
+// and laid over its cards. A ruler of the scene with what the voice says;
+// the element's arrival, loop and leaving; its own keyframes; and a row for
+// each keyed setting of its chain, each key coloured by where it plays.
+// Pick a key to change it in the inspector; drag to retime; double-click a
+// row to add one; Delete removes it. Pinch or ⌘-scroll zooms, a sideways
+// swipe pans, double-clicking the ruler fits the scene. Clips move by their
+// body and stretch by an end, as on the timeline.
 
 /// phaseColour is what a key, a clip or a card's button is drawn in for
 /// where it plays.
@@ -131,9 +123,7 @@ class KeysStrip extends StatefulWidget {
   /// leastHeight is as short as it goes: the inspector's two lines.
   static const leastHeight = 100.0;
 
-  /// startHeight is as tall as it opens, until it is dragged (Ken,
-  /// 2026-11-12: "should start minimal and also be able to be resized"):
-  /// the ruler and three rows.
+  /// startHeight is how tall it opens until dragged: ruler and three rows.
   static double get startHeight =>
       rulerHeight + clipsHeight + 2 * rowHeight + 10;
 
@@ -879,8 +869,7 @@ class _KeysStripState extends State<KeysStrip> {
       );
 
   /// _addRow is "+ Row": any setting of its chain not keyed yet -- its
-  /// looks', its Design's -- keyed at the playhead, so a row for it (Ken,
-  /// 2026-11-12: animate from the strip, not only from a card).
+  /// looks', its Design's -- keyed at the playhead, which gives it a row.
   Widget _addRow(BuildContext context, StudioColors studio) {
     var look = MixerLook.of(context);
     var design = c.designOf(e.id);
@@ -1267,8 +1256,7 @@ class _Geometry {
   final double width;
   final double scene;
 
-  /// from is the second at the left edge, and shown how many seconds show:
-  /// all of the scene, or zoomed into some of it.
+  /// from is the second at the left edge; shown how many seconds show.
   final double from;
   final double shown;
   const _Geometry(this.width, this.scene, {this.from = 0, double? shown})
@@ -1559,7 +1547,6 @@ class _LanesPainter extends CustomPainter {
       divider(row);
       row++;
     }
-    // The playhead.
     var x = g.xOf(playhead.clamp(0, g.scene).toDouble());
     canvas.drawRect(
         Rect.fromLTWH(x - 1, 0, 2, size.height), Paint()..color = studio.text);

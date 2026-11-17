@@ -12,15 +12,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:flutter/material.dart';
 
-// image_saved.dart is what a picture keeps to use again: its looks (the
-// grade without the photograph: adjustments, textures, colour layers) and its
-// designs (the whole element as a preset), one card switching between them.
+// image_saved.dart is a picture's saved looks (the grade without the photo)
+// and designs (the whole element), one card switching between them.
 
-/// _showingLooks is which the card shows, for this run of the app: looks,
-/// unless designs were last asked for.
+/// _showingLooks is which the card shows this run: looks, unless designs
+/// were last asked for.
 bool _showingLooks = true;
 
-/// ImageSaved is a picture's saved looks and designs.
 class ImageSaved extends StatefulWidget {
   final CanvasController controller;
   final ImageElement element;
@@ -85,8 +83,8 @@ class _ImageSavedState extends State<ImageSaved> {
     var name = _name ?? "Look ${saved.length + 1}";
     var hasLook = e.stack.any((l) => lookKinds.contains(l.kind));
     var images = controller.images;
-    // The tiles are drawn once and kept: drawn again when the picture
-    // under them is, or comes in.
+    // Tiles are drawn once and kept, redrawn when the picture under them is
+    // or arrives.
     var picture = e.hasImage ? images.resolve(e.assetId, e.removal) : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -140,7 +138,7 @@ class _ImageSavedState extends State<ImageSaved> {
               onPressed: name.trim().isEmpty || !hasLook
                   ? null
                   : () async {
-                      // The same name again is the same look, changed.
+                      // The same name again overwrites that look.
                       for (var p in saved.where((p) => p.name == name.trim())) {
                         await store.remove(p);
                       }
@@ -171,9 +169,8 @@ class _ImageSavedState extends State<ImageSaved> {
   }
 }
 
-/// _paintWearing draws [e] -- a picture wearing a look -- to fit [size], as
-/// it settles: without its arrival or its loop, which would draw a picture
-/// still to come in as nothing.
+/// _paintWearing draws [e] wearing a look, settled: without arrival or loop,
+/// which would draw a picture yet to arrive as nothing.
 void _paintWearing(
     ui.Canvas canvas, Size size, ImageElement e, CanvasImageSource images) {
   var b = e.bounds;

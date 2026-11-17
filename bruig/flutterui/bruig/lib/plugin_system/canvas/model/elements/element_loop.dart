@@ -6,9 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 
-// element_loop.dart is an element's loop: a motion it goes on repeating --
-// after it has arrived, or on its own -- until the scene ends, or for so
-// many times. A third thing beside its arrival and exit.
+// element_loop.dart is an element's loop: a motion it repeats after it
+// arrives, or alone, until the scene ends or so many times.
 
 /// LoopFamily is a kind of loop, as the Own style card groups them.
 enum LoopFamily {
@@ -17,16 +16,14 @@ enum LoopFamily {
   line("Line"),
   effect("Effects"),
 
-  /// drift is a picture moving slowly inside its frame -- a pan and zoom over
-  /// a still -- once, across the loop's span. Offered for pictures only (see
-  /// the loop settings in settings_shared.dart).
+  /// drift is a picture moving slowly inside its frame (a pan and zoom over a
+  /// still), once across the loop's span. Offered for pictures only.
   drift("Drift");
 
   final String label;
   const LoopFamily(this.label);
 }
 
-/// LoopPreset is one loop.
 enum LoopPreset {
   none("None", LoopFamily.motion),
 
@@ -96,8 +93,8 @@ enum LoopPreset {
   /// glitch breaks into torn, colour-split slices in short bursts.
   glitch("Glitch bursts", LoopFamily.effect),
 
-  /// The drifts: the picture moved inside its still frame, once from the
-  /// loop's start to its end.
+  /// The drifts move the picture inside its still frame, once across the
+  /// loop.
   driftIn("Zoom in", LoopFamily.drift),
   driftOut("Zoom out", LoopFamily.drift),
   driftLeft("Pan left", LoopFamily.drift),
@@ -109,12 +106,10 @@ enum LoopPreset {
   final LoopFamily family;
   const LoopPreset(this.label, this.family);
 
-  /// moves is whether it is a motion -- the element moved, turned, sized or
-  /// faded as a whole -- rather than something drawn over or into it. See
-  /// ElementLoop.poseAt and paintLoopEffect.
+  /// moves is whether it moves, turns, sizes or fades the whole element,
+  /// not drawing over or into it. See ElementLoop.poseAt, paintLoopEffect.
   bool get moves => family == LoopFamily.motion || this == jelly;
 
-  /// coloured is whether its colour means anything.
   bool get coloured => switch (this) {
         shimmer ||
         colourWave ||
@@ -131,8 +126,7 @@ enum LoopPreset {
   /// span, rather than going round. See ElementLoop.driftAt.
   bool get drifts => family == LoopFamily.drift;
 
-  /// banded is whether it sweeps a band, whose width and angle mean
-  /// something.
+  /// banded is whether it sweeps a band, whose width and angle matter.
   bool get banded => this == shimmer || this == colourWave;
 
   static LoopPreset fromName(String? name) =>
@@ -144,27 +138,23 @@ enum LoopPreset {
       ];
 }
 
-/// ElementLoop is how an element loops.
 class ElementLoop {
   final LoopPreset preset;
 
-  /// cycle is how many frames one go round takes, and gap how many it then
-  /// rests for before the next.
+  /// cycle is the frames one go round takes; gap the rest after it.
   final int cycle;
   final int gap;
 
   /// repeats is how many times it goes round, or 0 for until it ends.
   final int repeats;
 
-  /// strength is how far, how big, how much -- 1 as the preset is, 2 twice
-  /// that, a half half.
+  /// strength is how far, how big, how much: 1 as the preset is, 2 twice.
   final double strength;
 
-  /// ease is how each go round is paced.
   final ChartEase ease;
 
-  /// colour is the colour it draws with -- a shimmer's band, a wave, a
-  /// glow, the sparkles, the ants, the trace -- or a gradient, for a wave.
+  /// colour is what it draws with (a shimmer's band, a wave, a glow, the
+  /// sparkles, the ants, the trace), or a gradient for a wave.
   final PaintSpec colour;
 
   /// band is how wide a swept band is, as a share of the element across;
@@ -172,9 +162,8 @@ class ElementLoop {
   final double band;
   final double angle;
 
-  /// from is the frame it starts on, or null for as the element's arrival
-  /// finishes -- or the scene's start, with no arrival. to is the frame it
-  /// stops on, or null for the scene's end.
+  /// from is its first frame, or null for the arrival's end (or the scene's
+  /// start); to its last, or null for the scene's end.
   final int? from;
   final int? to;
 
@@ -224,10 +213,8 @@ class ElementLoop {
       );
 
   /// span is the frames it plays across: from where it starts to where it
-  /// stops -- the element's arrival's end, or the scene's start, to the
-  /// scene's end, unless set -- shortened to its repeats. [arrived] is
-  /// where the arrival finishes, null with none; [last] the scene's last
-  /// frame.
+  /// stops (see [from]), shortened to its repeats. [arrived] is where the
+  /// arrival finishes, null with none; [last] the scene's last frame.
   (int, int) span({int? arrived, required int last}) {
     var start = from ?? arrived ?? 0;
     var end = to ?? last;
@@ -237,10 +224,9 @@ class ElementLoop {
     return (start, math.max(start, end));
   }
 
-  /// phaseAt is how far round the loop is at [frame], eased -- 0 to 1 --
-  /// and which go round it is on, counting from nought; or null where the
-  /// loop is not playing then: before it starts, after it stops, or resting
-  /// between two goes round.
+  /// phaseAt is how far round the loop is at [frame], eased 0 to 1, and which
+  /// go round it is on, from nought; null where it is not playing: before it
+  /// starts, after it stops, or resting between goes.
   (double, int)? phaseAt(int frame, {int? arrived, required int last}) {
     // A drift does not go round; see driftAt.
     if (!on || preset.drifts) return null;
@@ -253,10 +239,10 @@ class ElementLoop {
     return (p, (frame - start) ~/ period);
   }
 
-  /// driftAt is how far through a drift is at [frame], eased -- 0 before
-  /// it starts, 1 once it has ended -- or null for a loop that is not one.
-  /// Once across the whole span, ignoring cycle, rest and repeats. [frame]
-  /// may fall between frames while the editor plays; see betweenFrames.
+  /// driftAt is how far through a drift is at [frame], eased (0 before it
+  /// starts, 1 after), or null for a loop that is not one: once across the
+  /// whole span, ignoring cycle, rest and repeats. [frame] may fall between
+  /// frames while the editor plays; see betweenFrames.
   double? driftAt(num frame, {int? arrived, required int last}) {
     if (!on || !preset.drifts) return null;
     var start = from ?? arrived ?? 0;
@@ -265,9 +251,8 @@ class ElementLoop {
     return ease.apply(t.clamp(0.0, 1.0)).clamp(0.0, 1.0);
   }
 
-  /// poseAt is how the element is moved, turned, sized and faded by the
-  /// loop at [frame] -- for a loop that moves it; see LoopPreset.moves --
-  /// or null where it is not playing then, or draws instead of moving.
+  /// poseAt is how the loop moves, turns, sizes and fades the element at
+  /// [frame] (see LoopPreset.moves), or null where it does not.
   LoopPose? poseAt(int frame, {int? arrived, required int last}) {
     if (!preset.moves) return null;
     var phase = phaseAt(frame, arrived: arrived, last: last);
@@ -359,7 +344,6 @@ double _bump(double p, double at, double width) {
   return math.exp(-d * d * 4);
 }
 
-/// _motion is [preset] at [p] of the way round, [s] strong.
 LoopPose _motion(LoopPreset preset, double p, double s) {
   const tau = 2 * math.pi;
   switch (preset) {
@@ -379,8 +363,7 @@ LoopPose _motion(LoopPreset preset, double p, double s) {
           sy: 1 + swell * 0.06 * s,
           opacity: 1 - swell * 0.25 * math.min(1, s));
     case LoopPreset.bounce:
-      // Up and down as a ball goes, squashed where it lands and stretched
-      // as it leaves the ground.
+      // Up and down as a ball goes, squashed landing, stretched leaving.
       var height = math.sin(math.pi * p).abs();
       var land = _bump(p, 0, 0.12) + _bump(p, 1, 0.12);
       return LoopPose(

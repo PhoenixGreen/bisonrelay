@@ -7,21 +7,18 @@ import 'package:bruig/plugin_system/canvas/render/vrm/vrm_scene.dart';
 import 'package:flutter_vrm/flutter_vrm.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-// vrm_pose.dart stands a new 3D character as its Move settings say
-// (character_move.dart): the hips, spine and head turned; the legs solved
-// to feet planted where the stance puts them; each hand shaped, the thumb
-// closed round a fist; and the arms solved to where the stance has the
-// hands. Worked out from where this body's shoulders, hips and head are, so
-// a stance fits any build, and kept outside the body. All in the model's
-// own space: up is +y, it faces +z, and its left is +x.
+// vrm_pose.dart stands a 3D character as its Move settings say
+// (character_move.dart): hips, spine and head turned, legs solved to
+// planted feet, hands shaped, arms solved to where the stance puts the
+// hands. Worked out from this body's own measurements, so a stance fits any
+// build. All in model space: up is +y, it faces +z, its left is +x.
 
 typedef _V = vm.Vector3;
 typedef _Q = vm.Quaternion;
 
 _V _v(double x, double y, double z) => _V(x, y, z);
 
-/// _euler is a turn by [x], then [y], then [z] about the axes, as the
-/// prototype's three.js Euler of order XYZ.
+/// _euler is a turn by [x], then [y], then [z]: a three.js XYZ Euler.
 _Q _euler(double x, double y, double z) =>
     _Q.axisAngle(_v(1, 0, 0), x) *
     _Q.axisAngle(_v(0, 1, 0), y) *
@@ -29,9 +26,9 @@ _Q _euler(double x, double y, double z) =>
 
 double _clamp(double v, double lo, double hi) => v.clamp(lo, hi).toDouble();
 
-/// _HandShape is a hand: each finger's three joints curled toward the
-/// palm, how far apart they spread, the thumb's curl and its turn across
-/// the palm, and which fingers a closed thumb lies over.
+/// _HandShape is a hand: each finger's three joint curls and spread, the
+/// thumb's curl and turn across the palm, and which fingers a closed thumb
+/// lies over.
 class _HandShape {
   final List<double> f;
   final double spread;
@@ -93,8 +90,8 @@ const Map<String, _HandShape> _hands = {
       opp: [0.3, 0, 0]),
 };
 
-/// _Landmarks are where the body's parts are now, for placing the hands:
-/// [s] is 1 for the left, -1 for the right.
+/// _Landmarks are where the body's parts are, for placing the hands: [s]
+/// is 1 for the left, -1 for the right.
 class _Landmarks {
   final double u, arm;
   final Map<int, _V> shoulder, hip, knee;
@@ -118,8 +115,8 @@ class _Stance {
   final Map<String, String> handShape;
   final List<double> Function(int s)? pole;
 
-  /// palm is the way the left palm faces -- the right's mirrored -- or by
-  /// hand, as [palms] has it.
+  /// palm is the way the left palm faces (the right mirrored), or null to
+  /// use [palms].
   final List<double>? palm;
   final Map<String, List<double>> palms;
   const _Stance(
@@ -147,10 +144,8 @@ class _Stance {
 }
 
 final Map<String, _Stance> _stances = {
-  // Arms hanging by the sides, the hands loose, palms to the thighs, the
-  // knees soft (Ken, 2026-11-10: "vivi's standing pose could also be
-  // improved"): before, the arms hung out from the body as it was made,
-  // the hands flat and turned out.
+  // Arms hanging by the sides, hands loose, palms to the thighs, knees
+  // soft.
   "Relaxed": _Stance(
       hand: (l, s) => l.hip[s]! + l.v(s * 0.1, -0.22, 0.02),
       pole: (s) => [s * 1.0, 0, -0.3],
@@ -269,9 +264,9 @@ final Map<String, _Stance> _stances = {
 };
 
 /// _Motion is one frame of a motion: what it adds to the stance, in metres
-/// and radians -- the hips' move and turn, the spine and head, each foot
-/// ([forward, up, heel-up pitch, toes bend, on the ground]), each hand --
-/// and where it takes the hands instead of the stance.
+/// and radians (hips, spine, head, each foot as [forward, up, heel pitch,
+/// toes bend, on the ground], each hand), and where it puts the hands
+/// instead of the stance.
 class _Motion {
   double dy = 0, dx = 0, yaw = 0, roll = 0, root = 0;
   List<double> spine = [0, 0, 0], head = [0, 0, 0];
@@ -295,8 +290,8 @@ double _smooth(double x) {
 }
 
 /// _motionAt is motion [name] [t] seconds in, walked as [walk] says, for a
-/// body of size [u]. Walk and run step properly: the foot on the ground
-/// slides back steadily for most of the step, then swings forward, lifted.
+/// body of size [u]. In a walk or run the planted foot slides back steadily,
+/// then swings forward, lifted.
 _Motion _motionAt(String name, double t, Map<String, double> walk, double u) {
   final o = _Motion();
   double w(String k) => walk[k] ?? moveWalkDefaults[k]!;
@@ -311,11 +306,8 @@ _Motion _motionAt(String name, double t, Map<String, double> walk, double u) {
       final run = name == "Run";
       final cad = (run ? 1.4 : 0.85) * (0.7 + 0.6 * w("pace")),
           sf = run ? 0.38 : 0.6;
-      // From the feet together -- the left halfway through its stance, the
-      // right halfway through its swing -- rather than mid-stride: set off
-      // from standing, the first steps slid into the stride (Ken,
-      // 2026-11-10: "the first part of the walk cycle looks like she's
-      // sliding").
+      // Start from feet together (left mid-stance, right mid-swing), not
+      // mid-stride, or setting off from standing slides into the stride.
       t += sf * 0.5 / cad;
       final stride = (run ? 0.42 : 0.26) * u * (0.5 + w("stride")),
           lift = (run ? 0.18 : 0.07) * u * (0.6 + 0.8 * w("stride"));
@@ -390,14 +382,11 @@ _Motion _motionAt(String name, double t, Map<String, double> walk, double u) {
         ];
         o.foot[k] = [0, 0, 0.4 * air];
       }
-    // A game's jump, in three parts as the body goes (Ken, 2026-11-10: "jump
-    // should start by crouching down and then launching up with arms in air
-    // then fall down by her side on landing"). Nothing is lifted here: the
-    // game carries the body up and down. Leap is from the press: a crouch
-    // on the ground for leapWindup, then up, legs straightening, the arms
-    // swung overhead, the knees drawn up a little in the air. Fall is from
-    // the top of it: the arms brought down to the sides and the legs let
-    // down for the ground. Land is from touching down: the knees taking it.
+    // A game's jump, in three parts. Nothing is lifted here: the game
+    // carries the body. Leap (from the press): a crouch for leapWindup,
+    // then up, legs straightening, arms overhead, knees drawn up a little.
+    // Fall (from the top): arms down to the sides, legs let down. Land
+    // (from touching down): the knees take it.
     case "Leap":
       final crouch = t < leapWindup
           ? _smooth(t / leapWindup)
@@ -593,19 +582,17 @@ const Map<String, Set<String>> _motionParts = {
   "Kick": {"legs", "spine", "head", "arms"},
 };
 
-/// punchSeconds and kickSeconds are how long a punch and a kick take, once
-/// through: a game plays each for as long (see canvas_game.dart).
+/// punchSeconds and kickSeconds are how long a punch and a kick take; a
+/// game plays each for as long (canvas_game.dart).
 const double punchSeconds = 0.45;
 const double kickSeconds = 0.6;
 
-/// leapWindup is how long a game's 3D player crouches before it leaves the
-/// ground, and landSeconds how long its knees take a landing (see Leap and
-/// Land in _motionAt, and canvas_game.dart).
+/// leapWindup is how long a game's 3D player crouches before leaving the
+/// ground; landSeconds, how long its knees take a landing.
 const double leapWindup = 0.12;
 const double landSeconds = 0.24;
 
-/// _scaled is [o] at [w] of its strength, mirrored left for right with
-/// [mirror].
+/// _scaled is [o] at [w] of its strength, mirrored with [mirror].
 _Motion _scaled(_Motion o, double w, bool mirror) {
   if (w == 1 && !mirror) return o;
   List<double> k(List<double> v) => [for (final x in v) x * w];
@@ -654,21 +641,20 @@ _Motion _scaled(_Motion o, double w, bool mirror) {
 bool _ownsArm(Set<String> own, String k) =>
     own.contains("arms") || own.contains("arm$k");
 
-/// _Rest is the body at rest: where its feet stand, how big it is, its
-/// limbs' lengths, and its torso's shape slice by slice -- clothes and all
-/// -- for keeping hands, elbows and forearms outside it.
+/// _Rest is the body at rest: feet, size, limb lengths, and the torso's
+/// shape slice by slice (clothes included) for keeping hands, elbows and
+/// forearms outside it.
 class _Rest {
   final _V fL, fR, hips;
   final double u, ua, fa, arm, foot;
 
-  /// slices are, below the spine (0) and above it (1), each two
-  /// centimetres up from the hips or the chest: the least and most x and z.
+  /// slices are, below the spine (0) and above it (1), the least and most
+  /// x and z of each 2 cm slice up from the hips or chest.
   final List<Map<int, List<double>>> slices;
   _Rest(this.fL, this.fR, this.hips, this.u, this.ua, this.fa, this.arm,
       this.foot, this.slices);
 }
 
-/// VrmPoser poses one avatar.
 class VrmPoser {
   final ShapedAvatar avatar;
   VrmPoser(this.avatar);
@@ -678,14 +664,13 @@ class VrmPoser {
   _Rest? _rest;
   int _restVersion = -1;
 
-  /// _restWorld is where the body's bones are at rest, in the scene: for
-  /// framing it, steady while it jumps or crouches.
+  /// _restWorld is where the bones are at rest in the scene: for framing,
+  /// steady while it jumps or crouches.
   final Map<VrmHumanBone, _V> _restWorld = {};
 
-  /// restWorld is where [b] is at rest, in the scene, once measured.
   vm.Vector3? restWorld(VrmHumanBone b) => _restWorld[b]?.clone();
 
-  /// _eased is what each eased value was last frame.
+  /// _eased is each eased value as of last frame.
   final Map<String, Object> _eased = {};
 
   _V _p(VrmHumanBone b) => _h.modelPosition(b) ?? _V.zero();
@@ -753,7 +738,6 @@ class VrmPoser {
     return next;
   }
 
-  /// _measure measures the body at rest.
   _Rest _measure() {
     _h.resetPose();
     _sync();
@@ -799,7 +783,6 @@ class VrmPoser {
         r[3] = math.max(r[3], lz);
       }
     }
-    // Loose cloth reaches a third of the way from the body to its edge.
     for (final k in const [0, 1]) {
       for (final MapEntry(key: key, value: c) in cloth[k].entries) {
         final b = slices[k][key] ??
@@ -830,8 +813,8 @@ class VrmPoser {
         slices);
   }
 
-  /// _outOfBody is [p] moved out of the body to its surface, and [margin]
-  /// past it; null where it is not inside.
+  /// _outOfBody is [p] moved out to the body's surface plus [margin], or
+  /// null where it is not inside.
   _V? _outOfBody(_V p, double margin) {
     final r = _rest!;
     final k = p.y < _p(VrmHumanBone.spine).y ? 0 : 1;
@@ -870,8 +853,8 @@ class VrmPoser {
     return turn.rotated(loc) + at;
   }
 
-  /// _outOfArm is [p] moved out of arm [side]'s upper arm and forearm to
-  /// [r] from them, where it is nearer.
+  /// _outOfArm is [p] moved to [r] from arm [side]'s upper arm and forearm,
+  /// where it is nearer.
   _V _outOfArm(int side, _V p, double r) {
     final upper =
             side > 0 ? VrmHumanBone.leftUpperArm : VrmHumanBone.rightUpperArm,
@@ -894,11 +877,10 @@ class VrmPoser {
     return out;
   }
 
-  /// _solveLimb turns two bones -- upper arm and forearm, thigh and shin --
-  /// so that [end] reaches [target], the middle joint bending toward
-  /// [pole] and never further than a real joint bends. An elbow that would
-  /// go into the body bends away from it; a palm is turned to face [palm],
-  /// mostly in the forearm, a little at the wrist.
+  /// _solveLimb turns two bones (upper arm and forearm, thigh and shin) so
+  /// [end] reaches [target], the middle joint bending toward [pole] and no
+  /// further than a real joint. An elbow bound for the body bends away; a
+  /// palm is turned to face [palm], mostly in the forearm.
   void _solveLimb(VrmHumanBone upper, VrmHumanBone lower, VrmHumanBone end,
       _V target, List<double> pole,
       {double minBend = 0.45,
@@ -938,8 +920,8 @@ class VrmPoser {
         pole[2] * 0.3 + push.z
       ]);
     }
-    // The middle joint's direction eases, so a pose crossing a hard case
-    // swings the elbow round rather than flipping it.
+    // The middle joint's direction eases, so crossing a hard case swings
+    // the elbow round rather than flipping it.
     if (ease != null) {
       final dir = _ev("mid-${upper.name}", (e - s0).normalized(), ease)
         ..normalize();
@@ -986,10 +968,9 @@ class VrmPoser {
   VrmHumanBone? _bone(String name) =>
       VrmHumanBone.values.where((b) => b.name == name).firstOrNull;
 
-  /// _fingers shapes hand [side] ("left" or "right") as [shape], [amt] of
-  /// the way closed. In the model's space the left hand's fingers lie along
-  /// +x, palm down, so curling toward the palm is a turn of -angle about z
-  /// (+angle for the right): the opposite sign to three-vrm's rig.
+  /// _fingers shapes hand [side] ("left"/"right") as [shape], [amt] closed.
+  /// The left hand's fingers lie along +x, palm down, so curling is a turn
+  /// of -angle about z (+angle for the right): opposite to three-vrm.
   void _fingers(String side, String shape, double amt) {
     final sh = _hands[shape] ?? _hands["relaxed"]!;
     final s = side == "left" ? 1.0 : -1.0;
@@ -1005,7 +986,7 @@ class VrmPoser {
       }
     }
     // The thumb: turned under the palm about the hand's length, then each
-    // joint curled about the axis across its own bend.
+    // joint curled about its own bend axis.
     final t = sh.thumb, opp = sh.opp ?? [0.25 * t[0], 0, 0];
     final flex = _v(1, 0, -s).normalized(), along = _v(1, 0, 0);
     for (final (ji, j) in const ["Metacarpal", "Proximal", "Distal"].indexed) {
@@ -1016,9 +997,8 @@ class VrmPoser {
     }
   }
 
-  /// _wrapThumb lays a closed hand's thumb across the curled fingers: its
-  /// tip brought, a joint at a time, onto the outside of their middle
-  /// joints -- worked out on this hand's own bones.
+  /// _wrapThumb lays a closed hand's thumb across the outside of the
+  /// curled fingers' middle joints, a joint at a time, on this hand's bones.
   void _wrapThumb(String side, String shape, double amt) {
     final sh = _hands[shape];
     if (sh == null || sh.wrap.isEmpty || amt < 0.05) return;
@@ -1064,7 +1044,6 @@ class VrmPoser {
       for (final b in order) {
         final j = _p(b);
         final full = _between(tip() - j, target - j);
-        // As far as the hand is closed.
         final r = _nlerp(_Q.identity(), full, math.min(1, amt));
         _turnBy(b, r);
         _sync();
@@ -1080,13 +1059,12 @@ class VrmPoser {
       ..normalize();
   }
 
-  /// pose stands the avatar as [m] says, [dt] seconds on from the last
-  /// pose -- what changed eases there, as a body moves; at nought it is
-  /// there at once -- and its motion [t] seconds in.
+  /// pose stands the avatar as [m] says, [dt] seconds since the last pose
+  /// (changes ease in; at nought they are immediate), with its motion [t]
+  /// seconds in.
   ///
-  /// A scene's motion clip plays at [strength], mirrored left for right
-  /// with [mirror], taking over the parts it moves by [weight] -- nought to
-  /// one as it fades in and out, the stance holding the rest.
+  /// A scene's motion clip plays at [strength], mirrored with [mirror],
+  /// taking over the parts it moves by [weight] (0 to 1 as it fades).
   void pose(CharacterMove m, double dt,
       {double t = 0,
       double strength = 1,
@@ -1097,13 +1075,11 @@ class VrmPoser {
       _rest = _measure();
     }
     final r = _rest!, u = r.u;
-    // A body eases toward its pose over about 0.16 s -- a strike or a
-    // game's jump (quickMotions) over 0.03: they are quick, and eased as
-    // slowly, a punch's arm (straight out for a tenth of a second) never
-    // got there.
+    // A body eases toward its pose over about 0.16 s; strikes and a game's
+    // jump (quickMotions) over 0.03, or a punch's arm, straight out for a
+    // tenth of a second, never gets there.
     final quick = quickMotions.contains(m.motion);
-    // A walk or a run a little quicker than the rest: eased as slowly, its
-    // feet lagged the body setting off.
+    // Walk and run ease a little quicker, or the feet lag the body.
     final stepping = m.motion == "Walk" || m.motion == "Run";
     final a = dt <= 0
         ? 1.0
@@ -1144,7 +1120,6 @@ class VrmPoser {
     double bd(String k) => m.bodyOf(k);
     _h.resetPose();
 
-    // The body: hips, spine and head, each kept within what a body can do.
     final crouch = st.crouch + 0.3 * bd("crouch");
     // Dragged by hand, the hips go no further than a body bends.
     _V off(String k) {
@@ -1208,7 +1183,6 @@ class VrmPoser {
     }
     _sync();
 
-    // Where things are now, for placing the hands.
     final l = _Landmarks(
       u,
       r.arm / u,
@@ -1232,7 +1206,6 @@ class VrmPoser {
       final f = mo.foot[k]!;
       final base = _v(
           rest.x + s * st.feet * u, rest.y, rest.z + (st.footFwd[k] ?? 0) * u);
-      // A foot on the ground rolls: back on the heel, up on the ball.
       final p = f[2], planted = f.length > 4 ? f[4] : 0.0;
       final rollUp = planted *
               (p > 0
@@ -1291,11 +1264,9 @@ class VrmPoser {
     }
     _sync();
 
-    // Hands: each shaped as asked, or as the stance has it.
     for (final (side, k) in const [("left", "L"), ("right", "R")]) {
       final asked = k == "L" ? m.handL : m.handR;
-      // A motion moving this arm shapes its hand as it moves; otherwise as
-      // asked, or as the stance has it.
+      // A motion moving this arm shapes its hand as it moves.
       final shape = _ownsArm(own, k) && w > 0.5
           ? mo.handShape[k] ?? "relaxed"
           : asked != "relaxed"
@@ -1319,12 +1290,11 @@ class VrmPoser {
       final hang = l.shoulder[s]! + l.v(s * 0.06, -l.arm * 0.93, 0.03);
       var base = place == null ? hang : place(l, s);
       if (mine) {
-        // Where the motion has the hand, in place of the stance.
         var mb = mo.handAt[k]?.call(l, s) ?? hang;
         final swing = mo.armSwing;
         if (swing != null) {
-          // The upper arm swings from the shoulder; the elbow bends more as
-          // it comes forward walking, and holds near a right angle running.
+          // The upper arm swings from the shoulder; the elbow bends more
+          // forward when walking, near a right angle when running.
           final sw = swing[k] ?? 0,
               amp = (mo.run ? 0.8 : 0.42) *
                   (0.3 + 1.4 * (m.walk["swing"] ?? moveWalkDefaults["swing"]!));
@@ -1349,7 +1319,6 @@ class VrmPoser {
         if (bow != null) {
           mb = mb + (l.knee[s]! + l.v(s * 0.05, 0.12, 0.06) - mb) * (bow * 0.6);
         }
-        // From where the stance has it, as far as the motion has taken it.
         base = base + (mb - base) * w;
       }
       final hv =

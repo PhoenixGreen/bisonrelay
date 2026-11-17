@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 // where it comes from. On the master canvas it is the default, used by every
 // scene without a transition of its own.
 
-/// TransitionPart is one part of a scene's transition.
 enum TransitionPart { choice, timing, looks, sound, source }
 
 /// SceneTransitionTarget is the transition [scene] gives way with, and how
@@ -49,9 +48,8 @@ class SceneTransitionTarget {
   }
 }
 
-/// _started is [value] changed to another kind, set up the way that kind
-/// looks best: one set of settings cannot suit every kind (six suits blinds
-/// but not halftone dots). The colour is carried over, as a design choice.
+/// startedAs is [value] changed to another kind, set up as that kind looks
+/// best: one set of settings cannot suit every kind. The colour is kept.
 SceneTransition startedAs(SceneTransition value, SceneTransitionKind kind) =>
     _started(value, kind);
 

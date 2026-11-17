@@ -2,15 +2,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 
-// character_look_panel.dart is the new Character Studio's Drawing style: a
-// look to start from, then its lines, shading and light, its colour, and the
+// character_look_panel.dart is the Character Studio's Drawing style: a look
+// to start from, then its lines, shading and light, its colour, and the
 // finish of the page. See character_look.dart.
 
 /// stylePartId is the list's id for the Drawing style.
 const String stylePartId = "style";
 
-/// CharacterLookControls are the Drawing style's settings. [name] is the
-/// look last started from.
+/// CharacterLookControls are the Drawing style's; [name] the look started.
 class CharacterLookControls extends StatelessWidget {
   final CharacterLook look;
   final String name;

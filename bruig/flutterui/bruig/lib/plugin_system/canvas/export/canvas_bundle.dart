@@ -9,15 +9,9 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
 
-// canvas_bundle.dart is a canvas with its pictures and media inside it.
-//
-// A saved .bcanvas holds only asset ids pointing at this machine's stores
-// (see canvas_assets.dart), so a canvas sent elsewhere needs its files with
-// it. A bundle is a zip of the document JSON plus those files: smaller than
-// base64 in the JSON, and openable with any unzip tool.
-//
-// The ids are kept as they are. They are hashes of the files' bytes, so a
-// picture the recipient already has is not stored twice.
+// canvas_bundle.dart is a canvas with its pictures and media inside: a zip
+// of the document JSON and the files its asset ids name. The ids hash the
+// files' bytes, so a picture the recipient has is not stored twice.
 
 /// _documentEntry is the document, added first so a listing shows it first.
 const String _documentEntry = "canvas.json";
@@ -25,11 +19,10 @@ const String _documentEntry = "canvas.json";
 /// _pictureDir is where the pictures go, named by their asset ids.
 const String _pictureDir = "pictures";
 
-/// _mediaDir is where sounds and videos go, named by their CanvasMedia ids.
+/// _mediaDir holds sounds and videos, named by their CanvasMedia ids.
 const String _mediaDir = "media";
 
-/// bundleMime marks a canvas that carries its pictures. It saves as
-/// .bcanvas, like a plain canvas.
+/// bundleMime marks a canvas carrying its pictures; it saves as .bcanvas.
 const String bundleMime = "application/x-bruig-canvas";
 
 /// looksLikeBundle is whether these bytes are a zip rather than plain JSON.
@@ -41,10 +34,8 @@ bool looksLikeBundle(List<int> bytes) =>
     (bytes[2] == 0x03 || bytes[2] == 0x05) &&
     (bytes[3] == 0x04 || bytes[3] == 0x06);
 
-/// packCanvas writes [document] and the pictures and media it refers to
-/// into one file. An id [pictures] or [media] cannot load is left out
-/// rather than failing the bundle: it is already missing on the sender's
-/// screen.
+/// packCanvas writes [document] and its pictures and media into one file;
+/// an id that cannot load is left out, as it is missing for the sender too.
 Future<Uint8List> packCanvas(
   CanvasDocument document, {
   Future<List<int>?> Function(String id)? pictures,
@@ -80,9 +71,8 @@ Future<Uint8List> packCanvas(
   return Uint8List.fromList(ZipEncoder().encode(archive));
 }
 
-/// _stored marks [file] to be stored as it is, not deflated: the large
-/// entries are already compressed. (Level 0 was not that: it still wrote
-/// each entry as deflate, in stored blocks.)
+/// _stored stores [file] as it is: the large entries are compressed
+/// already, and level 0 still writes deflate, in stored blocks.
 ArchiveFile _stored(ArchiveFile file) =>
     file..compression = CompressionType.none;
 
@@ -109,9 +99,8 @@ class _Capped implements Sink<List<int>> {
 
 /// _contentOf is [file]'s contents, no more than [left] bytes of them, or
 /// null where there are more, or where it is packed some way a bundle never
-/// is. A zip names each file's size, but that is what the sender wrote: the
-/// library inflates a deflated file to whatever it holds, so a few megabytes
-/// can be gigabytes. Here the bytes are counted as they come.
+/// is. The size a zip names is the sender's word, and a few megabytes can
+/// inflate to gigabytes, so the bytes are counted as they come.
 Uint8List? _contentOf(ArchiveFile file, int left) {
   var raw = file.rawContent;
   if (raw is! ZipFile || left < 0) return null;
@@ -138,11 +127,10 @@ Uint8List? _contentOf(ArchiveFile file, int left) {
   }
 }
 
-/// CanvasBundle is an unpacked bundle.
 class CanvasBundle {
   final CanvasDocument document;
 
-  /// pictures is the asset id each picture was stored under, and its bytes.
+  /// pictures is each picture's bytes by asset id.
   final Map<String, Uint8List> pictures;
 
   /// media is the sounds and videos, by media id.
@@ -157,17 +145,14 @@ const int maxBundleBytes = 1 << 30;
 /// unpackLimit is how long taking a received canvas apart may take.
 const unpackLimit = Duration(minutes: 2);
 
-/// unpackCanvasFile is [unpackCanvas] for [file], or null where it is
-/// bigger than [maxBundleBytes], since it is read whole into memory, or
-/// where it takes longer than [limit].
+/// unpackCanvasFile is [unpackCanvas] for [file], or null past
+/// [maxBundleBytes] (it is read whole) or when it takes over [limit].
 Future<CanvasBundle?> unpackCanvasFile(File file,
     {Duration limit = unpackLimit}) async {
   if (await file.length() > maxBundleBytes) return null;
-  // Read and taken apart on an isolate of its own: a bundle can be a
-  // gigabyte, and the whole app waited for it -- a canvas previewed in a
-  // chat froze the chat. One that runs over is killed rather than left
-  // running: a crafted canvas must not hold a core and its memory for as
-  // long as it likes (security review, 2026-11-17).
+  // Taken apart on its own isolate: a bundle can be a gigabyte, and the
+  // app must not wait. Overrunning, it is killed: a crafted canvas must
+  // not hold a core and its memory as long as it likes.
   var port = ReceivePort();
   Isolate? isolate;
   try {
@@ -219,9 +204,8 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
           !file.name.startsWith("$_mediaDir/")) {
         continue;
       }
-      // Only the last part of the name is used, so "pictures/../../x" names
-      // a picture "x". CanvasAssets.saveAs checks the id again before it
-      // becomes a path.
+      // Only the name's last part is used ("pictures/../../x" is "x");
+      // CanvasAssets.saveAs checks the id again before it becomes a path.
       var id = file.name.split("/").last;
       if (id.isEmpty) continue;
       var isMedia = file.name.startsWith("$_mediaDir/");
@@ -238,13 +222,11 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
   }
 }
 
-/// _received is a canvas from elsewhere with every reference to a Writing
-/// document removed (the words it last read are kept). Otherwise it would
-/// read whatever document of that name the recipient has.
+/// _received is a canvas from elsewhere with every Writing reference
+/// removed (its last words kept), so it cannot read the recipient's own.
 CanvasDocument? _received(String text) {
   // A Run panel's DartPad switch is not taken either: DartPad runs the code
-  // on Google's site, telling it who reads, and that is the reader's to
-  // choose (security review, 2026-11-17).
+  // on Google's site, telling it who reads, and that is the reader's choice.
   Object? strip(Object? v) => switch (v) {
         Map<String, dynamic> m => {
             for (var e in m.entries)
@@ -263,10 +245,9 @@ CanvasDocument? _received(String text) {
   }
 }
 
-/// storeBundlePictures puts a bundle's pictures and media into their
-/// stores under the ids the document uses, and returns how many were
-/// stored. The caller saves the document afterwards, so a canvas is never
-/// listed before its files are there.
+/// storeBundlePictures stores a bundle's pictures and media under the
+/// document's ids, answering how many. The caller saves the document
+/// after, so a canvas is never listed before its files are there.
 Future<int> storeBundlePictures(CanvasBundle bundle) async {
   var stored = 0;
   for (var entry in bundle.pictures.entries) {

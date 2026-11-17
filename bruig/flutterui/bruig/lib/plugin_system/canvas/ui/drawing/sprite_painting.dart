@@ -10,10 +10,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
 // sprite_painting.dart is painting a Sprite element's frames on the canvas,
-// pixel by pixel: the frame shown big in the element's box with the one before
-// it faint underneath, a pencil, rubber, fill and picker, and frames added or
-// copied. Each stroke is kept as the sheet's picture when the pen lifts, as one
-// undo step.
+// pixel by pixel: the frame shown big in its box over a faint one before it,
+// a pencil, rubber, fill and picker, and frames added or copied. Each stroke
+// is kept as the sheet's picture when the pen lifts, as one undo step.
 
 /// SpriteTool is what painting a sprite does with the pen.
 enum SpriteTool {
@@ -162,8 +161,7 @@ class SpritePaintSession extends ChangeNotifier {
   bool _showing = false;
   bool _again = false;
 
-  /// _show makes the picture of the pixels again, one at a time, catching up
-  /// the last change after.
+  /// _show remakes [live] from the pixels, one at a time, then catches up.
   Future<void> _show() async {
     if (_showing) {
       _again = true;

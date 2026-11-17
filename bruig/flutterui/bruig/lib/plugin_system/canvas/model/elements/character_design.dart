@@ -10,7 +10,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 // it, kept in the library (storage/character_designs.dart): the VRoid body it
 // starts from, its shape, what it wears, how it is drawn, and its decals.
 
-/// CharacterDesign is one character. Immutable.
 class CharacterDesign {
   final String id, name;
 
@@ -27,8 +26,7 @@ class CharacterDesign {
   /// sculpt is the body shaped by hand, stroke by stroke.
   final List<SculptStroke> sculpt;
 
-  /// paint is what is painted on the skin and the clothes, stroke by
-  /// stroke.
+  /// paint is what is painted on the skin and clothes, stroke by stroke.
   final List<PaintStroke> paint;
 
   /// face is its expression, and what its face does by itself.
@@ -54,7 +52,6 @@ class CharacterDesign {
     required this.updated,
   });
 
-  /// dressed is this wearing [outfit].
   CharacterDesign dressed(CharacterOutfit outfit) => CharacterDesign(
       id: id,
       name: name,

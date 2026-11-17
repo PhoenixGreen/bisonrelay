@@ -18,11 +18,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/pitch_orbit_pad.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/pitch_views.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 
-// procedural_settings.dart is the controls for a generated background, the
-// same for the canvas's own background and a background element: one recipe,
-// one panel. The five shared controls (density, scale, intensity, variation,
-// seed) and the colours are shown for every style, so every generator makes
-// all five mean something; see render/procedural/generators.dart.
+// procedural_settings.dart is the one panel for a generated background, on the
+// canvas or in an element. The five shared amounts (density, scale, intensity,
+// variation, seed) and the colours show for every style, so every generator
+// must give all five a meaning; see render/procedural/generators.dart.
 
 /// ProceduralSettings edits a [ProceduralSpec].
 class ProceduralSettings extends StatelessWidget {
@@ -39,30 +38,27 @@ class ProceduralSettings extends StatelessWidget {
   /// run of the movement fit it; null where there is none to offer.
   final int? canvasFrames;
 
-  /// label names the group. Empty by default, as both callers want: the
-  /// panel's own header already says whose background this is.
+  /// label names the group. Empty by default: the panel's own header already
+  /// says whose background this is.
   final String label;
 
-  /// layer is whether this is a layer laid over a background rather than the
-  /// background itself: only its pattern is drawn, so the light, the lens, the
-  /// film and the run of the movement are not offered.
+  /// layer is whether this is a layer over a background: only its pattern is
+  /// drawn, so the light, lens, film and the movement's run are not offered.
   final bool layer;
 
-  /// fill is whether this is a pattern painted into letters, a box or a
-  /// shape, whose style, look, colours and amounts are on the row above:
-  /// only the style's own settings and the effects are left.
+  /// fill is whether this is a pattern painted into text or a shape, with its
+  /// style, look, colours and amounts on the row above: only the style's own
+  /// settings and the effects are left.
   final bool fill;
 
-  /// sections lays the settings out in the sections every element's panel
-  /// has -- the pattern, its colours, its movement, its effects and its
-  /// light -- each remembered open or shut under [rememberAs]. See
-  /// panel_kit.dart.
+  /// sections lays the settings out in the sections every element's panel has,
+  /// each remembered open or shut under [rememberAs]. See panel_kit.dart.
   final bool sections;
   final String rememberAs;
 
-  /// kindPicker is the choice of what the background draws -- this
-  /// pattern, or a stage -- put first in its Pattern layers. Null where
-  /// there is no such choice: a layer, a fill. See backdrop_settings.dart.
+  /// kindPicker chooses what the background draws (this pattern, or a stage),
+  /// put first in its Pattern layers; null for a layer or a fill. See
+  /// backdrop_settings.dart.
   final Widget? kindPicker;
 
   const ProceduralSettings({
@@ -89,9 +85,8 @@ class ProceduralSettings extends StatelessWidget {
 
   void _ringsNow(RingSpec next) => _setNow(spec.copyWith(rings: next));
 
-  /// _put is the icon for one of the two placings, replaced or taken away.
-  /// One of each, in the order the placings are written: a document carrying
-  /// more than one of a placing is collapsed to the first when touched.
+  /// _put replaces or removes the icon for one of the two placings. A document
+  /// holding more than one of a placing is collapsed to the first when touched.
   void _put(RingSpec rings, RingIconPlace place, RingIcon? next) {
     var kept = {
       for (var p in RingIconPlace.values)
@@ -105,9 +100,8 @@ class ProceduralSettings extends StatelessWidget {
     ]));
   }
 
-  /// _iconSlot is one of the two: the picture, what it is drawn like, and --
-  /// around a ring -- the other pictures it may be drawn as and how far each
-  /// of them is allowed to differ from the rest.
+  /// _iconSlot is one placing: the picture, what it is drawn like, and, round
+  /// a ring, the others it may be drawn as and how far each may differ.
   List<Widget> _iconSlot(
       BuildContext context, RingSpec rings, RingIconPlace place) {
     var at = place.name;
@@ -160,8 +154,7 @@ class ProceduralSettings extends StatelessWidget {
           set(icon.copyWith(asset: id));
         },
       ),
-      // And out of the pictures this canvas already has, which is where an
-      // icon usually comes from.
+      // Or from the pictures this canvas already has, the usual source.
       CanvasIconButton(
         key: ValueKey("ringIconLibrary-$at"),
         icon: Icons.photo_library_outlined,
@@ -229,8 +222,8 @@ class ProceduralSettings extends StatelessWidget {
         },
         onCommit: onCommit,
       ),
-      // One colour rather than its own, as a line drawing carried by a ring
-      // usually wants: the design's colour, not whatever it was drawn in.
+      // The design's colour rather than its own, as a ring's line drawing
+      // usually wants.
       CanvasToggle(
         key: ValueKey("ringIconTinted-$at"),
         label: "Colour it",
@@ -300,11 +293,10 @@ class ProceduralSettings extends StatelessWidget {
                 if (m != n) other,
             ])),
           ),
-          // A line each: two pictures' buttons side by side cannot be told apart.
+          // A line each: side by side, two pictures' buttons look alike.
           const CanvasLineBreak(),
         ],
-        // The first picture's own share, which only means anything once there
-        // is something to share with.
+        // The first picture's own share, meaningless until there is another.
         if (icon.also.isNotEmpty)
           CanvasNumberField(
             key: ValueKey("ringIconWeight-$at"),
@@ -346,9 +338,8 @@ class ProceduralSettings extends StatelessWidget {
         ..._drift(icon, place, "Turn", "Turn", icon.driftTurn,
             (d) => icon.copyWith(driftTurn: d),
             limit: 360, decimals: 0, suffix: "\u00b0"),
-        // A share of what the ring is drawn at, so nought is invisible and one is
-        // the ring's own strength; never more, since a ring at full strength
-        // cannot be brightened.
+        // A share of the ring's strength, nought invisible and one the ring's
+        // own; never more: a full-strength ring cannot be brightened.
         ..._drift(icon, place, "Fade", "Fade", icon.driftFade,
             (d) => icon.copyWith(driftFade: d),
             least: 0),
@@ -363,9 +354,9 @@ class ProceduralSettings extends StatelessWidget {
             "half as big again. Fade is a share of the strength its ring is "
             "drawn at, so a half is half of it and nought is nothing."),
       ],
-      // What a picture in the middle may be told rather than inheriting from its
-      // ring, each off (inherit) until switched on. Only in the middle: a set
-      // going round a ring differs by the ranges above.
+      // What a picture in the middle may set rather than inherit from its ring,
+      // each off until switched on. Only in the middle: a set round a ring
+      // differs by the ranges above.
       if (!around) ...[
         const CanvasLineBreak(),
         CanvasToggle(
@@ -533,9 +524,8 @@ class ProceduralSettings extends StatelessWidget {
     };
   }
 
-  /// _sectioned is [groups] -- [_groups], or a layer's -- in sections. A
-  /// section that is one expander is that expander's contents: the section
-  /// is the fold now.
+  /// _sectioned is [groups] in sections. A section that is a single expander
+  /// shows that expander's contents, the section itself being the fold.
   List<Widget> _sectioned(List<Widget> groups) {
     var by = <String, List<Widget>>{};
     for (var g in groups) {
@@ -683,8 +673,7 @@ class ProceduralSettings extends StatelessWidget {
             ],
           ),
         CanvasControlGroup(label: "Colours", children: [
-          // All three at once, chosen to go together -- and the colours the
-          // app itself is wearing, for a background that matches it.
+          // All three colours at once, chosen to go together, or the app's own.
           patternPaletteDropdown(
             context,
             key: const ValueKey("backgroundPalette"),
@@ -692,9 +681,8 @@ class ProceduralSettings extends StatelessWidget {
             onChanged: _setNow,
           ),
           const CanvasLineBreak(),
-          // The base colour, and the colour it fades to if it fades: both in the
-          // picker, where a gradient is set. A layer's base is the background's,
-          // unless the layer is plain: a wash of colour, nothing but its base.
+          // The base colour and the one it fades to, both in the picker. A
+          // layer's base is the background's, unless it is plain: a wash.
           if (!layer || spec.style == ProceduralStyle.plain)
             CanvasColorButton(
               label: "Base",
@@ -738,9 +726,8 @@ class ProceduralSettings extends StatelessWidget {
             },
             onCommit: onCommit,
           ),
-          // Size and Variation: the pattern's own unit and how far it may differ
-          // from itself. Not for Rings, which says those in its own words (a width
-          // and three amounts of jitter).
+          // Size and Variation: the pattern's unit and how far it may differ
+          // from itself. Not for Rings, which has its own width and jitter.
           if (spec.style != ProceduralStyle.rings &&
               spec.style != ProceduralStyle.pitch)
             CanvasNumberField(
@@ -796,15 +783,12 @@ class ProceduralSettings extends StatelessWidget {
         ]),
         ..._ownGroups(),
         if (spec.style.usesGlyphs) _symbols(),
-        // The Metal texture's own settings, as Rings has its own: how coarse the
-        // brushing is or how far the rust has got has no name among the five.
+        // Metal's own settings: brushing and rust have no name among the five.
         if (spec.style == ProceduralStyle.metal) _metalGroup(),
-        // The Rings style's own settings: where each ring starts, where it ends
-        // and what happens on the way is no other style's question.
+        // Rings' own settings: where each ring starts and ends, and between.
         if (spec.style == ProceduralStyle.rings) ...[
-          // The sections after the first are behind headings, shut until wanted:
-          // seventeen number fields, each with its own state, focus node and
-          // controller, cost forty milliseconds on every build of this panel.
+          // Later sections stay shut until wanted: seventeen number fields,
+          // each with state, focus node and controller, cost 40 ms a build.
           CanvasControlGroup(label: "Rings", children: [
             CanvasNumberField(
               key: const ValueKey("ringCount"),
@@ -821,9 +805,9 @@ class ProceduralSettings extends StatelessWidget {
               label: "Width",
               decimals: 4,
               width: 66,
-              // A thousandth a pixel rather than the ten-thousandth the digits
-              // imply: across a fifth of the page, the last digit is two thousand
-              // pixels of drag. Shift still gives ten-thousandths.
+              // A thousandth a pixel, not the ten-thousandth the digits imply:
+              // across a fifth of the page the last digit is two thousand
+              // pixels of drag. Shift gives ten-thousandths.
               step: 0.001,
               value: rings.width,
               min: 0.0005,
@@ -867,10 +851,10 @@ class ProceduralSettings extends StatelessWidget {
                     label: "Where they run",
                     hideCaption: true,
                     children: [
-                      // The near end and the far end, captioned by which of them a ring
-                      // sets off from: shrinking runs the journey the other way, so the
-                      // near end is where a ring arrives. A field saying "starts at"
-                      // that is really where it stops builds sets that begin off the page.
+                      // Each end captioned by where a ring sets off:
+                      // shrinking runs backwards, so the near end is where
+                      // it arrives. Captioned the other way, sets get built
+                      // that begin off the page.
                       for (var near in [!rings.inward, rings.inward])
                         if (near)
                           CanvasNumberField(
@@ -1118,8 +1102,8 @@ class ProceduralSettings extends StatelessWidget {
                       ),
                     ]),
               ]),
-          // What the rings are carrying: its own heading, shut until wanted, with
-          // room under it so two headings do not read as one section.
+          // What the rings carry: its own heading, shut until wanted, with room
+          // under it so two headings do not read as one section.
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: CanvasExpander(
@@ -1127,9 +1111,8 @@ class ProceduralSettings extends StatelessWidget {
               remember: "rings.icons",
               trailing: rings.icons.isEmpty ? null : "${rings.icons.length}",
               children: [
-                // Two and no more: one in the middle of the rings, and one set
-                // spaced around a ring. Several pictures means several in the
-                // one set going round, not several sets.
+                // Two and no more: one in the middle, one set round a ring.
+                // More pictures join that set; they make no more sets.
                 for (var place in RingIconPlace.values) ...[
                   if (place != RingIconPlace.values.first)
                     const CanvasSeparator(),
@@ -1169,9 +1152,9 @@ class ProceduralSettings extends StatelessWidget {
               value: spec.animated,
               onChanged: (v) => _setNow(spec.copyWith(animated: v)),
             ),
-            // How many runs, and how long a rest between them. Nought times is
-            // for ever, so there is no separate Loop switch. Either setting makes
-            // the movement counted, so Frames takes over from Speed.
+            // How many runs, and the rest between them. Nought times is for
+            // ever, so there is no Loop switch. Either makes the movement
+            // counted, so Frames replaces Speed.
             if (spec.animated) ...[
               CanvasNumberField(
                 key: const ValueKey("loopTimes"),
@@ -1269,8 +1252,8 @@ class ProceduralSettings extends StatelessWidget {
                 },
                 onCommit: onCommit,
               ),
-              // The run made to fit what it is under: a movement that finishes after
-              // the last frame is never seen to end.
+              // Fit the run to what it is under: a movement ending after the
+              // last frame is never seen to end.
               if (canvasFrames != null)
                 CanvasIconButton(
                   key: const ValueKey("passFramesFit"),
@@ -1287,13 +1270,11 @@ class ProceduralSettings extends StatelessWidget {
                   "runs there are -- nought is for ever -- and Gap is how "
                   "many frames of stillness sit between one and the next."),
             ],
-            // A rest in the middle: which frame it stops on, how long it stays
-            // stopped, and how long it eases into and out of the stop. The
-            // pattern's clock is held while the document's goes on, so it picks
-            // up exactly where it left off.
+            // A rest: the frame it stops on, how long it stays, and how long it
+            // eases in and out. The pattern's clock is held while the
+            // document's runs, so it picks up where it left off.
             if (spec.animated) ...[
-              // On a line of their own: where it rests is a separate question
-              // from whether it moves, how fast and how long.
+              // On a line of their own: where it rests is a separate question.
               const CanvasLineBreak(),
               CanvasNumberField(
                 key: const ValueKey("pauseAt"),
@@ -1337,8 +1318,8 @@ class ProceduralSettings extends StatelessWidget {
                 ),
             ],
           ]),
-        // The light, which every style has: behind a heading and shut until
-        // wanted, since most backgrounds are not lit.
+        // The light, which every style has: shut until wanted, as most
+        // backgrounds are unlit.
         if (!layer)
           CanvasExpander(
             label: "Lights",
@@ -1406,8 +1387,8 @@ class ProceduralSettings extends StatelessWidget {
                     onCommit: onCommit,
                   ),
                   const CanvasLineBreak(),
-                  // As a fraction of the frame, not pixels, so a light set on the
-                  // stage is in the same place in a bigger export.
+                  // A fraction of the frame, not pixels, so a light stays put
+                  // in a bigger export.
                   CanvasNumberField(
                     key: const ValueKey("lightX"),
                     label: "X",
@@ -1711,7 +1692,6 @@ class ProceduralSettings extends StatelessWidget {
 
   EffectsSpec get fx => spec.effects;
 
-  /// _fxField is one of the effects' numbers.
   Widget _fxField(String id, String label, double value, double min, double max,
           EffectsSpec Function(double) put,
           {int decimals = 2, String suffix = ""}) =>
@@ -1731,9 +1711,8 @@ class ProceduralSettings extends StatelessWidget {
         onCommit: onCommit,
       );
 
-  /// _effects is what is done to the pattern once it is drawn: behind a
-  /// heading, like the light, every one off until wanted, with room under it
-  /// as the rings' Icons have.
+  /// _effects is what is done to the pattern once drawn: behind a heading like
+  /// the light, each off until wanted.
   Widget _effects() => Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: CanvasExpander(
@@ -1791,8 +1770,8 @@ class ProceduralSettings extends StatelessWidget {
                     (v) => fx.copyWith(scanlineSize: v),
                     decimals: 1),
             ]),
-            // Where the eye goes, and where the pattern keeps out of the way of
-            // what is put on top of it.
+            // Where the eye goes, and where the pattern keeps clear of what is
+            // on top.
             CanvasControlGroup(label: "Focus", children: [
               _fxField("focus", "Fade out", fx.focus, 0, 1,
                   (v) => fx.copyWith(focus: v)),
@@ -1998,8 +1977,7 @@ class _LayeredState extends State<_Layered> {
     var list = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Top first, as a stack is seen from above: the background at the
-        // bottom, since everything else is laid on it.
+        // Top first, as a stack is seen from above: the background last.
         for (var i = layers.length; i >= 0; i--) row(i),
         const SizedBox(height: 4),
         Align(
@@ -2122,10 +2100,9 @@ class _LayeredState extends State<_Layered> {
   }
 }
 
-/// patternStyleDropdown chooses a generated pattern's style, shown rather
-/// than named, under the kind of thing each one is. Choosing one starts from
-/// its first look: a style in the last style's colours and numbers is rarely
-/// a good picture of it.
+/// patternStyleDropdown chooses a pattern's style, shown rather than named,
+/// under the kind each one is. Choosing one starts from its first look: a style
+/// in the last one's colours and numbers is rarely a good picture of it.
 Widget patternStyleDropdown({
   Key? key,
   required ProceduralSpec spec,
@@ -2186,8 +2163,7 @@ Widget patternLookDropdown({
   );
 }
 
-/// patternPaletteDropdown recolours a pattern with one of the palettes, or
-/// the colours the app is wearing.
+/// patternPaletteDropdown recolours a pattern with a palette or the app's own.
 Widget patternPaletteDropdown(
   BuildContext context, {
   Key? key,

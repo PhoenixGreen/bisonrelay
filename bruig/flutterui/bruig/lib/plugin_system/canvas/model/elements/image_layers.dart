@@ -19,24 +19,21 @@ export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
     show LayerBlend;
 
 // image_layers.dart is the layers an Image element is composited from, and
-// the arithmetic of where each one sits.
-//
-// The element's own fields are the base layer, which fills the frame, so a
-// picture with no layers is a stack of one. Other layers (pictures placed and
-// turned in the frame, fills, adjustments, textures, paint) each have their
-// own blend, opacity and clipping.
+// where each one sits. The element's own fields are the base layer, which
+// fills the frame, so a picture with no layers is a stack of one. Other
+// layers (placed pictures, fills, adjustments, textures, paint) each have
+// their own blend, opacity and clipping.
 
 /// layerUnits is how many units a picture layer's place is measured in,
-/// across and down the frame. Fractions of the frame, so the composite scales
-/// with the element; a thousand rather than one because the place is kept in
-/// an ImageElement's own box, and code working on that box (cropping's
-/// eight-unit minimum) expects numbers of about that size.
+/// across and down the frame: fractions of the frame, so the composite
+/// scales with the element; a thousand rather than one, since code working
+/// on an ImageElement's box (cropping's eight-unit minimum) expects numbers
+/// about that size.
 const double layerUnits = 1000;
 
 /// baseLayerId is the id the base layer always has. There is only ever one.
 const String baseLayerId = "base";
 
-/// LayerKind is what a layer draws.
 enum LayerKind {
   /// base is the element's own picture, filling the frame.
   base("Picture"),
@@ -50,8 +47,7 @@ enum LayerKind {
   /// adjustment changes the layers under it. See image_adjustment.dart.
   adjustment("Adjustment"),
 
-  /// texture draws grain, paper and the like over the frame. See
-  /// image_effects.dart.
+  /// texture draws grain, paper and the like (image_effects.dart).
   texture("Texture"),
 
   /// paint is brushwork laid over the layers under it. See image_strokes.dart.
@@ -64,7 +60,6 @@ enum LayerKind {
       values.firstWhere((k) => k.name == name, orElse: () => LayerKind.picture);
 }
 
-/// ImageLayer is one layer of a composited picture.
 class ImageLayer {
   final String id;
   final LayerKind kind;
@@ -78,34 +73,30 @@ class ImageLayer {
   /// canvas; it is still drawn and set from the panel.
   final bool locked;
 
-  /// loop is the layer's own loop, on top of the whole picture's. A drift
+  /// loop is the layer's own loop, on top of the whole picture's; a drift
   /// here moves the layer's box, not the picture inside it.
   final ElementLoop loop;
   final double opacity;
   final LayerBlend blend;
 
-  /// clip draws the layer only where the layer below it has something. A
-  /// run of clipped layers all clip to the first unclipped layer under them.
+  /// clip draws the layer only where the layer below has something; a run of
+  /// clipped layers all clip to the first unclipped layer under them.
   final bool clip;
 
-  /// look is a picture layer's picture and place, null for other kinds. Its
-  /// box is where it sits in the frame in [layerUnits], and its rotation its
-  /// turn within the frame. An ImageElement, so a layer has every setting
-  /// the base picture has, with the same panel and painter.
+  /// look is a picture layer's picture and place, null for other kinds: its
+  /// box is where it sits in [layerUnits], its rotation its turn in the
+  /// frame. An ImageElement, so a layer has every setting the base has, with
+  /// the same panel and painter.
   final ImageElement? look;
 
-  /// flipX and flipY mirror a picture (a layer's or the base) within its
-  /// place.
+  /// flipX and flipY mirror a picture (a layer's or the base) in place.
   final bool flipX;
   final bool flipY;
 
-  /// fill is what a fill layer paints the frame with.
   final PaintSpec fill;
 
-  /// adjust is what an adjustment layer does.
   final ImageAdjustment adjust;
 
-  /// texture is what a texture layer draws.
   final TextureSpec texture;
 
   /// effects are done to the layer as it is drawn.
@@ -116,29 +107,25 @@ class ImageLayer {
 
   /// cue is when the layer comes in, relative to the one under it, while the
   /// picture arrives: with it, after it, or after [cueGap] frames (negative
-  /// overlaps). [cueLength] is its frames, or null for the whole arrival. See
-  /// layerTimes.
+  /// overlaps). [cueLength] is its frames, or null for the whole arrival.
   final VectorCue cue;
   final int cueGap;
   final int? cueLength;
 
-  /// basePlace is where the base picture sits in the frame, in [layerUnits],
-  /// once moved or sized on its own or kept in place as the frame resized.
-  /// Null fills the frame.
+  /// basePlace is where the base picture sits, in [layerUnits], once moved
+  /// or kept in place on a resize; null fills the frame.
   final Rect? basePlace;
 
   /// mask is where over the frame a [framed] layer shows, its marks in
   /// fractions of the frame. A picture layer's mask is its look's.
   final ImageMask mask;
 
-  /// retouchesUnder is whether this is a paint layer carrying retouching
-  /// strokes, done to everything under it in the frame rather than to one
-  /// picture. See paintRetouchUnder.
+  /// retouchesUnder is whether this paint layer retouches everything under
+  /// it in the frame, not one picture. See paintRetouchUnder.
   bool get retouchesUnder =>
       kind == LayerKind.paint && strokes.any((s) => s.kind.retouches);
 
-  /// framed is whether this layer is masked over the frame rather than over
-  /// a picture of its own.
+  /// framed is whether this layer's mask is over the frame, not a picture.
   bool get framed =>
       kind == LayerKind.adjustment ||
       kind == LayerKind.texture ||
@@ -170,14 +157,12 @@ class ImageLayer {
     this.basePlace,
   });
 
-  /// base is the untouched base layer.
   static const ImageLayer base =
       ImageLayer(id: baseLayerId, kind: LayerKind.base);
 
   bool get isBase => kind == LayerKind.base;
 
-  /// plain is whether this is the base layer with nothing done to it: the
-  /// same as no layers at all.
+  /// plain is whether this is an untouched base layer: as good as none.
   bool get plain =>
       isBase &&
       basePlace == null &&
@@ -195,7 +180,6 @@ class ImageLayer {
       !flipY &&
       effects.isEmpty;
 
-  /// picture is a new picture layer showing [assetId] at [place].
   factory ImageLayer.picture(String assetId, Rect place) => ImageLayer(
         id: newElementId(),
         kind: LayerKind.picture,
@@ -212,25 +196,21 @@ class ImageLayer {
             fit: ImageFit.stretch),
       );
 
-  /// adjusting is a new adjustment layer of [kind].
   factory ImageLayer.adjusting(AdjustKind kind) => ImageLayer(
       id: newElementId(),
       kind: LayerKind.adjustment,
       adjust: ImageAdjustment(kind: kind));
 
-  /// texturing is a new texture layer of [kind], blended as that texture
-  /// usually is.
+  /// texturing is a new texture layer of [kind], in its usual blend.
   factory ImageLayer.texturing(TextureKind kind) => ImageLayer(
       id: newElementId(),
       kind: LayerKind.texture,
       blend: LayerBlend.fromName(kind.blend),
       texture: TextureSpec(kind: kind));
 
-  /// painting is a new, empty paint layer.
   factory ImageLayer.painting() =>
       ImageLayer(id: newElementId(), kind: LayerKind.paint);
 
-  /// solid is a new fill layer.
   factory ImageLayer.solid(PaintSpec fill) =>
       ImageLayer(id: newElementId(), kind: LayerKind.fill, fill: fill);
 
@@ -386,7 +366,7 @@ class ImageLayer {
 }
 
 /// layerRect is where [place], in layer units, is in a frame drawn at
-/// [inner], before any turn.
+/// [inner], before any turn; layerPlace is the reverse.
 Rect layerRect(Rect inner, Rect place) => Rect.fromLTWH(
       inner.left + place.left / layerUnits * inner.width,
       inner.top + place.top / layerUnits * inner.height,
@@ -394,8 +374,6 @@ Rect layerRect(Rect inner, Rect place) => Rect.fromLTWH(
       place.height / layerUnits * inner.height,
     );
 
-/// layerPlace is the other way: where [rect], drawn in a frame at [inner],
-/// is in layer units.
 Rect layerPlace(Rect inner, Rect rect) {
   var w = inner.width == 0 ? 1 : inner.width;
   var h = inner.height == 0 ? 1 : inner.height;
@@ -407,9 +385,8 @@ Rect layerPlace(Rect inner, Rect rect) {
   );
 }
 
-/// placeFor is where a picture of [picture]'s proportions goes when added
-/// to a frame drawn at [inner]: fitted in the middle two thirds, so it
-/// arrives whole without covering what is there.
+/// placeFor is where a [picture]-shaped picture added to a frame at
+/// [inner] goes: the middle two thirds, whole, covering little.
 Rect placeFor(Rect inner, Size picture) {
   var room = Size(inner.width * 2 / 3, inner.height * 2 / 3);
   var aspect = picture.height <= 0 ? 1.0 : picture.width / picture.height;
@@ -447,24 +424,20 @@ class LayerSpace {
     return about + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
   }
 
-  /// toFrame is a canvas point in the element's own unturned space, where
-  /// [inner] and [rect] are.
+  /// toFrame and fromFrame map canvas points to and from the element's
+  /// unturned space ([inner], [rect]); toLayer and fromLayer the layer's.
   Offset toFrame(Offset canvasPoint) =>
       _elementCentre + _elementFrame.invert(canvasPoint - _elementCentre);
 
-  /// fromFrame is a point of the element's unturned space on the canvas.
   Offset fromFrame(Offset p) =>
       _elementCentre + _elementFrame.apply(p - _elementCentre);
 
-  /// toLayer is a canvas point in the layer's own unturned space.
   Offset toLayer(Offset canvasPoint) =>
       _turned(toFrame(canvasPoint), rect.center, -_layerTurn);
 
-  /// fromLayer is a point of the layer's unturned space on the canvas.
   Offset fromLayer(Offset p) => fromFrame(_turned(p, rect.center, _layerTurn));
 
-  /// corners are the layer's four corners on the canvas, top-left first and
-  /// on round.
+  /// corners are its four corners on the canvas, clockwise from top-left.
   List<Offset> get corners => [
         rect.topLeft,
         rect.topRight,
@@ -476,9 +449,8 @@ class LayerSpace {
 
   /// resized is the layer's frame rectangle with [handle] (see boxHandles)
   /// dragged to [canvasPoint], the opposite side staying put on the canvas
-  /// although the layer is turned. The box is resized in the layer's own
-  /// space, which turns about the old middle; the new middle is carried to
-  /// where the old turn puts it, since the new box turns about its own.
+  /// though the layer is turned: resized in the layer's space, then its new
+  /// middle carried to where the old turn puts it.
   Rect resized(
       Offset canvasPoint, int handle, Rect Function(Rect, int, Offset) resize) {
     var local = toLayer(canvasPoint);
@@ -488,17 +460,15 @@ class LayerSpace {
         center: centre, width: next.width, height: next.height);
   }
 
-  /// turnTo is the layer's turn, in degrees, that points its top at
-  /// [canvasPoint].
+  /// turnTo is the turn, in degrees, pointing its top at [canvasPoint].
   double turnTo(Offset canvasPoint) {
     var p = toFrame(canvasPoint) - rect.center;
     return (math.atan2(p.dy, p.dx) + math.pi / 2) * 180 / math.pi;
   }
 }
 
-/// layerAt is the topmost shown picture layer of [e] under [canvasPoint], or
-/// the base layer where there is none. Layers [locked] says are not to be
-/// picked (default: [ImageLayer.locked]) are pressed through.
+/// layerAt is [e]'s topmost shown picture layer under [canvasPoint], or
+/// the base; layers [locked] marks are pressed through.
 ImageLayer layerAt(ImageElement e, Offset canvasPoint,
     {bool Function(ImageLayer)? locked}) {
   for (var layer in e.stack.reversed) {
@@ -523,8 +493,7 @@ String layerName(ImageLayer layer, int index) {
 }
 
 /// withPictureProportions is a picture layer's look with its place given
-/// [picture]'s proportions in a frame at [inner], keeping its width and
-/// middle.
+/// [picture]'s proportions in a frame at [inner], keeping width and middle.
 ImageElement withPictureProportions(
     ImageElement look, Rect inner, Size picture) {
   if (picture.width <= 0 || picture.height <= 0) return look;
@@ -540,11 +509,10 @@ ImageElement withPictureProportions(
       height: place.height) as ImageElement;
 }
 
-// ---- arriving a layer at a time --------------------------------------------
+// Arriving a layer at a time
 
-/// layerNaturalTimes is each layer's (start, length) in its own frames,
-/// before fitting to the arrival: start counted from the bottom layer's as
-/// each cue says, length its own or [span].
+/// layerNaturalTimes is each layer's (start, length) in its own frames
+/// before fitting: starts by cue from the bottom's, lengths or [span].
 List<(double, double)> layerNaturalTimes(List<ImageLayer> stack, int span) {
   var natural = <(double, double)>[];
   for (var (i, l) in stack.indexed) {
@@ -587,8 +555,8 @@ List<(double, double)> layerTimes(List<ImageLayer> stack, int span) {
     ownSpan(e, MotionKind.arrive, rate);
 
 /// withLayerTimingBaked is [e] with its layers' timing written out in
-/// timeline frames as it plays now (lengths set, gaps scaled by the
-/// arrival's stretch), so an edit to one layer is in frames that can be seen.
+/// timeline frames as it plays (lengths set, gaps scaled by the arrival's
+/// stretch), so an edit to one layer is in frames that can be seen.
 ImageElement withLayerTimingBaked(ImageElement e, int rate) {
   var span = imageArrivalSpan(e, rate)?.$2;
   if (span == null) return e;
@@ -603,8 +571,7 @@ ImageElement withLayerTimingBaked(ImageElement e, int rate) {
   ]);
 }
 
-/// withLayerSpanFitted is [e] with its arrival stretched or shortened so it
-/// covers every layer's coming in, exactly.
+/// withLayerSpanFitted is [e] with its arrival covering every layer's.
 ImageElement withLayerSpanFitted(ImageElement e, int rate) {
   var arrival = imageArrivalSpan(e, rate);
   if (arrival == null) return e;
@@ -616,8 +583,7 @@ ImageElement withLayerSpanFitted(ImageElement e, int rate) {
 }
 
 /// withLayerStartAt is [e] with layer [index] (not the first) cued to start
-/// [start] of the layers' own frames into the arrival, never before the
-/// layer under it.
+/// [start] layer frames into the arrival, never before the layer under it.
 ImageElement withLayerStartAt(ImageElement e, int index, int start, int span) {
   var stack = e.stack;
   if (index <= 0 || index >= stack.length) return e;
@@ -635,7 +601,6 @@ ImageElement withLayerStartAt(ImageElement e, int index, int start, int span) {
       id, (l) => l.copyWith(cue: VectorCue.gap, cueGap: start - end));
 }
 
-/// withLayerLength is [e] with layer [index] taking [length] frames.
 ImageElement withLayerLength(ImageElement e, int index, int length) {
   var stack = e.stack;
   if (index < 0 || index >= stack.length) return e;
@@ -643,8 +608,7 @@ ImageElement withLayerLength(ImageElement e, int index, int length) {
       stack[index].id, (l) => l.copyWith(cueLength: math.max(1, length)));
 }
 
-/// layersSequenced is whether [stack] comes in a layer at a time rather
-/// than as one picture.
+/// layersSequenced is whether [stack] comes in a layer at a time.
 bool layersSequenced(List<ImageLayer> stack) =>
     stack.skip(1).any((l) => l.cue != VectorCue.together) ||
     stack.any((l) => l.cueLength != null);
@@ -662,21 +626,18 @@ ImageElement withLayersStaggered(ImageElement e, int span) {
   ]);
 }
 
-/// withLayersTogether is [e] with every layer coming in at once again.
 ImageElement withLayersTogether(ImageElement e) => e.withLayers([
       for (var l in e.stack)
         l.copyWith(cue: VectorCue.together, cueGap: 0, clearCueLength: true)
     ]);
 
-// ---- looks -----------------------------------------------------------------
+// Looks
 
-/// lookKinds are the layer kinds a look is made of: what is done to a
-/// picture, never a picture.
+/// lookKinds are a look's layer kinds: what is done to a picture.
 const lookKinds = {LayerKind.adjustment, LayerKind.texture, LayerKind.fill};
 
-/// lookData is [e]'s look, to be put on other pictures: its [lookKinds]
-/// layers, each marked under or over the base, and the base layer's blend,
-/// opacity and effects.
+/// lookData is [e]'s look for other pictures: its [lookKinds] layers,
+/// each under or over the base, and the base's blend, opacity, effects.
 Map<String, dynamic> lookData(ImageElement e) {
   var stack = e.stack;
   var baseAt = stack.indexWhere((l) => l.isBase);
@@ -695,8 +656,8 @@ Map<String, dynamic> lookData(ImageElement e) {
   };
 }
 
-/// withLookApplied is [e] wearing the look [data] (see lookData) in place of
-/// its own: pictures and paint kept, [lookKinds] layers swapped.
+/// withLookApplied is [e] wearing the look [data] (see lookData) in place
+/// of its own: pictures and paint kept, [lookKinds] layers swapped.
 ImageElement withLookApplied(ImageElement e, Map<String, dynamic> data) {
   var kept = [
     for (var l in e.stack)
@@ -752,8 +713,8 @@ ImageLayer _maskInPlace(
 
 /// contentRectOf is the box round everything drawn in [e]'s layers, in a
 /// frame at [inner]: the base picture, picture layers (turned) and paint
-/// strokes to their brush's reach. Not whole-frame layers, and not effects.
-/// Null for nothing.
+/// strokes to their brush's reach; not whole-frame layers or effects. Null
+/// for nothing.
 Rect? contentRectOf(ImageElement e, Rect inner) {
   Rect? all;
   void add(Rect r) => all = all == null ? r : all!.expandToInclude(r);
@@ -813,7 +774,7 @@ Rect? contentRectOf(ImageElement e, Rect inner) {
 
 /// keptInPlace is [now] ([was] with its frame moved or resized) with every
 /// placed layer and paint stroke kept where it was on the page. A pure move
-/// carries the layers with the frame; an unlayered picture fills its frame.
+/// carries the layers; an unlayered picture fills its frame.
 ImageElement keptInPlace(ImageElement was, ImageElement now) {
   if (!now.layered) return now;
   var a = was.box.inner(was.bounds), b = now.box.inner(now.bounds);

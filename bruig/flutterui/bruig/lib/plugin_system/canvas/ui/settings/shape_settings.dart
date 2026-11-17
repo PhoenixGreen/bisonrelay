@@ -13,12 +13,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// shape_settings.dart is a shape's settings: the Text panel's shape (see
-// element_panel.dart) -- a quick strip of its shape, fill and outline, then
-// Content (which shape, its points and corners, its label, a bubble's tail)
-// and Look (what it is painted with, its outline, its looks).
+// shape_settings.dart is a shape's panel (see element_panel.dart): quick
+// strip, Content (shape, points, corners, label, tail) and Look.
 
-/// shapePanel is [e]'s panel.
 Widget shapePanel(
     BuildContext context,
     CanvasController controller,
@@ -102,8 +99,8 @@ List<PanelBit> shapeBits(
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit) {
-  // Read while building: a tile's picture is drawn while painting, and the
-  // theme cannot be asked for then.
+  // Read while building: a tile's picture is drawn while painting, when the
+  // theme cannot be asked.
   var ink = ThemeNotifier.of(context).colors.onSurfaceVariant;
   var painted = switch (e.painted.kind) {
     TextFillKind.color => "colour",
@@ -117,7 +114,7 @@ List<PanelBit> shapeBits(
           if (e.shape.hasCorners && e.corners.all > 0) "rounded",
         ].join(" · "),
         children: [
-          // Shown rather than named: each shape is a tile drawn as itself.
+          // Shown, not named: each shape is a tile drawn as itself.
           CanvasTiles<ShapeKind>(
             key: const ValueKey("shapeKind"),
             label: "Which shape",
@@ -411,8 +408,7 @@ List<PanelBit> shapeBits(
               ],
             ),
           ]),
-    // How it comes in, loops and goes: the Chain's Motion view (Ken,
-    // 2026-11-08), not a section here.
+    // How it comes in, loops and goes is the Chain's Motion view.
   ];
 }
 

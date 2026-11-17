@@ -4,14 +4,12 @@ import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// data_sheet_find.dart is the Data Studio's way through many sheets (Ken,
-// 2026-11-17, the improvements report's last item): the Charts canvas, a
-// sheet a scene, had 46 in one strip of tabs. A list that drops down from
-// "Sheets", searched as typed, each sheet with what shows it and where;
-// and the order the tabs take, this page's sheets first.
+// data_sheet_find.dart is the Data Studio's way through many sheets, too
+// many for one strip of tabs: a list dropping down from "Sheets", searched
+// as typed, each sheet with what shows it and where; and the order the
+// tabs take, this page's sheets first.
 
-/// SheetUse is what shows a sheet: how many tables and charts, and in which
-/// scenes (counted from 1).
+/// SheetUse is what shows a sheet: tables and charts, and their scenes.
 typedef SheetUse = ({int views, List<int> scenes});
 
 /// sheetUses is each of [doc]'s sheets' use, by id.
@@ -36,9 +34,8 @@ Map<String, SheetUse> sheetUses(CanvasDocument doc) {
   };
 }
 
-/// sheetsInOrder is [doc]'s sheets as the tabs show them: those this page
-/// shows first, then the rest, each lot in the canvas's order; and how many
-/// are this page's.
+/// sheetsInOrder is [doc]'s sheets as tabbed, this page's first, and how
+/// many are this page's.
 (List<DataSheet>, int) sheetsInOrder(CanvasDocument doc) {
   var here = {
     for (var e in doc.elements)
@@ -110,8 +107,8 @@ class _SheetFinderState extends State<SheetFinder> {
       menuChildren: [
         StatefulBuilder(builder: (context, setMenu) {
           var q = _search.text.trim().toLowerCase();
-          // This page's first; the rest by their folders, those in none
-          // first; a search matches a name or a folder.
+          // This page's first; the rest by their folders, those in none first;
+          // a search matches a name or a folder.
           var rest = ordered.skip(here).toList()
             ..sort((a, b) => a.folder.compareTo(b.folder));
           var listed = [...ordered.take(here), ...rest];

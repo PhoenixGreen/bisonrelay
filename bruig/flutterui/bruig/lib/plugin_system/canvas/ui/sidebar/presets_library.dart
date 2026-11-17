@@ -20,11 +20,9 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // presets_library.dart is the Presets panel: every kind of preset in one
-// list, narrowed by the chips along its top and a search -- canvases to
-// start from, scenes and elements to add, the pitch's saved views, the
-// document's text styles, the pictures' looks and the brushes. Those last
-// four are for what is picked: a text takes a style, a picture a look; with
-// nothing of the kind picked, using one says what to pick.
+// list, narrowed by chips and a search: canvases, scenes, elements, pitch
+// views, text styles, pictures' looks and brushes. The last four are for
+// what is picked; with nothing such picked, using one says what to pick.
 
 /// PresetFilter is one of the chips along the top.
 enum PresetFilter {
@@ -45,11 +43,10 @@ enum PresetFilter {
 /// footballCanvases are the built-in canvases the Football chip shows.
 const footballCanvases = {"football"};
 
-/// CanvasPresetsLibrary is the Presets panel: see the top of the file.
 class CanvasPresetsLibrary extends StatefulWidget {
   final CanvasController controller;
 
-  /// onChoose starts a new document from a canvas preset. What to do about
+  /// onChoose starts a new document from a canvas preset; what to do about
   /// unsaved work is the screen's decision.
   final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
 
@@ -61,7 +58,7 @@ class CanvasPresetsLibrary extends StatefulWidget {
 }
 
 class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
-  /// _filter is the chip pressed, kept for the session.
+  /// _kept is the chip pressed, kept for the session.
   static PresetFilter _kept = PresetFilter.all;
   PresetFilter _filter = _kept;
   final TextEditingController _search = TextEditingController();
@@ -176,8 +173,7 @@ class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
 void _needs(BuildContext context, String what) =>
     SnackBarModel.of(context).error(what);
 
-/// _StoreList is a saved-preset store's presets as rows, kept up as it
-/// changes.
+/// _StoreList is a saved-preset store's presets as rows, kept up as it changes.
 class _StoreList extends StatefulWidget {
   final SavedPresetStore store;
   final String query;
@@ -236,8 +232,7 @@ class _StoreListState extends State<_StoreList> {
       );
 }
 
-/// _PitchViews are the pitch's saved views: used, the pitch behind the
-/// canvas is seen through it.
+/// _PitchViews are the pitch's saved views: used, the canvas is seen so.
 class _PitchViews extends StatelessWidget {
   final CanvasController controller;
   final String query;
@@ -264,8 +259,7 @@ class _PitchViews extends StatelessWidget {
       );
 }
 
-/// _TextStyles are the document's own text styles: used, the text picked is
-/// set in it.
+/// _TextStyles are the document's own text styles: used, the text takes it.
 class _TextStyles extends StatelessWidget {
   final CanvasController controller;
   final String query;
@@ -307,8 +301,7 @@ class _TextStyles extends StatelessWidget {
       );
 }
 
-/// _Looks are the pictures' saved looks: used, the picture being worked on
-/// wears it.
+/// _Looks are the pictures' saved looks: used, the picture wears it.
 class _Looks extends StatelessWidget {
   final CanvasController controller;
   final String query;
@@ -331,9 +324,8 @@ class _Looks extends StatelessWidget {
       );
 }
 
-/// _SoundPresets are the sound devices and chains kept with a device's or
-/// the Chain's "Save as a preset": used, they go on the end of the chain
-/// the Chain shows.
+/// _SoundPresets are the sound devices and chains kept with "Save as a
+/// preset": used, they go on the end of the chain the Chain shows.
 class _SoundPresets extends StatelessWidget {
   final CanvasController controller;
   final String query;
@@ -361,8 +353,7 @@ class _SoundPresets extends StatelessWidget {
       );
 }
 
-/// _Brushes are the drawing brushes and the paint brushes, the ones that
-/// come with the canvas and the saved ones: used, it is the brush in hand.
+/// _Brushes are the drawing and paint brushes: used, it is in hand.
 class _Brushes extends StatefulWidget {
   final CanvasController controller;
   final String query;

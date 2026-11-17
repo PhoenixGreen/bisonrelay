@@ -1,21 +1,19 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 
-// table_sort.dart puts a table's rows in order: a column to sort on, more to
-// break ties, and a first column of positions that stays put (a league table
-// needs all three).
+// table_sort.dart puts a table's rows in order: a sort column, more to break
+// ties, and a first column of positions that stays put.
 //
-// The sort is applied, rewriting the rows once (one undo step), rather than a
-// view the painter reads through: rows that reordered while a cell was typed
-// into would be unusable, and cell colour rules are written against row
-// numbers. The spec is kept so a refreshed table can be put back in order.
+// The sort rewrites the rows once (one undo step) rather than being a view:
+// rows that reorder while a cell is typed into are unusable, and cell colour
+// rules name row numbers. The spec is kept to re-sort a refreshed table.
 
 /// TableSortLevel is one column to order by, and which way.
 class TableSortLevel {
   /// column is an index into the row, or -1 for "not set".
   final int column;
 
-  /// descending is highest first, the default (what a league table wants).
+  /// descending is highest first, the default.
   final bool descending;
 
   const TableSortLevel({this.column = -1, this.descending = true});
@@ -35,11 +33,9 @@ class TableSortLevel {
       );
 }
 
-/// TableSort is the whole order: up to three columns, and what to do about the
-/// first one.
+/// TableSort is the whole order: up to three columns, and the first column.
 class TableSort {
-  /// levels are tried in turn, so the second only decides the rows the first
-  /// left equal. The settings offer three (points, goal difference, goals).
+  /// levels are tried in turn: each decides only the rows the last left equal.
   final List<TableSortLevel> levels;
 
   /// pinFirstColumn keeps the first column's values where they are while the
@@ -50,8 +46,7 @@ class TableSort {
 
   bool get on => levels.any((l) => l.on);
 
-  /// at is the level at [index], padded out so the settings panel can always
-  /// show three.
+  /// at is the level at [index], padded so the panel can always show three.
   TableSortLevel at(int index) =>
       index < levels.length ? levels[index] : const TableSortLevel();
 
@@ -85,11 +80,9 @@ class TableSort {
       );
 }
 
-/// sortTableRows is [rows] in the order [sort] asks for, with the header row
-/// (when [headerRow]) left on top.
-///
-/// A row too short to have the sorted column counts as empty there, which
-/// sorts below the numbers when descending.
+/// sortTableRows is [rows] in [sort]'s order, the header row (when
+/// [headerRow]) left on top. A row too short for the sorted column counts as
+/// empty there, which sorts below the numbers when descending.
 List<List<String>> sortTableRows(
   List<List<String>> rows,
   TableSort sort, {
@@ -107,8 +100,7 @@ List<List<String>> sortTableRows(
   ];
   if (body.length < 2) return rows;
 
-  // The first column's values before anything moved, so they can be put back
-  // down the table in the same order afterwards.
+  // The first column's values before anything moved, to put back in order.
   var pinned = sort.pinFirstColumn
       ? [for (var r in body) r.isEmpty ? "" : r.first]
       : const <String>[];
@@ -132,14 +124,13 @@ List<List<String>> sortTableRows(
 String _at(List<String> row, int column) =>
     column >= 0 && column < row.length ? row[column] : "";
 
-/// _compare orders two cells, as numbers when they both are (so "9" comes
-/// before "10"), else as case-blind text.
+/// _compare orders two cells as numbers when both are ("9" before "10"),
+/// else as case-blind text.
 int _compare(String a, String b) {
   var x = cellNumber(a);
   var y = cellNumber(b);
   if (x != null && y != null) return x.compareTo(y);
-  // A cell with a number in it beats one without, so blanks and dashes end up
-  // together at one end instead of scattered through the table.
+  // A number beats no number, so blanks and dashes gather at one end.
   if (x != null) return 1;
   if (y != null) return -1;
   return a.toLowerCase().compareTo(b.toLowerCase());

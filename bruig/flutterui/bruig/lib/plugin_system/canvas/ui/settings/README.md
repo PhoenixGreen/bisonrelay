@@ -2,9 +2,8 @@
 
 Every element's settings are built from the same small set of controls in
 `controls.dart`, and they are meant to read as one panel rather than as nine
-panels by different hands. This is what that means in practice. An element
-added later should follow it rather than be retrofitted, which is what the
-chart had to be.
+panels by different hands. This is what that means in practice. A new
+element follows it from the start.
 
 ## The shape of a group
 
@@ -136,7 +135,7 @@ Do not re-implement any of this per element:
   button, and rename and remove for a design of the reader's own.
 - **Type and box** — `typeGroups` and `boxGroup` wherever words are drawn.
 - **Animation** — none here: how an element arrives, loops and leaves is the
-  Chain's Motion view (Ken, 2026-11-08); its timing is the Chain's Timing card.
+  Chain's Motion view; its timing is the Chain's Timing card.
 - **Keyframe easing** — `keyframeEasingGroup`.
 
 ## Testing a layout

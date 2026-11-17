@@ -18,11 +18,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-// assets_panel.dart is the Assets sidebar: the library's pictures, videos and
-// sounds, one panel each in a panel stack. An asset is clicked to put it in the
-// middle of the canvas, or dragged to where it is let go (onto a timeline
-// channel, for a sound); its name is double-clicked to rename it. Assets leave
-// the library only from here: see CanvasLibrary.
+// assets_panel.dart is the Assets sidebar: the library's pictures, videos
+// and sounds, one panel each in a panel stack. An asset is clicked to put it
+// in the middle of the canvas, or dragged to where it is let go (a timeline
+// channel, for a sound); its name is double-clicked to rename it. Assets
+// leave the library only from here: see CanvasLibrary.
 
 class CanvasAssetsPanel extends StatefulWidget {
   final CanvasController controller;
@@ -93,8 +93,7 @@ IconData assetKindIcon(AssetKind kind) => switch (kind) {
 /// AssetView is how a section shows its assets.
 enum AssetView { icons, list }
 
-/// AssetSection is one of the three: an Add button, the view switch, and what
-/// is in the library.
+/// AssetSection is one of the three: Add, the view switch, and the assets.
 class AssetSection extends StatefulWidget {
   final CanvasController controller;
   final AssetKind kind;
@@ -110,7 +109,7 @@ class _AssetSectionState extends State<AssetSection> {
   /// _type is the sounds shown, by file type (".mid", ".mp3"), or "" for all.
   String _type = "";
 
-  /// _view is this section's, saved per kind.
+  /// _view is this section's view, saved per kind.
   AssetView _view = AssetView.icons;
 
   String get _viewKey => "canvasAssets.view.${widget.kind.name}";
@@ -118,7 +117,6 @@ class _AssetSectionState extends State<AssetSection> {
   @override
   void initState() {
     super.initState();
-    // Sounds start as a list.
     if (widget.kind == AssetKind.audio) _view = AssetView.list;
     CanvasLibrary.changes.addListener(_load);
     _load();
@@ -322,8 +320,8 @@ class _AssetSectionState extends State<AssetSection> {
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: body),
         child: Material(
-          // Its own Material inside the list: the sidebar's let the highlight
-          // spill over other sections and stay put when the list scrolled.
+          // Its own Material inside the list: the sidebar's would let the
+          // highlight spill over other sections and stay put on scroll.
           type: MaterialType.transparency,
           child: InkWell(
             borderRadius: BorderRadius.circular(6),
@@ -334,8 +332,7 @@ class _AssetSectionState extends State<AssetSection> {
       );
 }
 
-/// _Still is what an asset looks like, small: a picture, a video's poster, or
-/// a sound's note.
+/// _Still is an asset small: a picture, a video's poster, or a sound's note.
 class _Still extends StatelessWidget {
   final LibraryAsset asset;
   final double width;
@@ -365,7 +362,6 @@ class _Still extends StatelessWidget {
   }
 }
 
-/// _Feedback is what is carried under the pointer: the asset's picture.
 class _Feedback extends StatelessWidget {
   final LibraryAsset asset;
   const _Feedback({required this.asset});
@@ -452,8 +448,7 @@ class _RowState extends State<_Row> {
           const SizedBox(width: 8),
           Expanded(
             child: a.credited
-                // For a stock asset, its source under the name: the credit a licence
-                // like CC BY asks for.
+                // For a stock asset, its source: the credit CC BY asks for.
                 ? Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -495,8 +490,7 @@ class _RowState extends State<_Row> {
 
 /// AssetName is an asset's name, double-clicked to rename it in place. A
 /// click on the name never uses the asset, or a double-click would put it on
-/// the canvas twice on the way. The second click is counted by hand: see
-/// DoubleClick.
+/// the canvas twice. The second click is counted by hand: see DoubleClick.
 class AssetName extends StatefulWidget {
   final LibraryAsset asset;
   final ValueChanged<String> onRename;
@@ -522,8 +516,7 @@ class _AssetNameState extends State<AssetName> {
     super.dispose();
   }
 
-  /// _second is set by the press that completes a double-click, and acted
-  /// on when that press is let go.
+  /// _second is set by a double-click's second press, acted on at release.
   bool _second = false;
 
   /// _pressed counts the click on the press, so a slow release does not
@@ -535,8 +528,8 @@ class _AssetNameState extends State<AssetName> {
   void _released() {
     if (!_second) return;
     _second = false;
-    // After the frame, once the release has settled, and a frame asked for:
-    // the name has no ink to ask for one.
+    // After the frame, once the release has settled, with a frame asked
+    // for: the name has no ink to ask for one.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {
@@ -576,8 +569,8 @@ class _AssetNameState extends State<AssetName> {
       onPointerDown: (_) => _pressed(),
       onPointerUp: (_) => _released(),
       onPointerCancel: (_) => _second = false,
-      // Taken here, across the whole line rather than just the letters, so a
-      // click on the name never reaches the tile, which would use the asset.
+      // Taken here, across the whole line rather than just the letters, so
+      // a click on the name never reaches the tile, which would use it.
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {},
@@ -657,9 +650,9 @@ class AssetThumb extends StatefulWidget {
 }
 
 class _AssetThumbState extends State<AssetThumb> {
-  /// _cache keeps what was read, by bytes, oldest first: whole files, held
-  /// for the session, so to a budget rather than a count -- a couple of
-  /// hundred photographs were most of a gigabyte. A big file is not kept.
+  /// _cache keeps what was read, by bytes, oldest first: whole files held
+  /// for the session, so to a budget rather than a count (a couple of
+  /// hundred photographs can be a gigabyte). A big file is not kept.
   static final Map<String, Uint8List> _cache = {};
   static int _cached = 0;
   static const int _cacheBudget = 48 << 20, _keptLargest = 4 << 20;

@@ -4,19 +4,14 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:flutter/painting.dart';
 
-// metronome_painter.dart draws a Metronome element (see
-// metronome_element.dart) as a clockwork one: a wooden pyramid, a cream face
-// with its scale, the pendulum swung from a pivot near the foot, its weight
-// lower the faster it goes, a lamp that flashes the beat (brighter on the
-// bar's first), and on its base the beats a minute, the tempo's word, and
-// its buttons: slower, faster, start and stop, tap, and the beats in a bar.
-//
-// Laid out 200 by 320 (metronomeLayout), fitted to its box; the stage's
-// presses read the same layout.
+// metronome_painter.dart draws a Metronome element as a clockwork one: a
+// wooden pyramid, a cream face with its scale, the pendulum (its weight
+// lower the faster it goes), a lamp that flashes the beat, and on its base
+// the tempo and its buttons. Laid out 200 by 320 (metronomeLayout), fitted
+// to its box; the stage's presses read the same layout.
 
 const metronomeSize = Size(200, 320);
 
-/// MetronomePart is a button on a metronome's base.
 enum MetronomePart { slower, faster, play, tap, beats }
 
 /// MetronomeLayout is where everything on a metronome is, in its units.
@@ -54,8 +49,7 @@ final MetronomeLayout metronomeLayout = () {
   });
 }();
 
-/// metronomeFit is how a metronome sits in [box]: its scale, and where its
-/// top left is.
+/// metronomeFit is how a metronome sits in [box]: its scale and top left.
 (double, Offset) metronomeFit(Rect box) {
   var s = math.min(
       box.width / metronomeSize.width, box.height / metronomeSize.height);
@@ -85,14 +79,13 @@ class MetronomeShow {
 }
 
 /// metronomeShowOf is how each metronome is going on the stage, set by the
-/// controller there; null -- in an export -- each is still.
+/// controller; null in an export, where each is still.
 MetronomeShow Function(MetronomeElement e)? metronomeShowOf;
 
 /// metronomeAngle is the pendulum's angle [beats] beats in, in radians: at
 /// one side on each beat, the other on the next.
 double metronomeAngle(double beats) => -0.42 * math.cos(math.pi * beats);
 
-/// paintMetronome draws [e] in [box].
 void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
     {MetronomeShow show = const MetronomeShow()}) {
   var l = metronomeLayout;
@@ -121,7 +114,6 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5
         ..color = dark);
-  // The face, and its scale up the middle.
   canvas.drawPath(l.face, Paint()..color = const Color(0xFFF1E7D2));
   canvas.drawPath(
       l.face,
@@ -137,8 +129,7 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
     var half = i % 2 == 0 ? 9.0 : 5.0;
     canvas.drawLine(Offset(100 - half, y), Offset(100 + half, y), tick);
   }
-  // The pendulum: its arm from the pivot, and the weight on it -- lower,
-  // nearer the pivot, the faster it goes.
+  // The pendulum: its arm, and the weight, nearer the pivot the faster.
   var angle = show.going ? metronomeAngle(show.beats) : 0.0;
   var dir = Offset(math.sin(angle), -math.cos(angle));
   var tip = l.pivot + dir * l.arm;
@@ -203,7 +194,6 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
             lampColour,
             glow)!);
 
-  // The base, and on it the beats a minute and the buttons.
   var baseRR = RRect.fromRectAndRadius(l.base, const Radius.circular(8));
   canvas.drawRRect(baseRR, Paint()..color = dark);
   canvas.drawRRect(

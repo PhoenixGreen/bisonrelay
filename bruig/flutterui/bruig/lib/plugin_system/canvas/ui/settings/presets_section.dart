@@ -11,11 +11,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:flutter/material.dart';
 
-// presets_section.dart is the row of saved designs at the top of an
-// element's settings: the first decision, starting from something or from
-// nothing. A preset replaces the element being edited (added beside it, it
-// would sit exactly on top of the old one) and leaves an ordinary element
-// with no link back, so changing a preset later leaves it alone.
+// presets_section.dart is the saved designs row atop an element's settings.
+// A preset replaces the edited element (beside it, it would sit on top)
+// and leaves no link back, so later preset changes leave it alone.
 
 /// presetsSection lists the presets that make this kind of element.
 Widget presetsSection(
@@ -26,11 +24,8 @@ Widget presetsSection(
 }) =>
     _PresetsSection(controller: controller, element: element, onUse: onUse);
 
-/// backgroundPresetsSection is the presets row for the canvas's own
-/// background: the same designs a background element saves and offers, since
-/// a background is a background wherever it is drawn. Saving keeps the
-/// pattern; using one puts its pattern on the canvas, leaving the picture,
-/// the video and the sound laid over it alone.
+/// backgroundPresetsSection is the canvas background's presets, shared with
+/// Background elements; using one changes only the pattern.
 Widget backgroundPresetsSection(
         BuildContext context, CanvasController controller, ProceduralSpec spec,
         {required void Function(ProceduralSpec) onUse}) =>
@@ -50,8 +45,8 @@ class _PresetsSection extends StatefulWidget {
   final CanvasController controller;
   final CanvasElement element;
 
-  /// onUse is what using a preset does, for an element that is not in the
-  /// document -- the canvas's background. Null replaces the element.
+  /// onUse is what using a preset does for an element outside the document
+  /// (the canvas's background). Null replaces the element.
   final void Function(CanvasElement made)? onUse;
   final bool confirmUse;
 
@@ -69,15 +64,14 @@ class _PresetsSectionState extends State<_PresetsSection> {
   ElementPresetStore get store => ElementPresetStore.instance;
 
   /// _chosen is the design this element was last started from, for Rename
-  /// and Remove to act on.
+  /// and Remove.
   String _chosen = "";
 
   @override
   void initState() {
     super.initState();
     store.addListener(_changed);
-    // Reads the folder once, ever. Until it comes back the built-in presets
-    // are shown, which is the right thing to show while waiting.
+    // Reads the folder once, ever; until then the built-in presets show.
     store.load();
   }
 
@@ -91,9 +85,8 @@ class _PresetsSectionState extends State<_PresetsSection> {
     if (mounted) setState(() {});
   }
 
-  /// _touched is whether this element has been worked on: whether it differs
-  /// from what the Add panel would make, its place and id aside (everybody
-  /// moves an element first).
+  /// _touched is whether the element differs from what Add makes, place and
+  /// id aside (everybody moves an element first).
   bool get _touched {
     var fresh = newElement(widget.element.kind, widget.controller.document);
     return _shape(widget.element).toString() != _shape(fresh).toString();
@@ -113,15 +106,13 @@ class _PresetsSectionState extends State<_PresetsSection> {
       return;
     }
 
-    // Sized to this page. A design saved on a banner and used on a square
-    // canvas arrives at the banner's scale otherwise -- see presetScale --
-    // and its place here is the element's own, below.
+    // Sized to this page, or a banner's design arrives at banner scale (see
+    // presetScale); the place is the element's own.
     var made = scaledElement(preset.build(),
         presetScale(preset.madeOn, widget.controller.document.size.size));
     var here = widget.element;
-    // Where the element already is, at the preset's own size: a design is a
-    // shape as much as its colours. What it does (clips, keyframes, cue, game
-    // part, stage place) is the element's, and stays.
+    // At the preset's size, as a design is a shape too; behaviour (clips,
+    // keyframes, cue, game part, stage place) stays the element's.
     var placed = made.withId(here.id);
     var hereBase = here.base;
     widget.controller.replaceElement(placed.rebase(placed.base.copyWith(
@@ -150,8 +141,8 @@ class _PresetsSectionState extends State<_PresetsSection> {
   @override
   Widget build(BuildContext context) {
     var presets = store.forKind(widget.element.kind);
-    // Gone if it was thrown away, or if the panel is now showing a different
-    // kind of element with designs of its own.
+    // Gone if thrown away, or if the panel now shows another kind with its
+    // own designs.
     var chosen = presets.where((p) => p.name == _chosen).firstOrNull;
 
     // One row, uncaptioned: the save offer already says what it is.
@@ -168,8 +159,8 @@ class _PresetsSectionState extends State<_PresetsSection> {
             width: 168,
             enabled: presets.isNotEmpty,
             options: [
-              // What the box reads when nothing has been chosen, which depends on
-              // whether there is anything to choose.
+              // The box's empty text depends on whether there is anything to
+              // choose.
               ("", presets.isEmpty ? "Save this design" : "Choose a preset"),
               for (var preset in presets) (preset.name, preset.name),
             ],
@@ -183,7 +174,7 @@ class _PresetsSectionState extends State<_PresetsSection> {
               _use(picked);
             },
           ),
-          // Only for a design somebody saved: a built-in one cannot be renamed.
+          // Only a saved design: built-in ones cannot be renamed.
           if (chosen != null && !chosen.builtIn) ...[
             CanvasIconButton(
               key: const ValueKey("elementPresetRename"),
@@ -223,8 +214,8 @@ class _PresetsSectionState extends State<_PresetsSection> {
               var name = await askForPresetName(context, "Save as a preset",
                   initial: widget.element.name);
               if (name == null || name.trim().isEmpty) return;
-              // With the page it was designed on, so it comes in at the scale it was
-              // saved at on a canvas of another size.
+              // With the page it was designed on, so it arrives at its saved
+              // scale on a canvas of another size.
               await store.save(name, widget.element,
                   madeOn: widget.controller.document.size.size);
               if (mounted) setState(() => _chosen = name);

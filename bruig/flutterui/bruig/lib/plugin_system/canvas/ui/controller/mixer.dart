@@ -1,15 +1,12 @@
 part of '../canvas_controller.dart';
 
-// The mixer and automation.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// The mixer and automation. Part of CanvasController.
 
 extension CanvasMixing on CanvasController {
-  /// solo is which channels are soloed. The session's rather than the
-  /// document's: an export plays every channel that is not muted.
+  /// solo is which channels are soloed. Session state, not the document's:
+  /// an export plays every channel that is not muted.
   Set<String> get solo => _solo;
 
-  /// toggleSolo solos or unsolos a channel, by its key.
   void toggleSolo(String id) {
     if (!_solo.remove(id)) _solo.add(id);
     _applyMix();
@@ -21,10 +18,10 @@ extension CanvasMixing on CanvasController {
   double get automationNow =>
       (_frame + betweenFrames) / math.max(1, _document.frameRate);
 
-  /// overridden is what is held by hand on each channel, by its key:
-  /// settings moved while their lanes played, left where the hand put them
-  /// until backToArrangement, as Ableton does. The session's, not the
-  /// document's: opened again, a canvas plays as it was written.
+  /// overridden is what is held by hand on each channel, by key: settings
+  /// moved while their lanes played, left where the hand put them until
+  /// backToArrangement, as in Ableton. Session state: reopened, a canvas
+  /// plays as written.
   Map<String, Set<String>> get overridden => _overridden;
 
   /// anyOverridden is whether anything is held by hand: what lights Back to
@@ -40,17 +37,16 @@ extension CanvasMixing on CanvasController {
   }
 
   /// backToAutomationFor hands [target] of [channel] alone back to its
-  /// lane, where a hand was holding it: the prototype's knob menu "Back to
-  /// its automation".
+  /// lane, where a hand was holding it.
   void backToAutomationFor(String channel, String target) {
     if (_overridden[channel]?.remove(target) != true) return;
     _applyMix();
     notifyListeners();
   }
 
-  /// automationArmed is the control bar's Arm automation: while it is on
-  /// and the timeline plays, a setting moved by hand writes its lane --
-  /// starting one, if it has none -- rather than being held.
+  /// automationArmed is the control bar's Arm automation: while on and the
+  /// timeline plays, a setting moved by hand writes its lane (starting one
+  /// if needed) rather than being held.
   bool get automationArmed => _automationArmed;
 
   set automationArmed(bool on) {
@@ -59,8 +55,8 @@ extension CanvasMixing on CanvasController {
     notifyListeners();
   }
 
-  /// automationShown is the channels whose lanes are open under them on
-  /// the timeline, by key -- the reader's view, not the document's.
+  /// automationShown is the channels whose lanes are open on the timeline,
+  /// by key: the reader's view, not the document's.
   Set<String> get automationShown => _automationShown;
 
   void toggleAutomation(String channel) {
@@ -68,11 +64,10 @@ extension CanvasMixing on CanvasController {
     notifyListeners();
   }
 
-  /// automationRows are the lanes shown under [channel], each the setting
-  /// it shows, as Ableton's are: views onto the channel's automation, so a
-  /// lane hidden keeps its points and one switched to another setting
-  /// shows that setting's. To start with, every setting with points -- or
-  /// the volume, with none.
+  /// automationRows are the settings of the lanes shown under [channel], as
+  /// Ableton's: views onto the channel's automation, so a hidden lane keeps
+  /// its points and one switched to another setting shows that one's. At
+  /// first, every setting with points, or the volume if none.
   List<String> automationRows(TimelineChannel channel) =>
       _automationRows[channel.key] ??= () {
         var laned = [
@@ -132,8 +127,8 @@ extension CanvasMixing on CanvasController {
     notifyListeners();
   }
 
-  /// learning is the setting a controller's next knob turned is learnt
-  /// for, as (channel, target), or null.
+  /// learning is the (channel, target) the next turned controller knob is
+  /// learnt for, or null.
   (String, String)? get learning => _learning;
 
   /// learnControl waits for a controller's knob to be turned, to turn
@@ -150,16 +145,16 @@ extension CanvasMixing on CanvasController {
       .firstOrNull
       ?.cc;
 
-  /// forgetControl lets [target] of [channel] go from its controller knob.
+  /// forgetControl unlearns [target] of [channel]'s controller knob.
   void forgetControl(String channel, String target) =>
       setAudio(_document.audio.copyWith(controls: [
         for (var l in _document.audio.controls)
           if (l.channel != channel || l.target != target) l,
       ]));
 
-  /// midiCc is control change [cc] turned to [value], nought to one: learnt
-  /// for what is waiting for one, or turning what it was learnt for. Each
-  /// run of turning is one undo step.
+  /// midiCc is control change [cc] turned to [value], 0 to 1: learnt for
+  /// what is waiting, or turning what it was learnt for. Each run of
+  /// turning is one undo step.
   void midiCc(int cc, double value) {
     if (_learning case (var channel, var target)) {
       _learning = null;
@@ -204,7 +199,6 @@ extension CanvasMixing on CanvasController {
     _controlIdle = Timer(const Duration(milliseconds: 400), endInteraction);
   }
 
-  /// automationLaneOf is [channel]'s lane for [target], or null with none.
   AutomationLane? automationLaneOf(TimelineChannel channel, String target) =>
       channel.mix.automation.where((l) => l.target == target).firstOrNull;
 
@@ -222,8 +216,8 @@ extension CanvasMixing on CanvasController {
   }
 
   /// mixFollowsPlayhead is whether a strip shows something the playhead
-  /// moves: a lane of automation, or the envelope of a clip playing in a
-  /// slot (see mixNow).
+  /// moves: an automation lane, or the envelope of a clip playing in a slot
+  /// (see mixNow).
   bool get mixFollowsPlayhead {
     for (var l in timelineChannels) {
       if (l.mix.automation.isNotEmpty) return true;
@@ -237,20 +231,19 @@ extension CanvasMixing on CanvasController {
     return false;
   }
 
-  /// mixNow is [channel]'s mix as it plays now: its own, with each lane's
-  /// setting put in but for those held by hand. What its strip shows.
+  /// mixNow is [channel]'s mix as it plays now, as its strip shows it: its
+  /// own, with each lane's setting put in except those held by hand.
   ChannelMix mixNow(TimelineChannel channel) {
     var held = _overridden[channel.key] ?? const <String>{};
     return _withClipAutomation(channel.key,
         automatedAt(channel.mix, automationNow, except: held), held);
   }
 
-  /// changeChannelMix writes [next] -- the mix as it was shown, [shown],
-  /// changed by a hand -- to [channel]. Each setting the hand changed is
-  /// the channel's own now; where a lane moves it, it is held by hand -- or,
-  /// armed and playing, written into its lane where the playhead is. Every
-  /// other setting stays the channel's own, not the lane's value that was
-  /// shown for it.
+  /// changeChannelMix writes [next] (the [shown] mix changed by hand) to
+  /// [channel]. Each setting the hand changed becomes the channel's own;
+  /// where a lane moves it, it is held by hand, or, armed and playing,
+  /// written into its lane at the playhead. Every other setting stays the
+  /// channel's own, not the lane value shown for it.
   void changeChannelMix(
       TimelineChannel channel, ChannelMix shown, ChannelMix next,
       {bool transient = false,
@@ -287,9 +280,9 @@ extension CanvasMixing on CanvasController {
         sends.remove(id);
       }
     }
-    // The devices, setting by setting, each found by its id, so a chain
-    // put in another order keeps what each device had; a device put on or
-    // taken off is the chain the hand made.
+    // The devices, setting by setting, each found by id, so a reordered
+    // chain keeps what each device had; a device added or removed is the
+    // chain the hand made.
     var ownDevices = withDeviceIds(own.devices),
         shownDevices = withDeviceIds(shown.devices),
         nextDevices = withDeviceIds(next.devices);
@@ -337,7 +330,7 @@ extension CanvasMixing on CanvasController {
             AutomationLane(id, [(t, AutomationTarget.parse(id)!.own(probe))]),
       ];
     } else {
-      // What a lane moves -- the timeline's, or the clip's playing.
+      // What a lane moves: the timeline's, or the playing clip's.
       var laned = {
         for (var l in lanes)
           if (l.points.isNotEmpty) l.target,
@@ -359,9 +352,8 @@ extension CanvasMixing on CanvasController {
         anywhere: anywhere);
   }
 
-  /// _lanesAfter is [lanes] once the chain [was] is [now]: a device taken
-  /// out takes its lanes with it. The others' lanes follow them by id,
-  /// wherever they now are.
+  /// _lanesAfter is [lanes] once the chain [was] is [now]: a removed device
+  /// takes its lanes with it; the others' lanes follow them by id.
   List<AutomationLane> _lanesAfter(
       List<AutomationLane> lanes, List<MixDevice> was, List<MixDevice> now) {
     var ids = {for (var i = 0; i < now.length; i++) deviceIdAt(now, i)};
@@ -375,14 +367,13 @@ extension CanvasMixing on CanvasController {
     ];
   }
 
-  /// _mergedDevice is a device as the hand left it: each setting it
-  /// changed from what was [shown] taken from [next] -- and noted in
-  /// [moved] -- the rest the channel's [own]; switched on or off as the
-  /// hand left it.
+  /// _mergedDevice is a device as the hand left it: each setting changed
+  /// from [shown] taken from [next] (and noted in [moved]), the rest from
+  /// the channel's [own]; switched on or off as the hand left it.
   MixDevice _mergedDevice(
       MixDevice own, MixDevice shown, MixDevice next, Set<String> moved) {
-    // What it moves, its branches and its saved variations are as the hand
-    // left them: only its settings are merged.
+    // Its targets, branches and saved variations are as the hand left
+    // them: only its settings are merged.
     var out = MixDevice(own.kind,
         on: next.on,
         values: own.values,
@@ -399,10 +390,9 @@ extension CanvasMixing on CanvasController {
     return out;
   }
 
-  /// setAutomation sets [channel]'s lanes.
   void setAutomation(TimelineChannel channel, List<AutomationLane> lanes,
       {bool transient = false}) {
-    // A lane with its points gone is no longer holding anything by hand.
+    // A lane with its points gone holds nothing by hand.
     var targets = {
       for (var l in lanes)
         if (l.points.isNotEmpty) l.target
@@ -412,12 +402,10 @@ extension CanvasMixing on CanvasController {
         transient: transient);
   }
 
-  /// setChannelMix changes one strip, as the Channels strip changes a clip --
-  /// see setTimedClip.
-  ///
-  /// [anywhere] writes a clip's channel from wherever it is seen: a master
-  /// clip picked from a scene is not editable on that scene's timeline, but
-  /// its settings, opened on purpose, are its own.
+  /// setChannelMix changes one strip, as the Channels strip changes a clip
+  /// (see setTimedClip). [anywhere] writes a clip's channel from wherever it
+  /// is seen: a master clip picked from a scene is not editable on that
+  /// scene's timeline, but its settings, opened on purpose, are its own.
   void setChannelMix(TimelineChannel channel, ChannelMix mix,
           {bool transient = false, bool anywhere = false}) =>
       _setClips([
@@ -430,14 +418,14 @@ extension CanvasMixing on CanvasController {
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
 
-  /// sceneBus is the bus of the scene being shown -- see CanvasScene.bus --
-  /// which every sound in it goes through on its way to the master.
+  /// sceneBus is the shown scene's bus (CanvasScene.bus), which every sound
+  /// in it goes through on its way to the master.
   ChannelMix get sceneBus => _document.scene.bus;
 
-  /// writeStripPart sets strip [owner]'s own EQ, compressor or Ducker --
-  /// the master's (mixerMasterKey), the scene's bus, a return's or a
-  /// channel's, wherever its sound is -- as one undo step. A part the strip
-  /// does not have is left alone: only a channel has a Ducker.
+  /// writeStripPart sets strip [owner]'s own EQ, compressor or Ducker (the
+  /// master's via mixerMasterKey, the scene bus's, a return's or a
+  /// channel's) as one undo step. A part the strip lacks is left alone:
+  /// only a channel has a Ducker.
   void writeStripPart(String owner, {Eq? eq, Dynamics? comp, Ducking? duck}) {
     beginInteraction();
     if (owner == mixerMasterKey) {
@@ -456,32 +444,28 @@ extension CanvasMixing on CanvasController {
     endInteraction();
   }
 
-  /// setSceneBus changes the shown scene's bus.
   void setSceneBus(ChannelMix bus, {bool transient = false}) => apply(
       _document.withScene(_document.at, _document.scene.copyWith(bus: bus)),
       transient: transient);
 
-  /// returnOf is the return called [id], or null.
   ReturnChannel? returnOf(String? id) =>
       _document.returns.where((r) => r.id == id).firstOrNull;
 
-  /// devicesOf is strip [key]'s devices -- a return's, or a channel's own --
-  /// in order; empty for none, or for a strip that is neither.
-  ///
-  /// Every device has its id (see withDeviceIds), so a chain changed from
-  /// this one -- a device taken out, one put on -- keeps the others' ids.
+  /// devicesOf is strip [key]'s devices (a return's, or a channel's own) in
+  /// order; empty for none, or for a strip that is neither. Every device has
+  /// its id (see withDeviceIds), so a chain changed from this one keeps the
+  /// others' ids.
   List<MixDevice> devicesOf(String key) {
     if (key == mixerMasterKey) {
       return withDeviceIds(_document.masterMix.devices);
     }
     if (key == sceneBusKey) return withDeviceIds(sceneBus.devices);
     if (returnOf(key) case var r?) return withDeviceIds(r.devices);
-    // As they play now: a setting a lane moves, where the lane has it.
+    // As they play now: a setting a lane moves, at the lane's value.
     var lane = timelineChannels.where((c) => c.key == key).firstOrNull;
     return lane == null ? const [] : withDeviceIds(mixNow(lane).devices);
   }
 
-  /// setDevicesOf changes strip [key]'s devices.
   void setDevicesOf(String key, List<MixDevice> devices,
       {bool transient = false}) {
     if (key == mixerMasterKey) {
@@ -505,9 +489,8 @@ extension CanvasMixing on CanvasController {
         automation: _lanesAfter(lane.mix.automation, shown.devices, devices));
   }
 
-  /// chainOf is strip [key]'s chain in the order it runs: device ids, and
+  /// chainOf is strip [key]'s chain in running order: device ids, and
   /// chainEq and chainComp for its EQ and compressor (see ChannelMix.chain).
-  /// A return's as a channel's, from its devices and its strip.
   List<String> chainOf(String key) {
     if (key == mixerMasterKey) return _document.masterMix.chain;
     if (key == sceneBusKey) return sceneBus.chain;
@@ -516,17 +499,16 @@ extension CanvasMixing on CanvasController {
     return lane == null ? const [] : mixNow(lane).chain;
   }
 
-  /// moveDevice moves [id] -- a device, or chainEq or chainComp -- [by]
-  /// places along strip [key]'s chain, minus to the left, as one undo step.
-  /// A device's lanes, its fold and its settings go with it: they follow its
-  /// id, not its place.
+  /// moveDevice moves [id] (a device, chainEq or chainComp) [by] places
+  /// along strip [key]'s chain, negative to the left, as one undo step. A
+  /// device's lanes, fold and settings follow its id, not its place.
   void moveDevice(String key, String id, int by) {
     var chain = [...chainOf(key)];
     var i = chain.indexOf(id), j = i + by;
     if (i < 0 || j < 0 || j >= chain.length || by == 0) return;
     chain.insert(j, chain.removeAt(i));
-    // The devices kept in the same order among themselves, so a list of
-    // them reads as the chain does.
+    // The devices keep their order among themselves, so a list of them
+    // reads as the chain does.
     var devices = devicesOf(key);
     var sorted = [
       for (var step in chain)
@@ -563,15 +545,15 @@ extension CanvasMixing on CanvasController {
     endInteraction();
   }
 
-  /// setReturn changes a return -- its name, its devices, its strip.
+  /// setReturn changes a return: its name, devices or strip.
   void setReturn(ReturnChannel next, {bool transient = false}) => apply(
       _document.copyWith(returns: [
         for (var r in _document.returns) r.id == next.id ? next : r,
       ]),
       transient: transient);
 
-  /// addReturn adds a return at the end, with a reverb on it -- the
-  /// commonest reason for one -- and picks it.
+  /// addReturn adds a return at the end with a reverb on it, the commonest
+  /// reason for one, and picks it.
   ReturnChannel? addReturn() {
     var returns = _document.returns;
     if (returns.length >= maxReturns) return null;
@@ -587,9 +569,9 @@ extension CanvasMixing on CanvasController {
     return made;
   }
 
-  /// removeReturn takes a return away. What was sent to it is sent nowhere:
-  /// the sends are kept on the channels, so putting it back with undo finds
-  /// them as they were.
+  /// removeReturn takes a return away. What was sent to it goes nowhere,
+  /// but the sends are kept on the channels, so undo finds them as they
+  /// were.
   void removeReturn(String id) {
     apply(_document.copyWith(returns: [
       for (var r in _document.returns)
@@ -599,31 +581,31 @@ extension CanvasMixing on CanvasController {
     if (_effectsOf == id) _effectsOf = null;
   }
 
-  /// levels is how loud a strip -- by its channel's key, or the master with
-  /// none -- is coming out now, for the meters.
+  /// levels is how loud a strip (by channel key, or the master with none)
+  /// is now, for the meters.
   (double, double) levels([String? channel]) =>
       _audio?.levels(channel) ?? (0, 0);
 
-  /// deviceLevels is channel [channel]'s levels at each step of its strip --
-  /// see AudioEngine.deviceLevels -- for the meters between its devices.
-  /// The master's are asked for by mixerMasterKey; a return's, a scene
-  /// bus's, by theirs.
+  /// deviceLevels is channel [channel]'s levels at each step of its strip
+  /// (see AudioEngine.deviceLevels), for the meters between its devices.
+  /// The master's are asked for by mixerMasterKey, a return's or a scene
+  /// bus's by theirs.
   List<(double, double)> deviceLevels(String channel) =>
       _audio?.deviceLevels(channel == mixerMasterKey ? "" : channel) ??
       const [];
 
   /// deviceScope is what device [id] of [channel]'s strip passes now, for
-  /// its screen (see device_scope.dart): asked for while its display is
-  /// on, and stopped with [stopScope] when it is put off or away.
+  /// its screen (device_scope.dart): asked for while its display is on,
+  /// and stopped with [stopScope] when it is put off or away.
   ScopeReading? deviceScope(String channel, String id) =>
       _audio?.deviceScope(channel == mixerMasterKey ? "" : channel, id);
 
-  /// listening is the chain heard from a point, and where -- see listenAt --
+  /// listening is the chain heard from a point, and where (see listenAt),
   /// or null.
   (String, int)? get listening => _listening;
 
-  /// listenAt hears channel [channel] from step [step] of its chain, as the
-  /// prototype's "Listen from here"; null, all of it again.
+  /// listenAt hears channel [channel] from step [step] of its chain ("Listen
+  /// from here"); null hears all of it again.
   void listenAt(String channel, int? step) {
     // The master is heard at its taps' key ("", masterTapKey), as its
     // levels are read.
@@ -636,8 +618,8 @@ extension CanvasMixing on CanvasController {
     notifyListeners();
   }
 
-  /// insertDevice puts [device] at step [at] of strip [key]'s chain: an
-  /// analyser added from a join. One undo step.
+  /// insertDevice puts [device] at step [at] of strip [key]'s chain (an
+  /// analyser added from a join). One undo step.
   void insertDevice(String key, MixDevice device, int at) {
     beginInteraction();
     setDevicesOf(key, [...devicesOf(key), device], transient: true);
@@ -654,12 +636,12 @@ extension CanvasMixing on CanvasController {
   /// reduction is how many decibels [channel]'s compressor takes off now.
   double reduction(String channel) => _audio?.reduction(channel) ?? 0;
 
-  /// spectrum is what a strip -- by its channel's key, or the master with
-  /// none -- is playing now, for the EQ to draw. See AudioEngine.spectrum.
+  /// spectrum is what a strip (by channel key, or the master with none) is
+  /// playing now, for the EQ to draw. See AudioEngine.spectrum.
   Float32List? spectrum([String? channel]) => _audio?.spectrum(channel);
 
-  /// pitch is what a tuner on strip [channel] hears now -- the master's
-  /// with mixerMasterKey -- or null.
+  /// pitch is what a tuner on strip [channel] hears now (the master's with
+  /// mixerMasterKey), or null.
   PitchReading? pitch(String channel) =>
       _audio?.pitch(channel == mixerMasterKey ? null : channel);
 
@@ -675,17 +657,17 @@ extension CanvasMixing on CanvasController {
   void resetLoudness(String channel) =>
       _audio?.resetLoudness(channel == mixerMasterKey ? null : channel);
 
-  /// _heard opens the runtime, where it is not open yet, with the mixer
-  /// already in it: a sound pressed on the canvas plays through its strip
-  /// from its first note.
+  /// _heard opens the runtime, if not open yet, with the mixer already in
+  /// it, so a sound pressed on the canvas plays through its strip from its
+  /// first note.
   void _heard() {
     audio;
     _applyMix();
   }
 
-  /// hear is which of a surround mix's speakers the editor plays on its two:
-  /// everything folded down, or one group alone (see SpeakerGroup). Only
-  /// what is heard here; the mix and its exports are as they are.
+  /// hear is which of a surround mix's speakers the editor plays on its
+  /// two: everything folded down, or one group alone (see SpeakerGroup).
+  /// Only for listening here; the mix and its exports are unchanged.
   SpeakerGroup get hear => _hear;
 
   void hearSpeakers(SpeakerGroup group) {
@@ -699,18 +681,17 @@ extension CanvasMixing on CanvasController {
   /// has changed: the runtime compares before it calls the engine.
   void _applyMix() {
     var timed = timedLanes;
-    // A sound pressed on the canvas opens the device when it is pressed --
-    // see _heard -- not when the canvas holding it is opened.
+    // A sound pressed on the canvas opens the device when pressed (see
+    // _heard), not when its canvas is opened.
     if (timed.isEmpty && _audio == null) return;
     var lanes = [...timed, ...interactiveLanes];
-    // One strip per channel, every sound on it routed through it. The strip
-    // is the channel's first sound's mix, which setChannelMix copies onto
-    // every sound on the channel; each as it plays now, its lanes' settings
-    // put in but for those held by hand.
+    // One strip per channel, every sound on it routed through it: the
+    // channel's first sound's mix, which setChannelMix copies onto every
+    // sound on the channel, as it plays now (lanes' settings in, except
+    // those held by hand).
     var strips = <String, ChannelMix>{};
     // The channels heard through the scene's bus: those whose first sound
-    // -- whose strip it is -- is in a scene, or a transition's; not the
-    // master's.
+    // (whose strip it is) is in a scene or a transition; not the master's.
     var inScene = <String>{};
     var now = automationNow;
     for (var lane in lanes) {
@@ -744,8 +725,8 @@ extension CanvasMixing on CanvasController {
   }
 
   /// _withClipAutomation is [mix] with the envelopes of the clip playing on
-  /// [channel] put in, over the timeline's lanes -- or as it was, with no
-  /// clip playing or none with envelopes of the channel's settings.
+  /// [channel] laid over the timeline's lanes, or [mix] unchanged when no
+  /// such clip plays.
   ChannelMix _withClipAutomation(
       String channel, ChannelMix mix, Set<String> held) {
     var play = _clipChannels[channel]?.now;
@@ -762,8 +743,7 @@ extension CanvasMixing on CanvasController {
   }
 
   /// placementsNow is where each placed sound's channel is heard from on
-  /// this frame, by channel -- the first placed sound on a channel says,
-  /// which is the only one on it unless channels have been shared.
+  /// this frame, by channel: the first placed sound on a channel decides.
   Map<String, Heard> get placementsNow {
     var out = <String, Heard>{};
     for (var lane in [...timedLanes, ...interactiveLanes]) {
@@ -804,8 +784,7 @@ extension CanvasMixing on CanvasController {
           e,
     ];
 
-    // And the backdrop's, which is where a looping video or a music bed
-    // usually is.
+    // And the backdrop's, where a looping video or music bed usually is.
     for (var e in _document.drawnBackground.media) {
       switch (e) {
         case VideoElement v when v.clip.autoplay && !v.clip.timed:
@@ -833,11 +812,10 @@ extension CanvasMixing on CanvasController {
           ?.steps ??
       const {};
 
-  /// freezing is whether [channel] is being frozen now.
   bool freezing(String channel) => _freezing.contains(channel);
 
   /// canFreeze is why [channel] cannot be frozen, or null where it can: a
-  /// recording's channel, one sound or several, not already frozen.
+  /// recording's channel, with one or more sounds, not already frozen.
   String? canFreeze(String channel) {
     var lane = timelineChannels.where((l) => l.key == channel).firstOrNull;
     if (lane == null) return "Only a channel's chain can be frozen.";
@@ -852,12 +830,12 @@ extension CanvasMixing on CanvasController {
     return null;
   }
 
-  /// freezeChain renders each sound of [channel] through its chain from
-  /// the start to [upTo] (a device's id, chainEq or chainComp) -- with its
-  /// modulators, as it plays -- keeps each as a new sound in the library,
-  /// and plays those: the steps frozen switched off so they are not run
-  /// twice, and remembered to be put back (unfreezeChain). Off the main
-  /// thread; one undo step. Answers why not, or null.
+  /// freezeChain renders each sound of [channel] through its chain from the
+  /// start to [upTo] (a device's id, chainEq or chainComp), modulators and
+  /// all, keeps each as a new sound in the library and plays those: the
+  /// frozen steps switched off so they are not run twice, and remembered
+  /// for unfreezeChain. Off the main thread; one undo step. Returns why
+  /// not, or null.
   Future<String?> freezeChain(String channel, String upTo) async {
     if (canFreeze(channel) case var why?) return why;
     if (!_freezing.add(channel)) return "It is being frozen.";
@@ -870,8 +848,8 @@ extension CanvasMixing on CanvasController {
       if (at < 0) return "That is not on this channel's chain.";
       var steps = chain.sublist(0, at + 1).toSet();
       var devices = withDeviceIds(mix.devices);
-      // The strip's start: what is frozen as it is set, the rest off but
-      // for its modulators, which turn knobs and make no sound.
+      // The strip's start: what is frozen as set, the rest off except its
+      // modulators, which turn knobs and make no sound.
       var part = mix.copyWith(
         mute: false,
         devices: [
@@ -957,7 +935,7 @@ extension CanvasMixing on CanvasController {
   }
 
   /// _frozenWav runs [l] and [r] through [part]'s strip before its fader,
-  /// in its own isolate where it can, and answers it as a WAV file's bytes.
+  /// on its own isolate where it can, and returns WAV file bytes.
   Future<Uint8List> _frozenWav(
       ChannelMix part, Float32List l, Float32List r) async {
     Uint8List run() {
@@ -974,14 +952,14 @@ extension CanvasMixing on CanvasController {
     try {
       return await Isolate.run(run);
     } catch (_) {
-      // Something in the chain cannot cross to an isolate: here, then.
+      // Something in the chain cannot cross to an isolate: run it here.
       return run();
     }
   }
 
-  /// unfreezeChain puts [channel] back as it was before freezeChain: its
-  /// sounds' own files, and the steps frozen switched as they were. The
-  /// frozen copies stay in the library. One undo step.
+  /// unfreezeChain puts [channel] back as before freezeChain: its sounds'
+  /// own files, and the frozen steps switched as they were. The frozen
+  /// copies stay in the library. One undo step.
   void unfreezeChain(String channel) {
     var lane = timelineChannels.where((l) => l.key == channel).firstOrNull;
     var frozen = lane?.mix.frozen;
@@ -1044,14 +1022,14 @@ extension CanvasMixing on CanvasController {
     }
   }
 
-  /// partRemoved is whether strip [owner]'s [part] -- chainEq, chainComp
-  /// or stripDuck -- is taken out of its chain.
+  /// partRemoved is whether strip [owner]'s [part] (chainEq, chainComp or
+  /// stripDuck) is taken out of its chain.
   bool partRemoved(String owner, String part) =>
       _stripMix(owner)?.removed.contains(part) ?? false;
 
-  /// canRemovePart is whether [part] of strip [owner] can be taken out: a
-  /// channel's, a return's or the scene bus's EQ and compressor, and a
-  /// channel's Ducker. The master's stay.
+  /// canRemovePart is whether [part] of strip [owner] can be taken out: the
+  /// EQ and compressor of a channel, return or scene bus, and a channel's
+  /// Ducker. The master's stay.
   bool canRemovePart(String owner, String part) =>
       _stripMix(owner) != null &&
       ((part != stripDuck && part != stripDucked) ||

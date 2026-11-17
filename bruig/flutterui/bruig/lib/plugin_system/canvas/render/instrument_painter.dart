@@ -6,10 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:flutter/painting.dart';
 
 // instrument_painter.dart draws an instrument as what it is played on
-// (keys, pads, or strings and frets), with the sounding notes lit.
-//
-// The keys are laid out once, in keyboardLayout, and the stage hit-tests the
-// same rectangles the painter drew, as with audio_painter.dart's controls.
+// (keys, pads, or strings and frets), sounding notes lit. The keys are laid
+// out once (keyboardLayout), and the stage hit-tests the same rectangles.
 
 /// KeyRect is one key: where it is, and whether it is a black one.
 typedef KeyRect = ({int key, Rect rect, bool black});
@@ -36,10 +34,9 @@ class KeyboardLayout {
   }
 }
 
-/// keyboardLayout lays [part]'s keys, pads, or strings and frets out inside
-/// [bounds], one KeyRect per playable place. Without [titled] -- the
-/// instrument editor's, which names it elsewhere -- they fill [bounds],
-/// with no name strip and no case round them.
+/// keyboardLayout lays [part]'s keys, pads or strings and frets in [bounds],
+/// a KeyRect per playable place. Without [titled] (the instrument editor's)
+/// they fill [bounds], with no name strip and no case.
 KeyboardLayout keyboardLayout(InstrumentPart part, Rect bounds,
     {bool titled = true}) {
   var inset = titled ? math.min(bounds.width, bounds.height) * 0.04 : 0.0;
@@ -50,8 +47,7 @@ KeyboardLayout keyboardLayout(InstrumentPart part, Rect bounds,
       inner.left, inner.top + titleHeight, inner.right, inner.bottom);
   switch (part.look) {
     case InstrumentLook.drums:
-      // Four by four; on a wide, short board, as the prototype's editor
-      // has them, eight by two.
+      // Four by four; on a wide, short board, eight by two.
       var cols = board.width > board.height * 2.5 ? 8 : 4;
       var rows = drumPads.length ~/ cols;
       var gap = math.min(board.width, board.height) * 0.03;
@@ -151,7 +147,6 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
   var radius = math.min(bounds.width, bounds.height) * 0.06;
   canvas.drawRRect(RRect.fromRectAndRadius(bounds, Radius.circular(radius)),
       Paint()..color = const Color(0xFF1C1E24));
-  // The name, on the case above the keys.
   var name = TextPainter(
     text: TextSpan(
         text: part.name,
@@ -221,11 +216,10 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
   }
 }
 
-/// paintPlayingSurface draws [part]'s pads, or its neck, as [layout] has
-/// them, with no case or name: the instrument editor's, under its own
-/// toolbar. A keyboard is the editor's own to draw.
-/// A drum pad shows its name and, from [letters], the computer key that
-/// plays it; [face] and [ink] are the pads' own colour and their writing.
+/// paintPlayingSurface draws [part]'s pads or neck as [layout] has them,
+/// with no case or name, for the instrument editor (a keyboard is the
+/// editor's own to draw). A drum pad shows its name and, from [letters],
+/// the computer key that plays it; [face] and [ink] are the pads' colours.
 void paintPlayingSurface(
     ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
     {Set<int> lit = const {},
@@ -259,9 +253,8 @@ Color padFamily(int key) => switch (key) {
     };
 
 /// _paintPads draws the kit's pads: each a raised square with its family's
-/// colour along its top, its name, and -- from [letters] -- a key cap with
-/// the computer key that plays it. Struck, it lights in [accent] and
-/// glows; waited for ([next]), blue.
+/// colour along its top, its name, and a key cap from [letters]. Struck, it
+/// lights in [accent] and glows; waited for ([next]), blue.
 void _paintPads(ui.Canvas canvas, KeyboardLayout layout, Set<int> lit,
     Set<int> next, Color accent,
     {Map<int, String> letters = const {},
@@ -349,7 +342,6 @@ void _paintPads(ui.Canvas canvas, KeyboardLayout layout, Set<int> lit,
           box.center - Offset(cap.width / 2, cap.height / 2));
       capped = true;
     }
-    // Its name, at its foot.
     var name = TextPainter(
       text: TextSpan(
           text: drumPads.elementAtOrNull(i)?.$2 ?? "",
@@ -379,7 +371,6 @@ void _paintNeck(ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
   var nut = board.left + board.width * 0.06;
   canvas.drawRect(Rect.fromLTRB(nut, board.top, board.right, board.bottom),
       Paint()..color = const Color(0xFF5A3A22));
-  // Inlays, where a neck has them.
   var band = board.height / strings.length;
   var dot = Paint()..color = const Color(0xFFE8DCC4);
   for (var f in const [3, 5, 7, 9, 12, 15]) {
@@ -409,8 +400,8 @@ void _paintNeck(ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
           ..color = const Color(0xFFD9D4C8)
           ..strokeWidth = 1 + (strings.length - i) * 0.35);
   }
-  // Where each note sounding is played: a finger on its fret, or a ring at
-  // the nut for an open string -- where it was pressed, or as the part is
+  // Where each sounding note is played: a finger on its fret, or a ring at
+  // the nut for an open string, where it was pressed or as the part is
   // fingered; the rest placed together, as a hand would hold them.
   for (var (keys, colour) in [(lit, accent), (next, const Color(0xFF3D7EFF))]) {
     var own = {
@@ -429,8 +420,7 @@ void _paintNeck(ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
     for (var (string, fret) in played) {
       var y = board.bottom - (string + 0.5) * band;
       if (fret == 0) {
-        // An open string: a ring by the nut, as a chord chart marks one
-        // (Ken, 2026-11-15), not a finger.
+        // An open string: a ring by the nut, as a chord chart marks one.
         canvas.drawCircle(
             Offset(open, y),
             band * 0.26,

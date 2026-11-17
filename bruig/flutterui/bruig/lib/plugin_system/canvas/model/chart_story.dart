@@ -6,18 +6,15 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 
-// chart_story.dart is a chart told by its narration (Ken, 2026-11-17, the
-// improvements report's seventh item): the script written once, a step for
-// each line -- "Spurs climbed six places" lights Spurs -- each step taken
-// as its line is spoken, the timing the voice's, not keyframes. A camera
-// aimed at "what the narration names" follows (camera_aim.dart).
-//
-// chartShownAt is also where every other way a chart steps or plays is
-// worked out for a frame, so the renderer and the camera agree.
+// chart_story.dart is a chart told by its narration: a step per script line
+// ("Spurs climbed six places" lights Spurs), each taken as its line is
+// spoken, so the timing is the voice's, not keyframes. A camera aimed at
+// "what the narration names" follows (camera_aim.dart). chartShownAt works
+// out every way a chart steps or plays, so renderer and camera agree.
 
-/// narrationStarts is the frames, in [doc]'s scene, where each line of its
-/// narration starts: the first Speech clip on the timeline, each line's
-/// first word in the joined take. Empty where there is none.
+/// narrationStarts is the frame in [doc]'s scene where each narration line
+/// starts: each line's first word in the first Speech clip's joined take.
+/// Empty where there is none.
 List<int> narrationStarts(CanvasDocument doc) {
   for (var a in doc.elements.whereType<AudioElement>()) {
     var spec = a.clip.mix.speech;
@@ -41,8 +38,8 @@ List<int> narrationStarts(CanvasDocument doc) {
   return const [];
 }
 
-/// narrationLines is the words of [doc]'s narration, line by line: its
-/// first Speech clip's script. Empty where there is none.
+/// narrationLines is the first Speech clip's script, line by line, or
+/// empty.
 List<String> narrationLines(CanvasDocument doc) {
   for (var a in doc.elements.whereType<AudioElement>()) {
     var spec = a.clip.mix.speech;
@@ -55,10 +52,9 @@ List<String> narrationLines(CanvasDocument doc) {
   return const [];
 }
 
-/// storySteps is [e] with a step for each of [lines]: titled with it, and
-/// lighting whichever of the chart's names it says, the rest faded --
-/// "Spurs climbed six places" lights Spurs. Its steps then follow the
-/// narration.
+/// storySteps gives [e] a step per line of [lines], titled with it and
+/// lighting the chart names it says, the rest faded. Its steps then follow
+/// the narration.
 ChartElement storySteps(ChartElement e, List<String> lines) {
   if (lines.isEmpty) return e;
   var names = e.data.categories;
@@ -79,8 +75,7 @@ ChartElement storySteps(ChartElement e, List<String> lines) {
                     reach: ChartReach.one, who: n, fade: true, named: true),
           ]),
   ];
-  // The chart's own title and lights are the step being worked on, the
-  // first (see stepOf).
+  // The chart's own title and lights are the first step's (see stepOf).
   return e.copyWith(
       steps: steps,
       stepAt: 0,
@@ -89,9 +84,9 @@ ChartElement storySteps(ChartElement e, List<String> lines) {
       follow: ChartStepsFollow.speech.name);
 }
 
-/// chartShownAt is [e] as it shows on [frame] (and [between] a frame on):
-/// at its step -- by the timeline's marks, the scenes, or the narration --
-/// or part-way through its dates.
+/// chartShownAt is [e] on [frame] (and [between] a frame on): at its step,
+/// by the timeline's marks, the scenes or the narration, or part-way through
+/// its dates.
 ChartElement chartShownAt(ChartElement e, CanvasDocument? doc, int frame,
     {double between = 0}) {
   var sheet = doc?.sheets.where((s) => s.id == e.sheet?.sheet).firstOrNull;
@@ -117,7 +112,7 @@ ChartElement chartShownAt(ChartElement e, CanvasDocument? doc, int frame,
     return chartAtStep(e, sheet, k, since);
   }
   if (e.steps.length > 1 && e.follow == ChartStepsFollow.scenes.name) {
-    // A step in each scene (or page) it is in, linked copies included.
+    // A step per scene (or page) it is in, linked copies included.
     var chart = e;
     bool mine(CanvasElement x) =>
         x.id == chart.id ||

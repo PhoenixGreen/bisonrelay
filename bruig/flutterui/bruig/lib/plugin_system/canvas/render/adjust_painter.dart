@@ -7,28 +7,22 @@ import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
-// adjust_painter.dart draws what is under an adjustment layer through it --
-// see image_adjustment.dart and shaders/adjust.frag.
-//
-// Where the engine can (Impeller), the shader is an image filter over the
-// layers below as they are drawn. Otherwise the layers below are rasterised
-// at the canvas's drawing scale, drawn through the shader, and the result
-// kept in the RasterCache.
+// adjust_painter.dart draws what is under an adjustment layer through it
+// (image_adjustment.dart, shaders/adjust.frag). Under Impeller the shader is
+// an image filter over the layers below; otherwise they are rasterised,
+// drawn through the shader, and the result kept in the RasterCache.
 
 /// AdjustShader is the adjustment layers' shader, loaded once.
 class AdjustShader {
   static ui.FragmentProgram? _program;
   static bool _unloadable = false;
 
-  /// ready says the shader is loaded. Until it is, adjustment layers draw
-  /// what is under them unadjusted.
+  /// ready says the shader is loaded; until then layers draw unadjusted.
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
-  /// load reads the shader, once.
   static Future<void> load() async {
-    // The program, not the loading, is what is kept: a load begun
-    // where it never finishes (a test's own time, gone) would leave
-    // every later wait for it waiting for ever.
+    // The program, not the loading, is kept: a load begun where it never
+    // finishes (a finished test's clock) would leave later waits hanging.
     if (_program != null || _unloadable) return;
     try {
       _program = await ui.FragmentProgram.fromAsset("shaders/adjust.frag");
@@ -160,8 +154,7 @@ void paintAdjusted(
     canvas.drawPicture(below);
     return;
   }
-  // A filter where the engine can: far cheaper than rasterising what is
-  // under.
+  // A filter where the engine can: far cheaper than rasterising.
   if (_adjustFilter(program, adjust) case var filter?) {
     CanvasPerf.count("adjust (filter)");
     canvas.saveLayer(room, Paint()..imageFilter = filter);
@@ -186,8 +179,7 @@ void paintAdjusted(
       ? null
       : RasterCache.instance.sized(key, [adjust, room.size, ...from], w, h);
   if (made == null) {
-    // What is under is cached separately, so dragging a slider does not
-    // redraw it.
+    // What is under is cached separately, so a slider drag does not redraw it.
     var underFrom = [room.size, ...from];
     var under = key == null
         ? null
@@ -270,14 +262,13 @@ void paintAdjustedLive(ui.Canvas canvas, Rect room, ImageAdjustment adjust,
 /// _filters is the last few adjustment filters made, by adjustment.
 final List<(ImageAdjustment, ui.ImageFilter)> _filters = [];
 
-/// adjustsByFilter is whether adjustments are being drawn as image filters
-/// -- nothing rasterised, nothing kept -- rather than into kept pictures.
+/// adjustsByFilter is whether adjustments are drawn as image filters
+/// (nothing rasterised or kept) rather than into kept pictures.
 bool get adjustsByFilter => _filtering == true;
 
-/// adjustSteadily is set while a picture is drawn moving (drifting closer or
-/// across), so adjustments are rasterised and the pixels moved instead of
-/// using a filter. A filter snaps to whole screen pixels, so under a
-/// changing zoom it shakes by a pixel.
+/// adjustSteadily is set while a picture is drawn moving, so adjustments are
+/// rasterised and the pixels moved: a filter snaps to whole screen pixels,
+/// so under a changing zoom it shakes by a pixel.
 bool adjustSteadily = false;
 
 /// _filtering is whether the engine can draw a shader as an image filter
@@ -293,8 +284,7 @@ ui.ImageFilter? _adjustFilter(
     if (identical(a, adjust)) return f;
   }
   var u = _uniforms(adjust);
-  // The size, floats 0 and 1, and the picture under, sampler 0, are the
-  // engine's to set.
+  // The size (floats 0, 1) and the picture under (sampler 0) are the engine's.
   var shader = program.fragmentShader()
     ..setFloat(2, 0)
     ..setFloat(3, 0)
@@ -320,11 +310,10 @@ ui.ImageFilter? _adjustFilter(
   return filter;
 }
 
-/// _loose is adjusted pictures with no cache key (drawn over things still
-/// loading), held briefly until drawn.
+/// _loose is adjusted pictures with no cache key, held briefly until drawn.
 final List<ui.Image> _loose = [];
 
-/// clearAdjustedRasters lets go of the adjustments' unkeyed pictures.
+/// clearAdjustedRasters lets go of the unkeyed adjusted pictures.
 void clearAdjustedRasters() {
   for (var image in _loose) {
     image.dispose();

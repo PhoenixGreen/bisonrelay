@@ -4,20 +4,19 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 
 // vrm_paint.dart draws paint strokes (character_sculpt.dart) into a picture
-// laid out as a surface's own picture is -- by its triangles' texture
-// coordinates -- so that it can be laid over the surface. Each pixel of a
-// triangle is put back where it is on the body, in 3D, and painted by how
-// near the stroke passed: so a dab painted across a seam in the picture is
-// whole on the body, and a stroke is as wide on a stretched part of the
-// picture as on any other. Plain Dart, run off the main isolate and tested
-// without a GPU.
+// laid out by a surface's texture coordinates, to lay over the surface.
+// Each pixel of a triangle is put back where it is on the body in 3D and
+// painted by how near the stroke passed, so a dab across a seam in the
+// picture is whole on the body, and a stroke is as wide on a stretched part
+// as on any other. Plain Dart, run off the main isolate and tested without
+// a GPU.
 
 /// PaintLayer is a surface's paint: the picture, its size, and the
 /// triangles any of it is on.
 ///
 /// Laid out as the surface is, [triangles] are the surface's own vertices
-/// and [uv] and [source] are null. Laid out in cells of its own -- for a
-/// surface whose layout repeats, or overlaps -- each triangle has three
+/// and [uv] and [source] are null. Laid out in cells of its own (for a
+/// surface whose layout repeats or overlaps), each triangle has three
 /// vertices of its own: [source] says which of the surface's each is, and
 /// [uv] where it is in the picture.
 class PaintLayer {
@@ -99,9 +98,8 @@ class _Stroke {
 
 /// paintLayer paints [strokes] over a surface of [positions] and [normals]
 /// (the body as made) laid out by [uv], of [triangles], into a [size]
-/// square picture -- or, with [cells], into a picture of its own, a cell
-/// for each triangle, as big as they need. Null where none of them is on
-/// it.
+/// square picture; or, with [cells], into a picture of its own with a cell
+/// for each triangle. Null where none of them is on it.
 PaintLayer? paintLayer({
   required Float32List positions,
   required Float32List normals,
@@ -119,7 +117,6 @@ PaintLayer? paintLayer({
       ]
   ];
   if (ready.isEmpty) return null;
-  // The triangles near any stroke.
   final near = <int>[];
   final whose = <List<_Stroke>>[];
   for (var t = 0; t + 2 < triangles.length; t += 3) {

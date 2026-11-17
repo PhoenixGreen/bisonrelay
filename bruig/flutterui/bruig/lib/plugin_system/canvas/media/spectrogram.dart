@@ -4,17 +4,15 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart'
     show MixCore;
 
-// spectrogram.dart is a sound as its spectrum over time: a picture, a
-// column a moment, a row a band of pitch -- low at the bottom -- each as
-// bright as that band is loud there. For the clip editor's Spectrum view.
+// spectrogram.dart is a sound's spectrum over time as a picture, for the
+// clip editor: a column per moment, a row per pitch band, low at the bottom.
 
-/// Spectrogram is the picture: [columns] wide, [rows] high, as RGBA bytes,
-/// the first column at the sound's start and the last at its end.
+/// Spectrogram is the picture as RGBA, [columns] by [rows], the first
+/// column at the sound's start and the last at its end.
 typedef Spectrogram = ({int columns, int rows, Uint8List rgba});
 
-/// spectrogramOf is [mono] (at [rate]) as a picture [columns] wide and
-/// [rows] high: rows on a log scale from 40Hz to 16kHz, levels from -90dB
-/// (dark) to nought (bright).
+/// spectrogramOf is [mono] (at [rate]) as a picture [columns] by [rows]:
+/// rows log-scaled from 40Hz to 16kHz, levels -90dB (dark) to nought.
 Spectrogram spectrogramOf(Float32List mono,
     {int columns = 600, int rows = 128, double rate = 48000}) {
   const n = 2048;
@@ -41,7 +39,7 @@ Spectrogram spectrogramOf(Float32List mono,
       for (var k = a; k < b && k < mags.length; k++) {
         if (mags[k] > peak) peak = mags[k];
       }
-      // magnitudes has a full-scale sine at about one: nought dB.
+      // A full-scale sine has magnitude about one: nought dB.
       var db = 20 * math.log(peak + 1e-9) / math.ln10;
       var v = ((db + 90) / 90).clamp(0.0, 1.0);
       var (cr, cg, cb) = _heat(v);

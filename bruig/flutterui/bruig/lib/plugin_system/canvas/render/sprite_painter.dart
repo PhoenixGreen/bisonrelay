@@ -7,16 +7,16 @@ import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 
 // sprite_painter.dart draws a Sprite element: the frame of its sheet its
-// action has got to on the frame drawn, facing the way it faces -- see
-// sprite_element.dart.
+// action has reached, facing the way it faces. See sprite_element.dart.
 
 /// SpritePaintView is what the renderer needs to show a sprite being
-/// painted: the frame, its pixels as they are now, the frame before it to
-/// show faintly, and whether to rule the pixels. See ui/drawing/sprite_painting.dart.
+/// painted: the frame, its live pixels, the frame before it to show
+/// faintly, and whether to rule the pixels. See
+/// ui/drawing/sprite_painting.dart.
 typedef SpritePaintView = ({int frame, ui.Image? live, int? onion, bool grid});
 
-/// spritePaintingOf is how the sprite [SpriteElement] is shown while it is
-/// painted in the editor, set by it; null for one not being painted.
+/// spritePaintingOf is how a sprite being painted in the editor is shown,
+/// set by the editor; null for one not being painted.
 SpritePaintView? Function(SpriteElement e)? spritePaintingOf;
 
 /// paintSprite draws [e] in [box] on [frame] of a canvas played at
@@ -132,7 +132,6 @@ void _paintEmpty(Canvas canvas, Rect box) {
     ..style = PaintingStyle.stroke
     ..strokeWidth = math.max(1.0, box.shortestSide * 0.012)
     ..color = const Color(0x998A8F99);
-  // Dashes round the box.
   var path = Path()..addRRect(RRect.fromRectAndRadius(box.deflate(2), Radius.circular(box.shortestSide * 0.06)));
   for (var m in path.computeMetrics()) {
     var dash = box.shortestSide * 0.05;

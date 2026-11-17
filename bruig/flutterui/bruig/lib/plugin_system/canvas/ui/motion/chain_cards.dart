@@ -19,16 +19,12 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
-// chain_cards.dart is the Chain's look cards -- Glow, Shadow and the rest --
-// and the element's own Design (Ken, 2026-11-12, the approved chain
-// prototype). They are DeviceFrames, drawn in ChainPanelStyle as every card
-// of the Motion view is, with its knob-steppers and selects: one card, one
-// stepper, one select across the Chain. Each has its A, L, Loop and I,
-// which say where its keys play, over its settings; each setting a diamond
-// on its corner that keys it at the playhead.
+// chain_cards.dart is the Chain's look cards (Glow, Shadow and the rest) and
+// the element's own Design: DeviceFrames in ChainPanelStyle with the Chain's
+// knob-steppers and selects. Each has its A, L, Loop and I (where its keys
+// play), and each setting a corner diamond keying it at the playhead.
 
-/// PhaseButtons are a card's A, L, Loop and I: where its keys play (Ken,
-/// 2026-11-12). Each keeps its keys while it is off.
+/// PhaseButtons are A, L, Loop and I: where keys play; off keeps the keys.
 class PhaseButtons extends StatelessWidget {
   final CanvasController controller;
   final String element;
@@ -68,10 +64,9 @@ class PhaseButtons extends StatelessWidget {
 }
 
 /// keyedSetting is one setting of a card: the Chain's knob-stepper (see
-/// DeviceKnob), and on its corner the diamond that keys it at the playhead
-/// -- gold where it is keyed, filled where a key is here -- and, given
-/// [onRemove], the cross that takes it off its card. A colour is its
-/// swatch, a choice its select.
+/// DeviceKnob), on its corner the diamond that keys it at the playhead (gold
+/// where keyed, filled where a key is here), and, given [onRemove], the cross
+/// that takes it off its card. A colour is its swatch, a choice its select.
 Widget keyedSetting(
   BuildContext context, {
   required String device,
@@ -170,9 +165,9 @@ Widget keyedSetting(
   ]);
 }
 
-/// LookCard is a look of [element]'s Chain -- Glow, Shadow and the rest:
-/// its switch and what it is on in its header, its A, L, Loop and I, and
-/// its settings two to a row, each keyed where it is.
+/// LookCard is a look of [element]'s Chain (Glow, Shadow and the rest): its
+/// switch and what it is on in its header, its A, L, Loop and I, and its
+/// settings two to a row, each keyed where it is.
 class LookCard extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -317,12 +312,10 @@ class LookCard extends StatelessWidget {
   }
 }
 
-/// DesignCard is the element itself in its Chain (Ken, 2026-11-12): its
-/// Design device's settings -- where it is, its turn, size and fade, and
-/// any of its settings panel's added from + Setting -- three to a row, each
-/// keyed where it is. It stands where the element is drawn, moves before
-/// it and looks after it. With no Design device yet, the first change or
-/// key makes one.
+/// DesignCard is the element itself in its Chain: its Design device's
+/// settings (place, turn, size, fade, and any added from + Setting), three
+/// to a row, each keyed where it is. It stands where the element is drawn,
+/// moves before it and looks after; the first change or key makes it.
 class DesignCard extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;

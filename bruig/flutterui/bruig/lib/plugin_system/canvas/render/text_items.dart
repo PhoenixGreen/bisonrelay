@@ -9,14 +9,14 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
-// text_items.dart is where a text element's extra pieces are laid out, and
-// the one answer to that question: the painter and the stage both ask it, so
-// a click hits exactly what was drawn (as with chartLegendRects).
+// text_items.dart lays out a text element's extra pieces. The painter and
+// the stage both ask it, so a click hits exactly what was drawn (as with
+// chartLegendRects).
 
 /// textItemRects is where each of [e]'s items is drawn, in the element's own
-/// coordinates and in the element's own order. Items in the same slot stack
-/// in the order they were added: down from the top for a top slot, up from
-/// the bottom for a bottom one, and about the middle for a middle one.
+/// coordinates and order. Items in one slot stack in the order added: down
+/// from the top for a top slot, up from the bottom for a bottom one, and
+/// about the middle for a middle one.
 List<Rect> textItemRects(TextElement e, Rect bounds) =>
     _blockRects(e, bounds).skip(1).toList();
 
@@ -71,10 +71,10 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
 
     var sizes = [for (var i in mine) sizeOf(i)];
 
-    // The stack's own height: every piece, and the room between each and the
-    // one before. The first piece's room is the distance from the edge the
-    // slot holds the stack to, applied to the stack rather than inside it,
-    // so it works at the bottom of the box too. See TextItem.gap.
+    // The stack's height: every piece and the room before each. The first
+    // piece's room, from the edge the slot holds the stack to, is applied
+    // to the stack rather than inside it, so it works at the bottom of the
+    // box too. See TextItem.gap.
     var lead = leadOf(mine.first);
     var total = sizes.first.height;
     for (var (n, i) in mine.indexed) {
@@ -133,9 +133,6 @@ Size _sizeOf(TextItem item, double maxWidth) {
       words.width + pad.left + pad.right, words.height + pad.top + pad.bottom);
 }
 
-/// paintTextItems draws them, after the element's own paragraph and inside
-/// the same box. They arrive with the element rather than each on its own,
-/// since a card is one thing arriving.
 /// LayerPainter draws one layer of a text -- [draw], its letters or its
 /// picture, in [box] -- with the looks laid on that layer alone (see
 /// MotionDevice.layer): [layer] is MotionDevice.bodyLayer for the text's own
@@ -144,6 +141,9 @@ Size _sizeOf(TextItem item, double maxWidth) {
 typedef LayerPainter = void Function(
     ui.Canvas canvas, Rect box, String layer, void Function(ui.Canvas on) draw);
 
+/// paintTextItems draws the pieces after the element's own paragraph, in
+/// the same box. They arrive with the element, since a card is one thing
+/// arriving.
 void paintTextItems(
   ui.Canvas canvas,
   Rect bounds,
@@ -177,7 +177,6 @@ void paintTextItems(
       continue;
     }
 
-    // What is behind it, if anything, and then the piece inside that.
     paintBox(canvas, rect, item.box, images);
     var inner = item.box.inner(rect);
     if (inner.width <= 0 || inner.height <= 0) continue;
@@ -191,9 +190,9 @@ void paintTextItems(
         paintTextIcon(canvas, inner, icon, images, item.spec);
         return;
       }
-      // The slot decides how the words sit, so the item's own alignment is
-      // not asked: a piece held to the right-hand edge is set ragged-left
-      // inside a rectangle only as wide as it is.
+      // The slot decides how the words sit, not the item's alignment: a
+      // piece held to the right-hand edge is set ragged-left in a rectangle
+      // only as wide as it is.
       paintTextInBox(
         canvas,
         item.text,

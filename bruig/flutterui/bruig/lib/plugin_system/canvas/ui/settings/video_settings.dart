@@ -35,7 +35,7 @@ List<Widget> videoSettings(
   /// it to press and no box of its own.
   bool background = false,
 
-  /// panel lays the sections out as every rebuilt element's are: see
+  /// panel lays the sections out as every rebuilt element's are; see
   /// videoPanel.
   bool panel = false,
 }) {
@@ -508,9 +508,9 @@ List<Widget> videoSettings(
     if (!e.isLink && e.key.on) "green screen out",
   ].join(" · ");
 
-  // Rebuilt (Ken, 2026-11-11: batch 5): what plays and how in Content, its
-  // sound's placement and the reader's buttons folds under it; the picture's
-  // look in Look, its edges and box folds under that.
+  // What plays and how in Content, with placement and the reader's buttons
+  // folded under it; the picture's look in Look, with edges and box under
+  // that.
   if (panel) {
     return [
       elementPanel(context, controller, e, write, begin, commit,
@@ -606,7 +606,7 @@ List<Widget> videoSettings(
         ]),
     edgesSection(),
     boxSection(),
-    // How it comes in, loops and goes: the Chain's Motion view (Ken,
-    // 2026-11-08), not a section here.
+    // How it comes in, loops and goes is the Chain's Motion view, not a
+    // section here.
   ];
 }

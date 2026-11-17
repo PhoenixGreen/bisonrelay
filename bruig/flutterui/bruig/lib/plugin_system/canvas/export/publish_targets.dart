@@ -17,7 +17,6 @@ import 'package:path/path.dart' as path;
 
 // publish_targets.dart is where a rendered canvas goes: a file on disk, a
 // chat message, a post-library document, or a file shared with contacts.
-//
 // Nothing here renders: the caller hands over the CanvasExport the publish
 // sheet previewed, so a destination cannot produce a different picture.
 
@@ -48,10 +47,9 @@ String extensionFor(String mime) => switch (mime) {
       _ => ".bin",
     };
 
-/// embedMarkupFor is the app's own embed syntax carrying [export] inline,
-/// as a picture attached to a post uses. Inline base64 rather than a
-/// library reference, because a message sent to somebody else must carry
-/// its picture: a reference points at a store only this client has.
+/// embedMarkupFor is the app's embed syntax carrying [export] inline, as a
+/// post's picture does: a message must carry its picture, and a library
+/// reference points at a store only this client has.
 String embedMarkupFor(CanvasExport export) =>
     "--embed[type=${export.mime},data=${base64Encode(export.data)}]--";
 
@@ -76,9 +74,9 @@ Future<String?> saveToDisk(CanvasExport export, String suggestedName) async {
   }
 }
 
-/// saveAllToDisk writes one file per shape into a folder chosen once.
-/// Answers with the folder, or null where cancelled. A shape that could not
-/// be written is left out of `written` rather than stopping the rest.
+/// saveAllToDisk writes one file per shape into a folder chosen once, and
+/// answers with the folder, or null where cancelled. A shape that cannot be
+/// written is left out of `written` rather than stopping the rest.
 Future<({String folder, List<String> written})?> saveAllToDisk(
   List<({String tag, CanvasExport export})> shapes,
   String suggestedName,
@@ -131,8 +129,8 @@ Future<String?> sendToChat(ChatModel chat, CanvasExport export,
 }
 
 /// publishToLibrary writes the canvas into the post library as a document
-/// that a post or a page can embed. The picture goes into the embed store
-/// and the document references it, exactly as a draft with a picture does.
+/// a post or a page can embed: the picture goes into the embed store and
+/// the document references it, as a draft with a picture does.
 Future<PublishRecord?> publishToLibrary(
   CanvasExport export,
   String name,
@@ -214,8 +212,7 @@ Future<PublishRecord?> shareInFiles(
   }
 }
 
-/// unshareFiles withdraws a shared canvas and deletes the copy that was
-/// offered.
+/// unshareFiles withdraws a shared canvas and deletes the offered copy.
 Future<void> unshareFiles(PublishRecord record) async {
   if (!record.hasShare) return;
   try {

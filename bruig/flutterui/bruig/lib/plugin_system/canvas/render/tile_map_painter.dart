@@ -7,19 +7,16 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 
-// tile_map_painter.dart draws a Tile map element: each layer's cells, the
-// first layer at the bottom, inside the element's box -- see
-// tile_map_element.dart. The tiles as they are on their sheet go in one
-// draw a set; a turned or flipped one is drawn on its own. A tile that
-// plays shows the frame its animation has got to. On an objects layer the
-// things stood on it and the figures among them are drawn by where their
-// feet are, the furthest up the page first, so the nearer stand in front.
+// tile_map_painter.dart draws a Tile map element (tile_map_element.dart):
+// each layer's cells, first layer at the bottom, inside the element's box.
+// Unturned tiles go in one draw per set; a turned or flipped one is drawn
+// on its own. On an objects layer, things and figures are drawn by where
+// their feet are, furthest up the page first, so the nearer stand in front.
 
-/// TileEditView is what the renderer shows of a map being painted: the
-/// map as the stroke under way has it, the grid, the cell under the
-/// pointer with the tiles that would go there -- or the thing that would
-/// be stood there -- and a box being dragged out to pick tiles up from.
-/// See tile_painting.dart.
+/// TileEditView is what the renderer shows of a map being painted: the map
+/// as the stroke under way has it, the grid, the cell under the pointer
+/// with what would go there, and a box being dragged out to pick tiles up
+/// from. See tile_painting.dart.
 typedef TileEditView = ({
   TileMapElement? working,
   bool grid,
@@ -34,9 +31,9 @@ typedef TileEditView = ({
 TileEditView? Function(TileMapElement e)? tileMapEditingOf;
 
 /// tileCameraShift is how far the scene's camera has moved off the middle
-/// of the page while a scene is drawn through it, in the page's own units
-/// -- set by the renderer -- or null when it is drawn as it is. A layer
-/// with less parallax than the map lags behind it. See paintCanvasDocument.
+/// of the page, in page units, set by the renderer; null when not drawn
+/// through a camera. A layer with less parallax than the map lags behind
+/// it. See paintCanvasDocument.
 Offset? tileCameraShift;
 
 /// TileFigure is a figure on a map, found by its id: where its feet are,
@@ -185,7 +182,6 @@ void _paintObjects(Canvas canvas, Rect box, TileMapElement m, TileLayer layer, L
   }
 }
 
-/// _paintObject draws [o], standing where it stands.
 void _paintObject(Canvas canvas, TileMapElement m, TileObject o, List<ui.Image?> sheets, double seconds, Color? tint) {
   var r = m.objectRect(o);
   var cs = m.cellSize;
@@ -194,10 +190,10 @@ void _paintObject(Canvas canvas, TileMapElement m, TileObject o, List<ui.Image?>
 }
 
 /// paintTileCells draws [cells] of [m] (by [cellKey], each a [TileRef] word)
-/// from [sheets], one for each of its sets, in [box]; cells whose sheet is
-/// not read yet are left out. [seconds] in, a tile that plays shows the
-/// frame it has got to. The cells drawn are those in the map's window, or in
-/// [window] (first and last column and row) counted from [box]'s top left.
+/// from [sheets], one per set, in [box]; cells whose sheet is not read yet
+/// are left out. [seconds] in, a tile that plays shows its frame. The cells
+/// drawn are those in the map's window, or in [window] (first and last
+/// column and row) counted from [box]'s top left.
 void paintTileCells(Canvas canvas, Rect box, TileMapElement m, Map<int, int> cells, List<ui.Image?> sheets,
     {Color? tint, double seconds = 0, (int, int, int, int)? window, Size? cell}) {
   var paint = Paint()..filterQuality = m.pixelArt ? FilterQuality.none : FilterQuality.medium;

@@ -9,16 +9,11 @@ import 'package:bruig/plugin_system/canvas/render/label_placer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
-// chart_variants.dart is the other ways the older kinds can be drawn (Ken,
-// 2026-11-17: "do the remaining designs" from prototype v7's research): a
-// funnel as bars from one edge or over what each stage lost; bubbles in a
-// row; a timeline down the page; a gauge's needle over bands or a dial; a
-// pictogram a row each or one big icon; a flow followed one way; a treemap
-// coloured up and down; a share bar from the middle or with its halfway
-// mark; a lollipop from the average or with its value in the dot; a slope
-// by rank; radial bars as rings, bars round a circle or a rose; a radar's
-// dots on its spokes; a waffle of dots, or rising. Each is a
-// ChartDesign.mode (chartModes); a kind's first way is its own painter.
+// chart_variants.dart is the other ways the older kinds can be drawn: a
+// funnel as bars, bubble rows and clusters, a timeline down the page, a
+// gauge needle, pictogram rows, a market treemap, share bars, lollipops,
+// slope ranks, radial rings and roses, radar and waffle dots. Each is a
+// ChartDesign.mode; a kind's first way is its own painter.
 
 /// paintVariant draws [e] its chosen way, answering whether it did (false:
 /// its first way, which its own painter draws).
@@ -166,10 +161,9 @@ void _funnelBars(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
 
 // ------------------------------------------------------------ bubbles
 
-/// bubblePack packs one circle a value, its radius the value's square root
-/// (so its area is the value), the largest in the middle and each next as
-/// near it as it goes without overlapping: centres (null for nothing) and
-/// radii, unscaled, about the origin.
+/// bubblePack packs one circle a value, radius its square root, the largest
+/// in the middle and each next as near as it goes without overlapping:
+/// centres (null for nothing) and radii, unscaled, about the origin.
 (List<Offset?>, List<double>) bubblePack(List<double> values) {
   var order = [for (var i = 0; i < values.length; i++) i]
     ..sort((a, b) => values[b].compareTo(values[a]));
@@ -196,7 +190,6 @@ void _funnelBars(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   return ([for (var i = 0; i < values.length; i++) placed[i]], r);
 }
 
-/// bubbleBounds is the box round [placed]'s circles.
 Rect bubbleBounds(List<Offset?> placed, List<double> r) =>
     [
       for (var i = 0; i < placed.length; i++)
@@ -204,10 +197,9 @@ Rect bubbleBounds(List<Offset?> placed, List<double> r) =>
     ].fold<Rect?>(null, (a, b) => a == null ? b : a.expandToInclude(b)) ??
     Rect.zero;
 
-/// _bubbleClusters is the circles packed in a cluster a group, each named
-/// above it, all on one scale so sizes compare across them. A group is the
-/// word in the column the chart is coloured by; with none, each series is a
-/// group (a club's bubble in "Top four" or "Chasing"); with neither, one.
+/// _bubbleClusters is the circles packed in a cluster a group, each named above
+/// it, all on one scale so sizes compare. A group is the word in the column the
+/// chart is coloured by; with none, each series is a group; with neither, one.
 void _bubbleClusters(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var d = e.data, n = d.categories.length;
@@ -320,8 +312,7 @@ void _bubbleClusters(
   }
 }
 
-/// _bubbleRow is the circles side by side on one floor, in order, so their
-/// sizes compare (the FT's ordered proportional symbol).
+/// _bubbleRow is the circles side by side on one floor, so sizes compare.
 void _bubbleRow(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var v = _vals(e), n = v.length;
   var most = v.fold(0.0, math.max);
@@ -404,15 +395,13 @@ void _timelineDown(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // ------------------------------------------------------------ gauge
 
-/// _gaugeNeedle is a needle over graduated bands (after Few: darker is
-/// worse), or a dial with ticks open at the bottom: the first value as a
-/// share of the whole, as the gauge reads it.
+/// _gaugeNeedle is a needle over graduated bands (darker is worse), or a
+/// ticked dial open at the bottom: the first value as a share, as _gauge.
 void _gaugeNeedle(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     {required bool dial}) {
   var v = _vals(e);
   // Its top as the dial's: the axis's top where set, else the values'
-  // total where there are several, else a hundred (found making the
-  // Charts canvas: one value of 84 read 100%).
+  // total where there are several, else a hundred.
   var total = e.yMax.isFinite && e.yMax > 0
       ? e.yMax
       : v.length > 1
@@ -453,7 +442,6 @@ void _gaugeNeedle(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
             ..strokeWidth = t % 5 == 0 ? 2 : 1);
     }
   } else {
-    // Three bands, light to dark.
     var shades = [0.18, 0.32, 0.5];
     for (var b = 0; b < 3; b++) {
       canvas.drawArc(
@@ -549,8 +537,7 @@ void _pictoRows(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   }
 }
 
-/// _pictoBig is one large figure filled from its feet to the first share:
-/// "62% renewed" as a glass filling.
+/// _pictoBig is one large figure filled to the first share, as a glass fills.
 void _pictoBig(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var v = _vals(e);
   var total = v.fold(0.0, (a, b) => a + b);
@@ -592,9 +579,8 @@ void _pictoBig(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // ------------------------------------------------------------ treemap
 
-/// _market is tiles sized by the first series and coloured by the sign of
-/// the second (up the rise colour, down the fall), stronger the bigger the
-/// change: a market map.
+/// _market is a market map: tiles sized by the first series, coloured by
+/// the second's sign (rise or fall), stronger the bigger the change.
 void _market(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var v = _vals(e), n = v.length;
   var change = [
@@ -668,8 +654,8 @@ void _market(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // ------------------------------------------------------------ share bar
 
-/// _fromMiddle is two sides growing out from a centre line -- the first
-/// half of the shares one way, the rest the other -- a tug of war.
+/// _fromMiddle is two sides growing out from a centre line (the first half
+/// of the shares one way, the rest the other): a tug of war.
 void _fromMiddle(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var v = _vals(e), n = v.length;
   var total = v.fold(0.0, (a, b) => a + b);
@@ -770,9 +756,8 @@ void _shareMajority(
 
 // ------------------------------------------------------------ lollipop
 
-/// _lollies is lollipops from the average (stems out either side of it,
-/// above in the rise colour, below in the fall) or with the value written
-/// in a large dot.
+/// _lollies is lollipops from the average (out either side, rise and fall
+/// colours) or with the value written in a large dot.
 void _lollies(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal, String mode) {
   var d = e.data, n = d.categories.length;
@@ -851,8 +836,7 @@ void _lollies(
 
 // ------------------------------------------------------------ slope
 
-/// _slopeRank is each one from its place at the start to its place at the
-/// end -- who went up the table -- named at both ends.
+/// _slopeRank is each one from its start place to its end place, named.
 void _slopeRank(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var d = e.data, n = d.categories.length;
   if (d.series.length < 2) return;
@@ -1017,10 +1001,9 @@ void _radialWays(
 
 // ------------------------------------------------------------ radar
 
-/// _radarDots is each series' values as dots on the spokes, joined by
-/// thin lines, with no filled area to exaggerate the differences -- or
-/// ([compare]) the first series filled and the others as grey outlines
-/// behind it: one club against another, or against the average.
+/// _radarDots is each series' values as dots on the spokes, joined by thin
+/// lines, with no filled area to exaggerate the differences; or, with
+/// [compare], the first series filled and the others grey outlines behind.
 void _radarDots(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     {bool compare = false}) {
   var d = e.data, n = d.categories.length;

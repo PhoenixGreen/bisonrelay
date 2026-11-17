@@ -14,9 +14,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 
 // motion_editing.dart is what the timeline, the slots and the Animation
 // panel do to an element's clips: make, place, move, stretch, cut, pin and
-// remove. Each changes the element's ElementMotion through the controller, so
-// it is undone as any change is. A drag is transient until its end: the
-// caller opens the interaction and closes it.
+// remove, through the controller, so each is undone as any change is. A
+// drag is transient until its end: the caller opens and closes it.
 
 int _seq = 0;
 
@@ -29,7 +28,6 @@ extension MotionEditing on CanvasController {
   ElementMotion motionOf(String element) =>
       document.elementById(element)?.base.motion ?? ElementMotion.none;
 
-  /// setMotion writes [element]'s motion.
   void setMotion(String element, ElementMotion motion,
       {bool transient = false}) {
     var e = document.elementById(element);
@@ -41,9 +39,8 @@ extension MotionEditing on CanvasController {
     replaceElement(e.withBase(motion: motion), transient: transient);
   }
 
-  /// motionDevicesOf is [element]'s motion devices, in the order they run
-  /// (its pose devices, then its looks: see motionDevicesInOrder), each with
-  /// its id.
+  /// motionDevicesOf is [element]'s motion devices in the order they run
+  /// (pose devices, then looks: see motionDevicesInOrder).
   List<MotionDevice> motionDevicesOf(String element) =>
       motionDevicesInOrder(withMotionDeviceIds(motionOf(element).devices));
 
@@ -63,8 +60,8 @@ extension MotionEditing on CanvasController {
   }
 
   /// setDeviceSetting makes setting [param] of [element]'s device [device]
-  /// [v]: a key at the playhead where it is animated, how it rests where it
-  /// is not -- the same from the Chain and from the settings panel.
+  /// [v]: a key at the playhead where it is animated, how it rests where
+  /// not; the same from the Chain and from the settings panel.
   void setDeviceSetting(String element, String device, String param, double v,
       {bool transient = false}) {
     var d = _deviceOf(element, device);
@@ -87,8 +84,8 @@ extension MotionEditing on CanvasController {
       };
 
   /// deviceValueNow is setting [param] of [element]'s device [d] at the
-  /// playhead: by the keys playing then, or where it rests -- for Design,
-  /// the element's own setting (see designRest).
+  /// playhead: by the keys playing then, or where it rests (for Design, the
+  /// element's own setting: see designRest).
   double deviceValueNow(String element, MotionDevice d, String param) {
     var spans = phaseSpansFor(element);
     var e = document.elementById(element);
@@ -98,8 +95,7 @@ extension MotionEditing on CanvasController {
     return d.valueAt(param, playheadSeconds, spans: spans);
   }
 
-  /// toggleDeviceKey keys setting [param] at the playhead, as it is there,
-  /// or takes the key there away.
+  /// toggleDeviceKey keys setting [param] at the playhead, or unkeys it.
   void toggleDeviceKey(String element, String device, String param) {
     var d = _deviceOf(element, device);
     if (d == null) return;
@@ -114,9 +110,8 @@ extension MotionEditing on CanvasController {
   }
 
   /// moveDeviceKey retimes key [index] of setting [param] in phase [ph] of
-  /// [element]'s device [device] to [seconds] into the scene -- kept as a
-  /// share of its clip in a clip's phase -- and is where it went among the
-  /// others.
+  /// [element]'s device [device] to [seconds] into the scene (kept as a
+  /// share of its clip in a clip's phase), returning its new place.
   int moveDeviceKey(String element, String device, String param, MotionPhase ph,
       int index, double seconds,
       {bool transient = false}) {
@@ -145,8 +140,7 @@ extension MotionEditing on CanvasController {
     return list.indexOf(moved);
   }
 
-  /// editDeviceKey changes key [index]'s value or how it goes into the
-  /// next.
+  /// editDeviceKey changes key [index]'s value or how it goes into the next.
   void editDeviceKey(
       String element, String device, String param, MotionPhase ph, int index,
       {double? v, KeyEase? ease, bool transient = false}) {
@@ -161,7 +155,7 @@ extension MotionEditing on CanvasController {
     _putDevice(element, d.withKeysOf(param, ph, list), transient: transient);
   }
 
-  /// removeDeviceKey takes key [index] away. The last of a setting's
+  /// removeDeviceKey takes key [index] away. With the last of a setting's
   /// independent keys gone, it keeps the value it had there.
   void removeDeviceKey(
       String element, String device, String param, MotionPhase ph, int index) {
@@ -189,9 +183,8 @@ extension MotionEditing on CanvasController {
       .where((d) => d.kind == MotionDeviceKind.design)
       .firstOrNull;
 
-  /// ensureDesign is the id of [element]'s Design device, made where it
-  /// has none -- as part of the change that wanted it: the interaction is
-  /// left open for that change to close.
+  /// ensureDesign is the id of [element]'s Design device, made if need be in
+  /// the change that wanted it, left open for that change to close.
   String ensureDesign(String element) {
     if (designOf(element) case var d?) return d.id;
     beginInteraction();
@@ -205,8 +198,7 @@ extension MotionEditing on CanvasController {
 
   /// setDesignSetting makes Design setting [param] of [element] [v]: a key
   /// at the playhead where it is animated; otherwise, for its place, how
-  /// Design rests, and for the element's own settings, the setting itself,
-  /// as its settings panel would change it.
+  /// Design rests, and for the element's own settings, the setting itself.
   void setDesignSetting(String element, String param, double v,
       {bool transient = false}) {
     var d = designOf(element);
@@ -232,8 +224,7 @@ extension MotionEditing on CanvasController {
   }
 
   /// showDesignSetting puts setting [param] on [element]'s Design card, or
-  /// takes it off with its keys -- it keeps the value it has at the
-  /// playhead.
+  /// takes it off with its keys, keeping the value at the playhead.
   void showDesignSetting(String element, String param, bool shown) {
     var id = ensureDesign(element);
     var d = _deviceOf(element, id)!;
@@ -258,8 +249,7 @@ extension MotionEditing on CanvasController {
     _putDevice(element, next);
   }
 
-  /// stopAnimatingDevice takes every key of setting [param] away; it keeps
-  /// the value it has at the playhead.
+  /// stopAnimatingDevice drops [param]'s keys, keeping the playhead value.
   void stopAnimatingDevice(String element, String device, String param) {
     var d = _deviceOf(element, device);
     if (d == null) return;
@@ -269,18 +259,15 @@ extension MotionEditing on CanvasController {
             at: playheadSeconds, spans: phaseSpansFor(element)));
   }
 
-  /// setMotionDevices writes [element]'s motion devices.
   void setMotionDevices(String element, List<MotionDevice> devices,
           {bool transient = false}) =>
       setMotion(element, motionOf(element).copyWith(devices: devices),
           transient: transient);
 
-  /// bakeMotionDevice turns what pose device [device] of [element] does
-  /// into keys: a clip over the whole scene, on a layer of its own, of how
-  /// far it moves, turns and sizes the element each frame -- and the device
-  /// switched off, the prototype's "Bake into keys" (for an EPUB, which plays
-  /// keys). The clip is at the start of the chain, so what is left of the
-  /// device now has it too. Null when done; otherwise why not.
+  /// bakeMotionDevice turns pose device [device] of [element] into keys (an
+  /// EPUB plays keys): a clip over the scene on its own layer, of its move,
+  /// turn and size each frame, the device switched off. The clip starts the
+  /// chain, so what is left of the device has it. Null when done, else why.
   String? bakeMotionDevice(String element, String device) {
     var e = document.elementById(element);
     if (e == null) return "It is gone";
@@ -293,8 +280,7 @@ extension MotionEditing on CanvasController {
     var rate = math.max(1, document.frameRate);
     var frames = math.max(2, document.frames);
     var end = (frames - 1) / rate;
-    // Free all the way through: a clip on a layer gives way to the next one
-    // to start on it.
+    // Free all the way through: a layer's clip yields to the next to start.
     int? layer;
     for (var l = motionLayers - 1; l >= 0; l--) {
       if (!m.placed.any((p) => p.layer == l)) {
@@ -351,9 +337,8 @@ extension MotionEditing on CanvasController {
     return null;
   }
 
-  /// addMotionDevice puts a [kind] on [element]: last of its side -- the
-  /// last pose device, before the drawing, or the last look -- and returns
-  /// its id.
+  /// addMotionDevice puts a [kind] on [element], last of its side (the last
+  /// pose device, before the drawing, or the last look), returning its id.
   String addMotionDevice(String element, MotionDeviceKind kind) {
     var devices =
         withMotionDeviceIds([...motionDevicesOf(element), MotionDevice(kind)]);
@@ -368,8 +353,8 @@ extension MotionEditing on CanvasController {
           if (d.id != id) d
       ]);
 
-  /// moveMotionDevice moves device [id] [by] places among those on its
-  /// side of the drawing -- it never crosses it (rule 1).
+  /// moveMotionDevice moves device [id] [by] places among those on its side
+  /// of the drawing; it never crosses it.
   void moveMotionDevice(String element, String id, int by) {
     var all = motionDevicesOf(element);
     var d = all.where((x) => x.id == id).firstOrNull;
@@ -404,16 +389,14 @@ extension MotionEditing on CanvasController {
         transient: transient);
   }
 
-  /// _stepOf is how far apart [element]'s instances are laid: half as far
-  /// again as it is big.
+  /// _stepOf is how far apart [element]'s instances are laid: 1.5 its size.
   double _stepOf(String element) {
     var e = document.elementById(element);
     if (e == null) return 60;
     return math.max(e.base.width, e.base.height) * 1.5;
   }
 
-  /// reuseElement makes [element] [count] instances, in a line to its
-  /// right.
+  /// reuseElement makes [element] [count] instances, in a line to its right.
   void reuseElement(String element, int count) => setInstances(
       element,
       (motionOf(element).instances ?? const InstanceSet())
@@ -438,9 +421,8 @@ extension MotionEditing on CanvasController {
   int frameAt(double seconds) =>
       (seconds * math.max(1, document.frameRate)).round();
 
-  /// newClip makes a clip of [preset] -- or, with none, an empty one of
-  /// [kind] -- for [element], and puts it in slot [slot] if one is given.
-  /// Its id.
+  /// newClip makes a clip of [preset] (or, with none, an empty one of
+  /// [kind]) for [element], putting it in [slot] if given; returns its id.
   String newClip(String element,
       {MotionPreset? preset,
       MotionKind kind = MotionKind.action,
@@ -459,7 +441,7 @@ extension MotionEditing on CanvasController {
   }
 
   /// placeClip places [clip] of [element] on the timeline at [seconds], on
-  /// [layer] -- its own layer if none. The placement's id.
+  /// [layer] (its own layer if none); returns the placement's id.
   String placeClip(String element, String clip,
       {required double seconds, int? layer}) {
     var m = motionOf(element);
@@ -476,10 +458,9 @@ extension MotionEditing on CanvasController {
     return id;
   }
 
-  /// copyClipTo is [clip] of [from] copied to [to], as its own clip there --
-  /// a clip that moves from where an element is works on any -- in its
-  /// first empty slot if it has one. The new clip's id, or null where it
-  /// cannot go: a model's own animation stays with its model.
+  /// copyClipTo is [clip] of [from] copied to [to] as its own clip, in its
+  /// first empty slot. The new clip's id, or null where it cannot go: a
+  /// model's own animation stays with its model.
   String? copyClipTo(String from, String clip, String to) {
     var c = motionOf(from).clip(clip);
     if (c == null || c.kind == MotionKind.model) return null;
@@ -502,9 +483,8 @@ extension MotionEditing on CanvasController {
       setMotion(element, motionOf(element).withPlacement(p),
           transient: transient);
 
-  /// movePlacement moves [id] to start at [seconds], on [layer]. Moved by
-  /// hand, it lets go of its pins: it stays where it is put. Whether it let
-  /// go of any.
+  /// movePlacement moves [id] to start at [seconds] on [layer]. Moved by
+  /// hand, it lets go of its pins; returns whether it had any.
   bool movePlacement(String element, String id, double seconds,
       {int? layer, bool transient = false}) {
     var p = _placement(element, id);
@@ -526,8 +506,7 @@ extension MotionEditing on CanvasController {
   }
 
   /// stretchPlacement moves [id]'s start or end to [seconds]: a one-shot is
-  /// retimed to fill it, a loop repeats to. The other end stays put; the
-  /// end moved lets go of its pin.
+  /// retimed, a loop repeats; the moved end lets go of its pin.
   void stretchPlacement(String element, String id,
       {double? start, double? end, bool transient = false}) {
     var p = _placement(element, id);
@@ -554,9 +533,8 @@ extension MotionEditing on CanvasController {
     }
   }
 
-  /// cutPlacement cuts [id] in two at [seconds]: each part plays its own
-  /// stretch of the clip, the second carrying on where the first stops.
-  /// Whatever followed it follows the second part. The new part's id.
+  /// cutPlacement cuts [id] in two at [seconds], the second carrying on and
+  /// taking what followed; returns the new part's id.
   String? cutPlacement(String element, String id, double seconds) {
     var m = motionOf(element);
     var p = m.placement(id);
@@ -596,8 +574,8 @@ extension MotionEditing on CanvasController {
     return second;
   }
 
-  /// removePlacement takes [id] off the timeline. Anything pinned to its end
-  /// keeps the time it had rather than jumping.
+  /// removePlacement takes [id] off the timeline. Anything pinned to its
+  /// end keeps the time it had rather than jumping.
   void removePlacement(String element, String id) {
     var times = motionTimesOf(document);
     var doc = document;
@@ -644,8 +622,7 @@ extension MotionEditing on CanvasController {
     apply(doc);
   }
 
-  /// pinPlacement pins [id]'s start, or its end, to [pin] -- null lets go,
-  /// keeping the time it had.
+  /// pinPlacement pins [id]'s start or end to [pin]; null lets go, kept.
   void pinPlacement(String element, String id, ClipPin? pin,
       {bool end = false}) {
     var p = _placement(element, id);
@@ -660,8 +637,7 @@ extension MotionEditing on CanvasController {
             : p.copyWith(startPin: () => pin, start: span.start));
   }
 
-  /// addMarker puts a marker on the timeline at [frame], or leaves the one
-  /// there. Its id.
+  /// addMarker puts or finds a marker at [frame]; returns its id.
   String addMarker(int frame, {String label = ""}) {
     var doc = document;
     if (doc.actions.where((a) => a.frame == frame).firstOrNull case var a?) {
@@ -681,7 +657,7 @@ extension MotionEditing on CanvasController {
     return id;
   }
 
-  /// editMotionClip replaces [clip] of [element] with what [change] makes of it.
+  /// editMotionClip replaces [clip] of [element] with [change] of it.
   void editMotionClip(
       String element, String clip, MotionClip Function(MotionClip) change,
       {bool transient = false}) {
@@ -691,10 +667,9 @@ extension MotionEditing on CanvasController {
     setMotion(element, m.withClip(change(c)), transient: transient);
   }
 
-  /// moveMotionSlot moves the clip in slot [from] of [element] to slot [to]
-  /// of [into] -- swapping with what is there, on the same element -- or,
-  /// with [copy] or onto another element, puts a copy of it there. Whether
-  /// anything moved.
+  /// moveMotionSlot moves the clip in slot [from] of [element] to [to] of
+  /// [into], swapping on the same element, or copies it with [copy] or to
+  /// another element. Returns whether anything moved.
   bool moveMotionSlot(String element, int from, String into, int to,
       {bool copy = false}) {
     var m = motionOf(element);
@@ -717,42 +692,38 @@ extension MotionEditing on CanvasController {
     return true;
   }
 
-  /// linkPlacement links placement [id] of [element] to the sound [sound]
-  /// on the timeline (an element's id), or with "" unlinks it: linked, a
-  /// drag of either moves both (Ken, 2026-11-10).
+  /// linkPlacement links placement [id] to the timeline sound [sound] (an
+  /// element's id), or "" unlinks: linked, a drag of either moves both.
   void linkPlacement(String element, String id, String sound) {
     var p = _placement(element, id);
     if (p == null || p.link == sound) return;
     _put(element, p.copyWith(link: sound), transient: false);
   }
 
-  /// linkedSound is the sound placement [id] of [element] moves with, where
-  /// it is still on the timeline.
+  /// linkedSound is the sound placement [id] moves with, if still placed.
   TimedLane? linkedSound(String element, String id) {
     var link = _placement(element, id)?.link ?? "";
     if (link.isEmpty) return null;
     return timedLanes.where((l) => l.element.id == link).firstOrNull;
   }
 
-  /// placementsLinkedTo are the placements that move with sound [sound]: by
-  /// their element's id and their own.
+  /// placementsLinkedTo are the (element, placement)s moving with [sound].
   List<(String, String)> placementsLinkedTo(String sound) => [
         for (var e in document.elements)
           for (var p in e.base.motion.placed)
             if (p.link == sound) (e.id, p.id),
       ];
 
-  /// linkMotionSlot links slot row [row] of [element]'s motion to its own
-  /// sound in the same row, or unlinks it: linked, pressing either launches
-  /// both (Ken, 2026-11-10).
+  /// linkMotionSlot links slot row [row] of [element]'s motion to its own sound
+  /// in the same row, or unlinks it: linked, pressing either launches both.
   void linkMotionSlot(String element, int row, bool linked) {
     var m = motionOf(element);
     if (m.isLinked(row) == linked) return;
     setMotion(element, m.linkedAs(row, linked));
   }
 
-  /// clearMotionSlot empties slot [slot] of [element]: the clip stays,
-  /// where it is on the timeline, unless it is nowhere else -- then it goes.
+  /// clearMotionSlot empties slot [slot] of [element]: the clip stays on
+  /// the timeline, unless it is nowhere else.
   void clearMotionSlot(String element, int slot) {
     var m = motionOf(element);
     var c = m.slot(slot);
@@ -819,8 +790,8 @@ CanvasDocument everyMotion(
 }
 
 /// keptSamples are the frames of [v] to keep as keys: the first, the last,
-/// and each where a straight line from the last kept one would miss by more
-/// than [eps] -- so a steady move is two keys, and a wiggle all it needs.
+/// and each where a straight line from the last kept would miss by more
+/// than [eps], so a steady move is two keys and a wiggle all it needs.
 List<int> keptSamples(List<double> v, double eps) {
   if (v.length <= 2) return [for (var i = 0; i < v.length; i++) i];
   var kept = [0];

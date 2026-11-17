@@ -1,13 +1,10 @@
 part of '../canvas_controller.dart';
 
-// The copies of an element reused (Ken, 2026-11-08): each an object on the
-// canvas -- picked with a click, Shift-click for more, dragged on its own,
-// placed with a click while placing -- and each with what it has of its
-// own: a start, a speed, a size, a turn, an opacity, a colour, or any knob
-// of the element's chain. Whatever copies are picked are what the chain
-// edits; none picked, every copy.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Copies of an element reused: each an object on the canvas, picked with a
+// click (Shift-click for more), dragged and placed on its own, with values
+// of its own (start, speed, size, turn, opacity, colour, or any knob of the
+// element's chain). The chain edits whichever copies are picked; none
+// picked, every copy. Part of CanvasController.
 
 extension CanvasCopies on CanvasController {
   /// pickedCopiesOf is which of [element]'s copies are picked, by id: none
@@ -26,8 +23,8 @@ extension CanvasCopies on CanvasController {
   /// is edited.
   bool copiesPicked(String element) => pickedCopiesOf(element).isNotEmpty;
 
-  /// pickCopy picks copy [id] of [element] -- with [toggle], in or out of
-  /// those picked -- the element picked with it.
+  /// pickCopy picks copy [id] of [element] (with [toggle], in or out of
+  /// those picked), and the element with it.
   void pickCopy(String element, String id, {bool toggle = false}) {
     if (!_selection.contains(element) || _selection.length != 1) {
       selectOnly(element);
@@ -56,18 +53,18 @@ extension CanvasCopies on CanvasController {
     notifyListeners();
   }
 
-  /// pickAllCopies goes back to editing every copy of [element] -- chosen
-  /// as all of them, so the box round them all is drawn (allCopiesChosen).
+  /// pickAllCopies goes back to editing every copy of [element], chosen as
+  /// all of them so the box round them all is drawn (allCopiesChosen).
   void pickAllCopies(String element) {
     pickCopies(element, const {});
     _allCopiesChosen = true;
     notifyListeners();
   }
 
-  /// allCopiesChosen is whether [element]'s copies were all chosen at once,
-  /// by All in its Instances: only then is the box round them all drawn on
-  /// the canvas, each copy otherwise its own thing (Ken, 2026-11-08). Any
-  /// copy picked since, or the selection changed, and it is not.
+  /// allCopiesChosen is whether [element]'s copies were all chosen at once
+  /// by All in its Instances: only then is a box drawn round them all, each
+  /// copy otherwise its own thing. Picking a copy or changing the selection
+  /// ends it.
   bool allCopiesChosen(String element) =>
       _allCopiesChosen &&
       _copiesOf == element &&
@@ -84,13 +81,13 @@ extension CanvasCopies on CanvasController {
     notifyListeners();
   }
 
-  /// copyCentre is where copy [i] of [e] stands on the page, as placed.
+  /// copyCentre is where [copy] of [e] stands on the page, as placed.
   Offset copyCentre(CanvasElement e, ElementInstance copy) => Offset(
       e.base.x + e.base.width / 2 + copy.dx,
       e.base.y + e.base.height / 2 + copy.dy);
 
-  /// placeCopyAt puts a new copy of [element] with its middle at [point] on
-  /// the page, picked; an element placed once becomes two. Its id.
+  /// placeCopyAt puts a new copy of [element] centred at [point], picked,
+  /// and returns its id. An element placed once becomes two.
   String? placeCopyAt(String element, Offset point) {
     var e = _document.elementById(element);
     if (e == null) return null;
@@ -108,7 +105,7 @@ extension CanvasCopies on CanvasController {
   }
 
   /// duplicateCopies puts a new copy beside each of [ids], [by] from it,
-  /// picked in their place: an Alt-drag. The new ids.
+  /// picked in their place (an Alt-drag), and returns the new ids.
   Set<String> duplicateCopies(String element, Set<String> ids, Offset by) {
     var had = motionOf(element).instances;
     if (had == null) return const {};
@@ -120,7 +117,6 @@ extension CanvasCopies on CanvasController {
       var from = set.items[i];
       var next = set.withNewCopy(from.dx + by.dx, from.dy + by.dy);
       if (identical(next, set)) break;
-      // Its own values with it.
       var fresh = next.items.last;
       set = next.withCopy(fresh.id, (x) => x.copyWith(own: from.own));
       made.add(fresh.id);
@@ -131,8 +127,8 @@ extension CanvasCopies on CanvasController {
     return made;
   }
 
-  /// removeCopies takes [ids] of [element]'s copies away; the last one
-  /// left, it is placed once again.
+  /// removeCopies takes [ids] of [element]'s copies away; with one left,
+  /// it is placed once again.
   void removeCopies(String element, Set<String> ids) {
     var set = motionOf(element).instances;
     if (set == null || ids.isEmpty) return;
@@ -142,9 +138,8 @@ extension CanvasCopies on CanvasController {
     _pickedCopies = {};
   }
 
-  /// copyValueOf is [element]'s [key] as its first picked copy has it --
-  /// its own, or null for the element's -- and whether any picked copy has
-  /// its own.
+  /// copyOwnOf is [element]'s [key] as its first picked copy has it (its
+  /// own, or null for the element's).
   double? copyOwnOf(String element, String key) {
     var set = motionOf(element).instances;
     var picked = pickedCopiesOf(element);
@@ -155,8 +150,8 @@ extension CanvasCopies on CanvasController {
     return null;
   }
 
-  /// setCopyOwn gives the picked copies of [element] [key] of their own --
-  /// [value], or none (the element's) where null.
+  /// setCopyOwn gives the picked copies of [element] their own [key]:
+  /// [value], or the element's where null.
   void setCopyOwn(String element, String key, double? value,
       {bool transient = false}) {
     var set = motionOf(element).instances;
@@ -171,7 +166,7 @@ extension CanvasCopies on CanvasController {
         transient: transient);
   }
 
-  /// revertCopies takes back all the picked copies have of their own, but
+  /// revertCopies takes back all the picked copies' own values except
   /// where they are.
   void revertCopies(String element, {Set<String>? ids}) {
     var set = motionOf(element).instances;
@@ -185,7 +180,7 @@ extension CanvasCopies on CanvasController {
   }
 
   /// copyValue is [v] of [element] as the chain edits it: the first picked
-  /// copy's, or -- none picked -- the first copy's as the set varies it.
+  /// copy's, or with none picked, the first copy's as the set varies it.
   double copyValue(String element, CopyValue v) {
     var set = motionOf(element).instances;
     if (set == null) return v.initial;
@@ -196,8 +191,8 @@ extension CanvasCopies on CanvasController {
   }
 
   /// deviceKnob is [param] of [element]'s device [device] as the chain
-  /// edits it -- the first picked copy's own, or the shared [shared] -- and
-  /// whether it is a copy's own.
+  /// edits it (the first picked copy's own, or [shared]), and whether it is
+  /// a copy's own.
   (double, bool) deviceKnob(
       String element, String device, String param, double shared) {
     var own = copyOwnOf(element, deviceOwnKey(device, param));

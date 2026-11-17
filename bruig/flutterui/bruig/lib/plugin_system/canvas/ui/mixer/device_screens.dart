@@ -9,17 +9,15 @@ import 'package:bruig/plugin_system/canvas/model/modulation.dart'
     show lfoValue, macroKnobs;
 import 'package:flutter/material.dart';
 
-// device_screens.dart is what each device draws on its screen in the Chain:
-// a reverb its decay, a delay its echoes, a gate its threshold over the
-// sound, a filter its curve, a modulation its wave, a drive its curve, and
-// so on -- each from the device's own settings, moving with the sound while
-// it plays. Drawn the same way for every kind: a dark screen, a faint grid,
-// the picture in the device's colour, and a reading along its foot.
+// device_screens.dart is what each device draws on its Chain screen (a
+// reverb its decay, a delay its echoes, a filter its curve...), from its own
+// settings and moving with the sound. Every kind draws the same way: a dark
+// screen, a faint grid, the picture in the device's colour, and a reading
+// along its foot.
 
-/// ScreenMoment is what a screen is drawn at: [t] seconds of playing (to
-/// move an LFO along), [level] how loud it is going in, nought to one, and
-/// [change] what the device does to the level, in decibels, or null when
-/// nothing is playing through it.
+/// ScreenMoment is what a screen is drawn at: [t] seconds of playing (for
+/// an LFO), [level] going in (0 to 1), and [change] in dB, or null when
+/// nothing plays through it.
 class ScreenMoment {
   final double t;
   final double level;
@@ -32,8 +30,7 @@ class ScreenMoment {
       {this.t = 0, this.level = 0, this.change, this.live = false, this.hz});
 }
 
-/// hasScreen is whether [kind] draws a picture of its own, rather than its
-/// levels in and out.
+/// hasScreen is whether [kind] draws its own picture, not levels in/out.
 bool hasScreen(DeviceKind kind) => !listensOnly(kind);
 
 /// _noteName writes [text] centred at [at], small, bright where [lit].
@@ -49,7 +46,6 @@ void _noteName(Canvas canvas, String text, Offset at, bool lit) {
   tp.paint(canvas, Offset(at.dx - tp.width / 2, at.dy));
 }
 
-/// DeviceScreenPainter draws [device]'s screen at [moment].
 class DeviceScreenPainter extends CustomPainter {
   final MixDevice device;
   final ScreenMoment moment;
@@ -123,7 +119,6 @@ class DeviceScreenPainter extends CustomPainter {
         for (var x = 26.0; x < w; x += 7) {
           canvas.drawLine(Offset(x, ty), Offset(x + 4, ty), dash);
         }
-        // Its floor: how far down it shuts.
         var fy = yOf(floor);
         canvas.drawLine(Offset(26, fy), Offset(w - 6, fy),
             Paint()..color = accent.withValues(alpha: 0.5));
@@ -317,7 +312,6 @@ class DeviceScreenPainter extends CustomPainter {
         var carrier = device.kind.param("carrier").reading(v("carrier"));
         say = "$n bands · carried by ${carrier.toLowerCase()}";
       case DeviceKind.lfo:
-        // Two of its cycles, and where it is now on them.
         var shape = v("shape").round(), rate = v("rate"), phase = v("phase");
         var wave = Path();
         for (var i = 0; i <= 160; i++) {
@@ -342,7 +336,6 @@ class DeviceScreenPainter extends CustomPainter {
             ? "${rate.toStringAsFixed(2)} Hz"
             : "${rate.toStringAsFixed(1)} Hz";
       case DeviceKind.split:
-        // The sound dividing into its branches and joining again.
         var mode = v("mode").round();
         var names = splitBranchNames(mode, device.branches.length);
         var line = Paint()
@@ -366,7 +359,6 @@ class DeviceScreenPainter extends CustomPainter {
           tp.paint(canvas, Offset(w / 2 - tp.width / 2, y - tp.height - 1));
         }
       case DeviceKind.macro:
-        // Its knobs as bars, as far as each is turned.
         var bar = (w - 10) / macroKnobs;
         for (var i = 0; i < macroKnobs; i++) {
           var x = 5 + i * bar;
@@ -438,7 +430,6 @@ class DeviceScreenPainter extends CustomPainter {
             DeviceKind.loudness:
         break;
     }
-    // Its reading, and what it does to the level while something plays.
     var change = moment.change;
     if (say != null) {
       _text(canvas, say, 6, h - 15, const Color(0xFF8E8A9C));
@@ -526,21 +517,19 @@ class DeviceScreenPainter extends CustomPainter {
       old.back != back;
 }
 
-/// analysedAsWave is whether [kind]'s display, on, draws the sound's wave
-/// before and after it (a drive's or a crusher's change is in its shape),
-/// rather than its level over the last few seconds.
+/// analysedAsWave is whether [kind]'s analysis draws the wave in and out
+/// (a drive's or crusher's change is in its shape), not recent level.
 bool analysedAsWave(DeviceKind kind) =>
     kind == DeviceKind.saturator ||
     kind == DeviceKind.overdrive ||
     kind == DeviceKind.bitCrusher;
 
-/// DeviceAnalysisPainter draws what [device] is doing to the real sound
-/// (Ken, 2026-11-08): [scope] as the engine kept it -- see device_scope.dart
-/// -- or nothing yet. A gate its level against its threshold and whether
-/// it is open; a vocoder its bands as loud as each is; a drive or crusher
-/// the wave going in and coming out; everything else its level going in
-/// and coming out over the last three seconds, so a reverb's tail and a
-/// delay's echoes show after the sound.
+/// DeviceAnalysisPainter draws what [device] is doing to the real sound:
+/// [scope] as the engine kept it (see device_scope.dart), or nothing yet. A
+/// gate its level against its threshold and whether it is open; a vocoder
+/// its bands as loud as each is; a drive or crusher the wave in and out;
+/// everything else its level in and out over the last three seconds, so a
+/// reverb's tail and a delay's echoes show after the sound.
 class DeviceAnalysisPainter extends CustomPainter {
   final MixDevice device;
   final ScopeReading? scope;
@@ -586,8 +575,8 @@ class DeviceAnalysisPainter extends CustomPainter {
     }
   }
 
-  /// _y is how far from the centre a level of [gain] reaches, on a decibel
-  /// scale: [_floorDb] at the centre, nought at the edge.
+  /// _reach is how far from the centre a level of [gain] reaches, on a
+  /// decibel scale: [_floorDb] at the centre, nought at the edge.
   double _reach(double gain, double half) =>
       ((_db(gain) - _floorDb) / -_floorDb).clamp(0.0, 1.0) * half;
 
@@ -635,7 +624,6 @@ class DeviceAnalysisPainter extends CustomPainter {
             ..color = lit ? const Color(0xFF5BC46B) : const Color(0xFF4A2F3A));
       _text(canvas, lit ? "open" : "shut", w - 44, 4, lit ? const Color(0xFF5BC46B) : _muted);
     }
-    // The change it makes, over the last half second.
     var last = math.max(1, n ~/ 6);
     var inPeak = 0.0, outPeak = 0.0;
     for (var i = n - last; i < n; i++) {

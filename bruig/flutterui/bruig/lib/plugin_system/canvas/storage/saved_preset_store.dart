@@ -7,18 +7,17 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// saved_preset_store.dart keeps the scenes and the canvases somebody has
-// saved, as element_preset_store.dart keeps the elements: one file per
-// preset, in a folder of its own under the presets folder.
+// saved_preset_store.dart keeps saved scenes and canvases, as
+// element_preset_store.dart keeps elements: one file per preset, in a folder
+// per kind under the presets folder.
 
-/// presetsFolderName is where every kind of preset lives, inside the canvas
-/// library. The leading dot keeps it out of the Files panel (see
-/// CanvasStorage.list).
+/// presetsFolderName is where every kind of preset lives in the canvas
+/// library; the leading dot keeps it out of Files (CanvasStorage.list).
 const presetsFolderName = ".presets";
 
-/// SavedPresetStore is one kind's worth of them, kept in memory so a panel
-/// can draw the list without waiting for the disk. One instance per kind, so
-/// a change to one does not redraw the other's panel.
+/// SavedPresetStore is one kind's presets, kept in memory so a panel draws
+/// the list without waiting for the disk. One per kind, so a change to one
+/// does not redraw the other's panel.
 class SavedPresetStore extends ChangeNotifier {
   static final SavedPresetStore scenes =
       SavedPresetStore._(SavedPresetKind.scene);
@@ -42,13 +41,11 @@ class SavedPresetStore extends ChangeNotifier {
   bool _loaded = false;
   Future<void>? _loading;
 
-  /// presets are what has been saved, by name.
   List<SavedPreset> get presets => _saved;
 
   bool get loaded => _loaded;
 
-  /// load reads the folder, once. Called again while it is reading, it joins
-  /// the read in progress rather than starting a second one.
+  /// load reads the folder once; a call during the read joins it.
   Future<void> load() {
     if (_loaded) return Future.value();
     return _loading ??= _read();
@@ -80,9 +77,8 @@ class SavedPresetStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// save keeps [data] under [name] and answers with the preset it made.
-  /// [data] is copied on the way in: a preset is a copy, not a link to the
-  /// scene it came from.
+  /// save keeps a copy of [data] under [name] and answers with the preset: a
+  /// preset is a copy, not a link to the scene it came from.
   Future<SavedPreset?> save(String name, Map<String, dynamic> data,
       {Size? madeOn}) async {
     var clean = name.trim();
@@ -104,7 +100,6 @@ class SavedPresetStore extends ChangeNotifier {
     return preset;
   }
 
-  /// rename changes what one is called.
   Future<bool> rename(SavedPreset preset, String name) async {
     var clean = name.trim();
     if (clean.isEmpty || clean == preset.name) return false;
@@ -118,7 +113,6 @@ class SavedPresetStore extends ChangeNotifier {
     return true;
   }
 
-  /// remove deletes one.
   Future<bool> remove(SavedPreset preset) async {
     try {
       var file = File(path.join(await _dir(), "${preset.id}.json"));
@@ -157,8 +151,8 @@ class SavedPresetStore extends ChangeNotifier {
   Future<String> _dir() async => path.join(
       await CanvasStorage.libraryDir(), presetsFolderName, kind.folder);
 
-  /// forget drops what has been read, for the tests that write a folder and
-  /// then expect to see it.
+  /// forget drops what has been read, for tests that write a folder and then
+  /// expect to see it.
   @visibleForTesting
   void forget() {
     _saved = const [];

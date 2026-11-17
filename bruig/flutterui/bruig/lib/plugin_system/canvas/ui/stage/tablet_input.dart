@@ -6,13 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 // tablet_input.dart is a drawing tablet's pen as the macOS runner reports it
-// (TabletStream in macos/Runner/MainFlutterWindow.swift). Flutter's pointer
-// events on macOS lack the pen's pressure, tilt and which end is down, so the
-// pencil reads those from here, and from Flutter's events where a platform
-// gives them.
+// (TabletStream in macos/Runner/MainFlutterWindow.swift). Flutter's macOS
+// pointer events lack pressure, tilt and which end is down, so the pencil
+// reads those from here.
 
-/// TabletInput is the pen's last reading. One for the app: there is one
-/// pen, and the runner sends its readings whatever is listening.
+/// TabletInput is the pen's last reading: one for the app, as the runner
+/// sends its readings whatever is listening.
 class TabletInput {
   TabletInput._();
   static final TabletInput instance = TabletInput._();
@@ -20,41 +19,39 @@ class TabletInput {
   static const _channel = EventChannel("bruig/tablet");
   StreamSubscription<dynamic>? _listening;
 
-  /// pressure is how hard the pen pressed, 0 to 1, at its last reading.
+  /// pressure is from 0 to 1.
   double pressure = 0;
 
-  /// tilt is how far over the pen leant, from 0 upright to a quarter turn
-  /// flat; tiltX and tiltY are the tablet's own two readings of it, -1 to 1
-  /// each way.
+  /// tiltX and tiltY are the tablet's readings, -1 to 1; tilt is the lean
+  /// in radians, from 0 upright to pi/2 flat.
   double tiltX = 0, tiltY = 0;
   double get tilt =>
       math.min(1.0, math.sqrt(tiltX * tiltX + tiltY * tiltY)) * math.pi / 2;
 
-  /// buttons is the pen's button mask at its last reading: 1 the tip, and 2, 4
-  /// and 8 its first, second and third button, where the tablet passes them on.
+  /// buttons is the pen's button mask: 1 the tip, and 2, 4 and 8 its first,
+  /// second and third button, where the tablet passes them on.
   int buttons = 0;
 
-  /// eraser is whether the end of the pen near the tablet is its eraser.
+  /// eraser is whether the end near the tablet is the eraser.
   bool eraser = false;
 
-  /// near is whether the pen is near enough the tablet to be read.
+  /// near is whether the pen is in the tablet's range.
   bool near = false;
 
-  /// heard is whether any reading has come from the runner at all, to tell a
-  /// pen the app cannot hear from one not yet used.
+  /// heard is whether any reading has come at all, to tell a pen the app
+  /// cannot hear from one not yet used.
   bool heard = false;
 
-  /// readAt is when the last reading arrived here, to tell whether it belongs
-  /// to the press being handled.
+  /// readAt is when the last reading arrived.
   DateTime readAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// fresh is whether the last reading is recent enough to be the pen pressing
-  /// now, not one left behind before a mouse was used.
+  /// fresh is whether the last reading is recent enough to be this press,
+  /// not one left behind before a mouse was used.
   bool get fresh =>
       DateTime.now().difference(readAt) < const Duration(milliseconds: 150);
 
-  /// start listens to the runner, on macOS, once. Elsewhere (and in tests) it
-  /// does nothing, and the pencil goes by Flutter's own pointer events.
+  /// start listens to the runner, once, on macOS only. Elsewhere and in
+  /// tests the pencil goes by Flutter's own pointer events.
   void start() {
     if (!reading) return;
     if (_listening != null || kIsWeb || !Platform.isMacOS) return;
@@ -64,9 +61,8 @@ class TabletInput {
         .listen(handle, onError: (Object e) => debugPrint("Tablet input: $e"));
   }
 
-  /// reading is whether the runner is listened to at all. Off, the runner's
-  /// watch on the window's events is taken down and the pencil goes by
-  /// Flutter's own events.
+  /// reading is whether the runner is listened to. Off, the runner's watch
+  /// on the window's events is taken down and the pencil goes by Flutter's.
   bool get reading => _reading;
   bool _reading = true;
   set reading(bool on) {
@@ -81,7 +77,6 @@ class TabletInput {
     }
   }
 
-  /// handle takes one message from the runner.
   @visibleForTesting
   void handle(dynamic message) {
     if (message is! Map) return;
@@ -101,7 +96,7 @@ class TabletInput {
     readAt = DateTime.now();
   }
 
-  /// reset forgets every reading, for the tests.
+  /// reset forgets every reading.
   @visibleForTesting
   void reset() {
     pressure = tiltX = tiltY = 0;

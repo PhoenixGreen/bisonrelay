@@ -2,19 +2,15 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
-// font_outlines.dart reads letter outlines out of a font file, which Flutter
-// draws but does not expose, so a drawing's text can be points like any
-// other shape.
-//
-// Reads TrueType outlines (glyf, quadratic) in .ttf files and collections,
-// and CFF outlines (cubic, Type 2 charstrings) in .otf files such as Inter:
-// the character map, advances, the old kern table, composite glyphs and CFF
-// subroutines. No hinting, and a variable font gives only its default
-// outlines.
+// font_outlines.dart reads letter outlines out of a font file, which
+// Flutter draws but does not expose, so a drawing's text can be points
+// like any other shape. Reads TrueType (glyf, quadratic) in .ttf files and
+// collections and CFF (cubic, Type 2 charstrings) in .otf files: cmap,
+// advances, the old kern table, composite glyphs and CFF subroutines. No
+// hinting; a variable font gives only its default outlines.
 
-/// GlyphSegment is one stretch of a letter's outline, in the font's own
-/// units with y upward: a straight line where [line], else a curve with two
-/// handles.
+/// GlyphSegment is one stretch of a letter's outline in font units, y up:
+/// a straight line where [line], else a curve with two handles.
 class GlyphSegment {
   final Offset c1, c2, to;
   final bool line;
@@ -106,8 +102,7 @@ class FontFace {
     }
   }
 
-  /// faces is how many faces [bytes] holds: one, unless it is a
-  /// collection.
+  /// faces is how many faces [bytes] holds: one, unless a collection.
   static int faces(Uint8List bytes) {
     var d = ByteData.sublistView(bytes);
     return bytes.length >= 12 && _tag(d, 0) == "ttcf" ? d.getUint32(8) : 1;
@@ -138,8 +133,7 @@ class FontFace {
     return "";
   }
 
-  /// glyphFor is the glyph for [codepoint], or 0 (the font's missing-glyph
-  /// box).
+  /// glyphFor is the glyph for [codepoint], or 0 (the missing-glyph box).
   int glyphFor(int codepoint) => _cmap(codepoint);
 
   /// advance is how far on the next letter starts after [glyph].
@@ -166,9 +160,7 @@ class FontFace {
     }
   }
 
-  // ------------------------------------------------------------------------
-  // TrueType
-  // ------------------------------------------------------------------------
+  // ---- TrueType
 
   List<GlyphContour> _glyf(int glyph, int depth) {
     var loca = _tables["loca"]!.$1, glyf = _tables["glyf"]!.$1;
@@ -414,9 +406,7 @@ Map<int, int> _readKern(ByteData d, int at) {
   return out;
 }
 
-// --------------------------------------------------------------------------
-// CFF
-// --------------------------------------------------------------------------
+// ---- CFF
 
 /// _Index is one of CFF's INDEXes: a count of items, and where each is.
 class _Index {
@@ -504,8 +494,7 @@ Map<int, List<double>> _dict(ByteData d, int from, int to) {
 
 int _bias(int count) => count < 1240 ? 107 : (count < 33900 ? 1131 : 32768);
 
-/// _Cff is a font's CFF table: its letters as Type 2 charstrings, run to
-/// draw them.
+/// _Cff is a font's CFF table: its letters as Type 2 charstrings.
 class _Cff {
   final ByteData d;
   late final _Index _chars;

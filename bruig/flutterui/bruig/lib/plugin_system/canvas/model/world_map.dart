@@ -4,9 +4,8 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/world_shapes.dart';
 
 // world_map.dart is the world's countries as shapes, for the tile map's
-// drawn way (Ken, 2026-11-17: the improvements report's leftovers): read
-// from world_shapes.dart once, the first time a map is drawn, and found by
-// a sheet's place names -- two- or three-letter codes, or names.
+// drawn way: read from world_shapes.dart the first time a map is drawn, and
+// found by a sheet's place names (two- or three-letter codes, or names).
 
 /// WorldCountry is one country: its codes, its name, and its outlines in
 /// degrees (longitude, latitude).
@@ -52,7 +51,6 @@ Rect _boxOf(List<Offset> ring) {
 List<WorldCountry>? _countries;
 Map<String, WorldCountry>? _byKey;
 
-/// worldCountries is every country, read once.
 List<WorldCountry> get worldCountries {
   if (_countries case var c?) return c;
   var out = <WorldCountry>[];

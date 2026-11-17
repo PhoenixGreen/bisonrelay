@@ -5,16 +5,14 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
 // midi_effects.dart is a MIDI channel's effects (chord, scale, arpeggiator,
-// velocity), applied to notes before its instrument plays them, as Ableton's
-// MIDI effects are.
-//
-// The same chain runs on a part's or clip's notes before rendering
-// ([applyMidiEffects]) and on keys played live ([liveKeys], [Arpeggio]).
-// Recordings keep the notes before the effects, so changing an effect
+// velocity), applied to notes before the instrument plays them, as
+// Ableton's are. The same chain runs on a part's or clip's notes before
+// rendering ([applyMidiEffects]) and on live keys ([liveKeys], [Arpeggio]).
+// Recordings keep the notes before the effects, so editing an effect
 // changes the recording too.
 
-/// MidiParam is one setting of a MIDI effect: a number, or one of [choices]
-/// stored as its index.
+/// MidiParam is one setting of a MIDI effect: a number, or one of
+/// [choices] stored as its index.
 class MidiParam {
   final String id;
   final String label;
@@ -29,7 +27,6 @@ class MidiParam {
       : _max = max,
         choices = const [];
 
-  /// MidiParam.choice is a setting that is one of [choices].
   const MidiParam.choice(this.id, this.label, this.choices, int initial)
       : min = 0,
         _max = 0,
@@ -40,7 +37,7 @@ class MidiParam {
 
   bool get isChoice => choices.isNotEmpty;
 
-  /// reading is [v] as the knob says it.
+  /// reading is [v] as the knob shows it.
   String reading(double v) {
     if (isChoice) return choices[v.round().clamp(0, choices.length - 1)];
     return switch (unit) {
@@ -52,8 +49,8 @@ class MidiParam {
   }
 }
 
-/// scaleNames and scaleSteps are the scales the Scale effect keeps notes
-/// to: each its semitones from the root.
+/// scaleNames and scaleSteps are the Scale effect's scales, each as
+/// semitones from the root.
 const scaleNames = [
   "Major",
   "Minor",
@@ -91,7 +88,6 @@ const arpStyleNames = [
   "Random"
 ];
 
-/// MidiEffectKind is what a MIDI effect does.
 enum MidiEffectKind {
   arpeggiator("Arpeggiator", "Arp", [
     MidiParam.choice("rate", "Rate", arpRateNames, 3),
@@ -127,8 +123,8 @@ enum MidiEffectKind {
       values.where((k) => k.name == name).firstOrNull;
 }
 
-/// MidiEffect is one effect in a MIDI channel's chain: what it is, whether
-/// it is on, and the settings that are not its kind's own.
+/// MidiEffect is one effect in a channel's chain: its kind, whether it is
+/// on, and settings that differ from its kind's.
 class MidiEffect {
   final MidiEffectKind kind;
   final bool on;
@@ -231,8 +227,8 @@ MidiEffect? arpeggiatorOf(List<MidiEffect> effects) => effects
     .where((e) => e.on && e.kind == MidiEffectKind.arpeggiator)
     .firstOrNull;
 
-/// arpStepSeconds is how long one of [arp]'s steps lasts at [secondsPerBeat]
-/// a quarter note.
+/// arpStepSeconds is how long one of [arp]'s steps lasts at
+/// [secondsPerBeat] a quarter note.
 double arpStepSeconds(MidiEffect arp, double secondsPerBeat) =>
     arpRates[arp.choice("rate").clamp(0, arpRates.length - 1)] *
     4 *
@@ -245,8 +241,8 @@ class Arpeggio {
   int _step = 0;
   Arpeggio(this.arp, {math.Random? random}) : random = random ?? math.Random();
 
-  /// sequence is [held] -- in the order they were pressed -- as the style
-  /// plays them, through the octaves.
+  /// sequence is [held] (in pressing order) as the style plays them, through
+  /// the octaves.
   List<int> sequence(List<int> held) {
     if (held.isEmpty) return const [];
     var octaves = arp.value("octaves").round().clamp(1, 4);
@@ -281,14 +277,14 @@ class Arpeggio {
 }
 
 /// applyMidiEffects is [notes] (in seconds) through the chain, before
-/// rendering. [secondsPerBeat] times the arpeggiator. The random parts are
-/// seeded, so the same notes always make the same file.
+/// rendering; [secondsPerBeat] times the arpeggiator. Random parts are
+/// seeded so the same notes always make the same file.
 List<MidiNote> applyMidiEffects(
     List<MidiNote> notes, List<MidiEffect> effects, double secondsPerBeat) {
   if (notes.isEmpty || !effects.any((e) => e.on)) return notes;
   var random = math.Random(notes.length * 31 + effects.length);
-  // Chord, scale and velocity on each note, in the chain's order; the
-  // arpeggiator over what they make.
+  // Chord, scale and velocity on each note in chain order; the arpeggiator
+  // over what they make.
   var out = <MidiNote>[
     for (var n in notes)
       for (var (k, v) in liveKeys(effects, n.key, n.velocity, random: random))
@@ -310,9 +306,9 @@ List<MidiNote> applyMidiEffects(
         if (n.start <= t + 1e-6 && n.end > t + 1e-6) n,
     ];
     var keys = [for (var n in held) n.key];
-    // Every key let go, it starts again from the top; a key added to those
-    // held joins the pattern where it has got to -- as it plays live, and
-    // as Ableton's does (Ken, 2026-11-08).
+    // With every key let go it starts again from the top; a key added to
+    // those held joins the pattern where it has got to, as live and as in
+    // Ableton.
     if (keys.isEmpty) {
       player.reset();
       continue;

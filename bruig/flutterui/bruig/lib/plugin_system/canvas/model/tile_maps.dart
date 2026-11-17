@@ -5,7 +5,7 @@
 
 /// europeCountries is where each European country's tile sits, by its
 /// two-letter code (GB and UK, GR and EL alike), roughly as the continent
-/// lies (Ken, 2026-11-17, the improvements report's tenth item).
+/// lies.
 const Map<String, (int, int)> europeCountries = {
   "IS": (0, 0), "NO": (5, 0), "SE": (6, 0), "FI": (7, 0), //
   "IE": (1, 1), "GB": (2, 1), "UK": (2, 1), "DK": (5, 1), "LV": (7, 1),

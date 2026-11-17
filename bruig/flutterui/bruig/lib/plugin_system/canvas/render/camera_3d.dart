@@ -9,18 +9,11 @@ import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 
 // camera_3d.dart is a Camera element in a scene on a 3D stage: the stage's
-// camera from the Camera's own view (or the stage's until it has one),
-// moved by its clips:
-//
-//   a turn orbits round what it looks at;
-//   a size dollies it closer (2 is half as far);
-//   an "on" another element aims it at that element's stage spot, as far as
-//     the clip has got: a push in arrives, a follow stays, a pull back leaves;
-//   across and down without a place (a shake) pan it, by as many metres as
-//     that many pixels span at what it looks at.
-//
-// Used while playing, exporting and looking through it (see directedBy); the
-// stage's own camera is used while editing.
+// camera from the Camera's view (or the stage's), moved by its clips. A turn
+// orbits round what it looks at; a size dollies it (2 is half as far); an
+// "on" another element aims it at that element's stage spot as far as the
+// clip has got; across and down without a place (a shake) pan it. Used while
+// playing, exporting and looking through it; editing uses the stage's own.
 
 /// camera3dAt is what [cam] makes of [stage]'s camera on [frame] of [doc].
 StageCamera camera3dAt(
@@ -38,8 +31,7 @@ StageCamera camera3dAt(
     ty += (spot.$2 - ty) * f;
     tz += (spot.$3 - tz) * f;
   } else if (pose.dx != 0 || pose.dy != 0) {
-    // Panned in the picture's plane: across along the camera's right,
-    // down as down.
+    // Panned in the picture's plane: across along the camera's right.
     var view = StageView(stage.bounds, base.copyWith(yaw: yaw));
     var hfov = 2 * math.atan(36 / (2 * base.lens));
     var metres =
@@ -98,9 +90,8 @@ StageCamera camera3dAt(
   return ((spot.x, spot.lift, spot.z), f.clamp(0.0, 1.0));
 }
 
-/// directedBy runs [paint] with [doc]'s Camera directing every stage drawn
-/// -- in a scene on a 3D stage, where it has one -- and puts the stages back
-/// on their own cameras after.
+/// directedBy runs [paint] with [doc]'s Camera directing every 3D stage
+/// drawn, then puts the stages back on their own cameras.
 T directedBy<T>(CanvasDocument doc, LiveMotion? live, T Function() paint) {
   var cam = cameraOf(doc);
   if (cam == null || !isStageScene(doc)) return paint();

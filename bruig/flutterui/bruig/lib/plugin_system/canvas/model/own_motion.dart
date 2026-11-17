@@ -38,7 +38,7 @@ int? ownEnd(CanvasElement e, int rate) =>
     };
 
 /// withOwnSpan is [e] with its own [kind] playing from frame [from] to
-/// [to]: its clip retimed, or one made. [name] is what the clip is called on the timeline.
+/// [to]: its clip retimed, or one made, called [name] on the timeline.
 CanvasElement withOwnSpan(
     CanvasElement e, MotionKind kind, int from, int to, int rate,
     {String name = ""}) {

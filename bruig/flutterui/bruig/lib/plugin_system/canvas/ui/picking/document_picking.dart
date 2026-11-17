@@ -10,8 +10,7 @@ import 'package:flutter/material.dart';
 /// pickLibraryDocument asks which document a text element should read, and
 /// returns a reference to it -- or null if the reader changed their mind.
 Future<TextDocumentRef?> pickLibraryDocument(BuildContext context) async {
-  // The library is one level deep: the documents at the top, and then the
-  // documents in each folder. See PostStorage.list.
+  // The library is one level deep: see PostStorage.list.
   var entries = <PostEntry>[];
   try {
     for (var entry in await PostStorage.list()) {

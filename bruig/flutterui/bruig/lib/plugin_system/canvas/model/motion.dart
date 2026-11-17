@@ -5,18 +5,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 
-// motion.dart is how an element moves: its clips. A clip is a piece of
-// animation belonging to one element (an arrival, a loop, a way out, an
-// action) made of keys, played from a slot, a cue or a trigger, or placed on
-// the timeline.
-//
-// Clips are the animation model. Legacy keyframe tracks are converted to
-// clips when a canvas opens (motion_convert.dart); a preset only writes a
-// clip's keys (motion_presets.dart). render/motion_pose.dart works out what
-// an element looks like at a moment.
-//
-// Times in a clip are seconds from its start, and on the timeline seconds
-// from the scene's start, so changing the frame rate changes no speeds.
+// motion.dart is how an element moves: its clips. A clip is one element's
+// piece of animation (an arrival, a loop, a way out, an action) made of keys,
+// played from a slot, a cue or a trigger, or placed on the timeline. Legacy
+// keyframe tracks become clips on open (motion_convert.dart); a preset only
+// writes keys; render/motion_pose.dart works out the pose at a moment.
+// Clip times are seconds, so the frame rate changes no speeds.
 
 /// MotionProp is one thing a clip's keys move, relative to the element as
 /// set (moved by, sized by, turned by), so one clip works on any element.
@@ -29,7 +23,6 @@ enum MotionProp {
 
   final String label;
 
-  /// rest is its value when nothing moves it.
   final double rest;
   const MotionProp(this.label, this.rest);
 
@@ -40,8 +33,7 @@ enum MotionProp {
 /// MotionPlaceKind is a place a key can name instead of a number, worked out
 /// as the clip plays so it holds when the page or its target moves.
 enum MotionPlaceKind {
-  /// offLeft and its fellows are just past an edge, the element wholly out
-  /// of sight.
+  /// offLeft and its fellows are just past an edge, wholly out of sight.
   offLeft("Off the left edge"),
   offRight("Off the right edge"),
   offTop("Above the page"),
@@ -52,8 +44,8 @@ enum MotionPlaceKind {
   beside("Beside"),
   ground("On the ground of"),
 
-  /// on is where another element is drawn now, as it moves: what a
-  /// following camera looks at.
+  /// on is where another element is drawn as it moves: what a following
+  /// camera looks at.
   on("On");
 
   final String label;
@@ -103,12 +95,11 @@ class MotionNumber extends MotionValue {
 class MotionPlace extends MotionValue {
   final MotionPlaceKind kind;
 
-  /// target is the element it is worked out from, by id, where it names one.
+  /// target is the id of the element it is worked out from, where it names one.
   final String target;
 
-  /// by is how many pixels on from the place it is, the way the place
-  /// moves it (across, or up and down for above and below the page): the
-  /// prototype's Place Offset.
+  /// by is pixels on from the place, the way the place moves it (across, or
+  /// up and down for above and below the page).
   final double by;
   const MotionPlace(this.kind, {this.target = "", this.by = 0});
 
@@ -124,7 +115,6 @@ class MotionPlace extends MotionValue {
         _ => prop == MotionProp.x || prop == MotionProp.y,
       };
 
-  /// offsets is the axis [by] is along.
   MotionProp get offsets =>
       kind == MotionPlaceKind.offTop || kind == MotionPlaceKind.offBottom
           ? MotionProp.y
@@ -152,8 +142,7 @@ class MotionPlace extends MotionValue {
   int get hashCode => Object.hash(kind, target, by);
 }
 
-/// MotionKey is where a property is at [t] seconds into the clip, and the
-/// easing from the key before.
+/// MotionKey is a property's value [t] seconds into the clip.
 class MotionKey {
   final double t;
   final MotionValue value;
@@ -167,8 +156,7 @@ class MotionKey {
   const MotionKey(this.t, this.value,
       {this.ease = KeyframeEasing.linear, this.curve});
 
-  /// eased is how far into this key from the one before [p] of the way
-  /// between them is.
+  /// eased is how far into this key [p] of the way from the one before is.
   double eased(double p) => ease == KeyframeEasing.custom && curve != null
       ? curve!.apply(p)
       : ease.apply(p);
@@ -208,23 +196,19 @@ class MotionKey {
   int get hashCode => Object.hash(t, value, ease, curve);
 }
 
-/// MotionKind is what a clip is for. It sets the clip's colour, the presets
-/// offered, and its default holds before and after (an arrival waits at its
-/// first frame, a way out stays gone).
+/// MotionKind is what a clip is for: it sets the colour, the presets offered
+/// and the default holds (an arrival waits at its first frame).
 enum MotionKind {
   arrive("Arriving", ClipHold.first, ClipHold.rest),
   loop("Looping", ClipHold.rest, ClipHold.rest),
   leave("Leaving", ClipHold.rest, ClipHold.last),
   action("Action", ClipHold.rest, ClipHold.rest),
 
-  /// model is a 3D model's own animation: the keys are in the model file;
-  /// the clip says which, and when.
+  /// model is a 3D model's own animation: the clip names it and when.
   model("From the model", ClipHold.rest, ClipHold.rest),
 
-  /// camera is a Camera element's move: where it looks and how near.
   camera("Camera move", ClipHold.rest, ClipHold.last),
 
-  /// sound is a sound, on an element's own sound lane or a channel.
   sound("Sound", ClipHold.rest, ClipHold.rest);
 
   final String label;
@@ -236,8 +220,8 @@ enum MotionKind {
       values.firstWhere((k) => k.name == name, orElse: () => action);
 }
 
-/// ClipHold is what a clip does outside the time it plays: nothing, or hold
-/// its first or last frame.
+/// ClipHold is what a clip does outside its time: nothing, or hold its first
+/// or last frame.
 enum ClipHold {
   rest("As it is"),
   first("Holds its first frame"),
@@ -250,8 +234,7 @@ enum ClipHold {
       values.firstWhere((h) => h.name == name, orElse: () => fallback);
 }
 
-/// ClipLaunch is what a press on a clip's slot does, as the audio slots'
-/// LaunchMode.
+/// ClipLaunch is what a press on a clip's slot does, as LaunchMode does.
 enum ClipLaunch {
   trigger("Starts it"),
   gate("Plays while held"),
@@ -290,7 +273,7 @@ enum ClipTriggerKind {
   marker("The playhead reaches a marker"),
   touched("A player touches it"),
   count("A count reaches"),
-  // Ken, 2026-11-10: punched or kicked in a game (see PlaySpec.hits).
+  // Punched or kicked in a game (see PlaySpec.hits).
   hit("It is hit");
 
   final String label;
@@ -300,8 +283,7 @@ enum ClipTriggerKind {
       values.where((t) => t.name == name).firstOrNull;
 }
 
-/// ClipTrigger is one trigger: its kind, the element, key, clip, marker or
-/// count it names, and [amount] for a count.
+/// ClipTrigger is one trigger: its kind, what it names, and [amount].
 class ClipTrigger {
   final ClipTriggerKind kind;
   final String target;
@@ -334,16 +316,13 @@ class ClipTrigger {
   int get hashCode => Object.hash(kind, target, amount);
 }
 
-/// motionLayers is how many layers an element's motion has. Clips on
-/// different layers play together, their moves added (floating while
-/// sliding in).
+/// motionLayers is how many motion layers an element has. Clips on different
+/// layers play together, their moves added (floating while sliding in).
 const int motionLayers = 3;
 
-/// soundLayer is the lane an element's own sound plays on, after its motion
-/// layers.
+/// soundLayer is the lane an element's own sound plays on, after its motion.
 const int soundLayer = motionLayers;
 
-/// MotionClip is one clip. Immutable.
 class MotionClip {
   final String id;
   final String name;
@@ -354,26 +333,23 @@ class MotionClip {
   final String preset;
   final bool edited;
 
-  /// length is the clip's own length in seconds, and speed how fast it plays
-  /// from a slot (on the timeline its placement sets its pace).
+  /// length is the clip's length in seconds, and speed how fast it plays from
+  /// a slot (on the timeline its placement sets its pace).
   final double length;
   final double speed;
   final bool loop;
 
-  /// replace is whether, while it plays, its layer takes the element over
-  /// from the layers under it (as far as its weight goes) rather than
-  /// adding to them: the prototype's Layer: Replace | Add.
+  /// replace is whether its layer takes the element over from the layers
+  /// under it (as far as its weight goes) while it plays, rather than adding.
   final bool replace;
 
-  /// layer is which of the element's layers it plays on: 0 to
-  /// [motionLayers] - 1, or [soundLayer] for a sound.
+  /// layer is 0 to [motionLayers] - 1, or [soundLayer] for a sound.
   final int layer;
 
   final ClipHold before;
   final ClipHold after;
 
-  /// absolute makes its across and down keys page positions rather than
-  /// moves from where the element is.
+  /// absolute makes its across and down keys page positions, not moves.
   final bool absolute;
 
   final Map<MotionProp, List<MotionKey>> keys;
@@ -390,11 +366,10 @@ class MotionClip {
   final List<ClipTrigger> triggers;
 
   /// inside is settings only this kind of element has in a clip (a text's
-  /// words, a character's face, a model's animation by name), kept as
-  /// settings rather than keys. See [insideAt].
+  /// words, a character's face, a model's animation), kept as settings, not
+  /// keys. See [insideAt].
   final Map<String, dynamic> inside;
 
-  /// sound is a sound clip's asset id.
   final String sound;
 
   const MotionClip({
@@ -421,7 +396,6 @@ class MotionClip {
     this.sound = "",
   });
 
-  /// ofKind is a new clip of [kind], holding as that kind holds.
   factory MotionClip.ofKind(String id, MotionKind kind,
           {String name = "",
           String preset = "",
@@ -580,11 +554,9 @@ class MotionClip {
   }
 }
 
-/// PinKind is what a placed clip's start or end follows: the scene's start
-/// or end, a marker, or the end of another placed clip.
+/// PinKind is what a placed clip's start or end follows.
 enum PinKind { sceneStart, sceneEnd, marker, after }
 
-/// ClipPin is a pin: its kind, and the marker or placement it names.
 class ClipPin {
   final PinKind kind;
   final String target;
@@ -609,8 +581,8 @@ class ClipPin {
 }
 
 /// ClipPlacement is a clip placed on the timeline: layer, start, length and
-/// the stretch of the clip it plays (a clip cut in two is two placements).
-/// A one-shot fills its place by being retimed; a loop by repeating.
+/// the stretch it plays (a clip cut in two is two placements). A one-shot
+/// fills its place by being retimed; a loop by repeating.
 class ClipPlacement {
   final String id;
   final String clip;
@@ -623,16 +595,14 @@ class ClipPlacement {
   /// the clip's own span from [from] to [to].
   final double? length;
 
-  /// from and to are the stretch of the clip it plays, in seconds; [to] null
-  /// is the clip's end.
+  /// from and to are the stretch it plays, in seconds; null [to] is the end.
   final double from;
   final double? to;
 
   final ClipPin? startPin;
   final ClipPin? endPin;
 
-  /// link is the sound on the timeline it moves with, by its element's id
-  /// (Ken, 2026-11-10: linked clips), or "" for none.
+  /// link is the id of the sound element it moves with, or "" for none.
   final String link;
 
   const ClipPlacement({
@@ -706,16 +676,13 @@ class ClipPlacement {
   }
 }
 
-/// markerKey is how a pin names a marker: its id, or `m<frame>` for one made
-/// without an id.
+/// markerKey is how a pin names a marker: its id, or `m<frame>` without one.
 String markerKey(TimelineAction a) => a.id.isNotEmpty ? a.id : "m${a.frame}";
 
-/// math0 keeps a time from going before the scene's start.
 double math0(double v) => v < 0 ? 0 : v;
 
-/// InsideChannel is a renderer channel only some elements have: their own
-/// arrival and way out, a counter's count, a line's bow, text sliding along
-/// its line.
+/// InsideChannel is a renderer channel only some elements have: own arrival
+/// and way out, a counter's count, a line's bow, text sliding along a line.
 enum InsideChannel {
   reveal("reveal"),
   close("close"),
@@ -723,15 +690,13 @@ enum InsideChannel {
   bow("bow"),
   slide("slide");
 
-  /// channel is the KeyframeChannel the renderer reads it from.
   final String channel;
   const InsideChannel(this.channel);
 }
 
-/// insideAt is [c]'s [MotionClip.inside] settings at [t] seconds in, as a
-/// value for each renderer channel they set. An own arrival or way out runs
-/// nought to one across the clip; a count, bow or slide from its set start
-/// to its set end.
+/// insideAt is [c]'s [MotionClip.inside] settings at [t] seconds in, by
+/// renderer channel. An own arrival or way out runs nought to one across the
+/// clip; a count, bow or slide from its set start to its set end.
 Map<String, double> insideAt(MotionClip c, double t) {
   var inside = c.inside;
   if (inside.isEmpty) return const {};
@@ -756,65 +721,54 @@ Map<String, double> insideAt(MotionClip c, double t) {
 /// maxClipSlots caps the slots read back (one per cue row).
 const int maxClipSlots = 256;
 
-/// ElementMotion is all of an element's motion (ElementBase.motion): its
-/// clips, its slots, its placements and its layer weights. Immutable.
+/// ElementMotion is all of an element's motion (ElementBase.motion): clips,
+/// slots, placements and layer weights.
 class ElementMotion {
   final List<MotionClip> clips;
 
-  /// slots are the clip ids in the element's slots, one per cue row; "" is
-  /// empty. A clip need not be in a slot.
+  /// slots are the clip ids in its slots, one per cue row; "" is empty.
   final List<String> slots;
   final List<ClipPlacement> placed;
 
-  /// weights are each layer's weight, 0 to 1, as the strip's cross-fader
-  /// and pins leave them (see crossFade) -- before [amount] and [off]: read
-  /// [weight] for what plays.
+  /// weights are each layer's weight, 0 to 1, as the cross-fader and pins
+  /// leave them, before [amount] and [off]: read [weight] for what plays.
   final List<double> weights;
 
-  /// pins are the layers pinned on the strip's cross-fader, bit i layer i:
-  /// each played in full, the fader blending the others (Ken, 2026-11-08).
+  /// pins are the layers pinned on the cross-fader, bit i layer i: each
+  /// played in full, the fader blending the others.
   final int pins;
 
   /// links are the slot rows whose motion launches with the element's own
-  /// sound in the same row, either pressed (Ken, 2026-11-10; the approved
-  /// design's linked slots), in order.
+  /// sound in the same row, either pressed, in order.
   final List<int> links;
 
-  /// fade is where the cross-fader stands, 0 to 1, along the layers in use
-  /// that are not pinned.
+  /// fade is the cross-fader's place, 0 to 1, along the unpinned layers in use.
   final double fade;
 
-  /// amount is how much of its motion is seen, 0 to 1: every layer's
-  /// weight scaled by it.
+  /// amount is how much of its motion is seen, 0 to 1, scaling every weight.
   final double amount;
 
-  /// off is its motion switched off (the ◆ on its row and strip): drawn as
-  /// if it had none -- its layers, its pose devices but its copies, and its
-  /// looks. Its sound is its own.
+  /// off is its motion switched off (the ◆ on its row and strip): drawn with
+  /// none of its layers, pose devices but copies, or looks. Its sound plays.
   final bool off;
 
-  /// output is the sound channel the element's own sound goes into, by
-  /// name, or "" for its own lane.
+  /// output is the sound channel its own sound goes into, or "" for its lane.
   final String output;
 
-  /// devices are its motion chain beyond its clips, as arranged: pose
-  /// devices that run left of its drawing and looks right of it -- see
-  /// motion_devices.dart. Read [poseDevices] and [looks] for the order they
-  /// run in.
+  /// devices are its chain beyond its clips, as arranged: pose devices left
+  /// of its drawing, looks right. [poseDevices] and [looks] give run order.
   final List<MotionDevice> devices;
 
-  /// instances are the element reused, or null for an element placed once:
-  /// see instances.dart. Where they split in its chain is its Instances
-  /// device, first of its moves unless moved.
+  /// instances are the element reused, or null when placed once
+  /// (instances.dart); they split in its chain at its Instances device.
   final InstanceSet? instances;
 
-  /// kept is whether it keeps its channel -- its row on the timeline, its
-  /// slots and strip -- with no clips left: its last clip taken out is not
-  /// it taken out (Ken, 2026-11-08). See channelled.
+  /// kept keeps its channel (timeline row, slots, strip) with no clips left:
+  /// taking out its last clip does not take it out. See channelled.
   final bool kept;
 
-  /// drawSize is how big its Drawing draws it, a share of its size: the
-  /// Drawing device's Size. A copy can have its own (key "drawSize").
+  /// drawSize is its Drawing device's Size, a share of its size. A copy can
+  /// have its own (key "drawSize").
   final double drawSize;
 
   const ElementMotion({
@@ -838,14 +792,12 @@ class ElementMotion {
 
   bool get isEmpty => clips.isEmpty && placed.isEmpty;
 
-  /// channelled is whether the element has a channel of its own: clips, or
-  /// a chain, or one kept when its last clip went.
+  /// channelled is whether the element has a channel: clips, a chain, or kept.
   bool get channelled => !isEmpty || kept || devices.isNotEmpty;
 
-  /// poseDevices are its pose devices switched on, in the order they run:
-  /// made once for each motion (it never changes), as a pose is asked for
-  /// many times a frame and its poses are kept by this list (see
-  /// motion_document.dart's _pulled).
+  /// poseDevices are its pose devices switched on, in run order. Made once
+  /// per motion: a pose is asked for many times a frame, and its poses are
+  /// cached against this list (motion_document.dart's _pulled).
   List<MotionDevice> get poseDevices =>
       _poseDevices[this] ??= List.unmodifiable(_makePoseDevices());
 
@@ -858,35 +810,32 @@ class ElementMotion {
         for (var d in devices)
           if (d.on && d.side == MotionDeviceSide.pose) d,
     ];
-    // Its Instances only with instances, and always first (Ken, 2026-11-08):
-    // every copy has the whole chain, each with what it has of its own.
+    // Its Instances only with instances, and always first: every copy has the
+    // whole chain, each with what it has of its own.
     if (instances == null) return poses;
     return [const MotionDevice(MotionDeviceKind.instances), ...poses];
   }
 
-  /// designs are its Design devices switched on: see design_device.dart.
+  /// designs are its Design devices switched on (design_device.dart).
   List<MotionDevice> get designs => [
         if (!off)
           for (var d in devices)
             if (d.on && d.side == MotionDeviceSide.design) d,
       ];
 
-  /// looks are its look devices switched on, in the order they run.
   List<MotionDevice> get looks => [
         if (!off)
           for (var d in devices)
             if (d.on && d.side == MotionDeviceSide.look) d,
       ];
 
-  /// moves is whether anything of its motion can move it: a clip, or a pose
-  /// device.
+  /// moves is whether a clip or a pose device can move it.
   bool get moves =>
       !isEmpty ||
       instances != null ||
       drawSize != 1 ||
       devices.any((d) => d.on && d.side != MotionDeviceSide.look);
 
-  /// isBlank is whether there is nothing of it to keep.
   bool get isBlank =>
       isEmpty && devices.isEmpty && instances == null && drawSize == 1;
 
@@ -895,44 +844,39 @@ class ElementMotion {
   ClipPlacement? placement(String id) =>
       placed.where((p) => p.id == id).firstOrNull;
 
-  /// slot is the clip in slot [i], or null.
   MotionClip? slot(int i) =>
       i >= 0 && i < slots.length && slots[i].isNotEmpty ? clip(slots[i]) : null;
 
-  /// weight is how much [layer] plays: its fader's weight, by [amount],
-  /// and none while [off].
+  /// weight is how much [layer] plays: fader weight by [amount], 0 if [off].
   double weight(int layer) => off ? 0 : layerWeight(layer) * amount;
 
-  /// layerWeight is [layer]'s weight as the cross-fader and pins leave it.
   double layerWeight(int layer) =>
       layer >= 0 && layer < weights.length ? weights[layer] : 1;
 
-  /// isPinned is whether [layer] is pinned on the cross-fader.
   bool isPinned(int layer) => pins & (1 << layer) != 0;
 
-  /// layersInUse are the motion layers something is on, a clip or a
-  /// placement, lowest first: what the cross-fader spans.
+  /// layersInUse are the motion layers with a clip or placement, lowest
+  /// first: what the cross-fader spans.
   List<int> get layersInUse => [
         for (var l = 0; l < motionLayers; l++)
           if (placed.any((p) => p.layer == l) || clips.any((c) => c.layer == l))
             l,
       ];
 
-  /// freeLayers are those of [layersInUse] not pinned: the cross-fader's.
+  /// freeLayers are the unpinned [layersInUse]: the cross-fader's.
   List<int> get freeLayers => [
         for (var l in layersInUse)
           if (!isPinned(l)) l
       ];
 
-  /// faded is this with the cross-fader at [to], its weights following.
+  /// faded is this with the cross-fader at [to], weights following.
   ElementMotion faded(double to) {
     var f = to.clamp(0.0, 1.0).toDouble();
     return copyWith(fade: f, weights: crossFade(layersInUse, pins, f));
   }
 
-  /// pinnedAs is this with [layer] pinned or not, its weights following.
-  /// Every layer in use pinned leaves nothing to fade: refused, as the
-  /// prototype does.
+  /// pinnedAs is this with [layer] pinned or not, weights following. Pinning
+  /// every layer in use leaves nothing to fade, so it is refused.
   ElementMotion pinnedAs(int layer, bool pinned) {
     var next = pinned ? pins | (1 << layer) : pins & ~(1 << layer);
     var used = layersInUse;
@@ -942,8 +886,7 @@ class ElementMotion {
     return copyWith(pins: next, weights: crossFade(used, next, fade));
   }
 
-  /// hasSound is whether any clip is a sound, giving it a sound lane and
-  /// fader.
+  /// hasSound is whether any clip is a sound, giving it a sound lane.
   bool get hasSound => clips.any((c) => c.isSound);
 
   ElementMotion copyWith({
@@ -980,9 +923,8 @@ class ElementMotion {
         drawSize: drawSize ?? this.drawSize,
       );
 
-  /// renamedFor is this for a copy, element [id]: fresh placement ids, with
-  /// its own pins following. Two elements sharing a placement id would play
-  /// each other's timing.
+  /// renamedFor is this for copy [id], with fresh placement ids: two
+  /// elements sharing one would play each other's timing.
   ElementMotion renamedFor(String id) {
     if (placed.isEmpty) return this;
     var names = {
@@ -1030,7 +972,6 @@ class ElementMotion {
     return copyWith(slots: next);
   }
 
-  /// isLinked is whether slot row [row]'s motion launches with its sound.
   bool isLinked(int row) => links.contains(row);
 
   /// linkedAs is this with slot row [row] linked to its sound, or not.
@@ -1069,8 +1010,7 @@ class ElementMotion {
     ]);
   }
 
-  /// withPlacement is this with [p] added, or replacing the one with its
-  /// id.
+  /// withPlacement is this with [p] added, or replacing the one with its id.
   ElementMotion withPlacement(ClipPlacement p) => copyWith(placed: [
         for (var x in placed)
           if (x.id != p.id) x,
@@ -1140,8 +1080,8 @@ class ElementMotion {
       devices: withMotionDeviceIds([
         if (json["devices"] case List raw)
           for (var d in raw)
-            // An Instances kept as a device, from before its copies were
-            // the chain's first card: dropped, as it stands for nothing.
+            // An Instances device from an older file stands for nothing,
+            // since copies are the chain's first card: dropped.
             if (MotionDevice.fromJson(d) case var device?
                 when device.kind != MotionDeviceKind.instances)
               device,
@@ -1153,11 +1093,9 @@ class ElementMotion {
   }
 }
 
-/// crossFade is each layer's weight for the strip's cross-fader at [fade]
-/// over [used] layers, [pins] pinned (the prototype's weights(), Ken
-/// 2026-11-08): a pinned layer plays in full; the free ones are spread along
-/// the fader, it blending between the two it stands between; one free layer
-/// plays in full. A layer not in use keeps 1, there being nothing on it.
+/// crossFade is each layer's weight with the fader at [fade] over [used]
+/// layers, [pins] pinned. Pinned and lone free layers play in full; others
+/// spread along the fader, blending the two it stands between. Unused keep 1.
 List<double> crossFade(List<int> used, int pins, double fade) {
   var w = List<double>.filled(motionLayers, 1);
   var free = [
@@ -1176,14 +1114,13 @@ List<double> crossFade(List<int> used, int pins, double fade) {
   return w;
 }
 
-/// MotionTimes resolves where placed clips are, following their pins. One
-/// per scene, for every element at once, since a pin can name another
-/// element's placement.
+/// MotionTimes resolves where placed clips are, following their pins. One per
+/// scene for every element, since a pin can name another element's placement.
 class MotionTimes {
-  /// sceneEnd is the scene's length, in seconds.
+  /// sceneEnd is the scene's length in seconds.
   final double sceneEnd;
 
-  /// markers are each marker's time, in seconds, by id.
+  /// markers are each marker's time in seconds, by id.
   final Map<String, double> markers;
 
   /// placements are every placement in the scene, by id, with its clip.
@@ -1197,8 +1134,8 @@ class MotionTimes {
     required this.placements,
   });
 
-  /// span is where [id] plays, its pins followed. A circular pin chain
-  /// stops where it returns to itself.
+  /// span is where [id] plays, its pins followed. A circular pin chain stops
+  /// where it returns to itself.
   ClipSpan? span(String id) => _span(id, {});
 
   ClipSpan? _span(String id, Set<String> seen) {
@@ -1240,8 +1177,7 @@ class ClipSpan {
 
   double get length => end - start;
 
-  /// clipTime is where in [c] it is at [t] on the timeline, wrapping for a
-  /// loop.
+  /// clipTime is where in [c] it is at [t] on the timeline, wrapping a loop.
   double clipTime(MotionClip c, double t) {
     var u = (t - start) * speed;
     if (c.loop) {
@@ -1258,7 +1194,6 @@ bool revealsIn(MotionClip c) =>
     (c.inside["own"] == true && c.kind == MotionKind.arrive) ||
     c.inside["reveal"] is List;
 
-/// revealFrom and revealTo are pose value keys for where the arrival clip
-/// starts and ends (seconds from a clip, frames on a keyframe pose), which
-/// its pieces are timed against.
+/// revealFrom and revealTo are pose keys for the arrival clip's start and end
+/// (seconds in a clip, frames on a keyframe pose), timing its pieces.
 const String revealFrom = "@revealFrom", revealTo = "@revealTo";

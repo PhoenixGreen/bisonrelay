@@ -16,11 +16,10 @@ import 'package:bruig/plugin_system/canvas/ui/sound/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
-// autotune_card.dart is the Auto-tune's card, as the prototype's: a screen
-// with two pages -- Notes, the channel's recording as sung (red) and as
-// corrected (purple) over the key's scale; Live, the note heard now and how
-// far it is pulled -- over its knobs, its Key and Scale as rows of
-// buttons, and Notes to MIDI at its foot.
+// autotune_card.dart is the Auto-tune's card: a screen of two pages over
+// its knobs, Key and Scale rows and Notes to MIDI. Notes shows the
+// channel's recording as sung (red) and corrected (purple) over the scale;
+// Live shows the note heard now and how far it is pulled.
 
 /// sungInk and correctedInk are the pitch as sung and as corrected, here
 /// and in the Pitch editor.
@@ -45,10 +44,10 @@ bool inAutoTuneScale(MixDevice d, int n) {
   return steps.isEmpty || steps.contains((n - d.value("key").round()) % 12);
 }
 
-/// correctedTrack is [track] -- a recording's pitch every 20ms -- as [d]
-/// pulls it: each moment's note, a tenth of a second smoothed, onto the
-/// scale, its vibrato kept by Vibrato, all of it by Amount. As the device
-/// does live (see AutoTune), near enough to draw.
+/// correctedTrack is [track] (a recording's pitch every 20ms) as [d] pulls
+/// it: each moment's note, smoothed over a tenth of a second, onto the
+/// scale, vibrato kept by Vibrato, all of it by Amount. Near enough to
+/// AutoTune live to draw.
 List<double?> correctedTrack(MixDevice d, List<double?> track) {
   var root = d.value("key").round();
   var steps = autoTuneSteps(d);
@@ -68,7 +67,6 @@ List<double?> correctedTrack(MixDevice d, List<double?> track) {
   return out;
 }
 
-/// AutoTuneScreen is the Auto-tune's screen: Notes or Live.
 class AutoTuneScreen extends StatefulWidget {
   final CanvasController controller;
   final String owner;
@@ -465,8 +463,8 @@ class AutoTuneKey extends StatelessWidget {
   }
 }
 
-/// AutoTuneScale is its scale: Major, Minor and Chromatic as buttons, as
-/// the prototype's, and the others from a list behind the fourth.
+/// AutoTuneScale is its scale: Major, Minor and Chromatic as buttons, the
+/// others from a list behind the fourth.
 class AutoTuneScale extends StatelessWidget {
   final MixDevice device;
   final int index;
@@ -556,8 +554,8 @@ class AutoTuneScale extends StatelessWidget {
   }
 }
 
-/// AutoTuneKeyScaleRow is its key and scale as two lists on one row: where
-/// the card is shorter, or its text larger, than the rows of buttons fit.
+/// AutoTuneKeyScaleRow is its key and scale as two lists on one row, where
+/// the rows of buttons do not fit.
 class AutoTuneKeyScaleRow extends StatelessWidget {
   final MixDevice device;
   final int index;

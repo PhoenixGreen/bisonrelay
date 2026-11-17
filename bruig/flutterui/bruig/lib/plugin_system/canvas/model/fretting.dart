@@ -3,20 +3,12 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
-// fretting.dart is where a guitar's or bass's notes are played on its neck
-// (Ken, 2026-11-14: "the guitar instrument's notes don't play in the correct
-// positions ... the chords are triggering random chords in random
-// positions"):
-//
-//  - a chord symbol is a real chord shape: the open chord a guitarist
-//    learns first where there is one (G is 320003), or one of the movable
-//    barre shapes up the neck, which the Score Studio can choose;
-//  - notes sounding together go one to a string, as a hand can hold them,
-//    in the closest position; a run of single notes stays where the hand
-//    is, rather than each jumping to the lowest fret that has it.
+// fretting.dart places a guitar's or bass's notes on its neck. A chord symbol
+// is a real shape: the open chord where there is one (G is 320003), else a
+// movable barre. Notes sounding together go one to a string in the closest
+// position; a run of single notes stays where the hand is.
 
-/// FretPlace is where a note is played: the string (0 the lowest) and the
-/// fret (0 open).
+/// FretPlace is where a note is played: string (0 lowest) and fret (0 open).
 typedef FretPlace = (int string, int fret);
 
 /// GuitarShape is a chord as a guitarist holds it: each string's fret, low
@@ -27,23 +19,21 @@ class GuitarShape {
   final List<int?> frets;
   const GuitarShape(this.name, this.frets);
 
-  /// keys are what it sounds, low to high, on [strings].
+  /// keysOn is what it sounds, low to high, on [strings].
   List<int> keysOn(List<int> strings) => [
         for (var (i, f) in frets.indexed)
           if (f != null && i < strings.length) strings[i] + f,
       ];
 
-  /// places are its notes' places on the neck, low to high.
   List<FretPlace> get places => [
         for (var (i, f) in frets.indexed)
           if (f != null) (i, f),
       ];
 
-  /// fingers are which finger holds each string, low to high (1 the first
-  /// finger, null open or not played), as a chord chart numbers them: the
-  /// lowest fret's notes barred by the first finger where they stretch
-  /// from the lowest string played to the highest, otherwise a finger to a
-  /// note, fret by fret.
+  /// fingers are the finger on each string, low to high (1 the first, null
+  /// open or unplayed), as a chord chart numbers them: the lowest fret barred
+  /// by the first finger where it spans the strings played, else a finger
+  /// to a note, fret by fret.
   List<int?> get fingers {
     var out = List<int?>.filled(frets.length, null);
     var played = [
@@ -102,7 +92,7 @@ const _naturals = [0, 2, 4, 5, 7, 9, 11];
 /// "sus4", "dim", "aug", "6", "m6", "9", "add9" ...).
 typedef ChordName = ({int root, int bass, String kind});
 
-/// readChord reads chord symbol [symbol]; null where it is not one.
+/// readChord reads [symbol]; null where it is not a chord.
 ChordName? readChord(String symbol) {
   var m = RegExp(r"^\s*([A-G])([#b♯♭]?)([^/]*)(?:/([A-G])([#b♯♭]?))?\s*$")
       .firstMatch(symbol);
@@ -166,8 +156,7 @@ List<int> chordTones(String kind) => switch (kind) {
       _ => [0, 4, 7],
     };
 
-/// _open are the open chords every guitarist learns, by root and kind,
-/// low E to high e (-1 not played).
+/// _open are the open chords by root and kind, low E to high e (-1 unplayed).
 const _open = <(int, String), List<int>>{
   (0, ""): [-1, 3, 2, 0, 1, 0],
   (0, "maj7"): [-1, 3, 2, 0, 0, 0],
@@ -189,8 +178,7 @@ const _open = <(int, String), List<int>>{
   (4, "maj7"): [0, 2, 1, 1, 0, 0],
   (4, "sus4"): [0, 2, 2, 2, 0, 0],
   (4, "7sus4"): [0, 2, 0, 2, 0, 0],
-  // The small F every beginner's chart has; the full barre is the next
-  // position along.
+  // The small F of beginners' charts; the full barre is the next position.
   (5, ""): [-1, -1, 3, 2, 1, 1],
   (5, "maj7"): [-1, -1, 3, 2, 1, 0],
   (7, ""): [3, 2, 0, 0, 0, 3],
@@ -250,11 +238,9 @@ String _ordinal(int n) => switch (n % 100) {
         },
     };
 
-/// guitarChordShapes are the places [symbol] can be played on a guitar in
-/// standard tuning, the common one first: the open chord where there is
-/// one, then barre chords up the neck, lowest first. A slash chord's bass
-/// is put on the lowest string that can reach it. Empty where it cannot be
-/// read.
+/// guitarChordShapes are where [symbol] can be played in standard tuning,
+/// commonest first: open, then barres up the neck; a slash chord's bass on
+/// the lowest string that reaches it. Empty where it cannot be read.
 List<GuitarShape> guitarChordShapes(String symbol) {
   var c = readChord(symbol);
   if (c == null) return const [];
@@ -306,19 +292,17 @@ List<GuitarShape> guitarChordShapes(String symbol) {
   return out;
 }
 
-/// guitarChord is [symbol] played in position [shape] (by its place in
-/// guitarChordShapes; null or out of range the common one), or null where
-/// it cannot be read.
+/// guitarChord is [symbol] in position [shape] (its index in
+/// guitarChordShapes; null or out of range the common one), or null.
 GuitarShape? guitarChord(String symbol, [int? shape]) {
   var all = guitarChordShapes(symbol);
   if (all.isEmpty) return null;
   return all[(shape ?? 0) >= 0 && (shape ?? 0) < all.length ? shape ?? 0 : 0];
 }
 
-/// _withBass is [frets] with [bass] lowest: as it is where its lowest
-/// note is already the bass; otherwise the bass put on the lowest string
-/// below its lowest note that reaches it near the shape, the strings under
-/// that not played. Null where no string can.
+/// _withBass is [frets] with [bass] lowest: unchanged when it already is;
+/// else the bass on the lowest string below the shape's lowest note that
+/// reaches it nearby, strings under that unplayed. Null where none can.
 List<int?>? _withBass(List<int> frets, int bass, int root) {
   var f = [for (var x in frets) x < 0 ? null : x];
   var lowest = f.indexWhere((x) => x != null);
@@ -352,8 +336,7 @@ List<int?>? _withBass(List<int> frets, int bass, int root) {
       }
     }
   }
-  // No string under it reaches: the bass put on the lowest string played
-  // instead, where it is near the shape.
+  // No string under it reaches: the bass on the lowest string played instead.
   var fret = (bass - guitarStrings[lowest]) % 12;
   if (fret == 0 || (fret >= lo - 1 && fret <= hi + 1)) {
     return [for (var (i, x) in f.indexed) i == lowest ? fret : x];
@@ -362,8 +345,7 @@ List<int?>? _withBass(List<int> frets, int bass, int root) {
   return null;
 }
 
-/// bassChordKeys is [symbol] as a bass plays it under a strum: its bass
-/// note, low on the neck.
+/// bassChordKeys is [symbol]'s bass note low on a bass's neck, under a strum.
 List<int> bassChordKeys(String symbol) {
   var c = readChord(symbol);
   if (c == null) return const [36];
@@ -372,10 +354,9 @@ List<int> bassChordKeys(String symbol) {
 
 // ------------------------------------------------------------ placing notes
 
-/// neckPlaces is where [keys], sounding together, are played on [strings]:
-/// one to a string, in the closest position a hand can hold -- near fret
-/// [near] where the hand already is, otherwise as low as it goes. Keys the
-/// neck has no room for are left out.
+/// neckPlaces is where [keys], sounding together, go on [strings]: one to a
+/// string, in the closest position a hand can hold -- near fret [near],
+/// else as low as it goes. Keys with no room are left out.
 List<FretPlace> neckPlaces(Iterable<int> keys, List<int> strings,
     {double? near, Set<int> busy = const {}}) {
   var sorted = keys.toSet().toList()..sort();
@@ -411,9 +392,8 @@ List<FretPlace> neckPlaces(Iterable<int> keys, List<int> strings,
   return best ?? const [];
 }
 
-/// _cost is how hard [places] are to hold: how far the fretted notes
-/// stretch, how far the hand moves from [near] (or how far up the neck,
-/// with nowhere to start from), and a lower string for a lower note.
+/// _cost is how hard [places] are to hold: the fretted stretch, the move
+/// from [near] (or height up the neck), and a lower string for a lower note.
 double _cost(List<FretPlace> places, double? near) {
   var fretted = [
     for (var (_, f) in places)
@@ -427,8 +407,7 @@ double _cost(List<FretPlace> places, double? near) {
     var at = fretted.reduce((a, b) => a + b) / fretted.length;
     cost += near == null ? at * 0.6 : (at - near).abs() * 1.2;
   }
-  // An open string is free low on the neck; up it, the hand would rather
-  // stay where it is.
+  // Open strings are free low on the neck; higher up the hand stays put.
   if (near != null && near > 4) {
     for (var (_, f) in places) {
       if (f == 0) cost += near * 0.5;
@@ -454,10 +433,9 @@ double? _hand(List<FretPlace> places, double? was) {
 
 final Expando<(List<int>, List<FretPlace?>)> _fretted = Expando("fretting");
 
-/// fretting is where each of [notes] is played on [strings], in order:
-/// those starting together (a chord, or a strum's strings a moment apart)
-/// placed together, each next group near where the hand was, and never on
-/// a string still sounding from before. Kept for the same notes.
+/// fretting is where each of [notes] is played on [strings]: notes starting
+/// together placed together, each group near where the hand was, never on a
+/// string still sounding. The same notes always get the same places.
 List<FretPlace?> fretting(List<MidiNote> notes, List<int> strings) {
   if (_fretted[notes] case (var s, var kept) when identical(s, strings)) {
     return kept;
@@ -503,8 +481,7 @@ List<FretPlace?> fretting(List<MidiNote> notes, List<int> strings) {
   return out;
 }
 
-/// placesAt are where [part]'s notes sounding [seconds] in are played, by
-/// key (see fretting).
+/// placesAt are where [part]'s notes sounding at [seconds] are played, by key.
 Map<int, FretPlace> placesAt(InstrumentPart part, double seconds) {
   var strings = switch (part.look) {
     InstrumentLook.guitar => guitarStrings,

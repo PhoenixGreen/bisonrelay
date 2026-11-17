@@ -4,7 +4,6 @@ import 'package:flutter/painting.dart';
 // picture's layer, a video over the scene, a pattern over a background.
 // One list for all three, so a blend has the same name in every panel.
 
-/// LayerBlend is how a layer is laid over what is under it.
 enum LayerBlend {
   normal("Normal", BlendMode.srcOver),
   darken("Darken", BlendMode.darken),

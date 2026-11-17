@@ -5,24 +5,22 @@ import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// table_data_editor.dart is a table's cells, as a grid or as pasted text,
-// arranged like the chart's numbers editor so one teaches the other. A table
-// has no series, so its first row is a row like any other.
+// table_data_editor.dart is a table's cells as a grid or pasted text,
+// laid out like a chart's; with no series, row one is like any other.
 
 class TableDataEditor extends StatefulWidget {
   final List<List<String>> rows;
 
-  /// elementId is which table this is, so the grid's height is kept for this
-  /// one rather than for tables in general. See CanvasDataEditorShell.scope.
+  /// elementId is which table this is, so the grid's height is kept per
+  /// table. See CanvasDataEditorShell.scope.
   final String elementId;
 
   /// onChanged is a change to keep. The caller opens the undo step.
   final ValueChanged<List<List<String>>> onChanged;
   final VoidCallback onCommit;
 
-  /// names are what the cells of [namesColumn] are likely to hold, offered as
-  /// somebody types (the coins a comparison can ask for, say). Empty for free
-  /// text.
+  /// names are what the cells of [namesColumn] are likely to hold, offered
+  /// while typing (the coins a comparison can ask for). Empty for free text.
   final List<String> names;
   final int namesColumn;
 
@@ -83,7 +81,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
     _write(next);
   }
 
-  /// _moveRow and _moveColumn shuffle one along by [by]: buttons rather than
+  /// _moveRow and _moveColumn shuffle one along by [by]: buttons, not
   /// dragging, which a grid of text fields would confuse with selecting text.
   void _moveRow(int row, int by) {
     var next = _rectangular;
@@ -97,8 +95,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
   void _moveColumn(int col, int by) {
     var to = col + by;
     if (to < 0 || to >= columns) return;
-    // Taken out and put back, which is right in both directions without
-    // working out whether an insertion shifted the one being removed.
+    // Taken out and put back, which is right in both directions.
     _write([
       for (var row in _rectangular)
         [...row]
@@ -113,8 +110,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
     ]);
   }
 
-  // At the ordinary size inside a card: card-sized buttons overran the
-  // columns.
+  // Ordinary size in a card: card-sized buttons overran the columns.
   @override
   Widget build(BuildContext context) =>
       CanvasCards.none(Builder(builder: _build));
@@ -123,9 +119,8 @@ class _TableDataEditorState extends State<TableDataEditor> {
         remember: "canvasTableData",
         // Per table, for the same reason a chart's is per chart.
         scope: widget.elementId,
-        // Tall enough for the rows, erring high: a row is about thirty and the
-        // buttons along the foot about forty, and a little short brings the
-        // scrollbar back.
+        // Tall enough for the rows, erring high (a row about thirty, the foot's
+        // buttons about forty): a little short brings the scrollbar back.
         wanted: widget.rows.length * 32 + 48,
         gridTooltip: "Edit the cells in a grid",
         textTooltip: "Edit the cells as pasted text",
@@ -145,8 +140,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
         grid: (context) => _table(ThemeNotifier.of(context)),
       );
 
-  /// _raw is the whole grid as one block, comma separated with quoting -- see
-  /// joinTable.
+  /// _raw is the grid as one comma-separated block: see joinTable.
   Widget _raw() => CanvasGridCell(
         value: TableElement(const ElementBase(id: ""), rows: rows).asText(),
         multiline: true,
@@ -174,7 +168,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // A row of crosses over the columns: a column is removed by the column.
+            // Crosses over the columns: a column is removed by its own.
             Row(children: [
               for (var c = 0; c < columns; c++)
                 SizedBox(
@@ -211,7 +205,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
                         child: CanvasGridCell(
                           value: grid[r][c],
                           dense: true,
-                          // Only the column that names a row, and not its heading.
+                          // Only the column naming rows, not its heading.
                           suggestions: c == widget.namesColumn && r > 0
                               ? widget.names
                               : const [],

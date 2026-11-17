@@ -14,10 +14,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// code_settings.dart is a Code panel's settings and a Run panel's, as the
-// prototype laid them out (code-element-prototype/index.html), in the
-// panel's own sections: its files and panes in Content, its colours in
-// Look, its typing and lit lines in Motion.
+// code_settings.dart is a Code and Run panel's settings: files and panes in
+// Content, colours in Look, typing and lit lines in Motion.
 
 IconData _layoutIcon(CodeLayout l) => switch (l) {
       CodeLayout.one => Icons.crop_square,
@@ -81,7 +79,7 @@ List<Widget> codeSettings(
               value: f.name,
               onChanged: (v) {
                 var name = v.trim();
-                // Each file its own name: a second "style.css" is not taken.
+                // File names are unique: a second "style.css" is refused.
                 if (name.isEmpty || (e.fileNamed(name)?.id ?? f.id) != f.id) {
                   return;
                 }
@@ -256,8 +254,8 @@ List<Widget> codeSettings(
                   label: "Project",
                   value: e.project,
                   options: [for (var k in CodeKind.values) (k, k.label)],
-                  // Begun again as an empty project of that kind; Undo
-                  // brings the files back.
+                  // Restarted as an empty project of that kind; Undo brings
+                  // the files back.
                   onChanged: (k) {
                     if (k != e.project) now(e.startedAs(k));
                   },
@@ -773,9 +771,8 @@ List<Widget> codeRunSettings(
                     keyOf: (s) => "codeRunShows-${s.name}",
                     onChanged: (s) => now(e.copyWith(shows: s)),
                   ),
-                  // How wide its page or app is laid out before it is
-                  // fitted to the preview: its picture and the live app
-                  // alike.
+                  // How wide its page or app is laid out before fitting to
+                  // the preview, picture and live app alike.
                   if (e.shows != CodeRunShows.output)
                     CanvasDropdown<double>(
                       key: const ValueKey("codeRunAppWidth"),
@@ -834,8 +831,8 @@ List<Widget> codeRunSettings(
   ];
 }
 
-/// codeTaskSettings is a Code task card's: what it says, its checks, and
-/// what it says when checked.
+/// codeTaskSettings is a Code task card's: its text, checks, and what it
+/// says when checked.
 List<Widget> codeTaskSettings(
   BuildContext context,
   CanvasController controller,
@@ -911,9 +908,8 @@ List<Widget> codeTaskSettings(
               onCommit: commit,
             ),
           if (c.kind != CodeCheckKind.builds) ...[
-            // Answers, one a line, any of which does: spaces don't
-            // matter, and only whole words count (Ken: a pattern is "very
-            // strange input and not easy to remember").
+            // Answers, one a line, any of which passes: spaces don't matter
+            // and only whole words count, as patterns are hard to remember.
             CanvasTextField(
               key: ValueKey("codeCheckText-$k"),
               label: c.pattern

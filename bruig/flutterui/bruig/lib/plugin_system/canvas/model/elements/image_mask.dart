@@ -2,16 +2,12 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// image_mask.dart is the mask every picture (the element's own and each
-// picture layer) has: a found subject, then marks painted, lassoed and faded
-// by hand, with the edge refined last. BackgroundRemoval (flat colour keyed
-// out) is separate and applied first.
-//
-// The mask is a recipe except for the subject, which is stored as a grey
-// picture in the picture store: it comes from an OS model that a later OS
-// might run differently, and a finished cut-out must not change under it.
+// image_mask.dart is the mask every picture (the element's and each picture
+// layer) has: a found subject, then marks painted, lassoed and faded by
+// hand, the edge refined last; BackgroundRemoval is applied first. A recipe
+// except for the subject, stored as a grey picture: it comes from an OS
+// model a later OS might run differently, and a cut-out must not change.
 
-/// MaskMarkKind is what one mark on a mask is.
 enum MaskMarkKind {
   /// brush is a painted stroke, its width following pen pressure.
   brush,
@@ -26,34 +22,28 @@ enum MaskMarkKind {
       .firstWhere((k) => k.name == name, orElse: () => MaskMarkKind.brush);
 }
 
-/// MaskMark is one mark made on a mask, in the order it was made.
-///
-/// Points are fractions of the picture's own width and height, so a mark
-/// stays put however the picture is resized, cropped or reframed.
+/// MaskMark is one mark on a mask, in order; points are fractions of the
+/// picture, so it stays put however the picture is resized or cropped.
 class MaskMark {
   final MaskMarkKind kind;
 
-  /// hide is true for a mark that takes the picture away and false for one
-  /// that puts it back.
+  /// hide is true for a mark that takes the picture away.
   final bool hide;
 
-  /// points are a brush's path, a lasso's outline, or a fade's two ends --
-  /// for a radial fade, its middle and a point on its rim.
+  /// points are a brush's path, a lasso's outline, or a fade's two ends (for
+  /// a radial fade, its middle and a point on its rim).
   final List<Offset> points;
 
-  /// pressure is how hard the pen pressed at each of a brush's points, 0 to
-  /// 1. Empty for a mouse, which presses as hard at every point.
+  /// pressure is the pen's at each brush point, 0 to 1; empty for a mouse.
   final List<double> pressure;
 
   /// radius is a brush's, as a fraction of the picture's shorter side.
   final double radius;
 
-  /// hardness is how abruptly a brush stops at its own rim: 1 a cut edge,
-  /// lower a fade towards it.
+  /// hardness is how abruptly a brush stops: 1 a cut edge, lower a fade.
   final double hardness;
 
-  /// strength is how much a mark does at most: a brush's or a fade's
-  /// opacity, 1 for all the way.
+  /// strength is a brush's or fade's most opacity, 1 for all the way.
   final double strength;
 
   /// radial makes a fade spread from a middle rather than across a line.
@@ -119,8 +109,8 @@ class MaskMark {
   }
 }
 
-/// MaskRefine is what is done to the mask's edge, last. Distances are in the
-/// picture's own pixels, so they mean the same at every drawn size.
+/// MaskRefine is what is done to the mask's edge, last. Distances are in
+/// the picture's own pixels, so they mean the same at every drawn size.
 class MaskRefine {
   /// shift moves the edge out (above nought) or in (below), to take a halo
   /// off or give back a rim that was cut too close.
@@ -129,7 +119,6 @@ class MaskRefine {
   /// smooth rounds off a jagged edge without softening it.
   final double smooth;
 
-  /// feather softens the edge.
   final double feather;
 
   /// contrast hardens a soft edge, 0 to 1.
@@ -187,10 +176,10 @@ class MaskRefine {
       );
 }
 
-/// ImageMask is a picture's mask. See the top of this file.
+/// ImageMask is a picture's mask; see the top of this file.
 class ImageMask {
-  /// subject is the picture-store id of the grey mask a subject was found to
-  /// have -- white what is kept -- or empty to start from the whole picture.
+  /// subject is the picture-store id of the found subject's grey mask (white
+  /// kept), or empty to start from the whole picture.
   final String subject;
 
   /// marks are made over the subject, in order.
@@ -212,7 +201,6 @@ class ImageMask {
     this.on = true,
   });
 
-  /// empty is whether there is a mask at all.
   bool get empty => subject.isEmpty && marks.isEmpty && !invert && !refine.any;
 
   /// active is whether it changes what is drawn.
@@ -235,7 +223,7 @@ class ImageMask {
 
   ImageMask withMark(MaskMark mark) => copyWith(marks: [...marks, mark]);
 
-  /// withLastMark is this mask with its last mark replaced by [mark] -- a
+  /// withLastMark is this mask with its last mark replaced by [mark]: a
   /// stroke growing as it is drawn.
   ImageMask withLastMark(MaskMark mark) => marks.isEmpty
       ? withMark(mark)

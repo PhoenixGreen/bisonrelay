@@ -19,20 +19,16 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/audio_settings.dart';
 import 'package:flutter/material.dart';
 
-// element_settings_pane.dart is the settings of whatever is selected: the body
-// of one of the Design column's panels (see design_panel.dart).
+// element_settings_pane.dart is the selection's settings: the body of one
+// of the Design column's panels (see design_panel.dart).
 
-/// elementSettingsBody is the settings for the current selection: one
-/// element, several, or none. With none it shows the canvas's background, so
-/// the panel is never empty in the state a canvas starts in and returns to on
-/// every click on the page.
-/// elementSettingsBody is [_elementSettingsBody] with no hover text: a
-/// tooltip shown while the settings scroll was left lying over other
-/// sections, and what a control is for is said behind its "?" (Ken,
-/// 2026-11-11).
+/// elementSettingsBody is the settings for the selection: one element,
+/// several, or none, when it shows the background, so it is never empty. No
+/// hover text: a tooltip shown while scrolling is left lying over other
+/// sections, and what a control is for is said behind its "?".
 Widget elementSettingsBody(BuildContext context, CanvasController controller) =>
-    // The tooltips are kept -- they name the buttons for a screen reader --
-    // but never shown: not on a hover, nor a long press.
+    // The tooltips are kept (they name the buttons for a screen reader) but
+    // never shown, on a hover or a long press.
     TooltipTheme(
         data: TooltipTheme.of(context).copyWith(
             waitDuration: const Duration(days: 1),
@@ -46,9 +42,8 @@ Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
     return CanvasStaggerSection(controller: controller);
   }
 
-  // A clip picked on the timeline from another canvas (the master's
-  // music seen from a scene) is edited here too, written back wherever
-  // it lives.
+  // A clip picked on the timeline from another canvas (the master's music seen
+  // from a scene) is edited here too, written back wherever it lives.
   if (selected == null && controller.pickedClip is AudioElement) {
     var clip = controller.pickedClip as AudioElement;
     return Column(
@@ -70,9 +65,9 @@ Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
 
   if (selected == null) {
     var document = controller.document;
-    // The backdrop on screen (see CanvasDocument.editedBackground). Read
-    // from anything else, the panel shows a background nobody is looking
-    // at and each edit is built from the wrong values.
+    // The backdrop on screen (see CanvasDocument.editedBackground): read
+    // from anything else, the panel shows a background nobody is looking at
+    // and each edit is built from the wrong values.
     var showing = document.editedBackground;
 
     var picker = backdropKindPicker(showing.backdrop, (kind) {
@@ -123,13 +118,11 @@ Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
       rememberAs: "canvasBackground",
       // For the button that makes one run of a movement fit the canvas.
       canvasFrames: document.frames,
-      // No caption: the panel's header already says these are the
-      // background's.
+      // No caption: the panel's header already says these are the background's.
       spec: showing.spec,
       onBegin: controller.beginInteraction,
       onCommit: controller.endInteraction,
-      // The pattern back to its start only, keeping any music or picture
-      // laid over it.
+      // The pattern back to its start only, keeping music or a picture on it.
       onReset: () => controller.setBackground(CanvasBackground(
           picture: showing.picture,
           video: showing.video,
@@ -141,16 +134,15 @@ Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
       },
     );
 
-    // What the background carries over the pattern: a picture, a video,
-    // a sound.
+    // What the background carries over the pattern: picture, video, sound.
     var settings = CanvasSections(
       key: const ValueKey("backgroundSections"),
       children: [
         ...?stage,
         if (stage == null) pattern,
         ...backgroundMediaSettings(context, controller),
-        // Saved background designs, last as on every element; patterns only,
-        // so not while the background is a stage.
+        // Saved background designs, last as on every element; patterns
+        // only, so not while the background is a stage.
         if (stage == null)
           CanvasSection(
             key: const ValueKey("elementSection-presets"),
@@ -197,14 +189,12 @@ Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
   );
 }
 
-/// elementSettingsTitle is the name of the panel holding these, following
-/// the selection ("Image settings"), since the settings themselves do not
-/// name what is being edited.
+/// elementSettingsTitle is the panel's name, following the selection
+/// ("Image settings"), since the settings do not name what is edited.
 String elementSettingsTitle(CanvasController controller) {
   if (controller.selection.length > 1) return "Element settings";
   var selected = controller.selected;
-  // A sound picked on the timeline from another canvas is what is shown --
-  // see elementSettingsBody.
+  // A sound picked on the timeline from another canvas: elementSettingsBody.
   if (selected == null && controller.pickedClip is AudioElement) {
     return "Audio settings";
   }
@@ -212,8 +202,7 @@ String elementSettingsTitle(CanvasController controller) {
   return "${selected.kind.label} settings";
 }
 
-/// elementSettingsHint is what this section is for, in one sentence, for the
-/// question mark beside its name.
+/// elementSettingsHint is this section's one sentence, for its "?".
 const String elementSettingsHint =
     "The settings of whatever is selected. With nothing selected these are "
     "the canvas's own background, which is what the whole page is drawn on.";

@@ -1,22 +1,19 @@
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// help_note.dart is the "?" the play bar, the timeline, the mixer and the
-// slots explain themselves with (Ken, 2026-11-08: "I don't want the hover
-// tips, if a tip is needed put it in a '?' icon that can be clicked on to
-// open and close"). One press opens the note, the next closes it; so does a
-// press anywhere else.
+// help_note.dart is the "?" the play bar, timeline, mixer and slots explain
+// themselves with, in place of hover tips. One press opens the note; the
+// next, or a press anywhere else, closes it.
 
 /// HelpNote is a small round "?" opening a note: [title] and [paragraphs],
-/// with a ✕ that closes it (the approved design). Its keys are `help-[id]`
-/// for the button, `helpText-[id]` for the note and `helpClose-[id]` for
-/// the ✕.
+/// with a ✕ that closes it. Its keys are `help-[id]` for the button,
+/// `helpText-[id]` for the note and `helpClose-[id]` for the ✕.
 class HelpNote extends StatefulWidget {
   final String id;
   final String title;
   final List<String> paragraphs;
 
-  /// size is the button's, across.
+  /// size is the button's diameter.
   final double size;
 
   const HelpNote(

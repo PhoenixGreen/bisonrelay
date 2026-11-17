@@ -2,14 +2,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonDouble, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 
-// play.dart is a canvas played as a game: what each element does when it is
-// -- walks and jumps, walks every way, moves the view, or is something to
-// stand on -- and the controls that drive it, each an action pressed by keys
-// and controller buttons, as Godot's input map has them.
-//
-// Distances are the canvas's own units, times are seconds.
+// play.dart is a canvas played as a game: what each element does and the
+// controls that drive it, each an action pressed by keys and controller
+// buttons, as Godot's input map has them. Distances are canvas units,
+// times seconds.
 
-/// PlayAs is what an element does when the canvas is played.
 enum PlayAs {
   none("Not played"),
   platformer("Platformer"),
@@ -17,8 +14,8 @@ enum PlayAs {
   camera("Camera"),
   solid("Something solid"),
 
-  /// pickup is taken by a player touching it -- a coin, a key, a heart --
-  /// and hazard hurts one -- spikes, water. Each does its [PlaySpec.touched].
+  /// pickup is taken by a player touching it (a coin, a key), and hazard
+  /// hurts one (spikes, water). Each does its [PlaySpec.touched].
   pickup("Pickup"),
   hazard("Hazard");
 
@@ -27,78 +24,65 @@ enum PlayAs {
 
   bool get moves => this == platformer || this == topDown || this == camera;
 
-  /// touched is whether a player touching it does something.
   bool get touched => this == pickup || this == hazard;
 
   static PlayAs fromName(String? name) =>
       values.firstWhere((p) => p.name == name, orElse: () => none);
 }
 
-/// PlaySpec is how an element is played.
 class PlaySpec {
   final PlayAs as;
 
-  /// speed is how fast it goes, in canvas units a second; jump how high a
-  /// platformer jumps, and gravity how fast it falls.
+  /// speed is in canvas units a second; jump is how high a platformer jumps,
+  /// and gravity how fast it falls.
   final double speed;
   final double jump;
   final double gravity;
 
-  /// follow is whether the view follows it.
   final bool follow;
 
-  /// zoom is how close the view follows it, one (the page as it is) to
-  /// three; zoomOut how far it draws back while it moves -- running, in the
-  /// air -- nought (not at all) to one (back to the whole page). Eased, so
-  /// the view breathes with it (Ken, 2026-11-10: "the camera could be
-  /// zoomed in or out by the character movement").
+  /// zoom is how close the view follows it, 1 (the page as it is) to 3;
+  /// zoomOut how far it draws back while it moves, 0 (not at all) to 1 (the
+  /// whole page). Eased, so the view breathes with it.
   final double zoom;
   final double zoomOut;
 
-  /// player is which player drives it, one to four: each has controls of
-  /// its own. See CanvasDocument.controlsFor.
+  /// player is which player drives it, 1 to 4 (see
+  /// CanvasDocument.controlsFor).
   final int player;
 
-  /// touched is what a pickup or a hazard does when a player touches it;
-  /// sound the sound element played as it does, by id, if any; stays
-  /// whether a pickup is still there after -- else it goes until the game
-  /// starts again; and sendsBack whether a hazard puts the player back
-  /// where it started.
+  /// touched is what a pickup or hazard does when touched; sound the sound
+  /// element played, by id; stays whether a pickup remains (else it goes until
+  /// the game restarts); sendsBack whether a hazard returns the player home.
   final GameEffect touched;
   final String sound;
   final bool stays;
   final bool sendsBack;
 
-  /// touchWhole is whether all of its box is touched, rather than only the
-  /// part of a sprite drawn in -- see SpriteElement.touchIn.
+  /// touchWhole touches the whole box, not only a sprite's drawn part (see
+  /// SpriteElement.touchIn).
   final bool touchWhole;
 
-  /// pressSound is what is heard when it is pressed: a sound, a slot, or a
-  /// channel stopped -- see gameSoundOf.
+  /// pressSound is a sound, slot or channel stop heard when it is pressed.
   final String pressSound;
 
-  /// pressedBy is the action that presses it, by id -- "" none -- from
-  /// anywhere, or with [reach] set, only with a player within that many
-  /// canvas units of it; and press what that does, as a button's press
-  /// does. A Button pressed does its own.
+  /// pressedBy is the action that presses it, by id ("" none), from
+  /// anywhere, or with [reach] set only with a player within that many units;
+  /// and press what that does. A Button pressed does its own.
   final String pressedBy;
   final double reach;
   final ButtonAction press;
 
-  /// hits is how many punches or kicks defeat it (Ken, 2026-11-10: "a
-  /// character can punch and kick"): nought for none -- it cannot be hit.
-  /// Defeated, it is gone, as a pickup taken is (a crate broken, a foe
-  /// beaten), and does [defeated]; each hit plays [hitSound] and starts its
-  /// clips that start on a hit.
+  /// hits is how many punches or kicks defeat it; 0 means it cannot be hit.
+  /// Defeated, it is gone as a taken pickup is, and does [defeated]; each hit
+  /// plays [hitSound] and starts its clips that start on a hit.
   final int hits;
   final GameEffect defeated;
   final String hitSound;
 
-  /// struck is what each hit does, before any defeat: a boss's health
-  /// taken down a hit at a time.
+  /// struck is what each hit does before any defeat (a boss's health).
   final GameEffect struck;
 
-  /// hittable is whether a punch or a kick does anything to it.
   bool get hittable => hits > 0;
 
   const PlaySpec({
@@ -125,8 +109,7 @@ class PlaySpec {
     this.struck = const GameEffect(),
   });
 
-  /// isNone is whether it does nothing in a game: not played, pressed by
-  /// nothing, and not to be hit.
+  /// isNone is whether it does nothing in a game: not played, pressed or hit.
   bool get isNone => as == PlayAs.none && pressedBy.isEmpty && hits == 0;
 
   PlaySpec copyWith(
@@ -285,9 +268,8 @@ class PlaySpec {
       struck);
 }
 
-/// GameSound is what a game's sound choice is: a sound on the canvas, by
-/// element id; a mixer slot played, by its clip's id; or a channel's slots
-/// stopped, by the channel's key.
+/// GameSound is a game's sound choice: a canvas sound by element id, a
+/// mixer slot by its clip's id, or a channel's slots stopped by its key.
 sealed class GameSound {
   const GameSound();
 }
@@ -308,7 +290,7 @@ class GameSoundStop extends GameSound {
 }
 
 /// gameSoundSlot and gameSoundStop write a slot and a stop as a game keeps
-/// them; gameSoundOf reads one back -- null for none.
+/// them; gameSoundOf reads one back, null for none.
 String gameSoundSlot(String clip) => "slot:$clip";
 String gameSoundStop(String channel) => "stop:$channel";
 GameSound? gameSoundOf(String ref) {
@@ -318,8 +300,8 @@ GameSound? gameSoundOf(String ref) {
   return GameSoundElement(ref);
 }
 
-/// PlayFeel is how a platformer moves, said in a word: its speed, jump and
-/// gravity together. Custom is any other three.
+/// PlayFeel names a platformer's speed, jump and gravity together; Custom
+/// is any other three.
 enum PlayFeel {
   floaty("Floaty", 280, 240, 1400),
   normal("Normal", 330, 220, 2400),
@@ -332,7 +314,6 @@ enum PlayFeel {
   final double gravity;
   const PlayFeel(this.label, this.speed, this.jump, this.gravity);
 
-  /// of is the feel [spec] moves with.
   static PlayFeel of(PlaySpec spec) => values.firstWhere(
       (f) =>
           f != custom &&
@@ -342,16 +323,14 @@ enum PlayFeel {
       orElse: () => custom);
 }
 
-/// GameDoes is something that happens in a game: a count added to or taken
-/// from, a move to a chosen or the next scene, or the game restarted or
-/// ended.
+/// GameDoes is something that happens: a count changed, a move to another
+/// scene, or the game restarted or ended.
 enum GameDoes {
   nothing("Nothing"),
   add("Add to a count"),
   take("Take from a count"),
 
-  /// show and hide another element: a door opened, a bridge put out, a
-  /// "You win!" on the HUD.
+  /// show and hide another element: a door opened, a "You win!" on the HUD.
   show("Show something"),
   hide("Hide something"),
   scene("Go to a scene"),
@@ -362,10 +341,8 @@ enum GameDoes {
   final String label;
   const GameDoes(this.label);
 
-  /// counts is whether it is done to a count.
   bool get counts => this == add || this == take;
 
-  /// shows is whether it is done to an element.
   bool get shows => this == show || this == hide;
 
   static GameDoes fromName(String? name) =>
@@ -382,8 +359,7 @@ class GameEffect {
   final String scene;
   final String element;
 
-  /// sound is what is heard as it happens: a sound, a slot, or a channel
-  /// stopped -- see gameSoundOf.
+  /// sound is a sound, slot or channel stop heard as it happens.
   final String sound;
 
   const GameEffect(
@@ -445,9 +421,9 @@ class GameEffect {
   int get hashCode => Object.hash(does, count, amount, scene, element, sound);
 }
 
-/// GameCount is a number the game keeps -- coins, lives, keys -- from
-/// [start]; and, where [reach] is set, what happens when it gets there:
-/// lives down to nought starting the game again.
+/// GameCount is a number the game keeps (coins, lives) from [start], and
+/// where [reach] is set what happens when it gets there: lives down to 0
+/// restarting the game.
 class GameCount {
   final String id;
   final String name;
@@ -531,9 +507,8 @@ enum PadInput {
       values.where((p) => p.name == name).firstOrNull;
 }
 
-/// ControlAction is something a player does -- move left, jump -- and what
-/// presses it: keys, by their key ids (see LogicalKeyboardKey.keyId), and
-/// controller inputs.
+/// ControlAction is something a player does (move left, jump) and the keys
+/// (by LogicalKeyboardKey.keyId) and controller inputs that press it.
 class ControlAction {
   final String id;
   final String name;
@@ -595,15 +570,14 @@ final List<ControlAction> defaultControls = [
       pad: const [PadInput.leftStickDown, PadInput.dpadDown]),
   const ControlAction("jump", "Jump", keys: [_space], pad: [PadInput.a]),
   ControlAction("act", "Action", keys: [_letter("e")], pad: const [PadInput.x]),
-  // Ken, 2026-11-10: "a character can punch and kick" -- see PlaySpec.hits.
+  // Punch and kick hit elements: see PlaySpec.hits.
   ControlAction("punch", "Punch",
       keys: [_letter("j")], pad: const [PadInput.b]),
   ControlAction("kick", "Kick", keys: [_letter("k")], pad: const [PadInput.y]),
 ];
 
-/// sharedDefaultControls are the first player's usual controls when a
-/// second shares the keyboard: the arrows, Space to jump and Enter to act,
-/// leaving WASD, F and E to the second.
+/// sharedDefaultControls are the first player's controls when a second
+/// shares the keyboard: arrows, Space and Enter, leaving WASD, F and E.
 final List<ControlAction> sharedDefaultControls = [
   for (var a in defaultControls)
     a.copyWith(
@@ -615,10 +589,10 @@ final List<ControlAction> sharedDefaultControls = [
               ]),
 ];
 
-/// defaultControlsFor is player [player]'s usual controls: the first
-/// player's are [defaultControls], the second's WASD with F to jump and E to
-/// act, and the third's and fourth's controller only. Controller buttons are
-/// the same for all: each player has their own controller.
+/// defaultControlsFor is [player]'s usual controls: the first's are
+/// [defaultControls], the second's WASD with F to jump and E to act, and the
+/// third's and fourth's controller only. Controller buttons are the same
+/// for all: each player has their own controller.
 List<ControlAction> defaultControlsFor(int player) {
   if (player <= 1) return defaultControls;
   if (player == 2) {

@@ -6,12 +6,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 
 // text_animation.dart is how a text element arrives: a closed set of
-// presets, built like a chart's (ChartAnimation's ease and stagger are reused,
-// not copied), with the length set on the timeline rather than here.
-//
-// Each preset is a scope (block, line, word, letter) and a motion, so most of
-// the list is a handful of motions at different scopes; "Letters" and "Words"
-// stay consistent because they are one mechanism.
+// presets reusing ChartAnimation's ease and stagger, with the length set on
+// the timeline. Each preset is a scope (block, line, word, letter) and a
+// motion, so "Letters" and "Words" are one mechanism.
 
 /// TextAnimationScope is what moves independently.
 enum TextAnimationScope {
@@ -39,29 +36,23 @@ enum TextAnimationFamily {
   const TextAnimationFamily(this.label);
 }
 
-/// TextMotion is what one piece does between nothing and arrived.
-///
-/// The painter knows only these; a preset is one with its numbers set, so a
-/// new preset is a row in a table rather than a branch in the drawing.
+/// TextMotion is what one piece does between nothing and arrived. The
+/// painter knows only these, so a new preset is a row in a table rather
+/// than a branch in the drawing.
 enum TextMotion {
-  /// fade is opacity alone.
   fade,
 
-  /// rise moves the piece in from an offset as it fades, which is the
-  /// direction presets and the default sequential one.
+  /// rise moves the piece in from an offset as it fades.
   rise,
 
   /// grow scales about the piece's own centre.
   grow,
 
-  /// spin rotates about the centre.
   spin,
 
-  /// flip squashes horizontally to nothing and back, which reads as a card
-  /// turning over.
+  /// flip squashes horizontally to nothing and back, like a card turning.
   flip,
 
-  /// blur clears from out of focus.
   blur,
 
   /// wipe uncovers the piece behind a moving edge, without moving it.
@@ -70,72 +61,64 @@ enum TextMotion {
   /// split uncovers from the middle outwards.
   split,
 
-  /// shake settles from a jitter.
   shake,
 
   /// snap is no tween at all: the piece is not there and then it is.
   snap,
 
-  /// scramble resolves each letter from a random one.
   scramble,
 
-  /// underline draws a line along the text.
   underline,
 
-  /// highlight sweeps a band behind it.
   highlight,
 
-  /// strokeOn draws the type's outline, like a pen, onto words that are
-  /// already there. See TextDrawStart for fading the words in with it.
+  /// strokeOn draws the type's outline, like a pen, onto words already
+  /// there. See TextDrawStart for fading the words in with it.
   strokeOn,
 
-  /// trail comes in from an offset like a slide, with copies strung out
-  /// behind it that thin away as it settles. An echo keeps its copies; a
-  /// trail spends them.
+  /// trail comes in from an offset with copies strung out behind that thin
+  /// away as it settles. An echo keeps its copies; a trail spends them.
   trail,
 
-  /// mosaic resolves out of blocks: the piece is drawn coarse and comes into
-  /// focus. Nothing moves -- what changes is how finely it is drawn.
+  /// mosaic resolves out of blocks: nothing moves, only how finely the
+  /// piece is drawn changes.
   mosaic,
 
-  /// glitch tears the piece into horizontal slices and slides them against
-  /// each other, settling into register as it arrives.
+  /// glitch tears the piece into horizontal slices that slide into
+  /// register as it arrives.
   glitch,
 
-  /// pieces cuts the piece into a grid of tiles, each arriving from somewhere
-  /// of its own. Built up or broken apart is the same motion: it depends on
-  /// how far they are thrown and turn (see EffectSpec) and on whether it is
-  /// the arrival or the exit, which is the arrival played backwards.
+  /// pieces cuts the piece into tiles, each arriving from somewhere of its
+  /// own. Built up and broken apart differ only in how far they are thrown
+  /// and turn (see EffectSpec); the exit is the arrival played backwards.
   pieces,
 
-  /// echo repeats the words, fading, in a direction. The copies fan out
-  /// from the words, nearest first, and stay when it is over.
+  /// echo repeats the words, fading, in a direction, nearest copy first;
+  /// the copies stay when it is over.
   echo;
 
-  /// keeps is whether the motion leaves something behind when it is over:
-  /// the drawn marks and an echo's copies. Everything else ends with the
-  /// words as they would be without animation, which lets the still drawing
-  /// take over. strokeOn is a mark drawn on words already there, not an
-  /// arrival that hides them; see [TextDrawStart].
+  /// keeps is whether the motion leaves something behind (drawn marks, an
+  /// echo's copies). Everything else ends with the words as they would be
+  /// unanimated, so the still drawing can take over. strokeOn marks words
+  /// already there rather than hiding them; see [TextDrawStart].
   bool get keeps =>
       this == TextMotion.underline ||
       this == TextMotion.highlight ||
       this == TextMotion.strokeOn ||
       this == TextMotion.echo;
 
-  /// cuts is whether the motion draws the thing more than once -- in tiles,
-  /// in slices, or through a filter -- rather than moving it as a whole.
-  /// These cannot go through applyMotion, which only sets a transform: they
-  /// take the drawing as a closure. See paintCutEffect.
+  /// cuts is whether the motion draws the thing more than once (tiles,
+  /// slices, a filter) rather than moving it whole. These take the drawing
+  /// as a closure, since applyMotion only sets a transform. See
+  /// paintCutEffect.
   bool get cuts =>
       this == TextMotion.mosaic ||
       this == TextMotion.glitch ||
       this == TextMotion.pieces;
 }
 
-/// MotionSpec is a motion with its numbers: the whole of what applyMotion
-/// needs to know. Separate from the preset so shapes and pictures use the
-/// same motions as text.
+/// MotionSpec is a motion with its numbers: all applyMotion needs. Kept
+/// apart from the preset so shapes and pictures share the text motions.
 class MotionSpec {
   final TextMotion motion;
 
@@ -149,10 +132,8 @@ class MotionSpec {
   /// turns is how far a spinning thing turns, in whole turns.
   final double turns;
 
-  /// clipped keeps a moving thing inside its own box.
   final bool clipped;
 
-  /// stretch scales the two axes against each other.
   final bool stretch;
 
   const MotionSpec(
@@ -166,29 +147,26 @@ class MotionSpec {
   });
 }
 
-/// EffectSpec is how a cutting motion cuts: how many pieces, how far they are
-/// thrown, how much they turn. A mosaic's blocks, a glitch's slices and a
-/// shatter's tiles are the same cut read three ways.
+/// EffectSpec is how a cutting motion cuts: a mosaic's blocks, a glitch's
+/// slices and a shatter's tiles are the same cut read three ways.
 class EffectSpec {
-  /// pieces is how many across the element is cut: 1 is not cut at all, 24 is
-  /// fine gravel. The rows follow from it, so that a tile is roughly square
-  /// whatever shape the element is.
+  /// pieces is how many across the element is cut (1 is uncut, 24 fine
+  /// gravel). Rows follow from it so a tile is roughly square.
   final int pieces;
 
-  /// scatter is how far a piece is thrown from its place, as a fraction of
-  /// the element's own size. 0 leaves every piece where it belongs and the
-  /// effect is a fade in tiles; 1 throws them a whole element away.
+  /// scatter is how far a piece is thrown, as a fraction of the element's
+  /// size: 0 is a fade in tiles, 1 throws them a whole element away.
   final double scatter;
 
   /// spin is how far a thrown piece turns on its way, in whole turns.
   final double spin;
 
-  /// stagger is how long after the first piece starts the last one does, as a
-  /// fraction of the whole. 0 moves them all together.
+  /// stagger is when the last piece starts after the first, as a fraction
+  /// of the whole. 0 moves them together.
   final double stagger;
 
-  /// seed decides which piece goes where, so the scatter is the same on
-  /// every frame, machine and export size.
+  /// seed fixes which piece goes where, so the scatter is the same on every
+  /// frame, machine and export size.
   final int seed;
 
   const EffectSpec({
@@ -244,12 +222,10 @@ class EffectSpec {
   int get hashCode => Object.hash(pieces, scatter, spin, stagger, seed);
 }
 
-/// TextAnimationPreset is the list somebody chooses from.
 enum TextAnimationPreset {
   none("None", TextAnimationFamily.fade, TextAnimationScope.block,
       TextMotion.fade),
 
-  // Fade.
   fadeIn("Fade in", TextAnimationFamily.fade, TextAnimationScope.block,
       TextMotion.fade),
   fadeUp("Fade up", TextAnimationFamily.fade, TextAnimationScope.block,
@@ -258,8 +234,8 @@ enum TextAnimationPreset {
   blurIn("Blur in", TextAnimationFamily.fade, TextAnimationScope.block,
       TextMotion.blur),
 
-  // Slide. The distance is a fraction of the box, so the same preset reads
-  // the same on a headline and on a caption.
+  // Slide. The distance is a fraction of the box, so a preset reads the
+  // same on a headline and a caption.
   slideLeft("Slide from the left", TextAnimationFamily.slide,
       TextAnimationScope.block, TextMotion.rise,
       dx: -0.6),
@@ -273,7 +249,6 @@ enum TextAnimationPreset {
       TextMotion.rise,
       dy: -0.6),
 
-  // Scale.
   scaleIn("Scale in", TextAnimationFamily.scale, TextAnimationScope.block,
       TextMotion.grow,
       from: 0.6),
@@ -314,7 +289,6 @@ enum TextAnimationPreset {
       TextAnimationScope.letter, TextMotion.scramble,
       wants: ChartEase.linear),
 
-  // Impact.
   slam("Slam", TextAnimationFamily.impact, TextAnimationScope.block,
       TextMotion.grow,
       from: 3.5, wants: ChartEase.overshoot),
@@ -330,7 +304,6 @@ enum TextAnimationPreset {
       TextMotion.rise,
       dx: 0.5, wants: ChartEase.overshoot),
 
-  // Transform.
   rotateIn("Rotate in", TextAnimationFamily.transform, TextAnimationScope.block,
       TextMotion.spin,
       turns: 0.25),
@@ -345,7 +318,6 @@ enum TextAnimationPreset {
       TextAnimationScope.block, TextMotion.grow,
       from: 0.3, stretch: true),
 
-  // Draw.
   underline("Underline", TextAnimationFamily.draw, TextAnimationScope.line,
       TextMotion.underline),
   highlight("Highlight", TextAnimationFamily.draw, TextAnimationScope.line,
@@ -353,9 +325,8 @@ enum TextAnimationPreset {
   strokeOn("Draw the outline", TextAnimationFamily.draw,
       TextAnimationScope.block, TextMotion.strokeOn),
 
-  // Effect: the ones that cut the thing up rather than move it. They read
-  // the same on a photograph, a shape and a headline, which is why they are
-  // here rather than in a picture's own settings.
+  // Effect: these cut the thing up rather than move it, and read the same
+  // on a photograph, a shape and a headline.
   mosaic("Mosaic", TextAnimationFamily.effect, TextAnimationScope.block,
       TextMotion.mosaic,
       wants: ChartEase.linear),
@@ -370,9 +341,8 @@ enum TextAnimationPreset {
       effect: EffectSpec(pieces: 12, scatter: 1.1, spin: 0.4, stagger: 0.35),
       wants: ChartEase.linear),
 
-  // Special: the copies. Every direction, since which one reads best depends
-  // entirely on where the words sit on the page -- a headline at the top of a
-  // canvas echoes downwards and one at the bottom cannot.
+  // Special: the copies, in every direction, since which reads best depends
+  // on where the words sit on the page.
   echoDown("Echo downwards", TextAnimationFamily.special,
       TextAnimationScope.block, TextMotion.echo),
   echoUp("Echo upwards", TextAnimationFamily.special, TextAnimationScope.block,
@@ -392,8 +362,7 @@ enum TextAnimationPreset {
   echoLetters("Echo each letter", TextAnimationFamily.special,
       TextAnimationScope.letter, TextMotion.echo),
 
-  // The trails: the same copies, spent rather than kept. The words come in
-  // from somewhere and what is behind them catches up and goes out.
+  // The trails: the same copies, spent rather than kept.
   trailDown("Drops in trailing", TextAnimationFamily.special,
       TextAnimationScope.block, TextMotion.trail,
       dy: -0.9),
@@ -418,37 +387,32 @@ enum TextAnimationPreset {
   final TextAnimationScope scope;
   final TextMotion motion;
 
-  /// dx and dy are where a piece comes in from, as fractions of its own size.
   final double dx;
   final double dy;
 
-  /// from is the scale a growing piece starts at. Above one it arrives too
-  /// large and settles, which is what a slam is.
+  /// from is the scale a growing piece starts at; above one it arrives too
+  /// large and settles, which is a slam.
   final double from;
 
-  /// turns is how far a spinning piece turns, in whole turns.
   final double turns;
 
   /// clipped keeps a moving piece inside its own line, so it rises out of
   /// nothing rather than sliding over the line below.
   final bool clipped;
 
-  /// stretch scales the two axes against each other, so the piece arrives
-  /// squashed rather than small.
+  /// stretch scales the axes against each other: the piece arrives squashed.
   final bool stretch;
 
-  /// scrambled shuffles the order the pieces arrive in, which is what makes a
-  /// scatter read as a scatter rather than as a row being dealt.
+  /// scrambled shuffles the order the pieces arrive in, so a scatter does
+  /// not read as a row being dealt.
   final bool scrambled;
 
-  /// effect is how a cutting preset cuts, where it is one: Build up and
-  /// Break apart are the same motion and differ only in these numbers. Like
-  /// [wants], a starting point written in when the preset is chosen.
+  /// effect is how a cutting preset cuts, where it is one; written in as a
+  /// starting point when the preset is chosen, like [wants].
   final EffectSpec? effect;
 
-  /// wants is the easing the preset was designed around, or null where it
-  /// does not care: a bounce is a rise eased to overshoot and settle.
-  /// Choosing the preset sets the End curve to this and then leaves it alone.
+  /// wants is the easing the preset was designed around, or null. Choosing
+  /// the preset sets the End curve to it and then leaves it alone.
   final ChartEase? wants;
 
   const TextAnimationPreset(
@@ -467,7 +431,6 @@ enum TextAnimationPreset {
     this.wants,
   });
 
-  /// spec is the motion and its numbers, for whatever is being moved.
   MotionSpec get spec => MotionSpec(motion,
       dx: dx,
       dy: dy,
@@ -476,7 +439,6 @@ enum TextAnimationPreset {
       clipped: clipped,
       stretch: stretch);
 
-  /// cuts is whether this preset draws the thing in pieces. See TextMotion.
   bool get cuts => motion.cuts;
 
   static TextAnimationPreset fromName(String? name) => values.firstWhere(
@@ -484,26 +446,21 @@ enum TextAnimationPreset {
         orElse: () => TextAnimationPreset.none,
       );
 
-  /// inFamily is the presets of one family, in the order they are listed.
   static List<TextAnimationPreset> inFamily(TextAnimationFamily family) => [
         for (var preset in values)
           if (preset != none && preset.family == family) preset,
       ];
 
-  /// staggers is whether the pieces arrive one after another, which is what
-  /// the gap setting decides. A block is one piece and has nothing to space
-  /// out.
+  /// staggers is whether the pieces arrive one after another; a block is
+  /// one piece.
   bool get staggers => this != none && scope != TextAnimationScope.block;
 }
 
-/// TextDrawStart is what the words themselves do while something is being
-/// drawn on them.
+/// TextDrawStart is what the words do while a mark is drawn on them.
 enum TextDrawStart {
-  /// showText leaves the words where they are and draws only the mark: an
-  /// underline drawn under a finished sentence. The default.
+  /// showText leaves the words alone and draws only the mark. The default.
   showText("Already there"),
 
-  /// fadeText brings the words in with the mark.
   fadeText("Fades in with it");
 
   final String label;
@@ -513,17 +470,16 @@ enum TextDrawStart {
       values.firstWhere((s) => s.name == name, orElse: () => showText);
 }
 
-/// TextDrawSpec is what a drawn mark looks like: an underline's line, a
-/// highlight's band. It has its own colour, since a band in the words' own
-/// colour is a solid block, and its own padding.
+/// TextDrawSpec is what a drawn mark looks like. It has its own colour,
+/// since a band in the words' colour is a solid block, and its own padding.
 class TextDrawSpec {
   /// color is the mark's own, or null to take the text's.
   final Color? color;
 
   final TextDrawStart start;
 
-  /// The four sides are kept apart so a band can have more room above and
-  /// below than at the ends.
+  /// The sides are separate so a band can have more room above and below
+  /// than at the ends.
   final double padLeft;
   final double padTop;
   final double padRight;
@@ -542,8 +498,7 @@ class TextDrawSpec {
     this.radius = 0,
   });
 
-  /// evenPad is the one number the four sides share, or null where they
-  /// differ -- which is what the "all sides" field shows.
+  /// evenPad is the padding all four sides share, or null where they differ.
   double? get evenPad =>
       padLeft == padTop && padTop == padRight && padRight == padBottom
           ? padLeft
@@ -569,7 +524,6 @@ class TextDrawSpec {
         radius: radius ?? this.radius,
       );
 
-  /// withEvenPad sets all four sides at once.
   TextDrawSpec withEvenPad(double pad) => TextDrawSpec(
       color: color,
       start: start,
@@ -602,29 +556,26 @@ class TextDrawSpec {
       );
 }
 
-/// TextEchoSpec is how the copies of an echo or trail are arranged: how
-/// many, how far apart, and how much quieter each is than the one before.
+/// TextEchoSpec is how the copies of an echo or trail are arranged.
 class TextEchoSpec {
   /// copies is how many there are, not counting the words themselves.
   final int copies;
 
-  /// spacing is the gap between one copy and the next, as a fraction of the
-  /// line's own height -- so the same setting reads the same on a headline
-  /// and on a caption.
+  /// spacing is the gap between copies as a fraction of the line height, so
+  /// it reads the same on a headline and a caption.
   final double spacing;
 
-  /// fade is how much of the previous copy's strength each one keeps. 0.6
-  /// means each is a little over half the one before it, which is a trail;
-  /// 1 means they are all as solid as the words, which is a stack.
+  /// fade is how much of the previous copy's strength each keeps: 0.6 is a
+  /// trail, 1 a solid stack.
   final double fade;
 
-  /// shrink is how much smaller each copy is than the one before, or 1 for
-  /// copies the same size. Below 1 the trail recedes.
+  /// shrink is each copy's size relative to the one before; 1 keeps them
+  /// the same, below 1 the trail recedes.
   final double shrink;
 
-  /// resolve sends the copies on their way instead of leaving them: they fan
-  /// out over the first half and carry on out of sight over the second,
-  /// leaving the words alone, so the echo is an arrival rather than a look.
+  /// resolve sends the copies away instead of leaving them: they fan out
+  /// over the first half and leave over the second, so the echo is an
+  /// arrival rather than a look.
   final bool resolve;
 
   const TextEchoSpec({
@@ -667,42 +618,38 @@ class TextEchoSpec {
       );
 }
 
-/// TextAnimation is the preset, the stagger and the ease. As with a chart's,
-/// the length is not here: it is where the arrival sits on the timeline.
+/// TextAnimation is the preset, the stagger and the ease. The length is
+/// where the arrival sits on the timeline, as with a chart's.
 class TextAnimation {
   final TextAnimationPreset preset;
 
-  /// exit is how it leaves, using the same presets played backwards. See
-  /// ChartAnimation.exit, which this is deliberately identical to.
+  /// exit is how it leaves, the same presets played backwards; identical by
+  /// design to ChartAnimation.exit.
   final TextAnimationPreset exit;
 
   /// exitInOrder empties the words the way they arrived rather than
   /// unwinding. See ChartAnimation.exitInOrder.
   final bool exitInOrder;
 
-  /// gap is how long after one piece starts before the next does, as a
-  /// fraction of one piece's own movement.
+  /// gap is the delay between pieces starting, as a fraction of one piece's
+  /// own movement.
   final double gap;
 
-  /// draw is what a drawn mark looks like, for the presets that draw one.
   final TextDrawSpec draw;
 
-  /// echo is how the copies are arranged, for the presets that make them.
   final TextEchoSpec echo;
 
-  /// effect is how the cutting presets cut, for the ones that do.
   final EffectSpec effect;
 
-  /// scale is where a growing preset starts from, as a fraction: 0.6 arrives
-  /// a little small, 2 from twice the size and settles. On the way out it is
-  /// where the words go. Zero means the preset's own number (see [scaleFor]).
+  /// scale is where a growing preset starts, as a fraction (0.6 a little
+  /// small, 2 twice the size); on the way out it is where the words go. Zero
+  /// means the preset's own number (see [scaleFor]).
   final double scale;
 
   final ChartEase ease;
 
-  /// length is how many frames a new arrival is laid down with, or 0 for the
-  /// usual two seconds. The timeline is where the arrival actually is;
-  /// dragging it there deliberately does not write back here.
+  /// length is the frames a new arrival is laid down with, or 0 for two
+  /// seconds. Dragging it on the timeline deliberately does not write back.
   final int length;
 
   /// flipOrder is set on the copy the painter draws the way out with, and is
@@ -710,23 +657,19 @@ class TextAnimation {
   final bool flipOrder;
 
   /// direction and strength turn and size a moving arrival, as a shape's do
-  /// (see ElementAnimation.specFor); exitDirection and exitStrength do the
-  /// same for the way out.
+  /// (see ElementAnimation.specFor); the exit pair does the same going out.
   final AnimationDirection? direction;
   final double strength;
   final AnimationDirection? exitDirection;
   final double exitStrength;
 
-  /// loop is what the words go on doing after they have arrived, or instead
-  /// of arriving: see ElementLoop.
+  /// loop is what the words do after arriving, or instead: see ElementLoop.
   final ElementLoop loop;
 
-  /// piecesInTurn brings the pieces in the box (see TextItem) in one after
-  /// another -- the words first, then each piece in the order of its layers
-  /// -- rather than all at once; each starts [piecesGap] of the way through
-  /// the one before. A kicker or a badge arriving just after its headline
-  /// (Ken, 2026-11-11: no arrivals of their own, which would crowd the
-  /// timeline; this, on the text's own).
+  /// piecesInTurn brings the box's pieces (see TextItem) in one after
+  /// another, words first then layers in order, each starting [piecesGap]
+  /// through the one before -- so a kicker follows its headline without an
+  /// arrival of its own crowding the timeline.
   final bool piecesInTurn;
   final double piecesGap;
 
@@ -753,10 +696,9 @@ class TextAnimation {
 
   bool get on => preset != TextAnimationPreset.none;
 
-  /// pieceReveal is how far layer [index] of [count] -- the words 0, then
-  /// each piece -- has got when the whole arrival is [reveal] through: all
-  /// at once, or in turn (see [piecesInTurn]), the last finishing as the
-  /// arrival does.
+  /// pieceReveal is how far layer [index] of [count] (words 0, then each
+  /// piece) has got when the arrival is [reveal] through; in turn (see
+  /// [piecesInTurn]) the last finishes as the arrival does.
   double pieceReveal(double reveal, int index, int count) {
     if (!piecesInTurn || count <= 1) return reveal;
     var g = piecesGap.clamp(0.0, 1.0).toDouble();
@@ -764,8 +706,7 @@ class TextAnimation {
     return (reveal / share - index * g).clamp(0.0, 1.0).toDouble();
   }
 
-  /// scaleFor is where [preset] actually starts from: whatever has been set,
-  /// or the preset's own number when nothing has.
+  /// scaleFor is where [preset] starts: the set scale, or its own number.
   double scaleFor(TextAnimationPreset preset) =>
       scale > 0 ? scale : preset.from;
 
@@ -776,11 +717,9 @@ class TextAnimation {
       preset.motion == TextMotion.trail ||
       exit.motion == TextMotion.trail;
 
-  /// keeps is whether this animation leaves something behind when it is over.
-  ///
-  /// The motion's own answer, except for an echo that has been told to
-  /// resolve -- its copies fly off and are gone, so what is left is the words
-  /// and the still drawing can take over. See TextEchoSpec.resolve.
+  /// keeps is whether this animation leaves something behind: the motion's
+  /// answer, except an echo set to resolve, whose copies fly off. See
+  /// TextEchoSpec.resolve.
   bool get keeps {
     if (echo.resolve &&
         (preset.motion == TextMotion.echo || exit.motion == TextMotion.echo)) {
@@ -795,8 +734,8 @@ class TextAnimation {
   /// cuts is whether the effect settings mean anything for what is chosen.
   bool get cuts => preset.cuts || exit.cuts;
 
-  /// scatters is whether how far the pieces are thrown means anything: a
-  /// mosaic's blocks and a glitch's slices stay where they are.
+  /// scatters is whether the throw distance matters: a mosaic's blocks and
+  /// a glitch's slices stay put.
   bool get scatters =>
       preset.motion == TextMotion.pieces || exit.motion == TextMotion.pieces;
 
@@ -805,7 +744,6 @@ class TextAnimation {
       preset.motion == TextMotion.grow || exit.motion == TextMotion.grow;
   bool get closes => exit != TextAnimationPreset.none;
 
-  /// leaving is this animation as it is played on the way out.
   TextAnimation get leaving => copyWith(
       preset: exit,
       flipOrder: exitInOrder,
@@ -822,14 +760,13 @@ class TextAnimation {
               (p.dx != 0 || p.dy != 0) ||
           p.motion == TextMotion.wipe);
 
-  /// arrivalDirected and the rest are whether a direction, or a strength,
-  /// means anything for the way in, or the way out.
+  /// arrivalDirected and the rest are whether a direction or strength
+  /// means anything for the way in or out.
   bool get arrivalDirected => _directs(preset);
   bool get exitDirected => _directs(exit);
 
-  /// spec is the arrival's motion as this animation plays it: turned to its
-  /// direction, and moved, grown and turned as far as its strength says.
-  /// The way out's is [leaving]'s.
+  /// spec is the arrival's motion turned to its direction and scaled by its
+  /// strength. The way out's is [leaving]'s.
   MotionSpec get spec {
     var p = preset;
     var base = p.spec;
@@ -896,9 +833,8 @@ class TextAnimation {
         piecesGap: piecesGap ?? this.piecesGap,
       );
 
-  /// progressAt is how far piece [index] of [count] has got when the whole
-  /// animation is [reveal] through. Deliberately the chart's own stagger, so
-  /// a chart and a headline on one canvas line up.
+  /// progressAt is how far piece [index] of [count] has got at [reveal].
+  /// The chart's own stagger, so a chart and headline line up.
   double progressAt(double reveal, int index, int count) => staggeredProgress(
         reveal,
         index,

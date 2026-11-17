@@ -24,20 +24,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
-// sprite_settings.dart is a Sprite element's settings: its sheet, brought
-// in and sliced into frames; its actions, each a run of frames for each way
-// it faces; and when on the timeline it changes action or turns.
+// sprite_settings.dart is a Sprite's settings: its sheet sliced into
+// frames, its actions per facing, and timeline cues.
 
-/// spriteActionNames is the actions a sprite usually has, offered when one
-/// is added.
+/// spriteActionNames is the usual actions, offered when one is added.
 const List<String> spriteActionNames = [
   "Idle", "Walk", "Run", "Jump", "Fall", "Attack", "Shoot", "Cast", "Hurt", "Die", "Climb",
 ];
 
-/// spriteFromSheet is [e] made of the sheet stored as [id], called [name]:
-/// [image] measured, sliced as [notes] say -- a sheet's .json beside it --
-/// or by the gaps between its frames, and an action for each tag the notes
-/// give, or for each row of the grid, for a start.
+/// spriteFromSheet is [e] made of sheet [id]: sliced by [notes] (a .json
+/// beside it) or the gaps between frames, an action per tag or grid row.
 Future<SpriteElement> spriteFromSheet(SpriteElement e, String id, String name, ui.Image image,
     {SheetNotes? notes}) async {
   var w = image.width, h = image.height;
@@ -82,8 +78,8 @@ Future<SpriteElement> spriteFromSheet(SpriteElement e, String id, String name, u
   return measured(made.copyWith(actions: actions, action: actions.first.name));
 }
 
-/// findGrid is the grid [image]'s frames are laid out in, from the clear
-/// columns and rows between them, or null when it cannot tell.
+/// findGrid is [image]'s frame grid, from the clear columns and rows
+/// between frames, or null when it cannot tell.
 Future<(int, int)?> findGrid(ui.Image image) async {
   var data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
   if (data == null) return null;
@@ -92,9 +88,8 @@ Future<(int, int)?> findGrid(ui.Image image) async {
   return gridFromGaps(w, image.height, clear);
 }
 
-/// readSheet reads the file at [file] -- a picture, or a sheet's .json
-/// with its picture beside it -- stores the picture, and gives [e] made of
-/// it; or says why it could not.
+/// readSheet reads [file] (a picture, or a .json beside one), stores the
+/// picture and gives [e] made of it, or says why not.
 Future<(SpriteElement?, String)> readSheet(SpriteElement e, String file) async {
   try {
     SheetNotes? notes;
@@ -278,9 +273,8 @@ List<Widget> spriteSettings(BuildContext context, CanvasController controller, S
   ];
 }
 
-/// _paintGroup is painting the sprite's frames on the canvas, a pixel at a
-/// time: on and off, the tool, its colour and size, the frame painted, the
-/// one before shown faintly, and frames added or copied.
+/// _paintGroup is pixel painting on the frames: tool, colour, size, the
+/// frame, onion skin, and adding or copying frames.
 Widget _paintGroup(CanvasController controller, SpriteElement e, SpritePaintSession? painting) {
   return CanvasControlGroup(
     key: const ValueKey("spritePaintGroup"),
@@ -371,7 +365,7 @@ Widget _paintGroup(CanvasController controller, SpriteElement e, SpritePaintSess
   );
 }
 
-/// BlankSheetMaker makes a new, clear sheet to paint: so many frames of so
+/// BlankSheetMaker makes a new clear sheet to paint: so many frames of so
 /// many pixels.
 class BlankSheetMaker extends StatefulWidget {
   final CanvasController controller;
@@ -442,10 +436,9 @@ class BlankSheetMakerState extends State<BlankSheetMaker> {
       );
 }
 
-/// AnimationsEditor is the sprite's animations, laid out as Godot's sprite
-/// frames editor: the animation picked playing in a preview, its frames in
-/// order (moved, copied, taken out, or added from the sheet), how fast, and
-/// whether it loops. A figure's has frames for each way it faces.
+/// AnimationsEditor is the sprite's animations, as Godot's sprite frames
+/// editor: a preview, its frames in order, speed and looping; a figure's
+/// per facing.
 class AnimationsEditor extends StatefulWidget {
   final CanvasController controller;
   final SpriteElement sprite;
@@ -463,7 +456,7 @@ class AnimationsEditor extends StatefulWidget {
 }
 
 class AnimationsEditorState extends State<AnimationsEditor> {
-  /// _picked is the frame of the strip picked, by its place in it.
+  /// _picked is the picked strip frame, by its place.
   int _picked = -1;
   String _typed = "";
 
@@ -538,7 +531,7 @@ class AnimationsEditorState extends State<AnimationsEditor> {
               key: ValueKey("spriteActionName-${action.name}"),
               label: "Name",
               value: action.name,
-              // Renamed once typed, not at every letter: cues follow it.
+              // Renamed once typed, not per letter: cues follow it.
               onChanged: (v) => _typed = v,
               onCommit: () {
                 var name = _typed.trim();
@@ -607,7 +600,7 @@ class AnimationsEditorState extends State<AnimationsEditor> {
             keyOf: (f) => "spriteFacing-${f.name}",
             onPick: (f) => _now(e.copyWith(facing: f)),
           ),
-        // Playing, as it will on the canvas.
+        // Playing as it will on the canvas.
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: SpritePreview(
@@ -619,7 +612,6 @@ class AnimationsEditorState extends State<AnimationsEditor> {
               fps: action.fps,
               loop: action.loop),
         ),
-        // The frames, in order.
         SizedBox(
           height: 64,
           child: own.isEmpty
@@ -741,8 +733,8 @@ class AnimationsEditorState extends State<AnimationsEditor> {
             value: e.mirrorSides,
             onChanged: (v) => _now(e.copyWith(mirrorSides: v)),
           ),
-        // Turned the way it goes on the timeline (a patrol), and which way its
-        // frames face, for what is mirrored.
+        // Turned the way it moves on the timeline (a patrol), and which way
+        // its frames face, for what is mirrored.
         CanvasToggle(
           key: const ValueKey("spriteFaceTravel"),
           label: "Turns to face where it goes",
@@ -815,8 +807,8 @@ class _FramePainter extends CustomPainter {
       !identical(old.e, e) || old.image != image || old.index != index || old.flipped != flipped;
 }
 
-/// SpritePreview plays [frames] of [sprite] at [fps], over and over or
-/// once, with a button to stop and start it.
+/// SpritePreview plays [frames] of [sprite] at [fps], looping or once, with
+/// a stop and start button.
 class SpritePreview extends StatefulWidget {
   final CanvasController controller;
   final SpriteElement sprite;
@@ -838,13 +830,12 @@ class SpritePreview extends StatefulWidget {
 }
 
 class SpritePreviewState extends State<SpritePreview> with SingleTickerProviderStateMixin {
-  /// _ticker is made when it first plays -- and only then, not while the
-  /// panel is being taken down.
+  /// _ticker is made on first play, never while the panel is torn down.
   Ticker? _ticker;
   Duration _at = Duration.zero;
 
-  /// _playing is whether it plays: not until asked, as Godot's preview --
-  /// a settings panel left open is not left spinning.
+  /// _playing is whether it plays: not until asked, as Godot's preview, so
+  /// an open panel is not left spinning.
   bool _playing = false;
 
   @override
@@ -853,8 +844,8 @@ class SpritePreviewState extends State<SpritePreview> with SingleTickerProviderS
     super.dispose();
   }
 
-  /// _tick moves it on: built again only as the frame shown changes, and
-  /// not looping, stopped on its last.
+  /// _tick moves it on, rebuilding only when the shown frame changes; not
+  /// looping, it stops on its last.
   void _tick(Duration t) {
     var list = widget.frames;
     int k(Duration d) => (d.inMicroseconds / 1e6 * widget.fps).floor();
@@ -915,7 +906,7 @@ class SpritePreviewState extends State<SpritePreview> with SingleTickerProviderS
   }
 }
 
-/// _cuesGroup is where on the timeline it changes animation, or turns.
+/// _cuesGroup is where on the timeline it changes animation or turns.
 Widget _cuesGroup(CanvasController controller, SpriteElement e, void Function(SpriteElement) now) {
   var frame = controller.frame;
   var here = e.cues.where((c) => c.frame == frame).firstOrNull;
@@ -948,7 +939,7 @@ Widget _cuesGroup(CanvasController controller, SpriteElement e, void Function(Sp
   );
 }
 
-/// SpriteSheetPicker brings a sheet in: a picture, or a sheet's .json with
+/// SpriteSheetPicker imports a sheet: a picture, or a sheet's .json with
 /// its picture beside it.
 class SpriteSheetPicker extends StatefulWidget {
   final CanvasController controller;
@@ -967,7 +958,7 @@ class SpriteSheetPickerState extends State<SpriteSheetPicker> {
     if (made != null) {
       var c = widget.controller;
       c.beginInteraction();
-      // The box takes a frame's own shape, as tall as it was.
+      // The box takes a frame's shape, keeping its height.
       var f = made.frameRect(0).size;
       var box = made.base;
       var width = f.height <= 0 ? box.width : box.height * f.width / f.height;
@@ -1003,8 +994,8 @@ class SpriteSheetPickerState extends State<SpriteSheetPicker> {
       ]);
 }
 
-/// SpriteSheetView is the sheet with its frames marked on it, numbered,
-/// the ones the action plays the way picked lit -- a click on one adding it.
+/// SpriteSheetView is the sheet with its frames marked and numbered, the
+/// picked action's frames for the picked facing lit; a click adds one.
 class SpriteSheetView extends StatelessWidget {
   final CanvasController controller;
   final SpriteElement sprite;

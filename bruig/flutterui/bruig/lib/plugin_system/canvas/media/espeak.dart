@@ -2,14 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-// espeak.dart is espeak-ng, used where it is installed: for the Kokoro
-// voices of Spanish, French, Hindi, Italian, Japanese and Portuguese, whose
-// words Kokoro has no dictionary for. Each word of a script is given to
-// espeak-ng, which writes how it is said in IPA -- the very sounds Kokoro
-// speaks -- and those are handed to Kokoro as a dictionary of their own.
-//
-// Never bundled: espeak-ng is GPL, and Bison Relay is ISC. A program of the
-// reader's, run as a program, as ffmpeg is -- see video_export.dart.
+// espeak.dart is espeak-ng, where installed, for the Kokoro voices with no
+// dictionary (Spanish, French, Hindi, Italian, Japanese, Portuguese): its
+// IPA for each word is handed to Kokoro as a dictionary. Never bundled, as
+// espeak-ng is GPL and Bison Relay ISC: it is the reader's own program, run
+// as ffmpeg is (see video_export.dart).
 
 /// espeakHelp is what to tell somebody whose voice needs espeak-ng.
 const String espeakHelp =
@@ -31,9 +28,8 @@ const List<String> _candidates = [
 String? _found;
 bool _pinned = false;
 
-/// espeakPath is where espeak-ng is, or null. Found once and kept; not
-/// found, it is looked for again next time -- installed meanwhile, it works
-/// without a restart.
+/// espeakPath is where espeak-ng is, or null. Kept once found; not found,
+/// it is looked for again, so an install works without a restart.
 Future<String?> espeakPath() async {
   if (_pinned || _found != null) return _found;
   if (Platform.isAndroid || Platform.isIOS) return null;
@@ -53,8 +49,8 @@ Future<String?> espeakPath() async {
   return null;
 }
 
-/// useEspeakForTest fixes what [espeakPath] answers -- a script standing in
-/// for it, or null for none; [forgetEspeakForTest] puts it back.
+/// useEspeakForTest fixes what [espeakPath] answers (a stand-in script, or
+/// null); [forgetEspeakForTest] puts it back.
 @visibleForTesting
 void useEspeakForTest(String? path) {
   _pinned = true;
@@ -67,12 +63,8 @@ void forgetEspeakForTest() {
   _found = null;
 }
 
-/// espeakLexicon is how each of [words] is said in espeak-ng [voice]'s
-/// language, as dictionary lines' sounds: each a token of [tokens] --
-/// Kokoro's -- separated by spaces, the rest left out. A word espeak-ng
-/// says nothing for is left out too.
-///
-/// Run where it is called: in the isolate a take is spoken in.
+/// espeakLexicon is each of [words] in espeak-ng [voice]'s language as
+/// Kokoro [tokens], space-separated; unsaid words are left out.
 Map<String, String> espeakLexicon(
     String exe, String voice, Iterable<String> words, Set<String> tokens) {
   var out = <String, String>{};
@@ -92,16 +84,15 @@ Map<String, String> espeakLexicon(
   return out;
 }
 
-/// espeakSounds is espeak-ng's IPA as Kokoro's tokens: the tie bars and
-/// spaces taken out, every character it has a token for kept, a space
-/// between each.
+/// espeakSounds is espeak-ng's IPA as Kokoro's tokens: tie bars and spaces
+/// dropped, each character with a token kept, spaces between.
 String espeakSounds(String ipa, Set<String> tokens) => [
       for (var c
           in ipa.replaceAll(RegExp("[\u0361\u035c\u203f^\\s]"), "").split(""))
         if (tokens.contains(c)) c,
     ].join(" ");
 
-/// readTokens are the tokens of a Kokoro tokens.txt: the first thing on
+/// readTokens are the tokens of a Kokoro tokens.txt, the first thing on
 /// each line.
 Set<String> readTokens(String text) => {
       for (var line in text.split("\n"))

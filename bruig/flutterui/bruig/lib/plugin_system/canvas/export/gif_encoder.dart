@@ -1,13 +1,10 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-// gif_encoder.dart writes an animated GIF89a by hand: there is no
-// Flutter-native encoder, and ffmpeg is absent on most machines.
-//
-// One palette is chosen by median cut for the whole animation, since a
-// palette that changes between frames makes flat areas crawl. Floyd-Steinberg
-// dithering is optional: it hides banding in gradients but adds noise to
-// flat-coloured work that quantises perfectly without it.
+// gif_encoder.dart writes an animated GIF89a by hand: Flutter has no
+// encoder and most machines lack ffmpeg. One median-cut palette for the
+// whole run, since one changing between frames makes flat areas crawl.
+// Dithering is optional: it hides gradient banding but adds noise.
 
 /// gifMaxColors is what the format allows in one palette.
 const int gifMaxColors = 256;
@@ -30,8 +27,7 @@ class GifFrame {
   });
 }
 
-/// encodeGif turns frames into a GIF89a file. [loop] is how many times it
-/// plays, 0 for forever.
+/// encodeGif turns frames into a GIF89a, played [loop] times (0: forever).
 Uint8List encodeGif(
   List<GifFrame> frames, {
   int loop = 0,
@@ -44,8 +40,7 @@ Uint8List encodeGif(
   var height = frames.first.height;
   var colors = maxColors.clamp(2, gifMaxColors);
 
-  // GIF has one bit of alpha: any pixel under half opacity becomes the
-  // transparent index.
+  // GIF has one bit of alpha: under half opacity is transparent.
   var needsTransparency = frames.any((f) {
     for (var i = 3; i < f.rgba.length; i += 4) {
       if (f.rgba[i] < 128) return true;
@@ -54,11 +49,10 @@ Uint8List encodeGif(
   });
 
   // Frames after the first carry only what changed, the rest transparent so
-  // the frame beneath shows through; a canvas is mostly still, so this is
-  // most of the file's size. Only where the art is opaque: patched frames
-  // stay until drawn over, so a see-through element moving would leave a
-  // trail. With real transparency every frame is written in full and
-  // disposed before the next.
+  // the frame beneath shows through: a canvas is mostly still, so this is
+  // most of the file. Only where the art is opaque, since patched frames stay
+  // until drawn over and a see-through element moving would leave a trail;
+  // with real transparency every frame is full and disposed before the next.
   var differencing = frames.length > 1 && !needsTransparency;
   var spare = needsTransparency || differencing;
 
@@ -89,8 +83,8 @@ Uint8List encodeGif(
     out.addByte(p + 2 < palette.length ? palette[p + 2] : 0);
   }
 
-  // The Netscape extension (not in the specification, but universal) says
-  // "loop". Its count is of repeats after the first play, so once is none.
+  // The Netscape extension (unofficial but universal) says "loop". Its
+  // count is of repeats after the first play, so once is none.
   if (frames.length > 1 && loop != 1) {
     out.addByte(0x21);
     out.addByte(0xFF);
@@ -118,8 +112,7 @@ Uint8List encodeGif(
     if (differencing && previous != null) {
       var box = _changedBox(previous, indices, frame.width, frame.height);
       if (box == null) {
-        // Nothing moved: one transparent pixel holds the frame for another
-        // delay.
+        // Nothing moved: one clear pixel holds the frame a delay.
         left = 0;
         top = 0;
         width_ = 1;
@@ -150,9 +143,8 @@ Uint8List encodeGif(
     out.addByte(0x21);
     out.addByte(0xF9);
     out.addByte(4);
-    // Disposal 1 (leave in place) while differencing; 2 (restore to
-    // background) for full frames with transparency, so a moving
-    // see-through element does not smear.
+    // Disposal 1 (leave) while differencing; 2 (restore) for full
+    // transparent frames, so a moving see-through element does not smear.
     var disposal = differencing ? 0x05 : (transparentIndex >= 0 ? 0x09 : 0x04);
     out.addByte(disposal);
     out.addUint16((frame.delayMs / 10).round().clamp(1, 65535));
@@ -183,16 +175,14 @@ int _paletteBits(int count) {
   return bits;
 }
 
-// --------------------------------------------------------------------------
 // Quantisation
-// --------------------------------------------------------------------------
 
 /// _medianCut chooses a palette covering every frame: the box with the
 /// widest channel spread is split at its median until there are [wanted]
 /// boxes, each becoming the average of its colours. Unlike a popularity
 /// count, it keeps rare bright colours as well as shades of a dominant one.
 Uint8List _medianCut(List<GifFrame> frames, int wanted) {
-  // Sampled at a stride: about 20,000 pixels a frame, and no more than
+  // Sampled at a stride: about 20,000 pixels a frame and no more than
   // [_mostSamples] in all, so a long animation is not millions of them.
   var each = math.max(1000, math.min(20000, _mostSamples ~/ frames.length));
   var samples = <int>[];
@@ -206,7 +196,7 @@ Uint8List _medianCut(List<GifFrame> frames, int wanted) {
   }
   if (samples.isEmpty) return Uint8List.fromList([0, 0, 0]);
 
-  // Each box knows its widest channel from when it was made, rather than
+  // Each box keeps its widest channel from when it was made, rather than
   // every box being measured again at every split.
   var boxes = <_Box>[_Box(samples)];
   while (boxes.length < wanted) {
@@ -249,8 +239,7 @@ Uint8List _medianCut(List<GifFrame> frames, int wanted) {
 /// _mostSamples is the most pixels a palette is chosen from.
 const int _mostSamples = 200000;
 
-/// _Box is a median cut's box: its colours, and the channel they spread
-/// widest along and by how much.
+/// _Box is a median cut's box: its colours, and their widest channel.
 class _Box {
   final List<int> colours;
   int channel = 0, spread = 0;
@@ -275,9 +264,8 @@ class _Box {
   }
 }
 
-/// _NearestColor maps a colour onto the closest palette entry, cached over
-/// the top five bits per channel: without the cache, a linear scan per
-/// pixel is the encoder's slowest step by far.
+/// _NearestColor maps a colour to the closest palette entry, cached on the
+/// top five bits a channel: a linear scan a pixel is far the slowest step.
 class _NearestColor {
   final Uint8List palette;
   final Int16List _cache = Int16List(1 << 15)..fillRange(0, 1 << 15, -1);
@@ -368,9 +356,7 @@ Uint8List _quantise(GifFrame frame, _NearestColor lookup, int transparentIndex,
   return out;
 }
 
-// --------------------------------------------------------------------------
 // LZW
-// --------------------------------------------------------------------------
 
 /// _lzwCompress writes one frame's image data: GIF's variable-width LZW,
 /// codes up to 12 bits, a clear code when the dictionary reaches 4096,
@@ -485,8 +471,7 @@ class _ByteSink {
   Uint8List toBytes() => _builder.toBytes();
 }
 
-/// _changedBox is the inclusive rectangle two frames differ in, or null
-/// where they do not differ.
+/// _changedBox is the inclusive box two frames differ in, or null.
 (int, int, int, int)? _changedBox(
     Uint8List before, Uint8List after, int width, int height) {
   var left = width;

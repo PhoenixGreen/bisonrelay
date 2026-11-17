@@ -50,8 +50,7 @@ ImageElement original(ImageElement e) => e.copyWith(
       outline: e.outline.copyWith(width: 0),
     );
 
-/// ImageToolHint is the pill over the canvas while a picture is being
-/// edited.
+/// ImageToolHint is the pill over the canvas while a picture is edited.
 class ImageToolHint extends StatelessWidget {
   final CanvasController controller;
   const ImageToolHint({required this.controller, super.key});

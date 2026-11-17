@@ -16,34 +16,28 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// play_bar.dart is the play bar along the panels under the canvas (Ken,
-// 2026-11-08, "play and timer sections in the middle of the bar"): the
-// switcher that opens the panels on the left (see dock_switcher.dart); in the
-// middle the transport, where the playhead is and what it is counted in, and
-// the Marker menu (marker_panel.dart); on the right Back to the timeline
-// when something has left it, what is lit, a "?" and the settings. No hover
-// tips: the "?" explains. On its own, over the
-// panels or under them (see CanvasController.barBelow), so it stays where it
-// is whichever panels are open; the timeline draws one of its own only when
-// it is used without the page (see CanvasTimeline.showBar).
+// play_bar.dart is the play bar along the panels under the canvas: the
+// panels' switcher on the left (dock_switcher.dart); in the middle the
+// transport, the playhead's place and units, and the Marker menu; on the
+// right Back to the timeline, what is lit, a "?" and the settings. It sits
+// over or under the panels (CanvasController.barBelow), so it stays put
+// whichever are open; the timeline draws its own only without the page.
 
 /// playBarHeight is the bar: its controls, with no captions over them --
 /// the captions are their hover text. See CanvasControlScope.
 const double playBarHeight = controlHeight + 6;
 
-/// transportKey is the keyboard of the play bar and the timeline: the space
-/// bar plays and stops, and the arrows walk the frames. Returns null for a
-/// key that is not one of these, so a caller can go on with its own.
+/// transportKey is the play bar's and timeline's keyboard: space plays and
+/// stops, the arrows walk the frames. Null for any other key, so a caller
+/// can go on with its own.
 KeyEventResult? transportKey(CanvasController controller, KeyEvent event) {
-  // A game playing has the keys: Space jumps and the arrows run, rather
-  // than playing the timeline or walking its frames. See gameKey.
+  // A game playing has the keys: Space jumps and the arrows run. See gameKey.
   if (controller.gaming) return KeyEventResult.handled;
   if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
     return KeyEventResult.ignored;
   }
-  // Never while somebody is typing (see isTypingInAField): this runs before
-  // the app's text-editing shortcuts, so the arrows and space would
-  // otherwise scrub and play.
+  // Never while typing: this runs before the app's text-editing shortcuts,
+  // so the arrows and space would otherwise scrub and play.
   if (isTypingInAField()) return KeyEventResult.ignored;
   switch (event.logicalKey) {
     case LogicalKeyboardKey.space:
@@ -62,16 +56,14 @@ KeyEventResult? transportKey(CanvasController controller, KeyEvent event) {
   return KeyEventResult.handled;
 }
 
-/// CanvasPlayBar is the play bar: see the top of the file.
 class CanvasPlayBar extends StatefulWidget {
   final CanvasController controller;
 
-  /// switcher is what opens the panels, at the bar's right end: the dock's
-  /// (see DockSwitcherBar) unless another is given.
+  /// switcher opens the panels: the dock's (DockSwitcherBar) unless given.
   final Widget? switcher;
 
-  /// onCustomiseSidebars opens the sidebars' settings, from the bar's
-  /// settings; with none, they have no such line.
+  /// onCustomiseSidebars opens the sidebars' settings from the bar's
+  /// settings; with none, there is no such line.
   final VoidCallback? onCustomiseSidebars;
 
   const CanvasPlayBar(
@@ -93,29 +85,26 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   final MenuController _timingMenu = MenuController();
 
   /// _wideNeeds is how wide the bar must be for the buttons' names, as last
-  /// measured with them; null until measured. _wideFor is what it was
-  /// measured for -- the text's size and which buttons there are -- so a
-  /// change measures it afresh.
+  /// measured with them, or null. _wideFor is what it was measured for --
+  /// text size and which buttons -- so a change measures it afresh.
   double? _wideNeeds;
   String _wideFor = "";
 
   /// _centreWide is the middle's width, measured with the names too.
   double? _centreWide;
 
-  /// _compact is whether the panels' buttons are their icons alone.
   bool _compact = false;
 
-  /// _measure, after a layout, decides whether the names fit: the
-  /// switcher, as wide as it is with them, within the half of [room] the
-  /// middle leaves it.
+  /// _measure, after a layout, decides whether the names fit: the switcher,
+  /// at its width with them, within the half of [room] the middle leaves.
   void _measure(double room) {
     if (!mounted) return;
     var left = _leftKey.currentContext?.findRenderObject();
     var centre = _centreKey.currentContext?.findRenderObject();
     if (left is! RenderBox || centre is! RenderBox) return;
     if (!left.hasSize || !centre.hasSize) return;
-    // Both measured as they are with their names: compact makes the middle
-    // narrower too, and deciding on that would undo itself the next frame.
+    // Both measured with their names: compact narrows the middle too, and
+    // deciding on that would undo itself the next frame.
     if (!_compact) {
       _wideNeeds = left.size.width;
       _centreWide = centre.size.width;
@@ -127,8 +116,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
 
   CanvasController get controller => widget.controller;
 
-  /// _focus takes the keyboard once one of the bar's controls is pressed,
-  /// so the space bar and the arrows go on working: see transportKey.
+  /// _focus takes the keyboard once a bar control is pressed, so space and
+  /// the arrows keep working: see transportKey.
   final FocusNode _focus = FocusNode();
 
   static const _trackpadKey = "canvasTimelineTrackpad";
@@ -197,9 +186,9 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     );
   }
 
-  /// _bar is the play bar: the transport, where the playhead is, what is
-  /// lit, and the panels' switcher, with the rest behind the ⋯ menu. See transport_controls.dart. A piece of sound has its tempo, metre
-  /// and quantise here, and counts in bars; a document of scenes has its
+  /// _bar is the play bar: transport, playhead, what is lit and the panels'
+  /// switcher, the rest behind the ⋯ menu (transport_controls.dart). Sound
+  /// has its tempo, metre and quantise here and counts in bars; scenes count
   /// frames.
   Widget _bar(ThemeNotifier theme, CanvasDocument document,
       TimelineAction? actionHere) {
@@ -215,13 +204,11 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     var (loopFrom, loopLength) = controller.loopRange;
     var looping = controller.looping;
 
-    // The timing, as the prototype's panel has it: how long the canvas is
-    // and how fast, how long that runs; the tempo, time and quantise the
-    // bars are counted in (and the slots launch on); then the loop.
+    // The timing: how long the canvas is and how fast; the tempo, time and
+    // quantise the bars are counted in (and slots launch on); then the loop.
     Widget timing() {
       Widget length = document.editingMaster
-          // The master canvas is as long as the scenes it covers, so it has
-          // no length of its own to set.
+          // The master is as long as the scenes it covers: no length to set.
           ? TransportReadout(
               key: const ValueKey("canvasFramesMaster"),
               caption: "LENGTH",
@@ -278,7 +265,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             const SizedBox(height: 8),
             TransportGroup(children: [
               // Taps of the beat the time signature counts; the tempo is in
-              // quarter notes, as it is everywhere else.
+              // quarter notes, as everywhere else.
               TapTempoButton(
                   onTempo: (bpm) => writeAudio(
                       audio.copyWith(tempo: bpm * audio.beatUnit / 4))),
@@ -337,14 +324,12 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     }
 
     var timelinePlays = controller.playing && !controller.sessionOnly;
-    // The bar holds what is pressed while working: the transport, where the
-    // playhead is, and the panels' switcher. The timing is behind the
-    // readout and the rest behind the settings button; an option turned on
-    // there shows on the bar, lit, to be turned off here.
+    // The bar holds what is pressed while working; the timing is behind the
+    // readout, the rest behind settings, and an option turned on there
+    // shows lit on the bar, to be turned off here.
     var back = controller.offTimeline || controller.anyOverridden;
     Widget transportMin() => TransportGroup(children: [
-          // To the start (the prototype's first button): the playhead to
-          // the first frame.
+          // To the start: the playhead to the first frame.
           TransportButton(
             key: const ValueKey("toStart"),
             icon: Icons.skip_previous,
@@ -396,9 +381,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             on: looping,
             onPressed: () => controller.looping = !looping,
           ),
-          // Which of the two Play means, where there is more than one scene:
-          // lit, the timeline runs along them all, the scenes over the
-          // channels.
+          // Which of the two Play means, with several scenes: lit, the
+          // timeline runs along them all, the scenes over the channels.
           if (document.hasScenes)
             TransportButton(
               key: const ValueKey("playAll"),
@@ -420,7 +404,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Its title, and a close (the prototype's).
+                // Its title, and a close.
                 SizedBox(
                   height: 24,
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -622,8 +606,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           lit: const Color(0xFF3A2F12),
           onPressed: () => controller.timelineShow = TimelineShow.everything,
         ),
-      // Follow, Snap and Scrub are on to begin with: the bar lights what
-      // has been turned on, not those (the approved design).
+      // Follow, Snap and Scrub start on: the bar lights what has been turned
+      // on, not those.
       for (var (key, icon, tip, on, press) in options)
         if (on && !_quietWhenOn.contains(key))
           TransportButton(
@@ -661,9 +645,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
         hoverCaptions: true,
         child: LayoutBuilder(builder: (context, box) {
           var scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
-          // Measured rather than guessed: with their names while they fit
-          // beside the middle. A new text size, or other buttons, are
-          // measured again with their names.
+          // Measured, not guessed: names while they fit beside the middle; a
+          // new text size or other buttons are measured again.
           var dock = controller.dock;
           var measuredFor = "$scale|${dock.switcher}|${dock.showLayouts}|"
               "${dock.arrangements.length}|${dock.places}";
@@ -693,10 +676,9 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
               ),
             ),
             const SizedBox(width: 12),
-            // In the middle: the transport, where the playhead is, and the
-            // markers -- always in the same place, whatever is either side.
-            // Never past the bar: the first frame, before it has measured
-            // itself compact, a hair smaller rather than overflowing.
+            // In the middle, always in the same place: transport, playhead
+            // and markers. Never past the bar: the first frame, before it
+            // measures itself compact, a hair smaller, not overflowing.
             ConstrainedBox(
               constraints: BoxConstraints(maxWidth: math.max(0.0, room - 24)),
               child: FittedBox(
@@ -714,9 +696,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
               ),
             ),
             const SizedBox(width: 12),
-            // On the right: Back to the timeline beside the middle, when
-            // something has left it; then what is lit, the "?" and the
-            // settings at the end.
+            // On the right: Back to the timeline when something has left it,
+            // then what is lit, the "?" and the settings.
             Expanded(
               child: Row(children: [
                 // Back to the timeline has all the room the rest leaves, so
@@ -728,7 +709,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
                           child: _BackToTimeline(controller: controller))
                       : const SizedBox.shrink(),
                 ),
-                // Against the panel's right edge (Ken), whatever is beside.
+                // Against the panel's right edge, whatever is beside.
                 Flexible(
                   child: Align(
                     alignment: Alignment.centerRight,
@@ -761,8 +742,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   /// the tempo and metre of a piece of sound, a scene's frames a second.
   Widget _tempo(ThemeNotifier theme, CanvasDocument document) {
     var colors = theme.colors;
-    // Always the tempo, over the metre and the frame rate (the approved
-    // design): "120" over "4/4 · 24 fps", as the position over its time.
+    // The tempo over the metre and frame rate: "120" over "4/4 · 24 fps",
+    // as the position over its time.
     var style = TextStyle(
         fontFeatures: const [FontFeature.tabularFigures()],
         fontSize: 10.5,
@@ -792,7 +773,6 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
       n.contains(".") ? n.replaceFirst(RegExp(r"\.?0+$"), "") : n;
 }
 
-/// playBarHelp is the play bar's "?".
 const playBarHelp = [
   "The panels are on the left: press one to open or close it. Its small "
       "picture shows where it opens; drag it onto the map that appears to "
@@ -807,12 +787,10 @@ const playBarHelp = [
       "settings.",
 ];
 
-/// _BackToTimeline is Back to the timeline (Ken, 2026-11-08: "what does it
-/// do and is it needed? if it is needed it needs a redesign"): shown only
-/// while something has left the timeline, amber, with how many; pressed,
-/// everything goes back. Its arrow lists them -- the rows playing from their
-/// slots, and the channels with settings held by hand off their lanes -- each
-/// to send back alone. It is Ableton's Back to Arrangement.
+/// _BackToTimeline is Ableton's Back to Arrangement: shown, amber with a
+/// count, only while something has left the timeline; pressed, all goes
+/// back. Its arrow lists them -- rows playing from slots, channels with
+/// settings held off their lanes -- each to send back alone.
 class _BackToTimeline extends StatelessWidget {
   final CanvasController controller;
   const _BackToTimeline({required this.controller});

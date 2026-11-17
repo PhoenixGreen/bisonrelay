@@ -3,14 +3,13 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 
-// vector_cut.dart is the knife: a freehand line drawn through a shape cuts
-// it into pieces. The shape stays one shape (one fill, one animation, one
-// playlist row); its runs are shared out among the pieces, each a part of
-// its own (see VectorPath.part) that can be picked and moved alone.
+// vector_cut.dart is the knife: a freehand line cuts a shape into pieces.
+// The shape stays one shape (one fill, animation and row); its runs are
+// shared among the pieces, each its own part (VectorPath.part).
 //
-// The shape's own segments are split where the knife crosses them, so curves
-// stay curves; only the cut line is new. The two sides of a cut are pulled
-// apart by a hairline gap so they neither touch nor overlap.
+// The shape's segments are split where the knife crosses them, so curves
+// stay curves; only the cut line is new. The sides are a hairline apart so
+// they neither touch nor overlap.
 
 /// _Bez is one segment of a run: a cubic, or a straight line where [line].
 class _Bez {
@@ -29,7 +28,6 @@ class _Bez {
         p3 * (t * t * t);
   }
 
-  /// tangent is the direction it runs in at [t].
   Offset tangent(double t) {
     if (line) return p3 - p0;
     var u = 1 - t;
@@ -42,7 +40,6 @@ class _Bez {
     return d;
   }
 
-  /// split is the two halves either side of [t].
   (_Bez, _Bez) split(double t) {
     if (line) {
       var m = at(t);
@@ -56,7 +53,7 @@ class _Bez {
     return (_Bez(p0, a, d, m), _Bez(m, e, c, p3));
   }
 
-  /// between is the stretch of it from [t0] to [t1].
+  /// between is the stretch from [t0] to [t1].
   _Bez between(double t0, double t1) {
     if (t0 <= 0 && t1 >= 1) return this;
     var tail = t0 <= 0 ? this : split(t0).$2;
@@ -71,8 +68,7 @@ class _Bez {
       _Bez(p0 + start, c1 + start, c2 + end, p3 + end, line: line);
 }
 
-/// _segments is [run] as segments, the closing one included where it is
-/// closed.
+/// _segments is [run] as segments, including the closing one when closed.
 List<_Bez> _segments(VectorPath run) {
   var nodes = run.nodes;
   var out = <_Bez>[];
@@ -86,8 +82,7 @@ List<_Bez> _segments(VectorPath run) {
   return out;
 }
 
-/// _run is [segs], end to end, as a run of points; when [closed], the last
-/// segment ends where the first starts.
+/// _run joins [segs] into a run; when [closed], the last ends at the first.
 VectorPath _run(List<_Bez> segs, {required bool closed, int part = 0}) {
   var nodes = <VectorNode>[];
   for (var (i, s) in segs.indexed) {
@@ -100,8 +95,7 @@ VectorPath _run(List<_Bez> segs, {required bool closed, int part = 0}) {
   return VectorPath(nodes, closed: closed, part: part);
 }
 
-/// _node is a point at [at] with the handles of the segments into and out
-/// of it.
+/// _node is a point at [at] with the handles of the segments either side.
 VectorNode _node(Offset at, _Bez? into, _Bez? outOf) {
   var inH = into == null || into.line ? Offset.zero : into.c2 - at;
   var outH = outOf == null || outOf.line ? Offset.zero : outOf.c1 - at;
@@ -121,8 +115,8 @@ Offset _left(Offset d) {
   return l == 0 ? Offset.zero : Offset(d.dy, -d.dx) / l;
 }
 
-/// _crossings is where [s] crosses the knife's stretch from [a] to [b]: the
-/// distance along [s], and along the stretch, both 0 to 1.
+/// _crossings is where [s] crosses the knife from [a] to [b]: the distance
+/// along each, 0 to 1.
 List<(double, double)> _crossings(_Bez s, Offset a, Offset b) {
   var d = b - a;
   var len2 = d.distanceSquared;
@@ -143,8 +137,8 @@ List<(double, double)> _crossings(_Bez s, Offset a, Offset b) {
     take(f0 / (f0 - f1));
     return out;
   }
-  // Where the cubic's distance from the knife's line changes sign: found by
-  // stepping along it and narrowing in on each change.
+  // Where the distance from the knife's line changes sign, found by
+  // stepping and narrowing in.
   const steps = 32;
   double f(double t) => side(s.at(t));
   var prev = f(0);
@@ -169,8 +163,8 @@ List<(double, double)> _crossings(_Bez s, Offset a, Offset b) {
   return out;
 }
 
-/// _Hit is one place the knife crosses a run: which run, how far round it
-/// (segment and distance along it), how far along the knife, and where.
+/// _Hit is one knife crossing: which run, how far round it, how far along
+/// the knife, and where.
 class _Hit {
   final int run;
   final double c;
@@ -179,8 +173,7 @@ class _Hit {
   _Hit(this.run, this.c, this.s, this.at);
 }
 
-/// _knifeAt is the point [s] along [knife] -- a whole number for each of
-/// its points.
+/// _knifeAt is the point [s] along [knife], a whole number per point.
 Offset _knifeAt(List<Offset> knife, double s) {
   var k = s.floor().clamp(0, knife.length - 2);
   return Offset.lerp(knife[k], knife[k + 1], s - k)!;
@@ -194,8 +187,7 @@ List<Offset> _knifeBetween(List<Offset> knife, double s0, double s1) => [
       _knifeAt(knife, s1),
     ];
 
-/// _area is how much a closed polygon covers, signed by which way round it
-/// goes.
+/// _area is a closed polygon's area, signed by its direction.
 double _area(List<Offset> pts) {
   var a = 0.0;
   for (var i = 0; i < pts.length; i++) {
@@ -205,8 +197,7 @@ double _area(List<Offset> pts) {
   return a / 2;
 }
 
-/// _flat is a closed run of segments as a polygon, for asking what is
-/// inside it.
+/// _flat is a closed run as a polygon, for inside tests.
 List<Offset> _flat(List<_Bez> segs) => [
       for (var s in segs)
         if (s.line)
@@ -217,13 +208,12 @@ List<Offset> _flat(List<_Bez> segs) => [
 
 Path _polygon(List<Offset> pts) => Path()..addPolygon(pts, true);
 
-/// partsOf is the parts [shape] is in: one, until it has been cut.
+/// partsOf is [shape]'s parts: one, until cut.
 Set<int> partsOf(VectorShape shape) => {for (var r in shape.paths) r.part};
 
-/// cutShape is [shape] cut along [knife] -- a line of points, in the
-/// drawing's own units -- each piece a part of its own, the two sides of
-/// every cut [gap] apart. Null where the knife cuts nothing: a line that
-/// does not go right through, or misses it.
+/// cutShape cuts [shape] along [knife] (drawing units), each piece its own
+/// part, the sides [gap] apart. Null where the knife does not go right
+/// through.
 VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
   var pts = <Offset>[];
   for (var p in knife) {
@@ -236,9 +226,8 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
   var nextPart = partsOf(shape).fold(0, math.max) + 1;
   var cutAny = false;
 
-  // The runs that close round an area, each turned so the filled area is on
-  // its left: what lets the walk below round a piece go one way for all of
-  // them, holes and all.
+  // The closed runs, each turned so its area is on the left, so the walk
+  // round a piece goes one way for all of them, holes included.
   var runs = <List<_Bez>>[];
   var runOf = <int>[];
   for (var (i, run) in shape.paths.indexed) {
@@ -254,7 +243,6 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
     runOf.add(i);
   }
 
-  // Everywhere the knife crosses them.
   var hits = <_Hit>[];
   for (var (r, segs) in runs.indexed) {
     var mine = <_Hit>[];
@@ -265,8 +253,7 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
         }
       }
     }
-    // One crossing, not two, where the knife goes through a point between
-    // two segments.
+    // One crossing, not two, where the knife passes through a node.
     mine.sort((a, b) => a.c.compareTo(b.c));
     for (var h in mine) {
       if (hits.any((o) => o.run == r && (o.at - h.at).distance < eps * 4)) {
@@ -281,9 +268,8 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
 
   if (hits.length >= 2) {
     hits.sort((a, b) => a.s.compareTo(b.s));
-    // The stretches of knife inside the shape, between one crossing and
-    // the next: the cuts. Each crossing ends one cut, and is where the
-    // walk round a piece turns off its run onto it.
+    // The cuts are the knife's stretches inside the shape. Each crossing
+    // ends one cut and is where the walk turns off its run onto it.
     var partner = <_Hit, (_Hit, List<Offset>)>{};
     var ok = true;
     for (var i = 0; i + 1 < hits.length; i++) {
@@ -300,7 +286,7 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
     }
 
     if (ok && partner.isNotEmpty) {
-      // Each run cut where the cuts meet it, into the stretches between.
+      // Each run split into stretches where cuts meet it.
       var arcFrom = <_Hit, (_Hit, List<_Bez>)>{};
       for (var r = 0; r < runs.length; r++) {
         var on = [
@@ -316,8 +302,8 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
         }
       }
 
-      // Round each piece: along a run to a cut, across the cut, and on
-      // along the run it comes out on, until back where it began.
+      // Round each piece: along a run to a cut, across, and on along the
+      // run it comes out on, until back at the start.
       var done = <_Hit>{};
       var faces = <List<_Bez>>[];
       for (var start in arcFrom.keys) {
@@ -329,8 +315,8 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
           done.add(cur);
           var (end, arc) = arcFrom[cur]!;
           var (across, line) = partner[end]!;
-          // The cut pulled to this side by half the gap: the piece is on
-          // its left, as it is of every run it follows.
+          // The cut pulled half the gap to this side: the piece is on its
+          // left, as for every run.
           var q = _offsetLine(line, gap / 2);
           var lead = q.first - end.at, trail = q.last - across.at;
           var moved = [...arc];
@@ -356,7 +342,7 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
           ok = false;
           break;
         }
-        // The first run's start, where the walk came back round to it.
+        // Back at the first run's start.
         if (face.isNotEmpty) {
           var gapAt = face.last.p3 - face.first.p0;
           face[0] = face.first.moved(start: gapAt);
@@ -372,9 +358,8 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
           shapes.add((_flat(face), part));
           pieces.add(_run(face, closed: true, part: part));
         }
-        // The runs the knife missed -- a hole it went round, an island it
-        // never reached -- go with the piece they are inside, and keep
-        // their own part where they are inside none.
+        // Runs the knife missed (a hole, an island) go with the piece they
+        // are inside, or keep their own part where inside none.
         for (var r = 0; r < runs.length; r++) {
           if (touched.contains(r)) continue;
           var original = shape.paths[runOf[r]];
@@ -396,14 +381,13 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
     }
   }
   if (!cutAny) {
-    // The closed runs as they were.
     for (var r = 0; r < runs.length; r++) {
       pieces.add(shape.paths[runOf[r]]);
     }
   }
 
-  // The open runs -- lines -- cut wherever the knife crosses them, each
-  // stretch a part of its own, with the gap taken out at each cut.
+  // Open runs are cut at each crossing, each stretch its own part, the gap
+  // taken out at each cut.
   for (var run in shape.paths) {
     if (run.closed && run.nodes.length >= 2) continue;
     if (run.nodes.length < 2) {
@@ -443,8 +427,8 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
   return shape.copyWith(paths: pieces);
 }
 
-/// _alongBy is the place [by] further along [segs] from [c] (back, where
-/// negative), as a segment number plus distance along it.
+/// _alongBy is [by] further along [segs] from [c] (back when negative), as
+/// segment number plus distance.
 double _alongBy(List<_Bez> segs, double c, double by) {
   var j = c.floor().clamp(0, segs.length - 1);
   var t = c - j;
@@ -453,8 +437,8 @@ double _alongBy(List<_Bez> segs, double c, double by) {
   return (c + by / speed).clamp(j.toDouble(), j + 1.0);
 }
 
-/// _arc is [segs] from [c0] to [c1] (each a segment number plus distance
-/// along it), wrapping past the end to the start where it [wraps].
+/// _arc is [segs] from [c0] to [c1] (segment plus distance), wrapping past
+/// the end where it [wraps].
 List<_Bez> _arc(List<_Bez> segs, double c0, double c1, {required bool wraps}) {
   var n = segs.length;
   var out = <_Bez>[];
@@ -475,8 +459,8 @@ List<_Bez> _arc(List<_Bez> segs, double c0, double c1, {required bool wraps}) {
   return out;
 }
 
-/// _offsetLine is [line] moved [by] to its left, each point along the
-/// average of the two stretches it joins.
+/// _offsetLine moves [line] [by] to its left, each point along the average
+/// of its two stretches.
 List<Offset> _offsetLine(List<Offset> line, double by) {
   if (by == 0 || line.length < 2) return line;
   return [
@@ -492,8 +476,7 @@ List<Offset> _offsetLine(List<Offset> line, double by) {
   ];
 }
 
-/// simplifiedKnife is a freehand line without the points within
-/// [tolerance] of the straight line past them.
+/// simplifiedKnife drops points within [tolerance] of the line past them.
 List<Offset> simplifiedKnife(List<Offset> pts, double tolerance) {
   if (pts.length < 3) return pts;
   var keep = List<bool>.filled(pts.length, false);
@@ -526,7 +509,7 @@ List<Offset> simplifiedKnife(List<Offset> pts, double tolerance) {
   ];
 }
 
-/// partPath is the areas and lines of [shape]'s part [part] alone.
+/// partPath is [shape]'s part [part] alone.
 Path partPath(VectorShape shape, int part) => VectorShape(
       paths: [
         for (var r in shape.paths)
@@ -535,9 +518,8 @@ Path partPath(VectorShape shape, int part) => VectorShape(
       evenOdd: shape.evenOdd,
     ).path;
 
-/// partAt is the part of [shape] at [at] -- inside one of its areas, or
-/// within [reach] of one of its lines -- or null. Where one sits inside
-/// another, the smaller.
+/// partAt is the part at [at] (inside an area, or within [reach] of a
+/// line), or null. Where one is inside another, the smaller.
 int? partAt(VectorShape shape, Offset at, double reach) {
   int? best;
   var bestSize = double.infinity;

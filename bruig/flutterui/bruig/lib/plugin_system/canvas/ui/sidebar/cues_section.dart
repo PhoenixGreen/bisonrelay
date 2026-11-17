@@ -12,10 +12,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 // cues_section.dart is the list of the run's cues: the named moments a
-// voice-over's lines start on, that elements are timed against. See
-// canvas_cues.dart.
+// voice-over's lines start on, that elements are timed against.
 
-/// CanvasCuesSection lists the cues, and adds them -- one at the playhead, or
+/// CanvasCuesSection lists the cues, and adds them: one at the playhead, or
 /// one at every line of a voice-over.
 class CanvasCuesSection extends StatefulWidget {
   final CanvasController controller;
@@ -70,9 +69,8 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
     });
   }
 
-  /// _fetchModel downloads the speech model beside the library, then listens.
-  /// Only with fetching allowed and never through a proxy, as for the stock
-  /// sites.
+  /// _fetchModel downloads the speech model beside the library, then listens:
+  /// only with fetching allowed, never through a proxy, as the stock sites.
   Future<void> _fetchModel(AudioElement voice) async {
     var allowed = context.read<CanvasPreferences>().allowFetching;
     var proxied = await networkIsProxied();
@@ -148,8 +146,7 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
               onPressed: _finding ? null : () => _fetchModel(picked),
             ),
         ],
-        // At the end of the line: whether the cues are marked on the
-        // timeline's ruler.
+        // At the line's end: whether cues are marked on the timeline ruler.
         const CanvasFill(child: SizedBox(width: 0)),
         CanvasIconButton(
           key: const ValueKey("cuesShown"),
@@ -207,7 +204,7 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
   }
 }
 
-/// voiceOvers are the timed sounds a voice-over could be, longest first --
+/// voiceOvers are the timed sounds a voice-over could be, longest first:
 /// the voice is nearly always the longest thing on the timeline.
 List<AudioElement> voiceOvers(CanvasDocument d) {
   var all = <AudioElement>[

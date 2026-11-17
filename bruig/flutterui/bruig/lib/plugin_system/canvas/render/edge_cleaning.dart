@@ -12,24 +12,21 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 // edge_cleaning.dart is a picture with the background's colour taken out of
-// the edge its mask leaves -- see MaskRefine.decontaminate and matting.dart.
-//
-// It is pixel work, so it runs off the main thread once per picture and mask
-// and is kept; the painter draws the picture uncleaned until it arrives.
+// the edge its mask leaves (see MaskRefine.decontaminate and matting.dart).
+// Pixel work, so it runs off the main thread once per picture and mask and
+// is kept; the painter draws the picture uncleaned until it arrives.
 
 /// CleansEdges is a picture source that can hand back a picture with its
-/// edge colours cleaned. Separate from CanvasImageSource so sources that
-/// never clean need not implement it.
+/// edge colours cleaned, apart from CanvasImageSource for those that can't.
 abstract class CleansEdges {
-  /// cleaned is [picture] -- [look]'s picture as decoded -- with its edge
+  /// cleaned is [picture] ([look]'s picture as decoded) with its edge
   /// cleaned as [look]'s mask says, or null while that is being worked out.
   ui.Image? cleaned(ImageElement look, ui.Image picture);
 }
 
 final Expando<String> _maskKeys = Expando("maskKey");
 
-/// _keyOf is a name for everything about [look] that its cleaned picture
-/// depends on.
+/// _keyOf names everything about [look] that its cleaned picture depends on.
 String _keyOf(ImageElement look) {
   var mask = look.mask;
   var key =
@@ -40,12 +37,10 @@ String _keyOf(ImageElement look) {
 /// _side is the longest side a cleaned picture is made at.
 const int _side = 2000;
 
-/// EdgeCleaner keeps cleaned pictures for a picture store, and makes them.
 class EdgeCleaner {
   /// subjectOf is how the store hands over a decoded subject mask.
   final ui.Image? Function(String id) subjectOf;
 
-  /// onReady is called when a cleaned picture arrives.
   final VoidCallback onReady;
 
   EdgeCleaner({required this.subjectOf, required this.onReady});
@@ -54,7 +49,7 @@ class EdgeCleaner {
   final List<String> _order = [];
 
   /// _last is each picture's most recent cleaning, drawn while a newer one
-  /// is made -- a stroke on the mask must not make the edge flash back.
+  /// is made, so a stroke on the mask does not make the edge flash back.
   final Map<String, ui.Image> _last = {};
   final Map<String, Timer> _waiting = {};
   final Map<String, String> _waitingFor = {};

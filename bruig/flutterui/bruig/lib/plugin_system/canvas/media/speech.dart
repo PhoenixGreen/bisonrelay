@@ -5,21 +5,18 @@ import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// speech.dart is a voice-over heard as words: what is said, and when.
-//
-// Pauses (speechStarts) only say where lines start; whisper.cpp hears the
-// words and their times. Like ffmpeg it is the reader's own program, not
-// shipped here, and the recording never leaves the disk.
+// speech.dart hears a voice-over's words and their times with whisper.cpp,
+// the reader's own program as ffmpeg is; the recording never leaves disk.
 
-/// speechModelName is the model whisper listens with: the small English one,
-/// about 150 MB, which hears a clear voice-over word for word.
+/// speechModelName is whisper's model: the small English one, about 150 MB,
+/// which hears a clear voice-over word for word.
 const speechModelName = "ggml-base.en.bin";
 
-/// speechModelUrl is where that model is published by whisper.cpp's authors.
+/// speechModelUrl is where whisper.cpp's authors publish that model.
 const speechModelUrl =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$speechModelName";
 
-/// speechModelBytes is the most a download of it may be.
+/// speechModelBytes caps the model's download size.
 const speechModelBytes = 200 * 1024 * 1024;
 
 /// speechHelp is what to do when whisper is not installed: the exact
@@ -28,13 +25,13 @@ const speechHelp = "Hearing the words needs whisper.cpp, which is not "
     "installed. Install it with \"brew install whisper-cpp\" on a Mac, or "
     "build it from github.com/ggml-org/whisper.cpp, then restart.";
 
-/// speechModelMissing is what to say when whisper is there and its model is
-/// not: the one thing left, which the Cues section offers to fetch.
+/// speechModelMissing is what to say when whisper is there but its model
+/// is not, which the Cues section offers to fetch.
 const speechModelMissing = "whisper needs its speech model "
     "($speechModelName, about 150 MB) before it can hear anything.";
 
 /// HeardWord is one word and when it is said, in seconds from the start of
-/// the stretch that was heard.
+/// the stretch heard.
 typedef HeardWord = ({String text, double start, double end});
 
 bool _looked = false;
@@ -67,11 +64,11 @@ Future<String?> whisperPath() async {
 }
 
 /// speechModelPath is where the model is kept: beside the library, in a
-/// dotted folder the library's own listing skips.
+/// dotted folder its listing skips.
 Future<String> speechModelPath() async =>
     path.join(await CanvasStorage.libraryDir(), ".models", speechModelName);
 
-/// listenTo is what is said in [audio] from [from] seconds to [to] (the end
+/// listenTo is what is said in [audio] from [from] to [to] seconds (the end
 /// when null), word by word, or null when it could not be heard.
 Future<List<HeardWord>?> listenTo(
     {required String whisper,
@@ -83,8 +80,8 @@ Future<List<HeardWord>?> listenTo(
   Directory? work;
   try {
     work = await Directory.systemTemp.createTemp("canvas-speech");
-    // whisper reads 16 kHz mono WAV and nothing else; ffmpeg cuts the
-    // stretch that plays at the same time as it converts.
+    // whisper reads only 16 kHz mono WAV; ffmpeg cuts the stretch as it
+    // converts.
     var wav = path.join(work.path, "voice.wav");
     var cut = await Process.run(ffmpeg, [
       "-y",
@@ -101,8 +98,8 @@ Future<List<HeardWord>?> listenTo(
     ]);
     if (cut.exitCode != 0) return null;
     var out = path.join(work.path, "words");
-    // One word a segment (-ml 1), split on words rather than tokens (-sow),
-    // written as start,end,text in milliseconds.
+    // One word a segment (-ml 1), split on words not tokens (-sow), written
+    // as start,end,text in milliseconds.
     var heard = await Process.run(whisper,
         ["-m", model, "-f", wav, "-ml", "1", "-sow", "-np", "-ocsv", "-of", out]);
     var csv = File("$out.csv");
@@ -118,10 +115,8 @@ Future<List<HeardWord>?> listenTo(
   }
 }
 
-/// parseHeardWords reads whisper's CSV: a heading, then start,end,"text" in
-/// milliseconds. The text keeps its own commas -- "8,640" is one word -- so
-/// only the first two commas split a line. Empty words, which whisper writes
-/// for a breath, are left out.
+/// parseHeardWords reads whisper's CSV (start,end,"text" in ms). Only the
+/// first two commas split, as "8,640" is one word; empty words are dropped.
 List<HeardWord> parseHeardWords(String csv) {
   var out = <HeardWord>[];
   for (var line in csv.split("\n")) {

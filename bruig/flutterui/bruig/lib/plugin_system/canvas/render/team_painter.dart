@@ -14,31 +14,27 @@ import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 
-// team_painter.dart draws a team: where each player stands, on the team's
-// own box or on the pitch it is linked to, and what each one looks like.
+// team_painter.dart draws a team: where each player stands (on the team's
+// box or a linked pitch) and how each looks.
 //
-// A linked team keeps its players in the pitch's metres, in its own half,
-// and asks the pitch where those are on the page, so it follows the pitch
-// however it is moved, turned, zoomed or tilted. The stage hit-tests players
-// through the same functions, so drawing and picking up agree.
+// A linked team keeps its players in the pitch's metres and asks the pitch
+// where those are on the page, so it follows the pitch however it moves or
+// tilts. The stage hit-tests players through the same functions.
 
 /// TeamGround is the pitch a linked team stands on, as it is on the page.
 class TeamGround {
   final PitchPlacement place;
 
   /// toPage and fromPage carry a point between the pitch's own rectangle
-  /// and the page for a pitch element; the identity for the canvas's
-  /// background.
+  /// and the page; the identity for the canvas background.
   final Offset Function(Offset) toPage;
   final Offset Function(Offset) fromPage;
 
   const TeamGround(this.place, this.toPage, this.fromPage);
 
-  /// page is where a point on the field lands on the page.
   Offset page(double x, double y, [double z = 0]) =>
       toPage(place.page(x, y, z));
 
-  /// field is the point of the field under a point on the page.
   Offset? field(Offset page) => place.field(fromPage(page));
 }
 
@@ -68,8 +64,7 @@ TeamGround? teamGround(CanvasDocument? doc, TeamElement team, int frame) {
       pitchPlacement(element.bounds, element.spec), forward, back);
 }
 
-/// PitchChoice is a pitch a team can stand on: what links to it, what it is
-/// called, and what it is.
+/// PitchChoice is a pitch a team can stand on: its link, name and kind.
 typedef PitchChoice = ({
   String link,
   String label,
@@ -78,8 +73,8 @@ typedef PitchChoice = ({
   Rect area,
 });
 
-/// pitchChoices is every pitch in [doc] a team can stand on: the canvas's
-/// background where it is one, and every background element that is one.
+/// pitchChoices is every pitch in [doc]: the canvas background where it is
+/// one, and every background element that is one.
 List<PitchChoice> pitchChoices(CanvasDocument doc) => [
       if (doc.drawnBackground.spec.style == ProceduralStyle.pitch &&
           !doc.drawnBackground.isStage)
@@ -104,10 +99,9 @@ List<PitchChoice> pitchChoices(CanvasDocument doc) => [
           ),
     ];
 
-/// elementTransform is how [e] is moved, turned and sized on [frame], as a
-/// pair of functions taking a point in its own rectangle to the page and
-/// back. Reads [e]'s track: pitches are background elements, which stay on
-/// tracks (see motion_convert.dart).
+/// elementTransform is how [e] is placed on [frame], as functions taking a
+/// point in its own rectangle to the page and back. Reads [e]'s track:
+/// pitches are background elements, which stay on tracks.
 (Offset Function(Offset), Offset Function(Offset)) elementTransform(
     CanvasElement e, int frame) {
   var pose = e.track?.at(frame) ?? Keyframe.rest;
@@ -140,10 +134,9 @@ List<PitchChoice> pitchChoices(CanvasDocument doc) => [
   return (forward, back);
 }
 
-/// PlayerPlace is where one player is on one frame.
 class PlayerPlace {
   /// ground is where they stand and centre where their token is drawn: the
-  /// same from above, lifted off the pitch when it is seen at an angle.
+  /// same from above, lifted off the pitch when seen at an angle.
   final Offset ground;
   final Offset centre;
 
@@ -154,7 +147,7 @@ class PlayerPlace {
   /// over further ones.
   final double depth;
 
-  /// shown is whether they are on the part of the pitch that is drawn.
+  /// shown is whether they are on the drawn part of the pitch.
   final bool shown;
 
   /// field is where they are in the pitch's metres, for a linked team.
@@ -164,9 +157,9 @@ class PlayerPlace {
       this.ground, this.centre, this.size, this.depth, this.shown, this.field);
 }
 
-/// teamFieldPoint is where [spot] rests on a pitch [place]s, in metres: in
-/// the team's own half (the far one when [TeamElement.mirrored]), with
-/// across measured down the team's box.
+/// teamFieldPoint is where [spot] rests on a pitch, in metres: in the
+/// team's own half (the far one when [TeamElement.mirrored]), across
+/// measured down the team's box.
 Offset teamFieldPoint(TeamElement team, PlayerSpot spot, PitchPlacement place) {
   var half = place.length / 2;
   return Offset(
@@ -183,7 +176,6 @@ Offset teamFieldPoint(TeamElement team, PlayerSpot spot, PitchPlacement place) {
   );
 }
 
-/// playerPlace is where [spot] of [team] is on [frame].
 PlayerPlace playerPlace(
     TeamGround? g, TeamElement team, PlayerSpot spot, int frame) {
   if (g == null) {
@@ -194,8 +186,7 @@ PlayerPlace playerPlace(
   var rest = teamFieldPoint(team, spot, place);
   var x = rest.dx, y = rest.dy;
   // A run (the player's track) is in design units; on a pitch it is read as
-  // metres at the pitch's flat size, page x along the field and page y
-  // across it.
+  // metres at the pitch's flat size, page x along, page y across.
   var track = spot.track;
   if (track != null && !track.isEmpty) {
     var pose = track.at(frame);
@@ -210,10 +201,8 @@ PlayerPlace playerPlace(
       x >= place.visibleFrom - 1, Offset(x, y));
 }
 
-/// paintTeam draws every player in a team.
-///
-/// In list order (what Bring forward and Send to back change), except on a
-/// pitch seen at an angle, where nearer players are drawn over further ones.
+/// paintTeam draws every player in a team, in list order, except on a
+/// pitch seen at an angle, where nearer players draw over further ones.
 void paintTeam(ui.Canvas canvas, Rect bounds, TeamElement e, int frame,
     {CanvasDocument? document, CanvasImageSource? images}) {
   if (e.dotRadius <= 0) return;
@@ -243,8 +232,8 @@ void paintTeam(ui.Canvas canvas, Rect bounds, TeamElement e, int frame,
   }
 }
 
-/// _paintRun draws a player's run, from their track's keyframes: a dashed
-/// line through their movement, ending in an arrow.
+/// _paintRun draws a player's run from their track's keyframes: a dashed
+/// line ending in an arrow.
 void _paintRun(
     ui.Canvas canvas, TeamGround? g, TeamElement e, PlayerSpot spot, int i) {
   var track = spot.track;
@@ -264,7 +253,6 @@ void _paintRun(
     ..strokeWidth = math.max(1.5, r * 0.16)
     ..strokeCap = StrokeCap.round
     ..color = colour;
-  // Dashed, by distance along the line.
   var on = r * 0.5, off = r * 0.35, carry = 0.0;
   var drawing = true;
   for (var k = 0; k + 1 < pts.length; k++) {
@@ -286,7 +274,6 @@ void _paintRun(
       }
     }
   }
-  // The arrow, pointing the way the run ends.
   if (pts.length >= 2) {
     var tip = pts.last;
     var from = pts[pts.length - 2];
@@ -312,8 +299,7 @@ void _paintRun(
   }
 }
 
-/// _kitColour is a player's main colour: the keeper's for a goalkeeper,
-/// the team's for everybody else.
+/// _kitColour is a player's main colour: the keeper's or the team's.
 Color _kitColour(TeamElement e, int i) =>
     i == 0 && e.sport.hasKeeper ? e.keeperColor : e.playerColor;
 
@@ -324,8 +310,8 @@ void _paintPlayer(ui.Canvas canvas, TeamElement e, int i, PlayerSpot spot,
   var keeper = i == 0 && e.sport.hasKeeper;
   var kit = _kitColour(e, i);
 
-  // A shadow under them: always on a pitch seen at an angle, where a token
-  // without one floats; from above, only where asked for.
+  // A shadow under them: always on an angled pitch, where a token without
+  // one floats; from above, only when asked.
   if (g != null && !g.place.flat) {
     canvas.drawOval(
         Rect.fromCenter(
@@ -398,8 +384,8 @@ void _paintPlayer(ui.Canvas canvas, TeamElement e, int i, PlayerSpot spot,
   canvas.restore();
 }
 
-/// _kitPaint fills [shape] with the team's kit: its main colour and the
-/// second laid out in its pattern -- or the keeper's colour, plain.
+/// _kitPaint fills [shape] with the kit: main colour with the second in its
+/// pattern, or the keeper's colour, plain.
 void _kitPaint(
     ui.Canvas canvas, Path shape, TeamElement e, Color kit, bool keeper) {
   var box = shape.getBounds();
@@ -462,8 +448,7 @@ void _paintDot(ui.Canvas canvas, TeamElement e, Color kit, bool keeper) {
   }
 }
 
-/// _shirtPath is a shirt the size of a player's token: body, sleeves and a
-/// neck cut out of the top.
+/// _shirtPath is a shirt the size of a player's token.
 Path _shirtPath(double r) {
   var w = r, h = r;
   return Path()
@@ -486,7 +471,6 @@ void _paintShirt(ui.Canvas canvas, TeamElement e, Color kit, bool keeper) {
   var r = e.dotRadius;
   var shirt = _shirtPath(r);
   _kitPaint(canvas, shirt, e, kit, keeper);
-  // The collar and the cuffs, in the kit's second colour.
   var trim = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = r * 0.09
@@ -518,8 +502,8 @@ void _paintPortrait(ui.Canvas canvas, TeamElement e, int i, PlayerSpot spot,
   canvas.save();
   canvas.clipPath(circle);
   if (squad != null) {
-    // Their part of the team photo: the circle their crop marks on it,
-    // turned as it is turned, filling the token.
+    // Their crop circle of the team photo, turned as it is, filling the
+    // token.
     var iw = squad.width.toDouble(), ih = squad.height.toDouble();
     var crop = e.cropOf(i, iw / ih);
     var radius = math.max(crop.size * iw, 1.0);
@@ -585,9 +569,8 @@ const _hairs = [
   Color(0xFF8E8A86),
 ];
 
-/// _paintFace draws a face for a player with no photo: skin, hair and its
-/// cut, shoulders in the kit. Seeded from their name, number and place in the
-/// list (see _faceSeed), so it is stable from frame to frame.
+/// _paintFace draws a face for a player with no photo, seeded from their
+/// name, number and list place (_faceSeed) so it is stable across frames.
 void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
   double pick(int salt) => hash(seed, salt, 7);
   var skin = _skins[(pick(1) * _skins.length).floor() % _skins.length];
@@ -596,11 +579,9 @@ void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
   var beard = pick(4) < 0.28;
   var shade = Color.lerp(skin, const Color(0xFF000000), 0.18)!;
 
-  // The background behind them: the kit, paled.
   canvas.drawRect(Rect.fromCircle(center: Offset.zero, radius: r),
       Paint()..color = Color.lerp(kit, const Color(0xFFFFFFFF), 0.72)!);
 
-  // Shoulders, in the shirt.
   canvas.drawPath(
       Path()
         ..moveTo(-r * 1.05, r * 1.1)
@@ -609,7 +590,6 @@ void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
         ..quadraticBezierTo(r * 0.95, r * 0.42, r * 1.05, r * 1.1)
         ..close(),
       Paint()..color = kit);
-  // The neck, and the collar round it.
   canvas.drawRect(Rect.fromLTWH(-r * 0.17, r * 0.14, r * 0.34, r * 0.3),
       Paint()..color = shade);
   canvas.drawPath(
@@ -633,7 +613,6 @@ void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
             Radius.circular(r * 0.4)),
         Paint()..color = hair);
   }
-  // Ears, then the head over them.
   for (var sx in [-1.0, 1.0]) {
     canvas.drawOval(
         Rect.fromCenter(
@@ -656,7 +635,6 @@ void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
         Paint()..color = hair.withValues(alpha: 0.85));
   }
 
-  // The hair on top.
   var hairPaint = Paint()..color = hair;
   switch (style) {
     case 0: // short
@@ -719,7 +697,6 @@ void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
           hairPaint);
   }
 
-  // Eyes, brows and a mouth.
   var ink = const Color(0xFF241A14);
   for (var sx in [-1.0, 1.0]) {
     canvas.drawOval(
@@ -749,10 +726,8 @@ void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
         ..color = Color.lerp(skin, ink, 0.55)!);
 }
 
-/// _paintLabels draws one player's number and name, about the token's
-/// centre.
-///
-/// Both use the team's single [TeamElement.labelSpec] and turn together.
+/// _paintLabels draws one player's number and name about the token's
+/// centre, both in [TeamElement.labelSpec] and turning together.
 void _paintLabels(
     ui.Canvas canvas, TeamElement e, PlayerSpot spot, Color kit, bool keeper) {
   var r = e.dotRadius;
@@ -778,8 +753,8 @@ void _paintLabels(
         if (rotate != 0) canvas.rotate(rotate);
         paintCentredGlyphs(canvas, spot.number, e.labelSpec, Offset.zero);
       case TokenStyle.dot:
-        // On a patterned dot, a disc of the kit's main colour behind the
-        // number, so it is not lost in the stripes.
+        // On a patterned dot, a disc of the main colour behind the number,
+        // so it is not lost in the stripes.
         if (!keeper && e.kitPattern != KitPattern.plain) {
           canvas.drawCircle(Offset.zero, r * 0.56, Paint()..color = kit);
         }
@@ -826,7 +801,6 @@ void _paintLabels(
         _ring(e, math.max(1, r * 0.05)));
   }
   var inner = Offset(painter.width / 2, painter.height / 2);
-  // The type's shadow and glow, under the letters.
   softFor(text, spec, maxWidth: math.max(40, r * 8), fillWidth: false)
       ?.paint(canvas, -inner);
   if (spec.outlineWidth > 0 && !plate) {
@@ -837,7 +811,7 @@ void _paintLabels(
   canvas.restore();
 }
 
-/// _paintBall draws the ball the sport is played with, rolling as it moves.
+/// _paintBall draws the sport's ball, rolling as it moves.
 void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
     PlayerPlace at, TeamGround? g, int frame) {
   var r = e.radiusOf(spot);
@@ -1031,8 +1005,8 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
       canvas.drawOval(oval, rim);
       canvas.restore();
     default:
-      // A football: white, with a black panel in the middle and the edges of
-      // the five round it, turned as it rolls.
+      // A football: white, a black middle panel and the edges of the five
+      // round it, turned as it rolls.
       canvas.drawCircle(Offset.zero, r, lit(const Color(0xFFF7F7F7)));
       canvas.save();
       canvas.clipPath(
@@ -1068,8 +1042,8 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
   canvas.restore();
 }
 
-/// _paintBallTrail is where the ball has just been: fading, shrinking
-/// copies of it along its path, behind it.
+/// _paintBallTrail draws fading, shrinking copies of the ball along its
+/// path behind it.
 void _paintBallTrail(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
     PlayerPlace at, TeamGround? g, int frame, double r) {
   var track = spot.track;
@@ -1089,8 +1063,8 @@ void _paintBallTrail(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
   }
 }
 
-/// _paintDesignedBall is a ball in one of BallStyle's designs, in the ball's
-/// own two colours, at the origin.
+/// _paintDesignedBall is a ball in a BallStyle design, in its two colours,
+/// at the origin.
 void _paintDesignedBall(ui.Canvas canvas, BallLook look, double r, double spin,
     Paint Function(Color) lit, Paint rim) {
   var ball = Rect.fromCircle(center: Offset.zero, radius: r);
@@ -1102,8 +1076,8 @@ void _paintDesignedBall(ui.Canvas canvas, BallLook look, double r, double spin,
   var ink = Paint()..color = second;
   switch (look.style) {
     case BallStyle.classic:
-      // The 1970 ball: a black pentagon in the middle and the edges of the
-      // five round it.
+      // The 1970 ball: a black middle pentagon and the edges of the five
+      // round it.
       Path pentagon(Offset c, double size, double turn) => Path()
         ..addPolygon([
           for (var j = 0; j < 5; j++)
@@ -1120,8 +1094,7 @@ void _paintDesignedBall(ui.Canvas canvas, BallLook look, double r, double spin,
             ink);
       }
     case BallStyle.modern:
-      // A modern match ball: a few long curved panels sweeping round it,
-      // edged in the second colour.
+      // A modern match ball: long curved panels edged in the second colour.
       var edge = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = r * 0.07

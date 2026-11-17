@@ -1,16 +1,16 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-// vrm_colour.dart changes a material's picture for how a new 3D character
-// is drawn: in grey, to be coloured by the material (hair, skin and eyes in
-// a colour picked for them), and in fewer, flatter tones (a look's flat
-// fill). Plain Dart over RGBA bytes, so it runs off the main isolate.
+// vrm_colour.dart recolours a material's picture for a new 3D character: in
+// grey, to be tinted by the material (hair, skin and eyes in a picked
+// colour), or in fewer, flatter tones (a look's flat fill). Plain Dart over
+// RGBA bytes, so it runs off the main isolate.
 
 double _lum(int r, int g, int b) => 0.299 * r + 0.587 * g + 0.114 * b;
 
 /// greyPixels is [rgba] in grey, its average lightness brought to 215, so a
 /// colour laid over it comes out as itself with the picture's shading.
-/// Its transparency is kept.
+/// Transparency is kept.
 Uint8List greyPixels(Uint8List rgba) {
   var sum = 0.0, n = 0;
   for (var i = 0; i < rgba.length; i += 4) {
@@ -74,9 +74,8 @@ Uint8List flatPixels(Uint8List rgba, int steps) {
   return (hue(h + 1 / 3), hue(h), hue(h - 1 / 3));
 }
 
-/// averageColour is the colour [rgba] is mostly, 0xRRGGBB, from its solid
-/// pixels: for strands of hair from another model to take this one's
-/// colour.
+/// averageColour is the colour [rgba] mostly is, 0xRRGGBB, from its solid
+/// pixels: for hair from another model to take this one's colour.
 int averageColour(Uint8List rgba) {
   var r = 0, g = 0, b = 0, n = 0;
   final step = math.max(1, rgba.length ~/ 4 ~/ 4096) * 4;

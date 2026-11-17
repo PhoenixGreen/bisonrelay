@@ -4,31 +4,27 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 
 // pattern_counts.dart counts a task card's own patterns in its code off the
-// UI isolate (security review, 2026-11-17).
-//
-// A pattern is a regular expression the card's author wrote, run against
-// code that also came with the canvas. Dart's regular expressions backtrack
-// and cannot be stopped: "(a+)+$" against forty a's and a "!" runs for
-// ever. Counted in the painter, as they were, a received canvas's card froze
-// the app as it was drawn. Each is counted here in an isolate of its own,
-// killed when it runs over [limit], and the answer kept.
+// UI isolate. A pattern is a regular expression from a received canvas, run
+// on code that came with it. Dart's regular expressions backtrack and cannot
+// be stopped ("(a+)+$" on forty a's and a "!" runs for ever), so counting in
+// the painter would freeze the app. Each runs in an isolate of its own,
+// killed past [limit], and the answer kept.
 
 /// PatternCounts is the counts worked out so far, and the ones under way.
 abstract final class PatternCounts {
   /// limit is how long one count may take: far longer than any honest
-  /// pattern takes over a lesson's code.
+  /// pattern needs.
   static const limit = Duration(seconds: 1);
 
-  /// counted ticks each time a count comes in, so what drew a card without
-  /// it draws it again.
+  /// counted ticks each time a count comes in, so cards drawn without it
+  /// redraw.
   static final counted = ValueNotifier<int>(0);
 
   static final _known = <(String, String), int>{};
   static final _asking = <(String, String), Future<void>>{};
 
-  /// count is how many times [pattern] matches [text]; null while it is
-  /// being counted. One that is not a pattern, or that ran over [limit],
-  /// counts nothing.
+  /// count is how many times [pattern] matches [text]; null while counting.
+  /// An invalid pattern, or one past [limit], counts nothing.
   static int? count(String pattern, String text) {
     var key = (pattern, text);
     if (_known[key] case var n?) return n;

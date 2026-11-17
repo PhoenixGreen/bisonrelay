@@ -1,9 +1,7 @@
-// character_face.dart is a new 3D character's face, as the Character
-// Studio's Face step sets it: an expression made from the face's own shapes,
-// region by region, where the eyes look, how the head tilts, a blush, and
-// what the face does by itself. Every VRoid face has the same shapes
-// (Fcl_BRW_*, Fcl_EYE_*, Fcl_MTH_*, Fcl_HA_*), so an expression is a mix of
-// them, by their names after "Fcl_": "EYE_Joy".
+// character_face.dart is a 3D character's face from the Studio's Face
+// step: an expression mixed region by region from the face's own shapes,
+// the eyes' look, the head's tilt, a blush, and what it does by itself.
+// Every VRoid face has the same shapes, named after "Fcl_" ("EYE_Joy").
 
 /// faceUnits are the face's shapes, region by region, with their names.
 const Map<String, List<(String, String)>> faceUnits = {
@@ -52,9 +50,8 @@ const Map<String, List<(String, String)>> faceUnits = {
   ],
 };
 
-/// FaceMix is one expression: how much of each of the face's shapes, the
-/// blush, where the eyes look (-1 to 1 across and up, as the viewer sees
-/// it) and how far the head tilts (-1 to 1). Immutable.
+/// FaceMix is one expression: each face shape's amount, the blush, the
+/// eyes' look (-1 to 1, as seen) and the head's tilt (-1 to 1). Immutable.
 class FaceMix {
   final Map<String, double> w;
   final double blush, gazeX, gazeY, tilt;
@@ -74,7 +71,6 @@ class FaceMix {
           {double? blush, double? gazeX, double? gazeY, double? tilt}) =>
       _copy(blush: blush, gazeX: gazeX, gazeY: gazeY, tilt: tilt);
 
-  /// lerp is [a] moved [t] of the way to [b].
   static FaceMix lerp(FaceMix a, FaceMix b, double t) {
     if (t <= 0) return a;
     double l(double x, double y) => x + (y - x) * t;
@@ -152,7 +148,7 @@ class FaceMix {
           w.entries.map((e) => Object.hash(e.key, e.value))));
 }
 
-/// faceExpressions are the expressions to start from.
+/// faceExpressions are the built-in expressions to start from.
 const Map<String, FaceMix> faceExpressions = {
   "Neutral": FaceMix(),
   "Happy": FaceMix(w: {"BRW_Joy": 0.8, "EYE_Joy": 0.55, "MTH_Joy": 0.8}),
@@ -209,9 +205,8 @@ const Map<String, FaceMix> faceExpressions = {
       FaceMix(w: {"BRW_Angry": 0.6, "EYE_Angry": 0.3, "MTH_Neutral": 0.6}),
 };
 
-/// CharacterFace is the face: the expression it wears and the name it was
-/// started from, the mixes kept to use again, and whether it blinks and
-/// glances about by itself. Immutable.
+/// CharacterFace is the face: its expression and the name it started from,
+/// mixes kept, and whether it blinks and glances by itself. Immutable.
 class CharacterFace {
   final String name;
   final FaceMix mix;
@@ -226,12 +221,10 @@ class CharacterFace {
     this.glances = false,
   });
 
-  /// expressions are every expression it can wear: the ones to start from
-  /// and the ones kept.
+  /// expressions are every expression it can wear: built in and kept.
   Map<String, FaceMix> get expressions => {...faceExpressions, ...kept};
 
-  /// wearing is [name]'s expression, or this face's own where it has no
-  /// such one.
+  /// wearing is [name]'s expression, or this face's own if it has none.
   FaceMix wearing(String? name) =>
       name == null ? mix : expressions[name] ?? mix;
 
@@ -297,7 +290,6 @@ class SpokenLine {
   final double total;
   const SpokenLine(this.beats, this.total);
 
-  /// beatsPerSecond is how fast it is said.
   static const double beatsPerSecond = 13;
 
   /// of is [text] as it is said: vowels open the mouth their own way,
@@ -336,7 +328,6 @@ class SpokenLine {
     return SpokenLine(out, t);
   }
 
-  /// seconds is how long it takes to say.
   double get seconds => total / beatsPerSecond;
 
   /// mouthAt is the mouth's shapes [seconds] in -- "MTH_A" and the rest --

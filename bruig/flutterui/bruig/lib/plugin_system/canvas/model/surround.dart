@@ -5,14 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonDouble, jsonStr;
 
 // surround.dart is the speaker layouts, a channel's place among them, and
-// pairwise constant-power panning (2D VBAP) between the two speakers either
-// side of an angle.
-//
-// Angles are in degrees: nought ahead, positive to the right, 180 behind.
-// Speakers stand where ITU-R BS.775 puts them. The editor plays surround
-// folded down to stereo ([foldDown]); an export writes every speaker.
+// pairwise constant-power panning (2D VBAP) between the speakers either side
+// of an angle. Angles are in degrees: nought ahead, positive to the right,
+// 180 behind. Speakers stand where ITU-R BS.775 puts them. The editor plays
+// surround folded down to stereo ([foldDown]); an export writes every one.
 
-/// SpeakerLayout is the speakers a piece is mixed for.
 enum SpeakerLayout {
   stereo("Stereo", "stereo", [
     ("L", -30),
@@ -41,18 +38,15 @@ enum SpeakerLayout {
 
   final String label;
 
-  /// ffmpeg is the layout's name to ffmpeg.
   final String ffmpeg;
 
-  /// speakers are each speaker in file order, with its angle (null for the
-  /// LFE).
+  /// speakers are each speaker in file order, with its angle (null: LFE).
   final List<(String, int?)> speakers;
   const SpeakerLayout(this.label, this.ffmpeg, this.speakers);
 
   int get channels => speakers.length;
   bool get isSurround => this != stereo;
 
-  /// lfe is the LFE's place among the channels, or null.
   int? get lfe {
     for (var (i, (_, a)) in speakers.indexed) {
       if (a == null) return i;
@@ -73,10 +67,9 @@ class SurroundPan {
   /// the front pair (stereo as mixed), nought a single point.
   final double width;
 
-  /// centre is how much of what is heard from in front the centre speaker
-  /// carries, nought to one: at one, as the speakers fall (a sound straight
-  /// ahead all on it); at nought, none -- between the front pair, as music
-  /// is often mixed, the centre kept for voices.
+  /// centre is how much of a sound in front the centre speaker carries, 0-1:
+  /// at one, as the speakers fall; at nought, none, the front pair carrying
+  /// it as music is often mixed, the centre kept for voices.
   final double centre;
 
   const SurroundPan({this.angle = 0, this.width = 60, this.centre = 1});
@@ -119,8 +112,8 @@ double wrapAngle(double degrees) {
 /// panGains are [layout]'s channel gains for a sound heard from [angle], the
 /// two speakers either side sharing it with powers summing to one. In
 /// stereo an angle behind is mirrored to the front, then held to the pair.
-/// [centre] below one takes the centre speaker's share (see
-/// SurroundPan.centre) to the front pair, the powers still summing to one.
+/// [centre] below one moves that share of the centre speaker's to the front
+/// pair (see SurroundPan.centre), the powers still summing to one.
 Float64List panGains(SpeakerLayout layout, double angle,
     {double centre = 1}) {
   var full = _ringGains(layout, angle, withCentre: true);
@@ -134,8 +127,7 @@ Float64List panGains(SpeakerLayout layout, double angle,
   ]);
 }
 
-/// _ringGains are [panGains] round the speakers there are, the centre
-/// one left out unless [withCentre].
+/// _ringGains are [panGains] round the speakers, centre only if [withCentre].
 Float64List _ringGains(SpeakerLayout layout, double angle,
     {required bool withCentre}) {
   var out = Float64List(layout.channels);
@@ -207,9 +199,8 @@ enum SpeakerGroup {
 }
 
 /// hearFold is each of [layout]'s channels' (left, right) gains on the
-/// editor's two speakers with [group] heard: [foldDown] for everything,
-/// else that group alone -- each speaker on its own side, the centre and
-/// the LFE on both.
+/// editor's two speakers with [group] heard: [foldDown] for everything, else
+/// that group alone, each speaker on its side, the centre and LFE on both.
 List<(double, double)> hearFold(SpeakerLayout layout, SpeakerGroup group) {
   if (group == SpeakerGroup.all) return foldDown(layout);
   const half = 0.7071067811865476;
@@ -245,7 +236,6 @@ List<double> loudnessWeights(SpeakerLayout layout) => [
           1.0,
     ];
 
-/// PlaceBy is what a sound's place is taken from.
 enum PlaceBy {
   off("Not placed"),
   canvas("Where it is on the canvas"),
@@ -269,12 +259,10 @@ class SoundPlacement {
   /// front pair; more wraps round the listener in surround.
   final double arc;
 
-  /// stage is the stage a spot is on; x and z the spot on its floor and y
-  /// its height, in metres.
+  /// stage is a spot's stage; x and z on its floor, y its height, metres.
   final String stage;
   final double x, y, z;
 
-  /// follow is the element followed.
   final String follow;
 
   /// near is how far from the camera, in metres, a stage sound keeps full

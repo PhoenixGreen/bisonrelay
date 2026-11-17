@@ -9,7 +9,6 @@ import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 // thing's own JSON with a name on it (as element_preset.dart does), so
 // nothing here changes as they grow settings. A preset is a copy, not a link.
 
-/// SavedPresetKind is what a saved preset holds.
 enum SavedPresetKind {
   /// scene is one canvas of a document, with everything on it.
   scene("scenes"),
@@ -40,7 +39,6 @@ enum SavedPresetKind {
   const SavedPresetKind(this.folder);
 }
 
-/// SavedPreset is one of them.
 class SavedPreset {
   /// id names the file this is kept in.
   final String id;
@@ -68,9 +66,8 @@ class SavedPreset {
     this.madeOn,
   });
 
-  /// buildScene is a fresh scene from this preset, under new ids: scenes or
-  /// elements sharing an id are one as far as Go to scene and selection are
-  /// concerned.
+  /// buildScene is a fresh scene from this preset under new ids: things
+  /// sharing an id are one to Go to scene and selection.
   CanvasScene? buildScene({Size? on}) {
     if (kind != SavedPresetKind.scene) return null;
     var scene = CanvasScene.fromJson(data);
@@ -95,11 +92,8 @@ class SavedPreset {
     ], at: 0);
   }
 
-  /// buildScenes is what this preset adds to a document that is already
-  /// open: one scene, or every scene of a saved canvas.
-  ///
-  /// A canvas preset dropped into a document adds only its scenes; the page
-  /// size and backdrop stay the open document's.
+  /// buildScenes is what this preset adds to an open document: one scene, or
+  /// every scene of a saved canvas (the document keeps its page and backdrop).
   List<CanvasScene> buildScenes({Size? on}) => switch (kind) {
         SavedPresetKind.scene => [if (buildScene(on: on) case var s?) s],
         SavedPresetKind.canvas => _canvasScenes(on),

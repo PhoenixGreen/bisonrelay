@@ -8,17 +8,15 @@ import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// transport_controls.dart is the timeline control bar's own pieces: the boxes
-// it is grouped in, the position, tap tempo, readouts that become a field when
-// pressed, menus, and the engine meter. The bar is laid out in
-// canvas_timeline.dart. Each box is measured to the widest thing it can show,
-// so nothing is cut and nothing jumps as the playhead moves.
+// transport_controls.dart is the timeline control bar's pieces: boxes,
+// position, tap tempo, readouts that become fields, menus and the engine
+// meter; canvas_timeline.dart lays the bar out. Each box is sized to the
+// widest thing it can show, so nothing is cut or jumps as the playhead moves.
 
 const _figures = [FontFeature.tabularFigures()];
 
-/// fitWidth is how wide [text] is in [style], rounded up, measured in the
-/// font it will be drawn in: [style] over the text style in force at
-/// [context].
+/// fitWidth is how wide [text] is in [style] over the text style in force
+/// at [context], rounded up.
 double fitWidth(BuildContext context, String text, TextStyle style) {
   var painter = TextPainter(
     text: TextSpan(
@@ -60,8 +58,8 @@ class TransportButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool on;
 
-  /// lit is the colour it lights in: the theme's own when null. Play lights
-  /// green, Record red.
+  /// lit is the colour it lights in, the theme's own when null: Play green,
+  /// Record red.
   final Color? lit;
 
   /// width is the button's, square by default; null fits what is in it.
@@ -134,9 +132,9 @@ class TransportDivider extends StatelessWidget {
       );
 }
 
-/// TransportReadout is a small box with a number in it, and a word before
-/// the number; pressed, it becomes a field, and what is typed is handed to
-/// [onSubmit], which says whether it made sense.
+/// TransportReadout is a small box with a word and a number; pressed, it
+/// becomes a field, and what is typed goes to [onSubmit], which says
+/// whether it made sense.
 class TransportReadout extends StatefulWidget {
   final String caption;
   final String value;
@@ -378,9 +376,8 @@ class _TransportPositionState extends State<TransportPosition> {
                 contentPadding: EdgeInsets.zero),
             onSubmitted: _go,
           )
-        // Shrunk to fit: two lines at a larger app text size are taller than
-        // the bar. The lines are held to their size whatever the font's
-        // leading.
+        // Shrunk to fit: two lines at a larger text size are taller than the
+        // bar. The lines keep their size whatever the font's leading.
         : FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -489,8 +486,8 @@ class _TapTempoButtonState extends State<TapTempoButton> {
       );
 }
 
-/// TransportMenu is a button that drops a short list of actions: the keys
-/// a piece of sound keeps folded away, and Clear.
+/// TransportMenu is a button dropping a short list of actions: the keys a
+/// piece of sound keeps folded away, and Clear.
 class TransportMenu extends StatelessWidget {
   final String label;
   final IconData? icon;

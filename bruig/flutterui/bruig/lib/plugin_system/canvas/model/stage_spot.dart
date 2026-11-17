@@ -1,15 +1,11 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 
-// stage_spot.dart is where an element stands on a 3D stage: on which stage,
+// stage_spot.dart is where an element stands on a 3D stage: which stage,
 // where on its floor, how big in metres, which way round, and how it stands
-// there -- upright like a piece of scenery, turned to the camera, laid on
-// the floor, or hung on the back wall.
-//
-// A 3D character stands there as itself, seen through the stage's camera;
-// any other element is drawn flat as on the page and set into the stage in
-// perspective. See render/stage/stage_painter.dart.
+// (upright, turned to the camera, laid flat, or hung on the back wall). A 3D
+// character stands there as itself; any other element is drawn flat and set
+// into the stage in perspective. See render/stage/stage_painter.dart.
 
-/// SpotStand is how an element stands on its spot.
 enum SpotStand {
   upright("Stands upright"),
   camera("Faces the camera"),
@@ -26,7 +22,7 @@ enum SpotStand {
 /// spotChannel is the keyframe channel one spot setting is pinned on.
 String spotChannel(String setting) => "spot.$setting";
 
-/// StageSpot is where an element stands on a stage. Immutable.
+/// StageSpot is immutable.
 class StageSpot {
   /// stage is the stage's id: a Background element showing one, or the
   /// canvas background's.

@@ -3,22 +3,19 @@ import 'dart:typed_data';
 
 import 'package:vector_math/vector_math.dart' as vm;
 
-// vrm_mesh.dart reads from a VRM file what shaping it needs: each mesh's
-// vertices as flutter_scene holds them, which part of the character each
-// primitive draws, which bone each vertex follows, and the skeleton at rest.
-// Plain Dart, so it can be read off the main isolate and tested without a
-// GPU.
+// vrm_mesh.dart reads from a VRM file what shaping needs: each mesh's
+// vertices as flutter_scene holds them, which part each primitive draws,
+// which bone each vertex follows, and the skeleton at rest. Plain Dart, so
+// it runs off the main isolate and is tested without a GPU.
 //
-// flutter_scene gives every primitive of a mesh the mesh's whole vertex
-// buffer, in the file's order, and draws only what its own indices use: a
-// VRoid face is ten primitives over one set of 2,300 vertices. So a vertex
-// here is the file's vertex, and [VrmPrimitive.used] says which of them a
-// primitive draws.
+// flutter_scene gives every primitive the mesh's whole vertex buffer, in
+// file order, and draws only what its indices use (a VRoid face is ten
+// primitives over one set of 2,300 vertices). So a vertex here is the
+// file's vertex, and [VrmPrimitive.used] says which a primitive draws.
 
 /// VrmPart is what a primitive draws, from its material's name.
 enum VrmPart { eyes, brows, mouth, face, skin, hair, top, bottom, shoes, other }
 
-/// vrmPartOf names what a VRoid material draws.
 VrmPart vrmPartOf(String material) {
   if (RegExp(r'EyeWhite|EyeIris|EyeHighlight|FaceEyeline|FaceEyelash|EyeExtra')
       .hasMatch(material)) {
@@ -145,10 +142,10 @@ class VrmVertices {
     return out;
   }
 
-  /// pack is these vertices laid out as flutter_scene's importer lays them
-  /// out: position, normal, two texture coordinates, colour and tangent,
-  /// then joints and weights when skinned -- 26 floats a vertex skinned, 18
-  /// not -- with [positions] and [normals] in place of the file's.
+  /// pack is these vertices laid out as flutter_scene's importer lays them:
+  /// position, normal, two texture coordinates, colour and tangent, then
+  /// joints and weights when skinned (26 floats a vertex skinned, 18 not),
+  /// with [positions] and [normals] in place of the file's.
   Float32List pack(Float32List positions, Float32List normals) {
     final stride = skinned ? 26 : 18;
     final out = Float32List(count * stride);
@@ -188,7 +185,6 @@ class VrmPrimitive {
   final VrmVertices vertices;
   final Uint32List indices;
 
-  /// indices32 is whether the file stores the indices in 32 bits.
   final bool indices32;
 
   /// used lists the vertices the triangles use, each once.
@@ -232,7 +228,6 @@ class VrmMeshNode {
       : region = vrmRegionOf(name);
 }
 
-/// VrmRestBone is a node of the skeleton at rest.
 class VrmRestBone {
   final String name;
   final String? parent;
@@ -253,7 +248,6 @@ class VrmImage {
   const VrmImage(this.bytes, this.shadeToo);
 }
 
-/// VrmMeshData is everything shaping reads from one file.
 class VrmMeshData {
   final List<VrmMeshNode> meshes;
 
@@ -265,13 +259,13 @@ class VrmMeshData {
   final Map<String, vm.Vector3> bindPos;
 
   /// images are the pictures painted on the skin and the face, as the file
-  /// holds them (PNG or JPEG), for the skin to be painted again where
-  /// clothes come off.
+  /// holds them (PNG or JPEG), for repainting the skin where clothes come
+  /// off.
   final Map<VrmPart, VrmImage> images;
 
-  /// pictures are every material's own picture, by the material's name, as
-  /// the file holds them: for drawing a material in another colour or in
-  /// fewer tones. Materials sharing a picture share its bytes.
+  /// pictures are every material's own picture by material name, as the
+  /// file holds them, for drawing a material in another colour or fewer
+  /// tones. Materials sharing a picture share its bytes.
   final Map<String, Uint8List> pictures;
 
   VrmMeshData(this.meshes, this.bones, this.bindPos,

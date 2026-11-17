@@ -6,10 +6,9 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // customise_sidebars.dart is every sidebar at once, for setting them out: a
-// column each, its panels as chips to drag between them or take away with
-// their ×, and the panels taken away in a column of their own, each with a
-// + that puts it back where it was. Sidebars are added, renamed, given an
-// icon and taken away here, and the ones taken away put back.
+// column each, its panels as chips to drag between them or take away with their
+// ×, and the panels taken away in a column of their own, each with a + that
+// puts it back. Sidebars are added, renamed, given an icon and taken away here.
 
 /// showCustomiseSidebars opens the sheet. [read] is the layout as it is,
 /// and [write] keeps a change: every change is kept as it is made.
@@ -31,7 +30,6 @@ Future<void> showCustomiseSidebars(
       ),
     );
 
-/// CustomiseSidebars is the sheet's contents.
 class CustomiseSidebars extends StatefulWidget {
   final CanvasController controller;
   final SidebarLayout Function() read;

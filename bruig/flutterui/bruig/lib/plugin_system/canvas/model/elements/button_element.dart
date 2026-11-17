@@ -4,12 +4,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-/// ButtonActionKind is what pressing a button does.
-///
-/// Everything here stays inside the canvas, for safety: a published canvas
-/// runs inside a chat message or a page, and a button that could run, read
-/// or call anything outside it would make opening one a risk. The only way
-/// out is a link the viewer is asked to confirm.
+/// ButtonActionKind is what pressing a button does. Everything stays inside
+/// the canvas: a published canvas runs in a chat message or a page, and a
+/// button that could run, read or call anything outside it would make
+/// opening one a risk. The only way out is a link the viewer confirms.
 enum ButtonActionKind {
   goToFrame("Go to frame", "Jump the playhead and hold there"),
   playFrom("Play from frame", "Jump there and start playing"),
@@ -22,9 +20,8 @@ enum ButtonActionKind {
   goToScene("Go to a scene", "Show another canvas of this document"),
   openLink("Open a link", "Ask to open a URL in the browser"),
 
-  // An Audio or Video element on the canvas, named by its id, so it has one
-  // set of settings wherever it is started from. "Sound" in the saved names
-  // covers video too.
+  // An Audio or Video element by id, one set of settings however it
+  // is started. "Sound" in saved names covers video too.
   playSound("Play a sound or video", "Start an audio or video element"),
   pauseSound("Pause a sound or video", "Hold it where it is"),
   toggleSound(
@@ -45,8 +42,7 @@ enum ButtonActionKind {
       this == goToFrame || this == playFrom || this == playToFrame;
   bool get needsElement => this == toggleElement || needsSound;
 
-  /// needsSound is whether the element named has to be an Audio or Video
-  /// element.
+  /// needsSound is whether the element named must be an Audio or Video.
   bool get needsSound =>
       this == playSound ||
       this == pauseSound ||
@@ -54,8 +50,8 @@ enum ButtonActionKind {
       this == stopSound ||
       this == muteSound;
 
-  /// needsScene is whether the action names a scene of this document, by id
-  /// or name rather than by position, so reordering does not change it.
+  /// needsScene is whether the action names a scene, by id or name rather
+  /// than position, so reordering does not change it.
   bool get needsScene => this == goToScene;
   bool get needsUrl => this == openLink;
 }
@@ -65,9 +61,8 @@ class ButtonAction {
   final ButtonActionKind kind;
   final int frame;
 
-  /// elementId is the element an element or sound action targets, or the
-  /// scene of [ButtonActionKind.goToScene] (an id or a name). One that no
-  /// longer names anything makes a button that does nothing.
+  /// elementId is the element an action targets, or the scene (id or name)
+  /// of [ButtonActionKind.goToScene]. Naming nothing, the button does nothing.
   final String elementId;
 
   final String url;
@@ -107,22 +102,20 @@ class ButtonAction {
       );
 }
 
-/// ButtonElement is a labelled rectangle that does something when pressed.
-/// Inert in an exported picture or video; only a published interactive
-/// canvas can be pressed.
+/// ButtonElement is a labelled rectangle that does something when pressed,
+/// in a published interactive canvas only; inert in a picture or video.
 class ButtonElement extends CanvasElement {
   final String label;
   final TextSpec textSpec;
   final BoxSpec box;
 
   /// hoverFill and hoverTextColor are what the button becomes under the
-  /// pointer. Transparent means no change.
+  /// pointer; transparent means no change.
   final Color hoverFill;
   final Color hoverTextColor;
 
   final ButtonAction action;
 
-  /// animation is how it arrives and leaves, like any other thing in a box.
   final ElementAnimation animation;
 
   const ButtonElement(
@@ -140,8 +133,8 @@ class ButtonElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.button;
 
-  /// assetIds is the picture its box is painted with, where it has one. See
-  /// BoxSpec.assetIds -- left out, the sweep takes the picture away.
+  /// assetIds is the picture its box is painted with, where it has one: left
+  /// out, the sweep takes the picture away. See BoxSpec.assetIds.
   @override
   Set<String> get assetIds => box.assetIds;
 

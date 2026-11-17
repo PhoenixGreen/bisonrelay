@@ -1,18 +1,14 @@
 import 'dart:math' as math;
 
 // noise.dart is the randomness every generated background draws from.
-//
-// [hash] is white noise (neighbouring inputs unrelated): it scatters things.
-// [ValueNoise] is smooth (neighbours nearly equal): it makes fields that flow.
-//
-// Everything is a pure function of a seed and a position, never Random(), so
-// a background renders the same picture at any size, in any draw order, on
-// any machine.
+// [hash] is white noise (neighbouring inputs unrelated): it scatters
+// things. [ValueNoise] is smooth: it makes fields that flow. Everything is
+// a pure function of a seed and a position, never Random(), so a
+// background renders the same at any size, in any order, on any machine.
 
-/// hash returns a deterministic value in 0..1 from three integers.
-///
-/// A cheap integer mix, not cryptographic: it runs a few hundred thousand
-/// times per frame of a dense background.
+/// hash returns a deterministic value in 0..1 from three integers: a cheap
+/// integer mix, not cryptographic, as it runs a few hundred thousand times
+/// per frame of a dense background.
 double hash(int seed, int x, int y) {
   var h = seed * 374761393 + x * 668265263 + y * 2147483647;
   h = (h ^ (h >> 13)) * 1274126177;
@@ -24,12 +20,10 @@ double hash(int seed, int x, int y) {
 double hashRange(int seed, int x, int y, double lo, double hi) =>
     lo + hash(seed, x, y) * (hi - lo);
 
-/// SeededRandom is a stream of numbers from a seed, for the generators that
-/// scatter a fixed count of things rather than filling a grid.
-///
-/// Not dart:math's Random: turning density down from 200 discs to 40 must
-/// draw the same first 40, which needs a sequence this file fixes rather than
-/// one the SDK could change.
+/// SeededRandom is a stream of numbers from a seed, for generators that
+/// scatter a fixed count of things. Not dart:math's Random: turning density
+/// down from 200 discs to 40 must draw the same first 40, which needs a
+/// sequence this file fixes rather than one the SDK could change.
 class SeededRandom {
   int _state;
 
@@ -51,7 +45,7 @@ class SeededRandom {
 }
 
 /// ValueNoise is smooth 2D noise: a lattice of random values, interpolated.
-/// Value noise rather than Perlin or simplex: the difference is not visible
+/// Value noise rather than Perlin or simplex: the difference does not show
 /// in a background and it is much less code.
 class ValueNoise {
   final int seed;
@@ -98,15 +92,11 @@ class ValueNoise {
 double angleNoise(ValueNoise noise, double x, double y, double turns) =>
     noise.fbm(x, y, octaves: 3) * turns * 2 * math.pi;
 
-/// worley is cellular noise: how far a point is from the nearest of a set of
-/// scattered feature points, and which point that was.
-///
-/// It makes rounded things at random intervals (a dent, a pit, a bubble),
-/// which neither smooth nor white noise does. Returns the distance (capped at
-/// 1) and the feature's own 0..1 id, so a caller can keep some features and
-/// drop the rest.
-///
-/// One feature point per lattice cell, so the nearest is always in the nine
+/// worley is cellular noise: the distance (capped at 1) from a point to the
+/// nearest of a set of scattered feature points, and that feature's 0..1
+/// id, so a caller can keep some features and drop the rest. It makes
+/// rounded things at random intervals (a dent, a pit, a bubble). One
+/// feature point per lattice cell, so the nearest is always in the nine
 /// cells around the sample.
 (double, double) worley(int seed, double x, double y) {
   var cx = x.floor(), cy = y.floor();
@@ -127,11 +117,9 @@ double angleNoise(ValueNoise noise, double x, double y, double turns) =>
   return (math.min(1.0, math.sqrt(best)), id);
 }
 
-/// ridged is noise folded at its middle so the peaks come to a crease.
-///
-/// Taking the distance from the middle turns every crossing into a sharp
-/// ridge, so a high threshold on it leaves long thin wandering lines: a
-/// scratch, a crack, a gouge.
+/// ridged is noise folded at its middle so the peaks come to a crease: a
+/// high threshold on it leaves long thin wandering lines -- a scratch, a
+/// crack, a gouge.
 double ridged(ValueNoise noise, double x, double y, {int octaves = 3}) {
   var sum = 0.0, amp = 1.0, norm = 0.0, freq = 1.0;
   for (var i = 0; i < octaves; i++) {

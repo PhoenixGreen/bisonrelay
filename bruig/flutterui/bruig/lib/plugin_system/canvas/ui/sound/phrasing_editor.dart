@@ -12,15 +12,13 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 // phrasing_editor.dart is Phrasing: a take's words shaped after it is spoken
-// (see media/phrasing.dart), like Melodyne for speech. Each word is a block
-// as high as it is said and as long as it lasts, its rise and fall drawn in
-// it, its loudness a bar under it. Picked words are dragged up or down for
-// pitch, a right edge for length, a bar for loudness, or set in
-// PhrasingWordPanel. Shown in the Speech device in place of its sections,
-// from the Phrasing button in its header.
+// (see media/phrasing.dart). Each word is a block as high as it is said and
+// as long as it lasts, its rise and fall drawn in it, its loudness a bar
+// under it. Picked words are dragged for pitch, by the right edge for
+// length or by the bar for loudness, or set in PhrasingWordPanel. Opened
+// in the Speech device from the Phrasing button in its header.
 
-/// PhrasingLanes are the take's words, as blocks and bars, with what zooms
-/// them and hears them.
+/// PhrasingLanes are the take's words, as blocks and bars, zoomed and heard.
 class PhrasingLanes extends StatefulWidget {
   final CanvasController controller;
   const PhrasingLanes({required this.controller, super.key});
@@ -43,8 +41,7 @@ class _PhrasingLanesState extends State<PhrasingLanes>
   final _focus = FocusNode(debugLabel: "phrasing");
   late final Ticker _ticker = createTicker((_) => setState(() {}));
 
-  /// A drag: the picked words' shapes when it began, and how far it has
-  /// gone.
+  /// A drag: the picked words' shapes when it began, and how far it went.
   Map<int, WordShape> _from = const {};
   double _moved = 0;
 
@@ -58,8 +55,7 @@ class _PhrasingLanesState extends State<PhrasingLanes>
   /// A pinch: the zoom when it began.
   double _pinchFrom = 1;
 
-  /// Whether the pitch lane has been scrolled to the voice's middle, as it
-  /// is when it opens and when it is fitted again.
+  /// Whether the pitch lane is centred on the voice, as on opening or fitting.
   bool _centred = false;
 
   CanvasController get c => widget.controller;
@@ -83,8 +79,7 @@ class _PhrasingLanesState extends State<PhrasingLanes>
     c.pickWords([word], adding: _adding);
   }
 
-  /// _dragStart begins a drag on [word]: it and the others picked, or --
-  /// a word not picked -- it alone.
+  /// _dragStart begins a drag on [word]: with the others picked, or alone.
   void _dragStart(int word) {
     _focus.requestFocus();
     if (!c.phrasingPicked.contains(word)) c.pickWords([word]);
@@ -135,10 +130,9 @@ class _PhrasingLanesState extends State<PhrasingLanes>
         _centred = false;
       });
 
-  /// _zooming is the lanes listening for a zoom: a trackpad's pinch, or a
-  /// scroll with command or control held -- the time -- or option -- the
-  /// pitch. Put inside each scrolling view, so it hears a zoom before the
-  /// view takes it for a scroll.
+  /// _zooming hears a zoom: a trackpad pinch, or a scroll with command or
+  /// control (time) or option (pitch) held. Put inside each scrolling view,
+  /// so it hears a zoom before the view takes it for a scroll.
   Widget _zooming(Widget child) => Listener(
         onPointerPanZoomStart: (_) => _pinchFrom =
             HardwareKeyboard.instance.isAltPressed ? _pitchZoom : _timeZoom,
@@ -306,8 +300,8 @@ class _PhrasingLanesState extends State<PhrasingLanes>
       var caption = scale.scale(9) * 1.4;
       var ruler = math.max(14.0, caption);
       var room = math.max(0.0, box.maxHeight - ruler - caption - 4);
-      // The loudness lane folded away (Ken): its caption the strip that
-      // opens it again, and the room the pitch lane's.
+      // The loudness lane folded away: its caption is the strip that opens it
+      // again, and the pitch lane takes its room.
       var loudShut = c.settingsShut("phrasingLoudness");
       var loudH = loudShut ? 0.0 : (room * 0.25).clamp(18.0, 54.0);
       var pitchView = math.max(block + 4, room - loudH);
@@ -567,8 +561,7 @@ class _PhrasingLanesState extends State<PhrasingLanes>
           height: box.maxHeight,
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // The ruler: a second a tick, clicked or dragged along for the
-            // playhead.
+            // The ruler: a tick a second; clicked or dragged for the playhead.
             SizedBox(
               height: ruler,
               child: GestureDetector(
@@ -701,8 +694,7 @@ double phrasingShapedAt(
         double t, List<TimedWord> words, List<TimedWord> laid) =>
     phrasingSpokenAt(t, laid, words);
 
-/// _Ruler is a tick a second -- or a half, or a tenth, zoomed in -- each
-/// second numbered.
+/// _Ruler is a tick a second (a half or a tenth, zoomed in), seconds numbered.
 class _Ruler extends CustomPainter {
   final double left, px, seconds;
   final Color ink;
@@ -743,8 +735,7 @@ class _Ruler extends CustomPainter {
       old.ink != ink;
 }
 
-/// _Grid is the pitch lane's lines: the voice's middle, and every three
-/// semitones either side of it.
+/// _Grid is the pitch lane's lines: the voice's middle, then every 3 semitones.
 class _Grid extends CustomPainter {
   final double middle, st;
   final Color line, faint;
@@ -852,8 +843,7 @@ class PhrasingWordPanel extends StatelessWidget {
     var shape = take.shapeOf(first);
     var word = words[first];
 
-    // A slider moved: every word picked moved by as much as the first,
-    // part of one change.
+    // A slider moved: every word picked moved as the first, as one change.
     void change(WordShape next) {
       c.beginInteraction();
       c.shapeWords({

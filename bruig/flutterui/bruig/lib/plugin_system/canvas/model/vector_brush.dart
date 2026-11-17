@@ -21,7 +21,6 @@ class VectorBrush {
   final double thinnest;
   final double curve;
 
-  /// opacity is how see-through the line is.
   final double opacity;
 
   /// taperIn and taperOut are the share of the stroke (0 to 0.5) its start
@@ -41,8 +40,7 @@ class VectorBrush {
   final double nib;
   final double nibAngle;
 
-  /// flat ends the line square at its first and last points; otherwise
-  /// they are round.
+  /// flat ends the line square at its first and last points, else round.
   final bool flat;
 
   /// fill closes each stroke and fills it with the pencil's fill colour;
@@ -103,7 +101,6 @@ class VectorBrush {
         line: line ?? this.line,
       );
 
-  /// cap is how the line ends.
   StrokeCap get cap => flat ? StrokeCap.butt : StrokeCap.round;
 
   /// sameAs is whether [other] draws exactly as this does, ignoring names.

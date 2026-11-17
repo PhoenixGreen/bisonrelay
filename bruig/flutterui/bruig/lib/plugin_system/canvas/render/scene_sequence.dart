@@ -19,14 +19,11 @@ import 'package:bruig/plugin_system/canvas/render/transition_shapes.dart';
 import 'package:flutter/painting.dart';
 
 // scene_sequence.dart plays a document through: every scene in order, and
-// whatever is drawn between them.
+// whatever is drawn between them. The preview, the transport and the export
+// all use it, so an export cannot disagree with the screen.
 //
-// The preview, the transport and the export all go through it, so an export
-// cannot disagree with the screen about where a scene starts.
-//
-// A transition is drawn as two scenes and an effect, never as one scene with
-// an effect applied: both canvases are real for as long as it lasts, which is
-// what lets a cross fade fade and a push push.
+// A transition is two scenes and an effect, never one scene with an effect
+// applied: both canvases stay real, so a cross fade fades and a push pushes.
 
 /// SequencePlace is where a moment in the whole document falls: which scene,
 /// which frame of it, and whether a transition is running.
@@ -38,7 +35,6 @@ class SequencePlace {
   /// next is the scene coming in, or -1 when nothing is.
   final int next;
 
-  /// nextFrame is the frame the incoming scene has reached.
   final int nextFrame;
 
   /// through is how far the transition has got, 0 to 1.
@@ -55,11 +51,9 @@ class SequencePlace {
   bool get changing => next >= 0;
 }
 
-/// placeInSequence is where [at] falls in the document's whole run.
-///
-/// The frames a transition overlaps belong to both scenes at once -- see
-/// CanvasDocument.sequenceFrames, which takes them off the total for exactly
-/// that reason.
+/// placeInSequence is where [at] falls in the document's whole run. Frames a
+/// transition overlaps belong to both scenes -- see
+/// CanvasDocument.sequenceFrames.
 SequencePlace placeInSequence(CanvasDocument doc, int at) {
   var scenes = doc.allScenes;
   if (scenes.isEmpty) return const SequencePlace(scene: 0, frame: 0);
@@ -76,18 +70,17 @@ SequencePlace placeInSequence(CanvasDocument doc, int at) {
           scene: i, frame: math.min(math.max(0, local), scene.frames - 1));
     }
 
-    // The transition's own stretch of time. It begins where the two scenes
-    // start sharing frames -- or at the end of this scene, when they share
-    // none -- and lasts its full length even when that is longer than the
-    // overlap.
+    // The transition begins where the two scenes start sharing frames, or at
+    // the end of this scene when they share none, and runs its full length
+    // even past the overlap.
     var begins = scene.frames - held;
     if (runs > 0 && local >= begins && local < begins + runs) {
       var into = local - begins;
       return SequencePlace(
         scene: i,
         // Both scenes play for the frames they share and are held either
-        // side of them: the one leaving on its last frame, the one arriving
-        // on the frame it has reached.
+        // side: the one leaving on its last frame, the one arriving on the
+        // frame it has reached.
         frame: math.min(local, scene.frames - 1),
         next: i + 1,
         nextFrame: held == 0 ? 0 : math.min(into, held - 1),
@@ -113,26 +106,23 @@ void paintSequenceFrame(
   int at, {
   CanvasImageSource? images,
 
-  /// backgrounds holds a raster for each canvas on screen, which during a
-  /// transition is both the scene leaving and the scene arriving: it must
-  /// hold at least two, or a generated backdrop is remade every frame. See
+  /// backgrounds holds a raster for each canvas on screen -- during a
+  /// transition, two -- or a generated backdrop is remade every frame. See
   /// ProceduralCache.
   ProceduralCache? backgrounds,
 
-  /// audioState and videoShow are what the media on screen are doing, so a
-  /// document played through shows its videos moving rather than their
-  /// posters. Null in an export. See paintCanvasDocument.
+  /// audioState and videoShow are what the media on screen are doing, so
+  /// videos move rather than show posters. Null in an export.
   AudioState Function(AudioElement)? audioState,
   VideoShow Function(VideoElement)? videoShow,
 
-  /// backdrop is the background every scene shares, already rasterised for
-  /// an export -- see ExportBackdrop. Null draws each scene's own.
+  /// backdrop is the shared background already rasterised for an export
+  /// (see ExportBackdrop). Null draws each scene's own.
   ui.Image? backdrop,
 
-  /// liveMotion and counterValue are what plays from slots and what the
-  /// live counters show, as the editor and the player have them -- so a
-  /// run of scenes is drawn as one scene is (Ken's systems review,
-  /// 2026-11-08). Null in an export, which plays the timeline alone.
+  /// liveMotion and counterValue are what plays from slots and what live
+  /// counters show, so a run of scenes is drawn as one scene is. Null in an
+  /// export, which plays the timeline alone.
   LiveMotion? liveMotion,
   double Function(CounterElement)? counterValue,
 }) {
@@ -149,7 +139,7 @@ void paintSequenceFrame(
   }
 
   void drawScene(int index, int frame) {
-    // Each scene with its own backdrop (CanvasDocument.backgroundOf), not the
+    // Each scene's own backdrop (CanvasDocument.backgroundOf), not the
     // document's, which is whichever scene was edited last.
     var shown = doc
         .goToScene(index)
@@ -189,8 +179,8 @@ void paintSequenceFrame(
   );
 }
 
-/// warmBackdrop has the generated backdrop of scene [index] made, if it is
-/// one, so that it is ready by the time the scene is drawn.
+/// warmBackdrop makes scene [index]'s generated backdrop, if it has one, so
+/// it is ready when the scene is drawn.
 void warmBackdrop(CanvasDocument doc, int index, ProceduralCache backgrounds,
     CanvasImageSource? images) {
   var bg = doc.backgroundOf(index);
@@ -198,11 +188,9 @@ void warmBackdrop(CanvasDocument doc, int index, ProceduralCache backgrounds,
   backgrounds.warm(bg.spec, doc.size.size, images);
 }
 
-/// paintTransition draws one canvas giving way to another.
-///
-/// The two scenes are handed in as things to draw rather than as pictures,
-/// so a transition that shows only part of one -- a wipe, a push -- pays for
-/// the part it shows and nothing else.
+/// paintTransition draws one canvas giving way to another. The scenes are
+/// passed as draw functions, not pictures, so a wipe or a push pays only for
+/// the part it shows.
 void paintTransition(
   ui.Canvas canvas,
   Rect page,
@@ -222,9 +210,8 @@ void paintTransition(
       _faded(canvas, page, t, to);
 
     case SceneTransitionKind.through:
-      // Out to the colour and back out of it: the first half belongs to the
-      // scene leaving, the second to the one arriving, and the colour is at
-      // its strongest exactly between them.
+      // The first half belongs to the scene leaving, the second to the one
+      // arriving; the colour is strongest between them.
       if (t < 0.5) {
         from();
         canvas.drawRect(
@@ -273,10 +260,9 @@ void paintTransition(
       _scaled(canvas, page, 1 + 0.4 * t, 1 - t, from, over);
       _faded(canvas, page, t, to);
 
-    // Everything that covers: a shape in the transition's own colour grows
-    // until the page is behind it, the scenes change, and it goes away. See
-    // transition_shapes.dart -- and SceneTransitionKind.covers for why these
-    // are not masks.
+    // Covers: a shape in the transition's colour grows over the page, the
+    // scenes swap, and it goes. See transition_shapes.dart, and
+    // SceneTransitionKind.covers for why these are not masks.
     case SceneTransitionKind.band:
     case SceneTransitionKind.blinds:
     case SceneTransitionKind.barn:
@@ -297,9 +283,8 @@ void paintTransition(
       _blurThrough(canvas, page, over, t, from: from, to: to);
 
     case SceneTransitionKind.pageTurn:
-      // One canvas on its own has no reverse to show, so the back of the
-      // leaf is its own face seen through the paper -- which is what the
-      // back of a printed page looks like held up to the light.
+      // One canvas has no reverse, so the leaf's back is its own face seen
+      // through the paper, as a printed page looks held up to the light.
       paintPageTurn(canvas, page, t,
           front: from, under: to, back: () => _seenThrough(canvas, page, from));
   }
@@ -321,17 +306,13 @@ void _seenThrough(ui.Canvas canvas, Rect page, void Function() draw) {
 
 /// paintPageTurn draws [leaf] turning over about its left edge, the spine.
 ///
-/// The leaf is a sheet printed on both sides. [front] is its face and
-/// [under] what lies beneath it, both drawn where the leaf lies now; [back]
-/// is its reverse, drawn where it will lie once turned -- the leaf's own
-/// size, to the left of the spine.
+/// [front] is the leaf's face and [under] what lies beneath, both drawn where
+/// the leaf lies now; [back] is its reverse, drawn where it lies once turned.
 ///
-/// The bottom outer corner is carried over the spine along a low arc, and
-/// the fold is wherever it has to be for that corner to be where it is: the
-/// line halfway between where the corner started and where it has got to.
-/// Everything past the fold is reflected across it, which is how a sheet
-/// folds. Because the corner leads, the fold leans -- a page turned by a hand
-/// goes over bottom corner first.
+/// The bottom outer corner travels over the spine on a low arc; the fold is
+/// the line halfway between where the corner started and where it is, and
+/// everything past it is reflected across it. The corner leads, so the fold
+/// leans, as a page turned by hand does.
 void paintPageTurn(
   ui.Canvas canvas,
   Rect leaf,
@@ -360,9 +341,8 @@ void paintPageTurn(
   var lift = math.min(width, height) * 0.22;
   var held = Offset(leaf.left + width * math.cos(angle),
       leaf.bottom - lift * math.sin(angle));
-  // The sheet is bound at the spine and cannot stretch: the corner can get
-  // no further from the foot of the spine than the page is wide, nor from
-  // its head than the diagonal.
+  // The sheet cannot stretch: the corner stays within a page width of the
+  // spine's foot and a diagonal of its head.
   held = _within(held, spineFoot, width);
   held = _within(held, spineTop, math.sqrt(width * width + height * height));
 
@@ -382,13 +362,11 @@ void paintPageTurn(
   var lifted = _clipPolygon(sheet, side, keep: false);
   var over = [for (var q in lifted) reflect(q)];
 
-  // How far open the sheet is, which is how much shadow it throws: none
-  // lying flat at either end, most standing up in the middle.
+  // How far open the sheet is sets its shadow: none flat, most upright.
   var open = math.sin(angle);
   var reach = width * (0.04 + 0.12 * open);
 
-  // What the turn uncovers, and the shadow of the sheet on it. The shadow
-  // runs back from the fold, darkest against it.
+  // What the turn uncovers, with the sheet's shadow darkest at the fold.
   if (under != null && lifted.length > 2) {
     canvas.save();
     canvas.clipPath(_polygon(lifted));
@@ -412,19 +390,16 @@ void paintPageTurn(
   if (over.length < 3) return;
   var flap = _polygon(over);
 
-  // The turned part stands off the page, so it throws a shadow round its
-  // edges onto whatever is under it.
+  // The turned part stands off the page and shadows what is under it.
   canvas.drawPath(
       flap.shift(Offset(-reach * 0.15, reach * 0.1)),
       Paint()
         ..color = Color.fromRGBO(0, 0, 0, 0.3 * open)
         ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, reach * 0.35));
 
-  // The reverse of the sheet. [back] draws it where it lies once turned;
-  // mirroring that about the spine puts it on the sheet the way the sheet
-  // lies flat, and reflecting across the fold carries it to where the
-  // turned part is. Two reflections are a rotation, so its words read the
-  // right way round.
+  // The reverse: [back] draws it where it lies once turned; mirroring about
+  // the spine and reflecting across the fold is a rotation, so its words
+  // read the right way round.
   var nx = normal.dx, ny = normal.dy;
   var a = 1 - 2 * nx * nx, b = -2 * nx * ny, d = 1 - 2 * ny * ny;
   var along = fold.dx * nx + fold.dy * ny;
@@ -442,8 +417,8 @@ void paintPageTurn(
   canvas.clipRect(leaf.shift(Offset(-width, 0)));
   back();
   canvas.restore();
-  // Paper curving up off the fold is in its own shadow there, and catches
-  // the light further out.
+  // Paper curving off the fold is shadowed there and catches light further
+  // out.
   canvas.drawPaint(Paint()
     ..shader = ui.Gradient.linear(fold, fold + normal * reach * 2.2, [
       Color.fromRGBO(0, 0, 0, 0.28 * open + 0.06),
@@ -484,12 +459,9 @@ List<Offset> _clipPolygon(List<Offset> points, double Function(Offset) side,
 
 Path _polygon(List<Offset> points) => Path()..addPolygon(points, true);
 
-/// paintLeaf draws one page of a document as it is printed: its own paper,
-/// the neighbour's overhang, then its own contents, clipped to the page.
-///
-/// The same order the editor and the PDF use, so a picture laid across the
-/// gutter is whole in a spread whichever page it was placed on; drawing the
-/// neighbour as a whole canvas would put this page's paper over its overhang.
+/// paintLeaf draws one page as printed: its paper, the neighbour's overhang,
+/// then its own contents, clipped to the page. The same order as the editor
+/// and the PDF, so a picture across the gutter is whole in a spread.
 ///
 /// [frameOf] is which frame each leaf is showing -- see paintBookFrame.
 void paintLeaf(
@@ -540,18 +512,13 @@ void paintLeaf(
   );
 }
 
-/// paintBookFrame draws a document of facing pages at one moment of its run,
-/// a spread at a time.
+/// paintBookFrame draws a document of facing pages a spread at a time.
 ///
-/// The book's left-hand leaf is at [left] and its right-hand leaf a page
-/// further on, whichever leaf is playing -- so the book stays where it is
-/// for the whole run, and a leaf standing alone stands on its own side.
-///
-/// A transition between two spreads moves the whole spread, both leaves,
-/// and a page turn turns the right-hand leaf over onto the left. Between
-/// the two leaves of one spread nothing moves at all: both are already on
-/// screen, and any transition there would move a page the reader can see is
-/// not going anywhere.
+/// The left leaf is at [left] and the right a page further on, so the book
+/// stays put and a lone leaf stands on its own side. A transition between
+/// spreads moves both leaves, and a page turn turns the right leaf onto the
+/// left. Nothing moves between the two leaves of one spread: both are
+/// already on screen.
 void paintBookFrame(
   ui.Canvas canvas,
   CanvasDocument doc,
@@ -569,9 +536,8 @@ void paintBookFrame(
   var place = placeInSequence(doc, at);
   var size = doc.size.size;
 
-  // What each leaf is showing. The one playing is at its own frame; a leaf
-  // already played stays on its last, and one still to come waits on its
-  // first, so a page that arrives is seen arriving.
+  // What each leaf shows: the playing one its own frame, a played one its
+  // last, one to come its first, so an arriving page is seen arriving.
   int frameOf(int index) {
     if (index == place.scene) return place.frame;
     if (place.changing && index == place.next) return place.nextFrame;
@@ -612,9 +578,8 @@ void paintBookFrame(
   var here = doc.spreadOf(place.scene);
   var next = place.changing ? doc.spreadOf(place.next) : null;
 
-  // The spread after whatever is on screen, made ready before it is
-  // needed -- see ProceduralCache.warm. The leaves on screen are asked for
-  // as they are drawn, which keeps them the most recently used.
+  // The next spread, made ready before it is needed (ProceduralCache.warm).
+  // Leaves on screen are asked for as drawn, keeping them most recently used.
   if (backgrounds != null) {
     var last = [here?.$1, here?.$2, next?.$1, next?.$2]
         .whereType<int>()
@@ -639,9 +604,8 @@ void paintBookFrame(
   if (over.kind == SceneTransitionKind.pageTurn && place.next > place.scene) {
     var turning = here?.$2;
     if (turning == null) {
-      // Nothing on the right to turn: a left-hand leaf standing alone, which
-      // only a cover in the middle of the book gives. The pages change as a
-      // cut would rather than as a leaf that is not there.
+      // A lone left-hand leaf (only a mid-book cover gives one): nothing to
+      // turn, so the pages change as a cut.
       spread(t >= 0.5 ? next : here);
       return;
     }
@@ -659,8 +623,7 @@ void paintBookFrame(
           ? () => leaf(arrivingLeft, true)
           : () => _seenThrough(canvas, slot(false), () => leaf(turning, false)),
     );
-    // No spine while it turns: drawn over the sheet, it is a line across a
-    // page in the air.
+    // No spine while it turns: it would be a line across a page in the air.
     return;
   }
 
@@ -680,9 +643,8 @@ void _drawCover(ui.Canvas canvas, Rect page, SceneTransition over, double t) {
   var shape = overlayPath(over, page, t);
   var paint = Paint()..color = over.color;
   if (over.softness > 0) {
-    // Outwards only, so a cover that has grown to the page stays solid: blur
-    // it both ways and it eats its own edges, and the scene behind shows
-    // through the very moment it is meant to be hidden.
+    // Outwards only, so a cover grown to the page stays solid: blurred both
+    // ways it eats its edges and the scene behind shows through.
     paint.maskFilter = ui.MaskFilter.blur(
         ui.BlurStyle.solid, page.shortestSide * over.softness * 0.06);
   }
@@ -692,8 +654,7 @@ void _drawCover(ui.Canvas canvas, Rect page, SceneTransition over, double t) {
 /// _blurThrough goes soft, changes, and comes back sharp.
 void _blurThrough(ui.Canvas canvas, Rect page, SceneTransition over, double t,
     {required void Function() from, required void Function() to}) {
-  // How far from sharp: nothing at either end, most in the middle, where the
-  // change happens and is not seen.
+  // Sharp at either end, softest in the middle where the change happens.
   var away = (1 - (t * 2 - 1).abs()).clamp(0.0, 1.0);
   var sigma = math.max(0.1, page.shortestSide * 0.05 * away);
 
@@ -705,8 +666,7 @@ void _blurThrough(ui.Canvas canvas, Rect page, SceneTransition over, double t,
   (t >= 0.5 ? to : from)();
   canvas.restore();
 
-  // And a veil of the colour at its strongest in the middle, where the
-  // colour has been given one to show.
+  // A veil of the colour, strongest in the middle, if one is given.
   if (over.color.a > 0) {
     canvas.drawRect(page,
         Paint()..color = over.color.withValues(alpha: over.color.a * away));

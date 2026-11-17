@@ -5,11 +5,10 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// controls_settings.dart is a game's controls, in Canvas settings: each
-// action, the keys that press it and the controller buttons. An action is
-// pressed by any of them.
+// controls_settings.dart is a game's controls: each action and the keys
+// and controller buttons that press it.
 
-/// keyLabel is a key as it is written on it.
+/// keyLabel is a key as written on it.
 String keyLabel(int id) {
   var key = LogicalKeyboardKey.findKeyByKeyId(id);
   if (key == null) return "Key $id";
@@ -34,7 +33,6 @@ class GameControlsGroup extends StatefulWidget {
 }
 
 class _GameControlsGroupState extends State<GameControlsGroup> {
-  /// _player is whose controls are shown.
   int _player = 1;
 
   @override
@@ -54,7 +52,7 @@ class _GameControlsGroupState extends State<GameControlsGroup> {
     var colors = theme.colors;
     var playing = doc.players;
     return CanvasControlGroup(label: "Controls", children: [
-      // Whose controls: a chip each, the players the game has brighter.
+      // A chip per player, the game's own players brighter.
       SizedBox(
         width: double.infinity,
         child: Row(children: [

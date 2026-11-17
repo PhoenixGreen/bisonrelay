@@ -1,14 +1,11 @@
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 
 // image_look.dart is what a picture is made to look like: a named filter and
-// the two sliders, as colour matrices.
-//
-// Shared by picture elements, pictures in letters, and pictures behind boxes
-// or inside shapes.
+// the two sliders, as colour matrices. Shared by picture elements, pictures
+// in letters, and pictures behind boxes or inside shapes.
 
-/// presetMatrix is a named look as a colour matrix, or null for none.
-/// Matrices compose into one colour filter, where layered draws would each
-/// need an off-screen layer.
+/// presetMatrix is a named look as a colour matrix, or null: matrices make
+/// one colour filter, where layered draws would each need a layer.
 List<double>? presetMatrix(ImageFilterPreset filter) {
   const lr = 0.2126, lg = 0.7152, lb = 0.0722;
   switch (filter) {
@@ -72,10 +69,8 @@ List<double>? presetMatrix(ImageFilterPreset filter) {
   }
 }
 
-/// combineMatrices multiplies two 4x5 colour matrices, [a] applied first.
-///
-/// Null means no change, in and out, so an untouched picture gets no colour
-/// filter at all rather than an identity one.
+/// combineMatrices multiplies two 4x5 colour matrices, [a] first. Null is no
+/// change, in and out, so an untouched picture gets no filter at all.
 List<double>? combineMatrices(List<double>? a, List<double>? b) {
   if (a == null) return b;
   if (b == null) return a;

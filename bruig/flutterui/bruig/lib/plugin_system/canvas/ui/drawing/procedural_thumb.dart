@@ -41,10 +41,9 @@ class _ThumbPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    // Drawn as a frame of a fixed size and shrunk, rather than drawn at the
-    // size of the thumbnail. Every style sizes itself against the frame, but
-    // lines and dots have a least width below which they stop shrinking --
-    // so at forty pixels across a circuit board was all pads.
+    // Drawn at a fixed frame size and shrunk, not at the thumbnail's size:
+    // lines and dots stop shrinking below a least width, so drawn small a
+    // circuit board would be all pads.
     const across = 320.0;
     var k = size.width / across;
     canvas.save();

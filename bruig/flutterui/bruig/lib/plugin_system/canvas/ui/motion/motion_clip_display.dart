@@ -21,24 +21,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-// motion_clip_display.dart is the Motion clips card's screen (Ken,
-// 2026-11-08: "more interactive, to show more detail of the animation ...
-// edited from the visual display"). The picked clip as it plays: its path
-// on the page with the element's ghosts along it -- their size, turn and
-// opacity as the clip has them -- and its timing as dots, or its values
-// over time. Edited there: a point dragged, a stretch's curve picked from
-// its diamond, a point added with a double-click, taken out with a
-// right-click. Hovered, it plays.
+// motion_clip_display.dart is the Motion clips card's screen: the picked
+// clip as it plays, its path with the element's ghosts along it (sized,
+// turned and faded) and its timing as dots, or its values over time.
+// Edited there: a point dragged, a stretch's curve picked from its diamond,
+// a point added by double-click, removed by right-click. Hovered, it plays.
 
-/// ClipView is what the screen shows: the path the element takes, or its
-/// values over time.
+/// ClipView is what the screen shows: the path taken, or values over time.
 enum ClipView { path, graph }
 
 typedef ClipEditFn = void Function(MotionClip Function(MotionClip) change,
     {bool live});
 
 /// MotionClipDisplay is [clip] of [element] drawn and edited: [edit]
-/// changes it -- live while dragged, then ended with the controller's
+/// changes it, live while dragged, then ended with the controller's
 /// endInteraction. [onReset], given, puts it back as its preset made it.
 class MotionClipDisplay extends StatefulWidget {
   final CanvasController controller;
@@ -108,8 +104,7 @@ class _MotionClipDisplayState extends State<MotionClipDisplay>
     return _view ?? (hasPath ? ClipView.path : ClipView.graph);
   }
 
-  /// _ownSays is what a text's or a chart's own style is called, for its
-  /// screen.
+  /// _ownSays is what a text's or chart's own style is called, for its screen.
   String _ownSays(MotionClip c) {
     var style = OwnStyle.of(widget.element);
     if (style == null) return "";
@@ -230,9 +225,8 @@ class _MotionClipDisplayState extends State<MotionClipDisplay>
     });
   }
 
-  /// _gestures edits [c] on the screen: see the file's comment. A press on
-  /// a point takes hold of it at once, before the Chain's row can take the
-  /// drag for scrolling.
+  /// _gestures edits [c] on the screen. A press on a point takes hold at
+  /// once, before the Chain's row can take the drag for scrolling.
   Widget _gestures(BuildContext context, MotionClip c, ClipLayout layout,
           {required Widget child}) =>
       Listener(
@@ -342,8 +336,7 @@ class _Drag {
 }
 
 /// _GrabRecognizer is a pan that wins at once where [grabs] says the press
-/// is on something to drag: a point, which the Chain's row would otherwise
-/// take for scrolling.
+/// is on a point, which the Chain's row would otherwise take for scrolling.
 class _GrabRecognizer extends PanGestureRecognizer {
   bool Function(Offset local)? grabs;
 
@@ -356,9 +349,8 @@ class _GrabRecognizer extends PanGestureRecognizer {
   }
 }
 
-/// ClipHandle is something on the screen to take hold of: a point -- the
-/// keys of [props] at [t] -- or, [ease], the diamond on the stretch that
-/// ends at [t], whose curve is [easing].
+/// ClipHandle is something on the screen to hold: a point (the keys of
+/// [props] at [t]) or, with [ease], the diamond on the stretch ending at [t].
 class ClipHandle {
   final bool ease;
   final double t;
@@ -550,8 +542,8 @@ class ClipLayout {
     return null;
   }
 
-  /// stored is [move] -- an offset from where the element is set -- as
-  /// [c] keeps a number for [p]: a place on the page, where it sets places.
+  /// stored is [move] (an offset from where the element is set) as [c]
+  /// keeps a number for [p]: a place on the page, where it sets places.
   double stored(MotionClip c, MotionProp p, double move) {
     if (!c.absolute) return move;
     if (p == MotionProp.x) return move + self.center.dx;
@@ -586,9 +578,9 @@ class ClipLayout {
     return c.copyWith(keys: {...c.keys, p: keys}, edited: true);
   }
 
-  /// dragged is [from] with [h] moved [by] screen pixels: on the path, to
-  /// a new place (one way only, [oneAxis]); among the values, to a new time
-  /// and value, the time on twentieths of a second unless [free].
+  /// dragged is [from] with [h] moved [by] screen pixels: on the path, to a
+  /// new place (one way only, with [oneAxis]); among the values, to a new
+  /// time and value, the time on twentieths of a second unless [free].
   MotionClip dragged(MotionClip from, ClipHandle h, Offset by,
       {bool oneAxis = false, bool free = false}) {
     var c = from;
@@ -633,8 +625,7 @@ class ClipLayout {
     return c.copyWith(keys: keys, edited: true);
   }
 
-  /// withoutPoint is [c] with the point [h] taken out, where what is left
-  /// still has a start and an end.
+  /// withoutPoint is [c] without point [h], keeping a start and an end.
   MotionClip withoutPoint(MotionClip c, ClipHandle h) {
     var keys = {...c.keys};
     for (var p in h.props) {
@@ -648,8 +639,8 @@ class ClipLayout {
     return c.copyWith(keys: keys, edited: true);
   }
 
-  /// withPointAt is [c] with a point put in where [spot] is on its path,
-  /// or on a value's line -- null where it is on neither.
+  /// withPointAt is [c] with a point put in where [spot] is on its path or
+  /// a value's line; null where it is on neither.
   MotionClip? withPointAt(MotionClip c, Offset spot) {
     var len = math.max(clip.length, 1e-3);
     if (view == ClipView.path) {
@@ -818,8 +809,7 @@ class _ClipPainter extends CustomPainter {
       _ghost(canvas, l.toScreen(p.move), box.size * s, p,
           alpha: 0.10 + 0.12 * i / (ghosts - 1));
     }
-    // Its path, and a dot each twentieth of its time: close where it is
-    // slow, far apart where it is fast.
+    // Its path, a dot each twentieth of its time: close where slow.
     var path = Path();
     for (var i = 0; i <= 80; i++) {
       var o = l.toScreen(l.pose(len * i / 80).move);
@@ -835,7 +825,6 @@ class _ClipPainter extends CustomPainter {
       canvas.drawCircle(l.toScreen(l.pose(len * i / 20).move), 1.6,
           Paint()..color = accent.withValues(alpha: 0.7));
     }
-    // Where it is now.
     var now = l.pose(at);
     _ghost(canvas, l.toScreen(now.move), box.size * s, now,
         alpha: 0.55, solid: true);
@@ -860,7 +849,6 @@ class _ClipPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.8
             ..color = curveColour(p));
-      // Its name, in its colour, along the top.
       var tp = TextPainter(
           text: TextSpan(
               text: p.label,
@@ -870,7 +858,6 @@ class _ClipPainter extends CustomPainter {
       tp.paint(canvas, Offset(8 + x, 7));
       x += tp.width + 8;
     }
-    // Where it is now.
     var px = l.xOf(at);
     canvas.drawLine(Offset(px, a.top), Offset(px, a.bottom),
         Paint()..color = _dot.withValues(alpha: 0.8));
@@ -928,8 +915,8 @@ class _ClipPainter extends CustomPainter {
     }
   }
 
-  /// _paintOwn is an element's own style -- a fade, a wipe -- as frames
-  /// across, drawn as the page draws it, and played large while hovered.
+  /// _paintOwn is an element's own style (a fade, a wipe) as frames across,
+  /// drawn as the page draws it, and played large while hovered.
   void _paintOwn(Canvas canvas, Size size, MotionClip c) {
     var a = own!;
     var leaving = c.kind == MotionKind.leave;

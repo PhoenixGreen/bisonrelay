@@ -6,17 +6,11 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// publish_record.dart remembers where a saved canvas has been published,
-// so the publish sheet can offer Update and Unpublish rather than only a
-// fresh send.
-//
-// Not written into the .bcanvas: the record is about this machine (a path
-// on this disk, a file shared by this client), and a copied canvas should
-// not claim to be published somewhere it is not. One JSON file serves the
-// whole library, so the sheet can look a record up before opening anything.
+// publish_record.dart remembers where a canvas was published, for Update
+// and Unpublish. Not in the .bcanvas: it is about this machine, and a copy
+// must not claim to be published. One JSON file serves the whole library.
 
-/// _fileName is the record file, hidden from the library listing by its
-/// leading dot.
+/// _fileName is the record file, hidden from the listing by its dot.
 const _fileName = ".published.json";
 
 /// PublishRecord is where one canvas has gone.
@@ -89,7 +83,6 @@ class PublishRecord {
       );
 }
 
-/// PublishRecords reads and writes the whole file.
 class PublishRecords {
   PublishRecords._();
 

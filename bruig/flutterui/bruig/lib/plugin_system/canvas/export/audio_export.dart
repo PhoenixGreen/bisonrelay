@@ -16,8 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 // audio_export.dart writes a canvas's timeline, mixed as a video's
-// soundtrack is, as a sound file, plus the ffmpeg arguments any export with
-// sound uses.
+// soundtrack, as a sound file, and the ffmpeg arguments any sound uses.
 
 /// AudioWriting is how ffmpeg is told to write a sound in [AudioOptions].
 extension AudioWriting on AudioOptions {
@@ -42,8 +41,8 @@ extension AudioWriting on AudioOptions {
             ],
           AudioFormat.opus => [
               "-c:a", "libopus", "-b:a", "${kbps}k", //
-              // Opus's own surround mapping: without it, more than two
-              // channels are refused.
+              // Opus's surround mapping: without it, over two channels are
+              // refused.
               if (channels > 2) ...["-mapping_family", "1"],
             ],
         },
@@ -60,8 +59,7 @@ extension AudioWriting on AudioOptions {
 
 }
 
-/// estimateAudioBytes is about how large [document]'s sound is written with
-/// [options].
+/// estimateAudioBytes is about how large [document]'s sound will be.
 int estimateAudioBytes(CanvasDocument document, AudioOptions options) {
   var seconds =
       document.playFrames / (document.frameRate <= 0 ? 1 : document.frameRate);

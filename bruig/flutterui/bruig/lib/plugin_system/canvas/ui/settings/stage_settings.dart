@@ -10,10 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// stage_settings.dart is a 3D stage's settings: its camera, its set and its
-// light. Every choice that can be seen is a tile drawn from this stage --
-// a shot is this stage through that camera, a floor this stage's floor
-// made of that.
+// stage_settings.dart is a 3D stage's camera, set and light, each choice a
+// tile drawn from this stage itself.
 
 List<Widget> stageSettings(
   BuildContext context,
@@ -142,9 +140,8 @@ List<Widget> stageSettings(
                   onCommit: commit,
                 ),
               ]),
-          // What it looks at: a metre over the middle of the floor until
-          // it is panned, or framed on something -- the view controls at
-          // the stage's right do both.
+          // The aim: a metre over the floor's middle until panned or framed,
+          // both by the view controls at the stage's right.
           CanvasControlGroup(
               label: "Looks at",
               help: "Where the camera looks, in metres from a metre above "

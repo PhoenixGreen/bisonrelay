@@ -1,16 +1,14 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// chart_numbers.dart is how a number is written on a chart. The value axis,
+// chart_numbers.dart is how a number is written on a chart: the value axis,
 // the bars and the legend all use it, so they always agree.
 
-/// NumberStyle is the shape a number is written in.
 enum NumberStyle {
   /// automatic is the default; see [automaticNumber].
   automatic("Automatic", "1000000, 12.5"),
 
-  /// compact picks the unit per number (see [compactUnit]): a thousand is
-  /// 1.0K and a trillion 1.0T on the same axis. The fixed styles below scale
-  /// everything by one amount, so they suit numbers of one size only.
+  /// compact picks the unit per number (1.0K and 1.0T on one axis); the
+  /// fixed styles scale by one amount, for numbers of one size.
   compact("Shortened", "1.2K, 3.4M, 5.6B"),
   plain("In full", "1,000,000"),
   thousands("Thousands", "1,000K"),
@@ -19,8 +17,7 @@ enum NumberStyle {
 
   final String label;
 
-  /// example is a sample shown beside the name, which tells the styles apart
-  /// better than their names do.
+  /// example is a sample beside the name, telling the styles apart.
   final String example;
 
   const NumberStyle(this.label, this.example);
@@ -28,7 +25,7 @@ enum NumberStyle {
   static NumberStyle fromName(String? name) =>
       values.firstWhere((s) => s.name == name, orElse: () => automatic);
 
-  /// by is what a number is divided by before it is written. Meaningless for
+  /// by is what a number is divided by before it is written; meaningless for
   /// [compact], which picks per number.
   double get by => switch (this) {
         automatic || compact || plain => 1,
@@ -37,7 +34,6 @@ enum NumberStyle {
         billions => 1e9,
       };
 
-  /// suffix is the letter after it.
   String get suffix => switch (this) {
         automatic || compact || plain => "",
         thousands => "K",
@@ -46,12 +42,8 @@ enum NumberStyle {
       };
 }
 
-/// ChartNumbers is the style, the decimal places, and whether the thousands
-/// are grouped.
-///
-/// [decimals] applies to every style but [NumberStyle.automatic], which picks
-/// its own. Zero means no decimal point at all rather than a nought after it:
-/// "1M", not "1.M" and not "1.0M".
+/// ChartNumbers is the style, decimals and thousands grouping. [decimals]
+/// is ignored by automatic; zero means no point at all: "1M", not "1.0M".
 class ChartNumbers {
   final NumberStyle style;
   final int decimals;
@@ -60,9 +52,8 @@ class ChartNumbers {
   /// scaled styles too, since a chart in thousands can still reach 1,000K.
   final bool separators;
 
-  /// before and after are written either side of every number: a currency
-  /// sign or a unit ("\$300", "11.11 DCR", "40%"). Kept out of the data so the
-  /// figures stay numbers.
+  /// before and after go either side of every number ("\$300", "40%"),
+  /// kept out of the data so the figures stay numbers.
   final String before;
   final String after;
 
@@ -112,8 +103,7 @@ class ChartNumbers {
     return "${separators ? _grouped(text) : text}$suffix";
   }
 
-  /// _grouped puts the separators into the whole part and leaves the rest
-  /// alone -- the decimals are not grouped, and neither is the minus sign.
+  /// _grouped groups the whole part only: not the decimals or the sign.
   static String _grouped(String text) {
     var negative = text.startsWith("-");
     var body = negative ? text.substring(1) : text;
@@ -158,9 +148,8 @@ class ChartNumbers {
   return (1, "");
 }
 
-/// automaticNumber writes [v] in the [NumberStyle.automatic] style: whole
-/// numbers as they are, from ten thousand shortened (12k, 1.5M), and a
-/// fraction given one or two places.
+/// automaticNumber writes [v] automatically: whole numbers as they are,
+/// from ten thousand shortened (12k, 1.5M), fractions to two places.
 String automaticNumber(double v) {
   if (v == v.roundToDouble() && v.abs() < 1e15) {
     var n = v.round();

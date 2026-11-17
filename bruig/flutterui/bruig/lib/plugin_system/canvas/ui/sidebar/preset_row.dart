@@ -2,12 +2,11 @@ import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// preset_row.dart is one saved thing in the Presets sidebar: the same row for
-// an element, a scene or a canvas, since all three are used, renamed and
-// deleted alike.
+// preset_row.dart is one saved thing in the Presets sidebar: one row for an
+// element, scene or canvas, since all are used, renamed and deleted alike.
 
-/// askForPresetName asks what to call one, with [initial] filled in. Shared by
-/// everything that saves a preset, so all ask in the same words.
+/// askForPresetName asks what to call one, with [initial] filled in, shared
+/// by everything that saves a preset so all ask in the same words.
 Future<String?> askForPresetName(BuildContext context, String title,
     {String initial = ""}) {
   var text = TextEditingController(text: initial);
@@ -38,8 +37,8 @@ Future<String?> askForPresetName(BuildContext context, String title,
 class PresetRow extends StatefulWidget {
   final String name;
 
-  /// says is the line under the name: what kind of element it makes, how
-  /// many scenes it holds. Left out where there is nothing to say.
+  /// says is the line under the name (what kind of element it makes, how
+  /// many scenes it holds); null where there is nothing to say.
   final String? says;
 
   final IconData icon;
@@ -47,8 +46,7 @@ class PresetRow extends StatefulWidget {
   /// onUse is the tap: add it, or start from it.
   final VoidCallback onUse;
 
-  /// onRename is null for a preset that is not the reader's to rename (the
-  /// ones that ship with the app).
+  /// onRename is null for a preset not the reader's (one that ships).
   final ValueChanged<String>? onRename;
 
   /// onDelete is null for the same ones.
@@ -57,8 +55,7 @@ class PresetRow extends StatefulWidget {
   /// extra are more entries for the row's menu, by label.
   final Map<String, VoidCallback> extra;
 
-  /// leading is drawn in place of the icon where there is a picture of the
-  /// preset to show instead.
+  /// leading is drawn in place of the icon where there is a picture of it.
   final Widget? leading;
 
   const PresetRow({
@@ -83,8 +80,8 @@ class _PresetRowState extends State<PresetRow> {
   final TextEditingController _name = TextEditingController();
 
   /// _clicks counts the second click of a pair on the name, by hand rather
-  /// than with a double-tap recognizer, which would hold back the presses that
-  /// use the preset and open its menu. See DoubleClick.
+  /// than with a double-tap recognizer, which would hold back the presses
+  /// that use the preset and open its menu. See DoubleClick.
   final DoubleClick _clicks = DoubleClick();
 
   @override
@@ -161,8 +158,7 @@ class _PresetRowState extends State<PresetRow> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Material(
-        // Its own Material, so the row's ink lands in front of whatever the
-        // sidebar is painted with rather than behind it.
+        // Its own Material, so the row's ink lands over the sidebar's paint.
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(6),

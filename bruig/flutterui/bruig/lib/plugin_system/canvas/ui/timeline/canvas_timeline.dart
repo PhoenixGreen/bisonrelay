@@ -26,23 +26,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // canvas_timeline.dart is the strip along the bottom of the canvas: the
-// transport, the ruler and playhead, the markers and cues on it, a row of
-// keyframes, and the channels under them.
-//
-// The keyframe row shows one track at a time: a focused team player's, a
-// selected path's points, or the selected element's own. Element animation
-// is clips now (legacy tracks are converted when a canvas opens, see
-// model/motion_convert.dart), shown in the element's rows among the
-// channels; the keyframe row is for what still has a track.
+// play bar, the ruler and playhead with the markers and cues on it, and the
+// rows under them. Keyframes are edited in the Chain (keys_strip.dart).
 
 /// timelineHeight is the strip's height with no channels showing, the least
-/// it can be dragged down to. The room above it is the channels', whatever
-/// the timeline is dragged open to: see CanvasTimeline.height.
-///
-/// Added up rather than written down, and it has to add up to what is
-/// drawn: the strip's own padding comes out of the same box, and a total
-/// short of the drawing paints the marks outside the widget, where they
-/// cannot be clicked.
+/// it can be dragged down to; the room above it is the channels' (see
+/// CanvasTimeline.height). Added up, not written down: it must match what is
+/// drawn, or the marks paint outside the widget, where they cannot be
+/// clicked.
 const double timelineHeight = _transportHeight +
     _stripPadTop +
     _stripGap +
@@ -68,8 +59,7 @@ const double _transportHeight = playBarHeight;
 /// bar of their own (see CanvasTimeline.showBar): the strip.
 const double timelineRowsLeast = timelineHeight - _transportHeight - _stripGap;
 
-/// _stripPadTop is the room above the play bar, so its buttons do not sit
-/// hard against the timeline's top edge.
+/// _stripPadTop is the room above the play bar, off the timeline's top edge.
 const double _stripPadTop = 4;
 const double _stripPadBottom = 6;
 
@@ -77,8 +67,7 @@ const double _stripPadBottom = 6;
 const double _stripGap = 8;
 
 /// _stripHeight is the strip: the ruler, with its markers and cues. The
-/// keyframes are the Chain's (Ken, 2026-11-09: "I'd like keyframing done in
-/// the chain"): see keys_strip.dart.
+/// keyframes are the Chain's: see keys_strip.dart.
 const double _stripHeight = _rulerHeight + 2;
 
 /// _notesGutter is the empty band kept along the bottom of the strip, clear
@@ -119,9 +108,9 @@ const timelineHelp = [
 class CanvasTimeline extends StatefulWidget {
   final CanvasController controller;
 
-  /// height is how tall the timeline is, at least timelineHeight: whatever it
-  /// has over that is the channels', under the keyframe strip. Dragged from
-  /// its top edge, through onResize. See CanvasChannels.
+  /// height is how tall the timeline is, at least timelineHeight: whatever
+  /// it has over that is the channels'. Dragged from its top edge, through
+  /// onResize. See CanvasChannels.
   final double height;
   final ValueChanged<double>? onResize;
 
@@ -184,8 +173,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// the bar where it is drawn here.
   double get _least => widget.showBar ? timelineHeight : timelineRowsLeast;
 
-  /// _stripTop is where the keyframe strip starts, down the timeline: under
-  /// the play bar, or, with the bar below or elsewhere, at the top.
+  /// _stripTop is where the strip starts, down the timeline: under the play
+  /// bar, or, with the bar below or elsewhere, at the top.
   double get _stripTop =>
       _stripPadTop + (_barAbove ? _transportHeight + _stripGap : 0);
 
@@ -236,8 +225,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     setState(() {});
   }
 
-  /// _frameAt turns a horizontal position into a frame number of the scene
-  /// being edited.
+  /// _frameAt is the scene's frame at horizontal position [x].
   int _frameAt(double x, double width) =>
       _sceneView.frameAt(x, width, controller.document.frames);
 
@@ -264,10 +252,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     controller.frame = _frameAt(x, width);
   }
 
-  /// _runs is whether the timeline is laid along the whole run rather than
-  /// the one scene, as while Play runs every scene. The ruler and the scene
-  /// strip are then one scale, and the scene being edited is its stretch of
-  /// the run. See CanvasSceneStrip.
+  /// _runs is whether the timeline is laid along the whole run, as while Play
+  /// runs every scene: the ruler and scene strip share one scale, and the
+  /// scene edited is its stretch of the run. See CanvasSceneStrip.
   bool get _runs => controller.playAll && controller.document.hasScenes;
 
   /// _origin is where the scene being edited starts in the run, in frames:
@@ -288,14 +275,12 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       : controller.timelineReach;
 
   /// _sceneView is the view in the scene's own frames: the run's, moved back
-  /// by where the scene starts, so the keyframes, markers and channels sit
-  /// under their stretch of the ruler.
+  /// by where the scene starts, so the markers and channels sit under their
+  /// stretch of the ruler.
   TimelineView get _sceneView =>
       TimelineView(_viewNow.first - _origin, _viewNow.span);
 
-  /// _sceneGap is the room the scene strip took under the keyframes: none,
-  /// the scenes being the first of the rows now (Ken, 2026-11-08, "the scene
-  /// channel part of the timeline rather than having a divider").
+  /// _sceneGap is none: the scenes are the first of the rows.
   double get _sceneGap => 0;
 
   /// _keysRoom is the strip's height: the ruler, with its playhead, markers
@@ -340,8 +325,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   }
 
   /// _onSignal is the wheel: with Ctrl or Cmd it zooms about the pointer;
-  /// sideways, with Shift, or anywhere over the keyframe strip, it scrolls
-  /// along the frames; plainly, over the channels, it is left to them.
+  /// sideways, with Shift, or anywhere over the strip, it scrolls along the
+  /// frames; plainly, over the channels, it is left to them.
   void _onSignal(PointerSignalEvent event, double bodyWidth) {
     if (event is! PointerScrollEvent) return;
     var keys = HardwareKeyboard.instance;
@@ -350,14 +335,13 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var stripTop = _stripTop;
     var overStrip =
         local.dy >= stripTop && local.dy <= stripTop + _keysRoom + _sceneGap;
-    // Not over the play bar, the mixer or the slots, which scroll sideways
-    // themselves.
+    // Not over the play bar, the mixer or the slots: they scroll themselves.
     if (_overBar(local.dy) || _overSide(local.dx)) return;
     var delta = event.scrollDelta;
     var sideways = keys.isShiftPressed || delta.dx.abs() > delta.dy.abs();
     if (!zoom && !sideways && !overStrip) return;
-    // Scrolling along is the reader's choice (see controller.trackpadScrolls); zooming
-    // asks for a key held down, so it is never done by accident.
+    // Scrolling along is the reader's choice (controller.trackpadScrolls);
+    // zooming needs a key held, so it is never done by accident.
     if (!zoom && !controller.trackpadScrolls) return;
     var frames = _total;
     var width = _laneWidth(bodyWidth);
@@ -437,7 +421,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   }
 
   @override
-  // No hover tips on the timeline (the approved design): a "?" explains.
+  // No hover tips on the timeline: a "?" explains.
   Widget build(BuildContext context) =>
       TooltipVisibility(visible: false, child: Builder(builder: _build));
 
@@ -532,8 +516,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         // narrower, down to icons.
         if (!_collapsed)
           Positioned(
-            // On the strips' side of the line only, clear of the fade handle of a
-            // sound starting on frame one.
+            // On the strips' side of the line only, clear of the fade handle
+            // of a sound starting on frame one.
             left: 10 + controller.headerWidth - 5,
             top: _stripTop,
             bottom: _barBelow
@@ -558,7 +542,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             ),
           ),
         // The top edge is a grip: dragged up, the timeline opens room for the
-        // channels under the keyframe strip; dragged down, it closes it.
+        // channels; dragged down, it closes it.
         if (widget.onResize != null)
           Positioned(
             key: const ValueKey("timelineGrip"),
@@ -597,8 +581,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       width: _slotsW,
       decoration: BoxDecoration(
           border: Border(right: BorderSide(color: colors.outlineVariant))),
-      // Along with the slots under it: see slots_window.dart. At its end,
-      // Stop all (Ken), where it stays as the cues scroll.
+      // Along with the slots under it: see slots_window.dart. Stop all at
+      // its end stays put as the cues scroll.
       child: Row(children: [
         // The canvas shown's cues: on a scene with cues of its own, its own
         // (the master's are over its channels, in the All scenes heading).
@@ -814,11 +798,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
           right: 0,
           top: 0,
           height: _rulerHeight,
-          // Ken, 2026-11-08: no zoom buttons -- zoom with Command and the
-          // wheel, or a pinch -- and no keyframe button (keyframing is the
-          // Chain's, 2026-11-09). The framing as three small icons and the
-          // channel height as one button stepping S, M, L; inside the
-          // header's width, whatever it is, never over the ruler.
+          // No zoom buttons (zoom with Command and the wheel, or a pinch)
+          // and no keyframe button: keyframing is the Chain's. The framing
+          // as three small icons and the channel height as one button
+          // stepping S, M, L, inside the header's width, never over the ruler.
           child: ClipRect(
             child: LayoutBuilder(
                 builder: (context, box) => _corner(box.maxWidth, colors)),
@@ -848,8 +831,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
           // Less the border along the timeline's top, which comes out of the
           // same height.
           height: _keysRoom - 1 + _sceneGap,
-          // A firm line under the keyframes, so the channels scrolling up under
-          // it do not seem to vanish into the strip.
+          // A firm line under the strip, so the channels scrolling up under
+          // it do not seem to vanish into it.
           child: Container(
             foregroundDecoration: BoxDecoration(
                 border: Border(
@@ -929,8 +912,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                       size: Size(constraints.maxWidth, constraints.maxHeight),
                       painter: _TimelinePainter(
                         view: _sceneView,
-                        // Ticks along the whole of what is laid out (the run, where the
-                        // timeline runs), counted from the scene's own start.
+                        // Ticks along the whole of what is laid out (the
+                        // run, where the timeline runs), counted from the
+                        // scene's own start.
                         origin: _origin,
                         frames: _total - _origin,
                         scene: _runs ? _total - _origin : document.frames,
@@ -1043,9 +1027,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             bar,
           ],
         ]);
-        // The playhead: one line from the ruler down through every row
-        // under it, unbroken (the approved design, 2026-11-08), over the
-        // frames only. The rows draw none of their own.
+        // The playhead: one line from the ruler down through every row,
+        // unbroken, over the frames only. The rows draw none of their own.
         if (!_collapsed) {
           column = Stack(fit: StackFit.expand, children: [
             column,
@@ -1178,8 +1161,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
 /// counts.
 int rulerNumber(int frame, int origin) => frame + origin + 1;
 
-/// _TimelinePainter draws the ruler, its markers and cues, the keyframe row
-/// and the playhead.
 /// _PlayheadLine is the playhead down the whole timeline body: from the
 /// ruler through every row, over the frames right of [left], at [x] of the
 /// frames' width.
@@ -1212,6 +1193,8 @@ class _PlayheadLine extends StatelessWidget {
       );
 }
 
+/// _TimelinePainter draws the ruler, its markers and cues, the loop brace
+/// and the playhead.
 class _TimelinePainter extends CustomPainter {
   final TimelineView view;
   final int frames;
@@ -1444,8 +1427,7 @@ class _TimelinePainter extends CustomPainter {
   /// panel background.
   void _paintMarkers(Canvas canvas) {
     for (var a in actions) {
-      // In its kind's colour (the approved design): what it does, at a
-      // glance.
+      // In its kind's colour: what it does, at a glance.
       var colour = markerKindColours[a.kind]!;
       var ink = Paint()..color = colour;
       var staff = Paint()
@@ -1461,8 +1443,8 @@ class _TimelinePainter extends CustomPainter {
           ..close(),
         ink,
       );
-      // Its label beside it, always, where it has one (the approved design:
-      // "On the canvas" is whether the canvas shows it -- see MarkerNote).
+      // Its label beside it, always, where it has one ("On the canvas" is
+      // whether the canvas shows it: see MarkerNote).
       if (a.label.isNotEmpty) {
         var text = TextPainter(
           text: TextSpan(
@@ -1515,8 +1497,6 @@ class _TimelinePainter extends CustomPainter {
     }
   }
 
-  /// _paintLoop draws the loop's bar: from where it starts to where it
-  /// stops, a tick where each go round starts, and a grip at each end.
   @override
   bool shouldRepaint(_TimelinePainter old) =>
       old.bars?.toJson().toString() != bars?.toJson().toString() ||
@@ -1596,9 +1576,8 @@ class _ScrollbarPainter extends CustomPainter {
       old.view != view || old.total != total || old.colors != colors;
 }
 
-/// markerKindColours are the markers' colours by what they do, as the
-/// prototype has them: a stop red, a pause amber, a loop back green, a jump
-/// blue, a locator violet.
+/// markerKindColours are the markers' colours by what they do: a stop red,
+/// a pause amber, a loop back green, a jump blue, a locator violet.
 const Map<TimelineActionKind, Color> markerKindColours = {
   TimelineActionKind.stop: Color(0xFFE0564F),
   TimelineActionKind.pause: Color(0xFFE2B04A),

@@ -6,16 +6,13 @@ import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart'
 import 'package:flutter/material.dart';
 
 // marker_note.dart is a marker's label on the canvas while playback holds
-// at it (Ken, 2026-11-10): a stop's "Press Space to begin", a pause's "Get
-// ready", where the marker says it is shown on the canvas. See
+// at it: a stop's "Press Space to begin", a pause's "Get ready". See
 // CanvasController.holdingMarker.
 //
-// Drawn on the canvas itself, in its units, where the marker puts it
-// (TimelineAction.noteAt and noteSize): it scales with the canvas as every
-// element does, on a small screen as on a large one, and is dragged on the
-// stage to move it, or by its corner to size it (Ken: "can't be moved or
-// scaled on the canvas ... when the screen is small it covers the whole
-// screen").
+// Drawn in the canvas's own units where the marker puts it
+// (TimelineAction.noteAt and noteSize), so it scales with the canvas as
+// every element does and never swamps a small screen. Dragged on the stage
+// to move it, or by its corner to size it.
 
 /// markerNoteHeight is the note's type size at size 1, as a share of the
 /// canvas's height: 28 points on a 1080 canvas.

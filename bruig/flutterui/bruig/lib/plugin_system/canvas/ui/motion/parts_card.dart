@@ -19,13 +19,10 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart'
     show groupStarts, withCue, withStagger;
 import 'package:flutter/material.dart';
 
-// parts_card.dart is the parts of an element that come in each in their
-// own time -- a picture's layers, a drawing's shapes -- in its motion chain
-// (Ken, 2026-11-08: what the sidebar's Animation sections had, in the
-// chain). A list of them, the one picked set: when it comes in against the
-// one before it, and what it does of its own -- a shape's own arrival, a
-// layer's own loop; and for every part at once, one after another or all
-// together.
+// parts_card.dart is an element's parts that each come in their own time (a
+// picture's layers, a drawing's shapes) in its motion chain: the one picked
+// set against the one before and in what it does alone, and all at once in
+// turn or together.
 
 /// PartsCard is [element]'s parts, when it has more than one.
 class PartsCard extends StatefulWidget {
@@ -42,8 +39,7 @@ class PartsCard extends StatefulWidget {
       required this.height,
       super.key});
 
-  /// shows is whether [e] has parts of its own to time: two layers or
-  /// more, or two shapes or more.
+  /// shows is whether [e] has two layers or more, or two shapes or more.
   static bool shows(CanvasElement e) => switch (e) {
         ImageElement i => i.stack.length > 1,
         VectorElement v => vectorDrawn(v.shapes ?? const []).length > 1,
@@ -95,8 +91,7 @@ class _PartsCardState extends State<PartsCard> {
     if (!transient) c.endInteraction();
   }
 
-  /// _withCue is the element with part [at] coming in by [cue] after
-  /// [gap] frames.
+  /// _withCue is the element with part [at] coming in by [cue] after [gap].
   CanvasElement _withCue(int at, {VectorCue? cue, int? gap}) =>
       switch (widget.element) {
         ImageElement i =>
@@ -295,14 +290,13 @@ class _PartsCardState extends State<PartsCard> {
     );
   }
 
-  /// _shapeArrival is shape group [at]'s own arrival: the drawing's, or one
-  /// of its own.
+  /// _shapeArrival is shape group [at]'s arrival: the drawing's, or its own.
   List<Widget> _shapeArrival(VectorElement e, int at) {
     var starts = groupStarts(e);
     var base = at < starts.length ? starts[at] : 0;
     var shape = e.shapes![base];
     var own = shape.animation;
-    // Its family, then which of them (Ken, 2026-11-12).
+    // Its family, then which of them.
     return studioPresetPair<ElementAnimationPreset?>(
       key: "partArrival",
       familyLabel: "Arrives",

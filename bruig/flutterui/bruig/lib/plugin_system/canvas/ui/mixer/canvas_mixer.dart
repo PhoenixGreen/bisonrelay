@@ -73,15 +73,11 @@ part 'canvas_mixer_motion.dart';
 part 'canvas_mixer_buses.dart';
 part 'canvas_slots_panel.dart';
 
-// canvas_mixer.dart is the mixer panel: a column for each channel, each
-// return and the master (the columns are canvas_mixer_strips.dart), resized
-// by dragging its top edge. The same widget is the effects panel, one
-// column's chain of devices (CanvasMixer.effects), and a section of a
-// sound's settings (CanvasMixer.section).
-//
-// Everything it sets is saved with the canvas except solo, which is for
-// listening (see CanvasController.solo). What it sets is defined in
-// model/mix.dart, in terms the editor and an export both follow.
+// canvas_mixer.dart is the mixer panel: a column for each channel, return
+// and the master (see canvas_mixer_strips.dart), resized by its top edge.
+// The same widget is the effects panel (CanvasMixer.effects) and a section
+// of a sound's settings (CanvasMixer.section). All it sets is saved with the
+// canvas, except solo, and is defined in model/mix.dart.
 
 /// mixerMinHeight is the least the panel is ever given, and
 /// mixerDefaultHeight what it opens at; how short it goes with its bands as
@@ -89,13 +85,9 @@ part 'canvas_slots_panel.dart';
 const double mixerMinHeight = 56;
 
 /// mixerLeastHeight is how short the mixer goes with its bands as
-/// [controller]'s C, D and M say, each at its least (a slot of clips and its
-/// stop, a device slot, the fader at its least or the mixer minimised as a
-/// row), for the screen to stop a drag at. Short of that, the clips and the
-/// devices scroll.
-///
-/// [bare] is the mixer at its smallest (see mixerSmallest), which drops the
-/// columns' heads; by default, whether it is.
+/// [controller]'s C, D and M say, each at its least, for the screen to stop
+/// a drag at. Short of that, the clips and the devices scroll. [bare] is the
+/// mixer at its smallest (see mixerSmallest), with no column heads.
 double mixerLeastHeight(CanvasController controller, {bool? bare}) {
   bare ??= controller.mixerSmallest;
   var bands = 0.0;
@@ -151,9 +143,9 @@ class CanvasMixer extends StatefulWidget {
   final ValueChanged<double> onResize;
   final VoidCallback onClose;
 
-  /// resizable is whether it has a grip along its top to be dragged taller
-  /// by. Not where its top is pinned (the effects over the mixer with the
-  /// canvas put away, where the line between the two is the mixer's grip).
+  /// resizable is whether it has a grip along its top. Not where its top is
+  /// pinned: the effects over the mixer with the canvas put away, where the
+  /// line between the two is the mixer's grip.
   final bool resizable;
 
   /// only is the one channel to show beside the master, by key, or null for
@@ -211,7 +203,6 @@ class CanvasMixer extends StatefulWidget {
   State<CanvasMixer> createState() => _CanvasMixerState();
 }
 
-/// _master is the master strip's key where a strip's key is wanted.
 const _master = mixerMasterKey;
 
 /// _Opened is which of a strip's effects is open in place of the strips.
@@ -233,9 +224,8 @@ class _CanvasMixerState extends State<CanvasMixer>
   final ScrollController _joinScroll = ScrollController();
   late final Ticker _ticker;
 
-  /// _board is every strip's meter. It notifies as they move, and only what
-  /// shows a level listens: the desk is not built again thirty times a
-  /// second for them (Ken's systems review, 2026-11-08).
+  /// _board is every strip's meter. Only what shows a level listens to it:
+  /// the desk is not built again thirty times a second.
   final _MeterBoard _board = _MeterBoard();
 
   /// _peaks is each strip's held peak, per side, in decibels; they fall back
@@ -291,9 +281,8 @@ class _CanvasMixerState extends State<CanvasMixer>
       };
 
   /// _devices finds each device in the chain, to scroll to it, by strip and
-  /// id: "eq" on one strip is not the same card as on another, and a card
-  /// kept across strips would keep the first one's state (Ken's systems
-  /// review, 2026-11-08: the EQ went on writing to the master).
+  /// id: a card kept across strips would keep the first strip's state, and
+  /// write to it.
   final Map<String, GlobalKey> _devices = {};
   GlobalKey _deviceKey(String strip, String id) =>
       _devices["$strip|$id"] ??= GlobalKey();
@@ -337,8 +326,8 @@ class _CanvasMixerState extends State<CanvasMixer>
   Loudness? _measured;
   bool _measuring = false;
 
-  /// _clipped are the joins that have clipped, by strip and place: their
-  /// lights kept lit, as the prototype's, until cleared from a join's menu.
+  /// _clipped are the joins that have clipped, by strip and place: lit until
+  /// cleared from a join's menu.
   final Set<(String, int)> _clipped = {};
 
   @override
@@ -350,21 +339,18 @@ class _CanvasMixerState extends State<CanvasMixer>
     controller.keysHeld.addListener(_wakeIfPlaying);
   }
 
-  /// The meters move only while there is sound to show: a ticker asks for a
-  /// frame on every screen refresh, the whole window drawn each time, so it
-  /// runs while something plays and rests once the peaks have fallen. At
-  /// rest a slow check (no frames) wakes it for sound that starts without
-  /// the timeline: a key played, a preview.
+  /// The meters move only while there is sound: a ticker redraws the whole
+  /// window every refresh, so it runs while something plays and rests once
+  /// the peaks have fallen. At rest a slow check wakes it for sound that
+  /// starts without the timeline: a key played, a preview.
   Timer? _resting;
 
   void _wake() {
     _resting?.cancel();
     _resting = null;
     if (_ticker.isActive) return;
-    // A ticker's time starts again from nought each start: _last, from the
-    // run before, held every frame back until this run had lasted as long
-    // -- Ken's strip, master and panner meters standing dead while the
-    // devices' own (fresh) meters moved.
+    // A ticker's time restarts from nought: a _last kept from the run before
+    // would hold every frame back until this run had lasted as long.
     _last = Duration.zero;
     _ticker.start();
   }
@@ -384,11 +370,10 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   bool get _sounding => controller.playing || controller.sessionActive;
 
-  /// _deskChanges tells the desk to be built again: on every change the
-  /// canvas tells of but the playhead moving on, which it follows only where
-  /// a strip is automated (Ken's systems review, 2026-11-08: the whole mixer
-  /// was built at every frame of play). The meters and the slots have their
-  /// own beats (_board, _sessionPulse).
+  /// _deskChanges builds the desk again on every change the canvas tells of
+  /// but the playhead moving, which it follows only where a strip is
+  /// automated: the desk is not built at every frame of play. The meters and
+  /// the slots have their own beats (_board, _sessionPulse).
   final _MeterBoard _deskChanges = _MeterBoard();
   String _channelsWere = "";
   bool _sessionWas = false;
@@ -402,10 +387,8 @@ class _CanvasMixerState extends State<CanvasMixer>
     _deskChanges.moved();
   }
 
-  /// _wakeIfPlaying wakes the meters on any change the canvas tells of --
-  /// a key pressed, a clip launched, playing -- rather than waiting for the
-  /// slow check: Ken's channel meters stood still while he played keys. At
-  /// rest again at the next tick if nothing is heard.
+  /// _wakeIfPlaying wakes the meters on any change the canvas tells of -- a
+  /// key pressed, a clip launched -- rather than waiting for the slow check.
   void _wakeIfPlaying() => _wake();
 
   /// _floor is as quiet as a meter shows, in decibels.
@@ -526,19 +509,16 @@ class _CanvasMixerState extends State<CanvasMixer>
       ];
       _taps = taps;
     }
-    // Clips waiting for a bar blink, and playing ones go round: the slots
-    // listen for it, not the desk.
-    // And once more as the session stops: its last slots shown stopped.
-    // While the canvas plays too: a clip placed on the timeline lights its
-    // slot as it plays (see motionSlotState), with no sound slot going.
+    // Clips waiting for a bar blink and playing ones go round, while the
+    // session plays, once more as it stops, and while the canvas plays (a
+    // clip on the timeline lights its slot; see motionSlotState).
     var session = controller.sessionActive ||
         controller.playing ||
         controller.motionPlayer.playing;
     if (session || _sessionWas) _sessionPulse.moved();
     _sessionWas = session;
     if (moved && mounted) _board.moved();
-    // Nothing playing -- no slot waiting either -- and every meter down:
-    // rest.
+    // Nothing playing, no slot waiting and every meter down: rest.
     if (!moved &&
         !session &&
         !_sounding &&
@@ -560,16 +540,13 @@ class _CanvasMixerState extends State<CanvasMixer>
     });
   }
 
-  /// build zooms the desk to the reader's text size, as Ableton's zoom does.
-  ///
-  /// The strips, devices and their screens are drawn at a desk's own sizes,
-  /// and at the larger text sizes their labels ran out of them, so the desk is
-  /// laid out at the ordinary size and scaled as a whole. The faders, curves
-  /// and dials read the pointer in their own coordinates, so they stay under
-  /// it.
+  /// build zooms the desk to the reader's text size, as Ableton's zoom does:
+  /// the desk is laid out at its own sizes and scaled as a whole, so labels
+  /// fit at large text sizes. Faders, curves and dials read the pointer in
+  /// their own coordinates, so they stay under it.
   @override
-  // No hover tips in the mixer (the approved design): a "?" explains. The
-  // effects keep theirs, as does a sound's own settings.
+  // No hover tips in the mixer: a "?" explains. The effects keep theirs, as
+  // does a sound's own settings.
   Widget build(BuildContext context) {
     var built = _built ??= _build(context);
     if (widget.effects || widget.embedded) return built;
@@ -577,10 +554,9 @@ class _CanvasMixerState extends State<CanvasMixer>
   }
 
   /// _built is the desk as last built, handed back while nothing it shows
-  /// has changed: whatever holds the mixer is built again at every frame of
-  /// play, and the desk need not be with it. Let go of on a change of its
-  /// own (setState), of what it is given, or of what it inherits -- and the
-  /// desk's own beat (_deskChanges) builds it again from inside.
+  /// has changed: its holder is built at every frame of play. Dropped on its
+  /// own setState or a change in what it is given or inherits; _deskChanges
+  /// builds it again from inside.
   Widget? _built;
 
   @override
@@ -674,9 +650,8 @@ class _CanvasMixerState extends State<CanvasMixer>
           _scrollTo(controller.effectsFocus!);
           focused = true;
         }
-        // Each chain where it was left (Ken): switching channels and back,
-        // the meters he was watching are still in view -- unless a device
-        // was asked for, which is scrolled to.
+        // Each chain where it was left, so the meters being watched stay in
+        // view -- unless a device was asked for, which is scrolled to.
         var chainKey =
             editing == null ? null : "$editing|${controller.speechShown}";
         if (widget.effects && chainKey != _chainKey) {
@@ -696,17 +671,16 @@ class _CanvasMixerState extends State<CanvasMixer>
         TimelineChannel? lane;
         if (editing != null && editing != _master) {
           lane = lanes.where((l) => l.key == editing).firstOrNull;
-          // A channel gone from the timeline: the master's, in the effects panel,
-          // which always shows a chain. A return is not on the timeline and keeps
-          // its own.
+          // A channel gone from the timeline: the master's, in the effects
+          // panel, which always shows a chain. A return keeps its own.
           if (lane == null &&
               controller.returnOf(editing) == null &&
               editing != sceneBusKey) {
             editing = widget.effects ? _master : null;
           }
         }
-        // No scroll bars, on the strips or the chain: they scroll with the wheel
-        // or the trackpad, and a bar would be a stripe across the meters.
+        // No scroll bars: the wheel or trackpad scrolls, and a bar would be
+        // a stripe across the meters.
         return _SoundScene(
             speakers: controller.document.audio.speakers,
             placed: controller.placementsNow,
@@ -735,8 +709,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                       ),
                     ]),
                   ),
-                  // Its top edge, dragged: taller or shorter. The drag is in the
-                  // desk's own, zoomed, coordinates, put back into the screen's so
+                  // Its top edge, dragged to size it. The drag is in the
+                  // desk's zoomed coordinates, put back into the screen's so
                   // the edge stays with the pointer.
                   if (!widget.embedded && widget.resizable)
                     Positioned(
@@ -812,11 +786,9 @@ class _CanvasMixerState extends State<CanvasMixer>
             lanes.any((l) => narrow.contains(l.key))
                 ? sendsHeight(returns.length, narrow: true)
                 : 0.0);
-    // The elements, outside a sound's own settings and the effects; and
-    // which of the channels are theirs.
-    // The rows every panel shows (see canvas_rows.dart): each element's strip
-    // with its own sound's beside it, then the sounds that are nobody's --
-    // in the timeline's order, so a row is in the same place in both.
+    // The rows every panel shows (see canvas_rows.dart), outside a sound's
+    // settings and the effects: each element's strip with its own sound
+    // beside it, then the sounds that are nobody's, in the timeline's order.
     var canvasRows = widget.embedded || widget.effects
         ? const <CanvasRow>[]
         : canvasRowsOf(controller);
@@ -839,9 +811,8 @@ class _CanvasMixerState extends State<CanvasMixer>
           ]
         : [
             for (var r in canvasRows)
-              // The transitions' sounds are the Scenes strip's, which
-              // carries a slot for each join (decision 2), not a strip of
-              // their own.
+              // The transitions' sounds are the Scenes strip's, a slot for
+              // each join, not a strip of their own.
               if (r.element == null && !(r.transitions && _sceneShown))
                 for (var c in r.channels)
                   if (lanes.indexWhere((l) => l.key == c.key) case var i
@@ -861,7 +832,6 @@ class _CanvasMixerState extends State<CanvasMixer>
         // At its smallest: no heads, and no rail of bands.
         var bare =
             !widget.embedded && !widget.effects && controller.mixerSmallest;
-        // The column's height inside its padding and its edge.
         // Elements with strips: every column a motion half over its sound
         // half, every slot row a motion part over its sound part.
         var withMotion = rows.isNotEmpty && show != TimelineShow.sound;
@@ -872,10 +842,9 @@ class _CanvasMixerState extends State<CanvasMixer>
                 (l) => l.key == ownChannelOf(controller.document, e.id))
         };
         // What was chosen, stepped down a band at a time while it does not
-        // fit (the approved design): the devices to a line, the sends
-        // hidden, the mixer minimised -- on its side, as it always was
-        // (Ken) -- the devices hidden, and last the slots. Each stepped band
-        // is lit amber on the rail; all grow back as soon as they fit.
+        // fit: the devices to a line, the sends hidden, the mixer minimised
+        // (on its side), the devices hidden, and last the slots. Each stepped
+        // band is lit amber on the rail; all grow back as soon as they fit.
         var inner = box.maxHeight - 14;
         var fitted = Map.of(states);
         var auto = <MixerSection>{};
@@ -913,10 +882,9 @@ class _CanvasMixerState extends State<CanvasMixer>
             clipRows: controller.slotsShown,
             motion: withMotion,
             motionSlots: controller.motionSlots);
-        // The channels on the left, scrolled; the returns, the scene's bus,
-        // the master and the rail pinned on the right as wide as they are --
-        // or, where that leaves no room for a channel, scrolled themselves.
-        // The rail first, on the left (the approved design).
+        // The rail first, then the channels, scrolled; the returns, the
+        // scene's bus and the master pinned on the right as wide as they are
+        // -- or, where that leaves no room for a channel, scrolled themselves.
         var rail = widget.embedded || bare
             ? null
             : _BandRail(
@@ -988,19 +956,14 @@ class _CanvasMixerState extends State<CanvasMixer>
                         scrollDirection: Axis.horizontal,
                         children: [
                           // The elements' strips first, as the timeline has
-                          // their rows: their animation slots on the same cue
-                          // rows, and each one's own sound beside it.
-                          // One strip each (the approved design): its
-                          // motion half over its own sound's half, its motion
-                          // slots over its sound slots; with no sound of its
+                          // their rows: one strip each, its motion half and
+                          // slots over its own sound's; with no sound of its
                           // own, or the motion alone shown, its motion strip.
                           for (var e in rows)
                             if (show != TimelineShow.animation &&
                                 (ownLane[e.id] ?? -1) >= 0)
                               Padding(
                                 padding: const EdgeInsets.only(right: 8),
-                                // The element's strip, with its motion;
-                                // only the sound shown, the sound's alone.
                                 child: KeyedSubtree(
                                   key: show == TimelineShow.sound
                                       ? null
@@ -1029,7 +992,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                                   child: _channelStrip(theme, lane, i, bands),
                                 ),
                             // The All group's last, behind a tab that folds
-                            // them away, as on the timeline (Ken, 2026-11-08).
+                            // them away, as on the timeline.
                             if (loose.any((l) => everyScene.contains(l.$2.key)))
                               ...[
                               Padding(
@@ -1044,7 +1007,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                                 ),
                               ),
                               // The master's cues before its channels, on a
-                              // scene with cues of its own (Ken, 2026-11-10).
+                              // scene with cues of its own.
                               if (!controller.allFolded &&
                                   controller.cuesApart &&
                                   bands.clips != null)
@@ -1088,9 +1051,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // The returns, pinned beside the master as Ableton's are, in view
-                        // however far the channels are scrolled. Never more than half the
-                        // width; past that they scroll among themselves.
+                        // The returns, pinned beside the master as Ableton's
+                        // are. At most half the width; past that they scroll.
                         if (showReturns) ...[
                           const SizedBox(width: 8),
                           ConstrainedBox(
@@ -1122,8 +1084,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                             ),
                           ),
                         ],
-                        // The scene's bus, between what is in the scene and the master:
-                        // where there is a master's or another scene's to tell it from.
                         if (_sceneShown) ...[
                           const SizedBox(width: 8),
                           _SceneStrip(
@@ -1133,7 +1093,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                             joins: controller.document.allScenes.length < 2
                                 ? null
                                 : () => _clipColumn(
-                                    // Its own: not on the cue rows.
                                     _joinScroll,
                                     controller.document.allScenes.length - 1,
                                     (i) => _JoinSlot(
@@ -1212,8 +1171,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                           onOpenDevice: (id) =>
                               controller.openEffects(_master, device: id),
                           onRemoveDevice: (id) => _removeDevice(_master, id),
-                          // The cues are a column of their own, on the
-                          // left (Ken, 2026-11-08): see _CueColumn.
+                          // The cues are a column of their own, on the left:
+                          // see _CueColumn.
                           scenes: () => widget.embedded || widget.effects
                               ? _SceneBand(
                                   controller: controller,
@@ -1278,8 +1237,6 @@ class _CanvasMixerState extends State<CanvasMixer>
     controller.endInteraction();
   }
 
-  /// _allKeys is every column's key: channels, returns, the scene's bus,
-  /// master.
   List<String> _allKeys(
           List<TimelineChannel> lanes, List<CanvasElement> rows) =>
       [
@@ -1348,7 +1305,6 @@ class _CanvasMixerState extends State<CanvasMixer>
       onOpenComp: () => _open(lane.key, _Opened.comp),
       onOpenDuck: () => _open(lane.key, _Opened.duck),
       onOpenPanner: () => controller.openEffects(lane.key, device: "panner"),
-      // Its element's motion, where it is an element's own sound.
       motion: element == null
           ? null
           : () => _MotionHalf(
@@ -1424,7 +1380,6 @@ class _CanvasMixerState extends State<CanvasMixer>
   Widget _editor(MixerLook theme, String key, TimelineChannel? lane) {
     var master = controller.document.masterMix;
     var isMaster = key == _master;
-    // The scene's bus: a chain as a channel's is, of the scene's strip.
     var isScene = key == sceneBusKey;
     var channel = isMaster ? null : key;
     var folded = controller.foldedDevices;
@@ -1453,8 +1408,7 @@ class _CanvasMixerState extends State<CanvasMixer>
               folded: f,
               onFold: fold,
               height: h));
-      // deviceAt is device [i] of the strip's own, a listener's screen or
-      // a device of knobs.
+      // deviceAt is device [i] of the strip's own: a screen or knobs.
       Widget deviceAt(int i) => device(
           deviceKey(deviceIdAt(controller.devicesOf(key), i)),
           (f, fold) => listensOnly(controller.devicesOf(key)[i].kind)
@@ -1474,25 +1428,21 @@ class _CanvasMixerState extends State<CanvasMixer>
                   height: h));
       var ret = isMaster ? null : controller.returnOf(key);
       var skin = DeviceSkin.themed(theme.colors);
-      // The editor (a clip's, opened from its slot, or a part's piano roll)
-      // first in its channel's strip.
+      // A clip's editor or a part's piano roll, first in the strip.
       var clipHere =
           controller.clipEditorShown && controller.clipEditing?.channel == key;
       var rollHere = controller.pianoRollShown &&
           controller.pianoRoll?.row == null &&
           controller.pianoRoll?.channel == key;
-      // The Pitch editor: the channel's recording as notes, first in it.
       var pitchHere = controller.pitchShown && lane != null;
-      // The Instrument editor: how a MIDI channel's instrument plays.
       var instrumentHere = controller.instrumentShown &&
           lane != null &&
           controller.instrumentChannel(key);
       // The channel's Speech: its script, takes and voice -- what makes its
-      // clips, not a step of its chain -- as wide as the panel, as the clip
-      // editor is (Ken), not a card among the chain's others.
+      // clips, not a step of its chain -- as wide as the panel.
       var speechHere = controller.speechShown && lane != null;
-      // An editor, opened from the Chain's tabs, fills the panel as the
-      // prototype's do: the chain is then the rail under it.
+      // An editor opened from the Chain's tabs fills the panel, the chain
+      // the rail under it.
       var editorId = instrumentHere
           ? "instrument"
           : pitchHere
@@ -1507,7 +1457,6 @@ class _CanvasMixerState extends State<CanvasMixer>
       Widget? editor = switch (editorId) {
         "instrument" => InstrumentEditor(controller: controller, channel: key),
         "pitch" => PitchEditor(controller: controller, channel: key),
-        // No Speech yet: the way to start one, in the middle of the room.
         "speech" => controller.speechOf(key) == null
             ? LayoutBuilder(
                 builder: (context, box) => Center(
@@ -1553,8 +1502,8 @@ class _CanvasMixerState extends State<CanvasMixer>
               _ChainRail(controller: controller, channel: key, theme: theme),
             ]);
       }
-      // The chain's Macro, kept in its own zone at the start, as the
-      // prototype's Macros: knobs that turn other knobs.
+      // The chain's Macro, in its own zone at the start: knobs that turn
+      // other knobs.
       var macroAt = controller
           .devicesOf(key)
           .indexWhere((d) => d.kind == DeviceKind.macro);
@@ -1567,8 +1516,6 @@ class _CanvasMixerState extends State<CanvasMixer>
           else
             _MacrosStart(controller: controller, owner: key, height: h),
         ],
-        // A return's and the master's Source: what comes into them, as the
-        // prototype's From sends and Every channel.
         if (isMaster || (ret != null && lane == null)) ...[
           chainZone("Source", const Color(0xFF3FB08D), h),
           device(
@@ -1582,8 +1529,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h))),
         ],
-        // A scene's bus: everything heard in it, summed -- its Source, as
-        // the prototype has it.
         if (isScene) ...[
           chainZone("Source", _sceneColour, h),
           device(
@@ -1596,8 +1541,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h))),
         ],
-        // An audio channel's sounds -- on the timeline and in its slots --
-        // before anything is done to them.
+        // An audio channel's sounds, before anything is done to them.
         if (lane != null &&
             !lane.video &&
             !controller.instrumentChannel(key)) ...[
@@ -1626,10 +1570,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h,
                   skin: skin)),
-          // Between each two of its note devices, the notes passing as dots,
-          // as the prototype's joins on a MIDI chain: the effects before
-          // each done to them.
-          // The notes as they come, before MIDI In picks what it hears.
+          // A join between each two note devices shows the notes passing as
+          // dots. First, the notes as they come, before MIDI In.
           NoteJoin(
               controller: controller,
               channel: key,
@@ -1666,7 +1608,6 @@ class _CanvasMixerState extends State<CanvasMixer>
               controller: controller,
               channel: key,
               height: h),
-          // Then the instrument, playing them.
           chainZone("Generator", midiColour, h),
           device(
               "instrumentCard",
@@ -1678,9 +1619,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                   height: h,
                   skin: skin)),
         ],
-        // A voice channel's generator: Speech, chosen for it from the Add
-        // menu's Generators, as a MIDI channel's Instrument is its own. Its
-        // script and takes are the Speech tab's.
+        // A voice channel's generator: Speech, chosen from the Add menu's
+        // Generators. Its script and takes are the Speech tab's.
         if (lane != null && controller.speechOf(key) != null) ...[
           chainZone("Generator", voiceColour, h),
           device(
@@ -1693,12 +1633,9 @@ class _CanvasMixerState extends State<CanvasMixer>
                   height: h,
                   skin: skin)),
         ],
-        // A channel's, a return's, the scene bus's and the master's chain in
-        // the order it runs, its EQ and compressor among its devices
-        // wherever they were put, a join between each two; then a way to add
-        // another.
-        // Turned down by a voice: the Ducker first, as the dips are made to
-        // the channel's sounds as they come in.
+        // The chain in the order it runs, a join between each two devices,
+        // then a way to add another. A Ducker comes first: the dips are made
+        // to the channel's sounds as they come in.
         if (lane != null &&
             controller.duckersOf(key).isNotEmpty &&
             !controller.partRemoved(key, stripDucked))
@@ -1717,8 +1654,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                   : "Effects",
               const Color(0xFF4F8FD6),
               h),
-          // A voice's Vocaliser, first of its effects: added from the "+"
-          // when it is wanted, not opened with the Speech.
           if (lane != null && controller.vocaliserOf(key) != null)
             device(
                 "vocaliser",
@@ -1738,8 +1673,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                   owner: key,
                   height: h),
             // A part of the strip taken out is not shown, nor its meter.
-            // The master and the scene bus are measured between their
-            // devices as a channel is.
             if (!controller.partRemoved(key, step)) _junction(i, h, theme, key),
             if (controller.partRemoved(key, step))
               const SizedBox.shrink()
@@ -1790,7 +1723,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                     onFold: fold,
                     height: h,
                   )),
-          // Where it is heard: the speakers, each one's level.
           device(
               "output",
               (f, fold) => _metered(() => _MasterOutputDevice(
@@ -1841,8 +1773,6 @@ class _CanvasMixerState extends State<CanvasMixer>
           }),
         if (lane != null)
           device("meter",
-              // The channel's own strip, as on the mixer (panning, mute and solo,
-              // fader and meter), under its name.
               (f, fold) {
             var meter = _Meter(_board, key);
             var mix = lane.mix;
@@ -1856,7 +1786,6 @@ class _CanvasMixerState extends State<CanvasMixer>
             void set(double db, {bool transient = false}) =>
                 write(mix.copyWith(gainDb: db), transient: transient);
 
-            // Where it goes: the master, or the bus it is routed into.
             var to = mix.output.isEmpty
                 ? "Master"
                 : controller.document.returns
@@ -1872,7 +1801,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                 color: theme.studio.text);
             return DeviceFrame(
               id: "meter",
-              // The prototype's Output: where the chain leaves the channel.
               title: "Output",
               skin: skin,
               icon: Icons.speaker,
@@ -1943,7 +1871,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                           fontSize: 11,
                           fontFeatures: const [FontFeature.tabularFigures()],
                           color: theme.colors.onSurface)),
-                  // Its sends, a knob each, as the prototype's Send A.
                   if (returns.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
@@ -2009,7 +1936,6 @@ class _CanvasMixerState extends State<CanvasMixer>
               ),
             );
           }),
-        // A bus's chain ends at its Output too: a scene's, a return's.
         if (isScene || (ret != null && lane == null)) ...[
           if (isScene) chainZone("Output", const Color(0xFFCFCBDF), h),
           device("busOutput", (f, fold) {
@@ -2037,8 +1963,8 @@ class _CanvasMixerState extends State<CanvasMixer>
             ));
           }),
         ],
-        // The master's own meter, on the master's chain only: a channel's
-        // or a bus's chain ends at its Output (Ken, 2026-11-08).
+        // The master's own meter, on its chain only: other chains end at
+        // their Output.
         if (isMaster)
           device(
               "masterMeter",
@@ -2051,10 +1977,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h)),
       ];
-      // The devices' own lists still scroll; only the chain itself is not
-      // dragged.
       var inside = ScrollConfiguration.of(context);
-      // Held to the left, not centred, when narrower than the panel.
       return Align(
         alignment: Alignment.topLeft,
         // By the wheel and the trackpad, not by a drag: a drag in a device (a
@@ -2068,9 +1991,9 @@ class _CanvasMixerState extends State<CanvasMixer>
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Each wrapper keyed as its device is: matched by place, a device put in
-              // ahead (the clip editor opened) would move every one after it to
-              // another wrapper, and a showing tooltip moved that way asserts.
+              // Each wrapper keyed as its device: matched by place, a device
+              // put in ahead would move the rest to other wrappers, and a
+              // showing tooltip moved that way asserts.
               for (var (i, d) in chain.indexed) ...[
                 if (i > 0) const SizedBox(width: 4),
                 ScrollConfiguration(
@@ -2085,10 +2008,9 @@ class _CanvasMixerState extends State<CanvasMixer>
     });
   }
 
-  /// _roomForAll is whether an editor [box] wide has room for every column
-  /// of its settings -- three, 690 together -- and what it edits beside
-  /// them. At the desk's own size: the desk is zoomed as a whole for the
-  /// text's (see build).
+  /// _roomForAll is whether an editor [box] wide has room for all three
+  /// columns of its settings (690 together) and what it edits, at the desk's
+  /// own size (see build).
   static bool _roomForAll(BoxConstraints box) => box.maxWidth >= 690 + 480;
 
   final ScrollController _chainScroll = ScrollController();
@@ -2101,9 +2023,6 @@ class _CanvasMixerState extends State<CanvasMixer>
 
 typedef _MixWrite<T> = void Function(T next, {bool transient});
 
-// ---------------------------------------------------------------------------
-// Pieces of a strip
-// ---------------------------------------------------------------------------
 
 /// _faderTop and _faderBottom are the fader's travel, in decibels. The
 /// bottom is silence.
@@ -2153,10 +2072,9 @@ class DbReading extends StatefulWidget {
   final ValueChanged<double> onSet;
   final TextStyle style;
 
-  /// textKey is on the reading itself, so a test can find it by its old name.
+  /// textKey is on the reading itself, for tests.
   final Key? textKey;
 
-  /// fieldHeight is how tall the box for typing is, to fit where it is.
   final double fieldHeight;
 
   /// unit follows the number: " dB" under a fader, nothing where there is
@@ -2256,9 +2174,8 @@ class _Fader extends StatelessWidget {
   final VoidCallback onCommit;
   final bool wide;
 
-  /// small is a mixer strip's: half the size of the effects' own. [labels] is
-  /// whether its scale is numbered (not in a narrow strip, which has room for
-  /// the marks alone).
+  /// small is a mixer strip's, half the effects' size. [labels] numbers its
+  /// scale (not in a narrow strip).
   final bool small;
   final bool labels;
 
@@ -2280,9 +2197,8 @@ class _Fader extends StatelessWidget {
           void at(double y) =>
               onChanged(faderDb(((y - 6) / (h - 12)).clamp(0.0, 1.0)),
                   transient: true);
-          // A strip's: one well (the approved design, Ken 2026-11-09) -- the
-          // meter inside it, the cap riding over it, and on a wide strip
-          // the decibels beside it.
+          // A strip's: one well, the meter inside it, the cap riding over it
+          // and on a wide strip the decibels beside it.
           if (small) {
             var width = labels ? _wellWideW : _wellNarrowW;
             return Center(
@@ -2305,7 +2221,6 @@ class _Fader extends StatelessWidget {
                           child: CustomPaint(
                               painter: _WellScale(theme.studio, width / 2)),
                         ),
-                      // The meter's well, in the middle.
                       Positioned(
                         left: width / 2 - _wellMeterW / 2,
                         width: _wellMeterW,
@@ -2465,11 +2380,9 @@ class _FaderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Half size: the cap, the marks and the numbers all halved.
     var k = small ? 0.5 : 1.0;
     var slotX = size.width - (small ? 7 : 13);
     double yOf(double d) => 6 + faderPosition(d) * (size.height - 12);
-    // The scale, left of the slot.
     for (var m in _marks) {
       var y = yOf(m);
       var unity = m == 0;
@@ -2493,7 +2406,6 @@ class _FaderPainter extends CustomPainter {
                 slotX - (small ? 9 : 14) - label.width, y - label.height / 2));
       }
     }
-    // The slot, and the part of it under the cap lit.
     var slot = RRect.fromLTRBR(
         slotX - 2, 6, slotX + 2, size.height - 6, const Radius.circular(2));
     canvas.drawRRect(slot, Paint()..color = colors.inset);
@@ -2502,7 +2414,6 @@ class _FaderPainter extends CustomPainter {
         RRect.fromLTRBR(slotX - 1.5, y, slotX + 1.5, size.height - 6,
             const Radius.circular(1.5)),
         Paint()..color = colors.on.withValues(alpha: 0.55));
-    // The cap: metal, ridged, with its line.
     var cap = Rect.fromCenter(
         center: Offset(slotX, y),
         width: 22 * k + (small ? 1 : 0),
@@ -2587,7 +2498,6 @@ class _Junction extends StatelessWidget {
   /// lights were cleared.
   bool get clipped => latched || peak.$1 >= 0 || peak.$2 >= 0;
 
-  /// reading is its level and the peak held, in decibels.
   String get reading =>
       "${level.$1 <= -80 ? "−∞" : level.$1.toStringAsFixed(1)} dB · hold "
       "${peak.$1 <= -80 ? "−∞" : peak.$1.toStringAsFixed(1)}";
@@ -2643,8 +2553,8 @@ class _Junction extends StatelessWidget {
                           border: Border.all(
                               color: const Color(0xFFE2B04A), width: 1.5))
                       : null,
-                  // Its clip light over it and the peak held under it, as
-                  // the prototype's joins: lit red once it reaches 0 dB.
+                  // Its clip light over it, lit red at 0 dB, and the peak
+                  // held under it.
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Container(
                       key: ValueKey("junctionClip-$index"),
@@ -2709,8 +2619,7 @@ class _MeterPainter extends CustomPainter {
   /// inset is the room above and below its bars: none in a fader's well.
   final double inset;
 
-  /// Painted again as [meter]'s board moves, without the widget it is in
-  /// being built again.
+  /// Repainted as [meter]'s board moves, without a rebuild.
   _MeterPainter(this.meter, this.colors,
       {this.horizontal = false, this.inset = 6})
       : super(repaint: meter.board);
@@ -2718,9 +2627,8 @@ class _MeterPainter extends CustomPainter {
   (double, double) get level => meter.level;
   (double, double) get peak => meter.peak;
 
-  /// _fill is how far a meter is lit: it reads from minus sixty to nought, in
-  /// segments, green, then amber for the last nine decibels, then red at the
-  /// top.
+  /// _fill is how far a meter is lit, minus sixty to nought: green, amber
+  /// for the last nine decibels, then red.
   double _fill(double db) => ((db + 60) / 60).clamp(0.0, 1.0);
 
   @override
@@ -2788,8 +2696,7 @@ class _MeterBoard extends ChangeNotifier {
   void moved() => notifyListeners();
 }
 
-/// _sessionPulse beats while the session plays: a slot waiting for its bar
-/// blinks on it, and a playing one's ring goes round.
+/// _sessionPulse beats while the session plays, for slots waiting or playing.
 final _MeterBoard _sessionPulse = _MeterBoard();
 
 /// _Meter is one meter: strip [key]'s on [board], read as it is painted --
@@ -2899,12 +2806,12 @@ Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
 class _Toggle extends StatelessWidget {
   final String label;
 
-  /// icon, given, is drawn rather than [label]: the scene's on/off switch.
+  /// icon, given, is drawn rather than [label].
   final IconData? icon;
   final bool on;
   final Color onColor;
 
-  /// onInk is what the label is drawn in while it is on: white if not said.
+  /// onInk is the label's colour while it is on; white by default.
   final Color? onInk;
   final double height;
   final double fontSize;
@@ -3110,8 +3017,7 @@ class _PanControl extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Each shrinks rather than runs out of a narrow strip. Placed says
-                // so; otherwise the reading (Front, or an angle) says what it is.
+                // Each shrinks rather than runs out of a narrow strip.
                 if (placed != null)
                   fit(Text("Placed", style: small), Alignment.centerLeft),
                 fit(
@@ -3163,9 +3069,8 @@ class _PanControl extends StatelessWidget {
   }
 }
 
-/// _ChainRail is the chain under an open editor, as the prototype has it:
-/// "Chain" back to it, then each step as a chip -- its colour and its name
-/// -- pressed, the chain again, on that step.
+/// _ChainRail is the chain under an open editor: "Chain" back to it, then a
+/// chip per step, pressed to open the chain on that step.
 class _ChainRail extends StatelessWidget {
   final CanvasController controller;
   final String channel;
@@ -3269,10 +3174,8 @@ class _ChainRail extends StatelessWidget {
   }
 }
 
-/// chainZone marks where a part of a chain begins, as the prototype does:
-/// its name up the side, a line of [colour] beside it.
 /// _MacrosStart is the Macros zone of a chain with no Macro yet: a narrow
-/// dashed "+" (Ken: narrow while unused), adding one at once.
+/// dashed "+" that adds one.
 class _MacrosStart extends StatelessWidget {
   final CanvasController controller;
   final String owner;
@@ -3297,6 +3200,8 @@ class _MacrosStart extends StatelessWidget {
       );
 }
 
+/// chainZone marks where a part of a chain begins: its name up the side, a
+/// line of [colour] beside it.
 Widget chainZone(String label, Color colour, double height) => Builder(
       builder: (context) {
         var look = MixerLook.of(context);
@@ -3355,7 +3260,6 @@ class _PinnedRight extends MultiChildLayoutDelegate {
 class _MasterOutputDevice extends StatelessWidget {
   final CanvasController controller;
 
-  /// levels are each speaker's level now, in decibels.
   final List<double> levels;
   final MixerLook theme;
   final DeviceSkin skin;
@@ -3418,8 +3322,7 @@ class _MasterOutputDevice extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          // The master's Out, and how loud it is now, as the prototype's
-          // Output: the fader at the end of everything.
+          // The master's Out and its level: the fader at the end.
           Row(children: [
             DeviceKnob(
               key: const ValueKey("outputOut"),
@@ -3679,8 +3582,8 @@ class _PannerDevice extends StatelessWidget {
         ),
       );
       if (placed == null) {
-        // Set by a press and a drag only: a wheel or a trackpad's scroll
-        // over it scrolls the chain (Ken). Its width is the Width number's.
+        // Set by a press and a drag only: a wheel or trackpad scroll over it
+        // scrolls the chain. Its width is the Width number's.
         view = GestureDetector(
           supportedDevices: dragPointers,
           onPanStart: (d) => point(d.localPosition, room),
@@ -3714,7 +3617,6 @@ class _PannerDevice extends StatelessWidget {
           ),
         );
 
-    // The readings, along the foot of the room.
     var bar = SizedBox(
       height: 24,
       child: Row(children: [
@@ -3897,7 +3799,6 @@ class _BigRoomPainter extends CustomPainter {
       p.paint(canvas, centre - Offset(p.width / 2, p.height / 2));
     }
 
-    // The room.
     canvas.drawRRect(
         RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(8)),
         Paint()..color = studio.display);
@@ -3919,7 +3820,6 @@ class _BigRoomPainter extends CustomPainter {
             color: studio.displayLine.withValues(alpha: 0.7)));
     front.paint(canvas, const Offset(8, 6));
 
-    // The speakers, each lit by how much of the channel it carries.
     for (var (i, (name, deg)) in layout.speakers.indexed) {
       var lit = i < lights.length ? lights[i] : 0.0;
       if (deg == null) {
@@ -3949,7 +3849,6 @@ class _BigRoomPainter extends CustomPainter {
       label(name, p, lit > 0.5 ? studio.onOn : studio.text, 9);
     }
 
-    // The listener, facing the front.
     canvas.drawCircle(c, 9, Paint()..color = studio.raised);
     canvas.drawPath(
         Path()
@@ -3986,7 +3885,6 @@ class _BigRoomPainter extends CustomPainter {
     }
     var pan = mix.surround;
     if (pan == null) {
-      // The front pair, as it was mixed.
       canvas.drawCircle(at(-30, 0.7), 6, dot);
       canvas.drawCircle(at(30, 0.7), 6, dot);
       return;
@@ -4002,7 +3900,6 @@ class _BigRoomPainter extends CustomPainter {
             ..strokeWidth = 5
             ..strokeCap = StrokeCap.round
             ..color = studio.on.withValues(alpha: 0.5));
-      // Its two sides, at the ends.
       for (var side in [-1, 1]) {
         canvas.drawCircle(at(pan.angle + side * pan.width / 2, 0.7), 4,
             Paint()..color = studio.text);
@@ -4031,7 +3928,6 @@ class _DragNumber extends StatelessWidget {
   final VoidCallback onCommit;
   final VoidCallback onReset;
 
-  /// height is the box's; the strips' are small.
   final double height;
 
   const _DragNumber({
@@ -4150,7 +4046,6 @@ class _RoomPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..color = studio.edge);
-    // The listener, facing the front.
     canvas.drawCircle(c, 2.5, Paint()..color = studio.muted);
     for (var (_, deg) in speakers.speakers) {
       if (deg == null) continue;
@@ -4165,7 +4060,6 @@ class _RoomPainter extends CustomPainter {
     }
     var p = pan;
     if (p == null) {
-      // The front pair, as it was mixed.
       canvas.drawCircle(at(-30, r * 0.75), 3, lit);
       canvas.drawCircle(at(30, r * 0.75), 3, lit);
       return;
@@ -4224,9 +4118,6 @@ class _KnobPainter extends CustomPainter {
   bool shouldRepaint(_KnobPainter old) => old.value != value;
 }
 
-// ---------------------------------------------------------------------------
-// The ducking and loudness editors
-// ---------------------------------------------------------------------------
 
 /// _Sends is a channel's sends: a dial for each return, by its letter,
 /// dragged up for more, double-clicked for none.
@@ -4385,7 +4276,6 @@ class _ArcKnob extends CustomPainter {
   bool shouldRepaint(_ArcKnob old) => old.value != value;
 }
 
-/// _AddReturn is the button after the returns that adds another.
 class _AddReturn extends StatelessWidget {
   final MixerLook theme;
   final VoidCallback onAdd;
@@ -4424,9 +4314,8 @@ class _AddReturn extends StatelessWidget {
 }
 
 /// _motionDeviceSlots are [e]'s motion devices as slots in its strip's
-/// devices band, before its sound's (the approved design): its Instances
-/// first, where it is reused, then its chain in order, each marked teal.
-/// Clicked, the Chain opens on its motion.
+/// devices band, before its sound's: its Instances first, where it is
+/// reused, then its chain, each marked teal. Clicked, the Chain opens.
 List<Widget> _motionDeviceSlots(
     CanvasController controller, MixerLook theme, CanvasElement e) {
   var m = e.base.motion;
@@ -4451,6 +4340,5 @@ List<Widget> _motionDeviceSlots(
   ];
 }
 
-/// _transitionsSaid is how many joins the scenes have, said.
 String _transitionsSaid(int n) =>
     n <= 0 ? "no transitions" : "$n transition${n == 1 ? "" : "s"}";

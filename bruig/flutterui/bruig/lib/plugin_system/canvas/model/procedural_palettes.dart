@@ -3,8 +3,8 @@ import 'dart:ui';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
-// procedural_palettes.dart is sets of colours a background can be given in
-// one go: the base, its fade, the main colour and the accent chosen together.
+// procedural_palettes.dart is sets of colours a background takes in one
+// go: base, its fade, main colour and accent.
 
 /// BackgroundPalette is a base colour, what it fades to, and the pattern's
 /// two colours.
@@ -12,8 +12,7 @@ class BackgroundPalette {
   final String name;
   final Color base;
 
-  /// baseTo is what the base fades to, top to bottom, or null for a flat
-  /// one.
+  /// baseTo is what the base fades to, top to bottom, or null for flat.
   final Color? baseTo;
   final Color main;
   final Color accent;
@@ -21,10 +20,10 @@ class BackgroundPalette {
   const BackgroundPalette(this.name, this.base, this.main, this.accent,
       {this.baseTo});
 
-  /// colours is the four in order, for drawing a swatch of it.
+  /// colours is the four in order, for a swatch.
   List<Color> get colours => [base, if (baseTo != null) baseTo!, main, accent];
 
-  /// on is [spec] in these colours, and nothing else about it changed.
+  /// on is [spec] in these colours, otherwise unchanged.
   ProceduralSpec on(ProceduralSpec spec) => spec.copyWith(
         background: base,
         gradient: baseTo == null ? null : GradientSpec(to: baseTo!),
@@ -35,7 +34,6 @@ class BackgroundPalette {
         flatAccent: true,
       );
 
-  /// matches is whether [spec] is in these colours already.
   bool matches(ProceduralSpec spec) =>
       spec.background == base &&
       spec.foreground == main &&
@@ -96,7 +94,6 @@ const List<BackgroundPalette> backgroundPalettes = [
       baseTo: Color(0xFFE9EFF6)),
 ];
 
-/// paletteNamed is the palette called [name], or null.
 BackgroundPalette? paletteNamed(String name) {
   for (var p in backgroundPalettes) {
     if (p.name == name) return p;

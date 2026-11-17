@@ -4,20 +4,17 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// elements_panel.dart is what can be put on a canvas: a grid of chips. A chip
-// is clicked to add one in the middle of the page, or dragged to add it where
-// it is dropped.
+// elements_panel.dart is what can be put on a canvas: a grid of chips, each
+// clicked to add one mid-page, or dragged to add it where it is dropped.
 
-/// _addable is which kinds the panel offers, in the order it shows them:
-/// most wanted first, not enum order.
+/// _addable is the kinds offered, most wanted first, not enum order.
 const List<ElementKind> _addable = [
   ElementKind.text,
   ElementKind.shape,
   ElementKind.image,
   ElementKind.vector,
   ElementKind.line,
-  // The Data element: a sheet shown as a table, switched to a chart in its
-  // quick settings (Ken, 2026-11-15: Table and Chart made one).
+  // The Data element: a sheet as a table, switched to a chart in settings.
   ElementKind.table,
   ElementKind.button,
   ElementKind.counter,
@@ -35,7 +32,7 @@ const List<ElementKind> _addable = [
   ElementKind.sprite,
   ElementKind.tileMap,
   ElementKind.camera,
-  // No 3D stage: it is a background kind now (BackdropKind).
+  // No 3D stage: that is a background kind (BackdropKind).
 ];
 
 IconData iconForKind(ElementKind kind) => switch (kind) {
@@ -83,13 +80,11 @@ class CanvasElementsPanel extends StatelessWidget {
             children: [
               for (var kind in _addable) ...[
                 _AddChip(controller, kind),
-                // An instrument is an Audio element playing a part, so it sits after
-                // the speaker.
+                // An instrument is an Audio element, after the speaker.
                 if (kind == ElementKind.audio) _AddInstrument(controller),
                 // A synth of modules to patch, after the instruments.
                 if (kind == ElementKind.audio) _AddSynth(controller),
-                // A Code panel and the Run panel that runs it, from an
-                // example, after the metronome.
+                // A Code panel and its Run panel, after the metronome.
                 if (kind == ElementKind.metronome) _AddCode(controller),
               ],
             ],
@@ -109,8 +104,7 @@ class _AddChip extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var body = Container(
       width: 76,
-      // At least this tall, and taller with the app's text larger: a name
-      // over two lines ran out of a fixed 62.
+      // At least this tall, taller with larger text, so two lines fit.
       constraints: const BoxConstraints(minHeight: 62),
       padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
@@ -136,16 +130,15 @@ class _AddChip extends StatelessWidget {
     // No hover text: the chip's own icon and name say what it adds.
     return Draggable<ElementKind>(
       data: kind,
-      // The same chip under the pointer, faded, so it is clear what is
-      // being carried.
+      // The same chip under the pointer, faded, to show what is carried.
       feedback: Material(
         color: Colors.transparent,
         child: Opacity(opacity: 0.8, child: body),
       ),
       childWhenDragging: Opacity(opacity: 0.35, child: body),
       child: Material(
-        // Its own Material inside the list: the sidebar's let the highlight
-        // spill over other sections and stay put when the list scrolled.
+        // Its own Material inside the list: the sidebar's would let the
+        // highlight spill over other sections and stay put on scroll.
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
@@ -158,8 +151,7 @@ class _AddChip extends StatelessWidget {
   }
 }
 
-/// _AddInstrument is the chip that adds an instrument: a keyboard to play,
-/// and a part on the timeline.
+/// _AddInstrument adds an instrument: keys to play, a part on the timeline.
 class _AddInstrument extends StatelessWidget {
   final CanvasController controller;
   const _AddInstrument(this.controller);
@@ -200,8 +192,8 @@ class _AddInstrument extends StatelessWidget {
   }
 }
 
-/// _AddSynth is the chip that puts down a synth: the prototype's rack of
-/// modules, ready to patch, its speaker on a channel of its own.
+/// _AddSynth is the chip that puts down a synth: a rack of modules, ready
+/// to patch, its speaker on a channel of its own.
 class _AddSynth extends StatelessWidget {
   final CanvasController controller;
   const _AddSynth(this.controller);
@@ -243,9 +235,8 @@ class _AddSynth extends StatelessWidget {
 }
 
 
-/// _AddCode is the chip that puts down a Code panel -- an empty web page,
-/// its kind chosen in its settings and its examples among its presets --
-/// and the Run panel beside it that runs it.
+/// _AddCode is the chip that puts down a Code panel (an empty web page, kind
+/// and examples in its settings) and the Run panel beside it that runs it.
 class _AddCode extends StatelessWidget {
   final CanvasController controller;
   const _AddCode(this.controller);

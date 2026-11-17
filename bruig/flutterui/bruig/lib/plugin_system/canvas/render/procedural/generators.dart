@@ -22,36 +22,20 @@ part 'metals.dart';
 part 'surfaces.dart';
 part 'tech.dart';
 
-// generators.dart draws every procedural background.
-//
-// One function per style, each a pure function of (rect, spec, time) with no
-// state and no Random(), so a background is the same picture everywhere (see
-// noise.dart).
-//
-// Every style interprets the same five shared controls:
-//
-//   density    how much of the frame it fills, 0 to 1
-//   scale      the size of its repeating unit, as a fraction of the short side
-//   intensity  how bright the brightest parts get
-//   variation  how much it differs from itself
-//   seed       which version of it this is
-//
-// so the sliders and shuffle work without the settings bar knowing the style.
-// Each generator should make all five do something wherever it can.
+// generators.dart draws every procedural background: one pure function of
+// (rect, spec, time) per style, with no state and no Random(), so a
+// background is the same picture everywhere (see noise.dart). Every style
+// reads the same five controls (density: how much it fills; scale: its unit,
+// of the short side; intensity; variation; seed), so the sliders and shuffle
+// work without the settings bar knowing the style.
 
-/// proceduralPass is one turn of a pattern's own clock, in seconds.
-///
-/// One number for every style, since most (rain, flow) have no natural
-/// cycle. It is one ring's life, the one style that does.
+/// proceduralPass is one turn of a pattern's own clock, in seconds: one
+/// ring's life, and the pass of every style with no natural cycle.
 const double proceduralPass = 1 / 0.15;
 
 /// proceduralRunSeconds is how long a complete run of [spec] takes in the
-/// pattern's own time: from the first thing happening to the last thing
-/// being over.
-///
-/// For rings that is until the last ring has dissolved: it is born nearly a
-/// life after the first, so the run is close to two lives, whether or not
-/// the set builds up. Other styles run for one [proceduralPass].
+/// pattern's own time. For rings that is until the last ring has dissolved,
+/// close to two lives; other styles run for one [proceduralPass].
 double proceduralRunSeconds(ProceduralSpec spec) {
   if (spec.style != ProceduralStyle.rings) return proceduralPass;
   var many = spec.rings.count.clamp(1, 200);
@@ -59,12 +43,10 @@ double proceduralRunSeconds(ProceduralSpec spec) {
   return proceduralPass * (1 + last);
 }
 
-/// pausedFrame is the frame the pattern is showing, given the document's
-/// [frame] and the spec's rest (pauseAt, pauseFor, pauseEase).
-///
-/// The pattern's clock stops while the document's goes on, so nothing is
-/// skipped or repeated after the rest. Each ease covers half the ground it
-/// would have at full speed (the integral of a smooth step).
+/// pausedFrame is the frame the pattern shows at the document's [frame],
+/// given the spec's rest (pauseAt, pauseFor, pauseEase). The pattern's clock
+/// stops while the document's goes on, so nothing is skipped or repeated;
+/// each ease covers half the ground of full speed.
 double pausedFrame(double frame, ProceduralSpec spec) {
   var hold = spec.pauseFor.toDouble();
   if (hold <= 0) return frame;
@@ -94,14 +76,11 @@ double pausedFrame(double frame, ProceduralSpec spec) {
   return frame - hold - ease;
 }
 
-/// latticeDetail is how many lattice points per pixel the lit surfaces
-/// (metal and materials) use: 1 for the canvas and export, less for a
-/// thumbnail, which is a big frame drawn shrunk.
+/// latticeDetail is lattice points per pixel for the lit surfaces (metal,
+/// materials): 1 for canvas and export, less for a thumbnail drawn shrunk.
 double latticeDetail = 1;
 
-/// paintProcedural draws [spec] into [rect].
-///
-/// [time] is in seconds; zero is a still.
+/// paintProcedural draws [spec] into [rect] at [time] seconds; 0 is a still.
 void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     {double time = 0, double frameRate = 0, CanvasImageSource? images}) {
   if (rect.width <= 0 || rect.height <= 0) return;
@@ -109,10 +88,9 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     return _paintOnce(canvas, rect, input, time, frameRate, images);
   }
 
-  // A seamless loop. Few movements return to where they began, so over the
-  // last part of the loop the picture from one loop earlier is faded in; at
-  // the end it is all that earlier picture, which runs straight into frame
-  // one. The whole background is drawn twice, so layers and grain loop too.
+  // A seamless loop: over its last part the picture from one loop earlier
+  // fades in, so the end runs straight into frame one. The whole background
+  // is drawn twice, so layers and grain loop too.
   var rate = frameRate > 0 ? frameRate : 30.0;
   var length = input.loopFrames / rate;
   var at = time % length;
@@ -134,21 +112,18 @@ void _paintOnce(ui.Canvas canvas, Rect rect, ProceduralSpec input, double time,
   var spec = input;
   var fx = spec.effects;
 
-  // The grade covers base, pattern, light and lens, but not the grain (the
-  // film, not the scene).
+  // The grade covers all but the grain (the film, not the scene).
   if (fx.grades) {
     canvas.saveLayer(rect, Paint()..colorFilter = gradeFilter(fx));
   }
 
-  // The clip keeps the overspill of a turned pattern (see _patternLayer)
-  // off the canvas.
+  // The clip keeps a turned pattern's overspill off the canvas.
   canvas.save();
   canvas.clipRect(rect);
 
   _paintBase(canvas, rect, spec);
 
-  // A rest, taken first so speed and pass length are measured in the
-  // pattern's own time rather than the document's.
+  // A rest, first, so speed and pass length are in the pattern's own time.
   var moment = time;
   if (spec.animated && spec.pauseFor > 0 && frameRate > 0) {
     moment = pausedFrame(time * frameRate, spec) / frameRate;
@@ -170,9 +145,8 @@ void _paintOnce(ui.Canvas canvas, Rect rect, ProceduralSpec input, double time,
     // Held at the end after the last run and through each gap.
     var within = done ? frames : at - round * cycle;
     var through = within / frames;
-    // A whole life past the end, not exactly on it: roughened spacing can
-    // leave a ring at the last instant of its life, which with a hard edge
-    // is a ring at full strength held for the rest of the canvas.
+    // A life past the end: roughened spacing can leave a ring at the last
+    // instant of its life, held at full strength for the rest of the canvas.
     t = through >= 1 ? run + proceduralPass : through * run;
     if (done) round = spec.loopTimes - 1;
   } else if (spec.animated) {
@@ -201,8 +175,7 @@ void _paintOnce(ui.Canvas canvas, Rect rect, ProceduralSpec input, double time,
 
   canvas.restore();
 
-  // The light is part of the scene; the vignette is the lens, so it goes
-  // after.
+  // The light is part of the scene; the vignette is the lens, so after it.
   if (spec.light.on) paintLight(canvas, rect, spec.light);
 
   if (spec.vignette > 0) _vignette(canvas, rect, spec.vignette);
@@ -220,8 +193,7 @@ void _paintOnce(ui.Canvas canvas, Rect rect, ProceduralSpec input, double time,
 }
 
 /// _patternLayer draws [spec]'s pattern, turned, faded and finished by its
-/// own effects, over what is on [canvas] at time [t]. Called for the
-/// background's pattern and for each layer.
+/// own effects, at [t]: for the background's pattern and for each layer.
 void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
     int round, CanvasImageSource? images) {
   var fx = spec.effects;
@@ -229,13 +201,11 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
   // The size as set, before any allowance for a turn. See the pitch below.
   var givenScale = spec.scale;
   if (spec.rotation != 0) {
-    // Drawn in a rectangle grown so its shorter side is the page's
-    // diagonal, the least that covers every corner at every angle.
+    // Grown so its short side is the page's diagonal, covering any turn.
     var diagonal =
         math.sqrt(rect.width * rect.width + rect.height * rect.height);
     area = rect.inflate((diagonal - math.min(rect.width, rect.height)) / 2);
-    // Generators size their unit from the short side of what they are
-    // given, so scale is reduced to match or a turn would zoom in.
+    // Scale is cut to match (units are of the short side), or a turn zooms.
     var grown =
         math.min(area.width, area.height) / math.min(rect.width, rect.height);
     if (grown > 0) spec = spec.copyWith(scale: spec.scale / grown);
@@ -280,9 +250,8 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
       case ProceduralStyle.flames:
         _flames(canvas, area, s, t);
       case ProceduralStyle.pitch:
-        // Fitted to the page, not the grown area: a pitch is one object
-        // and would jump bigger when turned. Its Size is a zoom at the scale
-        // as set; only its ground fills the grown area ([cover]).
+        // Fitted to the page, not the grown area, or a turned pitch would
+        // jump bigger; only its ground fills the grown area ([cover]).
         paintPitch(canvas, rect, s.copyWith(scale: givenScale), cover: area);
       case ProceduralStyle.metal:
         // Brushed is drawn here; the other finishes are in metals.dart.
@@ -296,9 +265,8 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
     }
   }
 
-  // A faded foreground or accent is drawn on its own layer: the pattern with
-  // that colour white and the other clear, then the fade painted through it
-  // (srcIn). Generators draw flat colours and know nothing of fades.
+  // A faded foreground or accent is drawn on its own layer, then the fade
+  // painted through it (srcIn): generators draw flat colours only.
   void drawPattern(ui.Canvas canvas) {
     canvas.save();
     if (spec.rotation != 0) {
@@ -341,9 +309,8 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
     canvas.restore();
   }
 
-  // Drawn straight on when no effect applies. Otherwise it is recorded once
-  // and laid through a layer that masks, blurs and fades it without
-  // touching the base: once for itself and again for each unit of glow.
+  // Drawn straight on when no effect applies; otherwise recorded once and
+  // laid through a masking, blurring, fading layer: once, then per glow unit.
   var short = math.min(rect.width, rect.height);
   if (fx.opacity >= 1 && !fx.masks && fx.blur <= 0 && fx.glow <= 0) {
     drawPattern(canvas);
@@ -363,8 +330,7 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
       ..color = Color.fromRGBO(0, 0, 0, fx.opacity.clamp(0.0, 1.0))
       ..imageFilter =
           soft > 0.05 ? ui.ImageFilter.blur(sigmaX: soft, sigmaY: soft) : null);
-    // Glow: the pattern blurred wide and added, so it only brightens. Each
-    // whole unit of glow is another pass.
+    // Glow: the pattern blurred wide and added, a pass per whole unit.
     var spread = math.max(0.5, short * (0.004 + fx.glowSize * 0.04));
     for (var left = fx.glow * fx.opacity; left > 0.001; left -= 1) {
       lay(Paint()
@@ -379,8 +345,7 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
 /// gradeFilter is the colour grade as one matrix: hue turned, then
 /// saturation, then contrast and brightness.
 ui.ColorFilter gradeFilter(EffectsSpec fx) {
-  // Hue rotation about the grey axis, luminance-weighted so lightness is
-  // kept.
+  // Hue turned about the grey axis, luminance-weighted to keep lightness.
   var a = fx.hue * math.pi / 180, c = math.cos(a), s = math.sin(a);
   const lr = 0.213, lg = 0.715, lb = 0.072;
   var hue = [
@@ -460,8 +425,7 @@ void _masks(ui.Canvas canvas, Rect rect, EffectsSpec fx) {
   if (fx.clear == ClearArea.none || fx.clearAmount <= 0) return;
   var gone = Color.fromRGBO(0, 0, 0, fx.clearAmount);
   var none = const Color(0x00000000);
-  // Softness spreads the change across the area's edge rather than moving
-  // the edge.
+  // Softness spreads the change across the edge rather than moving it.
   var soft = fx.clearSoftness.clamp(0.0, 1.0);
   var size = fx.clearSize.clamp(0.0, 1.0);
   var hard = size * (1 - soft * 0.6), fade = size * (1 + soft * 0.4) + 1e-4;
@@ -470,7 +434,6 @@ void _masks(ui.Canvas canvas, Rect rect, EffectsSpec fx) {
   // From an edge, across a fraction of the frame.
   Shader fromEdge(Offset edge, Offset across) => ui.Gradient.linear(
       edge, edge + across * fade, [gone, gone, none], [0, hard / fade, 1]);
-  // Out from the middle line, both ways.
   Shader fromMiddle(Offset middle, Offset across) {
     var half = across * (fade / 2);
     var h = hard / fade;
@@ -521,9 +484,8 @@ void _scanlines(ui.Canvas canvas, Rect rect, EffectsSpec fx) {
   }
 }
 
-/// _grain is film grain: a speck in every few pixels, lighter or darker than
-/// what is under it. Points rather than a noise image, so it is sized to the
-/// frame at any export size.
+/// _grain is film grain: a lighter or darker speck every few pixels, drawn
+/// as points rather than a noise image so it suits any export size.
 void _grain(ui.Canvas canvas, Rect rect, EffectsSpec fx, int seed) {
   var short = math.min(rect.width, rect.height);
   var dot = math.max(0.6, short * fx.grainSize / 1000);
@@ -563,11 +525,9 @@ void _grain(ui.Canvas canvas, Rect rect, EffectsSpec fx, int seed) {
   }
 }
 
-/// paintLight throws one light across the finished background, so it works
-/// on every style without lighting code in each generator.
-///
-/// Added (BlendMode.plus) rather than alpha-blended, so it lifts the pattern
-/// instead of covering it with a flat disc.
+/// paintLight throws one light across the finished background, so every
+/// style is lit without code of its own. Added (BlendMode.plus), so it lifts
+/// the pattern rather than covering it with a flat disc.
 void paintLight(ui.Canvas canvas, Rect rect, LightSpec light) {
   if (rect.width <= 0 || rect.height <= 0 || light.brightness <= 0) return;
 
@@ -598,8 +558,7 @@ void paintLight(ui.Canvas canvas, Rect rect, LightSpec light) {
   // using an elliptical gradient keeps the falloff's shape when stretched.
   var stretch = 1 + light.reach.clamp(0.0, 1.0) * 2.4;
   canvas.scale(1, stretch);
-  // Thrown forward, so the light's position is the pool's near edge, not
-  // its middle.
+  // Thrown forward: the light's position is the pool's near edge.
   var along = -radius * (stretch - 1) / stretch;
 
   canvas.drawCircle(
@@ -621,38 +580,28 @@ void paintLight(ui.Canvas canvas, Rect rect, LightSpec light) {
   canvas.restore();
 }
 
-/// _metal draws a brushed metal sheet: a surface rather than marks on a
-/// ground.
-///
-/// It is a height field lit from one side, so nothing draws a scratch or a
-/// highlight directly: scratches are low places that show because the
-/// surface tilts there, and highlights land on slopes (dent rims, brushing
-/// ridges) and not on rust, which is matt.
-///
-/// Brushing is stretched smooth noise (Roughness sets how tight), dents are
-/// [worley] and scratches are [ridged]. Size is feature size, Brightness the
-/// light, Variation the brushing's stretch, Density how strongly the relief
-/// tilts the surface.
+/// _metal draws a brushed metal sheet as a height field lit from one side:
+/// scratches are low places seen where the surface tilts, and highlights
+/// land on slopes, never on matt rust. Brushing is stretched smooth noise,
+/// dents [worley], scratches [ridged]. Size is feature size, Brightness the
+/// light, Variation the brushing's stretch, Density how far relief tilts.
 void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var m = spec.metal;
   var short = math.min(rect.width, rect.height);
   if (short <= 0) return;
 
-  // A lattice point per pixel (see latticeDetail), capped at 448 a side.
-  // Not coarser: nothing under two cells across can be represented, so the
-  // lattice limits how fine the brushing can be.
+  // A lattice point per pixel (see latticeDetail), at most 448 a side, and
+  // no coarser: a feature under two cells across cannot be shown.
   var cols = (rect.width * latticeDetail).round().clamp(8, 448);
   var rows = (rect.height * latticeDetail).round().clamp(8, 448);
   var stepX = rect.width / cols, stepY = rect.height / rows;
 
-  // Everything below works in units of the shorter side, so the sheet is
-  // the same at any size. Feature size relative to the Size control's
-  // middle; the low floor reaches a blasted, granular finish.
+  // In units of the shorter side, so the sheet is the same at any size. The
+  // low floor reaches a blasted, granular finish.
   var size = math.max(0.06, spec.scale / 0.05);
 
-  // No frequency may exceed what the lattice can carry (about two cells a
-  // feature), or it aliases into pebbles at small Size. Every frequency
-  // below goes through carried().
+  // No frequency may exceed about two lattice cells a feature, or it aliases
+  // into pebbles; every frequency below goes through carried().
   var ceiling = math.min(cols, rows) / 2.2;
   double carried(double frequency) => math.min(frequency, ceiling);
 
@@ -662,17 +611,14 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var patch = ValueNoise(spec.seed + 1229);
   var sheen = ValueNoise(spec.seed + 3313);
 
-  // Every relief is given as the slope it should reach, not a depth: slope
-  // is depth times frequency, and the light only sees slope. A fixed depth
-  // at fine frequencies turns brushing into corrugated iron.
+  // Relief is given as the slope it reaches, not a depth: the light sees
+  // only slope, and a fixed depth at fine frequencies corrugates the sheet.
   double depthFor(double slope, double frequency) =>
       slope / math.max(1.0, frequency);
 
-  // Brushing frequency across the sheet, from broad at nought roughness to
-  // fine at one.
+  // Brushing frequency across the sheet, broad to fine with roughness.
   var across = carried(math.max(3.0, (10 + m.roughness * 110) / size));
-  // And its stretch along the sheet: 1 (the same both ways) is a blasted
-  // finish, up to a long hairline drag.
+  // Its stretch along: 1 is a blasted finish, more a long hairline drag.
   var stretch = 1 + spec.variation * 26;
   var along = math.max(0.6, across / stretch);
   var grainDepth = depthFor(0.2 + m.roughness * 1.0, across);
@@ -706,8 +652,7 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
       var v = (iy * stepY) / short;
       var at = iy * (cols + 1) + ix;
 
-      // Brushing: one octave, since lower octaves add a slow swell that
-      // reads as water rather than steel.
+      // Brushing: one octave; lower ones add a swell that reads as water.
       var h = (brush.at(u * along, v * across) - 0.5) * grainDepth;
       // The swell under it: without it the sheet reads as printed paper.
       h += (brush.at(u * swellAlong, v * swellAcross) - 0.5) * swellDepth;
@@ -723,13 +668,11 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           // A radius inside the cell, so each dent has flat metal round it;
           // dents meeting at cell walls look like flaking paint.
           var radius = 0.3 + spread * 0.45;
-          // Smoothstep, not a cube: a cube's point and rim crease light up
-          // as arrowheads.
+          // Smoothstep: a cube's point and rim crease light up as arrowheads.
           var dish = (1 - distance / radius).clamp(0.0, 1.0);
           h -= dish * dish * (3 - 2 * dish) * dentDepth * (0.45 + spread);
         }
-        // Scratches: one octave, since a second adds short marks across the
-        // long ones and makes dashes.
+        // Scratches: one octave, as a second breaks the long ones into dashes.
         var creased =
             ridged(crease, u * scratchAlong, v * scratchAcross, octaves: 1);
         // A high, narrow threshold keeps only the sharpest creases.
@@ -737,8 +680,7 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
         h -= cut * scratchDepth;
       }
 
-      // Rust: a threshold on a smooth field, ragged at the edge and deeper
-      // in the middle.
+      // Rust: a threshold on a smooth field, ragged at the edge, deep inside.
       var r = 0.0;
       if (m.rust > 0) {
         var n = patch.fbm(u * 4.2, v * 4.2, octaves: 3);
@@ -759,8 +701,7 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
     }
   }
 
-  // How hard the relief tilts the surface, divided by the lattice spacing
-  // so a finer lattice gives the same slopes.
+  // Relief tilt, divided by the lattice spacing so any lattice agrees.
   var gain = 0.35 + spec.density * 1.1;
   var slopeX = gain / math.max(0.0001, 2 * stepX / short);
   var slopeY = gain / math.max(0.0001, 2 * stepY / short);
@@ -786,14 +727,13 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var or_ = spec.accent.r, og = spec.accent.g, ob = spec.accent.b;
   var bright = 0.6 + spec.intensity * 0.6;
 
-  // The highlight curve as a lookup table, read between entries: math.pow
-  // with a fractional exponent per lattice point is too slow.
+  // The highlight curve as a lookup table: math.pow per point is too slow.
   const steps = 1024;
   var curve = Float64List(steps + 1);
   for (var i = 0; i <= steps; i++) {
     var t = i / steps;
-    // Two lobes, a tight glint over a broad sheen: one tight lobe is so
-    // small the lattice mostly misses it, so high Shine looked duller.
+    // Two lobes, a tight glint over a broad sheen: a tight lobe alone is so
+    // small the lattice misses it, and high Shine reads duller.
     curve[i] = 0.72 * math.pow(t, power).toDouble() +
         0.28 * math.pow(t, power * 0.18).toDouble();
   }
@@ -852,8 +792,7 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
     }
   }
 
-  // One triangle strip per lattice row, coloured at the corners, rather
-  // than one huge Vertices for the whole sheet.
+  // One triangle strip per lattice row, not one huge Vertices for the sheet.
   var paint = Paint();
   var positions = Float32List((cols + 1) * 4);
   var strip = Int32List((cols + 1) * 2);
@@ -893,7 +832,6 @@ void _paintBase(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           : (Paint()..shader = shader));
 }
 
-/// _vignette darkens the edges by [amount].
 void _vignette(ui.Canvas canvas, Rect rect, double amount) {
   canvas.drawRect(
     rect,
@@ -912,17 +850,14 @@ void _vignette(ui.Canvas canvas, Rect rect, double amount) {
 double _unit(Rect rect, ProceduralSpec spec) =>
     math.max(2, math.min(rect.width, rect.height) * spec.scale);
 
-/// _fade is [c] with its alpha multiplied by [a].
 Color _fade(Color c, double a) => c.withValues(alpha: (c.a * a).clamp(0, 1));
 
 // --------------------------------------------------------------------------
 // The generators
 // --------------------------------------------------------------------------
 
-/// _contours draws iso-lines through a noise field, by marching squares.
-///
-/// Marching squares samples the field once per cell corner, not per pixel,
-/// and gives line segments that stay crisp at export resolution.
+/// _contours draws iso-lines through a noise field by marching squares: one
+/// sample per cell corner, and segments that stay crisp at any export size.
 void _contours(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var noise = ValueNoise(spec.seed);
   var cell = math.max(4.0, _unit(rect, spec) * 0.6);
@@ -975,10 +910,8 @@ void _contours(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _marchCell adds the segment (or two) crossing one cell at [level].
-///
-/// The sixteen cases folded by symmetry, interpolated along each edge
-/// (midpoints give staircases).
+/// _marchCell adds the segment (or two) crossing one cell at [level]: the
+/// sixteen cases folded by symmetry, interpolated along each edge.
 void _marchCell(Path path, List<List<double>> f, int ix, int iy, double level,
     double cell, Offset origin) {
   var tl = f[iy][ix], tr = f[iy][ix + 1];
@@ -1020,8 +953,7 @@ void _marchCell(Path path, List<List<double>> f, int ix, int iy, double level,
     case 7:
     case 8:
       seg(left(), top());
-    // The two ambiguous saddles: both segments are drawn, so no contour is
-    // left open.
+    // The two ambiguous saddles: both segments drawn, so no contour is open.
     case 5:
       seg(left(), top());
       seg(bottom(), right());
@@ -1034,14 +966,10 @@ void _marchCell(Path path, List<List<double>> f, int ix, int iy, double level,
 double _mix(double a, double b, double level) =>
     (b - a).abs() < 1e-9 ? 0.5 : ((level - a) / (b - a)).clamp(0.0, 1.0);
 
-/// _rings is concentric rings travelling out of, or into, a point.
-///
-/// Each ring has a life: born at [RingSpec.from], travelling to [RingSpec.to]
-/// (one is the far corner of the page), with the set spread evenly through
-/// that life so it reads as a procession.
-///
-/// [page] is the canvas, not the painted [area], which is larger when the
-/// pattern is turned: "the edge of the page" must mean the page.
+/// _rings is concentric rings travelling out of, or into, a point. Each ring
+/// lives from [RingSpec.from] to [RingSpec.to] (one is the page's far
+/// corner), the set spread evenly through that life. [page] is the canvas,
+/// not the painted [area], which is larger when the pattern is turned.
 void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     double t, int round, CanvasImageSource? images) {
   var ring = spec.rings;
@@ -1050,8 +978,7 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     page.left + page.width * ring.centreX,
     page.top + page.height * ring.centreY,
   );
-  // The distance to the farthest corner, so a ring set off-centre still
-  // crosses the whole page.
+  // To the farthest corner, so an off-centre set still crosses the page.
   var reach = [
     (centre - page.topLeft).distance,
     (centre - page.topRight).distance,
@@ -1063,22 +990,19 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
   var moving = spec.animated ? t * 0.15 : 0.0;
 
   for (var i = 0; i < count; i++) {
-    // Per-ring numbers come from the seed and index, so a ring keeps its
-    // width and colour as it travels.
+    // Per-ring numbers from seed and index, so a ring keeps width and colour.
     var jitter = (hash(spec.seed + 11, i, 0) - 0.5) * ring.spacingJitter;
     // Age always runs forwards: shrinking rings are born at the outside,
     // not played backwards. Negative is not yet born (see RingSpec.buildUp).
     var age = ring.ageOf(i, moving, jitter: jitter);
-    // Whether something of age [at] is born and not yet gone. Also asked of
-    // the pictures a ring carries, which can be offset in age from it and so
-    // outlive it.
+    // Whether something of age [at] is born and not yet gone; also asked of
+    // pictures offset in age from the ring, which can outlive it.
     bool alive(double at) =>
         !(ring.buildUp && spec.animated && at < 0) && !(spec.inRuns && at > 1);
     var through = ring.spread(i, moving, jitter: jitter);
 
-    // Spacing bunches rings towards one end (a half is even). A function of
-    // age because a carried icon may be ahead or behind the ring (see
-    // RingIcon.driftWhen) and must follow the same journey.
+    // Spacing bunches rings towards one end (a half is even). By age, since
+    // a carried icon ahead or behind (RingIcon.driftWhen) follows it too.
     var bias = ring.spacing.clamp(0.05, 0.95);
     double radiusAt(double at) {
       var eased = math.pow(at, bias <= 0 ? 1 : (0.5 / bias)).toDouble();
@@ -1105,9 +1029,8 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
         unit *
             ring.width *
             (1 + (hash(spec.seed + 3, i, 1) - 0.5) * 2 * ring.widthJitter));
-    // A soft edge fades the width as well as the alpha: a hairline at a
-    // fifth of its strength looks much like one at half, so alpha alone does
-    // not read as arriving.
+    // A soft edge fades the width too: a hairline at a fifth of its strength
+    // looks much like one at half, so alpha alone does not read as arriving.
     if (ring.edge == RingEdge.soft) width *= 0.25 + 0.75 * fade;
 
     // Every accentEvery-th ring in the accent, so the set has a rhythm
@@ -1155,8 +1078,7 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
 }
 
 /// _Pictures is the weighted set of pictures an icon may be drawn as (weight
-/// two is picked twice as often as one; nought never). Each asset is
-/// resolved once.
+/// two is picked twice as often as one; nought never), each resolved once.
 class _Pictures {
   final CanvasImageSource images;
   final List<(String, double)> choices;
@@ -1202,7 +1124,6 @@ class _Pictures {
       });
 }
 
-/// _stamp draws one picture at one place.
 void _stamp(ui.Canvas canvas, _Pictures from, RingIcon icon, String asset,
     Offset at, double turn, double side, double alpha) {
   if (side < 1 || alpha <= 0.004) return;
@@ -1216,8 +1137,7 @@ void _stamp(ui.Canvas canvas, _Pictures from, RingIcon icon, String asset,
     // paint only: filter and paint alphas multiply.
     paint.colorFilter = ui.ColorFilter.mode(icon.tint, BlendMode.srcIn);
   }
-  // Fitted in proportion to a square of [side], so different shapes look
-  // the same size.
+  // Fitted to a square of [side], so different shapes look the same size.
   var scale = side / math.max(natural.width, natural.height);
 
   canvas.save();
@@ -1243,20 +1163,17 @@ double _iconStrength(RingIcon icon, RingSpec ring, double at) =>
     icon.opacity ??
     ring.alphaAt(at, arriving: !icon.holdIn, leaving: !icon.holdOut);
 
-/// _iconSide clamps [side] to the icon's smallest and largest, which are
-/// fractions of the page ([unit]) so a growing ring cannot grow it off the
-/// page.
+/// _iconSide clamps [side] to the icon's smallest and largest, fractions of
+/// the page ([unit]), so a growing ring cannot grow it off the page.
 double _iconSide(RingIcon icon, double side, double unit) {
   if (icon.smallest != null) side = math.max(side, icon.smallest! * unit);
   if (icon.largest != null) side = math.min(side, icon.largest! * unit);
   return side;
 }
 
-/// _drawLooseIcon draws a picture that is on no ring.
-///
-/// Its moment is how far through a run the pattern is, its size a fraction
-/// of the page, and it sits at the rings' centre. With both fades held it is
-/// a badge there for the whole animation.
+/// _drawLooseIcon draws a picture on no ring, at the rings' centre: its
+/// moment is how far through a run the pattern is, its size a fraction of
+/// the page. With both fades held it is a badge for the whole animation.
 void _drawLooseIcon(
     ui.Canvas canvas,
     CanvasImageSource? images,
@@ -1278,11 +1195,9 @@ void _drawLooseIcon(
       icon.turn * math.pi / 180, side, alpha);
 }
 
-/// _drawRingIcons puts one icon setting's pictures on a ring.
-///
-/// In the middle: one picture at the centre, sized against the ring so it
-/// grows with it. Around: several spaced along the ring, each turned to face
-/// out and drifted on its own (see RingDrift).
+/// _drawRingIcons puts one icon setting's pictures on a ring: in the middle,
+/// one sized against the ring so it grows with it; around, several spaced
+/// along it, each facing out and drifted on its own (see RingDrift).
 void _drawRingIcons(
     ui.Canvas canvas,
     CanvasImageSource? images,
@@ -1335,8 +1250,7 @@ void _drawRingIcons(
     var radius = radiusAt(mine);
     if (radius <= 0.5) continue;
 
-    // Scatter in gaps between pictures, so it is the same whatever the
-    // count.
+    // Scatter in gaps between pictures, the same whatever the count.
     var gap = 2 * math.pi / many;
     var angle = n * gap + icon.driftWhere.at(roll(1)) * gap;
 
@@ -1455,14 +1369,11 @@ void _drawRing(ui.Canvas canvas, Offset centre, double radius,
 // Glyph drawing
 // --------------------------------------------------------------------------
 
-/// _glyphCache holds laid-out single characters.
-///
-/// A dense rain draws thousands of glyphs a frame, and laying each out is the
-/// most expensive thing in this file. Alpha is quantised to sixteen steps so
-/// a fading tail reuses painters and the cache stays bounded.
+/// _glyphCache holds laid-out characters: layout is the costliest thing here
+/// and a dense rain draws thousands a frame. Alpha has sixteen steps, so
+/// fading tails reuse painters and the cache stays bounded.
 final Map<String, TextPainter> _glyphCache = {};
 
-/// clearGlyphs lets go of every glyph laid out and kept.
 void clearGlyphs() {
   for (var painter in _glyphCache.values) {
     painter.dispose();
@@ -1504,17 +1415,13 @@ void _drawGlyph(
   painter.paint(canvas, at - Offset(painter.width / 2, painter.height / 2));
 }
 
-/// _halftone is the comic-book dot screen: a rotated grid of dots whose size
-/// says how much ink is on the page there.
-///
-/// Tilted at least fifteen degrees, which makes the eye see tone rather than
-/// a dot grid.
+/// _halftone is the comic-book dot screen: dots sized by ink, the grid tilted
+/// at least fifteen degrees so the eye sees tone rather than a grid.
 void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var step = math.max(3.0, _unit(rect, spec) * 1.2);
   var noise = ValueNoise(spec.seed);
   var paint = Paint();
 
-  // The screen angle, tilted a little further by the variation.
   var angle = (15 + spec.variation * 30) * math.pi / 180;
   var cos = math.cos(angle), sin = math.sin(angle);
 
@@ -1553,8 +1460,7 @@ void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var size = step * 0.62 * ink * (0.35 + spec.density * 1.3);
       if (size <= 0.15) continue;
 
-      // Accent where the drifted ink is heaviest; not on fades, where it
-      // would be a hard-edged blob.
+      // Accent where drifted ink is heaviest; never on fades (a hard blob).
       paint.color = _fade(
           inkKind == 0 && ink > 0.72 ? spec.accent : spec.foreground,
           spec.intensity.clamp(0.0, 1.0));
@@ -1567,10 +1473,8 @@ void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _speedLines is the ray burst: tapered wedges thrown out from a point.
-///
-/// Wedges rather than strokes: inked speed lines are thick at the frame
-/// edge and come to nothing at the middle.
+/// _speedLines is the ray burst: wedges thrown out from a point, thick at
+/// the frame edge and coming to nothing at the middle, as inked lines do.
 void _speedLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   if (spec.choice("burstKind") == 1) {
     return _parallelLines(canvas, rect, spec, t);
@@ -1621,8 +1525,7 @@ void _speedLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _crosshatch is inked hatching: one to three crossed passes of lines, more
-/// with density.
+/// _crosshatch is inked hatching: one to three crossed passes, by density.
 void _crosshatch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var step = math.max(2.0, _unit(rect, spec) * 0.9);
   var shaded = spec.choice("tone") == 1;
@@ -1716,7 +1619,6 @@ void _splatter(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
           paint);
     }
 
-    // A drip on some blobs.
     if (hash(spec.seed + 23, i, 9) < 0.4) {
       var run = size * (1 + hash(spec.seed + 29, i, 10) * 3);
       var wide = size * 0.22;
@@ -1748,8 +1650,7 @@ void _flames(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         tall;
     var wide = rect.width / tongues * (0.45 + hash(spec.seed + 7, i, 2) * 0.7);
 
-    // Both edges bent by the same field so they lean together rather than
-    // cross.
+    // Both edges bent by one field, so they lean together rather than cross.
     var left = ui.Path();
     var right = <Offset>[];
     const steps = 14;

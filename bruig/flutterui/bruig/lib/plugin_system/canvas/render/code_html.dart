@@ -6,10 +6,9 @@ import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:flutter/painting.dart';
 
 // code_html.dart is a Code panel's file as a page of its own, for a book:
-// the whole of it, coloured as the panel colours it, with its line numbers,
-// each lit step's lines marked and its note beside them -- in a frame over
-// the pane, so a reader scrolls it and can select it, as they can't a
-// picture of it (Ken, 2026-11-15).
+// the whole of it, coloured as the panel colours it, with line numbers and
+// each lit step's lines marked with its note beside them, in a frame over
+// the pane so a reader can scroll and select it, unlike a picture of it.
 
 String _css(Color c) =>
     "#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, "0")}";

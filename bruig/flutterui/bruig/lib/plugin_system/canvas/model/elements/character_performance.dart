@@ -1,11 +1,9 @@
 import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
 
-// character_performance.dart is what a new 3D character does in one scene
-// of the canvas: how it stands and leans, the motions it plays and when, the
-// walks that carry it across the page, its feeling and mouth, the line it
-// says, what it does by itself, and its shadow. The character itself -- its
-// body, clothes, face and how it moves -- is its design (character_design.
-// dart); this is the scene's. Times are in seconds on the scene's timeline.
+// character_performance.dart is what a 3D character does in one scene: how
+// it stands and leans, its motions and walks, its feeling and mouth, its
+// line, and its shadow. The character itself is its design
+// (character_design.dart). Times are seconds on the scene's timeline.
 
 /// performanceMotions are the motions a scene can add, by name.
 const List<String> performanceMotions = [
@@ -19,16 +17,14 @@ const List<String> performanceMotions = [
   "Look around",
   "Walk",
   "Run",
-  // Ken, 2026-11-10: "a character can punch and kick" -- and in a game,
-  // the punch and kick actions play them (see canvas_game.dart).
+  // A game's punch and kick actions play these (see canvas_game.dart).
   "Punch",
   "Kick",
 ];
 
-/// quickMotions are the motions that fade in and out at once and are
-/// followed closely: a punch and a kick, and a game's jump as it goes --
-/// Leap, Fall, Land (see canvas_game.dart). Faded in as slowly as the
-/// others, the leap's crouch, a tenth of a second long, was never seen.
+/// quickMotions fade in and out at once and are followed closely: a punch,
+/// a kick, a game's Leap, Fall and Land. Faded slowly, a tenth-second
+/// crouch would never show.
 const Set<String> quickMotions = {"Punch", "Kick", "Leap", "Fall", "Land"};
 
 /// performanceWearing are the outfits a scene can put it in, by name.
@@ -52,17 +48,15 @@ const List<(String, String)> performanceMouths = [
 /// performanceShadows are the shadows under it.
 const List<String> performanceShadows = ["None", "Soft", "Hard"];
 
-/// _same stands for a value not given to copyWith, where null means
-/// something.
+/// _same stands for a copyWith value not given, where null means something.
 const Object _same = Object();
 
 double _num(Object? v, double d, double lo, double hi) =>
     v is num && v.isFinite ? v.toDouble().clamp(lo, hi) : d;
 
-/// MotionClip3d is one motion on the timeline: what, from when and for how
-/// long, how fast and how much, mirrored left for right; a walk or a run
-/// with a [dir] carries the character across the page that way (see
-/// [CharacterPerformance.travelAt]). Immutable.
+/// MotionClip3d is one timeline motion: what, when, how long, fast and
+/// much, mirrored or not; a walk or run with a [dir] carries it across
+/// the page (see [CharacterPerformance.travelAt]). Immutable.
 class MotionClip3d {
   final String kind;
   final double start, length, speed, strength;
@@ -84,14 +78,13 @@ class MotionClip3d {
 
   double get end => start + length;
 
-  /// weightAt is how much of it plays at [t]: nothing outside it, faded in
-  /// and out over its first and last 0.3 s -- one of the quickMotions over
-  /// 0.06 s: a strike winds up and comes back by itself, and faded as
-  /// slowly, a punch (0.45 s) never got to three quarters of itself.
+  /// weightAt is how much plays at [t]: faded over its first and last 0.3 s,
+  /// or 0.06 s for a quickMotion, which winds up by itself: a slow fade would
+  /// stop a 0.45 s punch short.
   double weightAt(double t) {
     if (t < start || t > end) return 0;
-    // A walk or a run fades in quickly too: over 0.3 s, a game's player
-    // went across the ground at full pace, its feet barely stepping.
+    // A walk or a run fades in quickly too, or the body crosses the ground
+    // at full pace with its feet barely stepping.
     var fade = quickMotions.contains(kind)
         ? 0.06
         : kind == "Walk" || kind == "Run"
@@ -156,8 +149,7 @@ class MotionClip3d {
       Object.hash(kind, start, length, speed, strength, mirror, dir);
 }
 
-/// PoseKey holds a pose and a feeling from its time until the next key.
-/// Immutable.
+/// PoseKey holds a pose and a feeling until the next key. Immutable.
 class PoseKey {
   final double t;
   final String stance;
@@ -215,16 +207,13 @@ class PoseKey {
   int get hashCode => Object.hash(t, stance, lean, tilt, feeling);
 }
 
-/// MouthAt is one mouth of a lip sync, held from [t] seconds until the
-/// next.
+/// MouthAt is one lip-sync mouth, held from [t] seconds to the next.
 typedef MouthAt = ({double t, MouthShape shape});
 
-/// CharacterPerformance is what it does in a scene. Immutable.
 class CharacterPerformance {
   final String wearing;
 
-  /// stance, lean and tilt are how it stands between keys; null stance for
-  /// as designed.
+  /// stance, lean and tilt are how it stands between keys; null as designed.
   final String? stance;
   final double lean, tilt;
   final List<PoseKey> keys;
@@ -245,8 +234,7 @@ class CharacterPerformance {
   final String line;
   final double lineAt;
 
-  /// mouths are its lip sync, from a voice-over: each mouth held until the
-  /// next (lip_sync.dart).
+  /// mouths are its lip sync from a voice-over (lip_sync.dart).
   final List<MouthAt> mouths;
 
   /// startsAt is where in its box its walks start from: -1 the left edge,
@@ -254,8 +242,7 @@ class CharacterPerformance {
   final int startsAt;
 
   /// speaksFor is the mixer channel it speaks for, by key, or empty: a slot
-  /// played on it -- a narrator's line -- moves its mouth and shows it while
-  /// it is heard.
+  /// played there (a narrator's line) moves its mouth and shows it.
   final String speaksFor;
 
   const CharacterPerformance({
@@ -325,8 +312,7 @@ class CharacterPerformance {
         startsAt: startsAt ?? this.startsAt,
       );
 
-  /// mouthAt is the lip sync's mouth at [t] seconds, or null before its
-  /// first.
+  /// mouthAt is the lip sync's mouth at [t], or null before its first.
   MouthShape? mouthAt(double t) {
     MouthShape? out;
     for (final m in mouths) {
@@ -337,8 +323,7 @@ class CharacterPerformance {
   }
 
   /// withMouths is this with [mouths] laid between [from] and [to] seconds
-  /// -- those already there kept outside it -- or, with neither, in place
-  /// of them all.
+  /// (those outside kept), or, with neither, in place of them all.
   CharacterPerformance withMouths(List<MouthAt> mouths,
       {double? from, double? to}) {
     final kept = from == null && to == null
@@ -362,8 +347,7 @@ class CharacterPerformance {
     return k;
   }
 
-  /// clipAt is the motion playing at [t] -- the last that does -- and how
-  /// much of it.
+  /// clipAt is the last motion playing at [t], and how much of it.
   (MotionClip3d, double)? clipAt(double t) {
     (MotionClip3d, double)? out;
     for (final c in clips) {
@@ -373,10 +357,9 @@ class CharacterPerformance {
     return out;
   }
 
-  /// travelAt is how far the walks have carried it across the page by [t],
-  /// in metres of its own body ([pace] metres a second for a walk at speed
-  /// one), and how far it is turned to face the way it goes: a quarter turn
-  /// at full weight.
+  /// travelAt is how far the walks carry it by [t], in metres of its body
+  /// ([pace] a second at speed one), and how far it turns to face its way:
+  /// a quarter turn at full weight.
   ({double x, double turn}) travelAt(
       double t, double Function(MotionClip3d) pace) {
     var x = 0.0, turn = 0.0;

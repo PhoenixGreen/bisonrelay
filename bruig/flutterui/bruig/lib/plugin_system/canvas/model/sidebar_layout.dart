@@ -1,13 +1,9 @@
-// sidebar_layout.dart is how the Canvas sidebar is set out: whether it is
-// shown, and how (beside everything, or above the panels under the canvas),
-// which sidebars there are, and which panels each holds. The reader's, kept
-// in the preferences (see CanvasPreferences.sidebars).
-//
-// Every panel there is appears once: in a sidebar, or among the hidden ones,
-// which remember where they came from so they can go back. Files keeps the
-// files and the presets and nothing else; the Game sidebar keeps the game's
-// settings and shows only for a game. The files and the selection's settings
-// can move but never be hidden.
+// sidebar_layout.dart is how the Canvas sidebar is set out: hidden, beside
+// everything or over the panels under the canvas; which sidebars there are
+// and which panels each holds. Kept in CanvasPreferences.sidebars. Every
+// panel appears once: in a sidebar, or hidden, remembering where it came
+// from. Files holds only files and presets; Game only the game's settings,
+// shown for a game. The files and the selection's settings are never hidden.
 
 /// SidebarMode is the sidebar hidden, beside everything at full height, or
 /// over the panels under the canvas, which then have the whole width.
@@ -35,13 +31,11 @@ const sidebarPanelIds = [
 /// requiredPanels can move but not be hidden.
 const requiredPanels = {"files", "settings"};
 
-/// filesPanels live in the Files sidebar only, and gamePanels in the Game
-/// one.
+/// filesPanels live in the Files sidebar only, and gamePanels in Game's.
 const filesPanels = {"files", "presets"};
 const gamePanels = {"game"};
 
-/// sidebarIconNames are the icons a sidebar can wear: see sidebarIcon in
-/// the UI.
+/// sidebarIconNames are the icons a sidebar can wear (see sidebarIcon).
 const sidebarIconNames = [
   "design", "media", "game", "folder", "brush", "star", "bookmark", //
   "bolt", "heart", "chart", "layers", "palette", "movie", "music",
@@ -54,8 +48,7 @@ class SidebarSet {
   final String icon;
   final List<String> panels;
 
-  /// fixed is the Files or the Game sidebar: kept as it is, its panels its
-  /// own, never removed.
+  /// fixed is the Files or Game sidebar: its panels its own, never removed.
   final bool fixed;
 
   /// gameOnly is the Game sidebar, shown only for a game.
@@ -92,7 +85,6 @@ class RemovedSidebar {
       {"id": id, "name": name, "icon": icon, "at": at};
 }
 
-/// defaultSidebars are the sidebars as they start.
 const defaultSidebars = [
   SidebarSet("files", "Files", "folder", ["files", "presets"], fixed: true),
   SidebarSet("design", "Design", "design",
@@ -110,17 +102,14 @@ const defaultSidebars = [
   SidebarSet("game", "Game", "game", ["game"], fixed: true, gameOnly: true),
 ];
 
-/// maxSidebars is how many a reader can have.
 const int maxSidebars = 12;
 
-/// SidebarLayout is the whole arrangement: see the top of the file.
 class SidebarLayout {
   final SidebarMode mode;
 
   /// opened is the way it was last shown, to show it again from hidden.
   final SidebarMode opened;
 
-  /// current is the sidebar on show.
   final String current;
 
   final List<SidebarSet> sidebars;
@@ -179,8 +168,7 @@ class SidebarLayout {
     return !sidebar.fixed;
   }
 
-  /// withMode is the sidebar shown [mode]; shown, it is remembered as the
-  /// way to show it again.
+  /// withMode is the sidebar shown [mode]; a shown mode is kept for later.
   SidebarLayout withMode(SidebarMode mode) =>
       copyWith(mode: mode, opened: mode == SidebarMode.hidden ? opened : mode);
 
@@ -233,8 +221,7 @@ class SidebarLayout {
     return to == null ? this : movePanel(panel, to.id);
   }
 
-  /// addSidebar is a new, empty sidebar called [name] -- holding [panel]
-  /// where one is given -- after the others.
+  /// addSidebar adds an empty sidebar called [name], holding [panel] if given.
   SidebarLayout addSidebar({String? name, String? panel}) {
     if (sidebars.length >= maxSidebars) return this;
     var n = 1;
@@ -314,8 +301,7 @@ class SidebarLayout {
     );
   }
 
-  /// moveSidebar is sidebar [id] moved to place [to] along the row, the
-  /// others closing up round it.
+  /// moveSidebar moves sidebar [id] to place [to], the others closing up.
   SidebarLayout moveSidebar(String id, int to) {
     var from = sidebars.indexWhere((s) => s.id == id);
     if (from < 0) return this;
@@ -363,9 +349,9 @@ class SidebarLayout {
       };
 
   /// fromJson reads what was kept, and puts right whatever does not add up:
-  /// a panel twice, one no longer made, a new one never seen (it goes where
-  /// a new sidebar set has it), Files' or Game's panels anywhere else, or
-  /// those two sidebars missing.
+  /// a panel twice, an unknown one, a new one never seen (it goes where a new
+  /// sidebar set has it), Files' or Game's panels elsewhere, or those two
+  /// sidebars missing.
   static SidebarLayout fromJson(Object? json) {
     if (json is! Map) return const SidebarLayout();
     var seen = <String>{};

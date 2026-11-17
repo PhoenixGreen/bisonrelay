@@ -1,12 +1,11 @@
 part of '../canvas_controller.dart';
 
-// Keyframes, and the arrivals and exits laid on them.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Keyframes, and the arrivals and exits laid on them. Part of
+// CanvasController.
 
-/// KeyframeTarget is what the Chain's Keyframes card edits (Ken, 2026-11-09:
-/// keyframing in the Chain): a team's focused player, a path's points (their
-/// times only), or the picked element's own keyframes.
+/// KeyframeTarget is what the Chain's Keyframes card edits: a team's
+/// focused player, a path's points (their times only), or the picked
+/// element's own keyframes.
 class KeyframeTarget {
   /// name is who it is, kind what ("Image", "Team", "Path").
   final String name;
@@ -16,7 +15,7 @@ class KeyframeTarget {
   /// points is a path's points: timed, holding no values.
   final bool points;
 
-  /// player is the team's player, by index, where it is one.
+  /// player is the team's player by index, where it is one.
   final int? player;
   const KeyframeTarget(this.name, this.kind, this.track,
       {this.points = false, this.player});
@@ -27,9 +26,9 @@ extension CanvasKeyframes on CanvasController {
   void setKeyframe(String id, Keyframe key) {
     var element = _document.elementById(id);
     if (element == null) return;
-    // Whatever that frame already pinned is kept: a keyframe holds the pose
-    // and any channels (a counter's number, a chart's arrival), and writing a
-    // pose over it wholesale would throw the channels away.
+    // Keep what that frame already pinned: a keyframe holds the pose and any
+    // channels (a counter's number, a chart's arrival), and writing a pose
+    // over it wholesale would throw the channels away.
     var was = element.track?.keyAt(key.frame);
     var merged = was == null || was.values.isEmpty
         ? key
@@ -39,16 +38,15 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// applyChartAnimation puts a preset on a chart and lays the two keyframes
-  /// that give it a length: one gesture, since a preset with no keyframes
-  /// draws nothing different. The keyframes are ordinary ones, so the
-  /// animation's length is the gap between them, dragged like anything else.
+  /// that give it a length, as one gesture, since a preset with no
+  /// keyframes draws nothing different. They are ordinary keyframes, so the
+  /// length is the gap between them.
   ///
-  /// A still document is given a second's worth of frames first. [length] is
-  /// how many frames it takes, and overrules everything else; left out, it
-  /// comes from the animation's own Length setting where one has been asked
-  /// for, and otherwise from where the keyframes already are, so trying one
-  /// preset after another leaves the timing alone. See applyTextAnimation,
-  /// which follows the same rules.
+  /// A still document is given a second's worth of frames first. [length],
+  /// in frames, overrules everything; left out, it comes from the
+  /// animation's Length setting if set, else from where the keyframes
+  /// already are, so trying one preset after another leaves the timing
+  /// alone. applyTextAnimation follows the same rules.
   void applyChartAnimation(ChartElement element, ChartAnimationPreset preset,
           {int? length}) =>
       _layOwn(
@@ -61,22 +59,20 @@ extension CanvasKeyframes on CanvasController {
           setLength: element.animation.length);
 
   /// applyTextAnimation puts a preset on a text element and lays the two
-  /// keyframes that give it a length. The same channels, stagger and
-  /// timeline as applyChartAnimation, which it mirrors, so a headline and a
-  /// chart arriving together arrive together.
+  /// keyframes that give it a length, mirroring applyChartAnimation, so a
+  /// headline and a chart arriving together arrive together.
   ///
-  /// [length] is how many frames it takes, and overrules everything else:
-  /// zero means the usual two seconds, and it is what the Length setting
-  /// passes. Left out, it comes from the animation's own Length setting where
-  /// one has been asked for, and otherwise from where the keyframes already
-  /// are.
+  /// [length], in frames, overrules everything (zero means the usual two
+  /// seconds); it is what the Length setting passes. Left out, it comes from
+  /// the animation's Length setting if set, else from where the keyframes
+  /// already are.
   void applyTextAnimation(TextElement element, TextAnimationPreset preset,
       {int? length}) {
     var a = element.animation;
     var none = preset == TextAnimationPreset.none;
-    // The curve and cutting the preset was designed around, only where the
-    // preset is actually changing, so re-laying it does not undo numbers
-    // somebody chose. See TextAnimationPreset.wants and its effect.
+    // The curve and cutting the preset was designed around, only when the
+    // preset changes, so re-laying it does not undo numbers somebody chose.
+    // See TextAnimationPreset.wants.
     var changing = !none && preset != a.preset;
     _layOwn(
         element,
@@ -91,16 +87,14 @@ extension CanvasKeyframes on CanvasController {
         setLength: a.length);
   }
 
-  /// defaultAnimationFrames is how long an animation runs for when nobody
-  /// has said: the same two seconds a chart's uses.
+  /// defaultAnimationFrames is how long an animation runs when nobody has
+  /// said: two seconds, as a chart's does.
   int get defaultAnimationFrames =>
       math.max(2, (_document.frameRate * chartAnimationSeconds).round());
 
   /// keyframeLoop is the picked element's loop as the Keyframes card shows
-  /// it (where it starts, where it stops, its cycle and its gap), or null
-  /// where it has none, or the card is on a player or a path. It was a bar
-  /// under the timeline's keyframe row, until keyframing moved to the Chain
-  /// (Ken, 2026-11-09).
+  /// it (start, stop, cycle and gap), or null where it has none or the card
+  /// is on a player or a path.
   (int, int, int, int)? get keyframeLoop {
     var t = keyframeTarget;
     if (t == null || t.points || t.player != null) return null;
@@ -114,8 +108,8 @@ extension CanvasKeyframes on CanvasController {
     return (start, end, loop.cycle, loop.gap);
   }
 
-  /// moveKeyframeLoopEnd puts an end of the loop's bar on [frame]: its start,
-  /// or ([end]) where it stops, never past each other. Transient: the drag
+  /// moveKeyframeLoopEnd puts an end of the loop's bar on [frame]: its
+  /// start, or ([end]) its stop, never past each other. Transient: the drag
   /// is one change, between beginInteraction and endInteraction.
   void moveKeyframeLoopEnd(bool end, int frame) {
     var element = selected;
@@ -132,8 +126,7 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// _showOwn shows [element]'s own [kind], just laid down, in the Chain:
-  /// its clip picked, and the cards after it its (Ken, 2026-11-12: a new
-  /// way out showed the arrival's).
+  /// its clip picked, so the cards after it are that clip's, not another's.
   void _showOwn(String element, MotionKind kind) {
     var e = _document.elementById(element);
     if (e == null) return;
@@ -142,8 +135,8 @@ extension CanvasKeyframes on CanvasController {
     }
   }
 
-  /// setElementLoop gives [element] [loop] -- [transient] while a drag on
-  /// its bar is still making it. See ElementLoop.
+  /// setElementLoop gives [element] [loop], [transient] while a drag on its
+  /// bar is still making it. See ElementLoop.
   void setElementLoop(CanvasElement element, ElementLoop loop,
       {bool transient = false}) {
     // Words and charts keep theirs in animations of their own.
@@ -167,10 +160,10 @@ extension CanvasKeyframes on CanvasController {
         transient: transient);
   }
 
-  /// applyElementAnimation puts an arrival on a shape or a picture and lays
-  /// the pair of keyframes that runs it, by the rules of
-  /// [applyTextAnimation]: whatever is already laid down wins, the Length
-  /// setting is for laying a new one down, and None takes the keyframes away.
+  /// applyElementAnimation puts an arrival on a shape or picture and lays
+  /// the keyframe pair that runs it, by [applyTextAnimation]'s rules: what
+  /// is already laid down wins, the Length setting is for a new one, and
+  /// None takes the keyframes away.
   void applyElementAnimation(
       CanvasElement element, ElementAnimationPreset preset,
       {int? length}) {
@@ -195,17 +188,17 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// elementAnimationSpan is where [element]'s arrival sits on the timeline:
-  /// the frame it starts on and how many frames it takes. See
-  /// textAnimationSpan, which reads the same channel for the same reasons.
+  /// its start frame and length. See textAnimationSpan, which reads the same
+  /// channel.
   (int?, int?) elementAnimationSpan(CanvasElement element) =>
       switch (ownSpan(element, MotionKind.arrive, _document.frameRate)) {
         (var from, var length) => (from, length),
         null => (null, null),
       };
 
-  /// anchorShown is whether [id]'s anchor point is drawn on the stage, where
-  /// it can be dragged unless it is locked. A way of looking rather than
-  /// part of the design: not saved, and not undone.
+  /// anchorShown is whether [id]'s anchor point is drawn on the stage, to be
+  /// dragged unless locked. A way of looking, not part of the design: not
+  /// saved, not undone.
   bool anchorShown(String id) => _anchorsShown.contains(id);
 
   void showAnchor(String id, bool shown) {
@@ -214,9 +207,9 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// previewSpanOf is the stretch of the scene a Preview of [element] plays:
-  /// its arrival, its way out, and its loops -- its own and, for a drawing,
-  /// its shapes' -- twice round, with a moment after. Two seconds from the
-  /// start where it has none of them.
+  /// its arrival, way out and loops (its own and, for a drawing, its
+  /// shapes'), twice round, with a moment after. Two seconds from the start
+  /// where it has none.
   (int, int) previewSpanOf(CanvasElement element) {
     var last = math.max(0, _document.frames - 1);
     var rate = math.max(1, _document.frameRate);
@@ -252,10 +245,9 @@ extension CanvasKeyframes on CanvasController {
     return (math.min(a, last), b);
   }
 
-  /// previewing is the one element being previewed and the frame it is at, while
-  /// a Preview plays: that element runs through its animation and everything
-  /// else stays as it is at the playhead, which does not move. See
-  /// previewElement.
+  /// previewing is the element being previewed and its frame while a Preview
+  /// plays: that element runs through its animation and everything else
+  /// stays as at the playhead, which does not move. See previewElement.
   ({String id, int frame})? get previewing => _previewing;
 
   /// previewElement plays [id]'s animation, and nothing else's, once. See
@@ -272,8 +264,8 @@ extension CanvasKeyframes on CanvasController {
     notifyListeners();
   }
 
-  /// applyElementExit is the way out for a shape or a picture, on its own
-  /// pair of keyframes -- see newExitSpan. See applyTextExit.
+  /// applyElementExit is the way out for a shape or picture, on its own
+  /// keyframe pair (see newExitSpan).
   void applyElementExit(CanvasElement element, ElementAnimationPreset preset) {
     if (!CanvasController.animates(element)) return;
     var was = CanvasController.elementAnimationOf(element);
@@ -286,8 +278,8 @@ extension CanvasKeyframes on CanvasController {
         setLength: was.length);
   }
 
-  /// applyTextExit is the way out, on its own pair of keyframes -- see
-  /// newExitSpan. See applyChartExit.
+  /// applyTextExit is the way out for text, on its own keyframe pair (see
+  /// newExitSpan).
   void applyTextExit(TextElement element, TextAnimationPreset preset) =>
       _layOwn(
           element,
@@ -296,9 +288,9 @@ extension CanvasKeyframes on CanvasController {
           none: preset == TextAnimationPreset.none,
           setLength: element.animation.length);
 
-  /// applyChartExit puts a closing preset on a chart and lays the pair of
-  /// keyframes that runs it -- see newExitSpan. It never starts before the
-  /// entrance has finished (see _afterEntrance).
+  /// applyChartExit puts a closing preset on a chart on its own keyframe
+  /// pair (see newExitSpan), never starting before the entrance has
+  /// finished (see _afterEntrance).
   void applyChartExit(ChartElement element, ChartAnimationPreset preset) =>
       _layOwn(
           element,
@@ -307,14 +299,12 @@ extension CanvasKeyframes on CanvasController {
           none: preset == ChartAnimationPreset.none,
           setLength: element.animation.length);
 
-  /// _layOwn is every element's own arrival or leaving ([kind]) chosen, in
-  /// one step (the six apply functions were one copied six times): [next]
-  /// is [element] with it chosen. None takes its clip away, and nothing
-  /// else -- an element moved or faded by hand keeps that. Otherwise its
-  /// clip is laid where it already is, keeping its length, so trying one
-  /// preset after another leaves the timing alone; where there is none, an
-  /// arrival from the playhead, [length] frames long -- or its Length
-  /// setting [setLength], or two seconds -- and a leaving clear of the
+  /// _layOwn chooses any element's own arrival or leaving ([kind]): [next]
+  /// is [element] with it chosen. None takes its clip away and nothing else,
+  /// so a move or fade made by hand stays. Otherwise its clip is laid where
+  /// it already is, keeping its length, so trying presets leaves the timing
+  /// alone; with none, an arrival goes from the playhead, [length] frames
+  /// long (or [setLength], or two seconds), and a leaving clear of the
   /// arrival (see newExitSpan). A still document is given frames first.
   void _layOwn(CanvasElement element, CanvasElement next, MotionKind kind,
       {required bool none, int? length, int setLength = 0}) {
@@ -358,10 +348,9 @@ extension CanvasKeyframes on CanvasController {
     _showOwn(element.id, kind);
   }
 
-  /// shiftKeyframes moves a whole band of keyframes by [delta] frames: the two
-  /// ends of an animation are one thing. Refused rather
-  /// than clamped when either end would run off the timeline, so the band
-  /// never silently squashes.
+  /// shiftKeyframes moves a band of keyframes by [delta] frames: the two
+  /// ends of an animation are one thing. Refused, not clamped, when either
+  /// end would run off the timeline, so the band never silently squashes.
   void shiftKeyframes(String id, List<int> frames, int delta) {
     if (delta == 0 || frames.isEmpty) return;
     var element = _document.elementById(id);
@@ -388,11 +377,11 @@ extension CanvasKeyframes on CanvasController {
     replaceElement(element.withBase(track: next));
   }
 
-  /// setKeyframeEasing writes how the element travels *out* of a keyframe.
-  /// Easing belongs to the keyframe it leaves, so copied keyframes keep it.
-  /// [all] sets every keyframe on the element, and [channel] narrows that to
-  /// the keyframes carrying one thing (a counter's number, say), leaving a
-  /// move laid by hand alone.
+  /// setKeyframeEasing writes how the element travels *out* of a keyframe:
+  /// easing belongs to the keyframe it leaves, so copied keyframes keep it.
+  /// [all] sets every keyframe on the element; [channel] narrows that to
+  /// keyframes carrying one thing (a counter's number, say), leaving a move
+  /// laid by hand alone.
   void setKeyframeEasing(
     CanvasElement element,
     KeyframeEasing easing, {
@@ -411,9 +400,8 @@ extension CanvasKeyframes on CanvasController {
     replaceElement(element.withBase(track: next));
   }
 
-  /// withoutOwnPreset is [e] with its own arrival (or way out) gone and that
-  /// setting back to None: taken off the timeline, an arrival is none at
-  /// all, and the next preset is laid down afresh.
+  /// withoutOwnPreset is [e] with its own arrival (or way out) removed and
+  /// that setting back to None, so the next preset is laid afresh.
   CanvasElement withoutOwnPreset(CanvasElement e, MotionKind kind) {
     var arrive = kind == MotionKind.arrive;
     var out = withoutOwn(e, kind);
@@ -438,8 +426,8 @@ extension CanvasKeyframes on CanvasController {
             : was.copyWith(exit: ElementAnimationPreset.none));
   }
 
-  /// withTrackOrNone is [element] keeping [next] as its keyframes -- or
-  /// none at all once [next] is empty, so no empty track is saved.
+  /// withTrackOrNone is [element] with [next] as its keyframes, or none at
+  /// all if [next] is empty, so no empty track is saved.
   CanvasElement withTrackOrNone(CanvasElement element, ElementTrack next) =>
       next.isEmpty
           ? element.withBase(clearTrack: true)
@@ -472,9 +460,9 @@ extension CanvasKeyframes on CanvasController {
     return KeyframeTarget(name, e.kind.label, e.track ?? ElementTrack.empty);
   }
 
-  /// writeTargetTrack puts [track] back on the Keyframes card's target --
-  /// none at all once it is empty, so no empty track is saved. Not for a
-  /// path, whose points are written by moveTargetKeyframes.
+  /// writeTargetTrack puts [track] back on the Keyframes card's target, or
+  /// no track if it is empty. Not for a path, whose points are written by
+  /// moveTargetKeyframes.
   void writeTargetTrack(ElementTrack track) {
     var team = focusedTeam;
     var index = focusedPlayer;
@@ -493,8 +481,8 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// moveTargetKeyframes moves the keyframes at [frames] by [by], keeping
-  /// their spacing: all of them, or -- where one would land on another
-  /// keyframe, or off the scene -- none, and false.
+  /// their spacing: all of them, or none (returning false) where one would
+  /// land on another keyframe or off the scene.
   bool moveTargetKeyframes(List<int> frames, int by) {
     var t = keyframeTarget;
     if (t == null || frames.isEmpty) return false;
@@ -562,9 +550,9 @@ extension CanvasKeyframes on CanvasController {
     writeTargetTrack(next);
   }
 
-  /// toggleTargetKeyframe is the card's diamond: a keyframe at the playhead
-  /// taken away, or one put there holding the pose there (a point, on a
-  /// path). Its values are set in the element's settings, or in Curves.
+  /// toggleTargetKeyframe is the card's diamond: removes the keyframe at the
+  /// playhead, or adds one holding the pose there (a point, on a path). Its
+  /// values are set in the element's settings, or in Curves.
   void toggleTargetKeyframe() {
     var t = keyframeTarget;
     if (t == null) return;
@@ -586,8 +574,8 @@ extension CanvasKeyframes on CanvasController {
     }
   }
 
-  /// copyTargetKeys keeps the keyframes at [frames], each relative to the
-  /// first, to be pasted at the playhead: their number.
+  /// copyTargetKeys keeps the keyframes at [frames], relative to the first,
+  /// to paste at the playhead, and returns how many.
   int copyTargetKeys(Iterable<int> frames) {
     var t = keyframeTarget;
     if (t == null || t.points) return 0;
@@ -600,12 +588,11 @@ extension CanvasKeyframes on CanvasController {
     return _keyClipboard.length;
   }
 
-  /// hasCopiedKeys is whether there are keyframes to paste.
   bool get hasCopiedKeys => _keyClipboard.isNotEmpty;
 
   /// pasteTargetKeys lays the copied keyframes down from the playhead,
-  /// keeping their spacing: the frames they landed on, or why not (there
-  /// is not room before the scene ends, or a keyframe is already there).
+  /// keeping their spacing: the frames they landed on, or why not (no room
+  /// before the scene ends, or a keyframe already there).
   (List<int>, String?) pasteTargetKeys() {
     var t = keyframeTarget;
     if (t == null || t.points || _keyClipboard.isEmpty) return (const [], null);
@@ -653,11 +640,9 @@ extension CanvasKeyframes on CanvasController {
 /// new exit laid for it.
 const double exitHoldSeconds = 2;
 
-/// newExitSpan is where a new exit [span] frames long goes, after an arrival
-/// ending at [entranceEnds]: a hold of exitHoldSeconds after it, so what
-/// arrives is up long enough to read. Where the scene is too short for that,
-/// at its end, as before. Exits were laid at the end of the scene, and most
-/// had to be dragged back (Ken's privacy video, 2026-11-11).
+/// newExitSpan is where a new exit [span] frames long goes after an arrival
+/// ending at [entranceEnds]: exitHoldSeconds after it, so what arrives is
+/// up long enough to read, or at the scene's end where it is too short.
 (int, int) newExitSpan(int entranceEnds, int span, CanvasDocument document) {
   var last = math.max(1, document.frames - 1);
   var from = entranceEnds + 1 + (exitHoldSeconds * document.frameRate).round();

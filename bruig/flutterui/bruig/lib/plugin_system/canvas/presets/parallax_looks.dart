@@ -12,7 +12,6 @@ class ParallaxLook {
   final List<ParallaxLayer> layers;
   const ParallaxLook(this.name, this.layers);
 
-  /// scenery is this look as a parallax background's settings.
   ParallaxElement get scenery =>
       ParallaxElement(const ElementBase(id: ""), layers: layers);
 }
@@ -229,8 +228,7 @@ const List<ParallaxLook> parallaxLooks = [
   ]),
 ];
 
-/// parallaxLayerStart is a new layer of [kind]: something to see at once,
-/// to be changed from there.
+/// parallaxLayerStart is a new layer of [kind], visible at once.
 ParallaxLayer parallaxLayerStart(SceneryKind kind) => switch (kind) {
       SceneryKind.sky => const ParallaxLayer(
           kind: SceneryKind.sky,

@@ -10,13 +10,11 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// element_preset_store.dart keeps the designs somebody has saved.
-//
-// One file per preset in a hidden folder beside the canvases, rather than one
-// list that two windows could both rewrite, losing one's preset. The leading
-// dot keeps the folder out of the Files panel (see CanvasStorage.list).
+// element_preset_store.dart keeps the designs somebody has saved: one file
+// per preset in a hidden folder beside the canvases, so two windows cannot
+// lose a preset by both rewriting one list. The leading dot keeps the folder
+// out of the Files panel (see CanvasStorage.list).
 
-/// _folderName is where they live, inside the canvas library.
 const _folderName = ".presets";
 
 /// ElementPresetStore is the presets, built in and saved, kept in memory so a
@@ -40,8 +38,7 @@ class ElementPresetStore extends ChangeNotifier {
           if (p.kind == kind) p
       ];
 
-  /// loaded says whether the disk has been read yet. A panel drawing before
-  /// it has shows the built-in ones.
+  /// loaded is whether the disk is read; a panel drawn before shows built-ins.
   bool get loaded => _loaded;
 
   /// load reads the folder, once. Calling it again while it is reading joins
@@ -109,8 +106,7 @@ class ElementPresetStore extends ChangeNotifier {
     return preset;
   }
 
-  /// rename changes what a saved preset is called. Built-in ones are not the
-  /// reader's to rename.
+  /// rename renames a saved preset; built-in ones cannot be renamed.
   Future<bool> rename(ElementPreset preset, String name) async {
     var clean = name.trim();
     if (preset.builtIn || clean.isEmpty) return false;
@@ -124,7 +120,6 @@ class ElementPresetStore extends ChangeNotifier {
     return true;
   }
 
-  /// remove deletes a saved preset.
   Future<bool> remove(ElementPreset preset) async {
     if (preset.builtIn) return false;
     try {

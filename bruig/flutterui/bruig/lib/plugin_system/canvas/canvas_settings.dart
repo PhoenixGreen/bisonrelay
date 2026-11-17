@@ -6,12 +6,10 @@ import 'package:bruig/theming_system/runtime/theme_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// canvas_settings.dart is Canvas's section of Settings > Plugins. Only
-// choices about the app live here (whether the feature exists, network
-// access, the playback engine, studio colours); anything about one canvas
-// belongs on that canvas's own settings band.
+// canvas_settings.dart is Canvas's section of Settings > Plugins: choices about
+// the app only (whether the feature exists, network access, playback engine,
+// studio colours). Anything about one canvas belongs on its own settings band.
 
-/// CanvasSettingsSection is the Canvas switches and studio colours.
 class CanvasSettingsSection extends StatelessWidget {
   const CanvasSettingsSection({super.key});
 
@@ -94,8 +92,8 @@ class CanvasSettingsSection extends StatelessWidget {
   }
 }
 
-/// _StudioSwatches is every studio colour as it is now, each pressed to
-/// change it; one changed by hand has a way back beside it.
+/// _StudioSwatches is every studio colour, each pressed to change it; one
+/// changed by hand has a way back beside it.
 class _StudioSwatches extends StatelessWidget {
   final CanvasPreferences prefs;
   const _StudioSwatches({required this.prefs});

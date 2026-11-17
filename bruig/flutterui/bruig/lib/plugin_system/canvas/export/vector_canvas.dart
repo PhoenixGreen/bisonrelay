@@ -5,14 +5,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
-// vector_canvas.dart is a chart or a table drawn as shapes and words rather
-// than pixels (Ken, 2026-11-17: "Build all four" -- the improvements
-// report's vector PDF and SVG). The painters draw onto a VectorCanvas as
-// onto any canvas; it keeps each shape as an outline in page space, each
-// line of words as its words (paintTp hands them over, since a laid-out
-// paragraph cannot be read back), and draws what has no vector form -- a
-// gradient, a blur, a picture, words it was not told -- as a small picture
-// in its exact place. vector_writers.dart turns the result into SVG or PDF.
+// vector_canvas.dart draws a chart or a table as shapes and words. The
+// painters draw onto a VectorCanvas as any canvas; it keeps outlines and
+// words (via paintTp: a laid-out paragraph cannot be read back) and draws
+// what has no vector form as a small picture in place.
 
 /// VPoly is one closed or open run of points, in page space.
 class VPoly {
@@ -30,8 +26,7 @@ class VClip {
 
 /// VOp is one thing drawn: a shape, a line of words, or a picture.
 sealed class VOp {
-  /// clip is the clip it is drawn inside (-1, none); [alpha] is the
-  /// opacity of the layers it is in.
+  /// clip is the clip it is in (-1, none); [alpha] its layers' opacity.
   final int clip;
   final double alpha;
   const VOp(this.clip, this.alpha);
@@ -56,9 +51,8 @@ class VShape extends VOp {
       : super(clip, alpha);
 }
 
-/// VText is a line of words, its baseline's left end at the origin of
-/// [matrix] (a, b, c, d, e, f: page = (a·x + c·y + e, b·x + d·y + f)), as
-/// wide as [width] on screen.
+/// VText is a line of words, its baseline's left end at [matrix]'s origin
+/// (page = (a·x + c·y + e, b·x + d·y + f)), [width] wide on screen.
 class VText extends VOp {
   final String text;
   final String family;
@@ -92,8 +86,7 @@ class VImage extends VOp {
       : super(clip, alpha);
 }
 
-/// paintTp draws [tp] at [at] on [canvas]: as its words on a VectorCanvas,
-/// as usual anywhere else.
+/// paintTp draws [tp] at [at]: as words on a VectorCanvas, else as usual.
 void paintTp(TextPainter tp, Canvas canvas, Offset at) {
   if (canvas is VectorCanvas && canvas.addText(tp, at)) return;
   tp.paint(canvas, at);
@@ -108,8 +101,7 @@ class _State {
 
 /// VectorCanvas records what is drawn on it as vector shapes and words.
 class VectorCanvas implements Canvas {
-  /// size is the page; [rasterScale] how finely what has no vector form is
-  /// drawn as a picture.
+  /// size is the page; [rasterScale] how finely rasters are drawn.
   final Size size;
   final double rasterScale;
   VectorCanvas(this.size, {this.rasterScale = 3});
@@ -122,7 +114,6 @@ class VectorCanvas implements Canvas {
   double _alpha = 1;
   final List<_State> _stack = [];
 
-  /// dispose lets go of the pictures it made.
   void dispose() {
     for (var op in ops) {
       if (op is VImage) op.image.dispose();
@@ -179,7 +170,7 @@ class VectorCanvas implements Canvas {
     ];
   }
 
-  /// _vectorPaint is whether [p] can be written as a plain colour.
+  /// _plain is whether [p] can be written as a plain colour.
   static bool _plain(Paint p) =>
       p.shader == null &&
       p.maskFilter == null &&

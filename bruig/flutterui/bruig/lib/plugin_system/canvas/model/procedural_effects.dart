@@ -24,9 +24,8 @@ enum ClearArea {
       values.firstWhere((a) => a.name == name, orElse: () => ClearArea.none);
 }
 
-/// EffectsSpec is the finishing done to a background's pattern.
-///
-/// All of it off by default, so older documents draw the same.
+/// EffectsSpec is the finishing done to a background's pattern. All off by
+/// default, so documents without it draw the same.
 class EffectsSpec {
   /// opacity is how strongly the pattern is laid over the base colour.
   final double opacity;
@@ -40,8 +39,7 @@ class EffectsSpec {
   /// grain does, where the background moves.
   final bool grainMoves;
 
-  /// glow is a bloom round the bright parts of the pattern, and glowSize
-  /// how far it spreads.
+  /// glow is a bloom round the pattern's bright parts; glowSize its spread.
   final double glow;
   final double glowSize;
 
@@ -108,7 +106,6 @@ class EffectsSpec {
   bool get grades =>
       hue != 0 || saturation != 0 || contrast != 0 || brightness != 0;
 
-  /// any is whether any of it is on.
   bool get any =>
       opacity < 1 ||
       grain > 0 ||

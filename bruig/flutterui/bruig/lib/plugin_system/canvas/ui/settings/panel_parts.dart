@@ -13,17 +13,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// panel_parts.dart is the parts every element's settings are built from
-// since the panel was rebuilt round tasks (Ken, 2026-11-11; the Text panel
-// prototype): the quick strip over the sections, a note saying why a
-// setting is not doing what it seems to, the place in a box as a picture of
-// the box, the element's looks as rows -- the very looks its Chain has, so
-// each is kept once -- and its motion said in a line or two that open the
-// Chain. Each says one thing the same way on every element.
+// panel_parts.dart is what every element's settings are built from: the
+// quick strip, state notes, a box placement picker, looks as rows (the
+// Chain's own), and motion as lines opening the Chain, each the same on
+// every element.
 
-/// CanvasQuickStrip is the few settings an element is changed by most --
-/// a text's face, size, colour, alignment and style -- over its sections,
-/// in a card of its own, so they are never a section away.
+/// CanvasQuickStrip is an element's most-changed settings in a card over
+/// its sections, never a section away.
 class CanvasQuickStrip extends StatelessWidget {
   final List<Widget> children;
   const CanvasQuickStrip({required this.children, super.key});
@@ -38,8 +34,7 @@ class CanvasQuickStrip extends StatelessWidget {
         color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.4),
         border: Border.all(color: theme.colors.outlineVariant),
       ),
-      // Laid out as a section's controls are -- steppers, cards' sizes --
-      // a size up, as the prototype's quick strip is.
+      // Laid out as a section's controls are, a size up.
       child: CanvasCards(
         title: "",
         child: Padding(
@@ -58,10 +53,8 @@ class CanvasQuickStrip extends StatelessWidget {
   }
 }
 
-/// panelRow is controls side by side across the whole line, as the
-/// prototype lays them: each [flex] a share of what is left, or [width]
-/// fixed where given. Too narrow for them all at their least -- a narrow
-/// sidebar, a large text size -- they go one under another instead.
+/// panelRow lays controls across the line, each [flex] a share or [width]
+/// fixed; too narrow for all, they stack.
 Widget panelRow(List<(Widget, {int flex, double? width, double min})> cells) =>
     LayoutBuilder(builder: (context, room) {
       var least = 0.0;
@@ -95,14 +88,14 @@ Widget panelRow(List<(Widget, {int flex, double? width, double min})> cells) =>
       );
     });
 
-/// cell is one control of a panelRow: [min] is the least it can be drawn
-/// at, beside the others.
+/// cell is one control of a panelRow: [min] is the least it can be drawn at
+/// beside the others.
 (Widget, {int flex, double? width, double min}) cell(Widget w,
         {int flex = 1, double? width, double min = 84}) =>
     (w, flex: flex, width: width, min: min);
 
-/// CanvasChip is a small rounded button, for adding one of several things --
-/// a look -- without a row of full-size buttons.
+/// CanvasChip is a small rounded button for adding one of several things
+/// (a look) without a row of full-size buttons.
 class CanvasChip extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
@@ -118,7 +111,7 @@ class CanvasChip extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onPressed,
-          // A dashed edge, as the prototype's: something not there yet.
+          // A dashed edge: something not there yet.
           child: CustomPaint(
             painter: _DashedPill(theme.colors.outline.withValues(alpha: 0.7)),
             child: Container(
@@ -139,7 +132,6 @@ class CanvasChip extends StatelessWidget {
   }
 }
 
-/// _DashedPill draws a pill's edge in dashes.
 class _DashedPill extends CustomPainter {
   final Color colour;
   const _DashedPill(this.colour);
@@ -192,8 +184,8 @@ class KeyDiamond extends StatelessWidget {
   }
 }
 
-/// CanvasStateNote says why a setting is not doing what it seems to -- a
-/// size worked out from the box -- and offers the way out, beside it.
+/// CanvasStateNote says why a setting is not doing what it seems to (a size
+/// worked out from the box) and offers the way out beside it.
 class CanvasStateNote extends StatelessWidget {
   final String text;
   final String? action;
@@ -234,7 +226,7 @@ class CanvasStateNote extends StatelessWidget {
 }
 
 /// CanvasSlotPicker is where in a box something sits, as a picture of the
-/// box: nine places, the one it is in lit.
+/// box: nine places, the current one lit.
 class CanvasSlotPicker extends StatelessWidget implements CanvasGrowable {
   final String label;
   final TextSlot value;
@@ -307,9 +299,8 @@ class CanvasSlotPicker extends StatelessWidget implements CanvasGrowable {
 // ---------------------------------------------------------------------------
 // Looks
 
-/// LookParamView is how a look's setting reads, the same in the panel and
-/// in the Chain: a share as a percentage, and the shadow's angle as the way
-/// it falls (Ken, 2026-11-11: one name and one scale for each).
+/// LookParamView is how a look's setting reads, the same in panel and
+/// Chain: a share as a percentage, a shadow's angle as where it falls.
 class LookParamView {
   final String label;
 
@@ -323,8 +314,8 @@ class LookParamView {
   double stored(double shown) => shown / times;
 }
 
-/// lookParamView is how [p], a setting of look [kind], reads: as its knob
-/// in the Chain reads it (DeviceParam.reading) -- a share as a percentage.
+/// lookParamView is how [p], a setting of look [kind], reads, as its Chain
+/// knob does (DeviceParam.reading).
 LookParamView lookParamView(MotionDeviceKind kind, DeviceParam p) {
   if (p.unit == "") return LookParamView(p.label, 100, "%", 0);
   return switch (p.unit) {
@@ -336,8 +327,7 @@ LookParamView lookParamView(MotionDeviceKind kind, DeviceParam p) {
   };
 }
 
-/// lookMain is the one setting of a look shown on its row: the one most
-/// turned.
+/// lookMain is the one setting shown on a look's row: the most turned.
 String lookMain(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.outline => "width",
       MotionDeviceKind.shadow => "strength",
@@ -356,10 +346,8 @@ bool lookTakesColour(MotionDeviceKind kind) =>
     kind == MotionDeviceKind.shadow ||
     kind == MotionDeviceKind.glow;
 
-/// LooksGroup is [element]'s looks on [layer] as rows -- the looks its
-/// Chain has, not a copy of them, so a change here is a change there -- and
-/// the looks it could have added. A row is the look's name, its main
-/// setting and its switch; opened, the rest of it.
+/// LooksGroup is [element]'s looks on [layer] as rows, the Chain's own, and
+/// the looks it could add; a row opens to show the rest.
 class LooksGroup extends StatefulWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -428,13 +416,13 @@ class _LooksGroupState extends State<LooksGroup> {
     c.endInteraction();
   }
 
-  /// _now is setting [p] of [d] as it is at the playhead: by its keys,
-  /// where it is animated.
+  /// _now is setting [p] of [d] at the playhead: by its keys where it is
+  /// animated.
   double _now(MotionDevice d, DeviceParam p) =>
       d.keyed(p.id) ? c.deviceValueNow(id, d, p.id) : d.value(p.id);
 
-  /// _set changes setting [p] of [d]: a key at the playhead where it is
-  /// animated, how it rests where not, as the Chain's knob does.
+  /// _set changes setting [p] of [d]: a key at the playhead where animated,
+  /// its resting value where not, as the Chain's knob does.
   void _set(MotionDevice d, DeviceParam p, double stored) =>
       c.setDeviceSetting(id, d.id, p.id, stored, transient: true);
 
@@ -490,8 +478,8 @@ class _LooksGroupState extends State<LooksGroup> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-            // Its name, its main setting and its switch on one line; in a
-            // narrow sidebar the setting goes under the name.
+            // Name, main setting and switch on one line; in a narrow sidebar
+            // the setting goes under the name.
             child: LayoutBuilder(builder: (context, room) {
               var name = InkWell(
                 key: ValueKey("lookOpen-${d.id}"),
@@ -518,8 +506,8 @@ class _LooksGroupState extends State<LooksGroup> {
                                   ? theme.colors.onSurface
                                   : theme.colors.onSurfaceVariant)),
                     ),
-                    // Animated in the Chain: said, not keyed, here -- the
-                    // keys are the Chain's (Ken, 2026-11-11).
+                    // Animated in the Chain: shown, not keyed, here, as the
+                    // keys are the Chain's.
                     if (d.animated) ...[
                       const SizedBox(width: 6),
                       IconTheme(
@@ -666,10 +654,8 @@ class _LooksGroupState extends State<LooksGroup> {
 // ---------------------------------------------------------------------------
 // Motion
 
-/// MotionSummary is [element]'s motion said in a line each -- how it
-/// arrives, what moves it, how it goes -- each opening the Chain at it. The
-/// motion itself is made and changed there (Ken, 2026-11-08), so it is kept
-/// in one place; here it is only said.
+/// MotionSummary is [element]'s motion in a line each (arrival, movement,
+/// exit), each opening the Chain, where motion lives.
 class MotionSummary extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -728,7 +714,7 @@ class MotionSummary extends StatelessWidget {
         onTap: () => controller.showInChain(e.id, m.poseDevices.first.id),
       ));
     }
-    // Its settings animated by keys: a look rising as it arrives, a move
+    // Settings animated by keys: a look rising as it arrives, a move
     // easing off.
     for (var d in m.devices) {
       for (var p in d.kind.params) {

@@ -8,32 +8,28 @@ import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart' show keyAlter;
 import 'package:flutter/painting.dart';
 
-// score_engraver.dart engraves a MusicScore (see model/music_score.dart) in
-// Bravura, the SMuFL music font, as the Score Studio's prototype draws it:
-// parts down the page, each with its staves, bars laid out in systems as
-// wide as the page, everything a player reads where they look for it --
-// chord symbols and strum marks above, dynamics, hairpins and lyrics below
-// -- and every marking movable by the offset it keeps.
+// score_engraver.dart engraves a MusicScore (model/music_score.dart) in
+// Bravura, the SMuFL font: parts down the page, bars in systems as wide as
+// the page, each marking movable by the offset it keeps.
 //
-// It is two steps: layoutScore works out where everything goes (and what a
-// press on each place means), paintScore draws it. Measures are in staff
-// spaces, the gap between two lines; Bravura's em is four spaces.
+// layoutScore works out where everything goes (and what a press there
+// means); paintScore draws it. Measures are in staff spaces; Bravura's em
+// is four.
 
-/// EngraveOptions is how a score is engraved.
 class EngraveOptions {
   final double width;
 
   /// space is a staff space, in the canvas's units.
   final double space;
 
-  /// parts are the parts shown, by id, or null for all; staves, for a part
-  /// shown, the staves of it shown (null for all).
+  /// parts are the part ids shown, or null for all; staves, per part, the
+  /// staves shown (null for all).
   final Set<String>? parts;
   final Map<String, Set<int>>? staves;
 
-  /// heading is whether the title, composer and tempo are drawn; each can
-  /// be left out on its own ([titled], [subtitled], [credited], [tempoed]),
-  /// and [title] is drawn in place of the score's own where it is given.
+  /// heading is whether the title, composer and tempo are drawn; [titled],
+  /// [subtitled], [credited] and [tempoed] drop each alone, and [title]
+  /// replaces the score's own where given.
   final bool heading;
   final bool titled, subtitled, credited, tempoed;
   final String? title;
@@ -45,15 +41,14 @@ class EngraveOptions {
   /// marks is whether rehearsal marks are drawn (and room kept for them).
   final bool marks;
 
-  /// bars are the bars laid out, the first and last (from nought), or null
-  /// for every one.
+  /// bars are the first and last bar laid out (from nought), or null for all.
   final (int, int)? bars;
 
   /// verse is the one verse of lyrics shown, or null for every verse.
   final int? verse;
 
   /// diagrams is whether a guitar part's chords are drawn as chord boxes
-  /// under their symbols, as a chord chart draws them (Ken, 2026-11-14).
+  /// under their symbols.
   final bool diagrams;
 
   final Color paper, ink;
@@ -87,7 +82,6 @@ class EngraveOptions {
       staves?[part] == null || staves![part]!.contains(staff);
 }
 
-/// ScoreHitKind is what a place on an engraved score is.
 enum ScoreHitKind { event, staff, mark, barline }
 
 /// ScoreHit is a place on an engraved score: an event, the open staff of a
@@ -151,7 +145,6 @@ class _Staff {
   _Staff(this.part, this.partIndex, this.index, this.staff);
   bool get strum => part.strum;
 
-  /// boxed is whether its chords are drawn as chord boxes.
   bool boxed(EngraveOptions o) =>
       o.diagrams && part.kind.look == InstrumentLook.guitar;
 }
@@ -161,8 +154,8 @@ class _BarPlace {
   final int bar;
   double x = 0, width = 0, lead = 0;
 
-  /// times are the onsets in the bar, across every staff shown, and their
-  /// x's (set once the system is justified).
+  /// times are the bar's onsets across every staff shown, and their x's
+  /// (set once the system is justified).
   final List<double> times;
   final List<double> gaps;
   List<double> xs = const [];
@@ -228,11 +221,10 @@ _Heading _heading(MusicScore s, EngraveOptions o) {
 /// of a system's markings sits: endings, rehearsal marks, the tempo.
 typedef _Rows = ({double ending, double mark, double tempo});
 
-/// _paintChordBox draws [shape] as a chord chart does, its top left at
-/// [at]: a cross over a string not played, a ring over an open one, the
-/// nut (or the lowest fret's number, up the neck), four frets of six
-/// strings, a dot on each note held -- a bar across a barre -- and the
-/// finger on each under it. Answers where it is.
+/// _paintChordBox draws [shape] as a chord chart does, top left at [at]:
+/// cross or ring over unplayed and open strings, the nut (or the lowest
+/// fret's number up the neck), four frets, a dot per note (a bar for a
+/// barre) and the finger under each. Returns its rect.
 Rect _paintChordBox(
     ui.Canvas canvas, GuitarShape shape, Offset at, double sp, Color ink) {
   var gap = sp * 1.1, fret = sp * 1.25;
@@ -319,7 +311,6 @@ double _chordRow(bool strum) => strum ? 5.0 : 3.2;
 /// open and unplayed strings' marks, four frets, the fingers' numbers.
 const _boxRows = 8.5;
 
-/// EngravedSystem is one line of bars across the page.
 class EngravedSystem {
   final List<int> bars;
   final double top, bottom;
@@ -337,12 +328,10 @@ class EngravedScore {
   final List<_Staff> _staves;
   final List<List<_BarPlace>> _places;
 
-  /// _staffTops are each system's staves' top lines.
   final List<Map<_Staff, double>> _staffTops;
 
   final List<_Rows> _rows;
 
-  /// _placed are the events as put on the page.
   final List<_Placed> _placed = [];
 
   EngravedScore._(this.score, this.options, this.systems, this.height,
@@ -391,12 +380,9 @@ class EngravedScore {
   }
 }
 
-// ---------------------------------------------------------------- layout
-
 double _gapFor(double quarters, double space) =>
     space * (1.6 + 1.5 * math.log(1 + quarters * 2) / math.ln2);
 
-/// layoutScore lays [score] out with [o].
 EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
   var sp = o.space;
   var staves = <_Staff>[];
@@ -475,9 +461,8 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
   }
   if (current.isNotEmpty) systemsBars.add(current);
 
-  // Justified: each bar's gaps stretched to fill the line -- the last line
-  // only when it is mostly full already, or when it is the only line: a
-  // piece that fits on one line fills it.
+  // Justify each bar's gaps to fill the line; the last line only when mostly
+  // full or the only line, so a one-line piece fills it.
   for (var (si, sys) in systemsBars.indexed) {
     var start = left + startW(si == 0);
     var natural = sys.fold(0.0, (a, p) => a + p.natural);
@@ -502,7 +487,6 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
     }
   }
 
-  // Down the page: the heading, then each system's staves.
   var y = _heading(score, o).end;
   var systems = <EngravedSystem>[];
   var staffTops = <Map<_Staff, double>>[];
@@ -513,9 +497,8 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
     var these = <_Staff, double>{};
     var r = (ending: 0.0, mark: 0.0, tempo: 0.0);
     for (var (i, s) in staves.indexed) {
-      // Room above for what sits there, row on row: strum marks, chord
-      // symbols, and over the first staff endings, rehearsal marks and the
-      // tempo.
+      // Room above, row on row: strum marks, chord symbols, and over the
+      // first staff endings, rehearsal marks and the tempo.
       var level = s.strum ? 2.8 : 1.4;
       if (_hasChords(s, sys)) {
         level = _chordRow(s.strum) + (s.boxed(o) ? _boxRows : 0) + 0.3;
@@ -582,7 +565,7 @@ EngravedScore layoutScore(MusicScore score, EngraveOptions o) {
   }
   var e = EngravedScore._(score, o, systems, y + sp * 2, hits, staves,
       systemsBars, staffTops, rows);
-  // The events: their places depend on the staff tops above.
+  // The events last: their places depend on the staff tops.
   _layoutEvents(e);
   return e;
 }
@@ -636,7 +619,7 @@ void _layoutEvents(EngravedScore es) {
           t[e.voice] = at + e.quarters;
           var x = p.xAt(at);
           // A strum's slash on the second line: from the bottom line up to
-          // the middle, where its stem starts (Ken, 2026-11-14).
+          // the middle, where its stem starts.
           var ys = e.slash
               ? [bottom - sp]
               : e.isRest
@@ -696,8 +679,6 @@ void _layoutEvents(EngravedScore es) {
   }
   es._placed.addAll(placed);
 }
-
-// ---------------------------------------------------------------- paint
 
 /// ScorePaintState is what changes while a score is shown: what is
 /// playing, what is picked, where the input cursor and the playhead are.
@@ -777,7 +758,6 @@ TextPainter _text(String s, double size, Color colour,
       textDirection: TextDirection.ltr,
     )..layout();
 
-/// paintScore draws [es] on [canvas] at [origin].
 void paintScore(ui.Canvas canvas, EngravedScore es,
     {Offset origin = Offset.zero,
     ScorePaintState state = const ScorePaintState()}) {
@@ -811,7 +791,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
   Offset off(Map<String, Offset> offsets, String kind) =>
       offsets[kind] ?? Offset.zero;
 
-  // The heading.
   var head = _heading(s, o);
   if (head.title case var y?) {
     var t = _text(o.title ?? s.title, sp * 3.2, ink, weight: FontWeight.w800);
@@ -840,7 +819,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     var systemTop = tops[es._staves.first]!;
     var systemBottom = tops[es._staves.last]! + sp * 4;
 
-    // The tempo, over the first system.
     if (first && o.showsTempo) {
       var at = Offset(leftX, systemTop - sp * es._rows[si].tempo) +
           off(s.offsets, MarkKind.tempo);
@@ -859,7 +837,7 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
           0);
     }
 
-    // The system's line at the left, braces for a part of two staves.
+    // The system's line at the left; a brace for a part of two staves.
     canvas.drawLine(
         Offset(leftX, systemTop), Offset(leftX, systemBottom), line);
     for (var (i, st) in es._staves.indexed) {
@@ -868,7 +846,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
         canvas.drawLine(Offset(leftX, top + l * sp),
             Offset(sys.last.x + sys.last.width, top + l * sp), line);
       }
-      // The part's name, before its first staff.
       if (st.index == 0) {
         var count = st.part.staves.length;
         var name = first ? st.part.name : st.part.short;
@@ -891,7 +868,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
           canvas.restore();
         }
       }
-      // Clef, key, and on the first system the time.
       var bottom = top + sp * 4;
       var x = leftX + sp * 0.8;
       var clef = st.staff.clef;
@@ -910,18 +886,16 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
       var fifths = s.keyAt(sys.first.bar);
       x = _paintKey(canvas, fifths, clef, x, bottom, sp, ink);
       if (first) {
-        // As the time is where it starts: a range of bars after a change
-        // opens in the time changed to.
+        // The time where the range starts, so bars after a change open in
+        // the changed time.
         var (beats, unit) = s.timeAt(sys.first.bar);
         _paintTime(canvas, beats, unit, x + sp * 0.4, top, sp, ink);
       }
     }
 
-    // Bar by bar.
     for (var (bi, p) in sys.indexed) {
       var info = s.bars[p.bar];
       var barEnd = p.x + p.width;
-      // Bar lines, through each part's staves.
       void barline(double x, {bool thick = false}) {
         for (var st in es._staves) {
           var top = tops[st]!;
@@ -959,7 +933,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
         barline(x + sp * 1.1);
         dots(x + sp * 1.7);
       }
-      // A time or key change at the bar.
       for (var st in es._staves) {
         var top = tops[st]!;
         var x = p.x + sp * (info.repeatStart ? 2.4 : 0.6);
@@ -971,13 +944,11 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
           _paintTime(canvas, b, u, x + sp * 0.2, top, sp, ink);
         }
       }
-      // Bar number at each system's start.
       var topStaff = tops[es._staves.first]!;
       if (bi == 0 && p.bar > 0) {
         _text("${p.bar + 1}", sp * 1.1, ink.withValues(alpha: 0.6))
             .paint(canvas, Offset(p.x + sp * 0.2, topStaff - sp * 2.4));
       }
-      // Endings.
       if (info.endings.isNotEmpty) {
         var y = topStaff - sp * es._rows[si].ending;
         var path = Path()
@@ -1012,7 +983,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             Offset(r.left + sp * 0.6, r.top + (r.height - t.height) / 2));
         markHit(MarkKind.rehearsal, r, "", 0, p.bar);
       }
-      // Segno, coda, jumps.
       for (var (on, code) in [(info.segno, 0xE047), (info.coda, 0xE048)]) {
         if (on) {
           _glyph(
@@ -1037,7 +1007,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
       }
     }
 
-    // The playhead.
     if (state.playhead case var ph?) {
       for (var p in sys) {
         if (p.bar != ph.bar) continue;
@@ -1058,7 +1027,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     }
   }
 
-  // The events, staff by staff, voice by voice.
   var byStaffBar = <(String, int, int, int), List<_Placed>>{};
   for (var pl in placed) {
     (byStaffBar[(pl.staff.part.id, pl.staff.index, pl.bar, pl.e.voice)] ??= [])
@@ -1114,7 +1082,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
         var step = _stepOf(pitch, st.staff.clef);
         stepped.add(step);
         var y = pl.ys[k];
-        // Ledger lines.
         for (var l = -2; l >= step; l -= 2) {
           canvas.drawLine(Offset(x - sp * 0.4, bottom - l * sp / 2),
               Offset(x + sp * 1.6, bottom - l * sp / 2), line);
@@ -1221,7 +1188,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             st.index, pl.bar,
             event: e.id);
       }
-      // The dynamic, below.
       if (e.dyn case var d?) {
         var at = Offset(x - sp * 0.3, bottom + sp * 3.6) +
             off(e.offsets, MarkKind.dynamic);
@@ -1248,7 +1214,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
             pl.bar,
             event: e.id);
       }
-      // Lyrics, below the dynamics.
       for (var (v, word) in e.lyrics.indexed) {
         if (word.isEmpty || (o.verse != null && v != o.verse)) continue;
         var row = o.verse != null ? 0 : v;
@@ -1280,7 +1245,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     _paintTuplets(canvas, list, sp, ink);
   }
 
-  // Slurs and hairpins.
   for (var sn in s.spanners) {
     var from = placed
         .where((p) =>
@@ -1370,7 +1334,6 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
     }
   }
 
-  // The input cursor.
   if (state.cursor case var cur?) {
     var st = es._staves
         .where((x) => x.part.id == cur.part && x.index == cur.staff)
@@ -1393,9 +1356,8 @@ void paintScore(ui.Canvas canvas, EngravedScore es,
   canvas.restore();
 }
 
-/// scoreMarkHandles are where a picked marking's handles are: a dynamic's
-/// at its bottom right corner (to size it), a hairpin's at its two ends (to
-/// stretch it).
+/// scoreMarkHandles are a picked marking's handles: a dynamic's bottom right
+/// corner (to size it), a hairpin's two ends (to stretch it).
 List<Offset> scoreMarkHandles(ScoreHit hit, double sp) {
   var r = hit.rect.inflate(sp * 0.3);
   return switch (hit.mark) {
@@ -1490,7 +1452,6 @@ void _paintBeams(ui.Canvas canvas, List<_Placed> voice, double sp, Color ink,
     var thick = sp * 0.5;
     var paint = Paint()..color = ink;
     for (var p in grp) {
-      // Stems to the beam.
       canvas.drawLine(
           Offset(p.stemX, p.tip),
           Offset(p.stemX, tip),

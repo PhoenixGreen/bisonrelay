@@ -6,15 +6,14 @@ import 'package:flutter/painting.dart';
 
 // video_painter.dart draws what sits over a video: the big play button, the
 // play bar, the time, the mute switch and the volume bar. The picture itself
-// is drawn by the image painter -- see _paintVideo in scene_renderer.dart.
+// is drawn by the image painter (_paintVideo in scene_renderer.dart).
 //
-// The layout is worked out once, in videoParts, and the stage presses the
-// same rectangles the painter drew. See audio_painter.dart, which is the same
-// arrangement for a speaker.
+// videoParts works out the layout once; the stage presses the same
+// rectangles the painter drew, as audio_painter.dart does for a speaker.
 
-/// VideoShow is what the painter needs to know about a video right now: not
-/// in the document. In an exported picture it is the poster and a stopped
-/// play bar; on screen, whatever the reader has done.
+/// VideoShow is the video's state right now, not in the document. In an
+/// exported picture it is the poster and a stopped play bar; on screen,
+/// whatever the reader has done.
 class VideoShow {
   final bool playing;
   final bool muted;
@@ -33,12 +32,12 @@ class VideoShow {
 
   final double opacity;
 
-  /// hidden is a video on the timeline with the playhead outside its span:
-  /// not drawn at all, the way a clip is not in a film before it is cut in.
+  /// hidden is a timeline video with the playhead outside its span: not
+  /// drawn at all.
   final bool hidden;
 
-  /// controls is whether the player's buttons are drawn over it. Not in a
-  /// film made of the canvas: nobody can press them there.
+  /// controls is whether the player's buttons are drawn. Off in a film made
+  /// of the canvas, where nobody can press them.
   final bool controls;
 
   const VideoShow({
@@ -71,7 +70,6 @@ class VideoShow {
       end > start ? ((position - start) / (end - start)).clamp(0.0, 1.0) : 0;
 }
 
-/// VideoPart is which part of a video a press landed on.
 enum VideoPart { picture, bigPlay, playPause, track, mute, volume }
 
 /// videoPartAt is which of [parts] [at] is on, controls before the picture,
@@ -189,8 +187,8 @@ void paintVideoControls(
     ui.Canvas canvas, VideoElement e, VideoParts parts, VideoShow show) {
   const ink = Color(0xFFFFFFFF);
 
-  // The big button only while stopped: over a playing picture it is a hole
-  // in the middle of the thing being watched.
+  // The big button only while stopped: over a playing picture it would be a
+  // hole in what is being watched.
   if (parts.bigPlay case var big? when e.isLink || !show.playing) {
     canvas.drawOval(big, Paint()..color = const Color(0x8C000000));
     _triangle(canvas, big.deflate(big.width * 0.3), ink);

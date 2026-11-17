@@ -6,16 +6,13 @@ import 'dart:ui' show Rect;
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 
-// epub_writer.dart writes a document of pages as an EPUB.
-//
-// Fixed layout, one picture to a page: a canvas is a design, and reflowing
-// it would throw the design away, so every page is declared pre-paginated at
-// its own size. Written by hand because an EPUB is a zip of a few short XML
+// epub_writer.dart writes a document of pages as a fixed-layout EPUB, one
+// picture to a page: a canvas is a design, and reflowing it would throw the
+// design away. Written by hand, since an EPUB is a zip of a few short XML
 // files.
 
-/// EpubSide is which half of a spread a page belongs on, for a reader showing
-/// two at a time. Said per page because a reader cannot work it out: it
-/// depends on the covers.
+/// EpubSide is which half of a spread a page is on, for a two-up reader:
+/// said per page, since it depends on the covers.
 enum EpubSide { left, right, centre }
 
 /// EpubLink is a rectangle on a page that goes somewhere when it is pressed,
@@ -29,8 +26,8 @@ class EpubLink {
   /// href is another page's file name, or a URL.
   final String href;
 
-  /// element is the button it was made from, so that on a page laid out as
-  /// layers it travels with the button -- see EpubStage.
+  /// element is the button it was made from, so on a page laid out as layers
+  /// it travels with the button (see EpubStage).
   final String? element;
 
   const EpubLink({
@@ -45,7 +42,7 @@ class EpubLink {
 
 /// EpubFile is a file the book carries besides its pages: a sound, a video.
 class EpubFile {
-  /// href is where it is, relative to the pages -- "media/…".
+  /// href is where it is, relative to the pages: "media/…".
   final String href;
   final Uint8List bytes;
   final String mime;
@@ -53,8 +50,7 @@ class EpubFile {
 }
 
 /// EpubMedia is a sound or a video on a page, played by the page's script.
-///
-/// A sound has no size unless it can be pressed. How it plays is written onto
+/// A sound has no size unless it can be pressed. How it plays is written on
 /// the HTML element for media.js to read, so one script serves every page.
 class EpubMedia {
   final String id;
@@ -72,7 +68,7 @@ class EpubMedia {
   final List<String> sources;
   final List<(double, double)> ranges;
 
-  /// loop is "none", "one" or "all" -- see MediaLoop.
+  /// loop is "none", "one" or "all": see MediaLoop.
   final String loop;
   final bool autoplay;
   final bool muted;
@@ -98,27 +94,25 @@ class EpubMedia {
 
   /// at is the frame of the page's playhead it starts on, for a video on the
   /// timeline of a page laid out as layers: it follows the playhead, silent
-  /// (its sound is in the page's soundtrack). Null for one on its own clock.
+  /// (its sound is in the soundtrack). Null for one on its own clock.
   final int? at;
 
   /// spans are how long each file's range plays, in seconds, for [at]: what
   /// the playhead is placed against.
   final List<double> spans;
 
-  /// element is the element it was made from, so that on a page laid out as
+  /// element is the element it was made from, so on a page laid out as
   /// layers it sits and moves in the element's layer.
   final String? element;
 
   /// opacity and blend are the element's: how much of it shows, and the CSS
-  /// mix-blend-mode it is laid on the page with (null for normal). A rain
-  /// video screened at a tenth played full and black over the page (Ken,
-  /// 2026-11-13).
+  /// mix-blend-mode it is laid on the page with (null for normal). Without
+  /// them a screened video plays full and black over the page.
   final double opacity;
   final String? blend;
 
-  /// speed is how fast a video on the playhead plays: 0.5 at half speed, as
-  /// MediaClip.speed. The book's Rain went round twice as fast as the
-  /// canvas's, and jumped back each time.
+  /// speed is how fast a video on the playhead plays (0.5 at half speed), as
+  /// MediaClip.speed, so it keeps pace with the canvas.
   final double speed;
 
   const EpubMedia({
@@ -159,9 +153,8 @@ class EpubAction {
   final double width;
   final double height;
 
-  /// act is "play", "pause", "toggle", "stop" or "mute" -- or, aimed at the
-  /// page's playhead, one of its own: "restart", "goto", "playfrom",
-  /// "playto", at [frame] -- or "showhide", aimed at an element's layer.
+  /// act is play, pause, toggle, stop or mute; for the playhead restart,
+  /// goto, playfrom or playto at [frame]; or showhide, for a layer.
   final String act;
   final String target;
   final int frame;
@@ -181,11 +174,9 @@ class EpubAction {
   });
 }
 
-/// EpubStart is a title page folded into the page it starts: shown over it
-/// until a press plays it. A press on one page cannot let the next play its
-/// sound, nor can one page load the next's, in Apple Books -- the Decred
-/// infographic's title Play went to a page that asked for a Play again --
-/// so the title is the start screen of the page it plays.
+/// EpubStart is a title page folded into the page it starts, shown over it
+/// until pressed: Apple Books will not let one page's press play the next
+/// page's sound, so the title is that page's start screen.
 class EpubStart {
   /// picture is the title page without its Play, and play the Play alone,
   /// both PNGs; at is where the Play goes, in the page's pixels.
@@ -197,19 +188,17 @@ class EpubStart {
       {required this.picture, required this.play, required this.at});
 }
 
-/// EpubPage is one leaf: a picture, its size, and anything on it that can be
-/// pressed or played.
+/// EpubPage is one leaf: a picture, its size, and what can be pressed.
 class EpubPage {
   final Uint8List png;
   final int width;
   final int height;
 
-  /// title is what the contents list calls it.
   final String title;
 
   final EpubSide side;
 
-  /// cover marks the page an e-reader should use as the book's cover picture.
+  /// cover marks the page an e-reader should use as the book's cover.
   final bool cover;
 
   /// links are empty for a plain EPUB. See writeEpub's `interactive`.
@@ -222,7 +211,7 @@ class EpubPage {
   final List<EpubFile> files;
 
   /// stage is the page as the things on it, moved by the page's script, where
-  /// it has anything that moves. See epub_layers.dart.
+  /// anything on it moves. See epub_layers.dart.
   final EpubStage? stage;
 
   /// soundtrack is the page's timeline sound, mixed, for a page laid out as
@@ -263,10 +252,8 @@ const String filmTarget = "film";
 /// epubMime is what an EPUB is, and what goes in the archive's first entry.
 const String epubMime = "application/epub+zip";
 
-/// writeEpub packs the pages into the bytes of an .epub file.
-///
-/// [interactive] adds the links, media, presses and layers, and media.js for
-/// the pages that need it. Without it the book is pictures only.
+/// writeEpub packs the pages into an .epub; [interactive] adds links,
+/// media, presses, layers and media.js, else the book is pictures only.
 Uint8List writeEpub({
   required List<EpubPage> pages,
   required String title,
@@ -275,8 +262,8 @@ Uint8List writeEpub({
   bool interactive = false,
   bool facing = false,
 
-  /// cover is the book's cover picture, an opaque PNG of its own, where
-  /// there is one: else the cover page's picture stands in.
+  /// cover is the book's cover picture, an opaque PNG of its own, where there
+  /// is one; else the cover page's picture stands in.
   Uint8List? cover,
 }) {
   if (pages.isEmpty) {
@@ -377,22 +364,19 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
   String box(double x, double y, double w, double h, [double turn = 0]) =>
       "left:${_px(x)};top:${_px(y)};width:${_px(w)};height:${_px(h)}"
       "${turn == 0 ? "" : ";transform:rotate(${turn.toStringAsFixed(2)}deg)"}";
-  // A button whose element is a layer is pressed where the layer is, so it
-  // goes inside it: a button that slides in takes the place to press it
-  // with it, and one that is hidden cannot be pressed.
+  // A button on a layer is pressed where the layer is, so it goes inside:
+  // a sliding one takes its press with it, a hidden one cannot be pressed.
   var stage = interactive ? page.stage : null;
   var layered = {for (var l in stage?.layers ?? const <EpubLayer>[]) l.id};
   bool inLayer(String? element) => element != null && layered.contains(element);
-  // Something inside each link: Apple Books passes over a tap on a link with
-  // nothing in it. A link to another page of the book is also followed by
-  // media.js on the touch itself -- see there.
+  // Something inside each link: Apple Books ignores taps on empty links.
+  // A link to another page is also followed by media.js on the touch.
   String linkTag(EpubLink link) => '<a class="hit" href="${_attr(link.href)}"'
       '${_inBook(link.href) ? ' data-go="page"' : ''} '
       'style="${box(link.x, link.y, link.width, link.height)}">'
       '<span class="fill"></span></a>';
-  // Buttons, not links: a press on a link that goes nowhere is one Apple
-  // Books may take as a tap on the page, and turn it. See the press handling
-  // in media.js, which keeps the touch to itself.
+  // Buttons, not links: Apple Books may take a press on a dead link as a
+  // tap on the page and turn it. media.js keeps the touch to itself.
   String pressTag(EpubMedia m) =>
       '<button type="button" class="hit${m.video ? "" : " speaker"}" '
       'data-act="toggle" data-target="${_attr(m.id)}" '
@@ -497,8 +481,7 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         height: 100%; overflow: hidden; }
       /* No size of its own: what is in it is placed from the page's corner
          and shows past it, so a layer is drawn as big as what it paints, not
-         a page each -- a hundred page-sized layers that move stuttered
-         (Ken, 2026-11-13). */
+         a page each: a hundred page-sized layers that move would stutter. */
       .layer { position: absolute; left: 0; top: 0; width: 0;
         height: 0; overflow: visible; pointer-events: none; }
       .layer.moves, .layer.moves .pt { will-change: transform, opacity; }
@@ -552,11 +535,9 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
 ''';
 }
 
-/// _stageTag is a page laid out as layers: the slabs that do not move and
-/// the layers that do, bottom to top, and the presses that belong to each
-/// layer's element. Each layer carries its keyframes for the reader to play
-/// -- see media.js. Written at frame 0, so that a reader that will not run
-/// the script shows the page as its picture does.
+/// _stageTag is a layered page: still slabs and moving layers, bottom to
+/// top, each layer's presses with it and its keyframes for media.js.
+/// Written at frame 0, so a reader running no script sees the picture.
 String _stageTag(
     EpubStage stage,
     EpubPage page,
@@ -602,8 +583,8 @@ String _stageTag(
     return '$attrs data-kf="${_attr(jsonEncode(frames))}"';
   }
 
-  // The Camera: everything on the stage but its start screen, framed as the
-  // camera frames the canvas -- moved and scaled as one.
+  // The Camera: everything on the stage but its start screen, moved and
+  // scaled as one as the camera frames the canvas.
   if (stage.camera.isNotEmpty) {
     out.add('<div class="cam" ${animated(stage.camera, "position:absolute;"
         "left:0;top:0;width:${page.width}px;height:${page.height}px;"
@@ -633,7 +614,7 @@ String _stageTag(
               '<div class="lens" ${animated(lensed, "transform-origin:0 0")}>');
         }
         // A video laid on as light or shade: blended as its layer, with the
-        // page under it -- inside the layer it would blend with nothing.
+        // page under it; inside the layer it would blend with nothing.
         var blend = page.media
             .where((m) => m.element == layer.id && m.blend != null)
             .map((m) => m.blend)
@@ -642,11 +623,8 @@ String _stageTag(
             '${layer.hover == null ? "" : " hovers"}" '
             'id="l-${_attr(layer.id)}" '
             '${animated(layer.pose, "transform-origin:${_px(layer.originX)} ${_px(layer.originY)}${layer.visible ? "" : ";display:none"}${blend == null ? "" : ";mix-blend-mode:$blend"}")}>');
-        // Its reactions -- clips it plays on a click or after another clip
-        // -- on a wrapper round it, so they go over its place on the
-        // timeline rather than instead of it. Not on a layer that changes
-        // under the pointer or by its key, whose rules name its pictures
-        // as its own children.
+        // Its reactions on a wrapper, over its timeline place, not in it;
+        // not on a hover or key layer, whose rules name its children.
         var reacts = layer.reactions.isNotEmpty &&
             layer.hover == null &&
             layer.switched.isEmpty;
@@ -701,15 +679,14 @@ String _stageTag(
         if (layer.hover case var hover?) {
           out.add("  ${_spriteTag(hover, "h", false, box)}");
         }
-        // A Run panel's web page, run live over the picture of its last
-        // run: its own document (srcdoc is read as HTML, so a page that
-        // is not strict XHTML still runs), its scripts kept to itself.
+        // A Run panel's web page, run live over the picture of its last run:
+        // its own document (srcdoc is read as HTML, so a page that is not
+        // strict XHTML still runs), its scripts kept to itself.
         for (var f in layer.frames) {
           var r = f.rect;
           out.add('  <iframe class="run" title="Run" '
-              // Newlines kept as newlines: in XHTML an attribute's own
-              // become spaces, and a script's // comment would swallow
-              // the rest of it.
+              // Newlines kept: XHTML turns an attribute's into
+              // spaces, and a // comment would swallow the rest.
               'sandbox="allow-scripts" srcdoc="${_attr(f.html).replaceAll("\r", "").replaceAll("\n", "&#10;").replaceAll("\t", "&#9;")}" '
               'style="${box(r.left, r.top, r.width, r.height)};'
               'border:0;background:#fff"></iframe>');
@@ -741,8 +718,7 @@ String _stageTag(
                 k.black ? 1 : 0,
               ],
           ]);
-          // A button, not a div: a div here left the keyboard under it
-          // undrawn in Chrome.
+          // A button: Chrome leaves the keys under a div undrawn.
           out.add(
               '  <button type="button" class="hit keys" data-board="${_attr(layer.id)}" '
               'data-sound="${_attr(kb.sound)}" data-low="${kb.low}" '
@@ -814,25 +790,21 @@ String _stageTag(
     out.add(
         '<div class="vignette" ${animated(stage.vignette, "position:absolute;left:0;top:0;width:${_px(w)};height:${_px(h)};pointer-events:none;background:radial-gradient(circle ${_px(r)} at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) $inner%, rgba(0,0,0,1) 100%)")}></div>');
   }
-  // The start (Ken, 2026-11-13: the book opened blank, its Play not yet
-  // arrived, and slowly): the page as it ends up -- all a reader that runs
-  // no script shows -- and, for one that does, a Play over it and a bar of
-  // how much has loaded. Pressed, it plays from the top with its sound,
-  // which a reader lets start only on a press.
+  // The start: the settled page (all a scriptless reader shows), with a
+  // Play and a loading bar for one that runs it. Pressed, it plays from
+  // the top with sound, which a reader only starts on a press.
   if (stage.animates && !stage.ownPlay && poster != null) {
     var w = page.width.toDouble(), h = page.height.toDouble();
     var barH = math.max(6.0, h * 0.006);
     // The bar where the Play will be, and the Play in its place once all
-    // has loaded (Ken, 2026-11-13: a Play pressed before the page was ready
-    // did nothing the first time, and nothing said why).
+    // has loaded, so an early press is never silently lost.
     String bar(double cx, double cy, double barW) =>
         '<div class="bar" id="bar" style="display:none;'
         'left:${_px(cx - barW / 2)};top:${_px(cy - barH / 2)};'
         'width:${_px(barW)};height:${_px(barH)};'
         'border-radius:${_px(barH / 2)}"><span id="barFill"></span></div>';
     if (page.start case var title? when start != null) {
-      // A title page folded in (see EpubStart): its picture, and its own
-      // Play where it was drawn.
+      // A title page folded in (see EpubStart), with its Play.
       var at = title.at;
       out.add('<div class="intro" id="intro">'
           '<img src="${_attr(start)}.png" alt="${_text(page.title)}"/>'
@@ -876,13 +848,11 @@ String _spriteTag(EpubSprite s, String kind, bool shown,
     '<img src="${_attr(s.href)}" alt="" '
     'style="left:${_px(-s.sx)};top:${_px(-s.sy)}"/></span>';
 
-/// _inBook is whether [href] is another page of this book rather than a web
-/// address.
+/// _inBook is whether [href] is a page of this book, not a web address.
 bool _inBook(String href) => RegExp(r"^page\d+\.xhtml(#play)?$").hasMatch(href);
 
-/// _playButton is the canvas's big play button, drawn in HTML: a dark disc a
-/// quarter of the picture's shorter side across, and a white triangle in it.
-/// See video_painter.dart, whose proportions these are.
+/// _playButton is the canvas's big play button in HTML, in
+/// video_painter.dart's proportions.
 String _playButton(EpubMedia m) {
   var side = (m.width < m.height ? m.width : m.height) * 0.24;
   var tall = side * 0.4, wide = tall * 0.87;
@@ -893,8 +863,7 @@ String _playButton(EpubMedia m) {
       '</span>';
 }
 
-/// _mediaTag is one sound or video as the page's HTML, carrying how it plays
-/// for media.js to read.
+/// _mediaTag is one sound or video as HTML, with how it plays.
 String _mediaTag(EpubMedia m,
     String Function(double, double, double, double, [double]) box) {
   var data = 'id="m-${_attr(m.id)}" '
@@ -914,13 +883,9 @@ String _mediaTag(EpubMedia m,
       '${m.blend != null && m.element == null ? ";mix-blend-mode:${m.blend}" : ""}"></video>';
 }
 
-/// _mediaScript plays a page's sounds and videos: a playlist in order, each
-/// file's range, repeat, fades and autoplay, and the presses that play,
-/// pause, stop and mute them. One file for the whole book.
-///
-/// Written for the oldest engine a reader is likely to have -- no arrow
-/// functions, no let -- because an EPUB reader's web view is often years
-/// behind a browser.
+/// _mediaScript plays a page's media: playlists, ranges, repeats, fades,
+/// autoplay, and the presses that drive them; one file a book, written
+/// for old engines (no arrows, no let), as readers' web views lag.
 const String _mediaScript = r"""(function () {
   function all(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
   var media = {};
@@ -1166,8 +1131,7 @@ const String _mediaScript = r"""(function () {
     });
     // The soundtrack, playing, is the clock (see tick): it is moved only
     // when the playhead is put somewhere, never to catch the clock up --
-    // each such move a gap in the sound (Ken, 2026-11-13: the book's music
-    // stuttered).
+    // each such move is a gap in the sound.
     var soundtrack = document.getElementById("soundtrack");
     var placed = true;
     if (soundtrack) {
@@ -1185,8 +1149,7 @@ const String _mediaScript = r"""(function () {
     // past its end.
     // A sound that says it plays but whose time stands still is not the
     // clock: Apple Books can go on reporting where a sound began while it
-    // plays on (Ken, 2026-11-14: the playbar stuck on the first note while
-    // the music played). Followed only while its time moves.
+    // plays on. Followed only while its time moves.
     var soundAt = -1, soundMoved = 0;
     var heard = function () {
       var a = soundtrack;
@@ -1197,15 +1160,14 @@ const String _mediaScript = r"""(function () {
       if (now() - soundMoved > 400) return -1;
       // Between the times a reader gives (Apple Books gives them in steps),
       // where it has got to since: the page is not pulled back to the last
-      // step, which stuttered the notes (Ken, 2026-11-14).
+      // step, which would stutter the notes.
       return at + (now() - soundMoved) / 1000 * (a.playbackRate || 1);
     };
 
     var now = function () { return window.performance && performance.now ? performance.now() : Date.now(); };
     // The next tick: on the next frame drawn, or a twentieth of a second on
     // whichever comes first -- a reader can hold back the frames of a page
-    // it opened before showing it (Ken, 2026-11-14: in Apple Books the page
-    // played only once it had been left and come back to).
+    // it opened before showing it (Apple Books does).
     var later = function (f) {
       var ran = false;
       var once = function () { if (ran) return; ran = true; f(now()); };
@@ -1457,7 +1419,7 @@ const String _mediaScript = r"""(function () {
     }
   }
 
-  // An instrument the reader plays (Ken, 2026-11-14): pressed, with a
+  // An instrument the reader plays: pressed, with a
   // finger or the pointer, by the computer's keys, or from a MIDI keyboard
   // where the reader lets a page have one. Each key's sound is a slice of
   // one file, played by Web Audio (or, without it, an <audio>); its key is
@@ -1696,8 +1658,7 @@ String _nav(List<EpubPage> pages) {
     for (var (i, page) in pages.indexed)
       '<li><a href="page$i.xhtml">${_text(page.title)}</a></li>',
   ].join("\n        ");
-  // Where the cover is and where the book begins, which a reader asks
-  // before it has opened a page.
+  // Where the cover is and the book begins, asked before any page opens.
   var coverAt = math.max(0, pages.indexWhere((p) => p.cover));
   var bodyAt = pages.length > 1 && coverAt == 0 ? 1 : 0;
   return '''<?xml version="1.0" encoding="UTF-8"?>
@@ -1796,9 +1757,8 @@ String _text(String s) =>
 
 String _attr(String s) => _text(s).replaceAll('"', "&quot;");
 
-/// _uuidFrom makes a stable identifier out of what the book is, so the same
-/// document exported twice keeps its bookmarks: a reader keeps a place by
-/// identifier.
+/// _uuidFrom makes a stable identifier from what the book is, so a
+/// re-export keeps its bookmarks: a reader keeps a place by identifier.
 String _uuidFrom(String title, int pages) {
   var seed = "$title/$pages";
   var hash = 0x811c9dc5;

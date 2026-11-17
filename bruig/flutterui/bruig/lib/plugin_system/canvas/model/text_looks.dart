@@ -4,12 +4,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// text_looks.dart moves a text's own shadow, glow and outline -- set on its
-// type, its words' and each piece's -- into looks on those layers (see
-// MotionDevice.layer), so that each is kept in one place: the Chain's, which
-// the panel shows too and the Chain can animate (Ken, 2026-11-11). Read as a
-// text is read, so an old canvas, a pasted text and a saved design all come
-// in with looks, drawn as they were.
+// text_looks.dart moves a text's own shadow, glow and outline (on its type,
+// its words' and each piece's) into looks on those layers (see
+// MotionDevice.layer), so each lives in one place: the Chain, which the
+// panel shows too and can animate. Read as a text is read, so an old
+// canvas, a pasted text and a saved design all come in with looks.
 
 /// textLayerChoices is what of [e] a look can be laid on, as (layer, name):
 /// all of it, its own words, and each piece.
@@ -38,8 +37,8 @@ List<MotionDevice> typeLooks(TextSpec spec, String layer) => [
             values: {
               "distance": spec.shadowDistance,
               "blur": _blurAsLook(spec.shadowBlur),
-              // The way it falls, where the type kept where the light comes
-              // from; and turning with the text, as type shadows did.
+              // The way it falls, from where the type kept the light; and
+              // turning with the text, as type shadows do.
               "angle": (spec.shadowAngle + 180) % 360,
               "strength": 1,
               "turns": 1,
@@ -61,9 +60,8 @@ bool hasTypeLooks(TextSpec spec) =>
 
 /// textLooksLifted is [e] with its words' and pieces' type looks moved to
 /// looks on those layers; [e] itself where there are none. A layer that has
-/// a look of that kind already has it set so instead, as restyling a text
-/// does again and again (see CanvasController.updateTextStyle): one glow on
-/// it, not one more each time.
+/// a look of that kind already has it set instead, so restyling a text
+/// again and again (CanvasController.updateTextStyle) leaves one glow.
 TextElement textLooksLifted(TextElement e) {
   if (!hasTypeLooks(e.textSpec) && !e.items.any((i) => hasTypeLooks(i.spec))) {
     return e;

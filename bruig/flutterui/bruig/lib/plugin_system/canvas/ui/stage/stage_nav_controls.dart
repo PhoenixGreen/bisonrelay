@@ -6,17 +6,12 @@ import 'package:bruig/plugin_system/canvas/ui/stage/stage_gizmo.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// stage_nav_controls.dart is the 3D view controls floating at the right of a
-// scene showing a 3D stage: an orbit ball to swing the camera, pads to drag for
-// zoom and pan, and buttons to frame the selection and reset the camera. The
-// bar's view-controls button folds them to the ball alone or hides them
-// (StageNav).
-//
-// They steer the stage the controller says is steered (the selected element's,
-// or the scene's first) and write its camera as anything else does. A drag is
-// one undo step.
+// stage_nav_controls.dart is the 3D view controls at the right of a scene
+// showing a 3D stage: an orbit ball, zoom and pan pads, and frame and reset
+// buttons, folded or hidden by StageNav. They steer the controller's steered
+// stage (the selected element's, or the scene's first). A drag is one undo
+// step.
 
-/// StageNavControls is the column of view controls.
 class StageNavControls extends StatelessWidget {
   final CanvasController controller;
   const StageNavControls({required this.controller, super.key});
@@ -88,8 +83,7 @@ class StageNavControls extends StatelessWidget {
     ]);
   }
 
-  /// _pageScale is screen pixels to a page unit, so a pad's drag pans the
-  /// stage by as much as the pointer went.
+  /// _pageScale is screen pixels to a page unit, so a pan follows the pointer.
   static double _pageScale(BuildContext context, CanvasController c) =>
       c.viewScale <= 0 ? 1 : c.viewScale;
 }
@@ -176,15 +170,13 @@ class _NavPadState extends State<_NavPad> {
   }
 }
 
-/// _OrbitBall is the orbit ball: the stage's three ways as the camera
-/// sees them. Dragged, it swings the camera round; an axis clicked looks
-/// along it.
+/// _OrbitBall is the stage's three axes as the camera sees them. Dragged, it
+/// swings the camera round; an axis clicked looks along it.
 class _OrbitBall extends StatefulWidget {
   final CanvasController controller;
   final StageCamera camera;
   const _OrbitBall({required this.controller, required this.camera});
 
-  /// size is how wide it is.
   static const double size = 92;
 
   @override
@@ -255,10 +247,10 @@ class _OrbitBallState extends State<_OrbitBall> {
   }
 }
 
-/// OrbitAxis is one end of one of the stage's axes on the orbit ball: where it
-/// is drawn, its letter (none for the far ends), its colour, how far towards
-/// the camera it points, and the yaw (null keeps the camera's) and pitch that
-/// look along it.
+/// OrbitAxis is one end of a stage axis on the orbit ball: where it is drawn,
+/// its letter ("" for the negative ends), its colour, how far it points at
+/// the camera, and the yaw (null keeps the camera's) and pitch looking along
+/// it.
 typedef OrbitAxis = ({
   Offset at,
   String name,
@@ -271,8 +263,7 @@ typedef OrbitAxis = ({
 /// them, on a ball [size] across, furthest first so the nearest draw on top.
 List<OrbitAxis> orbitAxes(StageCamera camera, double size) {
   var yaw = camera.yaw * math.pi / 180, pitch = camera.pitch * math.pi / 180;
-  // From the eye to what it looks at, its right along the floor, and
-  // its up, as StageView has them.
+  // Forward, right along the floor, and up, as StageView has them.
   var f = (
     -math.sin(yaw) * math.cos(pitch),
     -math.sin(pitch),

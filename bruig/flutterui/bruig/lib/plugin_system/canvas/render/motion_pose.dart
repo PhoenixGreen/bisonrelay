@@ -4,50 +4,37 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // motion_pose.dart is what an element's clips make of it at a moment: how
-// far it has moved, how big it is, how turned, how faded -- from the clips
-// placed on the timeline, or from the clips its slots are playing.
-//
-// The rules:
-//
-//  - Layers add. Each layer's pose is worked out alone and added to the
-//    others, scaled by the layer's weight: L1 walks while L2 waves.
-//  - On a layer, one clip at a time: the latest to have started.
-//  - Before its first clip starts, a layer is at rest -- unless that clip
-//    holds its first frame (an arrival does), so nothing is seen early.
-//  - A clip that holds its last frame (a way out does) holds it only until
-//    the next clip on its layer starts. For an element the next clip carries
-//    on from where it was left; for a camera, the next move replaces it --
-//    a camera's keys say where to look, not how far to move from there.
-//  - A key can name a place rather than a number, worked out as it plays:
-//    off an edge of the page, beside another element, on its ground, or on
-//    it where it is drawn now.
+// far moved, how big, turned and faded, from placed clips or its slots.
+// Layers add, each weighed: L1 walks while L2 waves. On a layer the latest
+// clip to start plays. Before its first clip a layer is at rest, unless that
+// clip holds its first frame (an arrival does). A held last frame lasts
+// until the layer's next clip, which carries on from it for an element and
+// replaces it for a camera (its keys say where to look). A key can name a
+// place (an edge, beside or on another element), worked out as it plays.
 
 /// MotionScene is what places are worked out against: the page, where each
 /// element is set, and where each is drawn at this moment.
 class MotionScene {
   final Size page;
 
-  /// boundsOf is an element's box as it is set, by id; null where there is
-  /// none.
+  /// boundsOf is an element's box as set, by id; null where there is none.
   final Rect? Function(String id) boundsOf;
 
-  /// drawnAt is the middle of an element as it is drawn now, moving -- for
-  /// "on"; null to use where it is set.
+  /// drawnAt is an element's middle as drawn now, for "on"; null: as set.
   final Offset? Function(String id)? drawnAt;
 
   const MotionScene({required this.page, required this.boundsOf, this.drawnAt});
 }
 
 /// MotionPose is what clips make of an element: moved by [dx], [dy],
-/// [scale]d, [turn]ed by degrees and faded by [opacity]. With the clips it
-/// was made from, for what only that kind of element does with them -- a
-/// text's words one after another.
+/// [scale]d, [turn]ed by degrees and faded by [opacity], with its clips for
+/// what only that kind of element does (a text's words in turn).
 class MotionPose {
   final double dx, dy, scale, turn, opacity;
   final List<MotionSource> sources;
 
-  /// values are the renderer's channels a clip's Inside it sets -- see
-  /// insideAt -- by name: the latest clip's, not added up.
+  /// values are the renderer's channels a clip's Inside sets (insideAt), by
+  /// name: the latest clip's, not added up.
   final Map<String, double> values;
 
   const MotionPose({
@@ -89,8 +76,7 @@ class MotionPose {
       sources: s,
       values: values);
 
-  /// toward is this moved [weight] of the way to [p]: [p] replacing it, its
-  /// values over this one's.
+  /// toward is this moved [weight] of the way to [p], [p]'s values on top.
   MotionPose toward(MotionPose p, double weight) {
     double mix(double a, double b) => a + (b - a) * weight;
     return MotionPose(
@@ -120,8 +106,7 @@ class MotionPose {
                 : {...values, ...p.values},
       );
 
-  /// onto is [pose] (from a legacy keyframe track, or rest) with the clips'
-  /// moves added on top.
+  /// onto is [pose] (a legacy track's, or rest) with the clips' moves added.
   Keyframe onto(Keyframe pose) => isRest
       ? pose
       : pose.copyWith(
@@ -219,8 +204,7 @@ double _placed(MotionPlaceKind kind, String target, MotionProp prop, Rect self,
   }
 }
 
-/// sampleProp is [prop] at [t] seconds into [c], or null where the clip has
-/// no keys for it.
+/// sampleProp is [prop] at [t] seconds into [c], or null with no keys for it.
 double? sampleProp(
     MotionClip c, MotionProp prop, double t, Rect self, MotionScene scene) {
   var keys = c.keys[prop];
@@ -255,11 +239,10 @@ MotionPose clipPose(MotionClip c, double t, Rect self, MotionScene scene,
   );
 }
 
-/// layerPose is what [layer] of [motion] makes of an element set at [self]
-/// at [t] seconds into the scene, from its placed clips. [replaces] is a
-/// camera's rule: a held last frame is replaced, not carried on from.
-/// [holdBefore] false leaves out a first clip held at its first frame
-/// before it starts: only what has played.
+/// layerPose is what [layer] of [motion] makes of an element set at [self],
+/// [t] seconds into the scene. [replaces] is a camera's rule: a held last
+/// frame is replaced, not carried on from. [holdBefore] false leaves out a
+/// first clip held at its first frame before it starts.
 MotionPose layerPose(ElementMotion motion, int layer, double t, Rect self,
     MotionTimes times, MotionScene scene,
     {bool replaces = false, bool holdBefore = true}) {
@@ -305,8 +288,7 @@ MotionPose layerPose(ElementMotion motion, int layer, double t, Rect self,
   return held ?? MotionPose.rest;
 }
 
-/// livePose is what [layer] makes of an element playing from its slots, at
-/// [clock] seconds.
+/// livePose is what [layer] makes of an element on its slots at [clock].
 MotionPose livePose(ElementMotion motion, MotionLive live, int layer,
     double clock, Rect self, MotionScene scene,
     {bool replaces = false}) {
@@ -333,8 +315,8 @@ double liveTime(MotionClip c, LivePlay play, double clock) {
 }
 
 /// motionPose is everything [motion] makes of an element set at [self]: its
-/// layers added, each weighed. From [live] -- its slots -- where it has left
-/// the timeline, else from the timeline at [t] seconds.
+/// layers added, each weighed; from [live] (its slots) where it has left the
+/// timeline, else from the timeline at [t] seconds.
 MotionPose motionPose(ElementMotion motion, double t, Rect self,
     MotionTimes times, MotionScene scene,
     {MotionLive? live, double clock = 0, bool replaces = false}) {

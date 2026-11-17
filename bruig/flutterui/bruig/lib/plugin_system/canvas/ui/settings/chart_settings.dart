@@ -15,10 +15,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // chart_settings.dart is a chart's settings.
 
-/// chartPanel is [e]'s panel: the Text panel's shape (see
-/// element_panel.dart) -- a quick strip of what kind of chart it is, its
-/// title and its key; Content (where its numbers come from, the numbers and
-/// series, its words) and Look (its grid and axes, its looks).
+/// chartPanel is [e]'s panel (see element_panel.dart): quick strip, Content
+/// (source, numbers, series, words) and Look (grid, axes, looks).
 Widget chartPanel(
     BuildContext context,
     CanvasController controller,
@@ -78,7 +76,7 @@ Widget chartPanel(
           onCommit: commit,
         ),
       ]),
-      // Its numbers are what its settings are opened for: not shut away.
+      // Its numbers are why its settings are opened: not folded away.
       contentOpen: true,
       bits: chartBits(context, controller, e, write, begin, commit));
 }
@@ -99,10 +97,9 @@ List<PanelBit> chartBits(
 
   void writeData(ChartData data) => write(e.copyWith(data: data));
 
-  /// labelControls is the shared shape of the title's and the description's
-  /// settings: the words, a switch, and, once it has been moved off the
-  /// chart's own arrangement, where it sits. Whether the chart or the reader
-  /// places the label is a switch, not a mode: no automatic rule covers both.
+  /// labelControls is the title's and description's settings: words, a
+  /// switch, and once moved, its place. Who places it is a switch, as no
+  /// automatic rule covers both.
   List<Widget> labelControls(
     String name,
     String text,
@@ -114,8 +111,8 @@ List<PanelBit> chartBits(
     ChartElement Function(double) withSize,
   ) =>
       [
-        // The name is the empty field's placeholder, not a caption over it: in a
-        // section called Labels a caption would be the word a third time.
+        // The name is the placeholder, not a caption: in a section called
+        // Labels a caption would repeat the word a third time.
         CanvasTextField(
           label: "",
           value: text,
@@ -131,8 +128,8 @@ List<PanelBit> chartBits(
         ),
         if (box.show)
           CanvasNumberField(
-            // Named after which label it is: there are four Size fields in this
-            // section, and a key found by counting finds another when one is added.
+            // Keyed by label: there are four Size fields here, and a key
+            // found by counting breaks when one is added.
             key: ValueKey("chart${name}Size"),
             label: "Size",
             min: 4,
@@ -146,13 +143,12 @@ List<PanelBit> chartBits(
             },
             onCommit: commit,
           ),
-        // No button of its own to place it: "Over the chart" is the one switch
-        // for all three labels. The words and the switches, then where it sits:
-        // four coordinates on a line with a text field cannot be scanned.
+        // "Over the chart" places all three labels. Words and switches first,
+        // place on its own line, as four coordinates beside text do not scan.
         if (box.show && e.floatingLabels) const CanvasLineBreak(),
         if (box.show && e.floatingLabels)
-          // Against the place it is drawn in: its own once dragged, the chart's
-          // until then, so the fields never read NaN on a label not yet moved.
+          // Against where it is drawn: its own once dragged, the chart's
+          // until then, so the fields never read NaN.
           for (var (label, value, apply)
               in <(String, double, ChartLabel Function(double))>[
             (
@@ -215,14 +211,14 @@ List<PanelBit> chartBits(
           boxed(
             context,
             CanvasExpander(
-              // "Table", because that is what is in it: the numbers in rows and
-              // columns, with the drawing above them and its look below.
+              // "Table", as that is what it holds: the numbers in rows and
+              // columns, the drawing above and its look below.
               label: "Table",
               remember: "chartData",
               flat: true,
               trailing: "${e.data.categories.length} rows, "
                   "${e.data.series.length} series",
-              // The same Refresh the Data source section carries, here where somebody
+              // The Data source section's Refresh, also here where someone
               // looking at the numbers wants them again.
               action: sourceRefreshButton(
                   context, controller, e, write, begin, commit),
@@ -231,14 +227,13 @@ List<PanelBit> chartBits(
                 ChartDataEditor(
                   data: e.data,
                   chartType: e.type,
-                  // The numbers alone: what each column is called and how it is drawn
-                  // is the section under this one.
+                  // The numbers alone: column names and drawing are the next
+                  // section.
                   showSeries: false,
                   animated: e.animation.on,
                   elementId: e.base.id,
-                  // How the chart draws where a series has not been told otherwise.
-                  // The series leading its kind of drawing writes this back, so the
-                  // rest of that kind follow it.
+                  // The chart's default drawing; the leading series of a kind
+                  // writes it back, so the rest of that kind follow.
                   style: ChartStyleDefaults(
                     width: e.strokeWidth,
                     gap: e.barGap,
@@ -267,20 +262,17 @@ List<PanelBit> chartBits(
                     writeData(data);
                   },
                   onCommit: commit,
-                  // Where each series comes from, said against the series, where
-                  // somebody looking at the grid wonders. Only the columns the mapping
-                  // already has: reaching a new field belongs where the mapping is.
-                  // Where the chart's rows are what the source is asked for, typing a
-                  // coin offers the coins.
+                  // Each series' source, against the series: only mapped
+                  // columns (new fields belong with the mapping). Typing a coin
+                  // offers the coins where rows are what is asked.
                   names: e.source.fromRows
                       ? CanvasRowNames.suggestionsFor(
                           presetById(e.source.preset))
                       : const [],
                   sourceColumns: e.source.on ? e.source.columns : const [],
                   boundTo: e.fromSource.valueColumns,
-                  // What the preset says a record carries, so the list is the whole of
-                  // what the source has, not only what is mapped. A refresh can only
-                  // add to it; see _fieldNames.
+                  // The preset's record fields too, so the list is all the
+                  // source has, not only what is mapped (see _fieldNames).
                   sourceFields: e.source.on
                       ? presetById(e.source.preset)?.fields ?? const []
                       : const [],
@@ -294,10 +286,9 @@ List<PanelBit> chartBits(
               ],
             ),
           ),
-          // What each column of the table is: its name, how it is drawn, its
-          // colour. Under the numbers rather than with them ("are these the right
-          // figures" and "how should this one look" are two questions), and not a
-          // section: most charts have one series, and a heading would hide it.
+          // Each column's name, drawing and colour, under the numbers (two
+          // questions) and not a section: most charts have one series, which
+          // a heading would hide.
           CanvasControlGroup(
               label: "Series",
               // The grid under it is the same drawing, not a new subject.
@@ -332,10 +323,9 @@ List<PanelBit> chartBits(
                       pointColor: style.pointColor,
                     ));
                   },
-                  // The first series' "Drawn as" is the chart's own type: one control,
-                  // not two that could disagree. The series is put back to following the
-                  // chart in the same write, so a series pinned to bars does not stay
-                  // bars when the chart is changed under it.
+                  // The first series' "Drawn as" is the chart type, one
+                  // control; the same write resets the series to follow it,
+                  // so a series pinned to bars changes with the chart.
                   onChartType: (type) => now(e.copyWith(
                     type: type,
                     data: ChartData(
@@ -352,25 +342,24 @@ List<PanelBit> chartBits(
                   },
                   onCommit: commit,
                 ),
-                // Said here: grouped and stacked bars draw what plain bars do until
-                // there is a second series, which looks like the setting doing nothing.
+                // Grouped and stacked bars look like plain bars until there
+                // is a second series, so the setting would seem to do nothing.
                 if (e.type.needsMultipleSeries && e.data.series.length < 2)
                   const CanvasHint(
                       "Grouped and stacked bars need more than one series -- with one "
                       "they draw exactly what plain bars draw. Add a second series with "
                       "the button beside the table."),
-                // Four series, named where the names say which is which: a candlestick
-                // chart with three draws nothing, which reads as broken.
+                // Four named series: a candlestick chart with three draws
+                // nothing, which reads as broken.
                 if (e.type.needsFourSeries && e.data.series.length < 4)
                   const CanvasHint(
                       "Candlesticks need four series — the open, the high, the low and "
                       "the close. Name them and the order does not matter; unnamed, "
                       "the first four are taken in that order. CoinGecko's OHLC preset "
                       "under Data source fills all four in."),
-                // Bars, Lines and Points settings are on each series, behind its own
-                // button: a chart of bars with a line over it has a half for each.
-                // Candlesticks stay here: their four series are the open, high, low
-                // and close of one drawing, so the colour is the reading.
+                // Bar, line and point settings are per series, so bars with a
+                // line have a half each. Candlesticks stay here: four series
+                // make one drawing, and the colour is the reading.
                 if (e.type.isCandles) ...[
                   const CanvasLineBreak(),
                   CanvasColorButton(
@@ -407,10 +396,8 @@ List<PanelBit> chartBits(
                   ),
                 ],
               ]),
-          // What the chart rules itself with: the grid, the axes and the scale
-          // are one question, how this chart is measured. And a bar chart of one
-          // series, whose bars are its values as a pie's slices are: see
-          // barsTakeColours.
+          // How the chart is measured: grid, axes, scale. Also a one-series
+          // bar chart, whose bars take colours as slices do (barsTakeColours).
           if ((e.type.isCircular || barsTakeColours(e)) &&
               e.data.categories.isNotEmpty)
             CanvasControlGroup(
@@ -434,9 +421,8 @@ List<PanelBit> chartBits(
                       ])),
                     ),
                 ]),
-          // How a number is written, wherever this chart writes one: its own line,
-          // not behind the grid's button, since a pie rules nothing but still
-          // writes numbers on its slices.
+          // How a number is written, on its own line, not behind the grid's
+          // button: a pie rules nothing but writes numbers on its slices.
         ]),
     if (!e.type.isCircular)
       PanelBit(PanelSection.look, summary: "Lines across the chart", children: [
@@ -461,8 +447,8 @@ List<PanelBit> chartBits(
                 value: e.logScale,
                 onChanged: (v) => now(e.copyWith(logScale: v)),
               ),
-              // The numbers written on the bars themselves: they belong to neither
-              // axis, so they sit with what is drawn on the plot.
+              // Numbers on the bars belong to neither axis, so they sit with
+              // the plot.
               CanvasToggle(
                 label: "Values",
                 value: e.showValues,
@@ -470,7 +456,7 @@ List<PanelBit> chartBits(
               ),
             ],
             more: [
-              // How finely the value axis is ruled. Zero is the chart's own
+              // How finely the value axis is ruled; zero is the chart's own
               // judgement.
               CanvasNumberField(
                 key: const ValueKey("chartAxisSteps"),
@@ -486,7 +472,7 @@ List<PanelBit> chartBits(
                 },
                 onCommit: commit,
               ),
-              // The colour the rules are drawn in, behind the switch it belongs to.
+              // The rules' colour, behind the switch it belongs to.
               CanvasColorButton(
                 key: const ValueKey("chartGridColour"),
                 label: "Colour",
@@ -496,17 +482,16 @@ List<PanelBit> chartBits(
               ),
             ],
           ),
-        // The title and the description, one line each, with the rest of what
-        // each can be on the line below: the title somebody came to type is
-        // not lost among twenty controls of equal weight.
+        // Title and description one line each, the rest on the line below,
+        // so the title is not lost among twenty equal controls.
       ]),
     PanelBit(PanelSection.content,
         summary: e.title.isEmpty ? "Title, labels, numbers and key" : e.title,
         children: [
           CanvasControlGroup(
               label: "Title, description and labels",
-              // No line under it: what follows is the same heading's second line,
-              // split off only because it carries a button of its own.
+              // No rule: what follows is this heading's second line, split
+              // off only for its own button.
               rule: false,
               children: [
                 ...labelControls(
@@ -520,9 +505,8 @@ List<PanelBit> chartBits(
                     (v) => e.copyWith(
                         titleSpec: e.titleSpec.copyWith(fontSize: v))),
                 const CanvasLineBreak(),
-                // Under the title, not on top of it. Its own size, not the label size
-                // it starts at, so a bigger description does not enlarge the numbers
-                // up the side.
+                // Under the title, at its own size, so a bigger description
+                // does not enlarge the axis numbers.
                 ...labelControls(
                     "Description",
                     e.description,
@@ -535,32 +519,32 @@ List<PanelBit> chartBits(
                         descriptionSpec:
                             e.descriptionText.copyWith(fontSize: v))),
               ]),
-          // The two words naming the axes, each with the switch that shows it;
-          // how the axis writing looks is behind the button.
+          // The two axis names, each with its show switch; how axis writing
+          // looks is behind the button.
           if (!e.type.isCircular)
             CanvasMoreGroup(
               label: "X and Y labels",
-              // Under the title and the description, with no caption and no rule
-              // after it: the writing on the chart is one run of lines.
+              // No caption or rule: the writing on the chart is one run of
+              // lines.
               hideCaption: true,
               rule: false,
               remember: "chartAxisLabelsMore",
               tooltip: "How the writing on the axes looks",
               row: [
-                // The axis name is the empty field's placeholder, and the
-                // switch beside it is named after the axis, not "Show".
+                // The axis name is the placeholder, and the switch is named
+                // after the axis, not "Show".
                 CanvasTextField(
                   label: "",
                   hint: "X label",
                   value: e.xAxisLabel,
-                  // Narrow, so the two fields, their two switches and the button
-                  // stay on one line in a sidebar somebody has pulled in.
+                  // Narrow, so both fields, switches and the button fit one
+                  // line in a narrowed sidebar.
                   width: 72,
                   onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
                   onCommit: commit,
                 ),
-                // A switch rather than emptying the field, so the titles come
-                // back without being typed again.
+                // A switch rather than clearing the field, so titles come back
+                // without retyping.
                 CanvasToggle(
                   key: const ValueKey("chartShowXTitle"),
                   label: "X",
@@ -584,9 +568,8 @@ List<PanelBit> chartBits(
                 ),
               ],
               more: [
-                // The axis titles have their own size, so smaller figures up the
-                // side do not shrink them, and their own distance from the plot,
-                // which is the design's choice.
+                // Axis titles have their own size, so smaller tick figures do
+                // not shrink them, and their own distance from the plot.
                 CanvasColorButton(
                   key: const ValueKey("chartAxisTitleColour"),
                   label: "Titles",
@@ -634,8 +617,8 @@ List<PanelBit> chartBits(
                   onCommit: commit,
                 ),
                 const CanvasLineBreak(),
-                // One switch each for the tick values: a bar chart named by its
-                // categories does not always want the figures up the side.
+                // A switch per axis's tick values: a bar chart named by its
+                // categories may not want figures up the side.
                 CanvasToggle(
                   key: const ValueKey("chartShowXLabels"),
                   label: "X values",
@@ -646,8 +629,8 @@ List<PanelBit> chartBits(
                   CanvasNumberField(
                     key: const ValueKey("chartXLabelSize"),
                     label: "Size",
-                    // What it is actually written at, so the field is never a bare
-                    // nought. It takes the label size until it is given its own.
+                    // What it is written at, so the field is never a bare
+                    // nought; the label size until given its own.
                     value: e.xLabels.fontSize,
                     min: 4,
                     max: 200,
@@ -659,11 +642,11 @@ List<PanelBit> chartBits(
                     },
                     onCommit: commit,
                   ),
-                  // How far the values sit from the chart: more to push them
-                  // out, below nothing to draw them in.
+                  // How far the values sit from the chart: more pushes them
+                  // out, below nothing draws them inside.
                   CanvasNumberField(
                     key: const ValueKey("chartXLabelGap"),
-                    // Not "Gap": the animation section has one of its own.
+                    // Not "Gap": the animation section has one.
                     label: "Distance",
                     value: e.xLabelGap,
                     min: -40,
@@ -731,9 +714,8 @@ List<PanelBit> chartBits(
                 ],
               ],
             ),
-          // A pie's slices are one series' values, so their colours are the
-          // categories', a button each in the order the slices are drawn. And a
-          // donut's hole: how big, and what is written in it.
+          // A pie's slice colours are the categories', a button each in
+          // slice order; and a donut's hole: its size and text.
           if (e.type == ChartType.donut || e.type == ChartType.gauge)
             CanvasControlGroup(
                 key: const ValueKey("chartDonutHole"),
@@ -819,17 +801,15 @@ List<PanelBit> chartBits(
               hideCaption: true,
               rule: false,
               children: [
-                // A pie has no grid line to put this on, so its switch comes here.
+                // A pie has no grid line for this switch, so it comes here.
                 if (e.type.isCircular)
                   CanvasToggle(
                     label: "Values",
                     value: e.showValues,
                     onChanged: (v) => now(e.copyWith(showValues: v)),
                   ),
-                // The infographic types name their items with the x-axis
-                // labels' switch, and have no axis settings to reach it by;
-                // so do a pie's and a radial bar's (round the outside where
-                // the legend is off, at each bar's start).
+                // Infographics, pies and radial bars name items by the x-axis
+                // labels' switch, having no axis settings.
                 if (e.type.isInfographic ||
                     e.type == ChartType.pie ||
                     e.type == ChartType.donut ||
@@ -845,8 +825,8 @@ List<PanelBit> chartBits(
                       "Each bar bends round three quarters of a turn at most -- to "
                       "the axis's top value where one is set, else the largest -- "
                       "with its name at its start and its value past its end."),
-                // The example beside each name is what a million looks like in it,
-                // since these are told apart by their answers; hence no caption.
+                // Beside each name, what a million looks like in it, as that
+                // is what tells them apart; hence no caption.
                 CanvasDropdown<NumberStyle>(
                   label: "",
                   value: e.numbers.style,
@@ -855,9 +835,8 @@ List<PanelBit> chartBits(
                     for (var style in NumberStyle.values)
                       (
                         style,
-                        // What a million looks like as this chart is set, not a fixed example:
-                        // a fixed "Millions — 1.0M" reads as the only thing millions can be.
-                        // Automatic keeps its own, since what it does varies.
+                        // A million as this chart is set, not a fixed example
+                        // (which reads as the only way); Automatic varies.
                         style == NumberStyle.automatic
                             ? "${style.label} — ${style.example}"
                             : "${style.label} — "
@@ -867,16 +846,16 @@ List<PanelBit> chartBits(
                   onChanged: (v) => now(e.copyWith(
                       numbers: e.numbers.copyWith(
                     style: v,
-                    // Seeded from what Automatic was already doing, so choosing a
-                    // style does not silently reset the places to none.
+                    // Seeded from what Automatic was doing, so choosing a
+                    // style does not reset the places to none.
                     decimals: e.numbers.style == NumberStyle.automatic &&
                             v != NumberStyle.automatic
                         ? (v == NumberStyle.plain ? 0 : 1)
                         : null,
                   ))),
                 ),
-                // What goes either side: a currency, a unit. Offered whatever
-                // the style, because "\$" means as much on 1.2K as on 1,200.
+                // A currency or unit either side, whatever the style: "\$"
+                // means as much on 1.2K as on 1,200.
                 CanvasTextField(
                   key: const ValueKey("chartNumbersBefore"),
                   label: "Before",
@@ -921,9 +900,8 @@ List<PanelBit> chartBits(
                     },
                     onCommit: commit,
                   ),
-                  // The axis reads the same as the values until told otherwise; the
-                  // usual pairing then is an exact reading on the bar, a round number on
-                  // the scale.
+                  // The axis reads as the values until told otherwise; the
+                  // usual pairing is exact on the bar, round on the scale.
                   CanvasToggle(
                     label: "Axis the same",
                     value: e.axisNumbers == null,
@@ -978,23 +956,21 @@ List<PanelBit> chartBits(
                       "side. Zero places leaves no decimal point at all."),
                 ],
               ]),
-          // Where the key goes, and whether the words on the chart take room from
-          // it: the last thing set, after what the chart says, how it is measured
-          // and how it is written.
+          // Where the key goes, and whether the chart's words take room from
+          // it: set last, after content, measure and writing.
           CanvasMoreGroup(
             label: "Legend",
             hideCaption: true,
             remember: "chartLegendMore",
             tooltip: "The key's own settings",
             row: [
-              // The one switch for all three: taking room is what makes each of
-              // their settings resize the chart.
+              // One switch for all three: taking room makes each label's
+              // settings resize the chart.
               CanvasToggle(
                 label: "Over the chart",
                 value: e.floatingLabels,
-                // Switched off, the box goes back round the chart: a floating label
-                // dragged outside grew the box and inset the chart, and left so the
-                // chart would sit small in a margin of nothing.
+                // Off, the box goes back round the chart, or a label dragged
+                // out would leave the chart small in an empty margin.
                 onChanged: (v) => now(v
                     ? e.copyWith(floatingLabels: true)
                     : e.copyWith(floatingLabels: false).aroundTheChart()),
@@ -1058,8 +1034,8 @@ List<PanelBit> chartBits(
                   },
                   onCommit: commit,
                 ),
-                // The colour of everything written in the label type (the legend, a
-                // pie's slice names), here because the legend holds most of it.
+                // The colour of all label-type writing (legend, slice names),
+                // here as the legend holds most of it.
                 CanvasColorButton(
                   key: const ValueKey("chartFigureColour"),
                   label: "Figures",
@@ -1081,8 +1057,8 @@ List<PanelBit> chartBits(
                   },
                 ),
                 const CanvasLineBreak(),
-                // Its own switch, not the chart's: a bar chart may want numbers on its
-                // bars and a key without, and a radial bar has nowhere else for them.
+                // Its own switch: a bar chart may want numbers on its bars and
+                // a key without, and a radial bar has nowhere else for them.
                 CanvasToggle(
                   label: "Values",
                   value: e.legend.values,
@@ -1106,7 +1082,6 @@ List<PanelBit> chartBits(
             ],
           ),
         ]),
-    // How its bars come in, loop and go: the Chain's Motion view (Ken,
-    // 2026-11-08).
+    // How its bars come in, loop and go: the Chain's Motion view.
   ];
 }

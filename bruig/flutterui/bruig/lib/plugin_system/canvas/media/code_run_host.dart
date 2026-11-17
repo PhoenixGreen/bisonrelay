@@ -16,24 +16,14 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path/path.dart' as path;
 
-// code_run_host.dart runs a Run panel's code in the app (see
-// CanvasController.codeRunHost):
-//
-//  - a web page in a hidden browser (WebKit), its stylesheets and scripts
-//    put in it (webPage), what it prints caught, and a picture taken of it;
-//  - Python in that browser too, with Pyodide: downloaded the first time
-//    (about 13 MB), checked against the hashes below, and kept in the
-//    library's Runtimes folder;
-//  - Go with Yaegi, an interpreter, built as WebAssembly (assets/code, see
-//    tools/yaegi_wasm/build.sh): every file of the package read into one
-//    interpreter, the entry last, which runs its main.
-//
-// Python and Go are served to the browser from a server on this computer
-// only (127.0.0.1), on a path with a secret in it, for as long as the app
-// runs. Nothing is run that was not asked for with Run.
+// code_run_host.dart runs a Run panel's code (see
+// CanvasController.codeRunHost): web pages in hidden WebKit, Python there
+// with Pyodide (downloaded once, hash-checked), Go with Yaegi as WebAssembly
+// (tools/yaegi_wasm/build.sh). Python and Go are served from 127.0.0.1 on a
+// secret path. Nothing runs unless asked with Run.
 
-/// pyodideVersion and pyodideFiles are the Pyodide downloaded, and each of
-/// its files' SHA-256: a file that does not match is not kept.
+/// pyodideVersion and pyodideFiles are the Pyodide downloaded and each
+/// file's SHA-256: a file that does not match is not kept.
 const pyodideVersion = "314.0.7";
 const pyodideFiles = {
   "pyodide.js":
@@ -48,10 +38,9 @@ const pyodideFiles = {
       "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
 };
 
-/// sealedSettings are the settings of every browser a Code element's page
-/// is shown in: its storage its own and forgotten (no cookie follows a
-/// reader from one canvas to the next), no windows of its own, and every
-/// navigation asked about (see [stayOnPage]). See also [sealed].
+/// sealedSettings are every Code page browser's settings: own storage,
+/// forgotten (no cookie follows a reader), no windows, every navigation
+/// asked about (see [stayOnPage], [sealed]).
 InAppWebViewSettings sealedSettings({bool transparentBackground = true}) =>
     InAppWebViewSettings(
         javaScriptEnabled: true,
@@ -61,10 +50,9 @@ InAppWebViewSettings sealedSettings({bool transparentBackground = true}) =>
         useShouldOverrideUrlLoading: true,
         transparentBackground: transparentBackground);
 
-/// stayOnPage keeps a Code element's page where it was put: a page that
-/// sends the browser to another address tells that address who is
-/// reading. Its own frames are the policy's business (see [sealed]); only
-/// a run server at [origin] may be loaded whole.
+/// stayOnPage keeps a Code page where it was put: navigating elsewhere
+/// tells that address who is reading. Only a run server at [origin] may
+/// load whole; frames are [sealed]'s business.
 Future<NavigationActionPolicy> stayOnPage(NavigationAction action,
     {String origin = ""}) async {
   var url = action.request.url;
@@ -87,11 +75,10 @@ String _localOrigin(String base) {
   return u.host == "127.0.0.1" || u.host == "localhost" ? u.origin : "";
 }
 
-/// runLimit is how long a run may take before it is stopped: a loop that
-/// never ends must not hold the browser for ever.
+/// runLimit is how long a run may take: a loop that never ends must not
+/// hold the browser for ever.
 const runLimit = Duration(seconds: 20);
 
-/// AppCodeRunHost is the app's: see the file header.
 class AppCodeRunHost implements CodeRunHost {
   _RunServer? _server;
 
@@ -120,8 +107,7 @@ class AppCodeRunHost implements CodeRunHost {
       case CodeRunner.flutter:
         return _flutter(code, entry, size, onLog);
       case CodeRunner.dartpad:
-        // On Google's site: never past a proxy somebody set up so the
-        // network would not see them.
+        // Never past a proxy somebody set up to hide from the network.
         if (await networkIsProxied()) {
           return const CodeRunOutcome(logs: [
             CodeLog(
@@ -137,12 +123,11 @@ class AppCodeRunHost implements CodeRunHost {
     }
   }
 
-  /// _logs is what the run in hand has printed: kept for its outcome.
+  /// _logs is what the run in hand has printed.
   List<CodeLog> _logs = [];
 
-  /// _browser loads [html] in a hidden browser of [size] (at least a small
-  /// screen's), passes on what it prints, waits for it to say it is done
-  /// (or for its page to load and settle), and takes a picture of it.
+  /// _browser loads [html] hidden at [size] (at least a small screen),
+  /// passes on its prints, waits for it to settle, and takes a picture.
   Future<CodeRunOutcome> _browser(
       String html, Size size, void Function(CodeLog) onLog,
       {String? base, required bool picture, int settle = 0}) async {
@@ -152,15 +137,13 @@ class AppCodeRunHost implements CodeRunHost {
       onLog(l);
     }
 
-    // A page laid out at least as wide as a phone, its picture fitted to
-    // the preview after.
+    // At least a phone's width; the picture is fitted to the preview.
     var w = math.max(360.0, size.width), h = math.max(240.0, size.height);
     if (size.width < 360) h = size.height * 360 / math.max(1, size.width);
     var done = Completer<void>();
     List<int>? shot;
-    // DartPad is a site of its own, run there on purpose; anything else is
-    // sealed off the network (see [sealed]), but for this machine's run
-    // server.
+    // DartPad is run on its own site on purpose; anything else is sealed
+    // off the network (see [sealed]) but for this machine's run server.
     var origin = base == null ? "" : Uri.parse(base).origin;
     var open = base != null && origin != _localOrigin(base);
     var view = HeadlessInAppWebView(
@@ -204,11 +187,11 @@ class AppCodeRunHost implements CodeRunHost {
             });
       },
       onLoadStop: (c, url) async {
-        // A page is done once it has loaded and its scripts have had a
-        // moment; Python and Go say so themselves.
+        // A page is done once loaded and its scripts have had a moment;
+        // Python and Go say so themselves.
         if (picture) {
-          // [settle] seconds more for a page that builds something itself
-          // (DartPad compiling the app) before it is worth a picture.
+          // [settle] seconds more for a page that builds itself (DartPad
+          // compiling) before it is worth a picture.
           await Future<void>.delayed(
               Duration(milliseconds: settle > 0 ? settle * 1000 : 600));
           if (!done.isCompleted) done.complete();
@@ -239,8 +222,8 @@ class AppCodeRunHost implements CodeRunHost {
     return CodeRunOutcome(logs: logs, picture: shot);
   }
 
-  /// _flutter compiles a Flutter app with flutter_eval, builds its widget
-  /// and takes a picture of it, laid out at least a phone's width.
+  /// _flutter compiles a Flutter app with flutter_eval and takes a picture
+  /// of its widget, at least a phone's width.
   Future<CodeRunOutcome> _flutter(CodeElement code, CodeFile entry, Size size,
       void Function(CodeLog) onLog) async {
     var logs = <CodeLog>[];
@@ -267,7 +250,7 @@ class AppCodeRunHost implements CodeRunHost {
     return CodeRunOutcome(logs: logs, picture: png);
   }
 
-  /// _pyodide makes sure Pyodide is downloaded, saying so as it is.
+  /// _pyodide makes sure Pyodide is downloaded, reporting progress.
   Future<bool> _pyodide(void Function(CodeLog) onLog) async {
     _logs = [];
     var dir = await pyodideDir();
@@ -282,8 +265,8 @@ class AppCodeRunHost implements CodeRunHost {
       onLog(l);
     }
 
-    // Fetched as every download from the canvas is (canvas_network.dart):
-    // never past a proxy, https only, its size capped.
+    // As every canvas download (canvas_network.dart): never past a proxy,
+    // https only, size capped.
     if (await networkIsProxied()) {
       note(
           "Python isn't fetched while a proxy is set: it would be reached "
@@ -340,11 +323,11 @@ class AppCodeRunHost implements CodeRunHost {
 Future<String> pyodideDir() async => path.join(await CanvasStorage.libraryDir(),
     canvasRuntimesFolder, "pyodide-$pyodideVersion");
 
-/// _json is [v] as JSON to put in a page's script: "</" kept from ending
-/// the script early, as a file that mentions </script> would.
+/// _json is [v] as JSON for a page's script, with "</" escaped so a file
+/// mentioning </script> cannot end the script early.
 String _json(Object v) => jsonEncode(v).replaceAll("</", r"<\/");
 
-/// _files is [code]'s files as JSON: name to text.
+/// _files is [code]'s files as JSON, name to text.
 String _files(CodeElement code) =>
     _json({for (var f in code.files) f.name: f.text});
 
@@ -357,9 +340,8 @@ function done() {
 }
 ''';
 
-/// pythonPage is a page that runs [entry] of [code] with Pyodide, served
-/// from [prefix]: every file written into a folder of its own first, so
-/// imports between them work, and run as "__main__".
+/// pythonPage runs [entry] with Pyodide from [prefix]: every file written
+/// to a folder first, so imports work, then run as "__main__".
 String pythonPage(CodeElement code, CodeFile entry, String prefix) => '''
 <!doctype html><html><head><meta charset="utf-8"></head><body>
 <script>$_say</script>
@@ -394,8 +376,8 @@ runpy.run_path(ENTRY, run_name="__main__")
 })();
 </script></body></html>''';
 
-/// goPage is a page that runs [code]'s Go files with Yaegi, served from
-/// [prefix]: the other files of the package first, [entry] last.
+/// goPage runs [code]'s Go files with Yaegi, served from [prefix]: the
+/// package's other files first, [entry] last.
 String goPage(CodeElement code, CodeFile entry, String prefix) {
   var files = [
     for (var f in code.files)
@@ -424,9 +406,8 @@ String goPage(CodeElement code, CodeFile entry, String prefix) {
 </script></body></html>''';
 }
 
-/// _dartpadPage is DartPad, embedded, sent [entry]'s code once it says it
-/// is ready, and left to compile and run it on Google's servers. What it
-/// prints stays in DartPad's own console, shown in the picture.
+/// _dartpadPage is DartPad, embedded, sent [entry]'s code once ready, to
+/// compile and run on Google's servers. Its console shows in the picture.
 String _dartpadPage(CodeElement code, CodeFile entry) => '''
 <!doctype html><html><head><meta charset="utf-8">
 <style>html,body,iframe{margin:0;width:100%;height:100%;border:0}</style></head><body>
@@ -467,7 +448,7 @@ class _RunServer {
     return s;
   }
 
-  /// yaegi unpacks the Go interpreter, once, from the app's assets.
+  /// yaegi unpacks the Go interpreter from the app's assets, once.
   Future<void> yaegi() async {
     if (_yaegiPath != null && await File(_yaegiPath!).exists()) return;
     var dir = path.join(await CanvasStorage.libraryDir(), canvasRuntimesFolder);

@@ -2,18 +2,10 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 
-// stock_sources.dart is the stock libraries the Assets sidebar searches
-// (Pixabay's pictures and videos, the Noun Project, Freesound, Jamendo,
-// Poly Haven and Iconify): what each is called, what it has, what can be asked of it,
-// and how its answer is read.
-//
-// Nothing here touches the network: requests are built and answers read
-// here, and the request is made in stock_client.dart, so each API's shape
-// can be pinned by tests with nothing but JSON.
-//
-// Previews only: a search returns addresses. Nothing is kept until it is
-// used (placed, dragged, or added to the library), and then it is stored
-// like any other asset, with its author and licence.
+// stock_sources.dart is the stock libraries the Assets sidebar searches:
+// what each has, how requests are built and answers read. No network here
+// (stock_client.dart), so each API's shape is tested with JSON. Nothing is
+// kept until used, and then stored with its author and licence.
 
 /// StockSource is one library to search.
 enum StockSource {
@@ -53,8 +45,8 @@ enum StockSource {
     from: "Jamendo",
   ),
 
-  /// polyHaven is Poly Haven's 3D models: CC0, and no key -- see
-  /// polyHavenPage and fetchPolyHavenModel.
+  /// polyHaven is Poly Haven's 3D models: CC0, no key (see polyHavenPage
+  /// and fetchPolyHavenModel).
   polyHaven(
     label: "Poly Haven models",
     kind: AssetKind.model,
@@ -63,9 +55,8 @@ enum StockSource {
     from: "Poly Haven",
   ),
 
-  /// iconify is Iconify's icons: some two hundred thousand, from open-source
-  /// sets, and no key -- each icon under its own set's licence. Added when
-  /// the Noun Project's free allowance ran out (Ken, 2026-11-11).
+  /// iconify is Iconify's icons: some 200,000 from open-source sets,
+  /// keyless, each under its set's licence.
   iconify(
     label: "Iconify icons",
     kind: AssetKind.picture,
@@ -76,11 +67,11 @@ enum StockSource {
 
   final String label;
 
-  /// kind is which library section what is found here goes into.
+  /// kind is the library section its finds go into.
   final AssetKind kind;
 
-  /// keyHost is what the key is filed under -- see CanvasApiKeys. Both Pixabay
-  /// searches share one key, because Pixabay gives one.
+  /// keyHost is what the key is filed under (see CanvasApiKeys). Both
+  /// Pixabay searches share Pixabay's one key.
   final String keyHost;
 
   /// keyPage is where somebody gets a key of their own.
@@ -97,21 +88,20 @@ enum StockSource {
     required this.from,
   });
 
-  /// needsSecret is whether the key comes in two halves. The Noun Project
-  /// signs every request with a key and a secret; the rest take a key alone.
+  /// needsSecret is whether the key has two halves: the Noun Project signs
+  /// with a key and a secret.
   bool get needsSecret => this == nounProject;
 
-  /// needsKey is whether a search needs a key of its own: Poly Haven's is
-  /// open to all.
+  /// needsKey is whether a search needs a key; Poly Haven and Iconify are
+  /// open.
   bool get needsKey => this != polyHaven && this != iconify;
 
-  /// needsText is whether a search must say what it is looking for. The
-  /// others show what is popular when asked for nothing in particular.
+  /// needsText is whether a search must name something; the others show
+  /// what is popular for an empty search.
   bool get needsText => this == nounProject || this == iconify;
 
-  /// terms is the line shown under the results: where they come from, which
-  /// Pixabay asks to be shown wherever its results are, and what using one
-  /// asks of the person using it.
+  /// terms is the line under the results: their source, which Pixabay asks
+  /// to be shown with its results, and what using one asks.
   String get terms => switch (this) {
         pixabayPictures || pixabayVideos => "From Pixabay. Free to use under "
             "the Pixabay Content License; no credit needed.",
@@ -133,7 +123,6 @@ enum StockSource {
       values.firstWhere((s) => s.name == name, orElse: () => pixabayPictures);
 }
 
-/// StockFilter is one of the dropdowns under the search box.
 class StockFilter {
   /// id is the setting's name in a StockQuery.
   final String id;
@@ -162,7 +151,6 @@ const _pixabayColours = [
 String _capital(String s) =>
     s.isEmpty ? s : "${s[0].toUpperCase()}${s.substring(1)}";
 
-/// filtersFor is what [source] can be narrowed by.
 List<StockFilter> filtersFor(StockSource source) => switch (source) {
       StockSource.pixabayPictures => [
           const StockFilter("image_type", "Type", [
@@ -271,8 +259,8 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
         ],
       StockSource.polyHaven => const [],
       StockSource.iconify => const [
-          // One colour first: those take a fill, as the canvas's own
-          // shapes do; the rest keep their set's colours.
+          // One colour first: those take a fill, as the canvas's shapes do;
+          // the rest keep their set's colours.
           StockFilter("palette", "Colour", [
             ("false", "One colour"),
             ("", "Any"),
@@ -284,25 +272,22 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
         ],
     };
 
-/// iconifyPageSize is how many icons a page of Iconify's shows. Its search
-/// has no offset: page n asks for n pages' worth and shows the last.
+/// iconifyPageSize is the icons on a page of Iconify's. Its search has no
+/// offset: page n asks for n pages' worth and shows the last.
 const int iconifyPageSize = 48;
 
-/// iconifyMost is the most icons one Iconify search answers with.
+/// iconifyMost is the most icons one Iconify search returns.
 const int iconifyMost = 999;
 
-/// _creditFree are the licences an Iconify set may be under for its icons to
-/// be used with no credit shown: the permissive software licences and the
-/// public-domain ones. CC BY, CC BY-SA and GPL sets ask for more.
+/// _creditFree are licences whose Iconify icons need no credit shown:
+/// permissive and public domain. CC BY, CC BY-SA and GPL ask for more.
 const _creditFree = {
   "MIT", "Apache-2.0", "ISC", "0BSD", "BSD-2-Clause", "BSD-3-Clause", //
   "CC0-1.0", "Unlicense", "OFL-1.1", "MPL-2.0",
 };
 
-/// iconifySvg is the address of Iconify's [icon] ("set:name") as a drawing:
-/// black, where the set drew in the current colour, and sized in pixels
-/// rather than ems, which a drawing read on its own has nothing to measure
-/// against.
+/// iconifySvg is Iconify's [icon] ("set:name") as an SVG address: black for
+/// the current colour, sized in pixels, as a lone drawing has no em.
 String iconifySvg(String icon, {String colour = "#000000", int height = 256}) {
   var at = icon.indexOf(":");
   var set = at < 0 ? icon : icon.substring(0, at);
@@ -314,16 +299,15 @@ String iconifySvg(String icon, {String colour = "#000000", int height = 256}) {
 /// stockPageSize is how many results a search asks for at a time.
 const int stockPageSize = 30;
 
-/// StockQuery is one search: where, for what, narrowed how, and which page.
 class StockQuery {
   final StockSource source;
   final String text;
 
-  /// filters holds a value per StockFilter id; one not set is the default.
+  /// filters holds a value per StockFilter id; unset is the default.
   final Map<String, String> filters;
 
   /// page is the page wanted, from 1. The Noun Project pages by a token
-  /// instead, which is [cursor].
+  /// instead, [cursor].
   final int page;
   final String cursor;
 
@@ -349,19 +333,18 @@ class StockQuery {
       text: text, filters: filters, page: page + 1, cursor: from.cursor);
 }
 
-/// StockRequest is a search as the request that makes it.
 class StockRequest {
   final Uri uri;
   final Map<String, String> headers;
 
-  /// signed is whether the request still has to be signed with the key and
-  /// secret -- the Noun Project's -- before it is sent. See oauthHeader.
+  /// signed is whether the request must still be signed with the Noun
+  /// Project's key and secret before sending. See oauthHeader.
   final bool signed;
 
   const StockRequest(this.uri, {this.headers = const {}, this.signed = false});
 
-  /// cacheKey is the address without the key in it: the same search made
-  /// with a new key is the same search.
+  /// cacheKey is the address without the key, so a new key does not make a
+  /// new search.
   String get cacheKey {
     var q = Map<String, String>.of(uri.queryParameters)
       ..remove("key")
@@ -371,10 +354,8 @@ class StockRequest {
   }
 }
 
-/// requestFor is [q] as a request, with [key] where the source wants it.
-/// Freesound's goes in a header rather than the address, so it is not
-/// written into a log line by accident; Pixabay and Jamendo take it only in
-/// the address.
+/// requestFor is [q] as a request with [key] where the source wants it:
+/// Freesound's in a header, so it cannot slip into a log line.
 StockRequest requestFor(StockQuery q, {required String key}) {
   var text = q.text.trim();
   Map<String, String> chosen(List<String> ids) => {
@@ -446,8 +427,8 @@ StockRequest requestFor(StockQuery q, {required String key}) {
         "audioformat": "mp32",
         "include": "licenses musicinfo",
       }));
-    // Its search names the models; what they are is in its catalogue --
-    // see StockClient._polyHaven.
+    // Its search names the models; the catalogue says what they are (see
+    // StockClient._polyHaven).
     case StockSource.polyHaven:
       return StockRequest(Uri.https("api.polyhaven.com", "/search", {
         "q": text,
@@ -462,23 +443,23 @@ StockRequest requestFor(StockQuery q, {required String key}) {
   }
 }
 
-/// StockItem is one result: enough to show it, play a preview of it, and
-/// fetch it when it is used.
+/// StockItem is one result: enough to show it, preview it, and fetch it
+/// when used.
 class StockItem {
   final StockSource source;
   final String id;
   final String title;
   final String author;
 
-  /// license is a short name -- "CC BY 4.0" -- and licenseUrl its text.
+  /// license is a short name ("CC BY 4.0"), and licenseUrl its text.
   final String license;
   final String licenseUrl;
 
   /// page is the item's own page on the library's site.
   final String page;
 
-  /// thumb is a small picture of it, for the results; empty for a sound
-  /// with nothing to show.
+  /// thumb is a small picture for the results; empty for a sound with
+  /// nothing to show.
   final String thumb;
 
   /// media is what is fetched when it is used.
@@ -512,8 +493,8 @@ class StockItem {
   /// key is unique across every source, for the results list.
   String get key => "${source.name}-$id";
 
-  /// credit is the line somebody using it would print: what, by whom, from
-  /// where, under what.
+  /// credit is the line a user would print: what, by whom, from where,
+  /// under what.
   String get credit => [
         author.isEmpty ? title : "$title by $author",
         "from ${source.from}",
@@ -525,7 +506,7 @@ class StockItem {
 class StockPage {
   final List<StockItem> items;
 
-  /// more is whether asking for the next page would find anything.
+  /// more is whether the next page would find anything.
   final bool more;
 
   /// cursor is the Noun Project's token for the next page.
@@ -543,8 +524,8 @@ class StockPage {
   bool get worked => problem == null;
 }
 
-/// licenceName is a Creative Commons address as the short name people know
-/// it by: .../licenses/by-nc-sa/3.0/ is CC BY-NC-SA 3.0, .../zero/1.0/ CC0.
+/// licenceName is a Creative Commons address as its short name:
+/// .../licenses/by-nc-sa/3.0/ is CC BY-NC-SA 3.0, .../zero/1.0/ CC0.
 String licenceName(String url) {
   var u = url.toLowerCase();
   if (u.isEmpty) return "";
@@ -552,7 +533,7 @@ String licenceName(String url) {
   if (u.contains("publicdomain")) return "Public domain";
   var m = RegExp(r"licenses/([a-z+\-]+)/([0-9.]+)").firstMatch(u);
   if (m == null) {
-    // Freesound's own spellings, which it also answers with sometimes.
+    // Freesound's own spellings, which it sometimes answers with.
     return switch (url) {
       "Creative Commons 0" => "CC0",
       "Attribution" => "CC BY",
@@ -589,7 +570,7 @@ int _i(Object? json, List<Object> path) => _at<num>(json, path)?.toInt() ?? 0;
 double _d(Object? json, List<Object> path) =>
     _at<num>(json, path)?.toDouble() ?? 0;
 
-/// _titleFromTags names a Pixabay result, which has tags and no title:
+/// _titleFromTags names a Pixabay result, which has tags but no title:
 /// "mountain, lake, sunrise" is "Mountain lake sunrise".
 String _titleFromTags(String tags, String fallback) {
   var words = tags
@@ -637,7 +618,7 @@ StockPage parseStock(StockQuery q, Object? json) {
       var items = <StockItem>[];
       for (var h in hits) {
         // Medium is 1280 wide, the canvas's own size: large is four times
-        // the download for pixels nobody sees.
+        // the download for unseen pixels.
         var chosen = ["medium", "small", "large", "tiny"]
             .map((r) => _at<Map>(h, ["videos", r]))
             .firstWhere((v) => v != null && _s(v, ["url"]).isNotEmpty,
@@ -655,8 +636,8 @@ StockPage parseStock(StockQuery q, Object? json) {
           licenseUrl: "https://pixabay.com/service/license-summary/",
           page: _s(h, ["pageURL"]),
           thumb: thumb,
-          // The smallest rendition, to watch before choosing: a few hundred
-          // kilobytes rather than the one that is kept.
+          // The smallest rendition for previewing: a few hundred kilobytes,
+          // not the one that is kept.
           preview: ["tiny", "small", "medium"]
               .map((r) => _s(h, ["videos", r, "url"]))
               .firstWhere((u) => u.isNotEmpty, orElse: () => ""),
@@ -688,8 +669,8 @@ StockPage parseStock(StockQuery q, Object? json) {
               : "https://creativecommons.org/licenses/by/3.0/",
           page: _absolute(_s(h, ["permalink"]), "https://thenounproject.com"),
           thumb: png.isEmpty ? svg : png,
-          // The drawing itself where there is one: it stays sharp at any
-          // size and takes a fill like any other shape.
+          // The drawing where there is one: sharp at any size, and it takes
+          // a fill like any shape.
           media: svg.isEmpty ? png : svg,
           width: 1,
           height: 1,
@@ -715,8 +696,8 @@ StockPage parseStock(StockQuery q, Object? json) {
           licenseUrl: licence.startsWith("http") ? licence : "",
           page: _s(h, ["url"]),
           thumb: _s(h, ["images", "waveform_m"]),
-          // The high-quality preview is what a key alone can fetch: the
-          // original file needs a login to Freesound, which this is not.
+          // The high-quality preview is what a key alone can fetch; the
+          // original needs a Freesound login.
           media: hq,
           preview: _s(h, ["previews", "preview-lq-mp3"]).isEmpty
               ? hq
@@ -801,9 +782,8 @@ StockPage parseStock(StockQuery q, Object? json) {
   }
 }
 
-/// polyHavenPage is page [page] of Poly Haven's models: those [slugs] name,
-/// in order, as [catalogue] -- its list of every model, by slug -- has them.
-/// With no slugs, the most downloaded first.
+/// polyHavenPage is page [page] of the models [slugs] name, in order, from
+/// [catalogue]; with no slugs, the most downloaded first.
 StockPage polyHavenPage(Map<String, dynamic> catalogue, List<String>? slugs,
     {int page = 1}) {
   var order = slugs ??

@@ -1,13 +1,12 @@
 part of 'mixer_plugins.dart';
 
-// mixer_sound_devices.dart is the sound chain's own devices: the channel EQ, the compressor, the meters and limiter, and ducking: part of mixer_plugins.dart, split from it to keep
-// that file readable (Ken, 2026-11-12). Its imports are the library's.
+// mixer_sound_devices.dart is the sound chain's own devices: the channel
+// EQ, the compressor, the meters and limiter, and ducking. A part of
+// mixer_plugins.dart; its imports are the library's.
 
 // ---- Channel EQ
 
-/// eqBandColour is each band's colour: its button, its handle and its own
-/// curve. Red at the bottom through to magenta at the top, as Logic has
-/// them.
+/// eqBandColour is each band's colour, red (lowest) to magenta, as in Logic.
 Color eqBandColour(EqSlot slot) => switch (slot) {
       EqSlot.lowCut => const Color(0xFFE5484D),
       EqSlot.low => const Color(0xFFF27D3A),
@@ -22,13 +21,11 @@ Color eqBandColour(EqSlot slot) => switch (slot) {
 const _eqBack = Color(0xFF0D1826);
 const _eqInk = Color(0xFFC9D6E6);
 
-/// _headerInkLight is what reads on a device's dark header bar -- its
-/// remove button, which drawn in the body's ink was there but not seen.
+/// _headerInkLight is ink that reads on a device's dark header bar.
 const _headerInkLight = Color(0xFFE8EAEE);
 const _eqDim = Color(0xFF6E8199);
 
-/// EqDevice is a strip's Channel EQ in the chain -- the master's, with no
-/// [channel].
+/// EqDevice is a strip's Channel EQ; the master's has no [channel].
 class EqDevice extends StatefulWidget {
   static const width = 392.0;
   final CanvasController controller;
@@ -56,7 +53,6 @@ class _EqDeviceState extends State<EqDevice>
   @override
   CanvasController get meteredBy => widget.controller;
 
-  /// _analyzer is whether what is playing is drawn behind the curve.
   bool _analyzer = false;
   Float32List? _spectrum;
 
@@ -106,7 +102,6 @@ class _EqDeviceState extends State<EqDevice>
                 "how wide. A chip picks a band and shows its knobs; pressed "
                 "again, switches it off.",
             skin: DeviceSkin.studio(studio),
-            // The prototype's Tone family: its own colour and mark.
             icon: Icons.equalizer,
             accent: const Color(0xFF9A92EA),
             on: eq.on,
@@ -120,7 +115,6 @@ class _EqDeviceState extends State<EqDevice>
             showingB: widget.controller
                 .showingBOf("${widget.channel ?? mixerMasterKey}|eq"),
             onReset: () => _write(const Eq().copyWith(on: eq.on)),
-            // On the whole sound, its middle or its sides.
             extraMenu: (look) => [
               worksOnMenu(look,
                   id: "eqStereo",
@@ -180,8 +174,6 @@ class _EqDeviceState extends State<EqDevice>
             ].join(" · "),
             foldedBody: CustomPaint(
                 key: const ValueKey("eqFolded"), painter: _MiniCurve(eq)),
-            // Its curve, the bands dragged on it, what is playing behind it
-            // while Analyzer is on.
             display: Stack(children: [
               Positioned.fill(
                   child: ColoredBox(color: _eqBack, child: _graph(eq))),
@@ -221,8 +213,7 @@ class _EqDeviceState extends State<EqDevice>
         },
       );
 
-  /// _bandKnobs are the picked band's knobs -- where it is, how much (a
-  /// bell's or shelf's), how wide -- and the EQ's output.
+  /// _bandKnobs are the picked band's frequency, gain and Q, and the output.
   List<Widget> _bandKnobs(Eq eq, EqSlot slot, DeviceTier tier) {
     var b = eq.band(slot);
     var size = switch (tier) {
@@ -325,8 +316,7 @@ class _EqDeviceState extends State<EqDevice>
     ]);
   }
 
-  /// _bandButtons are a chip a band: pressed, the band is picked -- its
-  /// knobs shown -- and switched on or off.
+  /// _bandButtons are a chip per band, to pick it and switch it on or off.
   Widget _bandButtons(Eq eq) => SizedBox(
         height: 22,
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -382,8 +372,7 @@ class _EqDeviceState extends State<EqDevice>
   double _g(double y, double h) =>
       ((h / 2 - y) / (h / 2 - 14) * _gMax).clamp(-_gMax, _gMax);
 
-  /// _handle is where [slot]'s handle is drawn: a cut's on its own curve at
-  /// its corner, the rest at their gain.
+  /// _handle is [slot]'s handle: a cut's on its curve, the rest at gain.
   Offset _handle(Eq eq, EqSlot slot, double w, double h) {
     var b = eq.band(slot);
     return Offset(_x(b.freq, w),
@@ -403,8 +392,7 @@ class _EqDeviceState extends State<EqDevice>
     return best;
   }
 
-  /// _moveTo puts the handle being dragged at [at]: sideways its
-  /// frequency, up and down its gain.
+  /// _moveTo drags the handle to [at]: across is frequency, up is gain.
   void _moveTo(Offset at, double w, double h) {
     var slot = _dragging;
     if (slot == null) return;
@@ -417,14 +405,13 @@ class _EqDeviceState extends State<EqDevice>
 
   Widget _graph(Eq eq) => LayoutBuilder(builder: (context, box) {
         var w = box.maxWidth, h = box.maxHeight;
-        // Set by a press and a drag only: a wheel or a trackpad's scroll
-        // over it scrolls the chain (Ken). A band's Q is its knob.
+        // Set by a press and a drag only: a wheel or trackpad scroll over it
+        // scrolls the chain. A band's Q is its knob.
         return GestureDetector(
           key: const ValueKey("eqCurve"),
           supportedDevices: dragPointers,
           // The handle is chosen where the press lands, not where the drag
-          // is recognised: in the sideways-scrolling chain that is a
-          // little way off, past the handle.
+          // is recognised: in the sideways-scrolling chain that is past it.
           onPanDown: (d) => setState(() {
             _dragging = _nearest(eq, d.localPosition, w, h, 24);
             if (_dragging != null) _picked = _dragging;
@@ -451,7 +438,6 @@ class _EqDeviceState extends State<EqDevice>
       });
 }
 
-/// _BandIcon is a band's shape, drawn small on its button.
 class _BandIcon extends CustomPainter {
   final EqSlot slot;
   final Color ink;
@@ -507,11 +493,9 @@ class _BandIcon extends CustomPainter {
   bool shouldRepaint(_BandIcon old) => old.ink != ink || old.slot != slot;
 }
 
-/// paintedLabel is [text] in [style], laid out: kept, as the meters and
-/// graphs paint the same few labels on every frame they move, and laying
-/// them out again each time was much of what those frames cost.
-///
-/// With [maxWidth] it is laid out no wider, on one line ended with an
+/// paintedLabel is [text] in [style], laid out and cached: meters and
+/// graphs paint the same few labels every frame, and layout was much of
+/// their cost. With [maxWidth] it is one line no wider, ending in an
 /// ellipsis where it runs over.
 TextPainter paintedLabel(String text, TextStyle style, {double? maxWidth}) {
   var width = maxWidth == null ? null : math.max(0.0, maxWidth);
@@ -585,8 +569,7 @@ class _EqGraph extends CustomPainter {
             right: true);
       }
     }
-    // The analyzer: what is playing, after the EQ, sixty decibels below its
-    // loudest at the floor.
+    // The analyzer: what plays after the EQ, its floor 60 dB under its peak.
     if (spectrum case var bins? when bins.isNotEmpty) {
       var loudest = bins.fold(0.0, (m, v) => v > m ? v : m);
       if (loudest > 0) {
@@ -619,7 +602,6 @@ class _EqGraph extends CustomPainter {
       return p;
     }
 
-    // The band last touched, alone, in its colour.
     if (picked case var slot? when eq.band(slot).on) {
       var own = curve((f) => shown.bandDb(slot, f));
       var area = Path.from(own)
@@ -635,7 +617,6 @@ class _EqGraph extends CustomPainter {
             ..strokeWidth = 1.2
             ..color = eqBandColour(slot).withValues(alpha: 0.8));
     }
-    // Everything together, filled to the line.
     var all = curve((f) => shown.responseDb(f));
     var area = Path.from(all)
       ..lineTo(w, zero)
@@ -678,19 +659,16 @@ class _EqGraph extends CustomPainter {
 
 // ---- Compressor
 
-/// _silverInk and _silverDim are what reads on a device's card: they were
-/// a silver unit's dark ink, and every card is the Chain's dark one now.
+/// _silverInk and _silverDim are ink that reads on a device's dark card.
 const _silverInk = Color(0xFFE8E4EE);
 const _silverDim = Color(0xFF8E8A9C);
 
-/// _faceInk and _faceDim read on a cream meter's face: the compressor's VU,
-/// the ducking curve.
+/// _faceInk and _faceDim read on a cream face (the VU, the ducking curve).
 const _faceInk = Color(0xFF2B2F36);
 const _faceDim = Color(0xFF6A707A);
 const _cream = Color(0xFFF1E7C9);
 
-/// CompDevice is a strip's compressor in the chain -- the master's glue,
-/// with no [channel].
+/// CompDevice is a strip's compressor; the master's glue has no [channel].
 class CompDevice extends StatefulWidget {
   static const width = 440.0;
   final CanvasController controller;
@@ -718,8 +696,7 @@ class _CompDeviceState extends State<CompDevice>
   @override
   CanvasController get meteredBy => widget.controller;
 
-  /// _needleShown is whether the display shows the gain-reduction needle
-  /// rather than the transfer curve, which it opens on, as the prototype's.
+  /// _needleShown shows the gain-reduction needle, not the transfer curve.
   bool _needleShown = false;
   double _input = -90;
 
@@ -852,7 +829,6 @@ class _CompDeviceState extends State<CompDevice>
             summary: "${comp.threshold.round()} dB · "
                 "${comp.ratio.toStringAsFixed(1)}:1 · "
                 "−${_needle.toStringAsFixed(1)} dB",
-            // Folded, how much it is taking off.
             foldedBody: CustomPaint(
                 key: const ValueKey("compFolded"),
                 size: const Size(14, double.infinity),
@@ -868,9 +844,8 @@ class _CompDeviceState extends State<CompDevice>
         },
       );
 
-  /// _display is the compressor's screen: its curve, or how much it is
-  /// taking off as a needle, switched in its corner, with the reduction
-  /// read along its foot.
+  /// _display is the compressor's screen: its curve or a gain-reduction
+  /// needle, switched in its corner, with the reduction read along its foot.
   Widget _display(Dynamics comp, StudioColors studio, double output) =>
       Stack(children: [
         Positioned.fill(
@@ -919,7 +894,6 @@ class _CompDeviceState extends State<CompDevice>
         ),
       ]);
 
-  /// _tab is one of the display's views, in its corner, as the prototype's.
   Widget _tab(String label, bool on, Key key, VoidCallback onTap,
           StudioColors studio) =>
       GestureDetector(
@@ -997,8 +971,6 @@ class _CompDeviceState extends State<CompDevice>
     ]);
   }
 
-  /// _knobList are its knobs, sized for [tier], in the order the
-  /// prototype has them.
   List<Widget> _knobList(Dynamics comp, DeviceTier tier) {
     var initial =
         widget.channel == null ? const MasterMix().comp : const Dynamics();
@@ -1081,8 +1053,7 @@ class _CompDeviceState extends State<CompDevice>
   }
 }
 
-/// DeviceChoices is a setting that is one of a few, as the prototype draws one:
-/// joined buttons, the one chosen filled.
+/// DeviceChoices is a one-of-a-few setting as joined buttons, one filled.
 class DeviceChoices extends StatelessWidget {
   /// options are each one's key, name, whether it is chosen, and its press.
   final List<(Key, String, bool, VoidCallback)> options;
@@ -1124,8 +1095,7 @@ class DeviceChoices extends StatelessWidget {
   }
 }
 
-/// _Knob is a rotary control: dragged up to turn it right, double-clicked
-/// to put it back.
+/// _Knob is a rotary control: drag up to turn right, double-click to reset.
 class _Knob extends StatefulWidget {
   final String label;
   final String text;
@@ -1148,23 +1118,19 @@ class _Knob extends StatefulWidget {
   /// (see instances.dart): its arc amber, with a dot by it.
   final bool own;
 
-  /// menu is what its right-click offers -- a modulator of the chain to
-  /// move it with, each -- by name; empty for none.
+  /// menu is its right-click's modulators to move it with; empty for none.
   final List<(String, VoidCallback)> menu;
 
-  /// reading is whether its value is written under it: not on a short
-  /// device, where the room is the knob's.
+  /// reading is whether its value is written under it (not on a short card).
   final bool reading;
 
-  /// accent, given, draws it as the Chain's cards have it: a dark knob with
-  /// its arc in [accent], filled from the middle for a setting that goes
-  /// both ways (see [bipolar]); [ink] its label's and reading's colour.
+  /// accent, given, draws the Chain's dark knob with its arc in [accent],
+  /// filled from the middle where [bipolar]; [ink] colours label and reading.
   final Color? accent;
   final Color ink;
   final bool bipolar;
 
-  /// step is how far its arrows move it, in ChainPanelStyle: null for a
-  /// fiftieth of its travel.
+  /// step is its arrows' step in ChainPanelStyle; null for 1/50 of travel.
   final double? step;
 
   const _Knob({
@@ -1193,8 +1159,7 @@ class _Knob extends StatefulWidget {
   State<_Knob> createState() => _KnobState();
 }
 
-/// _KnobState is a knob, and -- its value double-clicked -- a field to type
-/// a number into.
+/// _KnobState is a knob and, double-clicked, a field to type a number in.
 class _KnobState extends State<_Knob> {
   bool _typing = false;
   final TextEditingController _typed = TextEditingController();
@@ -1247,8 +1212,7 @@ class _KnobState extends State<_Knob> {
     if (v != null) onChanged(v);
   }
 
-  /// _face is the knob's size drawn, as the prototype's: 32 on a tall card,
-  /// 27 and 22 on shorter ones, whatever size it was asked for.
+  /// _face is the knob's drawn size, 32, 27 or 22 by card height.
   double get _face => size >= 44
       ? 32
       : size >= 36
@@ -1257,15 +1221,12 @@ class _KnobState extends State<_Knob> {
               ? 22
               : size;
 
-  /// _panelKnob is the knob in ChainPanelStyle: its name, then its value
-  /// in a stepper's box -- arrows either side, dragged up and down as the
-  /// knob is, double-clicked to type.
+  /// _panelKnob is the knob in ChainPanelStyle: its name, then its value in
+  /// a stepper's box (arrows either side, scrubbed, double-clicked to type).
   Widget _panelKnob(MixerLook look) {
     var s = look.studio;
-    // Ken, 2026-11-12: its arrows and its scrub "jump too far ... hard for
-    // fine tuning". An arrow moves it by the least its reading shows -- 1%
-    // of a share in percent -- or a hundredth of its travel; shift, a tenth
-    // of that.
+    // An arrow moves it by the least its reading shows (1% of a share in
+    // percent) or 1/100 of its travel; shift, a tenth of that.
     var fine = _fineStep;
     void step(int dir) {
       var by = (HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0) *
@@ -1312,16 +1273,13 @@ class _KnobState extends State<_Knob> {
                 isDense: true, border: InputBorder.none),
             onSubmitted: (_) => _commit(),
           )
-        // Its value: scrubbed left and right (Ken, 2026-11-12: the box
-        // reads across, so it drags across), double-clicked to type.
         : MouseRegion(
             cursor: SystemMouseCursors.resizeLeftRight,
             child: GestureDetector(
               key: ValueKey("knobValue-$label"),
               behavior: HitTestBehavior.opaque,
               supportedDevices: dragPointers,
-              // From where it was pressed: none of the scrub lost to the
-              // few pixels it takes to tell a drag.
+              // From the press: no scrub lost to telling a drag.
               dragStartBehavior: DragStartBehavior.down,
               onDoubleTap: _type,
               onHorizontalDragStart: (_) => _scrubAt = range.toUnit(value),
@@ -1348,7 +1306,6 @@ class _KnobState extends State<_Knob> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Its name, double-clicked: back to where it starts.
           GestureDetector(
             key: ValueKey("knobName-$label"),
             behavior: HitTestBehavior.opaque,
@@ -1397,9 +1354,8 @@ class _KnobState extends State<_Knob> {
     );
   }
 
-  /// _fineStep is the least change the reading shows, where that is a fair
-  /// step: not finer than a thousandth of its travel. Null for a log knob
-  /// (hertz, seconds), which steps by its travel instead.
+  /// _fineStep is the least change the reading shows, but no finer than a
+  /// thousandth of travel; null for a log knob, which steps by its travel.
   double? get _fineStep {
     if (range.log) return null;
     var by = shownStep(text, value);
@@ -1430,8 +1386,7 @@ class _KnobState extends State<_Knob> {
     var look = MixerLook.of(context);
     if (ChainPanelStyle.on(context)) return _panelKnob(look);
     var face = _face;
-    // The whole of it takes a drag, its name and reading as well as its
-    // dial, as the prototype's knobs do.
+    // The whole knob takes a drag: name and reading as well as dial.
     return _Dragged(
       value: value,
       initial: initial,
@@ -1499,7 +1454,6 @@ class _KnobState extends State<_Knob> {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 9.5, color: look.studio.muted)),
-          // Its value, double-clicked: typed in.
           if (reading && _typing)
             SizedBox(
               width: 56,
@@ -1565,9 +1519,8 @@ class _KnobState extends State<_Knob> {
   }
 }
 
-/// DeviceKnob is the Chain's knob for an editor outside this file (the
-/// Instrument's, say): dragged up to turn it right, double-clicked to put it
-/// back to [initial]; [log] spreads its travel as hertz and seconds want.
+/// DeviceKnob is the Chain's knob for editors outside this file: drag up to
+/// turn right, double-click for [initial]; [log] for hertz and seconds.
 class DeviceKnob extends StatelessWidget {
   final String label;
   final String text;
@@ -1580,9 +1533,7 @@ class DeviceKnob extends StatelessWidget {
   final void Function(double v, {bool transient}) onChanged;
   final VoidCallback onCommit;
 
-  /// menu is its right-click's choices, and modulated whether something
-  /// moves it (a pink ring), as a device's own knobs have; own whether the
-  /// copies edited have their own value (see _Knob.own).
+  /// menu, modulated (a pink ring) and own: as _Knob's.
   final List<(String, VoidCallback)> menu;
   final bool modulated;
   final bool own;
@@ -1590,7 +1541,6 @@ class DeviceKnob extends StatelessWidget {
   /// automated is whether keys move it: the dot by its name.
   final bool automated;
 
-  /// step: see _Knob.step.
   final double? step;
 
   const DeviceKnob({
@@ -1647,13 +1597,11 @@ double? typedValue(String typed, String shown, double min, double max,
   var v = double.tryParse(m.group(0)!);
   if (v == null) return null;
   var rest = t.substring(m.end).trim().toLowerCase();
-  // In thousands: "k", or kilohertz.
   if (rest.startsWith("k")) v *= 1000;
-  // A share the knob shows in percent -- 1 shown as "100%" -- takes a
-  // number typed as a percent. Told by what it shows against its value,
-  // where it can be: "How far" goes to 300%, past the old test of a most of
-  // 2, so 100 typed was read as 100 times and held to 300% (Ken,
-  // 2026-11-12). A knob already in percent units ("50%" for 50) is not.
+  // A share shown in percent (1 shown as "100%") takes a number typed as
+  // a percent. Told by what it shows against its value, not by its most:
+  // "How far" goes to 300%. A knob already in percent units ("50%" for 50)
+  // is not.
   if (shown.trim().endsWith("%")) {
     var n = _shownNumber(shown);
     var ratio = value != null && n != null && n != 0 && value.abs() > 1e-9
@@ -1667,17 +1615,15 @@ double? typedValue(String typed, String shown, double min, double max,
   return v.clamp(math.min(min, max), math.max(min, max)).toDouble();
 }
 
-/// _shownNumber is the number a knob's reading shows, or null.
 double? _shownNumber(String shown) {
   var m = RegExp(r"-?\d*\.?\d+")
       .firstMatch(shown.replaceAll("\u2212", "-").replaceAll(",", "."));
   return m == null ? null : double.tryParse(m.group(0)!);
 }
 
-/// shownStep is the least change a knob's reading [shown] can show, in
-/// the value's own terms -- 1% of a share shown in percent is 0.01, "1.25×"
-/// a hundredth -- where the reading is the value times a power of ten;
-/// null where it is not (decibels from a gain, say) or cannot be told.
+/// shownStep is the least change reading [shown] can show, in the value's
+/// terms (1% shown in percent is 0.01), where the reading is the value
+/// times a power of ten; null otherwise (dB from a gain) or if unclear.
 double? shownStep(String shown, double value) {
   var m = RegExp(r"-?\d*\.?\d+")
       .firstMatch(shown.replaceAll("\u2212", "-").replaceAll(",", "."));
@@ -1885,8 +1831,7 @@ class _TransferCurve extends CustomPainter {
   final Dynamics comp;
   final double input;
 
-  /// line, grid and dim are its colours: on a cream face by default, or the
-  /// Chain's dark display.
+  /// line, grid and dim are its colours, for a cream face or a dark display.
   final Color line, grid, dim;
   _TransferCurve(this.comp, this.input,
       {this.line = _faceInk,
@@ -1938,8 +1883,7 @@ class _TransferCurve extends CustomPainter {
       !identical(old.comp, comp);
 }
 
-/// _LedMeter is a level meter of lit segments: green, then amber, then red
-/// in the top six decibels.
+/// _LedMeter is a level meter of lit segments, red in the top 6 dB.
 class _LedMeter extends CustomPainter {
   final double db;
   _LedMeter(this.db);
@@ -1970,7 +1914,6 @@ class _LedMeter extends CustomPainter {
   bool shouldRepaint(_LedMeter old) => old.db != db;
 }
 
-/// _MiniCurve is a folded EQ: its curve, small.
 class _MiniCurve extends CustomPainter {
   final Eq eq;
   _MiniCurve(this.eq);
@@ -1984,8 +1927,7 @@ class _MiniCurve extends CustomPainter {
     canvas.drawLine(Offset(0, h / 2), Offset(w, h / 2),
         Paint()..color = const Color(0xFF3A5272));
     var shown = eq.copyWith(on: true);
-    // Turned on its side, as the folded device is tall: low at the bottom,
-    // a lift to the right.
+    // On its side, as the folded device is tall: low at the bottom.
     var p = Path();
     for (var i = 0; i <= 60; i++) {
       var y = h - i / 60 * h;
@@ -2006,8 +1948,7 @@ class _MiniCurve extends CustomPainter {
       !identical(old.eq, eq);
 }
 
-/// _ReductionBar is gain reduction as a bar falling from the top: twenty
-/// decibels fills it.
+/// _ReductionBar is gain reduction as a bar falling from the top (20 dB full).
 class _ReductionBar extends CustomPainter {
   final double reduced;
   _ReductionBar(this.reduced);
@@ -2028,9 +1969,8 @@ class _ReductionBar extends CustomPainter {
 
 // ---- Meters and the limiter
 
-/// MeterDevice is a strip's level as it leaves -- the channel's after its
-/// fader, or the master's, which is what is heard -- each side with its
-/// held peak and the loudest it has been.
+/// MeterDevice is a strip's level as it leaves (a channel's after its fader,
+/// the master's as heard), each side with its held peak and loudest yet.
 class MeterDevice extends StatefulWidget {
   static const width = 180.0;
   final CanvasController controller;
@@ -2114,8 +2054,7 @@ class _MeterDeviceState extends State<MeterDevice>
       body: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(children: [
-          // The loudest yet, red where it touched the top; a click clears
-          // it.
+          // The loudest yet, red where it touched the top; a click clears it.
           GestureDetector(
             key: ValueKey("meterLoudest-${widget.id}"),
             onTap: () => setState(() => _loudest = (-90, -90)),
@@ -2142,7 +2081,6 @@ class _MeterDeviceState extends State<MeterDevice>
             child:
                 Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Expanded(child: pair(20)),
-              // The scale, top to bottom.
               SizedBox(
                 width: 26,
                 child: CustomPaint(painter: _MeterScale()),
@@ -2161,8 +2099,7 @@ class _MeterDeviceState extends State<MeterDevice>
   }
 }
 
-/// _MeterScale is the decibel marks beside a _LedMeter, which runs from -60
-/// at the bottom to 0 at the top.
+/// _MeterScale is the dB marks beside a _LedMeter (-60 bottom, 0 top).
 class _MeterScale extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -2177,10 +2114,8 @@ class _MeterScale extends CustomPainter {
   bool shouldRepaint(_MeterScale old) => false;
 }
 
-/// LimiterDevice is the master's limiter, last in its chain, as the chain
-/// prototype has it (Ken, 2026-11-08): its screen the turn-down it has made
-/// lately against its ceiling, its Ceiling, Release and Look-ahead, and
-/// the delay its look-ahead adds on its bar.
+/// LimiterDevice is the master's limiter, last in its chain: its recent
+/// turn-down against its ceiling, its knobs, and its look-ahead's delay.
 class LimiterDevice extends StatefulWidget {
   static const width = 280.0;
   final CanvasController controller;
@@ -2188,8 +2123,7 @@ class LimiterDevice extends StatefulWidget {
   final VoidCallback onFold;
   final double height;
 
-  /// reductionDb is how far it is turning the sound down now, in dB (zero
-  /// or less).
+  /// reductionDb is how far it turns the sound down now, in dB (<= 0).
   final double reductionDb;
   const LimiterDevice(
       {required this.controller,
@@ -2271,7 +2205,6 @@ class _LimiterDeviceState extends State<LimiterDevice> {
       besideSettings: 180,
       // Its look-ahead delays the whole mix by as much.
       barExtras: [
-        // How far it is holding the mix down now.
         if (_reduction > 0.05 && widget.controller.chainBadges)
           _ReadingBadge(
               key: const ValueKey("gainBadge-limiter"),
@@ -2437,10 +2370,8 @@ class _LimitHistory extends CustomPainter {
 
 // ---- Ducking
 
-/// DuckDevice is a channel turning the others down while it is heard -- see
-/// Ducking -- as a unit beside the compressor: the shape of the dip on its
-/// screen, how far the others are down now, knobs for the depth and the
-/// times, and which channels it ducks.
+/// DuckDevice is a channel turning the others down while it is heard (see
+/// Ducking): the dip's shape, the others' level now, and its settings.
 class DuckDevice extends StatefulWidget {
   static const width = 600.0;
   final CanvasController controller;
@@ -2468,8 +2399,7 @@ class _DuckDeviceState extends State<DuckDevice>
   @override
   CanvasController get meteredBy => widget.controller;
 
-  /// _now is how far, in decibels, the channels it ducks are down at the
-  /// playhead.
+  /// _now is how far down, in dB, the ducked channels are at the playhead.
   double _now = 0;
 
   List<TimelineChannel> get _others => [
@@ -2528,7 +2458,6 @@ class _DuckDeviceState extends State<DuckDevice>
             showingB: widget.controller.showingBOf("${widget.channel}|duck"),
             onReset: () => write(Ducking(on: duck.on, except: duck.except)),
             barExtras: [
-              // How far it is turning the others down now.
               if (_now > 0.05 && widget.controller.chainBadges)
                 _ReadingBadge(
                     key: const ValueKey("gainBadge-duck"),
@@ -2580,7 +2509,6 @@ class _DuckDeviceState extends State<DuckDevice>
                   children: [
                     SizedBox(width: 280, child: _screen(duck, write)),
                     const SizedBox(width: 10),
-                    // How far the others are down now.
                     _NowMeter(barKey: const ValueKey("duckNow"), now: _now),
                     const SizedBox(width: 12),
                     Expanded(child: _controls(duck, write)),
@@ -2590,8 +2518,7 @@ class _DuckDeviceState extends State<DuckDevice>
         },
       );
 
-  /// _segment is one of the card's choices, as the Chain's chips: the one
-  /// picked filled in the accent, the rest outlined on the dark card.
+  /// _segment is one of the card's choices as a chip, the picked one filled.
   Widget _segment(String label, bool on, Key key, VoidCallback onTap) {
     var look = MixerLook.of(context);
     return GestureDetector(
@@ -2715,9 +2642,8 @@ class _DuckDeviceState extends State<DuckDevice>
   }
 }
 
-/// _NowMeter is how far the ducked channels are down now: a bar, under a
-/// label that never wraps, over the reading -- in dB while it is ducking,
-/// and nothing when it is not.
+/// _NowMeter is how far the ducked channels are down now: a bar under a
+/// never-wrapping label, over its reading in dB (empty when not ducking).
 class _NowMeter extends StatelessWidget {
   final Key barKey;
   final double now;
@@ -2755,15 +2681,11 @@ class _NowMeter extends StatelessWidget {
       );
 }
 
-/// DuckedDevice is the Ducker as the channel it turns down sees it: first in
-/// its chain, as the dip is made to its sounds as they come in. Which voices
-/// duck it, the dips drawn across the run with the playhead, how far down it
-/// is now, and its switch -- off leaves this channel alone. The dip's
-/// settings belong to the voice, for every channel it ducks (see Ducking),
-/// so the knobs here turn the voice's, and say so.
-///
-/// The dips are worked out ahead from the voice's recordings, so they lead
-/// each line rather than chase it.
+/// DuckedDevice is the Ducker as the channel it turns down sees it, first in
+/// its chain so the dip meets its sounds as they come in. The dip's settings
+/// belong to the voice (see Ducking), so its knobs turn the voice's; off
+/// leaves this channel alone. The dips are worked out ahead from the voice's
+/// recordings, so they lead each line rather than chase it.
 class DuckedDevice extends StatefulWidget {
   static const width = 460.0;
   final CanvasController controller;
@@ -3005,14 +2927,11 @@ class _DuckShape extends CustomPainter {
       !identical(old.duck, duck);
 }
 
-/// ParamDevice is a device in a return's chain, drawn from its kind's table
-/// of settings: a knob for each, its switch, and a way to take it out. A
-/// reverb or a delay -- and whatever device is added to the table next.
+/// ParamDevice is a device drawn from its kind's table of settings.
 class ParamDevice extends StatelessWidget {
   final CanvasController controller;
 
-  /// owner is the strip the device is on: a return's id, or a channel's
-  /// key -- see CanvasController.devicesOf.
+  /// owner is the strip it is on: see CanvasController.devicesOf.
   final String owner;
   final int index;
   final bool folded;
@@ -3032,8 +2951,7 @@ class ParamDevice extends StatelessWidget {
   /// _autoTuneWidth is the Auto-tune's card: room for its twelve keys.
   static const double _autoTuneWidth = 330;
 
-  /// _range is how a knob turns for [p]: times and frequencies on a log
-  /// scale, everything else in a straight line.
+  /// _range is how a knob turns for [p]: log for times and frequencies.
   static _Range _range(DeviceParam p) {
     var log = p.unit == "Hz" || p.unit == "ms";
     return _Range(log && p.min <= 0 ? 1 : p.min, p.max, log: log);
@@ -3054,7 +2972,6 @@ class ParamDevice extends StatelessWidget {
 
     var params = device.kind.params;
     var columns = (params.length + 1) ~/ 2;
-    // Which of its knobs a lane moves, and which a hand is holding.
     var lane =
         controller.timelineChannels.where((c) => c.key == owner).firstOrNull;
     var automated = {
@@ -3062,14 +2979,12 @@ class ParamDevice extends StatelessWidget {
         if (l.points.isNotEmpty) l.target
     };
     var held = controller.overridden[owner] ?? const <String>{};
-    // Which of its knobs an LFO in the chain moves.
     var moved = {
       for (var d in devices)
         if (d.on && d.kind.modulates)
           for (var m in d.mods)
             if (m.device == deviceIdAt(devices, index)) m.param,
     };
-    // Right-click: move it with a modulator of the chain.
     void moveWith(int j, ModTarget t) {
       var now = controller.devicesOf(owner);
       if (j >= now.length) return;
@@ -3106,12 +3021,9 @@ class ParamDevice extends StatelessWidget {
     String target(DeviceParam p) => AutomationTarget.deviceSetting(
             deviceIdAt(devices, index), device.kind, p.id)
         .id;
-    // A knob's lane, and a controller's knob learnt for it, as the
-    // prototype's right-click.
     List<(String, VoidCallback)> knobMenu(DeviceParam p) {
       var me = deviceIdAt(devices, index);
-      // What the prototype's knob menu has on every strip: an LFO of its
-      // own, a macro's knob, and back where it began.
+      // On every strip: an LFO of its own, a macro's knob, and reset.
       var anyStrip = <(String, VoidCallback)>[
         if (!device.kind.modulates && !p.isChoice) ...[
           (
@@ -3196,12 +3108,10 @@ class ParamDevice extends StatelessWidget {
     var look = MixerLook.of(context);
     var skin = DeviceSkin.studio(look.studio);
     var autoTune = device.kind == DeviceKind.autoTune;
-    // Tall, with its text at size, Notes to MIDI is a button at its foot,
-    // as the prototype's; shorter, or its text larger, an icon on its bar,
-    // leaving its screen the room.
+    // Tall with text at size, Notes to MIDI is a button at its foot;
+    // otherwise an icon on its bar, leaving the screen the room.
     var roomy = DeviceTier.of(height) == DeviceTier.large &&
         MediaQuery.textScalerOf(context).scale(10) <= 12;
-    // Auto-tune's notes made a MIDI channel, as the prototype's foot.
     void notesToMidi() {
       var why = controller.notesToMidi(owner,
           root: device.value("key").round(), steps: autoTuneSteps(device));
@@ -3213,14 +3123,13 @@ class ParamDevice extends StatelessWidget {
       } catch (_) {}
     }
 
-    // A setting that is one of a few -- a filter's type, an LFO's shape --
-    // is a list, not a knob: the prototype's dropdowns.
+    // A setting that is one of a few (a filter's type, an LFO's shape) is
+    // a dropdown, not a knob.
     bool listed(DeviceParam p) =>
         paramShown(device, p) &&
         device.kind != DeviceKind.split &&
         device.kind != DeviceKind.macro &&
         !(autoTune && (p.id == "key" || p.id == "scale"));
-    // Its own knobs, then the Out trim at its foot if it has one.
     var turned = [
       ...params,
       if (device.kind.hasOut) deviceExtras.firstWhere((p) => p.id == "out"),
@@ -3271,9 +3180,8 @@ class ParamDevice extends StatelessWidget {
                         write(device.withValue(p.id, i.toDouble())),
                   ),
             ]),
-          // Short, its knobs only, as the prototype's.
-          // Medium, or its text large, its key and scale as lists on one
-          // row; tall, as the prototype's rows of buttons.
+          // Short, its knobs only; medium or with large text, key and scale
+          // as lists on one row; tall, rows of buttons.
           if (autoTune && tier != DeviceTier.small) ...[
             if (tier == DeviceTier.medium ||
                 MediaQuery.textScalerOf(context).scale(10) > 12)
@@ -3319,12 +3227,10 @@ class ParamDevice extends StatelessWidget {
           if (device.kind == DeviceKind.vocoder &&
               device.value("carrier").round() == carrierFromChannel)
             _sourceChannel(context, device, write),
-          // A split's branches, each its own chain.
           if (device.kind == DeviceKind.split)
             SplitBranches(
               key: ValueKey("splitBranches-$index"),
               device: device,
-              // Its branches' knobs a modulator of the chain moves.
               moved: {
                 for (var d in devices)
                   if (d.on && d.kind.modulates)
@@ -3342,8 +3248,7 @@ class ParamDevice extends StatelessWidget {
                   write(device.withValue(param, v), transient: transient),
               onCommit: controller.endInteraction,
             ),
-          // A macro's knobs set at random, and its settings kept as
-          // variations to come back to, as the prototype's Macros.
+          // A macro's random knobs, and its settings kept as variations.
           if (device.kind == DeviceKind.macro)
             MacroPanel(
               key: ValueKey("macroPanel-$index"),
@@ -3400,7 +3305,6 @@ class ParamDevice extends StatelessWidget {
                           p.id,
                           "${d.kind.label} · ${p.label}"
                         ),
-                    // And the knobs of a split's branches' devices.
                     for (var (b, branch) in d.branches.indexed)
                       for (var (j, x) in branch.devices.indexed)
                         for (var p in x.kind.params)
@@ -3419,8 +3323,7 @@ class ParamDevice extends StatelessWidget {
                   write(device.withMods(mods), transient: transient),
               onCommit: controller.endInteraction,
             ),
-          // A gate opens to its own sound, or to another channel's; a
-          // follower follows one or the other.
+          // A gate or follower listens to its own sound or another channel's.
           if (device.kind == DeviceKind.gate ||
               device.kind == DeviceKind.follower)
             _sourceChannel(context, device, write, itself: true),
@@ -3444,8 +3347,6 @@ class ParamDevice extends StatelessWidget {
           ? null
           : () => controller.toggleAB(owner, deviceIdAt(devices, index)),
       barExtras: [
-        // What it does to the level, on any strip: a channel's, the
-        // master's, a scene's bus or a return.
         _GainBadge(
               key: ValueKey("gainBadge-$index"),
               controller: controller,
@@ -3500,13 +3401,11 @@ class ParamDevice extends StatelessWidget {
             child: Text(
                 "Oversample: ${device.value("oversample").round() <= 1 ? "off" : "×${device.value("oversample").round() >= 3 ? 4 : 2}"}"),
           ),
-        // Only the middle of the sound, or only its sides.
         if (device.kind.worksOnSides)
           worksOnMenu(look,
               id: "deviceStereo-$index",
               value: device.value("stereo").round(),
               onPick: (k) => write(device.withValue("stereo", k.toDouble()))),
-        // What it listens to beside its own sound.
         if (device.kind == DeviceKind.gate ||
             device.kind == DeviceKind.follower ||
             (device.kind == DeviceKind.vocoder &&
@@ -3540,7 +3439,6 @@ class ParamDevice extends StatelessWidget {
       powerKey: ValueKey("devicePower-$index"),
       folded: folded,
       onFold: onFold,
-      // A split's branches side by side, a column each.
       width: device.kind == DeviceKind.split
           ? SplitBranches.width
           : device.kind == DeviceKind.macro
@@ -3550,7 +3448,6 @@ class ParamDevice extends StatelessWidget {
               : math.max(240.0, 24.0 + 72 * columns),
       height: height,
       actions: [
-        // Auto-tune's notes: in the Pitch editor, or made a MIDI channel.
         if (autoTune)
           Tooltip(
             message: "How far behind it puts what it hears",
@@ -3591,7 +3488,6 @@ class ParamDevice extends StatelessWidget {
           },
         ),
       ],
-      // Folded, its level as it leaves it, at its foot.
       foldedBody: _FoldedLevel(
           key: ValueKey("foldedLevel-$index"),
           controller: controller,
@@ -3607,7 +3503,6 @@ class ParamDevice extends StatelessWidget {
           children: knobs(DeviceTier.large),
         ),
       ),
-      // Laid out for its height: its levels over its knobs.
       controls: knobs,
       // A split's branches are its picture: they have the room.
       display: device.kind == DeviceKind.split ||
@@ -3624,11 +3519,8 @@ class ParamDevice extends StatelessWidget {
                   key: ValueKey("deviceLevels-$index"),
                   controller: controller,
                   deviceId: deviceIdAt(devices, index),
-                  // Measured on any strip: a channel's, a return's, the
-                  // master's or a scene's bus.
                   channel: owner,
-                  // Its place in the chain, where its levels are read: the EQ and
-                  // compressor can be before it.
+                  // Read at its place in the chain, after any EQ or compressor.
                   index: controller
                       .chainOf(owner)
                       .indexOf(deviceIdAt(devices, index)),
@@ -3644,10 +3536,9 @@ class ParamDevice extends StatelessWidget {
     );
   }
 
-  /// _sourceChannel is which channel a device listens to beside its own:
-  /// a vocoder's carrier -- an instrument playing the chords, muted so only
-  /// the vocoder is heard -- or, with [itself], a gate's key, where "" is
-  /// its own sound.
+  /// _sourceChannel is which channel a device listens to beside its own: a
+  /// vocoder's carrier (an instrument playing chords, muted so only the
+  /// vocoder is heard) or, with [itself], a gate's key, "" for its own.
   Widget _sourceChannel(
       BuildContext context, MixDevice device, void Function(MixDevice) write,
       {bool itself = false}) {
@@ -3708,9 +3599,7 @@ class ParamDevice extends StatelessWidget {
   }
 }
 
-/// AddDeviceSlot puts a device on strip [owner], after its others: the
-/// prototype's "+" at the chain's end, opening every kind of device by its
-/// family.
+/// AddDeviceSlot is the chain's "+" on strip [owner], adding a device last.
 class AddDeviceSlot extends StatelessWidget {
   final CanvasController controller;
 
@@ -3726,9 +3615,8 @@ class AddDeviceSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A sound's channel can be given a generator: Speech, which makes its
-    // clips. A MIDI channel has its instrument; a bus, a video's sound or
-    // one with speech already, none.
+    // A sound's channel may take a generator (Speech, making its clips);
+    // MIDI channels, buses, videos and channels with speech take none.
     var lane =
         controller.timelineChannels.where((l) => l.key == owner).firstOrNull;
     var canSpeak = lane != null &&
@@ -3757,7 +3645,6 @@ class AddDeviceSlot extends StatelessWidget {
                   ),
               ]
             ),
-          // The strip's own parts taken out, to put back.
           if ([
             for (var part in removableParts)
               if (controller.partRemoved(owner, part)) part
@@ -3842,9 +3729,7 @@ class AddDeviceSlot extends StatelessWidget {
   }
 }
 
-/// AddSlot is the chain's "+", as the prototype draws it: a slim dashed slot
-/// that, pressed, opens what can be added -- a search, and each family's
-/// kinds in columns.
+/// AddSlot is the chain's dashed "+", opening a search and each family.
 class AddSlot extends StatelessWidget {
   /// id keys the slot itself; each item is keyed by its own key.
   final String id;
@@ -3897,7 +3782,6 @@ class AddSlot extends StatelessWidget {
   }
 }
 
-/// _DashedSlot draws the "+" slot's dashed outline.
 class _DashedSlot extends CustomPainter {
   final Color colour;
   _DashedSlot(this.colour);
@@ -3921,8 +3805,7 @@ class _DashedSlot extends CustomPainter {
   bool shouldRepaint(_DashedSlot old) => old.colour != colour;
 }
 
-/// _AddPanel is what the "+" opens: a search over every kind, and the kinds
-/// by family, four families to a row.
+/// _AddPanel is what "+" opens: a search, and kinds by family, four a row.
 class _AddPanel extends StatefulWidget {
   final String title;
   final List<(String, List<(String, String, VoidCallback)>)> groups;

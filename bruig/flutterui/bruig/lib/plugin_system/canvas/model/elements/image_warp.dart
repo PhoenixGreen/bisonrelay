@@ -4,15 +4,14 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// image_warp.dart is a picture bent by a grid of points over it, the picture
-// following in smooth curves through them. Points are fractions (0 to 1) of
-// the picture's own box, so a warp moves, sizes and turns with the picture.
+// image_warp.dart is a picture bent by a grid of points over it, following
+// in smooth curves through them. Points are fractions (0 to 1) of the
+// picture's own box, so a warp moves, sizes and turns with the picture.
 
 /// mostWarpCells is the most cells a warp grid has across or down.
 const int mostWarpCells = 10;
 
-/// ImageWarp is a picture's warp grid: [cols] by [rows] cells, so one more
-/// point than that each way.
+/// ImageWarp is a picture's warp grid: [cols] by [rows] cells.
 class ImageWarp {
   final int cols;
   final int rows;
@@ -52,9 +51,8 @@ class ImageWarp {
       ? points
       : ImageWarp.even(cols, rows).points;
 
-  /// at is the point [j] across and [i] down. Past the edges the grid is
-  /// extended straight, so the curve runs on through the outermost points
-  /// rather than bending back at them.
+  /// at is the point [j] across and [i] down; past the edges the grid runs
+  /// on straight, so the curve passes the outermost points unbent.
   Offset at(List<Offset> g, int i, int j) {
     if (i < 0) return at(g, 0, j) * 2 - at(g, 1, j);
     if (i > rows) return at(g, rows, j) * 2 - at(g, rows - 1, j);
@@ -63,9 +61,8 @@ class ImageWarp {
     return g[i * across + j];
   }
 
-  /// sample is where the picture's point ([u], [v]), in its own fractions,
-  /// is drawn: Catmull-Rom through the grid, across then down. Values past 0
-  /// or 1 follow the extended grid.
+  /// sample is where the picture's point ([u], [v]) is drawn: Catmull-Rom
+  /// across then down; past 0 or 1, the extended grid.
   Offset sample(double u, double v, [List<Offset>? g]) {
     g ??= grid;
     var x = u * cols, y = v * rows;
@@ -85,8 +82,8 @@ class ImageWarp {
         0.5;
   }
 
-  /// regridded is this warp with [cols] by [rows] cells, each new point
-  /// where the warp already puts it, so the shape is kept.
+  /// regridded is this warp with [cols] by [rows] cells, each new point where
+  /// the warp already puts it, so the shape is kept.
   ImageWarp regridded(int cols, int rows) {
     cols = cols.clamp(1, mostWarpCells);
     rows = rows.clamp(1, mostWarpCells);
@@ -102,7 +99,6 @@ class ImageWarp {
   ImageWarp withPoints(List<Offset> next) =>
       ImageWarp(cols: cols, rows: rows, points: List.unmodifiable(next));
 
-  /// reset is the even grid of this many cells.
   ImageWarp get reset => ImageWarp(cols: cols, rows: rows);
 
   Map<String, dynamic> toJson() => {

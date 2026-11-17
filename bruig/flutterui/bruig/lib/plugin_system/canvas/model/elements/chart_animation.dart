@@ -4,9 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 
-// chart_animation.dart is how a chart arrives and leaves: which preset, how
-// much its items overlap, and what the end of the movement does. Timing only;
-// what a bar does with progressAt is the painter's business.
+// chart_animation.dart is how a chart arrives and leaves: its preset,
+// overlap and easing. Timing only; progressAt's use is the painter's.
 
 /// chartAnimationSeconds is how long a new arrival runs when nothing else
 /// says; the timeline is where its length then lives.
@@ -32,16 +31,13 @@ enum ChartAnimationPreset {
 
   popIn("Pop in", "Each one springs up where it stands, in turn"),
 
-  /// random is popIn with the order shuffled, for a scatter, whose points
-  /// have no meaningful order.
+  /// random is popIn shuffled, for a scatter, whose points have no order.
   random("Random", "Each one appears on its own, in no particular order"),
 
   fadeIn("Fade in", "Each one fades up, in turn"),
 
-  /// morph arrives out of the chart before it -- in the scene before,
-  /// reading the same sheet -- each item travelling from where that one
-  /// drew it (chart_morph.dart; Ken, 2026-11-17). With none before, it
-  /// fades in.
+  /// morph grows out of the scene before's chart of the same sheet, each item
+  /// from where it drew it (chart_morph.dart); with none, it fades in.
   morph("Morph", "Each one travels from where the chart before had it");
 
   final String label;
@@ -60,8 +56,7 @@ enum ChartAnimationPreset {
   /// scrambles is whether the order things arrive in is shuffled.
   bool get scrambles => this == random;
 
-  /// suitsCircular and suitsCartesian are which chart families a preset makes
-  /// sense on.
+  /// suitsCircular and suitsCartesian are the families it makes sense on.
   bool get suitsCircular =>
       this == none ||
       this == grow ||
@@ -152,23 +147,19 @@ double staggeredProgress(
   return ease.apply(local);
 }
 
-/// ChartAnimation is how a chart draws itself on and off.
-///
-/// The timing is not here: it is the element's arrival and leaving on the
-/// timeline, which drive KeyframeChannel.reveal and close from 0 to 1. A
-/// duration stored here would be a second timeline the first could not see.
+/// ChartAnimation is how a chart draws itself on and off. Its timing is
+/// the element's arrival and leaving on the timeline, driving reveal and
+/// close from 0 to 1: a duration here would be a second timeline.
 class ChartAnimation {
   final ChartAnimationPreset preset;
 
-  /// exit is how the chart leaves, using the same presets played backwards:
-  /// bars sink into the axis, a wipe uncovers in reverse, slices close. It is
-  /// timed separately (KeyframeChannel.close) and shares [gap] and [ease]
-  /// with the entrance.
+  /// exit is how the chart leaves, the same presets played backwards: bars
+  /// sink into the axis, a wipe uncovers in reverse, slices close. Timed by
+  /// KeyframeChannel.close; shares [gap] and [ease] with the entrance.
   final ChartAnimationPreset exit;
 
-  /// exitInOrder empties the chart the way it filled, first item first.
-  /// Without it the exit is the entrance run backwards, so the last item
-  /// leaves first.
+  /// exitInOrder empties the chart the way it filled, first item first;
+  /// without it the last item leaves first.
   final bool exitInOrder;
 
   /// flipOrder reverses which item is staggered first. Not saved: [leaving]
@@ -182,15 +173,12 @@ class ChartAnimation {
 
   final ChartEase ease;
 
-  /// length is how many frames a new arrival or exit is laid down with, or 0
-  /// for [chartAnimationSeconds]. Dragging it on the timeline does not write
-  /// back here. Same as TextAnimation.length.
+  /// length is the frames a new arrival or exit is laid down with, or 0 for
+  /// [chartAnimationSeconds]; timeline drags do not write back here.
   final int length;
 
-  /// seriesInTurn brings a chart of several series in one series after
-  /// another, each in its share of the arrival, rather than all of them
-  /// together (Ken's privacy video: five series arrived as one). See
-  /// seriesInTurnReveal.
+  /// seriesInTurn brings several series in one after another, each in its
+  /// share of the arrival. See seriesInTurnReveal.
   final bool seriesInTurn;
 
   const ChartAnimation({
@@ -217,9 +205,8 @@ class ChartAnimation {
   /// closes is whether the chart has a way out as well as a way in.
   bool get closes => exit != ChartAnimationPreset.none;
 
-  /// leaving is this animation as it is played on the way out: the exit
-  /// preset in the entrance's place, so the painter need not know which half
-  /// it is drawing.
+  /// leaving is this as played on the way out: the exit in the entrance's
+  /// place, so the painter need not know which half it draws.
   ChartAnimation get leaving => copyWith(preset: exit, flipOrder: exitInOrder);
 
   ChartAnimation copyWith({
@@ -260,11 +247,9 @@ class ChartAnimation {
       );
 
   /// scrambled is where item [index] comes in the arrival order for the
-  /// presets that shuffle; not a whole number, so items may arrive together.
-  ///
-  /// Deterministic, because every frame and every export must deal the same
-  /// order. A hash rather than "multiply by a prime mod count", which gives
-  /// visible patterns (twelve items came out as a plain reversal).
+  /// presets that shuffle; not whole, so items may arrive together.
+  /// Deterministic, so every frame and export deals the same order; a hash,
+  /// since "multiply by a prime mod count" gives visible patterns.
   static double scrambled(int index, int count) {
     if (count <= 1) return 0;
     return _mix(index) * (count - 1);
@@ -306,9 +291,8 @@ class ChartAnimation {
       );
 }
 
-/// seriesInTurnReveal is how far series [index] of [count] has got when a
-/// chart arriving series by series is [reveal] through: each its share of
-/// the arrival, one after another.
+/// seriesInTurnReveal is how far series [index] of [count] has got at
+/// [reveal], each its share of the arrival, one after another.
 double seriesInTurnReveal(double reveal, int index, int count) {
   if (count <= 1) return reveal;
   return ((reveal * count) - index).clamp(0.0, 1.0).toDouble();

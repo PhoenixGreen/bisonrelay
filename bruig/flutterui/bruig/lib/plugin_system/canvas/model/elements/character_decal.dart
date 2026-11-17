@@ -27,15 +27,12 @@ const List<(String, String)> decalModes = [
   ("ink", "One ink"),
 ];
 
-/// CharacterDecal is one decal. Immutable.
 class CharacterDecal {
   final String id;
 
-  /// source is what is laid on: `picture:<path in the library>` or
-  /// `vector:<the vector's id>`.
+  /// source is what is laid on: `picture:<library path>` or `vector:<id>`.
   final String source;
 
-  /// name is what the page calls it.
   final String name;
 
   /// on is the surface: "skin", or a piece of clothing by its slot's name
@@ -100,8 +97,7 @@ class CharacterDecal {
         ink: ink ?? this.ink,
       );
 
-  /// shapeKey says what the decal's shape depends on; pictureKey what its
-  /// picture does.
+  /// shapeKey says what the decal's shape depends on; pictureKey its picture.
   String get shapeKey => "$on|${area.name}|$along|$around|$size|$turn";
   String get pictureKey => "$source|$mode|$opacity|$ink";
 

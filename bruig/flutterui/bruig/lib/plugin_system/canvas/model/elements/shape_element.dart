@@ -6,7 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'dart:math' as math;
 
-/// ShapeKind is which outline a shape element draws. One element with a
+/// ShapeKind is which outline a shape element draws: one element with a
 /// choice of outline, so changing it keeps everything else.
 enum ShapeKind {
   rectangle("Rectangle"),
@@ -61,8 +61,7 @@ enum BubbleBody {
       );
 }
 
-/// BubbleTail is what comes out of the bubble and points at whoever is
-/// talking.
+/// BubbleTail is what points from the bubble at whoever is talking.
 enum BubbleTail {
   none("None"),
   pointer("Pointer"),
@@ -78,22 +77,19 @@ enum BubbleTail {
       );
 }
 
-/// SpeechBubbleSpec is everything about a speech bubble that a rectangle is
+/// SpeechBubbleSpec is everything a speech bubble has that a rectangle has
 /// not, grouped so the settings show it only for a bubble.
 class SpeechBubbleSpec {
   final BubbleBody body;
   final BubbleTail tail;
 
-  /// tailAngle is where the tail leaves the bubble, in degrees clockwise from
-  /// the right-hand side.
+  /// tailAngle is where the tail leaves, degrees clockwise from the right.
   final double tailAngle;
 
-  /// tailLength is how far the tail reaches past the bubble, as a fraction of
-  /// the bubble's own half-height.
+  /// tailLength is the tail's reach past the bubble, of its half-height;
+  /// tailWidth its width where it meets the bubble, the same way.
   final double tailLength;
 
-  /// tailWidth is how wide the tail is where it meets the bubble, as the same
-  /// kind of fraction.
   final double tailWidth;
 
   /// curl bends a curved tail. Ignored by the others.
@@ -145,49 +141,42 @@ class SpeechBubbleSpec {
       );
 }
 
-/// ShapeElement is a filled and stroked outline, optionally with a label
-/// inside it.
 class ShapeElement extends CanvasElement {
   final ShapeKind shape;
   final Color fill;
 
   /// painted is a picture or a pattern inside the shape instead of a flat
-  /// colour, cut to the shape's own outline: the same TextFill the letters
-  /// and a box are painted with.
+  /// colour, cut to its outline: the TextFill letters and boxes use.
   final TextFill painted;
   final Color strokeColor;
 
-  /// fillFade and strokeFade are the second colours, when the fill or the
-  /// outline fades to one, or null for flat. Set in the colour picker; see
-  /// GradientSpec.
+  /// fillFade and strokeFade are the second colours a fill or outline fades
+  /// to, or null for flat. See GradientSpec.
   final GradientSpec? fillFade;
   final GradientSpec? strokeFade;
   final double strokeWidth;
 
-  /// cornerRadius rounds a rectangle, and is ignored by the shapes that have
-  /// no corners to round.
+  /// cornerRadius rounds a rectangle; shapes without corners ignore it.
   final double cornerRadius;
 
-  /// radTL, radTR, radBR and radBL are the corners that have been given their
-  /// own rounding, or null for "whatever [cornerRadius] says". The same
-  /// [Corners] a BoxSpec uses.
+  /// radTL, radTR, radBR and radBL are corners given their own rounding, or
+  /// null for [cornerRadius]'s: the [Corners] a BoxSpec uses.
   final double? radTL;
   final double? radTR;
   final double? radBR;
   final double? radBL;
 
-  /// padding is the room kept between the shape's edge and its label, and
-  /// padL..padB are the sides that have been given their own. Room inside,
-  /// since words reflow (a picture grows instead; see grownForPadding).
-  /// Zero lets the shape choose its own inset; see labelRoom.
+  /// padding is the room between the shape's edge and its label, padL..padB
+  /// the sides given their own: room inside, since words reflow (a picture
+  /// grows instead; see grownForPadding). Zero lets the shape choose its own
+  /// inset; see labelRoom.
   final double padding;
   final double? padL;
   final double? padT;
   final double? padR;
   final double? padB;
 
-  /// points and innerRatio shape a star: how many spikes, and how deep the
-  /// valleys between them go.
+  /// points and innerRatio shape a star: spikes, and how deep between.
   final int points;
   final double innerRatio;
 
@@ -198,7 +187,6 @@ class ShapeElement extends CanvasElement {
   /// bubble is read only when [shape] is a speech bubble.
   final SpeechBubbleSpec bubble;
 
-  /// animation is how the shape arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
   const ShapeElement(
@@ -231,21 +219,20 @@ class ShapeElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.shape;
 
-  /// corners is the four radii, one number answering for whichever of them
-  /// has not been given its own.
+  /// corners is the four radii, [cornerRadius] standing in for unset ones.
   Corners get corners =>
       Corners(all: cornerRadius, tl: radTL, tr: radTR, br: radBR, bl: radBL);
 
-  /// pad is the room kept for the label on each side, or all zeroes where the
-  /// shape is still deciding for itself.
+  /// pad is the room kept for the label on each side, or all zeroes while
+  /// the shape decides for itself.
   Room get pad => Room(all: padding, l: padL, t: padT, r: padR, b: padB);
 
-  /// padded is whether anybody has asked for a particular amount of room.
+  /// padded is whether a particular amount of room has been asked for.
   bool get padded =>
       pad.left > 0 || pad.top > 0 || pad.right > 0 || pad.bottom > 0;
 
-  /// assetIds is the picture this shape is painted with, where it has one.
-  /// Without it the sweep takes the picture away and the shape opens empty.
+  /// assetIds is the picture this shape is painted with, where it has one:
+  /// without it the sweep takes the picture away.
   @override
   Set<String> get assetIds =>
       painted.assetId.isEmpty ? const {} : {painted.assetId};
@@ -303,8 +290,8 @@ class ShapeElement extends CanvasElement {
     TextFill? painted,
     ElementAnimation? animation,
 
-    /// clearCorners and clearRoom take the four overrides as given, nulls
-    /// and all, so "set all four corners to one number" can clear them.
+    /// clearCorners and clearRoom take the four overrides as given, nulls and
+    /// all, so "set all four corners to one number" can clear them.
     bool clearCorners = false,
     bool clearRoom = false,
   }) =>
@@ -406,8 +393,7 @@ class ShapeElement extends CanvasElement {
               const ElementAnimation()));
 }
 
-/// strokeToSee is the width to give a shape that is being stroked for the
-/// first time: enough to see on a big shape, not enough to swallow a small
-/// one.
+/// strokeToSee is the width for a shape stroked for the first time: enough
+/// to see on a big shape, not enough to swallow a small one.
 double strokeToSee(ShapeElement e) =>
     (math.min(e.width, e.height) * 0.015).clamp(1.0, 6.0);

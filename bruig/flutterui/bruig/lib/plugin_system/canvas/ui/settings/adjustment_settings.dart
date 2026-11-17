@@ -14,12 +14,10 @@ import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/material.dart';
 
 // adjustment_settings.dart is an adjustment layer's settings: what it does,
-// and the numbers, colours and curves it does it by -- see
-// image_adjustment.dart.
+// and the numbers, colours and curves it uses (see image_adjustment.dart).
 
 /// adjustStep is an arrow's step for [p]: a twentieth of a percentage's
-/// range, a fiftieth of anything else's, kept to a round figure at the
-/// field's own precision.
+/// range, a fiftieth of any other, rounded at the field's precision.
 double adjustStep(AdjustParam p) {
   var span = (p.max - p.min) * (p.percent ? 100 : 1);
   var raw = span / (p.percent ? 20 : 50);
@@ -54,8 +52,8 @@ List<Widget> adjustmentSettings(
     CanvasControlGroup(
       key: const ValueKey("adjustGroup"),
       label: "Adjustment",
-      // Under tiles, in a section of the same name, the caption and the
-      // reset are the section's.
+      // Under tiles, in a section of the same name, the caption and reset
+      // are the section's.
       hideCaption: !kindPicker,
       rule: false,
       children: [
@@ -66,7 +64,7 @@ List<Widget> adjustmentSettings(
             value: adjust.kind,
             width: 180,
             options: [for (var k in AdjustKind.values) (k, k.label)],
-            // Each kind seen on the canvas as the pointer passes over it.
+            // Each kind previewed on the canvas as the pointer passes.
             onPreview: (k) => controller.tryElement(
                 k == null ? null : withAdjust(adjust.copyWith(kind: k))),
             onChanged: (k) => now(adjust.copyWith(kind: k)),
@@ -171,9 +169,8 @@ List<Widget> adjustmentSettings(
   ];
 }
 
-/// CurveEditor is a curve drawn in a square: click to put a point down and
-/// drag it; drag a point off the square, or double-click it, to take it out.
-/// The four channels are chosen above it.
+/// CurveEditor is a curve in a square: click to add a point and drag it;
+/// drag off or double-click to remove it. Channels are chosen above.
 class CurveEditor extends StatefulWidget {
   final ImageAdjustment adjust;
   final void Function(CurveChannel, List<Offset>, {required bool done})
@@ -220,8 +217,8 @@ class _CurveEditorState extends State<CurveEditor> {
       }
     }
     var now = DateTime.now();
-    // A second click on the same point, quickly, takes it out -- but never
-    // either end, which the curve cannot do without.
+    // A quick second click on a point removes it, but never an end, which
+    // the curve needs.
     if (at > 0 &&
         at < points.length - 1 &&
         at == _lastPoint &&
@@ -266,7 +263,7 @@ class _CurveEditorState extends State<CurveEditor> {
     var points = _points;
     if (points == null) return;
     var held = _held;
-    // Dragged off the square, a point is taken out -- not an end.
+    // Dragged off the square, a point (not an end) is removed.
     var off = held > 0 &&
         held < points.length - 1 &&
         (points[held].dy < -0.12 || points[held].dy > 1.12);
@@ -384,7 +381,7 @@ class _CurvePainter extends CustomPainter {
       return path;
     }
 
-    // The other channels' curves, faintly, where they have been bent.
+    // The other channels' bent curves, faintly.
     for (var e in others.entries) {
       if (!adjust.curves.containsKey(e.key)) continue;
       canvas.drawPath(
@@ -417,10 +414,8 @@ class _CurvePainter extends CustomPainter {
   bool shouldRepaint(_CurvePainter old) => true;
 }
 
-/// _histograms are what has been counted, by picture and layer, against
-/// what was under the layer when it was -- not against the picture: the
-/// picture is a new one whenever anything in it changes, the adjustment's
-/// own slider included, and counted again at every step of a drag.
+/// _histograms are counts keyed on what is under the layer, not the
+/// picture, which is new on every change, the adjustment's own included.
 final Map<String, (List<Object?>, List<int>)> _histograms = {};
 
 /// _sameUnder is whether two lists of what is under a layer are the same.
@@ -432,8 +427,8 @@ bool _sameUnder(List<Object?> a, List<Object?> b) {
   return true;
 }
 
-/// histogramOf counts the brightness of what is under the layer [layerId]
-/// of [e], in 256 steps -- weighted by how much of each pixel is there.
+/// histogramOf counts the brightness under layer [layerId] of [e] in 256
+/// steps, weighted by each pixel's coverage.
 Future<List<int>?> histogramOf(
     ImageElement e, String layerId, CanvasImageSource? images) async {
   var at = e.stack.indexWhere((l) => l.id == layerId);
@@ -446,8 +441,7 @@ Future<List<int>?> histogramOf(
     return bins;
   }
   if (inner.width <= 0 || inner.height <= 0) return null;
-  // Counted on a few hundred pixels across: a histogram's shape, not its
-  // grain.
+  // Counted a few hundred pixels across: a histogram's shape, not grain.
   var k = math.min(1.0, 256 / math.max(inner.width, inner.height));
   var w = math.max(1, (inner.width * k).round());
   var h = math.max(1, (inner.height * k).round());
@@ -476,9 +470,8 @@ Future<List<int>?> histogramOf(
   }
 }
 
-/// LevelsHistogram is a levels adjustment's histogram -- the brightness of
-/// what is under it -- with the three input handles on it: black, midtones
-/// and white, dragged along it as in any editor.
+/// LevelsHistogram is a levels adjustment's histogram (the brightness under
+/// it) with the black, midtone and white input handles dragged along it.
 class LevelsHistogram extends StatefulWidget {
   final CanvasController controller;
   final ImageElement element;
@@ -502,8 +495,8 @@ class _LevelsHistogramState extends State<LevelsHistogram> {
 
   @override
   Widget build(BuildContext context) {
-    // Counted again only when what is under the layer changes -- told by the
-    // layers under it, which a handle never touches.
+    // Recounted only when the layers under it change, which a handle never
+    // touches.
     var e = widget.element;
     var at = e.stack.indexWhere((l) => l.id == widget.layer.id);
     var below = at < 0 ? const <ImageLayer>[] : e.stack.sublist(0, at);
@@ -542,8 +535,8 @@ class _LevelsHistogramState extends State<LevelsHistogram> {
           widget.onChanged(next, done: done);
         }
 
-        // Held to its own size: stretched to the panel's width, the plot no longer
-        // matched its handles (worked out on 280 pixels) and a drag missed them.
+        // Held to its own size: stretched to the panel, the plot would not
+        // match its handles (laid out on 280 pixels) and drags would miss.
         return Align(
             alignment: Alignment.centerLeft,
             child: SizedBox.fromSize(
@@ -621,8 +614,8 @@ class _HistogramPainter extends CustomPainter {
           ..color = frame);
     var b = bins;
     if (b != null) {
-      // Scaled to the busiest step but one: a picture with a lot of pure
-      // black or white would otherwise flatten everything else.
+      // Scaled to the busiest step but one, or a lot of pure black or white
+      // flattens everything else.
       var sorted = [...b]..sort();
       var top = math.max(1, sorted[sorted.length - 2]);
       var path = Path()..moveTo(0, plot.bottom);

@@ -28,11 +28,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // text_settings.dart is a text element's settings.
 
-/// textPanel is a text element's settings, as every element's are since
-/// the panel was rebuilt round tasks (Ken, 2026-11-11): its layers, the few
-/// settings it is changed by most, then what it says, how it looks, where it
-/// is, how it moves, and the rest. Picked in the layers, a piece of writing
-/// or a picture has the same five, its own.
+/// textPanel is a text element's settings: layers, quick strip, then the
+/// five sections; a picked piece has its own five.
 Widget textPanel(
     BuildContext context,
     CanvasController controller,
@@ -48,7 +45,7 @@ Widget textPanel(
 
   var layer = controller.textLayer(e);
   var at = layer == null ? -1 : e.items.indexOf(layer);
-  // At the prototype's measure: see CanvasDense.
+  // At CanvasDense's measure.
   return CanvasDense(
       child: CanvasSections(
     key: const ValueKey("elementSections"),
@@ -67,9 +64,8 @@ Widget textPanel(
   ));
 }
 
-/// _bodyEdit is how the element's own words' type is changed: a size typed
-/// while it is fitted to its box is a size wanted, so the fitting goes, or
-/// the size would do nothing.
+/// _bodyEdit changes the words' type: a size typed while fitted stops the
+/// fitting, or it would do nothing.
 TypeEdit _bodyEdit(TextElement e, SettingsWrite write, VoidCallback begin,
         VoidCallback commit) =>
     TypeEdit(
@@ -86,8 +82,7 @@ Widget _bodyQuick(CanvasController controller, TextElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var t = _bodyEdit(e, write, begin, commit);
   var styles = controller.textStyles;
-  // Laid out as the prototype's: the face and its size, then its colour
-  // and how it lines up, then its style.
+  // Face and size, then colour and alignment, then style.
   return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
     panelRow([
       cell(typeFont(t), flex: 3, min: 120),
@@ -164,8 +159,8 @@ List<Widget> _bodySections(
               hideCaption: true,
               rule: false,
               children: [
-                // Typed here as well as on the canvas, where the words are
-                // the element's own; a document's are read, not typed.
+                // Typed here as well as on the canvas where the words are the
+                // element's own; a document's are read, not typed.
                 if (!e.document.on)
                   CanvasTextField(
                     key: const ValueKey("textWordsField"),
@@ -219,7 +214,7 @@ List<Widget> _bodySections(
                       "box, so the words fill it while either is on and the slot "
                       "waits."),
                 if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
-                // How the lines sit in the box: up and down, and justified
+                // How the lines sit in the box: vertically, and justified
                 // across it (Align, in the strip above, is the rest).
                 panelRow([
                   cell(CanvasDropdown<VerticalAlignSpec>(
@@ -344,7 +339,7 @@ List<Widget> _bodySections(
           CanvasControlGroup(label: "Columns", rule: false, children: [
             CanvasNumberField(
               key: const ValueKey("textColumns"),
-              // "Count", not "Columns": the caption over the line already says it.
+              // "Count", not "Columns": the caption already says it.
               label: "Count",
               value: e.columns.count.toDouble(),
               min: 1,
@@ -357,11 +352,8 @@ List<Widget> _bodySections(
               },
               onCommit: commit,
             ),
-            // The gap between two paragraphs is a line like any other, so whatever
-            // starts on one (a column, or the next box in a chain) starts with an
-            // empty row. Offered with or without columns, since a chain of boxes
-            // asks the same, and only on the box the words belong to: the rest of
-            // a chain follows it.
+            // A paragraph gap is a line, so a new column or chained box can
+            // start with an empty row. Only on the box owning the words.
             if (flowSourceOf(e, controller.document) == null)
               CanvasToggle(
                 key: const ValueKey("textColumnsNoBlankStart"),
@@ -370,7 +362,7 @@ List<Widget> _bodySections(
                 onChanged: (v) => now(
                     e.copyWith(columns: e.columns.copyWith(noBlankStart: v))),
               ),
-            // The rest only means something once there is a gutter to put it in.
+            // The rest means something only once there is a gutter.
             if (!e.columns.isSingle) ...[
               CanvasNumberField(
                 label: "Gap",
@@ -440,14 +432,14 @@ List<Widget> _bodySections(
                   width: 62,
                   value: controller.valueAt(
                       e, KeyframeChannel.slide, e.curve!.offset),
-                  // Far enough either way to carry the words off the end of the
-                  // line and back on, as a caption sliding in and out of a shot does.
+                  // Far enough to carry the words off the line's end and back,
+                  // as a caption slides in and out of a shot.
                   min: -2,
                   max: 2,
                   onChanged: (v) {
                     begin();
-                    // Written as a keyframe once this frame has one, so dragging the
-                    // slider while animating retimes the travel rather than moving it all.
+                    // A keyframe once this frame has one, so dragging while
+                    // animating retimes the travel rather than moving it all.
                     if (controller.hasValueKey(e, KeyframeChannel.slide)) {
                       controller.setValueKey(e, KeyframeChannel.slide, v);
                       return;
@@ -487,8 +479,8 @@ List<Widget> _bodySections(
                       now(e.copyWith(curve: e.curve!.copyWith(mask: v))),
                 ),
                 CanvasToggle(
-                  // Not the line element's own Hide: a hidden element is skipped
-                  // everywhere, this one included, so the text would go with it.
+                  // Not the line element's Hide: a hidden element is skipped
+                  // everywhere, here too, so the text would go with it.
                   label: "Hide line",
                   value: e.curve!.hideHost,
                   onChanged: (v) =>
@@ -512,16 +504,15 @@ List<Widget> _bodySections(
         summary: motionSaid(e),
         children: [
           MotionSummary(controller: controller, element: e),
-          // How it comes in and goes, chosen here as in its Chain: its own
-          // arrival and way out (see OwnStyle).
+          // Its arrival and way out, chosen here as in its Chain (see
+          // OwnStyle).
           CanvasControlGroup(
               key: const ValueKey("textMotionPick"),
               label: "Arrival and leaving",
               hideCaption: true,
               rule: false,
               children: [
-                // Each in two, as in the Chain: its family, then which
-                // (Ken, 2026-11-12).
+                // Each in two, as in the Chain: its family, then which.
                 panelRow([
                   for (var w in canvasPresetPair<TextAnimationPreset>(
                       key: "textArrival",
@@ -581,8 +572,8 @@ TypeEdit _pieceEdit(TextElement e, int at, TextItem item, SettingsWrite write,
         begin,
         commit);
 
-/// _pieceQuick is a piece's face, size and colour, and where it sits in
-/// the box -- which decides how it lines up, so there is no Align.
+/// _pieceQuick is a piece's face, size, colour, and slot in the box, which
+/// decides its alignment, so there is no Align.
 Widget _pieceQuick(
     BuildContext context,
     CanvasController controller,
@@ -616,8 +607,8 @@ Widget _pieceQuick(
     panelRow([
       if (!item.isIcon) cell(typeColour(t), width: 104),
       cell(slot, width: 86),
-      // A named style's type laid on the piece: the piece keeps it as its
-      // own, not linked (a piece has no style of its own to follow).
+      // A named style's type laid on the piece and kept as its own, not
+      // linked: a piece has no style of its own to follow.
       if (!item.isIcon)
         cell(CanvasDropdown<String>(
           key: const ValueKey("quickPieceStyle"),
@@ -678,8 +669,8 @@ List<Widget> _pieceSections(
               hideCaption: true,
               rule: false,
               children: [
-                // What to call it in the layers; otherwise what it says,
-                // which names every picture "Picture".
+                // Its name in the layers; otherwise what it says, which names
+                // every picture "Picture".
                 CanvasTextField(
                   key: ValueKey("textItemName$at"),
                   label: "Called",
@@ -789,8 +780,8 @@ List<Widget> _pieceSections(
                   )),
                   cell(CanvasNumberField(
                     key: ValueKey("textItemSide$at"),
-                    // Both ways round from one number: away from the edge
-                    // its place holds it to, or back past it.
+                    // Both ways from one number: away from the edge its place
+                    // holds it to, or back past it.
                     label: "Left/right",
                     value: item.side,
                     min: -2000,
@@ -853,9 +844,8 @@ List<Widget> _pieceSections(
   ];
 }
 
-/// textWordsCard is where a text element's words come from and how they sit
-/// in its box -- sized to fit it, read from a document, set around what
-/// overlaps it -- at the foot of its Position section.
+/// textWordsCard is where the words come from and how they sit in the box
+/// (fitted, from a document, round overlaps), under Position.
 Widget textWordsCard(
     BuildContext context,
     CanvasController controller,
@@ -869,10 +859,8 @@ Widget textWordsCard(
     commit();
   }
 
-  // Where the words come from and how they are set: three switches, with
-  // whatever each needs underneath. No Content field: the words are typed
-  // on the canvas, in their box, at their size and face (see
-  // CanvasTextEditor).
+  // Three switches, each with what it needs below. No Content field: words
+  // are typed on the canvas (see CanvasTextEditor).
   return CanvasControlGroup(
       key: const ValueKey("textWords"),
       label: "Words",
@@ -886,10 +874,9 @@ Widget textWordsCard(
           value: e.autoSize,
           onChanged: (v) => now(e.copyWith(autoSize: v)),
         ),
-        // Words of this shape's own, for a document laid out for several:
-        // scaling cannot do it, since a headline of two lines across a banner
-        // takes four down a feed, and the answer is fewer words. Off, the
-        // element says the same everywhere and a typo is fixed once.
+        // Words of this shape's own, for several page shapes: a two-line
+        // banner headline is four in a feed, so it needs fewer words. Off,
+        // one text everywhere, a typo fixed once.
         if (controller.document.targets.length > 1)
           CanvasToggle(
             key: const ValueKey("textOwnWordsHere"),
@@ -897,10 +884,8 @@ Widget textWordsCard(
             value: e.base.ownText,
             onChanged: (v) => now(e.withBase(ownText: v) as TextElement),
           ),
-        // Words from the Writing library rather than typed on the canvas,
-        // beside Fit to box: both are where the words and their size come
-        // from. Not on a box being flowed into: its words belong to the box in
-        // front of it, so a document chosen here would never be seen.
+        // Words from the Writing library, not typed. Not on a box being
+        // flowed into, whose words belong to the box before it.
         if (flowSourceOf(e, controller.document) == null)
           CanvasToggle(
             key: const ValueKey("textFromDocument"),
@@ -908,9 +893,8 @@ Widget textWordsCard(
             value: e.document.on,
             onChanged: (v) async {
               if (!v) {
-                // Back to what was typed here before the document took the words
-                // over; otherwise the switch would be off and the document's words
-                // still showing, with no way back.
+                // Back to what was typed before the document took over, or the
+                // switch would be off with the document's words still showing.
                 now(e.copyWith(
                     text: e.document.wasText.isEmpty
                         ? e.text
@@ -966,7 +950,7 @@ Widget textWordsCard(
               "is not markdown being ignored, it is markdown showing."),
         ],
         // Words set around whatever overlaps the box: the same kind of
-        // question as the other two, how these words are laid out.
+        // question as the other two.
         CanvasToggle(
           key: const ValueKey("textWrap"),
           label: "Wrap text",
@@ -1008,9 +992,8 @@ Widget textWordsCard(
       ]);
 }
 
-/// textStyleCard is the document's named text styles, for [e]: set it in
-/// one, make its type one, or change the one it is in. Under its Presets,
-/// being the other way a text's look is kept to use again.
+/// textStyleCard is the document's named text styles for [e]: apply, make
+/// or change one. Under Presets, the other reuse of a look.
 Widget textStyleCard(CanvasController controller, TextElement e) {
   var styles = controller.textStyles;
   var styled = styles.any((t) => t.name == e.style);
@@ -1034,8 +1017,7 @@ Widget textStyleCard(CanvasController controller, TextElement e) {
           ],
           onChanged: (v) => controller.useTextStyle(e.id, v),
         ),
-      // In words: under the presets, an icon alone reads as a second way of
-      // saving a preset.
+      // In words: under the presets, an icon alone reads as another save.
       CanvasTextButton(
         key: const ValueKey("textStyleSave"),
         icon: Icons.bookmark_add_outlined,
@@ -1072,10 +1054,8 @@ Widget textStyleCard(CanvasController controller, TextElement e) {
   );
 }
 
-/// _markdownSection is how each piece of a document's markdown is drawn:
-/// a look per piece, not a switch, since a poster's heading and a report's
-/// differ in size, weight, face and colour. Everything is an override:
-/// left alone, a piece follows the element's own type settings.
+/// _markdownSection is how each markdown piece is drawn: a look each, as
+/// headings differ; all overrides of the element's type settings.
 Widget _markdownSection(CanvasController controller, TextElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var allow = e.document.allow;
@@ -1085,7 +1065,7 @@ Widget _markdownSection(CanvasController controller, TextElement e,
     write(e.copyWith(
         document: e.document.copyWith(allow: allow.withLook(kind, look))));
     commit();
-    // The document is read again, because what the marks mean has changed.
+    // The document is reread, as what the marks mean has changed.
     await refreshTextDocuments(controller);
   }
 
@@ -1198,10 +1178,8 @@ Widget _markdownSection(CanvasController controller, TextElement e,
   );
 }
 
-/// _partsSection is "these words, not the others": a list of ranges, each
-/// with what is different about it. Its own section because it is neither
-/// animation nor type but a fact about some words, and the same ranges are
-/// what an echo or an animation is pointed at.
+/// _partsSection is "these words, not the others": ranges with what
+/// differs, which echoes and animations also target.
 Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
     VoidCallback commit) {
   void set(List<TextPart> parts) {
@@ -1210,8 +1188,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
     commit();
   }
 
-  // The row is there before anything has been added, in its own default
-  // state, and setting anything on it adds it: no plus to press first.
+  // The row shows before anything is added, at its defaults, and setting
+  // anything adds it: no plus to press first.
   var shown = e.parts.isEmpty ? const [TextPart()] : e.parts;
 
   List<TextPart> replacing(int index, TextPart part) => [
@@ -1270,7 +1248,7 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
             color: part.color ?? e.textSpec.color,
             onChanged: (c) => set(replacing(i, part.copyWith(color: c))),
           ),
-          // Icons, not switches with words: five words in a row is a column.
+          // Icons, not worded switches: five words in a row make a column.
           // The words are on the tooltips.
           CanvasIconButton(
             key: ValueKey("partBold$i"),
@@ -1292,7 +1270,7 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
             onPressed: () => set(replacing(
                 i, part.copyWith(italic: !(part.italic ?? e.textSpec.italic)))),
           ),
-          // An outline on these words alone: heavier, another colour or, at
+          // An outline on these words alone: heavier, another colour, or at
           // nothing, none inside a headline that otherwise has one.
           CanvasIconButton(
             key: ValueKey("partOutline$i"),
@@ -1330,8 +1308,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
                   set(replacing(i, part.copyWith(outlineColor: c))),
             ),
           ],
-          // The two marks, which a part has and the element has as well --
-          // written once, in _markBits, so they cannot drift apart.
+          // The two marks a part and the element both have, written once in
+          // _markBits so they cannot drift.
           ..._markBits(
             highlight: part.highlight,
             underline: part.underline,
@@ -1360,8 +1338,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
             },
             done: commit,
           ),
-          // This part's own arrival, at its own moment, not the element's
-          // animation pointed here: one word animated lands after its line.
+          // This part's own arrival at its own moment, not the element's
+          // animation retargeted: one animated word lands after its line.
           const CanvasLineBreak(),
           CanvasDropdown<TextAnimationFamily?>(
             key: ValueKey("partAnimationFamily$i"),
@@ -1439,8 +1417,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
                 "number brings it forward. Length is how long it takes; "
                 "nothing means as long as the arrival."),
           ],
-          // The mark's own timing, on a line of its own: it is a second
-          // arrival (the word lands, then is underlined).
+          // The mark's own timing, on its own line: a second arrival (the
+          // word lands, then is underlined).
           if (part.highlight != null || part.underline != null) ...[
             const CanvasLineBreak(),
             CanvasNumberField(
@@ -1479,8 +1457,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
               },
               onCommit: commit,
             ),
-            // After the two numbers it turns on, so it does not move between one
-            // state and the other, and last, as the switch on the end of the row.
+            // After the two numbers it enables, so it stays put between
+            // states, and last, as the row's end switch.
             CanvasToggle(
               label: "Draw the mark on",
               value: part.animation.marks,
@@ -1493,8 +1471,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
                 "own offset says, since the usual thing is a word that "
                 "arrives and then gets underlined."),
           ],
-          // The rest of the paragraph's own animation settings (an echo's
-          // copies, a drawn mark's look, the timing): all of them, not a few.
+          // All of the part's own animation settings (an echo's copies, a
+          // drawn mark's look, the timing), not a few.
           if (part.animation.on)
             ..._animationBits(
               part.animation.asAnimation,
@@ -1532,18 +1510,15 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
   );
 }
 
-/// _partPreset chooses a preset for a part, and the curve it was designed
-/// around with it. See TextAnimationPreset.wants: a bounce played with the
-/// ordinary ease-out is a slide with a misleading name.
+/// _partPreset picks a part's preset with its designed curve (see
+/// TextAnimationPreset.wants): a bounce with ease-out is just a slide.
 TextPartAnimation _partPreset(
         TextPartAnimation animation, TextAnimationPreset preset) =>
     animation.copyWith(preset: preset, ease: preset.wants);
 
-/// _animationBits are the settings that depend on which preset was chosen:
-/// what a drawn mark looks like, how an echo's copies are arranged, and the
-/// timing. Shared by the element's own arrival and every part with its own.
-/// [live] is handed the edited animation and writes it wherever it belongs;
-/// [done] commits, so a number field drags as one undo step.
+/// _animationBits are the preset-dependent settings (drawn mark, echo,
+/// timing), shared by element and parts. [live] writes; [done] commits, so
+/// a drag is one undo step.
 List<Widget> _animationBits(
   TextAnimation a, {
   required Color textColor,
@@ -1560,19 +1535,18 @@ List<Widget> _animationBits(
   }
 
   return [
-    // A destruction is an exit, said here as in a shape's panel: somebody
-    // looking for one looks in the arrival list.
+    // A destruction is an exit, said here as in a shape's panel: people look
+    // for one in the arrival list.
     if (a.cuts)
       ...effectBits(a.effect, a.scatters,
           (next) => now(a.copyWith(effect: next)), done, done,
           live: (next) => live(a.copyWith(effect: next))),
-    // Draw the outline writes what is on the page and makes nothing up:
-    // a stroke where the type has one, and the words where it has not.
-    // Without this the preset looks broken on type with no outline.
+    // Draw the outline invents nothing: a stroke where the type has one, the
+    // words where not, or the preset looks broken on unoutlined type.
     if (a.preset == TextAnimationPreset.strokeOn ||
         a.exit == TextAnimationPreset.strokeOn)
-      // What a drawn mark looks like: an underline's line, a highlight's
-      // band; only where something is drawn.
+      // A drawn mark's look (an underline's line, a highlight's band), only
+      // where something is drawn.
       if (a.draws)
         CanvasControlGroup(label: "The mark", children: [
           CanvasColorButton(
@@ -1589,11 +1563,11 @@ List<Widget> _animationBits(
             onChanged: (v) => now(a.copyWith(draw: a.draw.copyWith(start: v))),
           ),
           const CanvasLineBreak(),
-          // The room round the words is a band's and a line's; a stroke follows
-          // the letterform and has nowhere to put it.
+          // The room round the words is a band's and a line's; a stroke
+          // follows the letterform and has nowhere to put it.
           if (a.preset != TextAnimationPreset.strokeOn) ...[
-            // One field for all four sides, and the four on their own under it:
-            // a little air round the letters reads as a highlighter.
+            // One field for all four sides, the four alone under it: a little
+            // air round the letters reads as a highlighter.
             CanvasNumberField(
               label: "Padding",
               value: a.draw.evenPad ?? 0,
@@ -1629,8 +1603,8 @@ List<Widget> _animationBits(
                 },
                 onCommit: done,
               ),
-            // A band's corners, the same setting a part's own highlight has, so
-            // the two are the same mark.
+            // A band's corners, as a part's own highlight has, so the two are
+            // the same mark.
             if (a.preset == TextAnimationPreset.highlight)
               CanvasNumberField(
                 key: const ValueKey("textMarkRadius"),
@@ -1647,8 +1621,8 @@ List<Widget> _animationBits(
               ),
           ],
         ]),
-    // How the copies of an echo are arranged: how many, how far apart, how
-    // much quieter each one is, and whether they shrink away.
+    // An echo's copies: how many, how far apart, how much quieter each, and
+    // whether they shrink away.
     if (a.echoes)
       CanvasControlGroup(label: "The copies", children: [
         CanvasNumberField(
@@ -1708,8 +1682,8 @@ List<Widget> _animationBits(
     if (timing && (a.on || a.closes || timingLast.isNotEmpty))
       CanvasControlGroup(label: timingLabel, children: [
         if (a.on || a.closes) ...[
-          // Whatever the caller wants first: the element's own Length, which a
-          // part does not use, having an offset and a length of its own.
+          // Whatever the caller wants first: the element's own Length, unused
+          // by a part, which has its own offset and length.
           ...timingFirst,
           if (a.preset.staggers || a.exit.staggers)
             CanvasNumberField(
@@ -1757,9 +1731,8 @@ List<Widget> _animationBits(
   ];
 }
 
-/// _markBits are a highlight and an underline: the two marks simply there
-/// on some words, as opposed to one an animation draws. Written once, shown
-/// for the element (every word) and for a part (a few).
+/// _markBits are a static highlight and underline on some words, written
+/// once for the element and its parts.
 List<Widget> _markBits({
   required PartHighlight? highlight,
   required PartUnderline? underline,
@@ -1771,13 +1744,13 @@ List<Widget> _markBits({
   required void Function(PartUnderline) liveUnderline,
   required VoidCallback done,
 
-  /// icons draws the two switches as buttons rather than as words, for a
-  /// part's row, which carries five of them.
+  /// icons draws the two switches as buttons, not words, for a part's row,
+  /// which carries five.
   bool icons = false,
 }) {
   return [
-    // A mark simply there, not drawn on by an animation. Off until asked
-    // for: most parts are a colour and nothing else.
+    // A mark simply there, not animated. Off until asked: most parts are
+    // a colour and nothing else.
     if (icons)
       CanvasIconButton(
         key: ValueKey("${keyPrefix}HighlightOn"),
@@ -1819,8 +1792,8 @@ List<Widget> _markBits({
             ? highlight.copyWith(flat: true)
             : highlight.copyWith(fade: g)),
       ),
-      // One field for all four sides, and the four on their own under
-      // it, as the drawn mark's padding is.
+      // One field for all four sides, the four alone under it, as the drawn
+      // mark's padding.
       CanvasNumberField(
         label: "Padding",
         value: highlight.evenPad ?? 0,
@@ -1922,10 +1895,8 @@ List<Widget> _markBits({
   ];
 }
 
-/// _middleSlotHint is why a block in a middle slot seems to move as its
-/// words change: a middle slot centres the stack, so half of what the
-/// words lose is given back at the top. A slot shared with the words above
-/// holds the block under them.
+/// _middleSlotHint explains a middle-slot block moving as words change: the
+/// slot centres the stack. Sharing the words' slot holds it under them.
 const _middleSlotHint = CanvasHint(
     "A middle slot keeps this block centred, and the gap moves the whole "
     "stack from there — so taking words out lets it settle back down, which "
@@ -1933,8 +1904,8 @@ const _middleSlotHint = CanvasHint(
     "it, give it the same slot as them: blocks in one slot stack, each held "
     "its own gap below the one before.");
 
-/// _placeBits are the controls every piece has behind its button, words or
-/// a picture: where it sits, and how much room it keeps.
+/// _placeBits are every piece's controls behind its button, words or
+/// picture: where it sits and how much room it keeps.
 List<Widget> _placeBits(TextElement e, int at, TextItem item,
     SettingsWrite write, VoidCallback begin, VoidCallback commit,
     {bool place = true, bool box = true}) {
@@ -1948,8 +1919,8 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
 
   return [
     if (place) ...[
-      // What to call this row; otherwise the caption is what the piece says,
-      // which names every picture "Picture".
+      // This row's name; otherwise what the piece says, which names every
+      // picture "Picture".
       CanvasTextField(
         key: ValueKey("textItemName$at"),
         label: "Called",
@@ -1979,8 +1950,8 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
       ),
       CanvasNumberField(
         key: ValueKey("textItemSide$at"),
-        // Both ways round from one number: away from the edge the slot holds
-        // it to, or back past it. See TextItem.side.
+        // Both ways from one number: away from the slot's edge, or back past
+        // it. See TextItem.side.
         label: "Left/right",
         value: item.side,
         min: -2000,
@@ -1995,7 +1966,7 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
     if (place && box) const CanvasLineBreak(),
     if (box) ...[
       // What is behind the piece. The colour is the switch: with nothing
-      // painted there is no shape to round and no room to keep inside it.
+      // painted there is no shape to round and no room to keep.
       CanvasColorButton(
         key: ValueKey("textItemFill$at"),
         label: "Background",
@@ -2008,9 +1979,8 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
                 : item.box.copyWith(fillFade: g))),
       ),
       if (item.box.fill.a > 0) ...[
-        // The same corner and room fields every other box gets (see
-        // cornerFields): the two even numbers beside the colour, the four
-        // corners and four sides on lines of their own under it.
+        // The corner and room fields every box gets (see cornerFields): two
+        // even numbers beside the colour, the four corners and sides under.
         ...cornerFields(
             item.box.corners,
             (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
@@ -2049,8 +2019,8 @@ List<Widget> _pieceBoxBits(TextElement e, int at, TextItem item,
         SettingsWrite write, VoidCallback begin, VoidCallback commit) =>
     _placeBits(e, at, item, write, begin, commit, place: false);
 
-/// _pictureRow is a picture piece's row, shaped as a words piece's is:
-/// what it is on the line, everything else behind the button.
+/// _pictureRow is a picture piece's row, shaped as a words piece's: what
+/// it is on the line, the rest behind the button.
 Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var icon = item.icon ?? const TextIcon();
@@ -2089,8 +2059,7 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
           if (id != null) now(icon.copyWith(assetId: id));
         },
       ),
-      // The pictures already in the store, to reuse one without finding the
-      // file again.
+      // The store's pictures, to reuse one without finding the file again.
       CanvasIconButton(
         key: ValueKey("textItemLibrary$at"),
         icon: Icons.photo_library_outlined,
@@ -2122,8 +2091,8 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
           onPressed: () => now(icon.copyWith(clearColor: true)),
         ),
     ],
-    // Where it sits and what is behind it are in Layout and Look, as a
-    // piece of writing's are.
+    // Where it sits and what is behind it are in Layout and Look, as for a
+    // piece of writing.
     more: [
       CanvasNumberField(
         label: "Outline",

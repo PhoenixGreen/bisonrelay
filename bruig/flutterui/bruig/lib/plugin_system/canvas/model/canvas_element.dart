@@ -8,17 +8,15 @@ import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 
-// canvas_element.dart is what everything on a canvas has in common, and
-// nothing else.
+// canvas_element.dart is what everything on a canvas has in common.
 //
 // ElementBase holds the box, turn, opacity, name and motion every element
-// has, so the stage can move, resize and animate any element without knowing
-// its kind; only the painter and the settings switch on the kind. Elements
-// are immutable, which is what makes undo a list of documents rather than of
-// reversible operations.
+// has, so the stage can move and animate any element without knowing its
+// kind; only the painter and settings switch on kind. Elements are
+// immutable, so undo is a list of documents.
 
-/// ElementKind names the families. Serialised by name, so the order here is
-/// free to change but the names are not.
+/// ElementKind names the families. Serialised by name: the order may change,
+/// the names may not.
 enum ElementKind {
   text("Text"),
   image("Image"),
@@ -29,8 +27,8 @@ enum ElementKind {
   button("Button"),
   background("Background"),
   path("Path"),
-  // A whole side, not one dot (TeamElement); the value keeps its old name so
-  // saved documents load.
+  // A whole side (TeamElement); keeps the name "player" so saved documents
+  // load.
   player("Team"),
   counter("Counter"),
   audio("Audio"),
@@ -44,16 +42,14 @@ enum ElementKind {
   // Scenery a background carries (BackdropKind.parallax), not added by itself.
   parallax("Parallax"),
   sheet("Sheet music"),
-  // The part of the page shown, moved by clips.
   camera("Camera"),
   object3d("3D object"),
-  // One module of a synth, patched to others with cables.
+  // One synth module, patched to others with cables.
   synth("Synth module"),
   // What to make on a synth rack, and checks of the patch.
   synthTask("Synth task"),
-  // A metronome to practise to.
   metronome("Metronome"),
-  // A little project of code, in panes with tabs (code_element.dart).
+  // A small code project in tabbed panes (code_element.dart).
   code("Code"),
   // What a Code panel's project makes, run (code_run_element.dart).
   codeRun("Run panel"),
@@ -64,9 +60,8 @@ enum ElementKind {
   const ElementKind(this.label);
 }
 
-/// colorToJson and colorFromJson are the one encoding of a colour in a saved
-/// document: 0xAARRGGBB as a plain integer, so a colour round-trips exactly
-/// (float channels through JSON would not).
+/// colorToJson and colorFromJson save a colour as 0xAARRGGBB in a plain
+/// integer, so it round-trips exactly (float channels through JSON would not).
 int colorToJson(Color c) =>
     (_channel(c.a) << 24) |
     (_channel(c.r) << 16) |
@@ -85,41 +80,39 @@ double _d(dynamic v, double fallback) =>
 int _i(dynamic v, int fallback) =>
     v is num && v.isFinite ? v.toInt() : fallback;
 
-/// jsonStr and jsonNum are a field as a string or a finite number, or null
-/// where it is missing or of another type.
+/// jsonStr and jsonNum are a field as a string or finite number, or null.
 String? jsonStr(Object? v) => v is String ? v : null;
 num? jsonNum(Object? v) => v is num && v.isFinite ? v : null;
 
-/// _far is the furthest out, and the biggest, a received element may be:
-/// many times any page, but not a size that cannot be drawn.
+/// _far is the furthest out and biggest a received element may be: many
+/// pages, but never a size that cannot be drawn.
 const double _far = 1e6;
 
 bool _b(dynamic v, bool fallback) => v is bool ? v : fallback;
 String _s(dynamic v, String fallback) => v is String ? v : fallback;
 
-/// jsonDouble, jsonInt, jsonBool and jsonString are the readers above,
-/// exported for the element subclasses. A saved document may be from an
-/// older build or another person, so every read survives a field being absent
-/// or the wrong type: a cast that throws loses the whole document.
+/// jsonDouble, jsonInt, jsonBool and jsonString are the readers above, for
+/// the subclasses. A saved document may be old or from someone else, so
+/// every read survives an absent or mistyped field: a throwing cast loses
+/// the whole document.
 double jsonDouble(dynamic v, double fallback) => _d(v, fallback);
 int jsonInt(dynamic v, int fallback) => _i(v, fallback);
 bool jsonBool(dynamic v, bool fallback) => _b(v, fallback);
 String jsonString(dynamic v, String fallback) => _s(v, fallback);
 
-/// maxTextLength is the most characters one element's words (a text, a
-/// shape's, a code file) are read with: far more than a page holds, and a
-/// received canvas's ten million would be laid out every frame.
+/// maxTextLength is the most characters one element's words are read with:
+/// far more than a page holds, and a received canvas's ten million would be
+/// laid out every frame.
 const maxTextLength = 200000;
 
-/// jsonText is [jsonString] cut to [maxTextLength].
 String jsonText(dynamic v, String fallback) {
   var s = _s(v, fallback);
   return s.length <= maxTextLength ? s : s.substring(0, maxTextLength);
 }
 
-/// fractionsFromJson reads a flat [x, y, x, y, ...] list of points that are
-/// fractions of a picture: within a picture's width either side of it, and
-/// at most 100,000 of them, so a sent stroke cannot ask for billions of dabs.
+/// fractionsFromJson reads a flat [x, y, ...] list of points as fractions of
+/// a picture: within a width either side, and at most 100,000, so a sent
+/// stroke cannot ask for billions of dabs.
 List<Offset> fractionsFromJson(Object? flat) {
   var points = <Offset>[];
   if (flat is! List) return points;
@@ -133,39 +126,32 @@ List<Offset> fractionsFromJson(Object? flat) {
   return points;
 }
 
-/// ElementBase is every property that every element has.
-///
-/// Held by composition, so an element subclass implements one method
-/// ([CanvasElement.rebase]) to be fully editable by the stage.
+/// ElementBase is every property every element has. Held by composition, so
+/// a subclass implements only [CanvasElement.rebase] to be fully editable.
 class ElementBase {
-  /// id is stable for the life of the element and survives saving. Keyframes
-  /// and button actions refer to elements by it.
+  /// id is stable for the element's life and survives saving; keyframes and
+  /// button actions refer to it.
   final String id;
 
-  /// name is what the layer list calls this. Defaults to the kind's label.
+  /// name is the layer list's name. Defaults to the kind's label.
   final String name;
 
-  /// x, y, width and height are in the document's design space -- see
-  /// canvas_geometry.dart. x and y are the top-left corner *before* rotation,
-  /// and rotation happens about the centre.
+  /// x, y, width and height are in design space (canvas_geometry.dart). x
+  /// and y are the top-left before rotation, which is about the centre.
   final double x;
   final double y;
   final double width;
   final double height;
 
-  /// rotation is in degrees (a number the user types), clockwise, about the
-  /// element's centre.
+  /// rotation is in degrees, clockwise, about the centre.
   final double rotation;
 
   /// skewX and skewY slant the element about its centre, in degrees, after
-  /// its rotation: skewX leans its sides left and right -- the top edge one
-  /// way, the bottom the other -- and skewY its top and bottom up and down.
-  /// See BoxFrame.
+  /// rotation: skewX leans the sides, skewY the top and bottom. See BoxFrame.
   final double skewX;
   final double skewY;
 
-  /// opacity multiplies the whole element, on top of whatever its own colours
-  /// say.
+  /// opacity multiplies the whole element, on top of its own colours.
   final double opacity;
 
   /// blend is how the element is laid over what is under it: its motion
@@ -174,92 +160,78 @@ class ElementBase {
 
   final bool visible;
 
-  /// locked keeps an element out of the way of the pointer, so a pitch or a
-  /// background is not selected by a click near what stands on it.
+  /// locked keeps an element from the pointer, so a pitch or background is
+  /// not selected by a click near what stands on it.
   final bool locked;
 
-  /// rowColour is its row's colour on the timeline, the mixer and the slots
-  /// (ARGB), as picked from its header; null for the one its row is given
-  /// (see CanvasController.rowColour). A sound channel's is on its sounds.
+  /// rowColour is its row's ARGB colour on the timeline, mixer and slots;
+  /// null for the given one (CanvasController.rowColour). A sound channel's
+  /// is on its sounds.
   final int? rowColour;
 
-  /// lockAspect holds an element's proportions while it is resized: the
-  /// width and the height move together.
+  /// lockAspect holds width and height together while it is resized.
   final bool lockAspect;
 
-  /// anchorX and anchorY are the element's anchor point, as shares of its
-  /// width and height from its top-left corner: what its animation turns and
-  /// grows about, and what stays put when it is turned. The centre (0.5,
-  /// 0.5) unless moved.
+  /// anchorX and anchorY are the anchor point as shares of width and height
+  /// from the top-left: what animation turns and grows about. The centre
+  /// (0.5, 0.5) unless moved.
   final double anchorX;
   final double anchorY;
 
-  /// anchorLocked keeps the anchor where it is, even while it is shown.
+  /// anchorLocked keeps the anchor in place, even while shown.
   final bool anchorLocked;
 
-  /// track is the element's legacy keyframe track, or null. Tracks are
-  /// converted to [motion] clips when a canvas opens (motion_convert.dart),
-  /// except those a clip cannot say: backgrounds, stages, scenery, teams.
+  /// track is the legacy keyframe track, or null. Converted to [motion]
+  /// clips on open (motion_convert.dart), except what a clip cannot say:
+  /// backgrounds, stages, scenery, teams.
   final ElementTrack? track;
 
-  /// typeScale is how much the element's own measurements (type, spacing,
-  /// padding) have been sized by for the shape being looked at.
-  ///
-  /// Kept because switching shape has to undo this shape's scaling before
-  /// applying the next one's, and the scaled numbers cannot say what they
-  /// were scaled by. See ElementLayout.typeScale.
+  /// typeScale is what the element's own measurements (type, spacing,
+  /// padding) are sized by on the current shape. Kept because a shape
+  /// change must undo this scaling first, and scaled numbers cannot say what
+  /// they were scaled by. See ElementLayout.typeScale.
   final double typeScale;
 
-  /// depth is how far from the camera the element is, for a Camera's depth
-  /// of field and parallax: nought on the page, up to one far behind it,
-  /// down to minus one near (Ken, 2026-11-14). Nothing else reads it.
+  /// depth is distance from the camera for a Camera's depth of field and
+  /// parallax: nought on the page, up to one far behind, down to minus one
+  /// near. Nothing else reads it.
   final double depth;
 
-  /// ownText is whether the shape being looked at has words of its own --
-  /// see ElementLayout.ownText.
+  /// ownText is whether the current shape has its own words
+  /// (ElementLayout.ownText).
   final bool ownText;
 
-  /// ownDesign is whether the shape being looked at has its own copy of the
-  /// whole element. Off, an element is one design laid out several ways and
-  /// only its place, size and typeScale belong to the shape; on, nothing done
-  /// to it on another shape reaches this one.
+  /// ownDesign is whether the current shape has its own copy of the whole
+  /// element. Off, only place, size and typeScale are per shape; on, nothing
+  /// done on another shape reaches this one.
   final bool ownDesign;
 
-  /// shared is the design the shapes share, kept aside while the shape being
-  /// looked at shows one of its own (the element's fields then hold that
-  /// shape's design). Null while nothing is detached. See ownDesign.
+  /// shared is the shapes' shared design, kept aside while the current shape
+  /// shows its own (held in the fields). Null while nothing is detached.
   final Map<String, dynamic>? shared;
 
-  /// layouts is where this element sits on each of the *other* shapes the
-  /// document is designed for, by ratio -- see ElementLayout and
-  /// CanvasDocument.targets.
-  ///
-  /// The shape being looked at is not in here: its numbers are the live x, y,
-  /// width and height, so every painter and handle reads them as usual.
-  /// Changing shape swaps them. See CanvasDocument.forShape.
+  /// layouts is where the element sits on each *other* target shape, by
+  /// ratio (CanvasDocument.targets). The current shape's numbers are the live
+  /// x, y, width and height, so painters read them as usual; changing shape
+  /// swaps them (CanvasDocument.forShape).
   final Map<String, ElementLayout> layouts;
 
-  /// cue is the TimelineCue this element's timing is tied to, by id, or
-  /// empty for none. Moving the cue moves the element's clip placements and
-  /// keyframes with it -- see CanvasController.moveCue.
+  /// cue is the id of the TimelineCue its timing is tied to, or empty.
+  /// Moving the cue moves its clips and keyframes (CanvasController.moveCue).
   final String cue;
 
-  /// cast is the Cast member this element is a linked copy of, by id
-  /// (CanvasDocument.cast), or empty for none: what it shares with every
-  /// copy -- its design, its game settings, its motions -- is the member's,
-  /// and only its place, size and what it does in its scene are its own.
-  /// See cast.dart.
+  /// cast is the id of the Cast member it is a linked copy of, or empty. Its
+  /// design, game settings and motions are the member's; only its place,
+  /// size and what it does in its scene are its own. See cast.dart.
   final String cast;
 
-  /// play is what it does when the canvas is played as a game. See play.dart.
+  /// play is what it does in a played game. See play.dart.
   final PlaySpec play;
 
-  /// spot is where it stands on a 3D stage, or null for on the page. See
-  /// stage_spot.dart.
+  /// spot is where it stands on a 3D stage, or null for on the page.
   final StageSpot? spot;
 
-  /// motion is how it moves: its clips, its slots, where they are placed on
-  /// the timeline. See motion.dart.
+  /// motion is its clips, slots and their timeline places. See motion.dart.
   final ElementMotion motion;
 
   const ElementBase({
@@ -448,9 +420,9 @@ class ElementBase {
       };
 }
 
-/// ElementLayout is where an element sits on one shape of the canvas: its
-/// place, size and visibility there, plus the few things that differ per
-/// shape (type scale, own words, own design, a picture's framing and crop).
+/// ElementLayout is an element's place, size and visibility on one shape,
+/// plus what else differs per shape (type scale, words, design, a picture's
+/// framing and crop).
 class ElementLayout {
   final double x;
   final double y;
@@ -458,29 +430,24 @@ class ElementLayout {
   final double height;
   final bool visible;
 
-  /// typeScale is how much the element's own measurements are sized by on
-  /// this shape -- see ElementBase.typeScale.
   final double typeScale;
 
-  /// text is the words this shape shows, or null for a non-text element.
-  /// Kept on every shape, its own or not, so that visiting a shape with its
-  /// own words and coming back restores the others'; [ownText] tells them
-  /// apart.
+  /// text is this shape's words, or null for a non-text element. Kept on
+  /// every shape so visiting one with its own words and returning restores
+  /// the others'; [ownText] tells them apart.
   final String? text;
 
-  /// own is this element's whole design on this shape, for one that has been
-  /// detached here -- see ElementBase.ownDesign. Null means it follows the
-  /// design the shapes share.
+  /// own is the element's whole design on a shape it is detached on. Null
+  /// follows the shared design.
   final Map<String, dynamic>? own;
 
-  /// framing and crop are a picture's own on this shape, always: the frame
-  /// is a different shape on each, so the crop that suits one does not suit
-  /// another.
+  /// framing and crop are always per shape: the frame differs on each, so
+  /// one crop does not suit another.
   final Map<String, dynamic>? framing;
   final Map<String, dynamic>? crop;
 
-  /// ownText is whether those words are this shape's own, for a narrow page
-  /// that needs fewer words; the other shapes go on sharing one set.
+  /// ownText is whether the words are this shape's own (a narrow page needing
+  /// fewer); the other shapes share one set.
   final bool ownText;
 
   const ElementLayout({
@@ -497,7 +464,7 @@ class ElementLayout {
     this.crop,
   });
 
-  /// of is the layout an element is showing at the moment.
+  /// of is the layout an element is showing now.
   factory ElementLayout.of(
     ElementBase base, {
     String? text,
@@ -526,8 +493,8 @@ class ElementLayout {
         width: math.max(1, width * by),
         height: math.max(1, height * by),
         visible: visible,
-        // The design inside the box scales with the box, or the type
-        // seeded onto a smaller page runs out of the frame.
+        // The design scales with the box, or type seeded onto a smaller
+        // page runs out of the frame.
         typeScale: typeScale * by,
         text: text,
         ownText: ownText,
@@ -613,15 +580,13 @@ class ElementLayout {
   int get hashCode =>
       Object.hash(x, y, width, height, visible, typeScale, text, ownText);
 
-  /// _sameJson is whether two saved designs are the same.
   static bool _sameJson(Map<String, dynamic>? a, Map<String, dynamic>? b) =>
       identical(a, b) ||
       (a != null && b != null && jsonEncode(a) == jsonEncode(b));
 }
 
-/// jsonSpec reads a nested value object -- a TextSpec, a BoxSpec, a
-/// ProceduralSpec -- with [parse], falling back to [fallback] when the field
-/// is missing or is not a map.
+/// jsonSpec reads a nested value object (TextSpec, BoxSpec...) with [parse],
+/// or [fallback] when the field is missing or not a map.
 T jsonSpec<T>(dynamic v, T Function(Map<String, dynamic>) parse, T fallback) =>
     v is Map<String, dynamic> ? parse(v) : fallback;
 
@@ -633,9 +598,8 @@ abstract class CanvasElement {
 
   ElementKind get kind;
 
-  /// rebase is the one method a subclass owes the stage: the same element,
-  /// with different base properties. Every move, resize, rename, lock and
-  /// animation goes through it.
+  /// rebase is the one method a subclass owes the stage: the same element
+  /// with a different base. Every move, resize, rename and animation uses it.
   CanvasElement rebase(ElementBase base);
 
   /// props is the element's own fields, and nothing [ElementBase] owns.
@@ -649,8 +613,8 @@ abstract class CanvasElement {
   double get height => base.height;
   double get rotation => base.rotation;
 
-  /// frameAt is how this element's own box is laid on the page about its
-  /// middle on [frame]: turned, then slanted. See BoxFrame.
+  /// frameAt is how the box is laid on the page about its middle on [frame]:
+  /// turned, then slanted.
   BoxFrame frameAt(int frame) =>
       BoxFrame(rotationAt(frame), base.skewX, base.skewY);
   double get opacity => base.opacity;
@@ -661,22 +625,21 @@ abstract class CanvasElement {
   Rect get bounds => Rect.fromLTWH(x, y, width, height);
   Offset get center => bounds.center;
 
-  /// poseAt is where this element's keyframe track puts it on [frame], as an
-  /// offset from where it rests; clips are not included (see poseWithMotion
-  /// in render/motion_document.dart).
+  /// poseAt is the keyframe track's offset from rest on [frame]; clips are
+  /// not included (see poseWithMotion in render/motion_document.dart).
   Keyframe poseAt(int frame) => base.track?.at(frame) ?? Keyframe.rest;
 
-  /// spotAt is where it stands on a stage on [frame], its own spot with
-  /// whatever its track keys over it; null for on the page.
+  /// spotAt is its stage spot on [frame], with track keys over it; null for
+  /// on the page.
   StageSpot? spotAt(int frame) => base.spot?.over(poseAt(frame));
 
-  /// boundsAt is where the element's keyframes put it on [frame]. Anything
-  /// drawn beside a moving element must use a posed box, not [bounds]; with
-  /// clips too, that is movedBoundsAt in render/motion_document.dart.
+  /// boundsAt is the keyframed box on [frame]. Anything drawn beside a
+  /// moving element must use a posed box, not [bounds]; with clips, that is
+  /// movedBoundsAt in render/motion_document.dart.
   Rect boundsAt(int frame) => boundsWith(poseAt(frame));
 
-  /// boundsWith is the element's box posed as [pose], in the painter's order:
-  /// the pose's shift, then its scale about the anchor.
+  /// boundsWith is the box posed as [pose], in the painter's order: shift,
+  /// then scale about the anchor.
   Rect boundsWith(Keyframe pose) {
     var box = bounds.shift(Offset(pose.dx, pose.dy));
     if (pose.scale == 1) return box;
@@ -690,18 +653,16 @@ abstract class CanvasElement {
     );
   }
 
-  /// centred is whether the anchor is where it starts, in the middle.
+  /// anchorCentred is whether the anchor is in the middle.
   bool get anchorCentred => base.anchorX == 0.5 && base.anchorY == 0.5;
 
-  /// anchorIn is where the anchor is in [box], before any turn: the point
-  /// of [box] at the anchor's shares of it.
+  /// anchorIn is the anchor's point in [box], before any turn.
   Offset anchorIn(Rect box) => Offset(
       box.left + box.width * base.anchorX, box.top + box.height * base.anchorY);
 
-  /// anchorAt is where the anchor is on the page at [frame]: in the box
-  /// moved as the pose moves it, and turned with it about its centre. A
-  /// keyframe's own turn and size are about the anchor, so they leave it
-  /// where it is.
+  /// anchorAt is the anchor on the page at [frame]: moved with the pose and
+  /// turned with the box about its centre. A keyframe's turn and size are
+  /// about the anchor, so they leave it put.
   Offset anchorAt(int frame) {
     var pose = poseAt(frame);
     var box = bounds.shift(Offset(pose.dx, pose.dy));
@@ -717,10 +678,9 @@ abstract class CanvasElement {
     return centre + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
   }
 
-  /// withAnchorAt is this element with its anchor moved to [page], a point
-  /// on the page at [frame], turned back into the element's own box. The
-  /// element does not move: it turns about its centre at rest, and the
-  /// anchor is only what its animation turns and grows about.
+  /// withAnchorAt moves the anchor to [page] at [frame], turned back into
+  /// the box. The element does not move: it rests turned about its centre,
+  /// and the anchor is only what animation turns and grows about.
   CanvasElement withAnchorAt(Offset page, int frame) {
     var pose = poseAt(frame);
     var box = bounds.shift(Offset(pose.dx, pose.dy));
@@ -734,10 +694,8 @@ abstract class CanvasElement {
     );
   }
 
-  /// turnedTo is this element turned to [degrees] about its anchor rather
-  /// than its centre: moved as well as turned, so that the anchor stays
-  /// where it is on the page. The same as a plain turn while the anchor is
-  /// in the middle.
+  /// turnedTo turns to [degrees] about the anchor rather than the centre,
+  /// moving as well so the anchor stays put on the page.
   CanvasElement turnedTo(double degrees) {
     if (anchorCentred) return withBase(rotation: degrees);
     var box = bounds;
@@ -754,35 +712,30 @@ abstract class CanvasElement {
   double opacityAt(int frame) =>
       (opacity * poseAt(frame).opacity).clamp(0.0, 1.0);
 
-  /// keepsAspect is whether a resize should hold this element's proportions
-  /// even without Shift. See [ElementBase.lockAspect].
+  /// keepsAspect is whether a resize holds proportions without Shift.
   bool get keepsAspect => base.lockAspect;
 
-  /// rotationRadians is what the painter and the hit test both want.
   double get rotationRadians => rotation * math.pi / 180;
 
-  /// assetIds is every stored picture this element refers to. The asset
-  /// sweep deletes any picture no saved canvas names, so an element that
-  /// refers to one must list it here.
+  /// assetIds is every stored picture it refers to. The sweep deletes any
+  /// picture no saved canvas names, so each must be listed here.
   Set<String> get assetIds => const {};
 
-  /// mediaIds is every stored sound or video this element refers to, in the
-  /// media store (see CanvasMedia). Swept as [assetIds] are.
+  /// mediaIds is every stored sound or video it refers to (CanvasMedia),
+  /// swept as [assetIds] are.
   Set<String> get mediaIds => const {};
 
-  /// scaledBy is this element with its inside measurements (type, spacing,
-  /// padding, in design units) sized by [by]. Asked only while proportions
-  /// are held, when one number stands for both sides. The default changes
-  /// nothing, right for elements whose contents are fractions of their box;
-  /// see TextElement.scaledBy and TableElement.scaledBy.
+  /// scaledBy sizes the inside measurements (type, spacing, padding) by
+  /// [by]. Asked only while proportions are held. The default changes
+  /// nothing, right for contents that are fractions of the box.
   CanvasElement scaledBy(double by) => this;
 
-  /// scalesInside is whether [scaledBy] does anything to this element, so
-  /// the settings offer a typeScale field only where it has an effect.
+  /// scalesInside is whether [scaledBy] does anything, so typeScale is only
+  /// offered where it has an effect.
   bool get scalesInside => false;
 
-  /// withBase is [ElementBase.copyWith] plumbed through [rebase], so a caller
-  /// changing one property writes one line rather than three.
+  /// withBase is [ElementBase.copyWith] through [rebase], for one-line
+  /// property changes.
   CanvasElement withBase({
     String? name,
     double? x,
@@ -846,7 +799,7 @@ abstract class CanvasElement {
         cue: cue,
       ));
 
-  /// withId returns a copy under a new id, for duplicating an element.
+  /// withId is a copy under a new id, for duplicating.
   CanvasElement withId(String newId) => newId == id
       ? this
       : rebase(base.copyWith(id: newId, motion: base.motion.renamedFor(newId)));
@@ -858,8 +811,8 @@ abstract class CanvasElement {
       };
 }
 
-/// _idCounter and newElementId make ids that are unique within a session and
-/// unlikely to collide across them.
+/// _idCounter and newElementId make ids unique within a session and unlikely
+/// to collide across them.
 int _idCounter = 0;
 final math.Random _idRandom = math.Random();
 
@@ -869,16 +822,13 @@ String newElementId() {
   return "e${n.toRadixString(36)}_${salt.toRadixString(36)}";
 }
 
-/// maxSkew is the most an element is slanted, in degrees: past it, the box
-/// is a line.
+/// maxSkew is the most slant, in degrees: past it the box is a line.
 const double maxSkew = 80;
 
-/// BoxFrame is how an element's own box is laid on the page about its
-/// middle: turned by [rotation], then slanted by [skewX] and [skewY], all in
-/// degrees. [apply] maps an offset from the middle in the box's own space to
-/// one on the page, and [invert] goes back. It is the mapping the renderer
-/// draws with (Canvas.rotate, then Canvas.skew), so clicks, handles and
-/// outlines land where the element is drawn.
+/// BoxFrame lays an element's box on the page about its middle: turned by
+/// [rotation], then slanted by [skewX] and [skewY], in degrees. [apply] maps
+/// box space to page, [invert] back. It matches the renderer (Canvas.rotate,
+/// then Canvas.skew), so clicks, handles and outlines land on the drawing.
 class BoxFrame {
   final double rotation;
   final double skewX;
@@ -900,10 +850,8 @@ class BoxFrame {
   const BoxFrame._(
       this.rotation, this.skewX, this.skewY, this.a, this.b, this.c, this.d);
 
-  /// upright is whether it neither turns nor slants.
   bool get upright => rotation == 0 && skewX == 0 && skewY == 0;
 
-  /// slanted is whether it slants at all.
   bool get slanted => skewX != 0 || skewY != 0;
 
   Offset apply(Offset p) => Offset(a * p.dx + b * p.dy, c * p.dx + d * p.dy);
@@ -914,8 +862,8 @@ class BoxFrame {
     return Offset((d * p.dx - b * p.dy) / det, (-c * p.dx + a * p.dy) / det);
   }
 
-  /// applyTo lays [canvas] out the box's way about [centre]: what is drawn
-  /// next in the box's own space lands where the element is.
+  /// applyTo transforms [canvas] about [centre] so what is drawn next in box
+  /// space lands where the element is.
   void applyTo(Canvas canvas, Offset centre) {
     if (upright) return;
     canvas.translate(centre.dx, centre.dy);
@@ -927,7 +875,7 @@ class BoxFrame {
     canvas.translate(-centre.dx, -centre.dy);
   }
 
-  /// corners is [box] laid out this way about its own middle.
+  /// corners is [box] laid out this way about its middle.
   List<Offset> corners(Rect box) {
     var c0 = box.center;
     return [

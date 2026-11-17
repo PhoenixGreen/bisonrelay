@@ -23,15 +23,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// pitch_editor.dart is the Pitch editor, the Auto-tune's notes opened, as
-// the prototype's: a channel's recording as notes -- each a blob at the
-// note it is heard at, over piano keys and the key's scale -- the pitch as
-// sung (red) and as corrected (purple), where each note was heard boxed
-// with an arrow to where it goes. Notes are dragged up and down onto the
-// scale, split, glued, drawn over by hand or with a line; each has its own
-// retune, vibrato, drift, formant, slide and gain in the inspector, and
-// the Auto-tune's own Amount and Humanise sit under them. The timing is
-// the recording's, kept.
+// pitch_editor.dart is the Pitch editor, the Auto-tune's notes opened: a
+// channel's recording as notes, each a blob at the note it is heard at,
+// over piano keys and the key's scale; the pitch as sung (red) and as
+// corrected (purple). Notes are dragged onto the scale, split, glued or
+// drawn over; each has its own retune, vibrato, drift, formant, slide and
+// gain in the inspector. The recording's timing is kept.
 
 /// PitchTool is what a press on the notes does.
 enum PitchTool {
@@ -46,8 +43,7 @@ enum PitchTool {
   const PitchTool(this.label, this.shortcut, this.icon);
 }
 
-/// PitchSnap is where a dragged note lands: the key's scale, any
-/// semitone, or anywhere.
+/// PitchSnap is where a dragged note lands: the scale, a semitone, or free.
 enum PitchSnap {
   scale("Scale"),
   chromatic("Chromatic"),
@@ -57,8 +53,7 @@ enum PitchSnap {
   const PitchSnap(this.label);
 }
 
-/// _Grip is what of a note a drag takes hold of, besides the note: an edge
-/// to stretch it by, or a fade's handle.
+/// _Grip is a note's part a drag holds: an edge to stretch, or a fade handle.
 enum _Grip { start, end, fadeIn, fadeOut }
 
 /// _blobH is how tall a note is drawn on rows [rowH] apart: taller than
@@ -88,8 +83,7 @@ class _PitchEditorState extends State<PitchEditor> {
   Set<int> _picked = {};
   bool _inspector = true;
 
-  /// _rowH and _perSecond are the grid's measures once zoomed; null, they
-  /// fit the notes into the room there is.
+  /// _rowH and _perSecond are the zoomed grid's measures; null fits the notes.
   double? _rowH, _perSecond;
 
   /// The key and scale where the channel has no Auto-tune to hold them.
@@ -113,7 +107,6 @@ class _PitchEditorState extends State<PitchEditor> {
   int? _hover;
   MouseCursor _cursor = MouseCursor.defer;
 
-  // The last tap, for a double-click on a note.
   int? _lastTapNote;
   DateTime _lastTapAt = DateTime(0);
 
@@ -185,15 +178,13 @@ class _PitchEditorState extends State<PitchEditor> {
     if (!transient) c.endInteraction();
   }
 
-  /// _snapped is [m] where the snap puts it.
   double _snapped(double m) => switch (_snap) {
         PitchSnap.scale => snapNote(m, _rootNow, _steps),
         PitchSnap.chromatic => m.roundToDouble(),
         PitchSnap.off => m,
       };
 
-  /// _stepped is [m] a note up ([up]) or down: the next of the scale, or a
-  /// semitone.
+  /// _stepped is [m] a note up ([up]) or down: the scale's next, or a semitone.
   double _stepped(double m, bool up) {
     if (_snap != PitchSnap.scale) return m + (up ? 1 : -1);
     var n = m.round();
@@ -290,7 +281,7 @@ class _PitchEditorState extends State<PitchEditor> {
   }
 
   // ---- The toolbar: the clip editor's bar of small buttons (see
-  // ClipEditor._tb), so it fits its room as the prototype's does.
+  // ClipEditor._tb), so it fits its room.
 
   Widget _tb(MixerLook look, String key, String label, VoidCallback? tap,
       {bool on = false, IconData? icon, String? tip, bool menu = false}) {
@@ -361,8 +352,6 @@ class _PitchEditorState extends State<PitchEditor> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
             child: Row(children: [
-              // The tools, an icon each: the prototype's, their keys in
-              // their tips.
               toolbarGroup(look, [
                 for (var t in PitchTool.values)
                   _tb(look, "pitchTool-${t.name}", "",
@@ -372,8 +361,6 @@ class _PitchEditorState extends State<PitchEditor> {
                       tip: "${t.label} (${t.shortcut})"),
               ]),
               _tbGap(look),
-              // Where a dragged note lands, and the key and scale it is
-              // the Auto-tune's own.
               _tbMenu(
                   look,
                   "pitchSnap",
@@ -457,7 +444,6 @@ class _PitchEditorState extends State<PitchEditor> {
             ]),
           ),
         ),
-        // The view, pinned right as the prototype's.
         Padding(
           padding: const EdgeInsets.only(right: 4),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -618,7 +604,6 @@ class _PitchEditorState extends State<PitchEditor> {
           child: SingleChildScrollView(
             controller: _keysDown,
             physics: const NeverScrollableScrollPhysics(),
-            // Pressed, a key sounds its note, as the prototype's do.
             child: Listener(
               onPointerDown: (d) =>
                   _sound((top - (d.localPosition.dy / rowH).floor()).round()),
@@ -645,8 +630,6 @@ class _PitchEditorState extends State<PitchEditor> {
               child: SizedBox(
                 width: math.max(width, gridW),
                 child: Column(children: [
-                  // The ruler: bars and beats; pressed, the playhead put
-                  // there.
                   GestureDetector(
                     key: const ValueKey("pitchRuler"),
                     behavior: HitTestBehavior.opaque,
@@ -674,7 +657,6 @@ class _PitchEditorState extends State<PitchEditor> {
                           Align(alignment: Alignment.topLeft, child: gestures),
                     ),
                   ),
-                  // The voice: the recording's shape under its notes.
                   CustomPaint(
                     key: const ValueKey("pitchVoice"),
                     size: Size(math.max(width, gridW), _voiceH),
@@ -908,7 +890,6 @@ class _PitchEditorState extends State<PitchEditor> {
     _dragFrom = p;
     switch (_tool) {
       case PitchTool.move:
-        // An edge to stretch it by, or a fade's handle.
         if (_gripAt(p, edit.notes, yOf, perSecond, rowH) case (var i, var g)?) {
           setState(() {
             _gripping = (i, g);
@@ -919,7 +900,6 @@ class _PitchEditorState extends State<PitchEditor> {
         }
         var i = _noteAt(p, edit.notes, yOf, perSecond, rowH);
         if (i == null) {
-          // On nothing: a box to pick by.
           setState(() => _box = Rect.fromPoints(p, p));
           return;
         }
@@ -1139,8 +1119,7 @@ class _PitchEditorState extends State<PitchEditor> {
     return KeyEventResult.ignored;
   }
 
-  // ---- The inspector: compact, as the clip editor's, so a picked note's
-  // settings fit without scrolling.
+  // ---- The inspector: compact, so a picked note's settings fit unscrolled.
 
   static const double _inspectorW = 226;
 
@@ -1254,7 +1233,6 @@ class _PitchEditorState extends State<PitchEditor> {
           key: const ValueKey("pitchPickedTitle"),
           style: head),
       const SizedBox(height: 4),
-      // Where it goes, and where it was heard: one row.
       SizedBox(
         height: 24,
         child: Row(children: [
@@ -1347,8 +1325,7 @@ class _PitchEditorState extends State<PitchEditor> {
     ];
   }
 
-  /// _slider is one of the inspector's settings on a short row: its label,
-  /// a thin slider, and its reading.
+  /// _slider is an inspector setting on a short row: label, slider, reading.
   Widget _slider(
       MixerLook look,
       String label,
@@ -1629,8 +1606,7 @@ class _PitchGrid extends CustomPainter {
   final Float32List? peaks;
   final double fileLength;
 
-  /// hover is the note the pointer is over: its handles shown, as a picked
-  /// note's are.
+  /// hover is the note the pointer is over: its handles show, as if picked.
   final int? hover;
   final StudioColors s;
   _PitchGrid(
@@ -1693,7 +1669,6 @@ class _PitchGrid extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y),
           Paint()..color = s.edge.withValues(alpha: k % 12 == 0 ? 0.8 : 0.3));
     }
-    // Beats and bars.
     var length = size.width / perSecond;
     var first = 0;
     while (beatAt(first) > 0) {
@@ -1726,7 +1701,6 @@ class _PitchGrid extends CustomPainter {
         _dashed(canvas, Rect.fromLTRB(sungX, hy - bh / 2, sungX1, hy + bh / 2),
             sungInk.withValues(alpha: 0.8));
         if ((target - n.sung).abs() > 0.12) {
-          // The arrow, from the box to the note.
           var ax = x0 + math.min(14, (x1 - x0) / 2);
           var from = Offset(ax, hy + (target > n.sung ? -bh / 2 : bh / 2));
           var to = Offset(ax, y + (target > n.sung ? h / 2 : -h / 2));
@@ -1743,7 +1717,6 @@ class _PitchGrid extends CustomPainter {
                 ..close(),
               Paint()..color = _amber);
         }
-        // How far from its own note it was sung.
         var cents = ((n.sung - n.sung.round()) * 100).round();
         if (cents != 0 && sungX1 - sungX > 26) {
           _label(canvas, "${cents > 0 ? "+" : "−"}${cents.abs()}",
@@ -1753,8 +1726,8 @@ class _PitchGrid extends CustomPainter {
       }
       var playing = on != null && on >= n.heardStart && on <= n.heardEnd;
       var lit = picked.contains(i);
-      // Square, as Ken asked: a box the note's length and a little over its
-      // row, its fill faint so its sound reads through.
+      // Square: a box the note's length and a little over its row, its fill
+      // faint so its sound reads through.
       var box = Rect.fromLTRB(x0, y - h / 2, math.max(x0 + 4, x1), y + h / 2);
       canvas.drawRect(
           box,
@@ -1828,13 +1801,12 @@ class _PitchGrid extends CustomPainter {
         canvas.drawRect(Rect.fromLTWH(box.left + 2, y - gh / 2, 2, gh), grip);
         canvas.drawRect(Rect.fromLTWH(box.right - 4, y - gh / 2, 2, gh), grip);
       }
-      // Stretched: by how much, in its corner.
       if ((n.stretch - 1).abs() > 0.01 && x1 - x0 > 44) {
         _label(canvas, "×${n.stretch.toStringAsFixed(2)}",
             Offset(box.right - 4, box.bottom - 1), Colors.white,
             right: true);
       }
-      // Its lyric under it, as the prototype's: the word it starts in.
+      // Its lyric under it: the word it starts in.
       if (words.isNotEmpty && x1 - x0 > 12) {
         var said = words
             .where((w) => w.start <= n.start + 0.05 && w.end > n.start)
@@ -1851,7 +1823,6 @@ class _PitchGrid extends CustomPainter {
           tp.paint(canvas, Offset(x0 + 1, y + h / 2 + 1));
         }
       }
-      // A drawn pitch over it.
       if (n.curve.length >= 2) {
         var path = Path()
           ..moveTo(n.curve.first.$1 * perSecond, _y(n.curve.first.$2));
@@ -1870,7 +1841,6 @@ class _PitchGrid extends CustomPainter {
     _curve(canvas, track, sungInk.withValues(alpha: 0.85), 1.2);
     _curve(canvas, heard, correctedInk.withValues(alpha: 0.35), 5);
     _curve(canvas, heard, correctedInk, 1.8);
-    // Being drawn.
     if (drawing.length >= 2) {
       var path = Path()
         ..moveTo(drawing.first.$1 * perSecond, _y(drawing.first.$2));

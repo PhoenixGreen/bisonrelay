@@ -2,12 +2,10 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// chart_interval.dart is how often a chart takes a reading from a series that
-// runs on time: one a year on a chosen date, say, rather than one point in
-// thirty, so the axis lands on meaningful dates. It chooses rows only; the
-// chart does the drawing.
+// chart_interval.dart is how often a chart takes a reading from a series on
+// time: one a year on a chosen date, say, rather than one point in thirty,
+// so the axis lands on meaningful dates. It chooses rows; the chart draws.
 
-/// IntervalUnit is how far apart the readings are.
 enum IntervalUnit {
   none("Every point"),
   day("Daily"),
@@ -40,10 +38,9 @@ enum IntervalUnit {
   bool get hasWeekday => this == week;
 }
 
-/// IntervalPick is what a reading is made of: one of the rows in the period,
-/// or all of them combined. It is asked rather than guessed: adding up daily
-/// transactions makes sense, adding up block times does not, and the numbers
-/// cannot tell the two apart.
+/// IntervalPick is what a reading is made of: one row in the period, or all
+/// of them combined. Asked rather than guessed: adding up daily
+/// transactions makes sense, adding up block times does not.
 enum IntervalPick {
   nearest("The reading on that date"),
   total("Added up"),
@@ -105,7 +102,6 @@ class ChartInterval {
   /// weekday is the anchor for a weekly reading, 1 for Monday.
   final int weekday;
 
-  /// how is what each reading is made of. See [IntervalPick].
   final IntervalPick how;
 
   const ChartInterval({
@@ -238,11 +234,9 @@ class ChartInterval {
 }
 
 /// groupAtIntervals is which rows *make up* each reading: a period runs from
-/// its mark up to the next. Deliberately unlike [pickAtIntervals], which takes
-/// the nearest row from either side.
-///
-/// Empty periods are left out rather than drawn as zero, since zero would
-/// claim a value where there is no data.
+/// its mark up to the next, unlike [pickAtIntervals], which takes the
+/// nearest row from either side. Empty periods are left out rather than
+/// drawn as zero, which would claim a value where there is no data.
 List<IntervalGroup> groupAtIntervals(
     List<DateTime?> when, ChartInterval interval) {
   if (!interval.on) return const [];

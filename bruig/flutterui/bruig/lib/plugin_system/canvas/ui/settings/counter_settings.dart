@@ -11,17 +11,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// counter_settings.dart is a counter's settings, in the order one is set up:
-// what it counts from and to, how the number is written, the words either
-// side, then the type, the box and, for a live one, the buttons. Count holds
-// the key buttons: they pin this element's own number, which the timeline
-// knows nothing of.
+// counter_settings.dart is a counter's settings in setup order. Count holds
+// the key buttons, which pin the element's own number, not the timeline's.
 
-/// counterPanel is [e]'s panel: the Text panel's shape (see
-/// element_panel.dart) -- a quick strip of what it counts from and to, how
-/// it is written and its colour; Content (the number, the words either side
-/// and where its count comes from), Look (its type and box, its looks) and
-/// More (its buttons).
+/// counterPanel is [e]'s panel (see element_panel.dart): quick strip,
+/// Content (number, words, source), Look and More (its buttons).
 Widget counterPanel(
   BuildContext context,
   CanvasController controller,
@@ -94,7 +88,6 @@ Widget counterPanel(
       bits: counterBits(context, controller, e, write, begin, commit));
 }
 
-/// counterBits are what of [e] goes in which of its panel's sections.
 List<PanelBit> counterBits(
   BuildContext context,
   CanvasController controller,
@@ -109,8 +102,7 @@ List<PanelBit> counterBits(
     commit();
   }
 
-  // What the number is at this frame, which is what the sample under the
-  // fields shows and what the Add point button pins.
+  // The number at this frame: what the sample shows and Add point pins.
   var here = e.keyed
       ? controller.valueAt(e, KeyframeChannel.count, e.from)
       : controller.counterValue(e);
@@ -158,10 +150,8 @@ List<PanelBit> counterBits(
                   onChanged: (v) => write(e.copyWith(decimals: v.round())),
                   onCommit: commit,
                 ),
-                // The grouping and the point are one choice rather than two: a number
-                // written 1.234,56 is not 1,234.56 with a different point, it is a
-                // different convention -- and the two time formats are not grouping at
-                // all.
+                // Grouping and point are one choice: 1.234,56 is a convention,
+                // not a different point, and the time formats are no grouping.
                 CanvasDropdown<CounterSeparator>(
                   key: const ValueKey("counterSeparator"),
                   label: "Written",
@@ -325,8 +315,7 @@ List<PanelBit> counterBits(
             ? "None"
             : e.buttons.map((b) => b.label).join(" · "),
         children: [_buttonsSection(context, e, write, begin, commit, now)]),
-    // How it comes in, loops and goes: the Chain's Motion view (Ken,
-    // 2026-11-08), not a section here.
+    // How it comes in, loops and goes is the Chain's Motion view.
   ];
 }
 
@@ -357,9 +346,8 @@ Widget _countSection(
     trailing: e.keyed ? "Keyframes" : "Live",
     children: [
       CanvasControlGroup(label: "Count", hideCaption: true, children: [
-        // The switch that makes this two elements in one. On, the number is
-        // read off the timeline; off, it runs in real time and the buttons
-        // below mean something.
+        // Two elements in one: on, the number is read off the timeline;
+        // off, it runs in real time and the buttons below apply.
         CanvasToggle(
           key: const ValueKey("counterKeyed"),
           label: "Keyframes",
@@ -367,8 +355,8 @@ Widget _countSection(
           onChanged: (v) => now(e.copyWith(keyed: v)),
         ),
         if (e.keyed) ...[
-          // The two ends, pinned where the playhead is: the frame meant is the one
-          // being looked at, and moving it afterwards is a drag on the timeline.
+          // The two ends, pinned at the playhead: the frame meant is the one
+          // in view; moving it later is a timeline drag.
           CanvasIconButton(
             key: const ValueKey("counterPinFrom"),
             icon: Icons.first_page,
@@ -387,9 +375,8 @@ Widget _countSection(
                 : () => controller.setValueKey(e, KeyframeChannel.count, e.to,
                     seed: false),
           ),
-          // A point in the middle, of any value: a count from 0 to 100 can pass 140
-          // and come back, which is why the channel holds the number rather than a
-          // fraction of the way.
+          // A middle point of any value: a 0-to-100 count can pass 140 and
+          // come back, so the channel holds the number, not a fraction.
           CanvasIconButton(
             key: const ValueKey("counterAddPoint"),
             icon: Icons.add_location_alt_outlined,
@@ -413,8 +400,8 @@ Widget _countSection(
             },
             onCommit: commit,
           ),
-          // How the number gets to the next key: the key's own easing, the same
-          // field the timeline's panel shows, not a kind only counters have.
+          // How the number reaches the next key: the key's own easing, as
+          // the timeline's panel shows it, not a counter-only kind.
           if (e.track?.keyAt(at) case var keyHere?)
             CanvasDropdown<KeyframeEasing>(
               key: const ValueKey("counterEasing"),
@@ -425,7 +412,7 @@ Widget _countSection(
                 for (var easing in KeyframeEasing.values)
                   (
                     easing,
-                    // Said in the counter's own words: on a number, Hold leaves it alone
+                    // In the counter's words: on a number, Hold leaves it
                     // until the next key.
                     easing == KeyframeEasing.hold
                         ? "Hold (stays the same)"
@@ -438,9 +425,8 @@ Widget _countSection(
                 commit();
               },
             ),
-          // The same easing on every point of the count, so no single hop slides
-          // while the rest step. Only the points carrying a number: a move keyed on
-          // the same track is not this setting's to restyle.
+          // One easing for every count point, so no hop slides while the
+          // rest step; only points carrying a number, not keyed moves.
           if (e.track?.keyAt(at) case var keyHere?)
             CanvasIconButton(
               key: const ValueKey("counterEasingAll"),
@@ -506,8 +492,8 @@ Widget _countSection(
                         controller.document.counts.isNotEmpty
                     ? controller.document.counts.first.id
                     : null,
-                // A clock written plainly is a number of seconds since
-                // midnight, which is not a thing anybody wants to read.
+                // A clock written plainly is seconds since midnight, which
+                // nobody wants to read.
                 separator: v == CounterSource.clock && !e.separator.isTime
                     ? CounterSeparator.hours
                     : e.separator)),
@@ -580,8 +566,8 @@ Widget _countSection(
   );
 }
 
-/// _placing is the X and Y of one thing placed by hand: a fraction of the
-/// box from its middle, so it stays put relative to the counter when resized.
+/// _placing is the X and Y of one hand-placed thing: a fraction of the box
+/// from its middle, so it keeps its place when the counter is resized.
 List<Widget> _placing(
   String name,
   Offset at,
@@ -643,8 +629,8 @@ Widget _buttonsSection(
               label: button.label,
               value: e.buttons.contains(button),
               onChanged: (v) => now(e.copyWith(buttons: [
-                // In declaration order, not switch-on order, so a counter set up
-                // twice comes out the same way round.
+                // In declaration order, not switch-on order, so a counter set
+                // up twice comes out the same.
                 for (var b in CounterButton.values)
                   if (b == button ? v : e.buttons.contains(b)) b,
               ])),
@@ -731,10 +717,8 @@ Widget _buttonsSection(
       ],
     );
 
-/// _styleRow sets the number -- or the [words] -- in one of the document's
-/// text styles, makes its type one, or changes the style it is in: the text
-/// panel's Style row, for a counter's two kinds of type. See
-/// CanvasDocument.textStyles.
+/// _styleRow puts the number (or [words]) in a document text style, makes
+/// one from its type, or changes it (see CanvasDocument.textStyles).
 Widget _styleRow(CanvasController controller, CounterElement e,
     {required bool words}) {
   var styles = controller.textStyles;

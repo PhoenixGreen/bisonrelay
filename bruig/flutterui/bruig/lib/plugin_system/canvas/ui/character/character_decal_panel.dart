@@ -19,13 +19,11 @@ const String decalsPartId = "decals";
 class CharacterDecalControls extends StatelessWidget {
   final List<CharacterDecal> decals;
 
-  /// open is the decal being set, if any.
   final String? open;
   final CharacterOutfit outfit;
   final void Function(List<CharacterDecal> decals, String? open) onChanged;
 
-  /// library stands in for the canvas library's pictures and vectors, for
-  /// tests.
+  /// library stands in for the library's pictures and vectors, for tests.
   final Future<List<LibraryAsset>> Function()? library;
 
   const CharacterDecalControls(
@@ -50,9 +48,8 @@ class CharacterDecalControls extends StatelessWidget {
         ...await CanvasLibrary.list(kind: AssetKind.vector),
       ];
 
-  /// _listedAt is the library as read at a revision of it: the panel is
-  /// built again at every step of a slider, and read afresh each time the
-  /// library was read from disk with it.
+  /// _listed is the library as read at a revision of it, so the panel,
+  /// built again at every step of a slider, does not reread it from disk.
   static (int, Future<List<LibraryAsset>>)? _listed;
 
   Future<List<LibraryAsset>> _listedAt(int revision) {
@@ -111,8 +108,8 @@ class CharacterDecalControls extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 12, color: colors.onSurfaceVariant));
                 }
-                // Six and a half rows at most, scrolled, so a long library does not
-                // push the decal's own settings off the panel.
+                // Six and a half rows at most, scrolled, so a long library
+                // does not push the decal's settings off the panel.
                 return ConstrainedBox(
                   key: const ValueKey("decalLibrary"),
                   constraints: const BoxConstraints(maxHeight: 6.5 * 58),
@@ -242,8 +239,8 @@ class CharacterDecalControls extends StatelessWidget {
   }
 }
 
-/// _Scrolled scrolls [child] with a scrollbar that shares its controller:
-/// a Scrollbar left to find one falls back on a primary controller no list
+/// _Scrolled scrolls [child] with a scrollbar sharing its controller: a
+/// Scrollbar left to find one falls back on a primary controller no list
 /// has, and asserts when the list is dragged.
 class _Scrolled extends StatefulWidget {
   final Widget child;

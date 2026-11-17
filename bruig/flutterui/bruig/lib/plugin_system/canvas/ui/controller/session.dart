@@ -1,8 +1,7 @@
 part of '../canvas_controller.dart';
 
-// Clips launched live: the elements' slots and the session view.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Part of CanvasController (state in canvas_controller.dart): clips launched
+// live, from the elements' slots and the session view.
 
 /// OffTimelineItem is one thing Back to the timeline lists: a row playing
 /// from its slots ([held] 0), or a channel with [held] settings held by hand
@@ -17,17 +16,15 @@ class OffTimelineItem {
 }
 
 extension CanvasSession on CanvasController {
-  /// liveMotion is what the renderer draws the elements off their
-  /// timelines from: null with every one on it.
+  /// liveMotion is what the renderer draws off-timeline elements from, or null.
   LiveMotion? get liveMotion {
     LiveMotion? playing = motionPlayer.offTimeline ? motionPlayer : null;
     if (_motionPreview case (var e, var upto)) {
       return MotionPreview(playing, e, upto, pointerAt: _stagePointer);
     }
-    // Nothing off its timeline, but something facing the pointer -- or a
-    // game going, whose time what moves for ever goes by: the pointer and
-    // the game's time alone, so the rest plays from the timeline as it
-    // would.
+    // Nothing off its timeline, but something facing the pointer or a game
+    // going (whose time drives what moves for ever): only the pointer and
+    // the game's time, the rest playing from the timeline.
     var running = motionPlayer.running;
     var pointing = _stagePointer != null && _facesPointer;
     if (playing == null && (pointing || running != null)) {
@@ -36,9 +33,8 @@ extension CanvasSession on CanvasController {
     return playing;
   }
 
-  /// stagePointer is where the pointer is over the page, in its
-  /// coordinates, or null off it: for a Look at that faces it. The stage
-  /// is drawn again as it moves only where something does.
+  /// stagePointer is the pointer over the page, in its coordinates, or null
+  /// off it, for a Look at; the stage redraws for it only where one faces it.
   Offset? get stagePointer => _stagePointer;
   set stagePointer(Offset? at) {
     if (at == _stagePointer) return;
@@ -58,12 +54,11 @@ extension CanvasSession on CanvasController {
   }
 
   /// motionPreview is the element and join the stage previews its motion
-  /// chain from, or null for every chain whole.
+  /// chain from, or null.
   (String, int)? get motionPreview => _motionPreview;
 
-  /// previewMotionFrom shows [element] on the stage as its motion chain
-  /// stands after its first [upto] pose devices -- or, with null, whole
-  /// again. Shown only: nothing is changed.
+  /// previewMotionFrom shows [element] as its motion chain stands after its
+  /// first [upto] pose devices, or whole with null. Nothing is changed.
   void previewMotionFrom(String element, int? upto) {
     _motionPreview = upto == null ? null : (element, upto);
     _previewTicks++;
@@ -73,9 +68,8 @@ extension CanvasSession on CanvasController {
   /// motionTick goes up as the slots play on, for the stage to paint.
   int get motionTick => motionPlayer.revision + _previewTicks;
 
-  /// pressMotionSlot is slot [slot] of [element] pressed: its clip launched
-  /// as it says -- on the next bar, or what it waits for -- or, empty, the
-  /// element's clips stopped.
+  /// pressMotionSlot launches [element]'s slot [slot] as its clip says (on
+  /// the next bar, or what it waits for), or, empty, stops its clips.
   void pressMotionSlot(String element, int slot) {
     var motion = _document.elementById(element)?.base.motion;
     var clip = motion?.slot(slot);
@@ -91,7 +85,7 @@ extension CanvasSession on CanvasController {
     } finally {
       _slotPressed = null;
     }
-    // Linked: its own sound in the same row with it (Ken, 2026-11-10).
+    // Linked: its own sound launches in the same row with it.
     var own = ownChannelOf(_document, element);
     if (motion!.isLinked(slot) && session.at(own, slot) != null) {
       launchClip(own, slot);
@@ -99,11 +93,9 @@ extension CanvasSession on CanvasController {
   }
 
   /// _soundsWithTheirMotion launches the sound linked with each clip the
-  /// motion player has started since it was last asked: the link holds
-  /// however the clip started -- clicked, after another clip, at a marker
-  /// -- not only when its slot was pressed. Only a stopped sound: one
-  /// already going or waiting is left be (Ken's infographic, 2026-11-13: a
-  /// ticket clicked voted silently).
+  /// motion player has started since it was last asked, however it started
+  /// (clicked, after another clip, at a marker), not only from a slot. Only
+  /// a stopped sound: one already going or waiting is left be.
   void _soundsWithTheirMotion() {
     for (var (element, clip) in motionPlayer.takeLaunched()) {
       if ((element, clip) == _slotPressed) continue;
@@ -149,9 +141,8 @@ extension CanvasSession on CanvasController {
     notifyListeners();
   }
 
-  /// motionSlotState is how slot [slot] of [element] is doing: launched,
-  /// or -- on its timeline, the playhead going through a placement of its
-  /// clip -- playing from there.
+  /// motionSlotState is how slot [slot] of [element] is doing: launched, or
+  /// playing on its timeline where the playhead is in a placement of it.
   MotionSlotState motionSlotState(String element, int slot) {
     var e = _document.elementById(element) ??
         _masterHeardElement(element);
@@ -198,8 +189,7 @@ extension CanvasSession on CanvasController {
     notifyListeners();
   }
 
-  /// _elementsWithClips are the ids of the scene's elements that have clips,
-  /// and of the master's drawn over them.
+  /// _elementsWithClips are the scene's and drawn master's ids with clips.
   Iterable<String> _elementsWithClips() => [
         for (var e in [
           ..._document.elements,
@@ -261,14 +251,12 @@ extension CanvasSession on CanvasController {
       (gameClockForTest?.call() ?? _gameClockWatch.elapsedMicroseconds) / 1e6;
 
   /// sessionOnly is whether only the clip slots are playing: launched with
-  /// the transport stopped, they run on a clock of their own, the timeline
-  /// silent and its playhead where it was. Play, or Back to the timeline,
-  /// returns to it.
+  /// the transport stopped, they run on their own clock, the timeline silent
+  /// and its playhead still, until Play or Back to the timeline.
   bool get sessionOnly => _sessionOnly;
 
-  /// offTimeline is whether what is heard is not the timeline: only the
-  /// slots playing, or a channel left for its slots -- what Back to the
-  /// timeline lights for.
+  /// offTimeline is whether what is heard is not the timeline (only slots
+  /// playing, or a channel left for its slots): Back to the timeline lights.
   bool get offTimeline =>
       _sessionOnly || _offTimeline.isNotEmpty || motionPlayer.offTimeline;
 
@@ -295,10 +283,9 @@ extension CanvasSession on CanvasController {
     notifyListeners();
   }
 
-  /// offTimelineItems is what Back to the timeline lists (Ken, 2026-11-08):
-  /// each row playing from its slots -- an element and its own sound one
-  /// item, as they are one row -- then each channel with settings held by
-  /// hand off their lanes.
+  /// offTimelineItems is what Back to the timeline lists: each row playing
+  /// from its slots (an element and its own sound one item, as one row),
+  /// then each channel with settings held by hand off their lanes.
   List<OffTimelineItem> get offTimelineItems {
     var doc = _document;
     String nameOf(String key) {
@@ -334,10 +321,9 @@ extension CanvasSession on CanvasController {
     ];
   }
 
-  /// fromSlotsOf is the row playing from its slots that [key] -- an
-  /// element's id or a channel's -- is part of, an element's own sound being
-  /// the element's; null where it plays from the timeline. Its row is
-  /// striped and has its own way back (see row_header.dart).
+  /// fromSlotsOf is the row playing from its slots that [key] (an element's
+  /// or channel's id; an element's own sound counts as the element) is in,
+  /// or null on the timeline. Its row is striped, with its own way back.
   OffTimelineItem? fromSlotsOf(String key) {
     for (var item in offTimelineItems) {
       if (!item.isHeld && (item.key == key || "snd-${item.key}" == key)) {
@@ -348,8 +334,7 @@ extension CanvasSession on CanvasController {
   }
 
   /// backToTimelineFor sends [item] alone back to the timeline: a row's
-  /// clips stopped and its timeline heard again, or a channel's settings
-  /// handed back to their lanes.
+  /// clips stopped, or a channel's settings handed back to their lanes.
   void backToTimelineFor(OffTimelineItem item) {
     if (item.isHeld) {
       if (_overridden.remove(item.key) != null) {
@@ -368,8 +353,7 @@ extension CanvasSession on CanvasController {
         stopChannelClips(key, now: true);
       }
     }
-    // Only the slots playing, and none left: the slots stop, as Back to the
-    // timeline does.
+    // Only the slots playing, and none left: they stop, as Back does.
     if (_sessionOnly && offTimelineItems.every((i) => i.isHeld)) {
       pause();
       return;
@@ -389,9 +373,8 @@ extension CanvasSession on CanvasController {
     return ((now - 0.005) / g).ceil() * g;
   }
 
-  /// _sessionStart starts the transport for the session, from the start of
-  /// the bar the playhead is in -- a launch with nothing playing is heard at
-  /// once, on a bar -- and is where it started.
+  /// _sessionStart starts the transport from the start of the playhead's bar
+  /// (so a launch with nothing playing is heard at once): where it started.
   double _sessionStart() {
     // The slots on their own, from nought: the timeline stays where it is,
     // and silent -- see sessionOnly.
@@ -426,8 +409,7 @@ extension CanvasSession on CanvasController {
         : ClipState.stopped;
   }
 
-  /// clipPlaying is whether [channel] has a clip playing from its slots, or
-  /// one about to.
+  /// clipPlaying is whether [channel] plays a slot's clip, or is about to.
   bool clipPlaying(String channel) {
     var ch = _clipChannels[channel];
     return ch != null && (ch.now != null || ch.next != null);
@@ -445,8 +427,7 @@ extension CanvasSession on CanvasController {
   }
 
   /// clipAt is where [channel]'s clip has got to, in beats into what it
-  /// plays -- for the clip editor's playhead -- or null where none is
-  /// playing.
+  /// plays, for the clip editor's playhead; null where none is playing.
   double? clipAt(String channel) {
     var now = _clipChannels[channel]?.now;
     if (now == null) return null;
@@ -459,17 +440,16 @@ extension CanvasSession on CanvasController {
   /// anyClipPlaying is whether any slot is playing or about to.
   bool get anyClipPlaying => _clipChannels.keys.any(clipPlaying);
 
-  /// sessionActive is whether the slots have anything going on -- playing,
-  /// waiting for a bar, recording -- for the mixer to keep drawing them.
+  /// sessionActive is whether the slots are playing, waiting or recording,
+  /// for the mixer to keep drawing them.
   bool get sessionActive => anyClipPlaying || _clipRecord != null;
 
   /// instrumentChannel is whether [channel] is a MIDI channel.
   bool instrumentChannel(String channel) => _instrumentOf(channel) != null;
 
-  /// pressClip is a press on a clip's slot: what the clip's launch mode says
-  /// -- see LaunchMode. On an empty slot, the channel stops; armed, it
-  /// records into it. [velocity] is the pad's, nought to 127 -- a click is
-  /// a full one -- for the clip's Velocity to set its volume by.
+  /// pressClip is a press on a clip's slot, as its LaunchMode says. On an
+  /// empty slot the channel stops; armed, it records into it. [velocity] is
+  /// the pad's, 0 to 127 (a click is full), for the clip's Velocity.
   void pressClip(String channel, int row, {int velocity = 127}) {
     var clip = session.at(channel, row);
     if (_clipRecord case var rec?
@@ -500,8 +480,7 @@ extension CanvasSession on CanvasController {
         pressMotionClip(owner.id, motion.id);
       }
     }
-    // Repeat: again on every launch step while it is held -- see
-    // _sessionStep.
+    // Repeat: again on every launch step while held (see _sessionStep).
     if (clip.launch == LaunchMode.repeat) {
       var a = _document.audio;
       var step = a.gridSeconds(clip.quantise ?? _launchQuantise) ?? 0;
@@ -511,9 +490,8 @@ extension CanvasSession on CanvasController {
     }
   }
 
-  /// pushClip is a Push's pad in Session mode: slot [row] of the
-  /// [column]th channel, as the mixer has them, pressed at [velocity] -- or
-  /// let go, at nought.
+  /// pushClip is a Push pad in Session mode: slot [row] of the [column]th
+  /// mixer channel, pressed at [velocity], or let go at nought.
   void pushClip(int column, int row, int velocity) {
     var lanes = timelineChannels;
     if (column < 0 || column >= lanes.length || row < 0) return;
@@ -525,8 +503,7 @@ extension CanvasSession on CanvasController {
     }
   }
 
-  /// pushPad is how slot [row] of the [column]th channel is doing, for its
-  /// pad's light.
+  /// pushPad is slot [row] of the [column]th channel's state, for its light.
   PadClip pushPad(int column, int row) {
     var lanes = timelineChannels;
     if (column < 0 || column >= lanes.length || row < 0) return PadClip.empty;
@@ -539,8 +516,7 @@ extension CanvasSession on CanvasController {
     };
   }
 
-  /// releaseClip is a press on a clip let go: a gated clip stops, and a
-  /// repeating one stops repeating, and playing.
+  /// releaseClip lets go of a clip's slot: a gated or repeating clip stops.
   void releaseClip(String channel, int row) {
     var clip = session.at(channel, row);
     if (clip == null ||
@@ -560,8 +536,8 @@ extension CanvasSession on CanvasController {
     notifyListeners();
   }
 
-  /// launchClip plays slot [row] of [channel] from the next launch time --
-  /// see launchQuantise -- in place of whatever the channel was playing.
+  /// launchClip plays slot [row] of [channel] from the next launch time (see
+  /// launchQuantise), in place of what the channel was playing.
   void launchClip(String channel, int row,
       {double level = 1, Quantise? quantise}) {
     var clip = session.at(channel, row);
@@ -570,21 +546,18 @@ extension CanvasSession on CanvasController {
     unawaited(_startClip(channel, row, clip, at, level: level));
   }
 
-  /// launchScene plays row [row] across every channel, all from the same
-  /// moment: a channel with nothing in the row stops.
-  // Per-canvas cues (Ken, 2026-11-10): where a game's master has channels
-  // or elements with slots of their own, its cues -- the document's,
-  // SessionGrid.scenes -- are theirs, and each scene's (CanvasScene.cues)
-  // its own channels' and elements': launched, renamed, added and taken
-  // away apart. One grid of rows under them all. Where the master has none,
-  // the canvas shown has the document's cues, as it always had.
+  // Per-canvas cues: where a game's master has channels or elements with
+  // slots of their own, its cues (SessionGrid.scenes) are theirs, and each
+  // scene's (CanvasScene.cues) its own channels' and elements', each set
+  // launched, renamed, added and removed apart. One grid of rows under them
+  // all. Where the master has none, the canvas shown has the document's.
 
   /// cuesApart is whether the canvas shown has cues of its own, apart from
   /// the master's: a scene, with a master that has slots in use.
   bool get cuesApart => !_document.editingMaster && _masterSlotted;
 
-  /// _masterSlotted is whether the master is on and has channels, or
-  /// elements with slots: what its cues launch.
+  /// _masterSlotted is whether the master is on with channels, or elements
+  /// with slots: what its cues launch.
   bool get _masterSlotted {
     var m = _document.master;
     if (!_document.masterOn || m == null) return false;
@@ -617,15 +590,13 @@ extension CanvasSession on CanvasController {
     return timelineChannels.where((c) => mine.contains(c.key) == master);
   }
 
-  /// _masterChannelKeys are the master's channels, by key.
   Set<String> get _masterChannelKeys => {
         for (var e in _document.master?.elements ?? const <CanvasElement>[])
           if (e is AudioElement) CanvasController._channelOf(e),
       };
 
-  /// _cueElements are the elements a cue launches the slots of: the canvas
-  /// shown's -- with the master's drawn over it, where it has no cues
-  /// apart -- or, [master], the master's.
+  /// _cueElements are the elements whose slots a cue launches: the canvas
+  /// shown's (with the master's over it, where no cues apart), or [master]'s.
   List<CanvasElement> _cueElements(bool master) {
     if (master && cuesApart) return _masterHeard;
     if (cuesApart) return _document.elements;
@@ -635,9 +606,9 @@ extension CanvasSession on CanvasController {
   /// launchScene launches cue [row] of the canvas shown.
   void launchScene(int row) => launchCue(row);
 
-  /// launchCue launches cue [row] -- of the canvas shown, or [master]'s --
-  /// every one of its channels' and elements' clips in that row from the
-  /// next bar.
+  /// launchCue launches cue [row] of the canvas shown, or [master]'s, from
+  /// the next bar: each channel's clip in that row, or the channel stopped
+  /// where it has none, and each element's (see below).
   void launchCue(int row, {bool master = false}) {
     var at = _launchTime();
     for (var c in _cueChannels(master)) {
@@ -671,8 +642,7 @@ extension CanvasSession on CanvasController {
     return _cueLaunchedMaster == (master && cuesApart) ? _sceneLaunched : null;
   }
 
-  /// stopChannelClips stops what [channel] plays from its slots, at the
-  /// next launch time.
+  /// stopChannelClips stops [channel]'s slots at the next launch time.
   void stopChannelClips(String channel, {bool now = false}) {
     _repeats.remove(channel);
     if (!clipPlaying(channel)) return;
@@ -726,8 +696,8 @@ extension CanvasSession on CanvasController {
     }
   }
 
-  /// _restart sets [play] going again where it has got to: its stop, set
-  /// for a launch since taken back, undone.
+  /// _restart sets [play] going again where it has got to, undoing a stop
+  /// set for a launch since taken back.
   Future<void> _restart(_ClipChannel ch, _ClipPlay play) async {
     var clip = session.at(ch.channel, play.row);
     var sound = play.sound ?? clip?.sound;
@@ -852,10 +822,9 @@ extension CanvasSession on CanvasController {
         if (!clip.midi) clip.warpSignature(_document.audio.secondsPerBeat),
       ].join("|");
 
-  /// _followEdits plays each clip that is playing as it now is, where it
-  /// was changed since [before]: from where it had got to, so an edit --
-  /// reversed, its loop moved, its notes -- is heard at once, not at its
-  /// next launch.
+  /// _followEdits replays each playing clip changed since [before] as it is
+  /// now, from where it had got to, so an edit (reversed, loop moved, notes)
+  /// is heard at once, not at its next launch.
   void _followEdits(CanvasDocument before) {
     if (_clipChannels.isEmpty || identical(before.session, session)) return;
     for (var ch in [..._clipChannels.values]) {
@@ -876,8 +845,7 @@ extension CanvasSession on CanvasController {
   /// _gainOf is [clip]'s gain as a level.
   double _gainOf(SessionClip clip) => math.pow(10, clip.gain / 20).toDouble();
 
-  /// _follow does [clip]'s follow action, played on [ch] as [play], at
-  /// [due]: see FollowAction.
+  /// _follow does [clip]'s follow action (see FollowAction) on [ch] at [due].
   void _follow(_ClipChannel ch, _ClipPlay play, SessionClip clip, double due) {
     // A launch already waiting is what the player chose: it goes ahead.
     if (ch.next != null) return;
@@ -998,8 +966,7 @@ extension CanvasSession on CanvasController {
     return null;
   }
 
-  /// _haltClips stops everything the slots play, at once: the transport
-  /// has stopped.
+  /// _haltClips stops all the slots at once: the transport has stopped.
   void _haltClips() {
     var now = _sessionNow;
     for (var ch in _clipChannels.values) {
@@ -1025,9 +992,8 @@ extension CanvasSession on CanvasController {
     }
   }
 
-  /// _sessionSilenced is whether [key]'s timeline is quiet: a channel
-  /// playing from its slots is not playing the timeline, as Ableton's is
-  /// not -- until its slots are stopped.
+  /// _sessionSilenced is whether [key]'s timeline is quiet: a channel plays
+  /// its slots, not its timeline, until they are stopped (as in Ableton).
   bool _sessionSilenced(String key) =>
       _sessionOnly ||
       _offTimeline.contains(key) ||
@@ -1100,7 +1066,7 @@ extension CanvasSession on CanvasController {
   }
 
   /// _clipNoteOn and _clipNoteOff write a key played on [e] into the slot
-  /// being recorded, where it is [e]'s channel's.
+  /// being recorded on [e]'s channel.
   void _clipNoteOn(AudioElement e, int key, int velocity) {
     var rec = _clipRecord;
     if (rec == null ||
@@ -1175,7 +1141,7 @@ extension CanvasSession on CanvasController {
   }
 
   /// newMidiClip fills slot [row] of a MIDI channel with an empty clip of
-  /// [bars] -- or with the channel's part, with [fromPart].
+  /// [bars], or with the channel's part ([fromPart]).
   void newMidiClip(String channel, int row,
       {double bars = 1, bool fromPart = false}) {
     var e = _instrumentOf(channel);
@@ -1212,11 +1178,10 @@ extension CanvasSession on CanvasController {
         ));
   }
 
-  /// makeSessionClip puts a clip in the empty slot [row] of [channel], as a
-  /// double-click there does (Ken, 2026-11-08, as the motion slots): on a
-  /// MIDI channel an empty one to draw notes into, on an audio channel one
-  /// of the channel's sound -- its first; a slot's menu has the rest. It is
-  /// picked. False where there is no sound to make one of.
+  /// makeSessionClip puts a clip in empty slot [row] of [channel], as a
+  /// double-click there does: on a MIDI channel an empty one to draw notes
+  /// into, on an audio channel one of its first sound (a slot's menu has
+  /// the rest). It is picked. False where there is no sound to make one of.
   bool makeSessionClip(String channel, int row) {
     if (session.at(channel, row) != null) return false;
     if (instrumentChannel(channel)) {
@@ -1230,8 +1195,7 @@ extension CanvasSession on CanvasController {
     return true;
   }
 
-  /// emptySlotOf is the first empty slot of [channel], or null when every
-  /// one is full.
+  /// emptySlotOf is [channel]'s first empty slot, or null if all are full.
   int? emptySlotOf(String channel) {
     for (var row = 0; row < session.rows; row++) {
       if (session.at(channel, row) == null) return row;
@@ -1240,9 +1204,8 @@ extension CanvasSession on CanvasController {
   }
 
   /// partToSlot copies the piano roll's part into the first empty slot of
-  /// its channel and opens it there, in the clip editor: launched from its
-  /// slot, with the launch settings a part, playing with the timeline, has
-  /// none of.
+  /// its channel and opens it in the clip editor, launched from its slot
+  /// with the launch settings a timeline part lacks.
   void partToSlot() {
     var t = pianoRoll;
     if (t == null || t.row != null) return;
@@ -1363,8 +1326,8 @@ extension CanvasSession on CanvasController {
   /// instrumentOf is [channel]'s instrument, for a MIDI channel, or null.
   AudioElement? instrumentOf(String channel) => _instrumentOf(channel);
 
-  /// setChannelPart changes the part of MIDI channel [channel]'s instrument
-  /// -- its input, its Monitor, its MIDI effects -- by [change].
+  /// setChannelPart changes MIDI channel [channel]'s part (input, Monitor,
+  /// MIDI effects) by [change].
   void setChannelPart(
       String channel, InstrumentPart Function(InstrumentPart part) change,
       {bool transient = false}) {
@@ -1382,11 +1345,10 @@ extension CanvasSession on CanvasController {
       ];
 
   /// _instrumentOf is [channel]'s instrument, for a MIDI channel: in the
-  /// scene, or on the master -- where a game keeps the channels every scene
-  /// shares, its music and its effects. The master's even on a scene that
-  /// does not draw it (CanvasScene.masterOff, a title with no HUD): a
-  /// slot's channel is the document's. Ember Vale's music, all of it on
-  /// the master, was never heard: its MIDI slots found nothing to play them.
+  /// scene, or on the master, where a game keeps the channels every scene
+  /// shares. The master's even on a scene that does not draw it
+  /// (CanvasScene.masterOff): a slot's channel is the document's, and its
+  /// MIDI slots must find their instrument there.
   AudioElement? _instrumentOf(String channel) {
     for (var e in [
       ..._document.elements,
@@ -1441,9 +1403,8 @@ extension CanvasSession on CanvasController {
     }
   }
 
-  /// placeSessionClip puts slot [row] of [channel] onto its lane, or
-  /// [onto]'s (another channel of its kind), at [frame], as it would be had
-  /// it been launched there with Record on: once through, its length long.
+  /// placeSessionClip puts slot [row] of [channel] onto its lane, or onto
+  /// [onto]'s (same kind), at [frame]: once through, as Record would.
   void placeSessionClip(String channel, int row, int frame, {String? onto}) {
     var clip = session.at(channel, row);
     if (clip == null) return;

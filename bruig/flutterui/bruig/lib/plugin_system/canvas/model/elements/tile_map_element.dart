@@ -3,16 +3,14 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// tile_map_element.dart is the Tile map element: a scene painted from tile
-// sets (sheets sliced by a grid) onto a grid of cells, as Godot's
-// TileMapLayer and Tiled do. Each layer is a sparse map of painted cells. The
-// element's box is a window onto the map: made bigger it shows more of it,
-// not bigger tiles.
+// tile_map_element.dart is the Tile map element: tile sets (sheets sliced
+// by a grid) painted onto a grid of cells, as in Godot's TileMapLayer and
+// Tiled. Each layer is a sparse map of cells. The box is a window onto the
+// map: made bigger it shows more, not bigger tiles.
 
-/// TileRef is a tile as painted in a cell, packed in one int: the set (8
-/// bits), its index in the set (20 bits), and the three flags Tiled and
-/// Godot turn a tile with -- flip across, flip down, swap axes -- which make
-/// its eight orientations.
+/// TileRef is a painted tile packed in one int: the set (8 bits), its
+/// index (20 bits), and Tiled's three flags (flip across, flip down, swap
+/// axes) that make its eight orientations.
 extension type const TileRef(int word) {
   static const int _flipX = 1 << 28, _flipY = 1 << 29, _swap = 1 << 30;
 
@@ -32,7 +30,7 @@ extension type const TileRef(int word) {
   /// turned is whether it is drawn other than as it is on its sheet.
   bool get turned => word & (_flipX | _flipY | _swap) != 0;
 
-  /// plain is the tile, as it is on its sheet.
+  /// plain is the tile as it is on its sheet.
   TileRef get plain => TileRef(word & 0x0FFFFFFF);
 
   TileRef flippedX() => TileRef(word ^ _flipX);
@@ -45,8 +43,7 @@ extension type const TileRef(int word) {
     return swap ? (0, fx, fy, 0) : (fx, 0, 0, fy);
   }
 
-  /// turnedRight is it turned a quarter round clockwise, flipped or not as
-  /// it was.
+  /// turnedRight is it turned a quarter clockwise, flipped as it was.
   TileRef turnedRight() {
     var (a, b, c, d) = matrix;
     // A quarter round, down the page being y: (x, y) to (-y, x).
@@ -75,8 +72,8 @@ class TileSource {
   /// animations is the tiles that play (water, a torch), by tile index.
   final Map<int, TileAnimation> animations;
 
-  /// terrains is its terrain sets: tiles told apart by what they are at
-  /// their corners and sides, so a terrain painted finds its own edges.
+  /// terrains is its terrain sets: tiles told apart by their corners and
+  /// sides, so a painted terrain finds its own edges.
   final List<TerrainSet> terrains;
 
   const TileSource({
@@ -92,8 +89,8 @@ class TileSource {
     this.terrains = const [],
   });
 
-  /// shownAt is the tile [index] shows [seconds] in: itself, or its
-  /// animation's current frame.
+  /// shownAt is what tile [index] shows at [seconds]: itself, or its
+  /// animation's frame.
   int shownAt(int index, double seconds) {
     var a = animations[index];
     if (a == null || a.frames.length < 2) return index;
@@ -104,7 +101,7 @@ class TileSource {
   int get rows => math.max(1, (sheetH - 2 * margin + spacing) ~/ math.max(1, tileH + spacing));
   int get count => columns * rows;
 
-  /// tileRect is where tile [i] is on the sheet, in its pixels.
+  /// tileRect is where tile [i] is on the sheet, in sheet pixels.
   Rect tileRect(int i) {
     var col = i % columns, row = i ~/ columns;
     return Rect.fromLTWH((margin + col * (tileW + spacing)).toDouble(),
@@ -186,9 +183,8 @@ class TileSource {
   }
 }
 
-/// TerrainMode is what a terrain set's tiles are matched by, as in Godot:
-/// their corners (ponds, patches), their sides (a path, a fence), or both (a
-/// 47-tile set that joins every way).
+/// TerrainMode is what a terrain set's tiles match by, as in Godot:
+/// corners (ponds), sides (a path, a fence), or both (a 47-tile set).
 enum TerrainMode {
   corners("Corners"),
   sides("Sides"),
@@ -203,15 +199,14 @@ enum TerrainMode {
 const int tagCentre = 0, tagTop = 1, tagTopRight = 2, tagRight = 3, tagBottomRight = 4;
 const int tagBottom = 5, tagBottomLeft = 6, tagLeft = 7, tagTopLeft = 8;
 
-/// tagCorners and tagSides are the corners and the sides, clockwise from
-/// the top; tagStep is the (column, row) step to the neighbour each place
-/// faces.
+/// tagCorners and tagSides are clockwise from the top; tagStep is the
+/// (column, row) step to the neighbour each place faces.
 const List<int> tagCorners = [tagTopRight, tagBottomRight, tagBottomLeft, tagTopLeft];
 const List<int> tagSides = [tagTop, tagRight, tagBottom, tagLeft];
 const List<(int, int)> tagStep = [(0, 0), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
 
-/// Terrain is one terrain of a set (grass, water, a path), with its colour
-/// and an optional sample tile that is all of it.
+/// Terrain is one terrain of a set (grass, water, a path), with an optional
+/// sample tile that is all of it.
 class Terrain {
   final String name;
   final Color color;
@@ -228,9 +223,8 @@ class Terrain {
   }
 }
 
-/// TerrainSet is terrains whose tiles join one another. [tags] holds, by
-/// tile index, nine terrain indices in tag order (see tagCentre); -1 is
-/// none.
+/// TerrainSet is terrains whose tiles join. [tags] holds, by tile index,
+/// nine terrain indices in tag order (see tagCentre); -1 is none.
 class TerrainSet {
   final String name;
   final TerrainMode mode;
@@ -249,8 +243,8 @@ class TerrainSet {
       TerrainSet(name ?? this.name,
           mode: mode ?? this.mode, terrains: terrains ?? this.terrains, tags: tags ?? this.tags);
 
-  /// tagged is this set with [tile]'s [place] set to terrain [t]; a tile
-  /// left with every place -1 is untagged.
+  /// tagged is this set with [tile]'s [place] set to terrain [t]; a tile with
+  /// every place -1 is untagged.
   TerrainSet tagged(int tile, int place, int t) {
     var tag = [...(tags[tile] ?? List.filled(9, -1))];
     tag[place] = t;
@@ -311,9 +305,9 @@ class TileAnimation {
   }
 }
 
-/// TileObject is a stamp stood anywhere on an objects layer, not in a cell
-/// (a tree, a lamp post), with the middle of its bottom at ([x], [y]) in
-/// cells from the map's top left.
+/// TileObject is a stamp stood anywhere on an objects layer (a tree, a
+/// lamp post), the middle of its bottom at ([x], [y]) in cells from the
+/// map's top left.
 class TileObject {
   final double x, y;
   final TileStamp stamp;
@@ -321,7 +315,6 @@ class TileObject {
 
   TileObject movedTo(double x, double y) => TileObject(x, y, stamp);
 
-  /// toJson is its place, then its stamp, flat.
   List<num> toJson() => [x, y, ...stamp.toJson()];
 
   static TileObject? fromJson(Object? json) {
@@ -332,9 +325,8 @@ class TileObject {
   }
 }
 
-/// TileStamp is tiles laid together (a doorway, a stretch of fence), each at
-/// its (column, row) from the stamp's top left; or, when painting at random,
-/// the tiles picked from.
+/// TileStamp is tiles laid together (a doorway), each at its (column, row)
+/// from the stamp's top left; or, painting at random, the tiles picked from.
 class TileStamp {
   final List<(int, int, TileRef)> cells;
   const TileStamp(this.cells);
@@ -352,8 +344,8 @@ class TileStamp {
     return null;
   }
 
-  /// of is the painted [cells] (by [cellKey]) in columns [c0]..[c1] and rows
-  /// [r0]..[r1] as a stamp, trimmed to the painted ones; null with none.
+  /// of is [cells] (by [cellKey]) in columns [c0]..[c1], rows [r0]..[r1] as
+  /// a stamp trimmed to the painted ones, or null with none.
   static TileStamp? of(Map<int, int> cells, int c0, int r0, int c1, int r1) {
     var found = <(int, int, TileRef)>[];
     for (var r = r0; r <= r1; r++) {
@@ -376,8 +368,7 @@ class TileStamp {
     return TileStamp([for (var (c, r, t) in cells) (c, h - 1 - r, t.flippedY())]);
   }
 
-  /// turnedRight is the stamp turned a quarter round clockwise, each tile
-  /// in it turned with it.
+  /// turnedRight is the stamp and each tile turned a quarter clockwise.
   TileStamp turnedRight() {
     var h = height;
     return TileStamp([for (var (c, r, t) in cells) (h - 1 - r, c, t.turnedRight())]);
@@ -411,8 +402,8 @@ class TileStamp {
   }
 }
 
-/// TileRepeat is which ways a layer's painted cells go on for ever: a sky,
-/// a far range of hills.
+/// TileRepeat is which ways a layer's cells go on for ever (a sky, far
+/// hills).
 enum TileRepeat {
   none("No"),
   across("Across"),
@@ -426,17 +417,15 @@ enum TileRepeat {
   bool get y => this == down || this == both;
 }
 
-/// TileLayer is one layer of a map: its cells painted, and how it is laid
-/// over the ones under it.
+/// TileLayer is one layer of a map and how it lies over those below.
 class TileLayer {
   final String name;
 
-  /// cells is the cells painted, by [cellKey], each its tile's [TileRef]
-  /// word.
+  /// cells is the painted cells by [cellKey], each a [TileRef] word.
   final Map<int, int> cells;
 
-  /// isObjects is whether it is an objects layer: [objects] stood anywhere,
-  /// and [figures] drawn among them, depth-sorted by where their feet are.
+  /// isObjects is whether it holds [objects] stood anywhere, with [figures]
+  /// among them, depth-sorted by where their feet are.
   final bool isObjects;
   final List<TileObject> objects;
 
@@ -451,13 +440,13 @@ class TileLayer {
   /// map, less for far off (0 is the sky), more for nearer than the map.
   final double parallax;
 
-  /// repeat is which ways its cells go on for ever, and drift how far it
+  /// repeat is which ways its cells go on for ever; drift is how far it
   /// moves by itself, in cells a second.
   final TileRepeat repeat;
   final Offset drift;
 
-  /// solid is whether, in a game, its tiles are ground: a player stands on
-  /// them and is stopped by them, as by a Solid element. See canvas_game.
+  /// solid is whether its tiles are ground in a game, as a Solid element
+  /// is. See canvas_game.
   final bool solid;
 
   const TileLayer({
@@ -584,27 +573,26 @@ class TileLayer {
   }
 }
 
-/// TileMapElement is a map of tiles on the canvas.
 class TileMapElement extends CanvasElement {
   final List<TileSource> sources;
 
   /// layers is its layers, the first at the bottom.
   final List<TileLayer> layers;
 
-  /// cell is how wide a cell is on the canvas; its height follows the first
-  /// set's tile shape. A larger tile stands up out of its cell from the
-  /// cell's bottom, as in Godot.
+  /// cell is a cell's width on the canvas; its height follows the first
+  /// set's tile shape. A larger tile stands up from its cell's bottom, as in
+  /// Godot.
   final double cell;
 
   /// pixelArt draws the tiles' pixels square, not smoothed.
   final bool pixelArt;
 
-  /// patterns is the stamps kept with the map, to paint with again.
+  /// patterns is the stamps kept with the map to paint with again.
   final List<TileStamp> patterns;
 
-  /// light is a colour laid over the whole map and its figures, as Godot's
-  /// CanvasModulate (dusk, a cave), and lightTo the colour it reaches by the
-  /// end of the scene. Null is unlit.
+  /// light is a colour laid over the map and its figures, like Godot's
+  /// CanvasModulate, and lightTo the colour it reaches by the scene's end.
+  /// Null is unlit.
   final Color? light;
   final Color? lightTo;
 
@@ -619,7 +607,6 @@ class TileMapElement extends CanvasElement {
     this.lightTo,
   });
 
-  /// lightAt is its light [t] of the way through the scene.
   Color? lightAt(double t) {
     var from = light;
     if (from == null) return null;
@@ -646,30 +633,27 @@ class TileMapElement extends CanvasElement {
   /// scale is how many canvas pixels one tile pixel is drawn as.
   double get scale => sources.isEmpty ? 1 : cell / sources.first.tileW;
 
-  /// cellSize is a cell's size on the canvas.
   Size get cellSize => sources.isEmpty ? Size(cell, cell) : Size(cell, sources.first.tileH * scale);
 
-  /// cellAt is the cell under [p], a point on the canvas.
+  /// cellAt is the cell under canvas point [p].
   (int, int) cellAt(Offset p) {
     var s = cellSize, b = bounds;
     return (((p.dx - b.left) / s.width).floor(), ((p.dy - b.top) / s.height).floor());
   }
 
-  /// cellRect is cell ([col], [row]) on the canvas.
   Rect cellRect(int col, int row) {
     var s = cellSize, b = bounds;
     return Rect.fromLTWH(b.left + col * s.width, b.top + row * s.height, s.width, s.height);
   }
 
-  /// window is the cells the box shows, as the first and last column and
-  /// row: those any part of is inside it.
+  /// window is the first and last column and row any part of which the box
+  /// shows.
   (int, int, int, int) get window {
     var s = cellSize, b = bounds;
     return (0, 0, math.max(0, (b.width / s.width).ceil() - 1), math.max(0, (b.height / s.height).ceil() - 1));
   }
 
-  /// extent is the cells painted on any layer, first and last column and
-  /// row, or null with none.
+  /// extent is the cells painted on any layer, or null with none.
   (int, int, int, int)? get extent {
     int? c0, r0, c1, r1;
     for (var l in layers) {
@@ -684,8 +668,7 @@ class TileMapElement extends CanvasElement {
     return c0 == null ? null : (c0, r0!, c1!, r1!);
   }
 
-  /// tileCount is how many cells are painted and things stood, on every
-  /// layer.
+  /// tileCount is the cells painted and things stood, on every layer.
   int get tileCount => layers.fold(0, (n, l) => n + l.cells.length + l.objects.length);
 
   /// figureIds is the Sprite elements stood on its objects layers.
@@ -694,7 +677,6 @@ class TileMapElement extends CanvasElement {
           if (l.visible) ...l.figures,
       };
 
-  /// objectRect is where [o] stands on the canvas.
   Rect objectRect(TileObject o) {
     var cs = cellSize, b = bounds;
     var w = o.stamp.width * cs.width, h = o.stamp.height * cs.height;
@@ -730,8 +712,8 @@ class TileMapElement extends CanvasElement {
   TileMapElement withLayer(int i, TileLayer layer) =>
       copyWith(layers: [for (var (k, l) in layers.indexed) k == i ? layer : l]);
 
-  /// withoutSource is this map with tile set [s] and every tile from it
-  /// removed; later sets are renumbered down one.
+  /// withoutSource is this map without tile set [s] or its tiles; later sets
+  /// are renumbered down one.
   TileMapElement withoutSource(int s) {
     TileRef moved(TileRef t) => t.source > s ? TileRef(t.word - (1 << 20)) : t;
     return copyWith(

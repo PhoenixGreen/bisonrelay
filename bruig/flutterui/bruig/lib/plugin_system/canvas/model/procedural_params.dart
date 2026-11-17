@@ -1,15 +1,11 @@
-// procedural_params.dart is the settings a background style has of its own,
-// beyond the ones every style shares. Each style lists its own (see
-// procedural_style_params.dart) and the settings panel draws whatever is
-// listed.
-//
-// A table rather than a class per style (only the rings and the metal have
-// one), so the panel, saving and looks handle every style the same way.
+// procedural_params.dart is the settings a background style has beyond the
+// shared ones. Each style lists its own (procedural_style_params.dart) and
+// the panel draws whatever is listed. A table, not a class per style, so
+// the panel, saving and looks treat every style the same way.
 
-/// StyleParam is one setting a style has of its own.
-///
-/// Every value is a number, so looks and documents carry them as one map: a
-/// choice is the index chosen, a switch is nought or one.
+/// StyleParam is one setting a style has of its own. Every value is a
+/// number, so looks and documents carry them as one map: a choice is its
+/// index, a switch nought or one.
 class StyleParam {
   /// id is what it is saved under. Styles with the same setting share an id,
   /// so the value survives switching between them.
@@ -20,22 +16,20 @@ class StyleParam {
   final double initial;
   final int decimals;
 
-  /// choices makes it a dropdown of these, its value the index of one.
+  /// choices makes it a dropdown, its value the chosen index.
   final List<String> choices;
 
-  /// toggle makes it a switch.
   final bool toggle;
 
-  /// group is the heading it is shown under, or null for the style's own
-  /// first group.
+  /// group is the heading it is shown under, or null for the style's first.
   final String? group;
 
-  /// onlyWhen hides it unless each setting named is one of the values
-  /// listed for it: a cube's depth means nothing when the blocks are flat.
+  /// onlyWhen hides it unless each named setting has one of the values
+  /// listed: a cube's depth means nothing when the blocks are flat.
   final Map<String, List<int>> onlyWhen;
 
-  /// sets is, for a choice, the other settings each answer puts in place
-  /// when chosen, as a starting point.
+  /// sets is, for a choice, the other settings each answer puts in place as
+  /// a starting point.
   final Map<int, Map<String, double>> sets;
 
   const StyleParam(
@@ -81,7 +75,7 @@ class StyleParam {
 
   bool get isChoice => choices.isNotEmpty;
 
-  /// clamped is [v] held inside what this setting can be.
+  /// clamped is [v] held inside this setting's range.
   double clamped(double v) {
     if (isChoice) return v.round().clamp(0, choices.length - 1).toDouble();
     if (toggle) return v >= 0.5 ? 1 : 0;

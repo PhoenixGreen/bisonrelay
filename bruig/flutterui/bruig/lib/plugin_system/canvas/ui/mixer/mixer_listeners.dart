@@ -1,9 +1,8 @@
 part of 'mixer_plugins.dart';
 
-// mixer_listeners.dart is the devices that only listen: a tuner, a spectrum: part of mixer_plugins.dart, split from it to keep
-// that file readable (Ken, 2026-11-12). Its imports are the library's.
+// mixer_listeners.dart is the devices that only listen: a tuner, a
+// spectrum. It is part of mixer_plugins.dart; its imports are the library's.
 
-// ---- The devices that only listen: a tuner, a spectrum
 
 /// ListenerDevice is a Tuner or a Spectrum on strip [owner]: what it hears,
 /// drawn a few times a second, changing nothing.
@@ -36,7 +35,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
   final List<Float32List> _history = [];
   static const int _historyLength = 240;
 
-  // What it shows is read in build: a tick only asks for it again -- and a
+  // What it shows is read in build: a tick only asks for it again, and a
   // spectrogram keeps what it heard.
   @override
   void tick() {
@@ -97,8 +96,8 @@ class _ListenerDeviceState extends State<ListenerDevice>
       summary = note == "–"
           ? "Listening"
           : "$note ${cents >= 0 ? "+" : "−"}${cents.abs().round()} cents";
-      // The note as big as the screen has room for, its needle and its
-      // reading under it while there is room for them.
+      // The note as big as the screen allows, its needle and reading under
+      // it while there is room.
       body = Container(
         color: studio.display,
         padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
@@ -288,7 +287,6 @@ class _ListenerDeviceState extends State<ListenerDevice>
       onSavePreset: () =>
           saveDevicePreset(context, device.kind.label, devices: [device]),
       skin: skin,
-      // Its screen is all of it, and its few settings: it only listens.
       display: body,
       controls: (tier) => [
         for (var p in device.kind.params)
@@ -331,8 +329,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
       },
       height: widget.height,
       actions: [
-        // A Spectrum shown as it is now, or over time; a Loudness started
-        // again.
+        // A Spectrum shown now or over time; a Loudness started again.
         if (device.kind == DeviceKind.spectrum)
           IconButton(
             key: ValueKey("spectrumView-${widget.index}"),
@@ -639,18 +636,17 @@ class _SpectrumPainter extends CustomPainter {
 
 /// DeviceLevels is a device's screen: its own picture (see
 /// device_screens.dart), moving with the sound, or where it has none how
-/// loud the sound is going into it and coming out of it over the last few
-/// seconds. What it changes the level by is read between the devices of
-/// [channel]'s strip -- see CanvasController.deviceLevels -- and is not
-/// shown for a strip that is not a channel's (null).
+/// loud the sound goes in and comes out over the last few seconds. The
+/// levels are read between the devices of [channel]'s strip (see
+/// CanvasController.deviceLevels); none is shown where [channel] is null.
 class DeviceLevels extends StatefulWidget {
   final CanvasController controller;
   final String? channel;
   final int index;
 
   /// device is what it draws: see hasScreen. [deviceId] is its id on the
-  /// strip, by which its display is switched on (see
-  /// CanvasController.analysing); none, it is a picture only.
+  /// strip, which switches its display on (see CanvasController.analysing);
+  /// without it, it is a picture only.
   final MixDevice? device;
   final String? deviceId;
   final Color accent;
@@ -678,8 +674,8 @@ class _DeviceLevelsState extends State<DeviceLevels>
   final List<(double, double)> _history = [];
   static const int _length = 120;
 
-  /// _scope is what the engine last kept of the sound through it, and
-  /// _stamp counts the readings, for the painter.
+  /// _scope is what the engine last kept of the sound through it; _stamp
+  /// counts the readings, for the painter.
   ScopeReading? _scope;
   int _stamp = 0;
 
@@ -687,14 +683,14 @@ class _DeviceLevelsState extends State<DeviceLevels>
   CanvasController get meteredBy => widget.controller;
 
   /// _moving is a modulator's screen: what it moves knobs by, drawn as it
-  /// goes -- there is no sound through it to show.
+  /// goes, as no sound passes through it.
   bool get _moving => widget.device?.kind.modulates ?? false;
 
   /// _t is how long it has been moving, for a modulator's screen.
   double _t = 0;
 
-  /// _on is whether its display shows the real sound (Ken: off until
-  /// switched on, as it costs).
+  /// _on is whether its display shows the real sound: off until switched
+  /// on, as it costs.
   bool get _on {
     if (_moving) return false;
     var channel = widget.channel, id = widget.deviceId;
@@ -904,8 +900,8 @@ class _LevelsPainter extends CustomPainter {
       old.accent != accent;
 }
 
-/// VoiceStartCard is the way into a channel's Speech where it has none --
-/// "Speak a script" -- or, with [sing], to its Vocaliser: "Sing it", a sung
+/// VoiceStartCard is the way into a channel's Speech where it has none
+/// ("Speak a script") or, with [sing], to its Vocaliser: "Sing it", a sung
 /// copy of the speech made as a new clip.
 class VoiceStartCard extends StatelessWidget {
   final CanvasController controller;

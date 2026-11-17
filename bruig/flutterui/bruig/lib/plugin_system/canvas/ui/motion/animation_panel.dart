@@ -33,16 +33,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
-// animation_panel.dart is the Animation panel: the picked clip, laid out as
-// the effects are, a row of devices side by side, each folding to its
-// title. Clip; Motion, the ready-made motions; Keys, as wide as the room
-// allows and dragged wider; Inside, what only this kind of element does;
-// Timing, where it is placed and pinned; Place; and Launch.
-//
-// Every change goes through motion_editing.dart, so it is one undo step: a
-// slider dragged is one step for the whole drag.
+// animation_panel.dart is the Animation panel: the picked clip as a row of
+// devices, each folding to its title (Clip, Motion, Keys, Inside, Timing,
+// Place, Launch). Every change goes through motion_editing.dart, so it is
+// one undo step: a slider dragged is one step for the whole drag.
 
-/// AnimationPanel is the panel, [height] tall.
 class AnimationPanel extends StatefulWidget {
   final CanvasController controller;
   final double height;
@@ -56,10 +51,9 @@ class AnimationPanel extends StatefulWidget {
       this.onResize,
       super.key});
 
-  /// cardsLeast is the least room the cards keep under the Keys strip: a
-  /// card's header and a row of its settings. A panel too short for both
-  /// shows the strip alone (Ken, 2026-11-12: a short panel squeezed the
-  /// cards below their headers).
+  /// cardsLeast is the least room the cards keep under the Keys strip: a card's
+  /// header and a row of its settings. A panel too short for both shows the
+  /// strip alone, rather than squeezing the cards below their headers.
   static const cardsLeast = 150.0;
 
   @override
@@ -69,16 +63,14 @@ class AnimationPanel extends StatefulWidget {
 class _AnimationPanelState extends State<AnimationPanel> {
   CanvasController get controller => widget.controller;
 
-  /// _folded are the devices folded to their titles, by id. For the session.
+  /// _folded are the devices folded to their titles, by id, for the session.
   static final Set<String> _folded = {};
 
-  /// _focusKeys find a card the settings panel asks to be shown: see
-  /// CanvasController.showInChain.
+  /// _focusKeys find a card the settings panel asks for (showInChain).
   final Map<String, GlobalKey> _focusKeys = {};
   GlobalKey _focusKey(String id) => _focusKeys.putIfAbsent(id, GlobalKey.new);
 
-  /// _showFocus opens the card the settings panel asked for, and brings it
-  /// into view once it is drawn.
+  /// _showFocus opens the card asked for, brought into view once drawn.
   void _showFocus() {
     var focus = controller.chainFocus;
     if (focus == null) return;
@@ -104,8 +96,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   double get _room => widget.height - _strip;
 
-  /// _withKeys is [cards] under the Keys strip of [e], where it is open
-  /// (Ken, 2026-11-12: "opens above" the cards, as Curves opens instead).
+  /// _withKeys is [cards] under the Keys strip of [e], where it is open.
   Widget _withKeys(CanvasElement e, Widget cards) {
     if (!controller.keysShown) return cards;
     var strip = KeysStrip(
@@ -132,8 +123,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
               key: const ValueKey("keysGrip"),
               behavior: HitTestBehavior.opaque,
               supportedDevices: dragPointers,
-              // Its least height, unless the Chain is too short for it to
-              // leave the cards theirs (Ken's log: a clamp from 100 to less).
+              // Its least height, unless the Chain leaves the cards no room.
               onVerticalDragUpdate: (d) => controller.keysHeight =
                   (_strip + d.delta.dy)
                       .clamp(math.min(KeysStrip.leastHeight, most), most),
@@ -146,8 +136,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     ]);
   }
 
-  /// _stripFor sets [_strip] for [e]: as tall as its rows, leaving the
-  /// cards room.
+  /// _stripFor sets [_strip] for [e]: as tall as its rows, leaving cards room.
   void _stripFor(CanvasElement? e) {
     if (e == null || !controller.keysShown) {
       _strip = 0;
@@ -185,8 +174,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     setState(() {});
   }
 
-  /// _picked is the clip picked -- or, with none, the selected element's
-  /// first: in a slot, else on the timeline.
+  /// _picked is the clip picked, else the selected element's first.
   (CanvasElement, MotionClip)? get _picked {
     var id = controller.pickedMotion;
     if (id == null) {
@@ -206,8 +194,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     return null;
   }
 
-  /// _pickedId is the id of the clip shown: picked, or the selected
-  /// element's first.
+  /// _pickedId is the shown clip's id: picked, or the selected element's first.
   String? get _pickedId => _picked?.$2.id;
 
   void _edit(CanvasElement e, MotionClip Function(MotionClip) change,
@@ -220,9 +207,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
     }
   }
 
-  /// _device is one section of the panel: drawn at its text's own size
-  /// whatever the panel's height, scrolling where it is taller than the
-  /// room. [help], when there is any, is behind a "?" in its header.
+  /// _device is one section of the panel, drawn at its text's own size
+  /// whatever the panel's height, scrolling where taller than the room.
+  /// [help], when there is any, is behind a "?" in its header.
   Widget _device(
       String id, String title, double width, Widget body, ColorScheme colors,
       {List<Widget> actions = const [], String? help}) {
@@ -253,7 +240,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
     _showFocus();
     var resize = widget.onResize;
     return Stack(children: [
-      // Every card in the settings panel's style (Ken, 2026-11-12).
       ChainPanelStyle(child: _body(context)),
       // Its top edge, dragged: taller or shorter, as the effects are.
       if (resize != null)
@@ -276,9 +262,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
   }
 
   /// _sceneBody is a scene picked from the timeline, as a chain like every
-  /// other (Ken, 2026-11-08: the prototype's scene design): its own clips
-  /// -- a Camera's, keying its zoom and where it looks -- how it gives way
-  /// to the next, its camera's slow move, and its Output.
+  /// other: its own clips (a Camera's, keying its zoom and where it looks),
+  /// how it gives way to the next, its camera's slow move, and its Output.
   Widget _sceneBody(BuildContext context, int index) {
     var studio = MixerLook.of(context).studio;
     var master = controller.document.editingMaster;
@@ -375,9 +360,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var colors = ThemeNotifier.of(context).colors;
     var picked = _picked;
     var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
-    // An element with no clips still has a chain: its moves and its looks.
-    // The Keyframes card's Curves, across the whole panel (Ken,
-    // 2026-11-09), while what it edits is picked.
+    // An element with no clips still has a chain: its moves and looks. The
+    // Keyframes card's Curves fill the panel while what they edit is picked.
     if (controller.trackCurvesShown &&
         controller.keyframeTarget?.points == false) {
       return TrackCurves(
@@ -406,8 +390,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     // chain with its tabs, to set it up (or, the loop, its style).
     if (controller.ownTabOpen(e)) return _chainOnly(context, e);
     _stripFor(e);
-    // Its Curves, across the whole panel (the Chain's Curves tab), as the
-    // chain prototype's curve editor.
+    // Its Curves, across the whole panel (the Chain's Curves tab).
     if (controller.motionCurvesShown && !c.isSound) {
       return SizedBox(
         key: const ValueKey("motionCurves"),
@@ -446,28 +429,22 @@ class _AnimationPanelState extends State<AnimationPanel> {
             scrollCacheExtent: const ScrollCacheExtent.pixels(100000),
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             children: [
-              // Its keyframes are the Keys strip's (Ken, 2026-11-12): the
-              // Keyframes card is gone.
-              // The element and its copies first: what the rest edits (Ken,
-              // 2026-11-08).
+              // Keyframes are the Keys strip's. The element and copies first.
 
               _instancesCard(e),
-              // Source: what it plays, when, and what starts it -- as the chain
-              // prototype has it. Its keys are the Curves tab's.
               _zone("Source", "Its clips: what it plays, when and where"),
               _clipsCard(e, c),
               if (PartsCard.shows(e)) _partsCard(e),
-              // What follows is the picked clip's -- its style, timing, launch,
-              // place and what it plays -- marked as one group in its colour
-              // (Ken, 2026-11-12: which preset they belong to was not clear).
+              // What follows is the picked clip's (its style, timing,
+              // launch, place and what it plays), marked as one group in
+              // its colour so it is clear which preset they belong to.
               // Independent picked: what plays on its own, not the preset's.
               if (!_groupHidden(e))
                 _zone(_groupName(e, c), "This clip's settings",
                     colour: _groupColour(e)),
               if (!_groupHidden(e))
                 ...<Widget>[
-                  // The rest of its own style, beside the clip playing it: what the
-                  // sidebar's Animation section had (Ken, 2026-11-08).
+                  // The rest of its own style, beside the clip playing it.
                   if (OwnStyleCard.shows(e, c))
                     OwnStyleCard(
                         key: const ValueKey("ownStyleCard"),
@@ -488,8 +465,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
                       folded: shut("timing"),
                       onFold: fold("timing")),
                   // An own arrival's or leaving's launch, place and what it
-                  // plays are seldom changed: behind More until asked for
-                  // (Ken, 2026-11-12). A clip of its own making shows them.
+                  // plays are seldom changed: behind More until asked for.
+                  // A clip of its own making shows them.
                   if (_ownGroup(e) && !_moreOpen.contains(e.id))
                     _moreCard(e, h)
                   else ...[
@@ -531,8 +508,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
   bool _groupHidden(CanvasElement e) =>
       controller.chainPhase == MotionPhase.free && _ownGroup(e);
 
-  /// _moreOpen are the elements whose own preset shows its Launch, Place
-  /// and Inside it: for the session.
+  /// _moreOpen are the elements showing Launch, Place and Inside, a session.
   static final Set<String> _moreOpen = {};
 
   /// _ownGroup is whether the picked clip is [e]'s own arrival or leaving.
@@ -541,8 +517,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
     return k == MotionKind.arrive || k == MotionKind.leave;
   }
 
-  /// _moreCard opens an own preset's Launch, Place and Inside it, or --
-  /// open -- shuts them again: a slim card in its colour.
+  /// _moreCard opens an own preset's Launch, Place and Inside, or shuts
+  /// them again: a slim card in its colour.
   Widget _moreCard(CanvasElement e, double h) {
     var studio = MixerLook.of(context).studio;
     var open = _moreOpen.contains(e.id);
@@ -570,7 +546,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
     );
   }
 
-  /// _outputCard is where [e]'s chain ends (see MotionOutputCard).
   Widget _outputCard(CanvasElement e) => MotionOutputCard(
       key: const ValueKey("motionOutputCard"),
       controller: controller,
@@ -581,8 +556,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
           ? _folded.remove("output:${e.id}")
           : _folded.add("output:${e.id}")));
 
-  /// _partsCard is [e]'s layers or shapes, each in its own time: see
-  /// PartsCard.
+  /// _partsCard is [e]'s layers or shapes, each in its own time: see PartsCard.
   Widget _partsCard(CanvasElement e) => PartsCard(
       key: const ValueKey("partsCard"),
       controller: controller,
@@ -593,8 +567,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
           : _folded.add("parts:${e.id}")),
       height: _room - 40);
 
-  /// _instancesCard is [e]'s copies, the chain's first card: see
-  /// InstancesCard.
+  /// _instancesCard is [e]'s copies, the chain's first card: see InstancesCard.
   Widget _instancesCard(CanvasElement e) => InstancesCard(
       key: const ValueKey("instancesCard"),
       controller: controller,
@@ -605,8 +578,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
           : _folded.add("instances:${e.id}")),
       height: _room - 40);
 
-  /// _clipsCard is the Source's first card: [e]'s clips, [c] the one
-  /// picked (see MotionClipsCard).
+  /// _clipsCard is the Source's first card: [e]'s clips, [c] the one picked.
   Widget _clipsCard(CanvasElement e, MotionClip? c) => KeyedSubtree(
       key: _focusKey("clips"),
       child: MotionClipsCard(
@@ -620,9 +592,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
               ? _folded.remove("motionClips:${e.id}")
               : _folded.add("motionClips:${e.id}"))));
 
-  /// _chain is [e]'s motion chain after its clips (the Source): its moves,
-  /// a way to add one, its drawing, its looks and a way to add one -- the
-  /// drawing between the two sides, as rule 1 has it.
+  /// _chain is [e]'s motion chain after its clips: its moves and a way to add
+  /// one, its drawing between, then its looks and a way to add one.
   List<Widget> _chain(CanvasElement e) {
     var h = _room - 40;
     var devices = controller.motionDevicesOf(e.id);
@@ -640,7 +611,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
                     ? _folded.remove("mdev:${e.id}:${d.id}")
                     : _folded.add("mdev:${e.id}:${d.id}")),
             height: h));
-    // How fast it goes after its clips, and after each move: and, clicked,
+    // How fast it goes after its clips and after each move, and, clicked,
     // the stage showing it as it is there.
     Widget join(int upto) => MotionJoin(
         key: ValueKey("motionJoinOf-$upto"),
@@ -651,7 +622,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     // Its moves. Its Instances is the chain's first card (see
     // _instancesCard): every copy has all of them, each with its own values.
     var reused = e.base.motion.instances != null;
-    // The Chain's filter: only what plays in one phase (Ken, 2026-11-12).
+    // The Chain's filter: only what plays in one phase.
     var only = controller.chainPhase;
     bool shows(MotionDevice? d) =>
         only == null || (d?.playing(only) ?? only == MotionPhase.free);
@@ -659,17 +630,16 @@ class _AnimationPanelState extends State<AnimationPanel> {
       for (var d in devices)
         if (d.side == MotionDeviceSide.pose) d,
     ];
-    // Each join counts the moves switched on before it, as the chain runs --
-    // the Instances step first of them, reused.
+    // Each join counts the moves switched on before it, as the chain runs,
+    // the Instances step first of them where reused.
     var upto = reused ? 1 : 0;
     var first = upto;
     var row = <Widget>[];
     for (var d in moves) {
       if (shows(d)) row.add(card(d));
-      // Switched off, it passes what it is given, and a modulator moves
-      // knobs, not the element: the join after either would be the one
-      // before it again. A modulator is still counted, as the preview
-      // counts it (MotionPreview.upto).
+      // Off, it passes what it is given, and a modulator moves knobs, not
+      // the element: a join after either would repeat the one before. A
+      // modulator still counts, as in the preview (MotionPreview.upto).
       if (d.on) {
         upto++;
         if (!d.modulates) row.add(join(upto));
@@ -685,14 +655,12 @@ class _AnimationPanelState extends State<AnimationPanel> {
           element: e.id,
           side: MotionDeviceSide.pose,
           height: h),
-      // A camera is never drawn: it frames the page. Looks on it would
-      // change nothing, so none are offered.
+      // A camera is never drawn: it frames the page, so it has no looks.
       if (e is CameraElement)
         _cameraNote(h)
       else ...[
-        // Its Design: the element itself, where it is drawn (Ken,
-        // 2026-11-12) -- and, reused or drawn at another size, how its
-        // copies are drawn.
+        // Its Design: the element itself, where it is drawn, and, reused or
+        // drawn at another size, how its copies are drawn.
         if (shows(controller.designOf(e.id)))
           KeyedSubtree(
             key: _focusKey("design"),
@@ -801,8 +769,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
         null => const Color(0xFF9FB3C8),
       };
 
-  /// _groupName is the picked clip's group's name: "Arrive · Fade in", or
-  /// a clip's own name.
+  /// _groupName is the picked clip's group name ("Arrive · Fade in") or own.
   String _groupName(CanvasElement e, MotionClip c) =>
       switch (controller.ownTabOf(e)) {
         MotionKind.arrive =>
@@ -865,11 +832,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
     );
   }
 
-  /// _playhead is where in [c] it is playing: from its slot, or the
-  /// playhead on the stretch of the timeline picked.
-  /// _scrubber puts the playhead [t] seconds into [c] where it is placed
-  /// on the timeline -- its first time round, for a loop -- or is null for
-  /// a clip that is only in a slot.
+  /// _scrubber puts the playhead [t] seconds into [c] where it is on the
+  /// timeline (its first go, for a loop); null for a clip only in a slot.
   void Function(double)? _scrubber(MotionClip c) {
     var place = controller.pickedPlacement;
     var span = place == null ? null : controller.spanOf(place);
@@ -1000,8 +964,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
                 "are yours.");
   }
 
-  /// _ownWay is whether [e] has an arrival and a way out of its own -- as
-  /// its Animation settings have them -- that a clip can play.
+  /// _ownWay is whether [e] has an arrival and a way out of its own, as its
+  /// Animation settings have them, that a clip can play.
   bool _ownWay(CanvasElement e) =>
       e is TextElement ||
       e is ShapeElement ||
@@ -1015,10 +979,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
       e is LineElement ||
       (e is TextElement && e.curve != null);
 
-  /// _insideDevice is what only this kind of element does in the clip, kept
-  /// as its settings rather than as keys: its own arrival or way out played
-  /// across the clip; a counter counting; a line bowing; text sliding along
-  /// its line.
+  /// _insideDevice is what only this kind of element does in the clip, kept as
+  /// settings rather than keys: its own arrival or way out played across the
+  /// clip, a counter counting, a line bowing, text sliding along its line.
   Widget _insideDevice(CanvasElement e, MotionClip c, ColorScheme colors) {
     void set(String key, Object? value) => _edit(
         e,

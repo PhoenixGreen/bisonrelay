@@ -1,22 +1,19 @@
 part of 'canvas_mixer.dart';
 
-// canvas_slots_panel.dart is the Slots panel as the approved design has it
-// (Ken, 2026-11-08: "like Bitwig's clip launcher"): a grid of its own, not
-// the timeline's rows with slots beside them. A column for each row the
-// timeline shows -- an element with its own sound, or a sound alone -- its
-// head along the top, each slot a motion part over a sound part; the cues in
-// a column on the left; a stop under each column and Stop all under the
-// cues. The Scenes column, where there are scenes, holds the transitions,
-// outside the cue rows.
+// canvas_slots_panel.dart is the Slots panel, a clip launcher grid of its
+// own: a column per timeline row (an element with its own sound, or a sound
+// alone), its head on top, each slot a motion part over a sound part; the
+// cues in a left column; a stop under each column and Stop all under the
+// cues. A Scenes column, where there are scenes, holds the transitions.
 
 /// _slotsSizes are a part's height at each slot size, small to large, a
-/// motion part as tall as its sound part (the prototype's); Fill shares the
-/// panel's height, up to [_slotsFillMost] a part.
+/// motion part as tall as its sound part; Fill shares the panel's height, up
+/// to [_slotsFillMost] a part.
 const _slotsSizes = [20.0, 30.0, 44.0];
 const double _slotsFillMost = 64;
 
 /// _slotsColumnLeast and _slotsColumnMost are a column's width as the panel
-/// fills, and _slotsColumnNarrow it narrowed.
+/// fills, and _slotsColumnNarrow when narrowed.
 const double _slotsColumnLeast = 132;
 const double _slotsColumnMost = 300;
 const double _slotsColumnNarrow = 84;
@@ -24,11 +21,10 @@ const double _slotsColumnNarrow = 84;
 /// _slotsHeadH is a column's head: its name, and what it is.
 const double _slotsHeadH = 40;
 
-/// _footH is the stop row under the slots.
 const double _footH = 26;
 
-/// CanvasSlotsPanel is the Slots panel, [height] tall, its top edge
-/// dragged to [onResize].
+/// CanvasSlotsPanel is the Slots panel, [height] tall, its top edge dragged
+/// to [onResize].
 class CanvasSlotsPanel extends StatefulWidget {
   final CanvasController controller;
   final double height;
@@ -46,12 +42,12 @@ class CanvasSlotsPanel extends StatefulWidget {
 class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
   CanvasController get controller => widget.controller;
 
-  /// _scrolls keeps every column's slots scrolled together, the cues' too.
+  /// _scrolls scrolls every column's slots together, the cues' too.
   final _ClipScrolls _scrolls = _ClipScrolls();
   final ScrollController _across = ScrollController();
 
-  /// _joins scrolls the Scenes column by itself: it is not on the cue rows,
-  /// and with fewer rows it would hold the others back.
+  /// _joins scrolls the Scenes column alone: it is not on the cue rows, and
+  /// with fewer rows would hold the others back.
   final ScrollController _joins = ScrollController();
 
   @override
@@ -65,8 +61,8 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
   @override
   Widget build(BuildContext context) => TooltipVisibility(
         visible: false,
-        // No scroll bars anywhere on it (Ken, 2026-11-10): the columns and
-        // the cues scroll together by the wheel, as the mixer's slots do.
+        // No scroll bars: columns and cues scroll together by the wheel, as
+        // the mixer's slots do.
         child: ScrollConfiguration(
           behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
           child: ListenableBuilder(
@@ -96,7 +92,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
                     builder: (context, box) => _grid(theme, box))),
           ]),
         ),
-        // Its top edge, dragged: taller or shorter.
+        // Its top edge, dragged to resize.
         Positioned(
           top: 0,
           left: 0,
@@ -116,9 +112,9 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     );
   }
 
-  /// _header is the panel's bar: SLOTS, then its three buttons -- every
-  /// column narrow, the slots' height (S, M, L, Fill, its bars rising) and
-  /// the motion slots (lit as the mixer's rail lights them) -- and a "?".
+  /// _header is the panel bar: SLOTS, then buttons for narrow columns, slot
+  /// height (S, M, L, Fill) and motion slots (lit as the mixer's rail), and
+  /// a "?".
   Widget _header(MixerLook theme) {
     var studio = theme.studio;
     var colors = theme.colors;
@@ -178,8 +174,8 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
                 fontWeight: FontWeight.w600,
                 color: studio.muted)),
         const SizedBox(width: 8),
-        // In a narrow panel, along under the title rather than past its
-        // edge; against the right edge otherwise, as the prototype has them.
+        // Under the title in a narrow panel; against the right edge
+        // otherwise.
         Expanded(
           child: Align(
             alignment: Alignment.centerRight,
@@ -245,15 +241,14 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     );
   }
 
-  /// _grid is the cue column and a column for each row, filling the width,
-  /// a line apart.
+  /// _grid is the cue column and a column per row, filling the width.
   Widget _grid(MixerLook theme, BoxConstraints box) {
     var rows = controller.slotsShown;
     var motionShown = controller.motionSlots;
     var rowsOf = canvasRowsOf(controller);
     var withMotion = rowsOf.any((r) => r.element != null);
     var pair = withMotion && motionShown == BandState.shown;
-    // Each part's height at this size; filling, the rows sharing the room.
+    // Each part's height at this size; filling, the rows share the room.
     var bodyH =
         math.max(0.0, box.maxHeight - _headHeight(context) - _footH - 2);
     double part;
@@ -277,7 +272,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     for (var r in rowsOf) {
       if (r.transitions) continue;
       // The master's cues before its channels, on a scene with cues of its
-      // own (Ken, 2026-11-10: per-canvas cues).
+      // own.
       if (r.group == RowGroup.all && controller.cuesApart && !masterCues) {
         masterCues = true;
         columns.add((w) => _cues(
@@ -317,8 +312,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     ]);
   }
 
-  /// _frame is a column of the grid: its head, its slots and its foot, a
-  /// line apart.
+  /// _frame is a grid column: head, slots and foot, a line apart.
   Widget _frame(MixerLook theme,
       {required Key key,
       required double width,
@@ -345,13 +339,13 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     );
   }
 
-  /// _headHeight is a column's head at the text size: its two lines.
+  /// _headHeight is a column head's two lines at the text size.
   double _headHeight(BuildContext context) =>
       MediaQuery.textScalerOf(context).scale(_slotsHeadH);
 
-  /// _head is a column's head: a bar in its colour along the top, its name
-  /// with what it holds (motion, sound) and its copies, and under them its
-  /// layers, what its sound is, and whether it plays.
+  /// _head is a column head: a bar in its colour, its name with what it
+  /// holds and its copies, and below, its layers, its sound and whether it
+  /// plays.
   Widget _head(MixerLook theme,
       {required String name,
       required Color colour,
@@ -407,8 +401,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     );
   }
 
-  /// _glyph is a small square mark of what a column holds: its motion, or
-  /// its sound -- an instrument's, a voice's, or any other.
+  /// _glyph is a small square mark of a column's motion or sound kind.
   Widget _glyph(IconData mark, Color colour, Color ink) => Container(
         width: 13,
         height: 13,
@@ -420,7 +413,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
         child: Icon(mark, size: 9, color: ink),
       );
 
-  /// _stop is a column's stop, under its slots: lit while it plays.
+  /// _stop is a column's stop, lit while it plays.
   Widget _stop(MixerLook theme, Key key, bool lit, VoidCallback onTap) =>
       Center(
         child: Material(
@@ -447,8 +440,8 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
         ),
       );
 
-  /// _column is one row's column: an element's motion over its own sound,
-  /// or a sound alone.
+  /// _column is one row's column: an element's motion over its sound, or a
+  /// sound alone.
   Widget _column(
       MixerLook theme, CanvasRow r, double width, double sound, double motion) {
     var e = r.element;
@@ -468,7 +461,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
       width: width,
       head: _head(theme,
           name: name,
-          // Its row's colour (Ken, 2026-11-10).
+          // Its row's colour.
           colour: controller.rowColour(key),
           picked: e != null
               ? controller.selection.contains(e.id)
@@ -565,8 +558,8 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     );
   }
 
-  /// _cues is the cue column: a launch for each cue row, Stop all under,
-  /// its right edge dragged wider or narrower.
+  /// _cues is the cue column: a launch per cue row, Stop all under, its
+  /// right edge dragged to resize.
   Widget _cues(MixerLook theme, double width, double sound, double motion,
       {bool master = false}) {
     var studio = theme.studio;
@@ -609,8 +602,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
           ),
         ),
       ),
-      // Its right edge, dragged to widen or narrow it: each cue column its
-      // own width (Ken, 2026-11-10).
+      // Its right edge, dragged to resize: each cue column its own width.
       Positioned(
         right: 0,
         top: 0,
@@ -631,8 +623,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
   }
 }
 
-/// slotsHelp is the slots' "?": the Slots panel's, and the mixer's cue
-/// column's.
+/// slotsHelp is the "?" text for the Slots panel and the mixer's cue column.
 const slotsHelp = [
   "A column for each element and sound, as the timeline "
       "has them. Each slot is the element's motion over its "

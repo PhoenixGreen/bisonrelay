@@ -5,21 +5,17 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 
-// sound_placement.dart is where a placed sound is heard from on a frame:
-// worked out from the picture, the same way for the editor and an export.
-//
-// The listener is the viewer. Across a canvas, the left edge to the right
-// is [SoundPlacement.arc] wide, centred straight ahead. On a 3D stage the
-// listener stands at the camera: a sound is heard from where it is
-// against the way the camera looks, and is quieter the further away it
-// is than the middle of the stage -- the point the camera is aimed at --
-// and never louder than full.
+// sound_placement.dart is where a placed sound is heard from on a frame,
+// worked out from the picture the same way for the editor and an export.
+// The listener is the viewer. Across a canvas, edge to edge is
+// [SoundPlacement.arc] wide, centred straight ahead. On a 3D stage the
+// listener stands at the camera; a sound is quieter the further it is
+// beyond the point the camera is aimed at, and never louder than full.
 
 /// heardAt is where [e]'s sound, placed by [place], is heard from on
-/// [frame] -- or null where it is not placed, or what it is placed by is
-/// not there. With [live], what plays from slots moves it too, so the sound
-/// of an element launched across the page goes with it (Ken, 2026-11-08);
-/// an export plays its timeline, and has none.
+/// [frame], or null where it is not placed or its placer is missing. With
+/// [live], slots move it too, so an element launched across the page takes
+/// its sound with it; an export plays its timeline, and has none.
 Heard? heardAt(
     CanvasDocument doc, CanvasElement e, SoundPlacement place, int frame,
     {LiveMotion? live}) {

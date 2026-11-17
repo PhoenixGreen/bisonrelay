@@ -7,11 +7,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// character_designs.dart keeps the library's new 3D characters, made in the
+// character_designs.dart keeps the library's 3D characters, made in the
 // Character Studio: one file each in Characters 3D, named by the
 // character's id so a rename never moves it. See character_design.dart.
 
-/// canvasCharacter3dFolder is where they are kept.
 const canvasCharacter3dFolder = "Characters 3D";
 
 class CharacterDesigns {
@@ -25,9 +24,9 @@ class CharacterDesigns {
     return d;
   }
 
-  /// isId is whether [id] can name a character's files: letters, digits,
-  /// "_" and "-". A design's id comes from documents other people send, and
-  /// one with a "/" or ".." in it must never become a path.
+  /// isId is whether [id] can name a character's files: letters, digits, "_"
+  /// and "-". A design's id comes from documents other people send, and one
+  /// with a "/" or ".." in it must never become a path.
   static bool isId(String id) => _idPattern.hasMatch(id);
   static final RegExp _idPattern = RegExp(r"^[A-Za-z0-9_-]{1,64}$");
 
@@ -36,8 +35,7 @@ class CharacterDesigns {
     return path.join(await dir(), "$id.json");
   }
 
-  /// newId is an id no character has: random, so two made on two machines
-  /// do not meet.
+  /// newId is an unused id: random, so two made on two machines do not meet.
   static String newId() {
     final r = math.Random.secure();
     return List.generate(12, (_) => r.nextInt(16).toRadixString(16)).join();
@@ -46,8 +44,7 @@ class CharacterDesigns {
   /// list is every character, the last changed first.
   static Future<List<CharacterDesign>> list() async {
     final out = <CharacterDesign>[];
-    // A test that has not said where its library is never sees this
-    // machine's.
+    // A test that has not said where its library is never sees this machine's.
     if (inTestsUnaimed) return out;
     try {
       await for (final f in Directory(await dir()).list()) {
@@ -79,8 +76,8 @@ class CharacterDesigns {
     }
   }
 
-  /// save writes [d], over what it was: written to the side and moved into
-  /// place, so a save cut short leaves the last one whole.
+  /// save writes [d] to the side and moves it into place, so a save cut
+  /// short leaves the last one whole.
   static Future<bool> save(CharacterDesign d) async {
     if (inTestsUnaimed) return false;
     try {
@@ -114,7 +111,6 @@ class CharacterDesigns {
     return path.join(await dir(), "$id.png");
   }
 
-  /// picture is character [id]'s picture, or null where it has none.
   static Future<Uint8List?> picture(String id) async {
     if (inTestsUnaimed) return null;
     try {
@@ -125,7 +121,6 @@ class CharacterDesigns {
     }
   }
 
-  /// savePicture keeps [png] as character [id]'s picture.
   static Future<void> savePicture(String id, Uint8List png) async {
     if (inTestsUnaimed) return;
     try {
@@ -139,7 +134,7 @@ class CharacterDesigns {
   }
 
   /// pictureIds and vectorIds are the pictures and vectors the characters'
-  /// decals use: kept by a tidy of the stores, though no canvas has them.
+  /// decals use, kept by a tidy of the stores though no canvas has them.
   static Future<Set<String>> pictureIds() async =>
       {for (final d in await list()) ...d.pictureIds};
   static Future<Set<String>> vectorIds() async =>

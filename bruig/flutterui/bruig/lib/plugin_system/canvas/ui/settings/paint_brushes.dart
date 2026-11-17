@@ -9,10 +9,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// paint_brushes.dart is the paint brush's settings: the brushes to start
-// from -- the ones that come with the canvas and the ones somebody kept --
-// each drawn as a stroke of itself; the tip's shape; how the pen drives it;
-// and keeping the brush as it is now. See BrushTip and BrushPreset.
+// paint_brushes.dart is the paint brush's settings: starting brushes drawn
+// as strokes, tip shape, pen response, and keeping a brush. See BrushTip.
 
 /// PaintBrushCards are the paint brush's cards, under the paint tools.
 class PaintBrushCards extends StatefulWidget {
@@ -35,8 +33,7 @@ class _PaintBrushCardsState extends State<PaintBrushCards> {
     store.load();
   }
 
-  /// _brushes is every brush there is to choose: the canvas's own, then
-  /// the ones kept.
+  /// _brushes is every brush to choose: built in, then kept.
   List<BrushPreset> _brushes() => [
         ...brushPresets,
         for (var p in store.presets) BrushPreset.fromJson(p.id, p.name, p.data),
@@ -68,7 +65,7 @@ class _PaintBrushCardsState extends State<PaintBrushCards> {
         builder: (context, _) {
           var brushes = _brushes();
           // Read while building: a tile's picture is drawn while painting,
-          // and the theme cannot be asked for then.
+          // when the theme cannot be asked.
           var ground = ThemeNotifier.of(context).colors.surfaceContainerHighest;
           var tip = controller.paintTip;
           var saved = store.presets
@@ -206,7 +203,7 @@ class _PaintBrushCardsState extends State<PaintBrushCards> {
                     onPressed: name.trim().isEmpty
                         ? null
                         : () async {
-                            // The same name again is the same brush, changed.
+                            // The same name again overwrites that brush.
                             for (var p in store.presets
                                 .where((p) => p.name == name.trim())) {
                               await store.remove(p);
@@ -238,8 +235,8 @@ class _PaintBrushCardsState extends State<PaintBrushCards> {
       );
 }
 
-/// _curves are the pressure curves offered: how hard a press the full line
-/// takes.
+/// _curves are the pressure curves offered: how hard a press takes the full
+/// line.
 const List<(double, String)> _curves = [
   (0.5, "Soft — light touch"),
   (0.75, "Light"),
@@ -248,7 +245,7 @@ const List<(double, String)> _curves = [
   (2.2, "Hard — full press"),
 ];
 
-/// BrushPreview is a brush drawn as a stroke of itself: a wave across, the
+/// BrushPreview is a brush drawn as a stroke of itself: a wave across,
 /// pressure rising and falling, the pen leaning as a hand does.
 class BrushPreview extends StatelessWidget {
   final BrushPreset brush;
@@ -280,8 +277,8 @@ class _PreviewPainter extends CustomPainter {
       pressure.add(math.sin(t * math.pi).clamp(0.15, 1.0));
       tilt.add(Offset(0.5, -0.4 + 0.8 * t));
     }
-    // The brush's size against a picture a few tiles across, so a fine
-    // pen and a broad airbrush look like themselves side by side.
+    // The brush's size against a picture a few tiles across, so a fine pen
+    // and broad airbrush look like themselves side by side.
     var radius = (brush.size * size.width * 4).clamp(1.0, size.height * 0.35);
     canvas.saveLayer(
         all, Paint()..color = Color.fromRGBO(0, 0, 0, brush.strength));

@@ -19,12 +19,11 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
-// game_ready.dart is what a game still lacks, said as a list -- each thing
-// with the one press that adds it -- and the games to start from: a
-// platformer, a top-down game, an empty one. See the Game panel.
+// game_ready.dart is what a game still lacks, each with one press to add
+// it, and starter games (platformer, top-down, empty). See the Game panel.
 
-/// GameCheck is one thing a game needs: whether it has it, said in a line,
-/// and what adds it where it does not.
+/// GameCheck is one thing a game needs: whether it has it, a line saying
+/// so, and what adds it.
 class GameCheck {
   final String id;
   final String label;
@@ -39,7 +38,7 @@ class GameCheck {
       required this.make});
 }
 
-/// _everything is every element in the game: each scene's, and the
+/// _everything is every element in the game: each scene's and the
 /// master's.
 List<CanvasElement> _everything(CanvasDocument doc) => [
       for (var s in doc.allScenes) ...s.elements,
@@ -52,8 +51,8 @@ String _nameOf(CanvasElement e) => e.name.isEmpty ? e.kind.label : e.name;
 bool _ends(GameDoes d) =>
     d == GameDoes.next || d == GameDoes.scene || d == GameDoes.stop;
 
-/// gameChecks are what [c]'s game has, and lacks: a player, something to
-/// stand on, a way to win and to lose, its counts on screen.
+/// gameChecks are what [c]'s game has and lacks: a player, something to
+/// stand on, ways to win and lose, its counts on screen.
 List<GameCheck> gameChecks(CanvasController c) {
   var doc = c.document;
   var all = _everything(doc);
@@ -167,15 +166,12 @@ List<GameCheck> gameChecks(CanvasController c) {
   ];
 }
 
-/// LoopJump is an element that jumps as its scene's timeline loops: on
-/// [scene], where the playhead goes from [from] back to [to], it is not
-/// where it was.
+/// LoopJump is an element that jumps as [scene]'s timeline loops from
+/// [from] back to [to], not being where it was.
 typedef LoopJump = ({int scene, CanvasElement element, int from, int to});
 
-/// loopJumps are the elements in [doc] that jump each time their scene's
-/// timeline loops (a patrol that does not end where it began), from a Loop
-/// back to its target, or from the end to the start -- moved by its clips
-/// or its keyframes.
+/// loopJumps are [doc]'s elements that jump when their scene loops (a
+/// patrol not ending where it began), moved by clips or keyframes.
 List<LoopJump> loopJumps(CanvasDocument doc) {
   var out = <LoopJump>[];
   for (var (i, scene) in doc.allScenes.indexed) {
@@ -207,11 +203,9 @@ List<LoopJump> loopJumps(CanvasDocument doc) {
   return out;
 }
 
-/// closeLoops brings each of [jumps] back round to where it was when its
-/// timeline loops. Moved by keyframes, it gets a key where the loop goes
-/// from, posed as where it goes to. Moved by clips, it gets a short clip
-/// that carries it back over the last half second before the loop. One
-/// undo step.
+/// closeLoops brings each of [jumps] back round as its timeline loops: a
+/// keyframe posed as the target, or a short clip over the last half second.
+/// One undo step.
 void closeLoops(CanvasController c, List<LoopJump> jumps) {
   var doc = c.document;
   var rate = math.max(1, doc.frameRate);
@@ -239,9 +233,8 @@ void closeLoops(CanvasController c, List<LoopJump> jumps) {
   c.apply(doc);
 }
 
-/// _comesBack is [e] with a clip that moves it, over the half second before
-/// its loop, by however far it is from where the loop goes back to: layers
-/// add, so on a layer of its own it closes the gap and nothing else.
+/// _comesBack is [e] with a clip closing the gap to the loop's target over
+/// its last half second, on a layer of its own, as layers add.
 CanvasElement _comesBack(
     CanvasElement e, LoopJump j, CanvasDocument seen, int rate) {
   var a = poseWithMotion(e, j.from, seen), b = poseWithMotion(e, j.to, seen);
@@ -285,8 +278,8 @@ String _endWords(GameDoes d) => switch (d) {
 
 Size _page(CanvasDocument doc) => doc.size.size;
 
-/// _floor is where the ground's top is: the canvas's bottom, less a
-/// strip of ground where the starter lays one.
+/// _floor is the ground's top: the canvas's bottom, less the starter's
+/// strip of ground.
 double _floor(CanvasDocument doc) =>
     _page(doc).height -
     (_everything(doc).any((e) => e.name == "Ground") ? _groundHeight : 0);
@@ -303,8 +296,8 @@ void _add(CanvasController c, List<CanvasElement> elements,
   c.apply(doc);
 }
 
-/// _shape is a plain box for the game: a stand-in until a picture is put
-/// in its place.
+/// _shape is a plain box for the game, a stand-in until a picture replaces
+/// it.
 ShapeElement _shape(String name, Rect r, Color fill, PlaySpec play,
         {ShapeKind kind = ShapeKind.rectangle, double corner = 6}) =>
     ShapeElement(
@@ -351,7 +344,7 @@ void addGround(CanvasController c) {
   ]);
 }
 
-/// addFlag adds a flag at the right: touched, the next scene -- or, on the
+/// addFlag adds a flag at the right: touched, the next scene, or on the
 /// last, the game over.
 void addFlag(CanvasController c) {
   var doc = c.document;
@@ -368,8 +361,8 @@ void addFlag(CanvasController c) {
   ]);
 }
 
-/// addLives adds Lives -- three, the game starting again when they are
-/// gone -- where the game has none, and spikes that take one.
+/// addLives adds three Lives, restarting the game when gone, where the
+/// game has none, and spikes that take one.
 void addLives(CanvasController c) {
   var doc = c.document;
   var page = _page(doc);
@@ -395,7 +388,7 @@ void addLives(CanvasController c) {
 }
 
 /// showCounts puts a Counter for each of [counts] along the top: on the
-/// master, over every scene, where the game has one -- else on this scene.
+/// master where the game has one, else on this scene.
 void showCounts(CanvasController c, List<GameCount> counts) {
   var doc = c.document;
   var start = doc.counts.length - counts.length;
@@ -452,10 +445,8 @@ enum GameStarter {
   const GameStarter(this.label, this.says);
 }
 
-/// startGame lays [kind] out on this scene, with Kenney's pictures where his
-/// platformer pack is kept or can be fetched, plain shapes where not; the
-/// counts on screen follow as a second undo step. What it says back is how
-/// it went.
+/// startGame lays [kind] out on this scene with Kenney's platformer art
+/// where available, else plain shapes; on-screen counts are a second step.
 Future<String> startGame(CanvasController c, GameStarter kind,
     {required bool allowFetching}) async {
   var doc = c.document;
@@ -489,7 +480,7 @@ Future<String> startGame(CanvasController c, GameStarter kind,
     doc = doc.addElement(e);
   }
   c.apply(doc.copyWith(counts: [...doc.counts, ...counts]));
-  // The counts on screen, after: a step of its own.
+  // The on-screen counts, after, as a step of their own.
   var hud = [
     for (var k in wanted)
       if (!_everything(c.document).any((e) =>
@@ -556,7 +547,7 @@ ElementBase _base(String name, Rect r, PlaySpec play) => ElementBase(
     play: play);
 
 /// _piece is [name] in [r]: Kenney's [files] where there is [art], else a
-/// shape of [fill].
+/// [fill] shape.
 Future<CanvasElement> _piece(_KenneyArt? art, String name, Rect r,
     PlaySpec play, List<String> files, Color fill,
     {ShapeKind kind = ShapeKind.rectangle, double corner = 6}) async {
@@ -567,9 +558,8 @@ Future<CanvasElement> _piece(_KenneyArt? art, String name, Rect r,
   return _shape(name, r, fill, play, kind: kind, corner: corner);
 }
 
-/// _strip is something solid laid along [r] a tile deep: Kenney's [file]
-/// in a row where there is [art] -- a picture stretched along it would be
-/// one tile, small, in the middle -- else a shape of [fill].
+/// _strip is something solid a tile deep along [r]: Kenney's [file] in a
+/// row (one stretched tile would look small), else a [fill] shape.
 Future<CanvasElement> _strip(
     _KenneyArt? art, String name, Rect r, String file, Color fill) async {
   var source = await art?.tiles(name, [file]);
@@ -746,7 +736,7 @@ Future<List<CanvasElement>> _topDown(
   ];
 }
 
-/// gameIsEmpty is whether nothing on this scene is played yet: a new game,
-/// to be started from something.
+/// gameIsEmpty is whether nothing on this scene is played yet: a new game
+/// to start from something.
 bool gameIsEmpty(CanvasDocument doc) =>
     doc.elements.every((e) => e.base.play.isNone);

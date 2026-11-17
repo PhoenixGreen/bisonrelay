@@ -38,25 +38,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// canvas_channels.dart is the sound on the timeline, a lane for each channel,
-// laid out against the same frames as the rows above it.
-//
-// A channel is the sounds on it (see TimelineChannel). There is always one
-// empty lane more than there are channels, at the bottom: a sound dropped
-// there, or chosen by clicking it, starts a channel. A channel with nothing
-// left on it is gone.
-//
-// Each channel has a strip at the left: a coloured edge for its kind (green
-// for sound, yellow for a video's), its short name (A1, V1) and its full one
-// when tall enough, its level as a number, and lock, solo and mute.
-//
-// Each sound is a bar from the frame it starts on to the frame it ends on:
-// one block per file, the fades as slopes, a repeat drawn fainter to the end,
-// and a line across it at its own volume. A bar is dragged along to move it
-// and onto another lane to move it there; its ends are dragged to trim it,
-// the handles at its top corners to fade it, and its line up and down to
-// set its volume. With the knife, a click cuts it in two. Taller than a line
-// of text, a lane draws each file's waveform.
+// canvas_channels.dart is the sound on the timeline: a lane for each
+// channel, on the same frames as the rows above. An empty lane always sits
+// at the bottom: a sound dropped there, or chosen by clicking it, starts a
+// channel; a channel left empty is gone. Each sound is a bar, dragged to
+// move it (onto another lane too), by its ends to trim it, by its top
+// corners to fade it, by its line to set its volume; the knife cuts it.
 
 /// channelsLaneHeight is a lane as it starts, and the shortest it goes to
 /// while its strip keeps everything on one line.
@@ -111,8 +98,7 @@ class CanvasChannels extends StatefulWidget {
   final Widget? leading;
 
   /// scenesLane is the scenes' strip, while every scene plays: the first
-  /// row, "Scenes", with the transitions' sounds as its sound under it --
-  /// the scenes and their transitions one channel (Ken, 2026-11-08).
+  /// row, "Scenes", with the transitions' sounds as its sound under it.
   final Widget? scenesLane;
 
   const CanvasChannels(
@@ -313,15 +299,14 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _boxMotion are the motion clips picked before the box, Shift held.
   Set<(String, String)> _boxMotion = {};
 
-  /// _boxEnd lets the box go.
   void _boxEnd() {
     _boxFrom = null;
     _boxTo = null;
     setState(() {});
   }
 
-  /// _box picks every sound the box touches, and the channels they are on
-  /// -- and every motion clip, on the elements' rows (Ken, 2026-11-11).
+  /// _box picks every sound the box touches, and the channels they are on,
+  /// and every motion clip on the elements' rows.
   void _box(Offset global) {
     var from = _boxFrom;
     if (from == null) return;
@@ -381,9 +366,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       return;
     }
     _pick(lane);
-    // Twice on a sound or a MIDI part: its channel's chain opened, it
-    // picked (Ken, 2026-11-08, as a double-click opens an element's clip
-    // in the Chain).
+    // Twice on a sound or a MIDI part: its channel's chain opened and it
+    // picked, as a double-click opens an element's clip in the Chain.
     var now = DateTime.now();
     var twice = _tappedClip == lane.element.id &&
         now.difference(_tappedAt) < const Duration(milliseconds: 400);
@@ -505,7 +489,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           frames = byEnd;
         }
         next = was.copyWith(at: math.max(0, was.at + frames.round()));
-        // Linked: its motion by as much (Ken, 2026-11-10).
+        // Linked: its motion moves by as much.
         for (var (el, id, start) in _links) {
           controller.movePlacement(
               el, id, math.max(0.0, start + frames.round() / rate),
@@ -597,9 +581,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   List<(String, String, double)> _links = const [];
 
   /// _trackOver notes the lane [lane]'s clip would be let go onto, for a
-  /// move onto another channel -- one clip, not several. A video's
-  /// soundtrack goes with it, so a channel can hold sounds and videos one
-  /// after another.
+  /// move onto another channel (one clip, not several). A video's soundtrack
+  /// goes with it, so a channel can hold sounds and videos in turn.
   void _trackOver(TimedLane lane, Offset global) {
     var over = _laneUnder(global);
     var own = lane.channelKey;
@@ -751,11 +734,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       onBoxStart: _boxStart,
                       onBox: _box,
                       onBoxEnd: _boxEnd),
-                // At the channel height S, an element's row is its motion
-                // alone (Ken, 2026-11-08); its sound from M up, or opened
-                // by its arrow. Not a video's: its channel is the video
-                // itself, its clip on the timeline -- gone at S, the Rain
-                // had no clip to see (Ken, 2026-11-13).
+                // At channel height S, an element's row is its motion alone;
+                // its sound from M up, or opened by its arrow. Not a video's:
+                // its channel is the video itself, its clip on the timeline,
+                // which must show at S too.
                 if (show != TimelineShow.animation &&
                     (controller.laneSize > 0 ||
                         !controller.rowFolded(e.id) ||
@@ -770,8 +752,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                   if (!everyScene.contains(channel.key))
                     ..._channelRows(channel, width, theme, channels,
                         alt: (grouped.length + j).isOdd),
-                // The All group, last, under a heading that folds it away
-                // (Ken, 2026-11-08).
+                // The All group, last, under a heading that folds it away.
                 if (inAll.isNotEmpty) ...[
                   _allHeading(theme, inAll.length, width),
                   if (!controller.allFolded)
@@ -805,14 +786,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     );
   }
 
-  /// _channelRows is [channel]'s row and, opened under it, its automation.
-  /// [movable] is whether its strip is dragged to move it among the others:
-  /// not an element's own sound, which stays under the element.
   /// _allHeading is the All group's heading: "All scenes", how many rows
-  /// are in it, and an arrow folding them away.
-  /// On a scene with cues of its own, the master's cues are over the slots
-  /// beside it, over the master's channels (Ken, 2026-11-10: per-canvas
-  /// cues); [width] is the strips'.
+  /// are in it, and an arrow folding them away. On a scene with cues of its
+  /// own, the master's cues are over the slots beside it; [width] is the
+  /// strips'.
   Widget _allHeading(ThemeNotifier theme, int count, double width) {
     var colors = theme.colors;
     var folded = controller.allFolded;
@@ -924,6 +901,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     );
   }
 
+  /// _channelRows is [channel]'s row and, opened under it, its automation.
+  /// [movable] is whether its strip is dragged to move it among the others:
+  /// not an element's own sound, which stays under the element.
   List<Widget> _channelRows(TimelineChannel channel, double width,
           ThemeNotifier theme, List<TimelineChannel> channels,
           {bool movable = true,
@@ -969,10 +949,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               mix: controller.mixNow(channel),
               automation: controller.automationShown.contains(channel.key),
               onAutomation: () => controller.toggleAutomation(channel.key),
-              // Which canvas its clips are on -- M for the master,
-              // S1 for the first scene -- beside the band whose
+              // Which canvas its clips are on -- M for the master, S1 for the
+              // first scene, "All" in the All group -- beside the band whose
               // colour says sound or video.
-              // In the All group, tagged so.
               label: all ? "All" : channel.sceneLabel,
               width: width,
               height: _heightOf(channel.key),
@@ -988,8 +967,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 controller.selectedChannel = channel.key;
                 // And what it is the sound of -- its element, or the one
                 // sound on it -- so the settings, the mixer and the Chain
-                // show it (Ken, 2026-11-13: clicking a header updated none
-                // of them).
+                // show it too.
                 var owner = soundOwnerOf(controller.document, channel.key);
                 var on = {for (var l in channel.lanes) l.element.id};
                 var id = owner?.id ?? (on.length == 1 ? on.single : null);
@@ -1066,16 +1044,14 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       ];
 
   /// _moving is the channel whose strip is being dragged up or down, and
-  /// _moveTo where in the list it would go. The list is shown in that order
-  /// while it is dragged -- see _withMoving -- so the channel is seen going
-  /// where it will be put.
+  /// _moveTo where it would go. The list is shown in that order while it is
+  /// dragged (see _withMoving), so the channel is seen going there.
   String? _moving;
   int? _moveTo;
 
   /// _rowsAtStart is the middle of each other channel's row when the drag
-  /// began, by which the pointer is placed. Measured once: the rows move as
-  /// the list is shown in its new order, and measuring them as they moved
-  /// would have the channel chase its own reflection.
+  /// began, measured once: the rows move as the list is reordered, and
+  /// measuring them as they moved would have the channel chase itself.
   List<double> _rowsAtStart = const [];
 
   void _startMove(List<TimelineChannel> channels, String key) {
@@ -1166,7 +1142,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       bool alt = false}) {
     // The strip and the slots at most as wide as the row: shown alone, the
     // slots fill to the edge, and a scaled text size can leave them a
-    // fraction of a pixel over it (Ken's 0.109 px).
+    // fraction of a pixel over it.
     var row = LayoutBuilder(builder: (context, box) {
       var head = math.min(width, box.maxWidth);
       var slots = math.min(slotsWidthIn(context, controller),
@@ -1192,7 +1168,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             child: !lanesIn(context)
                 ? const SizedBox()
                 : over == null
-                    // Every other row tinted (the approved design).
+                    // Every other row tinted.
                     ? alt
                         ? ColoredBox(
                             color: ThemeNotifier.of(context)
@@ -1233,9 +1209,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 
   /// _playedIn is the frames of this view [channel]'s clips are played in:
-  /// while every scene plays, its own scene's (the master's, the whole run),
-  /// so a clip running on past its scene is shaded where it does; one scene
-  /// at a time, the scene's.
+  /// its own scene's while every scene plays (the master's, the whole run),
+  /// so a clip running past its scene is shaded there; else the scene's.
   (int?, int?) _playedIn(TimelineChannel channel) {
     var document = controller.document;
     if (!controller.allChannels || !document.hasScenes) {
@@ -1354,9 +1329,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           behavior: HitTestBehavior.opaque,
           onPanDown: (d) => _press(channel, d.localPosition, d.globalPosition,
               box.maxWidth, box.maxHeight),
-          // The start is a move too: a pan is only recognised once the
-          // pointer has gone some way, and a short drag can end on the step
-          // that is recognised, with no update after it.
+          // The start is a move too: a pan is recognised only once the
+          // pointer has gone some way, and a short drag can end on that step.
           onPanStart: (d) =>
               _drag(d.globalPosition, box.maxWidth, box.maxHeight),
           onPanUpdate: (d) =>
@@ -1567,9 +1541,8 @@ void paintPastScene(Canvas canvas, Size size, TimelineView view, int scene,
 
 /// paintOutsideScene shades and hatches everything before [from] and from
 /// [to] on -- either left open with null -- with a line at each edge: the
-/// frames a lane's clips are not played in. A scene's clip that runs on past
-/// its scene is shaded where it does, so it does not look as if it plays in
-/// the next scene too.
+/// frames a lane's clips are not played in, so a clip running on past its
+/// scene does not look as if it plays in the next.
 void paintOutsideScene(Canvas canvas, Size size, TimelineView view, int? from,
     int? to, ColorScheme colors) {
   var hatch = Paint()
@@ -1587,9 +1560,8 @@ void paintOutsideScene(Canvas canvas, Size size, TimelineView view, int? from,
     canvas.clipRect(out);
     canvas.drawRect(out, Paint()..color = const Color(0x66000000));
     // Pinned to the frames rather than the screen, so the hatching moves
-    // with the timeline as it scrolls.
-    // The first line on the same eight-pixel step as the edge that reaches
-    // the shaded part's left end.
+    // with the timeline as it scrolls: the first line on the same 8 px step
+    // as the edge that reaches the shaded part's left end.
     var start = edgeAt - 8 * ((edgeAt - (a - size.height)) / 8).ceilToDouble();
     for (var x = start; x < b; x += 8) {
       canvas.drawLine(
@@ -1615,8 +1587,8 @@ class _LanePainter extends CustomPainter {
   /// linked are the sounds a motion clip moves with: each marked so.
   final Set<String> linked;
 
-  /// own is the colour of the element whose own sound this is: its clips
-  /// are drawn toward it (the approved design); null for any other.
+  /// own is the colour of the element whose own sound this is, which its
+  /// clips are drawn toward; null for any other.
   final Color? own;
   final TimelineChannel channel;
   final List<({double from, double to, List<double> cuts})> spans;
@@ -1687,9 +1659,8 @@ class _LanePainter extends CustomPainter {
     // as not played.
     paintOutsideScene(canvas, size, view, sceneFrom, sceneTo, colors);
 
-    // No line under the lane: the channels' lines are their strips', and the
-    // one across the whole timeline is the keyframes' -- see CanvasTimeline.
-    // No playhead either: the timeline draws one down every row.
+    // No line under the lane: the channels' lines are their strips'. No
+    // playhead either: the timeline draws one down every row.
   }
 
   void _paintClip(
@@ -1704,16 +1675,15 @@ class _LanePainter extends CustomPainter {
     if (clip.isEmpty) return;
     var video = lane.element is VideoElement;
     var locked = lane.element.locked;
-    // A video's clips violet, a sound's teal, an instrument's part -- notes,
-    // not a recording -- blue, as a MIDI clip is told from audio.
+    // An instrument's part is notes, not a recording: coloured apart.
     var instrument = lane.element is AudioElement &&
         (lane.element as AudioElement).isInstrument;
     // A sound made a clip (see timeline_clips.dart) in its clip's colour.
     var asClip = lane.element is AudioElement && clip.playlist.isNotEmpty
         ? clip.playlist.first.clip
         : null;
-    // As its slot is (the approved design): an instrument's notes amber,
-    // speech pink, any other sound blue; a video violet.
+    // As its slot is: an instrument's notes amber, speech pink, any other
+    // sound blue; a video violet.
     var fill = (video
             ? const Color(0xFF7B5CC4)
             : asClip != null && asClip.color != timelineClipColour
@@ -1728,7 +1698,7 @@ class _LanePainter extends CustomPainter {
 
     var from = _x(span.from, w), to = _x(span.to, w);
 
-    // A repeat carries on to the end, drawn fainter: it is the same file again,
+    // A repeat carries on to the end, drawn fainter: the same file again,
     // not more of the clip.
     if (clip.loop != MediaLoop.none && span.to > span.from) {
       canvas.drawRRect(
@@ -1770,10 +1740,9 @@ class _LanePainter extends CustomPainter {
             notes);
       }
     } else if (size.height >= _waveformFrom) {
-      // The shape of the sound as it will come out -- its peaks times its own
-      // volume -- where the lane is tall enough to read one. Turned up, it
-      // grows; where a peak would go past full it stops at the edge, in red,
-      // which is where it would clip.
+      // The sound as it will come out -- its peaks times its own volume --
+      // where the lane is tall enough. A peak past full stops at the edge in
+      // red, where it would clip.
       var wave = Paint()
         ..color = ink.withValues(alpha: 0.5)
         ..strokeWidth = 1;
@@ -2026,11 +1995,10 @@ class _EmptyLanePainter extends CustomPainter {
 }
 
 /// _ChannelHeader is a channel's strip at the left of its lane: a coloured
-/// edge for its kind; its short name (A1, V1); its whole name once the lane
-/// is tall enough, double-clicked to rename it; its level in decibels,
-/// clicked to type one; and lock, solo and mute. Narrowed, it gives up the
-/// reading, then the buttons one at a time. Its bottom edge is dragged to
-/// make the lane taller, and a click picks the channel.
+/// edge for its kind; its short name (A1, V1); its whole name on a tall
+/// lane, double-clicked to rename; its level in decibels, clicked to type
+/// one; and lock, solo and mute, given up one at a time as it narrows. Its
+/// bottom edge drags the lane taller; a click picks the channel.
 class _ChannelHeader extends StatelessWidget {
   final TimelineChannel channel;
   final String label;
@@ -2142,7 +2110,7 @@ class _ChannelHeader extends StatelessWidget {
               child: Text(
                   automation ? "Hide its automation" : "Show its automation",
                   style: const TextStyle(fontSize: 12.5))),
-        // Its row's colour (Ken, 2026-11-10).
+        // Its row's colour.
         if (onColour != null && rowColour != null) ...[
           const PopupMenuDivider(),
           ...rowColourMenu(rowColour!),
@@ -2580,7 +2548,7 @@ class SessionRowSlots extends StatelessWidget {
     if (clip == null) {
       cell = Stack(key: ValueKey("rowClip-$channel-$row"), children: [
         Positioned.fill(child: SlotFace(side: SlotSide.sound, empty: launch)),
-        // Double-clicked: a clip made in it (Ken).
+        // Double-clicked: a clip made in it.
         Positioned(
           left: 20,
           top: 0,

@@ -4,15 +4,12 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
-// guides_settings.dart is the grid, the guides, the rulers and the snapping,
-// as a panel off the settings bar: a dozen switches set up once and left, so
-// not on the bar, which is for what is pressed while working. It opens over
-// the canvas, as the canvas settings do, so opening it never moves the design
-// or changes the zoom.
+// guides_settings.dart is grid, guides, rulers and snapping as a panel off
+// the settings bar (set once, so not on it), opening over the canvas so the
+// design and zoom never move.
 
-/// canvasGuidesSettings is the whole panel: five groups, each of which can be
-/// shut (remembered across a restart), so those not in use do not make the
-/// strip scroll.
+/// canvasGuidesSettings is the whole panel: five groups, each foldable
+/// (remembered across restarts), so unused ones do not make it scroll.
 List<Widget> canvasGuidesSettings(CanvasController controller) {
   var guides = controller.document.guides;
   void set(CanvasGuides next) =>
@@ -25,8 +22,7 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
   }
 
   return [
-    // Rulers first: they are the edge of the page, met in the order the canvas
-    // meets them.
+    // Rulers first: they are the page's edge, met in the canvas's order.
     CanvasFoldingGroup(label: "Rulers", remember: "guidesRulers", children: [
       for (var (label, on, apply)
           in <(String, bool, CanvasRulers Function(bool))>[
@@ -58,9 +54,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
           "when the canvas is small on screen. Drag out of one to put a guide "
           "down."),
     ]),
-    // "Every" sets the grid's and the ruler's spacing together: one measurement
-    // shown two ways, so a position read off the ruler lands on a grid line. The
-    // group is named Grid alone so that Rulers is not a caption twice.
+    // "Every" sets grid and ruler spacing together, so ruler readings land on
+    // grid lines. Named Grid alone so Rulers is not a caption twice.
     CanvasFoldingGroup(label: "Grid", remember: "guidesGrid", children: [
       CanvasToggle(
         label: "Show a grid",
@@ -160,8 +155,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
             onChanged: (v) => set(
                 guides.copyWith(snapTo: guides.snapTo.copyWith(centres: v))),
           ),
-          // The lines that matter most: what anybody wants is this heading over that
-          // picture, not a grid's regular intervals.
+          // The lines that matter most: this heading over that picture, not
+          // a grid's intervals.
           CanvasToggle(
             key: const ValueKey("snapToObjects"),
             label: "Elements",
@@ -180,9 +175,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
             onChanged: (v) => slide(guides.copyWith(snapWithin: v)),
             onCommit: controller.endInteraction,
           ),
-          // On a 3D stage there are no lines to land on: what is moved
-          // there lands on steps across its floor, and turns in steps --
-          // its own switch, since that is every move rather than a catch.
+          // A 3D stage has no lines to land on: moves land on floor steps
+          // and turn in steps. Its own switch, as it affects every move.
           CanvasToggle(
             key: const ValueKey("snapStage"),
             label: "Snap on a 3D stage",
@@ -222,9 +216,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
               "on a 3D stage, what is moved there lands on the 3D steps "
               "across the floor and turns by the 3D turns."),
         ]),
-    // Lining several things up with each other, which snapping cannot do:
-    // snapping catches one thing as it passes another, and these move
-    // everything chosen at once and exactly.
+    // Aligning several things at once and exactly, which snapping (one
+    // thing as it passes another) cannot.
     CanvasFoldingGroup(label: "Align", remember: "guidesAlign", children: [
       for (var align in CanvasAlign.values)
         CanvasIconButton(
@@ -232,15 +225,13 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
           icon: align.icon,
           tooltip: align.label,
           // Against the selection's own box, so one thing chosen is already
-          // aligned with itself and there is nothing to do.
+          // aligned.
           onPressed: controller.aligning < 2
               ? null
               : () => controller.alignSelected(align),
         ),
-      // No line break before these: this group is drawn in the band over the
-      // canvas as well as in the sidebar, and the band is a strip of
-      // unbounded width -- a break that asks to be infinitely wide brings the
-      // whole layout down there.
+      // No line break: this group also draws in the unbounded band over the
+      // canvas, where an infinitely wide break brings the layout down.
       CanvasIconButton(
         key: const ValueKey("spreadAcross"),
         icon: Icons.horizontal_distribute,
@@ -267,8 +258,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
   ];
 }
 
-/// CanvasGuidesPanel is that panel, laid out like the canvas settings it sits
-/// beside: one line, scrolling sideways, over the top of the canvas.
+/// CanvasGuidesPanel is that panel, laid out like the canvas settings
+/// beside it: one line, scrolling sideways, over the canvas.
 class CanvasGuidesPanel extends StatefulWidget {
   final CanvasController controller;
   const CanvasGuidesPanel({required this.controller, super.key});

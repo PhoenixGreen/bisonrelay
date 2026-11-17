@@ -9,15 +9,12 @@ import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 
 // motion_player.dart is the elements' slots played live: a clip launched
-// from a slot, a cue, a trigger or another clip's Then, keeping the clock of
-// the session in canvas_controller.dart.
-//
-// A launched element leaves its timeline, as an Ableton track does, and is
-// drawn from its slots until Back to the timeline. Each layer plays one clip
-// at a time; a clip launched on a layer starts from wherever the last left it
-// (the carry), and one that ends holds its last frame or goes back to where
-// it began, as it says. Pure: the controller hands it the document, the frame
-// and the clock; the renderer reads it as a LiveMotion.
+// from a slot, a cue, a trigger or another's Then, on the session clock. A
+// launched element leaves its timeline, as an Ableton track does, until
+// Back to the timeline. A layer plays one clip at a time, each starting
+// where the last left it; an ended one holds its last frame or goes back.
+// Pure: the controller hands it document, frame and clock; the renderer
+// reads it as a LiveMotion.
 
 /// MotionSlotState is how an element's slot is doing, for its strip.
 enum MotionSlotState { empty, stopped, queued, playing, stopping }
@@ -63,10 +60,9 @@ class _Layer {
   MotionPose? carry;
 
   /// fromTimeline is whether [carry] is where the timeline left the layer,
-  /// no clip of the slots played on it yet: the first launched on it takes
-  /// the layer over from the timeline, starting from rest rather than on
-  /// top of it (Ken, 2026-11-08: an arrival placed and launched played on
-  /// its own held first frame -- Pop at nothing, Slide in off the page).
+  /// no slot clip played on it yet: the first launched takes the layer over
+  /// from the timeline, starting from rest rather than on top of it, so an
+  /// arrival placed and launched does not play on its own held first frame.
   bool fromTimeline = false;
 
   /// next is the clip waiting to start at [nextAt]; "" a stop waiting.
@@ -86,8 +82,7 @@ class _Playing {
       carry: [for (var l in layers) l.carry]);
 }
 
-/// motionKeyName is [k] as a clip's "Key pressed" trigger names it: Space,
-/// Enter, or the key's own letter.
+/// motionKeyName is [k] as a "Key pressed" trigger names it: Space, Enter, A.
 String motionKeyName(LogicalKeyboardKey k) => k == LogicalKeyboardKey.space
     ? "Space"
     : k == LogicalKeyboardKey.enter
@@ -95,9 +90,8 @@ String motionKeyName(LogicalKeyboardKey k) => k == LogicalKeyboardKey.space
         : k.keyLabel.toUpperCase();
 
 /// _elementIn is [id] among [doc]'s elements, or the master's drawn with
-/// them -- a game's HUD plays its clips as a scene's elements do.
-/// An id can be one copy of an element reused (see instanceKey): what that
-/// copy plays alone, its element's.
+/// them (a game's HUD plays its clips as a scene's elements do). An id can
+/// be one copy of a reused element (see instanceKey): that copy's element.
 CanvasElement? _elementIn(CanvasDocument doc, String id) {
   var at = id.indexOf("#");
   if (at > 0) id = id.substring(0, at);
@@ -139,21 +133,19 @@ class MotionPlayer implements LiveMotion {
   @override
   double get clock => _clock;
 
-  /// pointer is where the pointer is over the page: see LiveMotion.pointer.
-  /// Set by the stage as it moves.
+  /// pointer is where the pointer is over the page, set by the stage.
   @override
   Offset? pointer;
 
-  /// running is the game's time, set by the game as it steps: see
-  /// LiveMotion.running. Null off a game.
+  /// running is the game's time (LiveMotion.running); null off a game.
   @override
   double? running;
 
   @override
   MotionLive? of(String element) => _of[element]?.live;
 
-  /// frozen is what is playing now, held as it is: for a scene being left,
-  /// drawn as it was while the next one's clips start (see gameChange).
+  /// frozen is what is playing now, held: for a scene being left, drawn as
+  /// it was while the next one's clips start (see gameChange).
   LiveMotion frozen() => _FrozenLive(
       _clock,
       pointer,
@@ -169,12 +161,11 @@ class MotionPlayer implements LiveMotion {
   /// offElements are the elements off their timelines for their slots.
   Iterable<String> get offElements => _of.keys;
 
-  /// playing is whether anything is playing or waiting to: the clock has
-  /// to keep going, and the canvas be painted.
+  /// playing is whether anything is playing or waiting to, so the clock
+  /// keeps going and the canvas is painted.
   bool get playing => _of.values.any((p) => p.layers
       .any((l) => l.next != null || (l.play != null && !l.play!.ended)));
 
-  /// slotState is how [clip] of [element] is doing.
   MotionSlotState slotState(String element, MotionClip? clip) {
     if (clip == null) return MotionSlotState.empty;
     var p = _of[element];
@@ -192,9 +183,8 @@ class MotionPlayer implements LiveMotion {
     return MotionSlotState.stopped;
   }
 
-  /// launch queues [clip] of [element] to start at [at]: at once, if that is
-  /// now. The element leaves its timeline, carrying on from where the
-  /// timeline has it on [frame].
+  /// launch queues [clip] of [element] at [at], at once if that is now. The
+  /// element leaves its timeline, carrying on from where it is on [frame].
   void launch(
       CanvasDocument doc, int frame, String element, String clip, double at) {
     var e = _elementIn(doc, element);
@@ -211,17 +201,16 @@ class MotionPlayer implements LiveMotion {
 
   final List<(String, String)> _launched = [];
 
-  /// takeLaunched is every (element, clip) launched since it was last
-  /// asked -- pressed, triggered, or following another -- and forgets them:
-  /// for the sounds linked with them in their rows (see
-  /// CanvasController._soundsWithTheirMotion).
+  /// takeLaunched is every (element, clip) launched since last asked (pressed,
+  /// triggered, or following another), then forgets them: for the sounds linked
+  /// with them in their rows (see CanvasController._soundsWithTheirMotion).
   List<(String, String)> takeLaunched() {
     var out = [..._launched];
     _launched.clear();
     return out;
   }
 
-  /// press is a slot pressed: what it does is the clip's launch mode --
+  /// press is a slot pressed: what it does is the clip's launch mode,
   /// started, or, toggled on a clip playing, stopped.
   void press(
       CanvasDocument doc, int frame, String element, String clip, double at) {
@@ -239,8 +228,7 @@ class MotionPlayer implements LiveMotion {
     }
   }
 
-  /// release is a slot let go: a gate stops at once; a repeat repeats no
-  /// more.
+  /// release is a slot let go: a gate stops at once; a repeat repeats no more.
   void release(CanvasDocument doc, String element, String clip, double now) {
     var p = _of[element];
     if (p == null || !p.held.remove(clip)) return;
@@ -248,8 +236,8 @@ class MotionPlayer implements LiveMotion {
     if (c?.launch == ClipLaunch.gate) stop(element, layer: c!.layer, at: now);
   }
 
-  /// stop stops what [element] plays -- on [layer], or every one -- at [at].
-  /// It stays off its timeline, where it was left.
+  /// stop stops what [element] plays (on [layer], or every one) at [at]. It
+  /// stays off its timeline, where it was left.
   void stop(String element, {int? layer, required double at}) {
     var p = _of[element];
     if (p == null) return;
@@ -271,8 +259,7 @@ class MotionPlayer implements LiveMotion {
     }
   }
 
-  /// halt stops everything at [now], each element left where it is -- a
-  /// Stop on a timeline being played over.
+  /// halt stops everything at [now], left where it is: Stop over a timeline.
   void halt(CanvasDocument doc, int frame, double now) {
     stopAll(now);
     step(doc, frame, now);
@@ -284,8 +271,7 @@ class MotionPlayer implements LiveMotion {
     }
   }
 
-  /// isPlaying is whether [element] has a clip playing, or about to --
-  /// one of [only], where they are given.
+  /// isPlaying is whether [element] plays or is about to, one of [only].
   bool isPlaying(String element, {Set<String>? only}) =>
       _of[element]?.layers.any((l) =>
           (l.next != null &&
@@ -300,16 +286,16 @@ class MotionPlayer implements LiveMotion {
   void leave(String element) => _of.remove(element);
   void clear() => _of.clear();
 
-  /// fire launches every clip that starts on [kind] -- of [target], where it
-  /// names one -- at [at]. A touch with no target is the clip's own element
-  /// touched: [target] is the element a player touched. A count's trigger
-  /// starts on any change of it, or, with an amount, as [value] reaches it.
+  /// fire launches every clip that starts on [kind] (of [target], where it
+  /// names one) at [at]. A touch with no target is the clip's own element
+  /// touched: [target] is what a player touched. A count's trigger starts on
+  /// any change, or, with an amount, as [value] reaches it.
   void fire(CanvasDocument doc, int frame, ClipTriggerKind kind, String target,
       double at,
       {double? value}) {
     bool counted(ClipTrigger t) =>
         kind != ClipTriggerKind.count || t.amount == 0 || t.amount == value;
-    // A touch or a hit is of one element -- or one copy of one: its own.
+    // A touch or a hit is of one element, or one copy of one: its own.
     var own = kind == ClipTriggerKind.touched || kind == ClipTriggerKind.hit;
     for (var e in _elementsOf(doc)) {
       for (var c in e.base.motion.clips) {
@@ -327,9 +313,9 @@ class MotionPlayer implements LiveMotion {
     }
   }
 
-  /// step plays on to [now]: launches and stops waiting for it happen, and
-  /// clips that have played out end -- their Then followed. With
-  /// [recording], what starts is written down for the timeline.
+  /// step plays on to [now]: waiting launches and stops happen, and clips
+  /// that have played out end, their Then followed. With [recording], what
+  /// starts is written down for the timeline.
   List<MotionEvent> step(CanvasDocument doc, int frame, double now,
       {bool recording = false}) {
     _clock = now;
@@ -357,8 +343,8 @@ class MotionPlayer implements LiveMotion {
           var here =
               livePose(motion, p.live, i, at, box, scene, replaces: replaces);
           var was = l.play == null ? null : motion.clip(l.play!.clip);
-          // Started again while it plays: from where it started, not from
-          // part way through itself -- a bump over a bump would end bigger.
+          // Started again while it plays: from where it started, not part
+          // way through itself, or a bump over a bump would end bigger.
           var again = was != null && !l.play!.ended && was.id == next;
           _close(l, was, at);
           if (next.isEmpty) {
@@ -392,8 +378,8 @@ class MotionPlayer implements LiveMotion {
   }
 
   /// _playedFor is how long [c] plays once launched: its length at its
-  /// speed -- or, reused, until the last of its copies is through it, each
-  /// later by its start and at its own speed (see liveForCopy).
+  /// speed, or, reused, until the last copy is through it, each later by
+  /// its start and at its own speed (see liveForCopy).
   static double _playedFor(MotionClip c, ElementMotion motion) {
     var own = c.length / math.max(0.01, c.speed);
     var set = motion.instances;
@@ -416,9 +402,8 @@ class MotionPlayer implements LiveMotion {
       return;
     }
     if (c.loop) return;
-    // One copy's own play (a coin touched: "el#copy") is that copy's
-    // alone, played as it is: done at its own length, not the slowest
-    // copy's.
+    // One copy's own play (a coin touched: "el#copy") is that copy's alone:
+    // done at its own length, not the slowest copy's.
     var end = play.start +
         (id.contains("#")
             ? c.length / math.max(0.01, c.speed)
@@ -474,8 +459,7 @@ class MotionPlayer implements LiveMotion {
     l.taking = null;
   }
 
-  /// _enter is [e] leaving its timeline: each layer carrying on from where
-  /// the timeline has it.
+  /// _enter is [e] leaving its timeline, each layer carrying on from there.
   _Playing _enter(CanvasDocument doc, int frame, CanvasElement e) {
     var p = _Playing();
     var motion = e.base.motion;
@@ -484,8 +468,8 @@ class MotionPlayer implements LiveMotion {
     var scene = motionSceneOf(doc, frame);
     var replaces = motion.clips.any((c) => c.kind == MotionKind.camera);
     for (var (i, l) in p.layers.indexed) {
-      // Where it was left: what has played, not a clip yet to start held
-      // at its first frame -- an arrival waiting would keep it hidden.
+      // Where it was left: what has played, not a clip yet to start held at
+      // its first frame, or an arrival waiting would keep it hidden.
       var pose = layerPose(motion, i, t, boxOf(e), times, scene,
           replaces: replaces, holdBefore: false);
       l.carry = pose.isRest ? null : pose;
@@ -494,15 +478,13 @@ class MotionPlayer implements LiveMotion {
     return p;
   }
 
-  /// takeLog is what was recorded, those still playing taken to [now]; the
-  /// log emptied.
+  /// takeLog empties the log, those still playing taken to [now].
   List<MotionPlayed> takeLog(CanvasDocument doc, double now) {
     for (var p in _of.values) {
       for (var l in p.layers) {
         var play = l.play;
         if (l.taking == null || play == null) continue;
-        // The master's too, and a copy's own (Ken's systems review,
-        // 2026-11-08: they were never closed, so never kept).
+        // The master's too, and a copy's own, so they are closed and kept.
         var e = _elementIn(doc, l.taking!.element);
         _close(l, e?.base.motion.clip(play.clip), now);
       }
@@ -514,18 +496,18 @@ class MotionPlayer implements LiveMotion {
 }
 
 /// writeMotionTakes is [doc] with [takes] written onto its timeline, each a
-/// placement of the clip where it was played, for as long as it was. One
-/// played out whole is its own; one stopped part way is cut there.
+/// placement of the clip where and for as long as it was played: whole if
+/// it played out, cut where it was stopped.
 CanvasDocument writeMotionTakes(
     CanvasDocument doc, List<MotionPlayed> takes, String Function() newId) {
   var next = doc;
   for (var t in takes) {
-    // A copy's own play -- a coin touched -- is that copy's alone: on the
+    // A copy's own play (a coin touched) is that copy's alone: on the
     // element's timeline every copy would play it, so it is not written.
     if (t.element.contains("#")) continue;
     var e = next.elementById(t.element);
-    // One on the master: on the master's timeline, which runs through
-    // every scene -- so as far along it as this scene starts.
+    // One on the master goes on the master's timeline, which runs through
+    // every scene, as far along it as this scene starts.
     var onMaster = false;
     if (e == null && !next.editingMaster) {
       e = next.masterScene?.elements

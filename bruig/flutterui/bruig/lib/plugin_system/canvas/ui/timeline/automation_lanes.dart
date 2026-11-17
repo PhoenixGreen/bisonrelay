@@ -26,8 +26,7 @@ const double automationAddHeight = 24;
 /// the dot beside a setting a lane moves.
 const Color automationColour = Color(0xFFE0533F);
 
-/// _heldColour is a lane overridden by a hand: greyed until it is handed
-/// back.
+/// _heldColour greys a lane overridden by hand until it is handed back.
 const Color _heldColour = Color(0xFF7D838D);
 
 const double _pad = 6;
@@ -431,7 +430,6 @@ class _AutomationLaneBodyState extends State<AutomationLaneBody> {
           if (_pointAt(d.localPosition, size, what) != null) return;
           _add(d.localPosition, size, what);
         },
-        // Right-clicked, a point is taken out.
         onSecondaryTapUp: (d) {
           var i = _pointAt(d.localPosition, size, what);
           if (i == null) return;

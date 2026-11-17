@@ -4,28 +4,23 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 
 // svg_import.dart takes an .svg apart into the shapes a Vector element edits:
-// runs of points with handles, each with a fill and a stroke.
-//
-// Its own small reader rather than a package. It keeps paths and the basic
-// shapes, groups and transforms, fills and strokes, and stylesheet classes.
-// What it cannot keep is listed in [SvgImport.dropped] so the user is told
-// first: a gradient becomes its first colour, and text, images, filters and
-// masks are left out.
+// runs of points with handles, each with a fill and a stroke. Its own small
+// reader: paths and basic shapes, groups and transforms, fills, strokes and
+// stylesheet classes. What it cannot keep is listed in [SvgImport.dropped]
+// so the user is told: a gradient becomes its first colour, and text,
+// images, filters and masks are left out.
 
-/// SvgImport is a drawing taken apart.
 class SvgImport {
   final Rect viewBox;
   final List<VectorShape> shapes;
 
-  /// dropped is what could not be kept, as shown to the user:
-  /// "gradients (made solid)", "text".
+  /// dropped is what could not be kept, shown to the user: "text", say.
   final Set<String> dropped;
 
   const SvgImport(this.viewBox, this.shapes, this.dropped);
 }
 
-/// importSvg takes [source] apart, or returns null where it is not a drawing
-/// that can be read at all.
+/// importSvg takes [source] apart, or null where it cannot be read at all.
 SvgImport? importSvg(String source) {
   // A drawing is somebody else's file: one that trips the reader is no
   // drawing, not an error that stops what asked for it.
@@ -42,7 +37,6 @@ SvgImport? importSvg(String source) {
 
 // ---------------------------------------------------------------------------
 // A small XML reader: elements, attributes and text, enough for a drawing.
-// ---------------------------------------------------------------------------
 
 class _Node {
   final String name;
@@ -127,9 +121,8 @@ class _Xml {
       }
       var node = _Node(name, attrs);
       stack.last.children.add(node);
-      // Nested no deeper than any drawing is: the drawing is walked by
-      // recursion, and twenty thousand groups inside one another would run
-      // it out of stack (security review, 2026-11-17).
+      // Nested no deeper than any drawing is: it is walked by recursion, and
+      // twenty thousand nested groups would run it out of stack.
       if (!selfClosing) {
         if (stack.length > _maxDepth) return null;
         stack.add(node);
@@ -164,7 +157,6 @@ class _Xml {
 
 // ---------------------------------------------------------------------------
 // Styles: what a shape inherits from the groups round it.
-// ---------------------------------------------------------------------------
 
 class _Style {
   final Color? fill; // null is none
@@ -262,8 +254,7 @@ class _Importer {
       };
 
   /// _props is every presentation property on [n]: its tag's and classes'
-  /// from the stylesheet, its attributes, then its own style -- later ones
-  /// winning, as in a browser.
+  /// from the stylesheet, its attributes, then its style, later ones winning.
   Map<String, String> _props(_Node n) {
     var out = <String, String>{...?_tags[n.name]};
     for (var c in (n.attrs["class"] ?? "").split(RegExp(r"\s+"))) {
@@ -321,8 +312,7 @@ class _Importer {
     );
   }
 
-  /// _paint reads a fill or stroke: a colour, none, currentColor, or a
-  /// gradient -- which is made the colour it starts with.
+  /// _paint reads a fill or stroke; a gradient becomes its first colour.
   Color? _paint(String? v, Color? inherited, Color current) {
     if (v == null) return inherited;
     v = v.trim();
@@ -432,8 +422,7 @@ class _Importer {
     }
   }
 
-  /// _outline is [n]'s outline as runs of points, in its own units -- or
-  /// null where it is not a shape.
+  /// _outline is [n] as runs of points in its own units, or null if no shape.
   List<_Run>? _outline(_Node n) {
     double a(String k) => _length(n.attrs[k]) ?? 0;
     switch (n.name) {
@@ -458,8 +447,7 @@ class _Importer {
           ];
         }
         // Eight points round the box, two to each corner: a straight edge
-        // between the two of a side, a quarter ellipse between the two of a
-        // corner.
+        // between those of a side, a quarter ellipse between those of a corner.
         var kx = rx * 0.5523, ky = ry * 0.5523;
         return [
           _Run.closed([
@@ -577,7 +565,6 @@ class _Run {
 
 // ---------------------------------------------------------------------------
 // Path data: d="M10 10 C 20 20, 40 20, 50 10 Z" and all its shorthands.
-// ---------------------------------------------------------------------------
 
 class _PathData {
   final String d;
@@ -685,8 +672,7 @@ class _PathData {
         case "S":
           var v = _nums(4);
           if (v == null) break;
-          // Reflected from the last curve's second handle, or the point
-          // itself where the last segment was not a cubic.
+          // Reflected from the last cubic's second handle, else the point.
           var x1 = lastC2x == null ? cx : 2 * cx - lastC2x;
           var y1 = lastC2x == null ? cy : 2 * cy - (lastC2y ?? cy);
           var x2 = nx(v[0]), y2 = ny(v[1]);
@@ -734,8 +720,7 @@ class _PathData {
           finish();
           return out;
       }
-      // A number that would not read leaves the same command at the same
-      // place: stop there rather than read it again forever.
+      // An unreadable number leaves the place unmoved: stop, not loop.
       if (_i == from) break;
     }
     finish();
@@ -797,8 +782,7 @@ class _PathData {
   }
 
   /// _arc draws an elliptical arc as cubic curves, a quarter turn or less
-  /// each -- the conversion every renderer does (SVG implementation notes,
-  /// F.6).
+  /// each, as every renderer does (SVG implementation notes, F.6).
   static void _arc(
       void Function(double, double, double, double, double, double) cubic,
       void Function(double, double) line,
@@ -867,7 +851,6 @@ class _PathData {
 
 // ---------------------------------------------------------------------------
 // Transforms, numbers and colours.
-// ---------------------------------------------------------------------------
 
 class _Matrix {
   final double a, b, c, d, e, f;
@@ -888,8 +871,7 @@ class _Matrix {
   Offset apply(double x, double y) =>
       Offset(a * x + c * y + e, b * x + d * y + f);
 
-  /// scale is how much it grows a line's width: the square root of how much
-  /// it grows an area.
+  /// scale is how much it grows a line's width: the root of its area growth.
   double get scale => math.sqrt((a * d - b * c).abs());
 
   static _Matrix parse(String s) {
@@ -998,7 +980,6 @@ Color? parseSvgColor(String s) {
   return _named[s];
 }
 
-/// _Hsl is a colour given as hue, saturation and lightness.
 class _Hsl {
   final double a, h, s, l;
   const _Hsl(this.a, this.h, this.s, this.l);
@@ -1080,6 +1061,5 @@ const Map<String, Color> _named = {
   "sienna": Color(0xFFA0522D),
 };
 
-/// _letter matches a path command's letter; compiled once, since every
-/// character of a path is tested.
+/// _letter is compiled once: every character of a path is tested by it.
 final RegExp _letter = RegExp(r"[A-Za-z]");

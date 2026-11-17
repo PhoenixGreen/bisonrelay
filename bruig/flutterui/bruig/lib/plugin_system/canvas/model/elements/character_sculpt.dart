@@ -1,9 +1,7 @@
-// character_sculpt.dart is a new 3D character shaped by hand: strokes of a
-// brush drawn over the body in the Character Studio, each raising, lowering
-// or flattening the surface under it. A stroke is kept where it was drawn
-// on the body at rest, so it moves with the body as the body moves, and the
-// clothes over it follow it as they follow the rest of the shaping. What a
-// stroke does to the mesh is in render/vrm/vrm_shape.dart (StrokeDeformer).
+// character_sculpt.dart is a 3D character shaped by brush strokes that
+// raise, lower or flatten the surface. Each is kept where drawn on the body
+// at rest, so it moves with the body and the clothes follow it; the mesh
+// work is StrokeDeformer in render/vrm/vrm_shape.dart.
 
 /// SculptTool is what a stroke does to the surface under it.
 enum SculptTool {
@@ -38,13 +36,11 @@ class SculptPoint {
   int get hashCode => Object.hash(x, y, z, nx, ny, nz);
 }
 
-/// SculptStroke is one stroke of the brush. Immutable.
 class SculptStroke {
   final SculptTool tool;
 
-  /// radius is the brush's, in metres on the body as made; strength how
-  /// far it goes, nought to one: a raise of one lifts the surface by a
-  /// third of the radius.
+  /// radius is the brush's, in metres as made; strength 0 to 1, a raise of
+  /// one lifting the surface a third of the radius.
   final double radius, strength;
 
   /// mirror draws it on the other side as well, as a mirror image.
@@ -66,8 +62,7 @@ class SculptStroke {
       mirror: mirror,
       points: [...points, p]);
 
-  /// key says exactly what the stroke is, for the shaping to know when it
-  /// has changed.
+  /// key says exactly what the stroke is, for the shaping to see changes.
   String get key => "${tool.name}|$radius|$strength|$mirror|${points.length}|"
       "${points.isEmpty ? "" : _p(points.last)}|${Object.hashAll(points)}";
 
@@ -119,8 +114,7 @@ class SculptStroke {
   int get hashCode => key.hashCode;
 }
 
-/// PaintTool is what a paint stroke does: lays colour on, or rubs out the
-/// paint already there.
+/// PaintTool is what a paint stroke does: lay colour on, or rub it out.
 enum PaintTool {
   paint("Paint"),
   rubOut("Rub out");
@@ -132,21 +126,18 @@ enum PaintTool {
       values.where((t) => t.name == name).firstOrNull ?? paint;
 }
 
-/// PaintStroke is one stroke of paint on the character: on the skin (the
-/// face as well) or on a piece of clothing, by its slot's name ("top").
-/// Its points are on the body as it was made, before any shaping, so the
-/// paint stays where it was put however the body is shaped after. What is
-/// drawn from it is in render/vrm/vrm_paint.dart.
+/// PaintStroke is one stroke of paint on the skin (the face as well) or on
+/// a piece of clothing, by its slot's name ("top"). Its points are on the
+/// body as made, before any shaping, so the paint stays put however the
+/// body is shaped. What is drawn from it is in render/vrm/vrm_paint.dart.
 class PaintStroke {
   final String on;
   final PaintTool tool;
 
-  /// colour is 0xRRGGBB.
   final int colour;
 
-  /// radius is the brush's, in metres; opacity how much of the colour goes
-  /// on, nought to one; softness how far in from the edge it fades, nought
-  /// (a hard edge) to one (fading from the middle).
+  /// radius is the brush's, in metres; opacity 0 to 1; softness how far in
+  /// from the edge it fades, 0 (hard) to 1 (from the middle).
   final double radius, opacity, softness;
   final bool mirror;
   final List<SculptPoint> points;

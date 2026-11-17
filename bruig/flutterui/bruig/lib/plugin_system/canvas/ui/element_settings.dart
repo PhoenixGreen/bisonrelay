@@ -70,22 +70,19 @@ import 'package:bruig/plugin_system/canvas/ui/settings/camera_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_settings.dart';
 
-// element_settings.dart is the controls for whichever element is selected,
-// grouped by what somebody is thinking about rather than by which class holds
-// the field: a text's colour sits with its outline and shadow under Colour,
-// not with its font size under Type. Every control writes a transient edit
-// and commits on release, so a drag is one undo step: hence onChanged and
-// onCommit on almost every control.
+// element_settings.dart is the controls for the selected element, grouped by
+// what somebody is thinking about rather than by which class holds the field.
+// Every control writes a transient edit and commits on release, so a drag is
+// one undo step: hence onChanged and onCommit on almost every control.
 
-/// elementSettings is the groups for [element].
 List<Widget> elementSettings(
   BuildContext context,
   CanvasController controller,
   CanvasElement element,
 ) {
   // The undo step is opened here, not by each control: beginInteraction is
-  // idempotent, and a transient edit made outside an interaction is silently
-  // never put on the history.
+  // idempotent, and a transient edit outside an interaction never reaches
+  // the history.
   void write(CanvasElement next) {
     controller.beginInteraction();
     controller.replaceElement(next, transient: true);
@@ -94,27 +91,25 @@ List<Widget> elementSettings(
   void commit() => controller.endInteraction();
   void begin() => controller.beginInteraction();
 
-  // A sound on the timeline is not on the canvas: no place on it, no presets
-  // for a speaker, no speaker. What it has is its files, how it plays, and
-  // where on the timeline -- the same as a backdrop's sound.
+  // A sound on the timeline is not on the canvas: it has only its files, how
+  // it plays and where on the timeline, as a backdrop's sound does.
   if (element is AudioElement && isTimelineSound(element)) {
     return audioSettings(context, controller, element, write, begin, commit,
         background: true);
   }
 
-  // A picture is all sections, its place and its presets among them -- see
-  // image_sections.dart.
+  // A picture is all sections (see image_sections.dart).
   if (element is ImageElement) {
     return imageSettings(context, controller, element, write, begin, commit);
   }
 
-  // A text, rebuilt round tasks: its layers, a quick strip, then Content,
-  // Look, Layout, Motion and More -- see textPanel.
+  // A text: its layers, a quick strip, then Content, Look, Layout, Motion
+  // and More (see textPanel).
   if (element is TextElement) {
     return [textPanel(context, controller, element, write, begin, commit)];
   }
 
-  // Batch 2 of the rebuild (Ken, 2026-11-11): the Text panel's shape.
+  // Elements with a panel of their own, in the Text panel's shape.
   if (element is ShapeElement) {
     return [shapePanel(context, controller, element, write, begin, commit)];
   }
@@ -130,18 +125,16 @@ List<Widget> elementSettings(
   if (element is CounterElement) {
     return [counterPanel(context, controller, element, write, begin, commit)];
   }
-  // Batch 3.
   if (element is TableElement) {
     return [tablePanel(context, controller, element, write, begin, commit)];
   }
   if (element is ChartElement) {
     return [chartPanel(context, controller, element, write, begin, commit)];
   }
-  // Batch 4.
   if (element is VectorElement) {
     return [vectorPanel(context, controller, element, write, begin, commit)];
   }
-  // Batch 5. An instrument keeps its own (its keyboard and part).
+  // An instrument is not here: it keeps its keyboard and part, below.
   if (element is VideoElement) {
     return videoSettings(context, controller, element, write, begin, commit,
         panel: true);
@@ -175,9 +168,8 @@ List<Widget> elementSettings(
     return synthSettings(context, controller, element, write, begin, commit);
   }
 
-  // Every other element in sections, as a picture is: where it is, its
-  // own subjects, how it arrives, and the designs saved of its kind -- see
-  // element_sections.dart.
+  // Every other element: its own sections, put into the shared panel below
+  // (see element_sections.dart).
   var own = <Widget>[
         ...switch (element) {
           // An instrument: its keyboard and part.
@@ -291,7 +283,7 @@ List<Widget> elementSettings(
                             ),
                         ]),
                   ]),
-              // Its own animations, read from its file: its clips.
+              // The animations read from its file.
               section(e, "object3dAnimations",
                   icon: Icons.animation,
                   title: "Its animations",
@@ -355,7 +347,7 @@ List<Widget> elementSettings(
                       ...cameraLensGroups(
                           controller, e, write, begin, commit),
                   ]),
-              // A move put on the timeline at the playhead, opened to be
+              // A move put on the timeline at the playhead and opened to be
               // shaped: the quickest way to a push in.
               section(e, "cameraMoves",
                   icon: Icons.movie_filter_outlined,
@@ -394,8 +386,7 @@ List<Widget> elementSettings(
         },
   ];
 
-  // Batch 6 (Ken, 2026-11-11): the rest in the shared panel -- every
-  // element's is now -- each of their sections where _placed puts it.
+  // The shared panel, each section where _placed puts it.
   var bits = <PanelBit>[];
   for (var w in own) {
     var name = w is CanvasSection ? w.remember.split(".").last : "";
@@ -410,12 +401,12 @@ List<Widget> elementSettings(
   ];
 }
 
-/// _placed is where each of an element's own sections goes in its rebuilt
-/// panel, by the name it is remembered by: which section, and whether its
-/// settings go straight in (the element's main subject, open from the
-/// start) rather than as a fold. One not named is a fold in Content.
+/// _placed is where each of an element's own sections goes in its panel, by
+/// the name it is remembered by: which section, and whether its settings go
+/// straight in (the element's main subject) rather than as a fold. One not
+/// named is a fold in Content.
 const _placed = <String, (PanelSection, bool)>{
-  // An instrument: its keyboard and part.
+  // An instrument.
   "instrument": (PanelSection.content, true),
   // A team.
   "team": (PanelSection.content, true),
@@ -555,7 +546,7 @@ Widget _camera3dGroup(
 }
 
 /// _ModelChoice is which of the library's 3D objects a 3D object shows. One
-/// added from the Add panel starts with none, and is given one here.
+/// added from the Add panel starts with none and is given one here.
 class _ModelChoice extends StatefulWidget {
   final Object3dElement element;
   final ValueChanged<LibraryAsset> onPick;

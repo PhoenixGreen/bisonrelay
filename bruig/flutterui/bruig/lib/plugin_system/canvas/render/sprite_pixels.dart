@@ -13,16 +13,14 @@ class SpritePixels {
   final int width;
   final int height;
 
-  /// rgba is red, green, blue and alpha for each pixel, row by row.
+  /// rgba is RGBA bytes for each pixel, row by row.
   final Uint8List rgba;
 
   SpritePixels(this.width, this.height, this.rgba);
 
-  /// blank is a sheet [width] by [height] pixels with nothing on it.
   factory SpritePixels.blank(int width, int height) =>
       SpritePixels(width, height, Uint8List((width < 1 ? 1 : width) * (height < 1 ? 1 : height) * 4));
 
-  /// of is [image]'s pixels.
   static Future<SpritePixels?> of(ui.Image image) async {
     var data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     if (data == null) return null;
@@ -33,7 +31,6 @@ class SpritePixels {
 
   bool inside(int x, int y) => x >= 0 && y >= 0 && x < width && y < height;
 
-  /// at is the colour of pixel [x], [y].
   ui.Color at(int x, int y) {
     if (!inside(x, y)) return const ui.Color(0x00000000);
     var i = (y * width + x) * 4;
@@ -137,14 +134,13 @@ class SpritePixels {
     return out;
   }
 
-  /// image is the picture of these pixels.
   Future<ui.Image> image() {
     var done = Completer<ui.Image>();
     ui.decodeImageFromPixels(rgba, width, height, ui.PixelFormat.rgba8888, done.complete);
     return done.future;
   }
 
-  /// png is these pixels as a .png file's bytes.
+  /// png is these pixels as .png file bytes.
   Future<Uint8List?> png() async {
     var img = await image();
     var data = await img.toByteData(format: ui.ImageByteFormat.png);

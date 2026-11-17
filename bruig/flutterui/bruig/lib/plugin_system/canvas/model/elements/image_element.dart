@@ -38,9 +38,8 @@ enum RemovalMode {
       );
 }
 
-/// ImageFit is how the picture sits in its box. Our own enum rather than
-/// BoxFit, so the model needs only dart:ui and a saved document does not
-/// depend on another library's names; render/ maps them.
+/// ImageFit is how the picture sits in its box: our own, not BoxFit, so
+/// saved documents need no other library's names; render/ maps them.
 enum ImageFit {
   cover("Cover"),
   contain("Show whole"),
@@ -53,35 +52,30 @@ enum ImageFit {
       values.firstWhere((f) => f.name == name, orElse: () => ImageFit.cover);
 }
 
-/// RemovalStroke is one sweep of the background-removal brush.
-///
-/// Points are fractions of the picture's own width and height, and the
-/// radius a fraction of its shorter side, so a stroke stays put when the
-/// element is resized, refitted or recropped.
+/// RemovalStroke is one sweep of the background-removal brush. Points are
+/// fractions of the picture's width and height, the radius of its shorter
+/// side, so a stroke stays put when the element is resized or recropped.
 class RemovalStroke {
   final List<Offset> points;
   final double radius;
 
-  /// hardness is how abruptly the stroke stops at its own edge: 1 is a disc
-  /// with a cut edge, lower fades out towards the rim.
+  /// hardness is how abruptly the stroke stops at its edge: 1 a cut disc,
+  /// lower fading towards the rim.
   final double hardness;
 
-  /// fill makes the stroke a boundary rather than a mark: everything the
-  /// picture's own edge can reach without crossing it goes, whatever its
-  /// colour.
+  /// fill makes the stroke a boundary: all the picture's edge reaches
+  /// without crossing it goes, whatever its colour.
   final bool fill;
 
   /// fillInside takes what the boundary encloses rather than what surrounds
-  /// it -- for cutting a hole out of something rather than cutting it free.
+  /// it, to cut a hole out of something rather than cut it free.
   final bool fillInside;
 
-  /// snap makes the stroke cling to what is in the picture. Zero paints the
-  /// whole disc; above zero, a dab spreads from the pointer only through
-  /// pixels close in colour to the one under it.
+  /// snap makes the stroke cling: zero paints the whole disc; above it, a
+  /// dab spreads only through pixels close in colour to the pointer's.
   final double snap;
 
-  /// keep is true for a stroke that puts the picture back and false for one
-  /// that takes it away.
+  /// keep is true for a stroke that puts the picture back.
   final bool keep;
 
   const RemovalStroke({
@@ -132,9 +126,9 @@ class RemovalStroke {
 }
 
 /// BackgroundRemoval is the recipe, never the result: settings rather than
-/// a cut-out bitmap, so the original stays whole, the settings can be changed
-/// later, and the document holds no second copy. The cut-out is recomputed
-/// when the settings change and cached in memory (see [cacheKey]).
+/// a cut-out bitmap, so the original stays whole, the settings can change,
+/// and the document holds no second copy. The cut-out is recomputed when
+/// the settings change and cached in memory (see [cacheKey]).
 class BackgroundRemoval {
   final RemovalMode mode;
 
@@ -145,30 +139,25 @@ class BackgroundRemoval {
   /// 0..1 across the RGB cube's diagonal.
   final double tolerance;
 
-  /// softness feathers the edge, so a cut-out does not have a hard jagged
-  /// boundary a pixel wide. In the same 0..1 units as the tolerance.
+  /// softness feathers the cut-out's edge, in the tolerance's 0..1 units.
   final double softness;
 
   /// threshold is the brightness [RemovalMode.luminance] cuts at.
   final double threshold;
 
-  /// invert keeps what would have been removed and removes what would have
-  /// been kept.
+  /// invert swaps what is kept and what is removed.
   final bool invert;
 
-  /// hints are the marks that teach [RemovalMode.learn] what is what: keep
-  /// false marks background, keep true subject. Unlike [strokes] they remove
-  /// nothing themselves; they are examples.
+  /// hints teach [RemovalMode.learn] (keep false background, keep true
+  /// subject); unlike [strokes] they remove nothing themselves.
   final List<RemovalStroke> hints;
 
-  /// strokes are the brush's marks, applied after the automatic method so a
-  /// stroke always has the last word.
+  /// strokes are the brush's marks, applied last so they have final say.
   final List<RemovalStroke> strokes;
 
-  /// edge is how sharp a change has to be to stop the flood, for
-  /// [RemovalMode.cornerFlood]; [tolerance] stops it running away. It works
-  /// because backgrounds are usually smooth and subjects have crisp outlines.
-  /// Low values stop at the faintest change.
+  /// edge is how sharp a change has to be to stop [RemovalMode.cornerFlood]'s
+  /// flood; [tolerance] stops it running away. Backgrounds are usually smooth
+  /// and subjects have crisp outlines. Low values stop at the faintest change.
   final double edge;
 
   const BackgroundRemoval({
@@ -183,8 +172,7 @@ class BackgroundRemoval {
     this.invert = false,
   });
 
-  /// active is whether anything is being taken out, by a method or by the
-  /// brush alone.
+  /// active is whether anything is taken out, by a method or the brush.
   bool get active => mode != RemovalMode.none || strokes.isNotEmpty;
 
   /// backgroundHints and subjectHints split [hints] by side.
@@ -214,16 +202,14 @@ class BackgroundRemoval {
         hints: hints ?? this.hints,
       );
 
-  /// cacheKey identifies the cut-out, so elements giving the same picture
-  /// the same treatment share one. The brush marks must be in it or a new
-  /// stroke would change nothing on screen; see [_marksKey].
+  /// cacheKey identifies the cut-out, so the same treatment is shared; it
+  /// holds the brush marks so a new stroke shows. See [_marksKey].
   String cacheKey(String assetId) => "$assetId|${mode.name}|"
       "${colorToJson(keyColor)}|$tolerance|$softness|$threshold|$invert|$edge|"
       "${_marksKey(strokes)}|${_marksKey(hints)}";
 
-  /// _marksKey summarises brush marks by their count and how far the last
-  /// one has got: a key holding every point would be longer than the
-  /// document.
+  /// _marksKey summarises brush marks by count and how far the last one has
+  /// got: a key holding every point would be longer than the document.
   static String _marksKey(List<RemovalStroke> marks) => marks.isEmpty
       ? "0"
       : "${marks.length}:${marks.last.points.length}:"
@@ -287,7 +273,7 @@ enum ImageFilterPreset {
       );
 }
 
-/// OverlayBlend is how an overlay colour is laid over the picture. Our own
+/// OverlayBlend is how an overlay colour is laid over the picture: our own
 /// names, so a saved document does not depend on BlendMode's.
 enum OverlayBlend {
   none("None", BlendMode.dstIn),
@@ -328,20 +314,17 @@ enum OutlineStyle {
       );
 }
 
-/// ImageOutline is a line traced round whatever is left of a picture (the
-/// sticker look). It traces the alpha channel, so on a picture with nothing
-/// taken out it is a border round the rectangle.
+/// ImageOutline is a line traced round what is left of a picture (the
+/// sticker look), along its alpha: a whole picture gets a border.
 class ImageOutline {
   final Color color;
 
-  /// width is in canvas units, like every other thickness here, so an outline
-  /// stays the same weight when the element is resized.
+  /// width is in canvas units, so it keeps its weight on resize.
   final double width;
 
   final OutlineStyle style;
 
-  /// feather fades the band out as it goes, 0 for a hard line and 1 for one
-  /// that is transparent by the time it reaches its own edge.
+  /// feather fades the band out: 0 a hard line, 1 clear at its edge.
   final double feather;
 
   const ImageOutline({
@@ -426,14 +409,12 @@ class ImageCrop {
       );
 }
 
-/// ImageFraming is where the picture sits inside its frame and how much of
-/// it is shown, for [ImageFit.cover] only. A covering picture has slack in
-/// one direction; [x] and [y] spend it (0 left or top, 1 right or bottom),
-/// and [zoom] above 1 scales up to make slack where there was none.
-///
-/// Not [ImageCrop]: a crop is about the picture's pixels, framing about the
-/// frame. Kept as fractions of the slack, a reframed picture survives its
-/// element changing shape without the subject sliding out of shot.
+/// ImageFraming is where the picture sits in its frame and how much of it
+/// shows, for [ImageFit.cover] only: [x] and [y] spend a covering picture's
+/// slack (0 left or top, 1 right or bottom), and [zoom] above 1 makes slack
+/// where there was none. Not [ImageCrop], which is about pixels: as
+/// fractions of the slack, a reframed subject stays in shot when the
+/// element changes shape.
 class ImageFraming {
   /// x and y are how the slack is spent, 0.5 being the middle.
   final double x;
@@ -488,13 +469,11 @@ ImageFraming driftedFraming(
   };
 }
 
-/// driftPerStrength is how much of the picture a drift moves at a loop
-/// strength of 1.
+/// driftPerStrength is how much of the picture a drift moves at 1.
 const double driftPerStrength = 0.15;
 
-/// ImageElement is a picture on the canvas. It holds an [assetId], not the
-/// bytes, which live once in the canvas asset store beside the document (see
-/// storage/canvas_assets.dart).
+/// ImageElement is a picture on the canvas, by [assetId]: the bytes live
+/// once in the canvas asset store (storage/canvas_assets.dart).
 class ImageElement extends CanvasElement {
   final String assetId;
   final ImageFit fit;
@@ -520,29 +499,26 @@ class ImageElement extends CanvasElement {
 
   final ImageOutline outline;
 
-  /// overlay is a colour laid over the picture, and [blend] is how.
+  /// overlay is a colour laid over the picture, and [blend] how.
   final Color overlay;
 
   final OverlayBlend blend;
 
   final ElementAnimation animation;
 
-  /// layers are what the picture is composited from, back to front (see
-  /// image_layers.dart). The fields above are the base layer; with no
-  /// layers, the base layer is drawn alone.
+  /// layers are what the picture is composited from, back to front
+  /// (image_layers.dart); the fields above are the base layer.
   final List<ImageLayer> layers;
 
-  /// mask is what of the picture is shown, applied after [removal]. See
-  /// image_mask.dart.
+  /// mask is what of the picture shows, after [removal] (image_mask.dart).
   final ImageMask mask;
 
   /// retouch is the retouching strokes done to the picture, in order, under
   /// its mask. See image_strokes.dart.
   final List<StrokeMark> retouch;
 
-  /// scaleContent makes resizing the frame scale its layers with it. Off,
-  /// the frame is resized round them and each stays where it is on the page
-  /// (see keptInPlace).
+  /// scaleContent scales its layers with the frame; off, the frame resizes
+  /// round them, each staying put on the page (see keptInPlace).
   final bool scaleContent;
 
   /// clip cuts everything in the picture to its frame. Off, nothing is cut
@@ -601,7 +577,6 @@ class ImageElement extends CanvasElement {
     return [base, ...others];
   }
 
-  /// layered is whether there is more to draw than the plain base picture.
   bool get layered => layers.any((l) => !l.plain);
 
   ImageLayer? layerById(String id) {
@@ -613,17 +588,14 @@ class ImageElement extends CanvasElement {
 
   ImageElement withLayers(List<ImageLayer> next) => copyWith(layers: next);
 
-  /// withLayer is this element with the layer [id] changed by [edit].
   ImageElement withLayer(String id, ImageLayer Function(ImageLayer) edit) =>
       withLayers([for (var l in stack) l.id == id ? edit(l) : l]);
 
-  /// croppedTo is this element with [next] as its crop and its box trimmed
-  /// to match, so what is left of the picture stays where it was on the
-  /// canvas. A crop alone would refit the rest to the same box: a zoom.
-  ///
-  /// With layers, the base layer's place is trimmed, not the frame, which
-  /// holds the other layers too. [flipX] and [flipY] say a mirrored layer's
-  /// left is on its right; for the base picture its own layer's are used.
+  /// croppedTo is this element with [next] as its crop and its box trimmed to
+  /// match, so what is left of the picture stays put on the canvas (a crop
+  /// alone would refit the rest to the same box: a zoom). With layers, the
+  /// base layer's place is trimmed, not the frame. [flipX] and [flipY] say a
+  /// mirrored layer's left is on its right; the base uses its own layer's.
   ImageElement croppedTo(ImageCrop next,
       {bool flipX = false, bool flipY = false}) {
     var was = crop;
@@ -639,8 +611,7 @@ class ImageElement extends CanvasElement {
     var perX = box.width / was.width;
     var perY = box.height / was.height;
 
-    // How far each side of the picture comes in, and on which side of the
-    // box that side is.
+    // How far each side comes in, and on which side of the box.
     var inL = (next.left - was.left) * perX;
     var inR = (was.right - next.right) * perX;
     var inT = (next.top - was.top) * perY;
@@ -650,8 +621,7 @@ class ImageElement extends CanvasElement {
     var trimmed = Rect.fromLTRB(
         box.left + inL, box.top + inT, box.right - inR, box.bottom - inB);
 
-    // Never inside out, and never too small to grab: 8 canvas units, or
-    // the same in a layer's units.
+    // Never inside out or too small to grab: 8 units, canvas or layer.
     var least = base == null
         ? 8.0
         : 8.0 * layerUnits / math.max(1e-9, math.min(width, height));
@@ -671,9 +641,9 @@ class ImageElement extends CanvasElement {
   }
 
   /// withProportionsKept is this picture with its proportions held as it is
-  /// resized, or let go. Let go, a covering picture becomes stretched, so
-  /// pulling a side squashes it rather than trimming it. Held again, the fit
-  /// is left alone.
+  /// resized, or let go: let go, a covering picture becomes stretched, so
+  /// pulling a side squashes rather than trims it. Held again, the fit is
+  /// left alone.
   ImageElement withProportionsKept(bool keep) {
     var next = withBase(lockAspect: keep) as ImageElement;
     if (!keep && fit == ImageFit.cover) {
@@ -831,7 +801,7 @@ class ImageElement extends CanvasElement {
                       const BoxSpec(padding: 0))));
 
   /// grownToFit is this picture with its frame grown to take in everything
-  /// drawn in it, each layer kept where it is on the page. Never smaller (a
+  /// drawn in it, each layer kept in place on the page. Never smaller (a
   /// shrinking frame would move under the pointer); unchanged when it clips.
   ImageElement grownToFit() {
     if (clip || !layered) return this;
@@ -893,9 +863,9 @@ class ImageElement extends CanvasElement {
 bool _clippedBefore(ShapeKind? frame, BoxSpec box) =>
     frame != null || box.isRounded;
 
-/// fitToPicture gives an element the proportions of the picture in it. The
-/// box shrinks to the picture's shape within the space it had, keeping its
-/// centre; it never grows, which could push a tall photograph off the canvas.
+/// fitToPicture gives an element the proportions of its picture: the box
+/// shrinks to the picture's shape within its space, keeping its centre. It
+/// never grows, which could push a tall photograph off the canvas.
 ImageElement fitToPicture(ImageElement e, Size picture) {
   if (picture.width <= 0 || picture.height <= 0) return e;
   var box = e.base;

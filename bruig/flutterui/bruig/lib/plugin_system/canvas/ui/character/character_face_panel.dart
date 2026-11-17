@@ -4,9 +4,8 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // character_face_panel.dart is the Character Studio's Face step: the face's
-// parts down the left (expression, where it looks, each region, blush, and
-// what it does by itself) and the open part's settings on the right. See
-// character_face.dart.
+// parts down the left (expression, gaze, regions, blush, what it does by
+// itself) and the open part's settings on the right. See character_face.dart.
 
 /// faceParts is the Face step's parts: id, name, group and what each says.
 const List<(String id, String name, String group, String says)> faceParts = [
@@ -53,16 +52,14 @@ const List<(String id, String name, String group, String says)> faceParts = [
   ("idle", "Blink and glance", "Alive", "What the face does by itself."),
 ];
 
-/// _regionChanged is whether [region]'s shapes are not as the expression
-/// started from has them.
+/// _regionChanged is whether [region]'s shapes differ from the expression's.
 bool _regionChanged(CharacterFace f, String region) {
   final from = f.expressions[f.name] ?? const FaceMix();
   return (faceUnits[region] ?? const [])
       .any((u) => f.mix.unit(u.$1) != from.unit(u.$1));
 }
 
-/// facePartChanged is whether part [id] of [f] is not as the expression it
-/// was started from has it.
+/// facePartChanged is whether part [id] of [f] differs from the expression's.
 bool facePartChanged(CharacterFace f, String id) {
   final from = f.expressions[f.name] ?? const FaceMix();
   return switch (id) {
@@ -117,7 +114,6 @@ class CharacterFaceList extends StatelessWidget {
   }
 }
 
-/// CharacterFaceControls are part [part]'s settings.
 class CharacterFaceControls extends StatefulWidget {
   final String part;
   final CharacterFace face;
@@ -317,8 +313,7 @@ class _CharacterFaceControlsState extends State<CharacterFaceControls> {
     );
   }
 
-  /// _keep keeps the mix as an expression of the face's own, by the name
-  /// typed.
+  /// _keep keeps the mix as an expression of the face's own, by the name typed.
   void _keep() {
     final name = _keepAs.text.trim();
     if (name.isEmpty) return;
@@ -352,8 +347,7 @@ CharacterFace resetFacePart(CharacterFace f, String id) {
   return f.copyWith(mix: m);
 }
 
-/// _LookPad is where the eyes look: a square, the viewer at its middle, a
-/// dot dragged about in it.
+/// _LookPad is where the eyes look: a square, the viewer mid, a dot dragged.
 class _LookPad extends StatelessWidget {
   final double x, y;
   final void Function(double x, double y) onChanged;

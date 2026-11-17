@@ -2,10 +2,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 
-// character_move_panel.dart is the Character Studio's Move step: how the
-// character stands (stance, hands, feet, body turned by hand) down the left,
-// and the open part's settings on the right. See character_move.dart, and
-// vrm_pose.dart for how it is stood.
+// character_move_panel.dart is the Character Studio's Move step: how it
+// stands (stance, hands, feet, body turned) down the left, the open part's
+// settings on the right. See character_move.dart and vrm_pose.dart.
 
 /// moveParts is the Move step's parts: id, name, group and what each says.
 const List<(String id, String name, String group, String says)> moveParts = [
@@ -119,7 +118,6 @@ class CharacterMoveList extends StatelessWidget {
   }
 }
 
-/// CharacterMoveControls are part [part]'s settings.
 class CharacterMoveControls extends StatelessWidget {
   final String part;
   final CharacterMove move;

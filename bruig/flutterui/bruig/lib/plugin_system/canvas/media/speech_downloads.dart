@@ -6,12 +6,11 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 
-// speech_downloads.dart is how our own voices arrive: a list of files, each
-// pinned to its size and SHA-256, fetched once into a folder of the library
-// and checked as it comes. Shared by Kokoro and the expressive voices.
+// speech_downloads.dart fetches our voices' files once, pinned to size and
+// SHA-256 and checked as they come. Shared by Kokoro and the expressive ones.
 
-/// PinnedFile is one file to fetch: where from, where to in the folder,
-/// how big it is and what its SHA-256 is; [executable] for a program.
+/// PinnedFile is one file to fetch: source, place in the folder, size and
+/// SHA-256; [executable] for a program.
 typedef PinnedFile = ({
   String url,
   String path,
@@ -20,7 +19,7 @@ typedef PinnedFile = ({
   bool executable,
 });
 
-/// pinnedReady is whether every one of [files] is in [dir], at its size.
+/// pinnedReady is whether every one of [files] is in [dir] at its size.
 Future<bool> pinnedReady(String dir, List<PinnedFile> files) async =>
     await pinnedMissing(dir, files) == 0;
 
@@ -34,9 +33,8 @@ Future<int> pinnedMissing(String dir, List<PinnedFile> files) async {
   return out;
 }
 
-/// downloadPinned fetches those of [files] not yet in [dir], telling
-/// [progress] how much has arrived, nought to one. Answers why not, or null
-/// once all are there. [stop] is asked between pieces, to give up.
+/// downloadPinned fetches [files] missing from [dir], reporting [progress]
+/// nought to one; returns why not, or null. [stop] is asked between pieces.
 Future<String?> downloadPinned(String dir, List<PinnedFile> files,
     {void Function(double share)? progress, bool Function()? stop}) async {
   if (await networkIsProxied()) {
@@ -112,26 +110,25 @@ class AccumulatorSink<T> implements Sink<T> {
   void close() {}
 }
 
-/// PinnedDownload is a set of voices' download, one for every Speech
-/// device: whether they are here, how far a download has got, and why it
-/// stopped.
+/// PinnedDownload is a voice set's download, shared by every Speech device:
+/// whether they are here, progress, and why it stopped.
 class PinnedDownload extends ChangeNotifier {
   final Future<String> Function() dir;
   final List<PinnedFile> Function() files;
   PinnedDownload(this.dir, this.files);
 
-  /// ready is whether the voices are here: null until it has been looked.
+  /// ready is whether the voices are here: null until looked.
   bool? ready;
 
-  /// share is how much has arrived, nought to one, while it is downloading.
+  /// share is how much has arrived, nought to one, while downloading.
   double? share;
   String? problem;
   bool _stop = false;
 
   bool get downloading => share != null;
 
-  /// check looks whether the voices are here, once. Where it cannot look,
-  /// they are not.
+  /// check looks once whether the voices are here; unable to look, they
+  /// are not.
   Future<void> check() async {
     if (ready != null) return;
     try {
@@ -163,6 +160,5 @@ class PinnedDownload extends ChangeNotifier {
 
   void stop() => _stop = true;
 
-  /// missingBytes is how much is still to be downloaded.
   Future<int> missingBytes() async => pinnedMissing(await dir(), files());
 }

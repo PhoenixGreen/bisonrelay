@@ -10,16 +10,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:flutter/foundation.dart';
 
-// video_runtime.dart plays the canvas's videos: which file, which frame of it
-// is showing, where the sound has got to, and what survives a page turn.
-//
-// Session state, with the same rules about ranges, playlists and loops as
-// audio_runtime.dart.
-//
-// Time is kept by the sound: a video's sound plays in the audio runtime and
-// the picture shows the frame due at the sound's position. A separate
-// stopwatch drifts by a frame every few seconds, which shows on lips. With
-// no sound, or before it opens, a stopwatch keeps time.
+// video_runtime.dart plays the canvas's videos: file, frame, sound position,
+// page-turn survival, with audio_runtime.dart's range and loop rules. Time
+// is kept by the sound (a stopwatch drifts a frame every few seconds, which
+// shows on lips); a stopwatch only until the sound opens.
 
 /// VideoView is how a video is doing now, for the painter.
 class VideoView {
@@ -27,7 +21,7 @@ class VideoView {
   final bool muted;
   final double volume;
 
-  /// position is seconds into the file, and start and end the range playing.
+  /// position is seconds into the file; start and end the range playing.
   final double position;
   final double start;
   final double end;
@@ -35,11 +29,10 @@ class VideoView {
   /// frame is the picture to show, or null for the poster.
   final ui.Image? frame;
 
-  /// opacity is the picture's fade, in and out at the ends of the range.
+  /// opacity is the picture's fade at the ends of the range.
   final double opacity;
 
-  /// poster is the still of the file that is current, for when there is no
-  /// frame yet.
+  /// poster is the current file's still, shown until there is a frame.
   final String poster;
 
   const VideoView({
@@ -63,8 +56,8 @@ class _Showing {
   VideoElement element;
   int index = 0;
 
-  /// started is whether a file is open -- playing or paused. Not started is
-  /// the poster.
+  /// started is whether a file is open, playing or paused; if not, the
+  /// poster shows.
   bool started = false;
   bool playing = false;
   bool muted;
@@ -85,8 +78,8 @@ class _Showing {
 
   int generation = 0;
 
-  /// timed, gain and opening are the same as the audio runtime's: a video
-  /// the playhead drives, its fade there, and a file being opened.
+  /// timed, gain and opening are as the audio runtime's: a video the
+  /// playhead drives, its fade there, and a file being opened.
   bool timed = false;
   double gain = 1;
   bool opening = false;
@@ -102,8 +95,7 @@ class _Showing {
   }
 }
 
-/// VideoRuntime plays the open canvas's Video elements: see the file
-/// comment.
+/// VideoRuntime plays the open canvas's Video elements.
 class VideoRuntime extends ChangeNotifier {
   final FrameSource frames;
   final AudioRuntime audio;
@@ -131,7 +123,7 @@ class VideoRuntime extends ChangeNotifier {
   }
 
   /// videoOfSound is the video whose sound [soundId] is, or null, so the
-  /// page-turn rule for sounds can ask the video.
+  /// sounds' page-turn rule can ask the video.
   static String? videoOfSound(String soundId) =>
       soundId.startsWith("video:") ? soundId.substring(6) : null;
 
@@ -221,8 +213,8 @@ class VideoRuntime extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// seekTo moves [e] to [through] of the way along its range -- a press on
-  /// the play bar.
+  /// seekTo moves [e] to [through] of its range, as a press on the play
+  /// bar.
   Future<void> seekTo(VideoElement e, double through) async {
     var p = _for(e);
     if (!p.started) {
@@ -275,10 +267,8 @@ class VideoRuntime extends ChangeNotifier {
     }
   }
 
-  /// cue puts [e] where the playhead says it is, as AudioRuntime.cue does
-  /// for a sound. Held (scrubbing), it is kept within a frame; playing, it
-  /// is reopened only when 0.3s out, since reopening for a frame of drift
-  /// stutters.
+  /// cue puts [e] at the playhead, as AudioRuntime.cue does: within a frame
+  /// while scrubbing; playing, reopened only 0.3s out, as reopening stutters.
   void cue(VideoElement e, ClipMoment? moment, {required bool playing}) {
     var p = _for(e);
     p.timed = true;
@@ -343,8 +333,7 @@ class VideoRuntime extends ChangeNotifier {
         changed = true;
       }
       if (p.waiting == null) _pull(p);
-      // The fades change the picture every tick while they run -- only
-      // while: a clip with a fade is not redrawn for its whole length.
+      // Fades redraw every tick only while they run, not for the whole clip.
       var clip = p.element.clip;
       if ((clip.fadeIn > 0 && at - p.start < clip.fadeIn) ||
           (clip.fadeOut > 0 && p.end - at < clip.fadeOut)) {
@@ -360,8 +349,8 @@ class VideoRuntime extends ChangeNotifier {
 
   double _time(_Showing p) {
     var clip = p.element.clip;
-    // At a speed of its own its sound is left out, and the watch keeps
-    // time, at that speed.
+    // At a speed of its own its sound is left out and the watch keeps time
+    // at that speed.
     if (p.playing && !clip.silentAtSpeed) {
       var heard = audio.positionOf(p.soundId);
       if (heard != null) return heard;
@@ -378,8 +367,8 @@ class VideoRuntime extends ChangeNotifier {
     return alpha.clamp(0.0, 1.0);
   }
 
-  /// _sound is the video's sound as the audio runtime knows sounds: an Audio
-  /// element nobody sees, under the video's own name.
+  /// _sound is the video's sound as the audio runtime sees it: an unseen
+  /// Audio element under the video's name.
   AudioElement _sound(_Showing p) {
     var source = p.source;
     var clip = p.element.clip;
@@ -393,8 +382,8 @@ class VideoRuntime extends ChangeNotifier {
           ],
           volume: p.volume,
           muted: p.muted,
-          // A timed video's fades come from the playhead -- see cue -- and a
-          // fade the sound ran by itself would be a second one on top.
+          // A timed video's fades come from the playhead (see cue); the
+          // sound fading itself would fade twice.
           fadeIn: !p.timed && p.base <= p.start ? clip.fadeIn : 0,
           fadeOut: p.timed ? 0 : clip.fadeOut,
         ));
@@ -480,7 +469,7 @@ class VideoRuntime extends ChangeNotifier {
         return;
       }
       // The first frame after an open or a move goes straight up, or the
-      // old picture would stay showing.
+      // old picture would stay.
       if (p.shown == null || !p.playing) {
         p.shown?.image.dispose();
         p.shown = frame;

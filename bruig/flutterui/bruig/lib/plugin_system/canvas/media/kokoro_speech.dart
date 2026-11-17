@@ -15,27 +15,17 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
-// kokoro_speech.dart is the Speech device's own voices: Kokoro (82 million
-// parameters, Apache 2.0), run on this computer through sherpa-onnx (Apache
-// 2.0; from its 2.0 it carries no espeak-ng, which is GPL). Words are turned
-// into sounds by pronouncing dictionaries: British and American English,
-// and Chinese.
-//
-// All 53 of Kokoro's voices are listed: the 36 English and Chinese ones use
-// those dictionaries, the other six languages need espeak-ng installed (see
-// espeak.dart). Each is graded by Kokoro's makers (VOICES.md), A best.
-//
-// The model is not shipped: it is downloaded once to the library's
-// "voices" folder, from a fixed revision, each file checked against its
-// SHA-256. The full-precision model is used: on Apple Silicon the int8 one
-// is three times slower.
+// kokoro_speech.dart is the Speech device's own voices: Kokoro (Apache 2.0)
+// run locally by sherpa-onnx (Apache 2.0; from 2.0 without GPL espeak-ng).
+// British, American and Chinese have dictionaries; the rest need espeak.dart.
+// The model is downloaded once, pinned and SHA-256 checked; full precision,
+// as int8 is three times slower on Apple Silicon.
 
 /// KokoroFile is one of the model's files: its name, size and SHA-256.
 typedef KokoroFile = ({String name, int bytes, String sha256});
 
-/// kokoroRevision is the Hugging Face revision the files are fetched from:
-/// sherpa-onnx's export of Kokoro v1.0, which is the same as its own
-/// release's archive.
+/// kokoroRevision is the Hugging Face revision fetched: sherpa-onnx's
+/// export of Kokoro v1.0, the same as its release archive.
 const kokoroRevision = "f7b96bb6bef5c5da4d3aa4f4e0498fbbf62dc78b";
 
 const kokoroFiles = <KokoroFile>[
@@ -64,8 +54,8 @@ const kokoroFiles = <KokoroFile>[
     bytes: 5956885,
     sha256: "7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14"
   ),
-  // Chinese: its dictionary, and how numbers, dates and telephone numbers
-  // are said.
+  // Chinese: its dictionary, and how numbers, dates and phone numbers are
+  // said.
   (
     name: "lexicon-zh.txt",
     bytes: 2365182,
@@ -88,8 +78,8 @@ const kokoroFiles = <KokoroFile>[
   ),
 ];
 
-/// kokoroBase is where the files are fetched from, and
-/// kokoroFilesOverride which -- both for tests.
+/// kokoroBase and kokoroFilesOverride are where and which files are
+/// fetched, for tests.
 @visibleForTesting
 String kokoroBase = "https://huggingface.co/csukuangfj/"
     "kokoro-multi-lang-v1_0/resolve/$kokoroRevision/";
@@ -101,11 +91,8 @@ List<KokoroFile> get _files => kokoroFilesOverride ?? kokoroFiles;
 /// kokoroBytes is the whole download, for saying how big it is first.
 int get kokoroBytes => _files.fold(0, (n, f) => n + f.bytes);
 
-/// _voiceTable is each voice: its id, its speaker number in the model, and
-/// its grade -- British first, then American, then Chinese, each the
-/// women then the men, best first; then the voices that speak with
-/// espeak-ng's help, where it is installed (see espeak.dart), graded where
-/// Kokoro grades them.
+/// _voiceTable is each voice: id, speaker number and grade (VOICES.md, A
+/// best), by language, women then men, best first; espeak-ng voices last.
 const _voiceTable = [
   ("bf_emma", 21, "B-"), ("bf_isabella", 22, "C"), ("bf_alice", 20, "D"), //
   ("bf_lily", 23, "D"),
@@ -145,8 +132,7 @@ const _languages = {
   "p": "Portuguese",
 };
 
-/// kokoroVoices are the voices, each named and said what it is: "UK woman
-/// · B-".
+/// kokoroVoices are the voices, each named and described: "UK woman · B-".
 final kokoroVoices = [
   for (var (id, _, grade) in _voiceTable)
     SpeechVoice(
@@ -159,8 +145,8 @@ final kokoroVoices = [
 
 final _speakerOf = {for (var (id, sid, _) in _voiceTable) id: sid};
 
-/// _Tongue is what a voice speaks: the dictionaries it needs -- its own,
-/// or, with [espeak] its voice, espeak-ng's.
+/// _Tongue is what a voice speaks: the dictionaries it needs, its own or,
+/// with [espeak], espeak-ng's.
 enum _Tongue {
   british,
   american,
@@ -191,8 +177,7 @@ _Tongue _tongueOf(String voice) => switch (voice.isEmpty ? "b" : voice[0]) {
 /// needsEspeak is whether [voice] speaks with espeak-ng's help.
 bool needsEspeak(String voice) => _tongueOf(voice).espeak != null;
 
-/// kokoroDir is where the model is kept, whether or not it is there. A
-/// test can put it elsewhere.
+/// kokoroDir is where the model is kept, there or not. Tests may move it.
 Future<String> Function() kokoroDir = () async =>
     path.join(await CanvasStorage.libraryDir(), canvasVoicesFolder, "kokoro-v1_0");
 
@@ -208,7 +193,7 @@ List<PinnedFile> get _pinned => [
         ),
     ];
 
-/// kokoroReady is whether every file is there, at its size.
+/// kokoroReady is whether every file is there at its size.
 Future<bool> kokoroReady() async => pinnedReady(await kokoroDir(), _pinned);
 
 /// downloadKokoro is [downloadPinned] for Kokoro's files.
@@ -216,7 +201,7 @@ Future<String?> downloadKokoro(
         {void Function(double share)? progress, bool Function()? stop}) async =>
     downloadPinned(await kokoroDir(), _pinned, progress: progress, stop: stop);
 
-/// KokoroDownload is the voices' download, one for every Speech device.
+/// KokoroDownload is the voices' download, shared by every Speech device.
 class KokoroDownload extends PinnedDownload {
   static final instance = KokoroDownload();
   KokoroDownload() : super(() => kokoroDir(), () => _pinned);
@@ -226,16 +211,15 @@ class KokoroDownload extends PinnedDownload {
 /// speak low, so it is only quieter.
 const kokoroSoftLevel = 0.55;
 
-/// KokoroSpeech speaks with Kokoro, on this computer. Its breaths, laughs,
-/// sighs and coughs are recordings, a woman's or a man's as the voice is,
-/// and its whisper the voice said softly (see speech_cues.dart). It cannot
-/// stress a word: that cue is left out rather than faked.
+/// KokoroSpeech speaks with Kokoro, locally. Breaths, laughs, sighs and
+/// coughs are recordings; a whisper is the voice said softly (see
+/// speech_cues.dart). It cannot stress a word, so that cue is dropped.
 class KokoroSpeech extends SpeechEngine {
-  /// library is where sherpa-onnx's own library is, for tests; in the app
-  /// it is already loaded, and this is null.
+  /// library is sherpa-onnx's library path, for tests; null in the app,
+  /// where it is already loaded.
   static String? library;
 
-  /// voices are all of them; those that need espeak-ng, without it, say so.
+  /// voices are all of them; those needing a missing espeak-ng say so.
   @override
   Future<List<SpeechVoice>> voices() async {
     if (await espeakPath() != null) return kokoroVoices;
@@ -249,16 +233,16 @@ class KokoroSpeech extends SpeechEngine {
     ];
   }
 
-  /// _symbol is a function every sherpa-onnx library has: looked for in
-  /// the app, to tell a library never loaded from a voice that failed.
+  /// _symbol is a function every sherpa-onnx library has, looked for to
+  /// tell a library never loaded from a voice that failed.
   static const _symbol = "SherpaOnnxCreateOfflineTts";
 
   @override
   Future<SpokenAudio> speak(SpeechSpec spec) async =>
       (await _speakAll(spec, [spec.script])).single;
 
-  /// Kokoro loads its model for each call (most of a short line's time),
-  /// so a script's lines are spoken in one.
+  /// Kokoro loads its model on each call (most of a short line's time), so
+  /// a script's lines are spoken in one call.
   @override
   bool get batches => true;
 
@@ -267,8 +251,7 @@ class KokoroSpeech extends SpeechEngine {
           SpeechSpec spec, List<SpeechLine> lines) =>
       _speakAll(spec, [for (var l in lines) lineScript(l)]);
 
-  /// _speakAll speaks [scripts], a take of each, with the model loaded
-  /// once for all of them.
+  /// _speakAll speaks a take of each of [scripts], loading the model once.
   Future<List<SpokenAudio>> _speakAll(
       SpeechSpec spec, List<String> scripts) async {
     var parsed = [for (var s in scripts) parseScript(s)];
@@ -279,8 +262,8 @@ class KokoroSpeech extends SpeechEngine {
       throw const SpeechException(
           "The voices are not downloaded yet: press Download.");
     }
-    // A new native library is loaded only when the app is started again:
-    // a hot restart keeps the old one.
+    // A new native library loads only on a full app start, not a hot
+    // restart.
     if (library == null &&
         !Platform.isIOS &&
         !ffi.DynamicLibrary.process().providesSymbol(_symbol)) {
@@ -297,7 +280,7 @@ class KokoroSpeech extends SpeechEngine {
       espeak = await espeakPath();
       if (espeak == null) throw const SpeechException(espeakHelp);
     }
-    // What is said, a stretch at a time, at its speed; the pauses between.
+    // What is said, a stretch at a time at its speed, and the pauses.
     var jobs = <(String, double)>[
       for (var pieces in parsed)
         for (var p in pieces)
@@ -305,7 +288,7 @@ class KokoroSpeech extends SpeechEngine {
             (p.words.join(" "), spec.speed * (p.slow ? 0.8 : 1))
     ];
     var lib = library;
-    // Brought to the mix's rate in the isolate too, off the UI isolate.
+    // Resampled to the mix's rate in the isolate too, off the UI isolate.
     var spoken = await Isolate.run(() => [
           for (var s in _say(dir, lib, speaker, tongue, jobs, espeak: espeak))
             upsample2x(s)
@@ -320,7 +303,7 @@ class KokoroSpeech extends SpeechEngine {
   }
 
   /// _assemble is one script's take: [pieces], their words from [spoken]
-  /// from [from] on, with its pauses and cues between.
+  /// from [from] on, with pauses and cues between.
   Future<SpokenAudio> _assemble(List<SpeechPiece> pieces,
       List<Float32List> spoken, int from, String voice) async {
     var out = <(Float32List, Float32List, List<TimedWord>)>[];
@@ -332,8 +315,8 @@ class KokoroSpeech extends SpeechEngine {
         case SpokenText t:
           var sound = spoken[k++];
           if (t.whisper) sound = softly(sound, by: kokoroSoftLevel);
-          // Timed by the voice's own pauses -- or, with none to be found,
-          // by the words' lengths.
+          // Timed by the voice's own pauses, or failing those the words'
+          // lengths.
           var timed = timeWords(sound, t.words).words;
           out.add((
             sound,
@@ -346,8 +329,8 @@ class KokoroSpeech extends SpeechEngine {
           var sound = await cueRecording(s.cue, man: voice[1] == "m");
           if (sound == null) break;
           out.add((sound, Float32List.fromList(sound), const []));
-          // A breath leads straight into the words; a laugh, a sigh or a
-          // cough has a moment after it.
+          // A breath leads straight into the words; a laugh, sigh or cough
+          // has a moment after it.
           if (s.cue != SpeechCue.breath) out.add(silence(0.12));
       }
     }
@@ -355,18 +338,16 @@ class KokoroSpeech extends SpeechEngine {
   }
 }
 
-/// _say runs Kokoro on [jobs], in its own isolate: the model loaded once,
-/// each stretch spoken at 24kHz.
+/// _say runs Kokoro on [jobs] in its own isolate: the model loaded once,
+/// each stretch at 24kHz.
 List<Float32List> _say(String dir, String? library, int speaker, _Tongue tongue,
     List<(String, double)> jobs,
     {String? espeak}) {
   if (tongue.espeak case var language?) {
     return _sayWithEspeak(dir, library, speaker, language, espeak!, jobs);
   }
-  // The script as the dictionary can take it, and a dictionary of our own
-  // for the words it does not have -- read after its own: see
-  // speech_text.dart. Chinese is left as it is written, its numbers said
-  // in Chinese; the English words in it are read as American.
+  // The dictionary's script plus our own dictionary for missing words (see
+  // speech_text.dart). Chinese stays as written; English in it is American.
   var british = tongue == _Tongue.british;
   var main =
       path.join(dir, british ? "lexicon-gb-en.txt" : "lexicon-us-en.txt");
@@ -398,7 +379,7 @@ List<Float32List> _say(String dir, String? library, int speaker, _Tongue tongue,
         voices: path.join(dir, "voices.bin"),
         tokens: path.join(dir, "tokens.txt"),
         // No language: from sherpa-onnx 2.0 the dictionaries say it, and
-        // one given is only warned about, every time the model loads.
+        // one given is warned about on every model load.
         lexicon: lexicons,
       ),
       numThreads: math.max(1, math.min(4, Platform.numberOfProcessors - 1)),
@@ -427,10 +408,8 @@ List<Float32List> _say(String dir, String? library, int speaker, _Tongue tongue,
   }
 }
 
-/// _sayWithEspeak is [_say] for a language Kokoro has no dictionary for:
-/// every word of the script said by espeak-ng [exe] in [language], made a
-/// dictionary, and Kokoro given that alone. The script is as written --
-/// espeak-ng says its numbers in its own language.
+/// _sayWithEspeak is [_say] for a language without a dictionary: espeak-ng
+/// [exe] makes one of every word in [language], numbers included.
 List<Float32List> _sayWithEspeak(String dir, String? library, int speaker,
     String language, String exe, List<(String, double)> jobs) {
   var tokens =

@@ -1,10 +1,8 @@
-// backdrop.dart is the choice every background makes first: a flat generated
-// pattern, a 3D stage (a floor and a wall seen through a camera, that
-// characters stand on), or parallax scenery that slides as the camera pans.
-// The stage's own settings are a StageElement the background carries, as it
-// carries its picture and its video.
+// backdrop.dart is the choice every background makes first: a generated
+// pattern, a 3D stage (floor and wall through a camera, that characters
+// stand on), or parallax scenery that slides as the camera pans. The stage's
+// settings are a StageElement the background carries.
 
-/// BackdropKind is what a background draws.
 enum BackdropKind {
   flat("2D background"),
   stage("3D stage"),

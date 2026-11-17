@@ -11,21 +11,15 @@ import 'package:bruig/plugin_system/canvas/render/chart_variants.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
-// chart_infographic.dart draws the infographic types (Ken, 2026-11-13: "I'd
-// like all 6 suggestions and any other infographic elements you think would
-// be useful for building future infographics"): gauge, pictogram, sankey,
-// treemap, timeline, funnel, bubbles, bullet, slope, share bar and lollipop.
-//
-// None has axes. Each reads the chart's own data as the others do -- its
-// categories and its series -- and arrives an item at a time by the chart's
-// animation (sliceProgress), as a pie's slices do. Labels show with the
-// x-axis labels' switch, values with Values.
+// chart_infographic.dart draws the infographic types: gauge, pictogram,
+// sankey, treemap, timeline, funnel, bubbles, bullet, slope, share bar and
+// lollipop. None has axes. Each reads the chart's categories and series and
+// arrives an item at a time (sliceProgress), as a pie's slices do. Labels
+// show with the x-axis labels' switch, values with Values.
 
-/// paintInfographic draws [e], one of the infographic types, in [area].
 void paintInfographic(
     ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   if (e.data.series.isEmpty || e.data.categories.isEmpty) return;
-  // Another of its ways (chart_variants.dart).
   if (paintVariant(canvas, area, e, reveal)) return;
   switch (e.type) {
     case ChartType.gauge:
@@ -51,7 +45,6 @@ void paintInfographic(
     case ChartType.lollipop:
       _lollipop(canvas, area, e, reveal);
     default:
-      // The research's new kinds (chart_extra.dart).
       paintExtra(canvas, area, e, reveal);
   }
 }
@@ -63,8 +56,6 @@ List<double> _values(ChartElement e, [int s = 0]) => [
         s < e.data.series.length ? e.data.valueAt(s, i).abs() : 0.0,
     ];
 
-/// itemColour is item [i]'s colour: the chart's slice colours, else the
-/// palette -- one colour an item whatever the series.
 /// inkOn is an ink that reads on [fill]: dark on a light one, white on a
 /// dark one; on a see-through fill, null keeps the chart's own.
 Color? inkOn(Color fill) => fill.a < 0.6
@@ -73,6 +64,8 @@ Color? inkOn(Color fill) => fill.a < 0.6
         ? const Color(0xFF1B1B1B)
         : const Color(0xFFFFFFFF);
 
+/// itemColour is item [i]'s colour: the chart's slice colours, else the
+/// palette; one colour an item whatever the series.
 Color itemColour(ChartElement e, int i) =>
     // A highlight's or a colour-by's colour first (ChartData.marks).
     e.data.markAt(i) ??
@@ -101,7 +94,6 @@ void _text(ui.Canvas canvas, String s, TextSpec spec, Rect box) {
   paintTextInBox(canvas, s, spec, box);
 }
 
-/// _widthOf is how wide [s] is written in [spec].
 double _widthOf(String s, TextSpec spec) =>
     s.isEmpty ? 0 : layoutText(s, spec, maxWidth: double.infinity).width;
 
@@ -147,9 +139,8 @@ Rect _grown(Rect r, double size) => size >= 1
 
 // ------------------------------------------------------------------ gauge
 
-/// The first value as a share: of the values' total where there are
-/// several, else of the axis's top (yMax) or a hundred. The shares round a
-/// dial of 240 degrees, the number in the middle.
+/// _gauge is the first value as a share (of the total where there are
+/// several, else of yMax or 100) round a 240-degree dial, number central.
 void _gauge(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var several = values.length > 1;
@@ -216,19 +207,17 @@ void _gauge(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // -------------------------------------------------------------- pictogram
 
-/// A row -- or rows of ten -- of drawn icons, shared out among the values as
-/// a waffle's squares are.
+/// _pictogram is a row, or rows of ten, of drawn icons, shared out among
+/// the values as a waffle's squares are.
 void _pictogram(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var n = e.pictoCount.clamp(1, 200);
   var values = _values(e);
   var shares = waffleCells(values, cells: n);
-  // With Values on, each share's name and value along the foot (Ken,
-  // 2026-11-14: it wrote none).
+  // With Values on, each share's name and value along the foot.
   var key = e.showValues ? e.labelSpec.fontSize * 1.9 : 0.0;
   var icons = Rect.fromLTRB(area.left, area.top, area.right,
       math.max(area.top + 1, area.bottom - key));
-  // As many to a row as makes the icons biggest: a tall box gets several
-  // rows of big ones, not one small row.
+  // As many to a row as makes the icons biggest: a tall box gets more rows.
   var cols = n, rows = 1;
   var cell = 0.0;
   for (var c = 1; c <= n; c++) {
@@ -289,7 +278,6 @@ void _pictogram(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   }
 }
 
-/// pictoPath is [shape] drawn to fill [b].
 Path pictoPath(PictoShape shape, Rect b) {
   var w = b.width, h = b.height;
   Offset at(double x, double y) => Offset(b.left + x * w, b.top + y * h);
@@ -398,9 +386,8 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     if (!names.contains(f.from)) names.add(f.from);
     if (!names.contains(f.to)) names.add(f.to);
   }
-  // Where the money goes (Ken, 2026-11-17, prototype v7): what comes in
-  // one colour, what goes out another, and what is left in the style's
-  // accent -- rather than a colour each node.
+  // Where the money goes: what comes in one colour, what goes out another,
+  // and what is left in the style's accent, rather than a colour each node.
   var money = modeOf(e.design, "sankey") == "money";
   Color pal(int k) =>
       k < e.sliceColors.length ? e.sliceColors[k] : chartPalette[k];
@@ -438,8 +425,7 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   double outOf(String n) =>
       flows.where((f) => f.from == n).fold(0, (t, f) => t + f.value);
   var size = {for (var n in names) n: math.max(inOf(n), outOf(n))};
-  // Labels need room on the right of all but the last column, and on its
-  // left for the last.
+  // Labels need room right of every column but the last, and left of that.
   var labelW = e.showXLabels ? area.width * 0.22 : 0.0;
   var nodeW = math.max(6.0, area.width * (money ? 0.04 : 0.025));
   var span = area.width - labelW - nodeW;
@@ -507,9 +493,8 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     canvas.drawRect(box[n]!, Paint()..color = colour);
   }
   if (!e.showXLabels) return;
-  // Each node's name beside it, a column's names spaced apart: two small
-  // nodes close together had theirs on top of one another (Ken's
-  // infographic: "Miners 1" over "Treasury 10"). Kept inside the chart.
+  // Each node's name beside it, a column's names spaced so close nodes do
+  // not write over one another, kept inside the chart.
   var lineH = e.labelSpec.fontSize * 2.4;
   for (var col = 0; col < columns; col++) {
     var inCol = names.where((n) => column[n] == col).toList()
@@ -532,8 +517,7 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       if (money && kept(n)) spec = spec.copyWith(color: accent, weight: 800);
       var at = Rect.fromLTWH(
           r.right + 6, math.max(area.top, tops[k]), labelW - 8, lineH);
-      // A middle column's names lie over the ribbons leaving it: on a
-      // plate, so they read (Ken, 2026-11-14).
+      // A middle column's names lie over its ribbons: on a plate, to read.
       if (col > 0 && col < columns - 1) {
         var w = math.min(at.width, _widthOf(words, spec) + 10);
         var h = spec.fontSize * 1.5;
@@ -616,13 +600,11 @@ void _treemap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       if (e.showValues) _value(e, values[i]),
     ];
     if (lines.isEmpty || slice.size < 1) continue;
-    // Its words in it, smaller or turned on end where it is small or thin
-    // (Ken, 2026-11-14: slivers lost theirs); where they will not go even
-    // so, into the note in the largest tile.
+    // Its words in it, smaller or turned on end where it is small or thin;
+    // where they will not go even so, into the note in the largest tile.
     var room = tile.deflate(math.min(8, tile.shortestSide * 0.12));
     // Its words in an ink that reads on it: a light tile's dark, a dark
-    // tile's white (found making the Charts canvas: Playful's pale words
-    // on its yellow). A faded tile's on the ground behind it.
+    // tile's white. A faded tile's on the ground behind it.
     var solid = fill.a > 0.6;
     var spec = _label(e, align: TextAlignSpec.left).copyWith(
         verticalAlign: VerticalAlignSpec.top,
@@ -667,8 +649,8 @@ void _treemap(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // --------------------------------------------------------------- timeline
 
-/// Events along a line, each at its value -- a year, a date as a number --
-/// on a stem, above and below in turn.
+/// _timeline is events along a line, each at its value (a year, a date as a
+/// number), on a stem, above and below in turn.
 void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = [
     for (var i = 0; i < e.data.categories.length; i++) e.data.valueAt(0, i),
@@ -676,8 +658,7 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var lo = values.reduce(math.min), hi = values.reduce(math.max);
   if (hi <= lo) hi = lo + 1;
   var pad = area.width * 0.08;
-  // Evenly spaced, in order (ChartDesign.even): the time between them
-  // written in the gaps below.
+  // Evenly spaced (ChartDesign.even): the time between written in the gaps.
   var knots = ({for (var v in values) v}.toList()..sort());
   double xOf(double v) {
     if (!e.design.even || knots.length < 2) {
@@ -696,13 +677,10 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var order = [for (var i = 0; i < values.length; i++) i]
     ..sort((a, b) => values[a].compareTo(values[b]));
   var dot = math.max(5.0, area.height * 0.035);
-  // Its words kept inside its box: in a short one they went past its edges
-  // and were cut (Ken's infographic, "Decred 2.0" half gone). The stem
-  // shortens first, then the words shrink to the half they have.
+  // Kept inside its box: the stem shortens first, then the words shrink.
   var labelH = e.labelSpec.fontSize * 2.4;
   var figureH = e.valueSpec.fontSize * 1.4;
-  // Its dates are what place it: always written (Ken, 2026-11-14: none
-  // without Values on).
+  // Its dates are what place it: always written.
   var words = (e.showXLabels ? labelH : 0) + figureH;
   var half = area.height / 2 - dot;
   var fit = words <= 0 ? 1.0 : ((half - 4) / words).clamp(0.3, 1.0);
@@ -759,8 +737,7 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // ----------------------------------------------------------------- funnel
 
-/// Stages top to bottom, each as wide as its value, joined by slopes to the
-/// next.
+/// _funnel is stages top to bottom, each as wide as its value, sloped joins.
 void _funnel(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var most = values.fold<double>(0, math.max);
@@ -769,9 +746,8 @@ void _funnel(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var gap = area.height * 0.015;
   var h = (area.height - gap * (n - 1)) / n;
   var cx = area.center.dx;
-  // Each as wide as its value -- in true proportion (Ken, 2026-11-14: a
-  // floor of 18% drew 60 at a quarter of 1000) -- its words beside it where
-  // it is too narrow to hold them.
+  // Each as wide as its value, in true proportion (a floor would misstate
+  // it), its words beside it where it is too narrow to hold them.
   double widthOf(int i) => math.max(2.0, area.width * values[i] / most);
   for (var i = 0; i < n; i++) {
     var slice = sliceProgress(e, reveal, i, n);
@@ -848,11 +824,9 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       if (e.showValues) _value(e, values[i]),
     ].join("\n");
     if (lines.isEmpty) continue;
-    // Too small for its words -- a name broken mid-word ("Treas / ury")
-    // reads worse than none -- they go beside it on a line (Ken,
-    // 2026-11-14: tiny bubbles lost theirs).
-    // Smaller first, down to six tenths, while they still go inside: the
-    // largest bubble lost its name to a callout (the shared label rule).
+    // Too small for its words, they go beside it on a line: a name broken
+    // mid-word reads worse than none. Smaller first, down to six tenths,
+    // while they still go inside (the shared label rule).
     var inside = _label(e);
     var widest = lines
         .split(RegExp(r"\s+"))
@@ -901,22 +875,20 @@ void _bubbles(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // ----------------------------------------------------------------- bullet
 
-/// A row a category: its value as a bar over three bands (the top, three
-/// quarters and half of the scale), the second series' value as its target.
+/// _bullet is a row a category: its value as a bar over three bands (top,
+/// three quarters, half of the scale), the second series as its target.
 void _bullet(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var targets = e.data.series.length > 1 ? _values(e, 1) : null;
-  // A tenth past the largest, so the largest does not run to the end of
-  // its band as though it were cut off (Ken, 2026-11-14) -- unless the top
-  // of the scale is set.
+  // A tenth past the largest, so the largest does not look cut off at the
+  // end of its band, unless the top of the scale is set.
   var most = [...values, ...?targets].fold<double>(0, math.max) * 1.1;
   if (e.yMax.isFinite && e.yMax > 0) most = e.yMax;
   if (most <= 0) return;
   var n = values.length;
-  // Each row on its own scale where they are of different sizes -- season
-  // tickets in thousands, debuts in ones -- as a bullet graph's measures
-  // are; on one where they are alike, so they compare (found making the
-  // Charts canvas: three of four rows drew nothing).
+  // Each row on its own scale where they are of different sizes (season
+  // tickets in thousands, debuts in ones), as a bullet graph's measures
+  // are; on one where they are alike, so they compare.
   double rowMost(int i) => math.max(values[i], targets?[i] ?? 0) * 1.1;
   var rows = [for (var i = 0; i < n; i++) rowMost(i)].where((m) => m > 0);
   var own = !(e.yMax.isFinite && e.yMax > 0) &&
@@ -971,8 +943,8 @@ void _bullet(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // ------------------------------------------------------------------ slope
 
-/// Each category a line from its first series' value on the left to its
-/// second's on the right: what rose, what fell, and by how much.
+/// _slope is each category a line from its first series' value on the left
+/// to its second's on the right: what rose, what fell, and by how much.
 void _slope(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   if (e.data.series.length < 2) return;
   var a = _values(e, 0), b = _values(e, 1);
@@ -980,8 +952,7 @@ void _slope(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var lo = all.reduce(math.min), hi = all.reduce(math.max);
   if (hi <= lo) hi = lo + 1;
   var headH = e.labelSpec.fontSize * 2;
-  // Room above the top value's dot and below the bottom's, so neither
-  // touches the year over its column (Ken, 2026-11-14).
+  // Room above the top dot and below the bottom, clear of the years.
   var room = math.max(4.0, (area.height - headH) * 0.02) + 4;
   var plot = Rect.fromLTRB(area.left, area.top + headH + room, area.right,
       area.bottom - math.max(e.labelSpec.fontSize, room));
@@ -1041,8 +1012,8 @@ void _slope(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // -------------------------------------------------------------- share bar
 
-/// One bar the width of the chart, split into the shares, each named under
-/// its piece with its percentage.
+/// _shareBar is one bar the width of the chart, split into the shares, each
+/// named under its piece with its percentage.
 void _shareBar(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var total = values.fold<double>(0, (t, v) => t + v);
@@ -1058,9 +1029,8 @@ void _shareBar(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     return w >= longest * fs * 0.62 + 6;
   }
 
-  // Slivers too narrow for their words have them on a line, below the
-  // others' and each on a row of its own where it would touch the one
-  // before (Ken, 2026-11-14: shares under a tenth lost theirs).
+  // Slivers too narrow for their words have them on a line below the
+  // others', each on a row of its own where it would touch the one before.
   var spec = _label(e, size: fs * 0.9);
   var callouts = <int, (String, double, bool, int)>{};
   var rows = <List<(double, double)>>[];
@@ -1123,8 +1093,8 @@ void _shareBar(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
 // --------------------------------------------------------------- lollipop
 
-/// A row a category: a thin stick from the left to its value, a dot on its
-/// end -- lighter to read than bars when there are many.
+/// _lollipop is a row a category: a thin stick to its value, a dot on its
+/// end; lighter to read than bars when there are many.
 void _lollipop(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var values = _values(e);
   var most = values.fold<double>(0, math.max);

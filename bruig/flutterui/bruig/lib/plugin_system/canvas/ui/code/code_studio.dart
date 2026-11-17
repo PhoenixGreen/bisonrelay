@@ -17,17 +17,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-// code_studio.dart is the Code Studio (Ken, 2026-11-15: "a studio option
-// similar to the Sheet music element, where users can build and test their
-// code snippets in a full screen studio"): a Code panel's project given the
-// whole page, as the Score Studio gives a score. Its files down the left,
-// its own panes and tabs in the middle -- tabs dragged between them, the
-// lines between them dragged -- and on the right what it makes: the page or
-// the Flutter app itself, live, over what it prints.
+// code_studio.dart is the Code Studio: a Code panel's project given the
+// whole page, as the Score Studio gives a score. Files down the left, its
+// own panes and tabs in the middle, and on the right the page or Flutter
+// app it makes, live, over what it prints.
 //
 // Every change is the Code panel's, made through the controller, so the
-// canvas shows it at once and a session of typing is one step to undo. A
-// run is its Run panel's, kept there, where it has one.
+// canvas shows it at once and a session of typing is one undo step. A run
+// is kept by its Run panel, where it has one.
 
 class CodeStudio extends StatefulWidget {
   final CanvasController controller;
@@ -51,7 +48,7 @@ class _CodeStudioState extends State<CodeStudio> {
   }
 
   /// _size is the code's size here, in pixels: the studio's own, not the
-  /// panel's on the page.
+  /// panel's.
   double _size = 15;
   int _pane = 0;
 
@@ -64,8 +61,7 @@ class _CodeStudioState extends State<CodeStudio> {
   int _runs = 0;
   bool _running = false;
 
-  /// _shown is whether a run's preview is showing: Stop takes it away
-  /// (Ken: "no way to stop the running code and then restart").
+  /// _shown is whether a run's preview is showing; Stop takes it away.
   bool _shown = false;
 
   /// _logs is a run's output where there is no Run panel to keep it;
@@ -129,8 +125,7 @@ class _CodeStudioState extends State<CodeStudio> {
     var runner = runnerOf(run, e);
     var entry = entryFile(run, e);
     if (entry == null || runner == CodeRunner.none) return;
-    // Run again while it runs or shows: started again with the code as it
-    // is now.
+    // Run again while it runs or shows: start again with the code as it is.
     var token = ++_runs;
     setState(() {
       _running = true;
@@ -144,7 +139,6 @@ class _CodeStudioState extends State<CodeStudio> {
     });
     try {
       if (run.id.isNotEmpty) {
-        // Its Run panel's run: kept there, with its picture.
         await c.runCode(run);
       } else if (CanvasController.codeRunHost case var host?) {
         var out = await host.run(
@@ -393,7 +387,6 @@ class _CodeStudioState extends State<CodeStudio> {
     var clean = name?.trim() ?? "";
     var now = code;
     if (now == null || clean.isEmpty || clean == f.name) return;
-    // Each file its own name.
     if (now.fileNamed(clean) != null) return;
     c.replaceElement(now.copyWith(files: [
       for (var g in now.files) g.id == f.id ? g.copyWith(name: clean) : g

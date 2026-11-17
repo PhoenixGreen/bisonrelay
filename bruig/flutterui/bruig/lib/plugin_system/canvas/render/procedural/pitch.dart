@@ -7,34 +7,23 @@ import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/noise.dart';
 import 'package:flutter/painting.dart';
 
-// pitch.dart draws a marked playing surface.
-//
-// Every sport is drawn in metres from its governing body's dimensions, line
-// widths included, so the markings are where the laws put them and keep
-// their true proportions between sports.
-//
-// The pitch is drawn on the ground plane, which is then put onto the page by
-// a homography ([_View.ground], applied with Canvas.transform), so markings
-// stay true from any camera. What stands up off the ground (goals, posts,
-// hoops, stands) is projected a point at a time.
-//
-// Colours: the surface is the background, the markings the foreground, and
-// the accent is what is painted (a key, an end zone, run-off, the seats).
+// pitch.dart draws a marked playing surface. Every sport is drawn in metres
+// from its governing body's dimensions, line widths included. The ground is
+// put on the page by a homography ([_View.ground], via Canvas.transform), so
+// markings stay true from any camera; what stands up off it (goals, stands)
+// is projected a point at a time. The surface is the background colour, the
+// markings the foreground, and what is painted (a key, run-off) the accent.
 
 // --------------------------------------------------------------------------
 // The mapping
 // --------------------------------------------------------------------------
 
-/// PitchMetrics is the mapping from a sport's metres onto the canvas, for a
-/// pitch seen flat and lying across the page.
-///
-/// Handed back by [pitchRect] so the presets can place a 4-4-2 in metres and
-/// have it land where the markings say it should.
+/// PitchMetrics maps a sport's metres onto a flat pitch across the page, so
+/// presets can place a 4-4-2 in metres (see [pitchRect]).
 class PitchMetrics {
   /// area is the field of play itself.
   final Rect area;
 
-  /// lengthMetres and widthMetres are the sport's own dimensions.
   final double lengthMetres;
   final double widthMetres;
 
@@ -43,23 +32,19 @@ class PitchMetrics {
   /// scale is pixels per metre. The two axes share one.
   double get scale => area.width / lengthMetres;
 
-  /// at maps a point in metres -- from the field's bottom-left corner, x
-  /// along its length -- onto the canvas.
+  /// at maps metres from the field's bottom-left (x along it) to the canvas.
   Offset at(double xMetres, double yMetres) => Offset(
         area.left + xMetres * scale,
         area.bottom - yMetres * scale,
       );
 
-  /// m converts a length in metres to pixels.
   double m(double metres) => metres * scale;
 }
 
-/// pitchInset is how much of the rectangle is left round the pitch, as a
-/// fraction of its shorter side.
+/// pitchInset is the margin left round the pitch, of the shorter side.
 const double pitchInset = 0.045;
 
-/// pitchRect is where [sport]'s field of play lands inside [rect], seen flat
-/// and lying across the page -- the way a tactics board is drawn.
+/// pitchRect is where [sport]'s field lands in [rect], as on a tactics board.
 PitchMetrics pitchRect(Rect rect, PitchSport sport) {
   var field = _Field.of(sport);
   var view = _View.fit(
@@ -68,20 +53,16 @@ PitchMetrics pitchRect(Rect rect, PitchSport sport) {
   return PitchMetrics(Rect.fromPoints(a, b), field.length, field.width);
 }
 
-/// PitchPlacement is where a pitch puts a point on it, as it is drawn: with
-/// its camera, its zoom, its position and its turn.
-///
-/// A team linked to the pitch keeps its players in the pitch's metres and
-/// asks this where they land, so moving, turning, zooming or tilting the
-/// pitch carries them with it, in perspective.
+/// PitchPlacement puts a point on a pitch as it is drawn: camera, zoom,
+/// position and turn. A linked team keeps its players in the pitch's metres
+/// and asks this where they land, so they move with the pitch in perspective.
 class PitchPlacement {
   final _View _view;
   final _Field _field;
   final Offset _pivot;
   final double _turn;
 
-  /// visibleFrom is the length along the field from which it is shown, for
-  /// half a pitch; -1e9 for the whole of it.
+  /// visibleFrom is where along the field half a pitch starts; -1e9 for all.
   final double visibleFrom;
 
   /// reference is how many pixels a metre is on this pitch drawn flat,
@@ -98,20 +79,17 @@ class PitchPlacement {
   /// flat is whether the pitch is seen from straight above.
   bool get flat => _view.flat;
 
-  /// page is where [x], [y] -- metres along and across the field -- and
-  /// [z] metres above it land on the page.
+  /// page is where [x], [y] (metres along and across) and [z] up land.
   Offset page(double x, double y, [double z = 0]) =>
       _turned(_view.project(x, y, z), _turn);
 
-  /// field is the point on the field under [page], or null where there is
-  /// no field under it.
+  /// field is the point on the field under [page], or null where none is.
   Offset? field(Offset page) => _view.unproject(_turned(page, -_turn));
 
   /// scaleAt is how many pixels a metre standing at [x], [y] takes up.
   double scaleAt(double x, double y) => _view.pixelsPerMetreAt(x, y);
 
-  /// depthOf is how far [x], [y] is from the camera, for drawing nearer
-  /// things over further ones.
+  /// depthOf is how far [x], [y] is from the camera, for drawing order.
   double depthOf(double x, double y) => _view.depthOf(x, y);
 
   Offset _turned(Offset p, double by) {
@@ -137,8 +115,7 @@ PitchPlacement pitchPlacement(Rect rect, ProceduralSpec spec) {
   );
 }
 
-/// _Field is one sport's field of play, in metres: its size, the width of
-/// its lines, and what lies round it that belongs in the picture.
+/// _Field is one sport's field of play in metres: size, line width, apron.
 class _Field {
   final PitchSport sport;
   final double length, width;
@@ -146,13 +123,11 @@ class _Field {
   /// line is the regulation width of a marking.
   final double line;
 
-  /// apron is the ground round the field of play that is part of the
-  /// playing area: in-goal areas, end zones, the run-off round a court.
+  /// apron is playing ground round the field: in-goal, end zones, run-off.
   final Rect apron;
 
-  /// fitsField is whether a plain flat view is fitted to the field of play
-  /// alone rather than to the apron, for pitches whose players are placed in
-  /// its metres. See [_View._window].
+  /// fitsField is whether a flat view fits the field of play alone, not the
+  /// apron, for pitches whose players are placed in its metres (_View._window).
   final bool fitsField;
 
   const _Field(this.sport, this.length, this.width, this.line, this.apron,
@@ -205,8 +180,7 @@ class _Field {
   Rect get field => Rect.fromLTWH(0, 0, length, width);
 }
 
-/// _View is how the ground is seen: which part of it, which way round, from
-/// where, and fitted into which rectangle of the page.
+/// _View is which part of the ground is seen, from where, and fitted where.
 class _View {
   final double cx, cy;
   final bool upright;
@@ -217,8 +191,7 @@ class _View {
   /// tilting the ground about the page's own upright.
   final double side;
 
-  /// distance is the camera's distance from the middle of the ground, for a
-  /// view in perspective; nought for one without.
+  /// distance is from camera to ground's middle; nought for no perspective.
   final double distance;
   double scale = 1, ox = 0, oy = 0;
 
@@ -265,8 +238,7 @@ class _View {
 
   double depthOf(double x, double y, [double z = 0]) => camera(x, y, z).$3;
 
-  /// ground is the matrix that puts the ground plane, in metres, onto the
-  /// page -- to hand to Canvas.transform.
+  /// ground is the matrix that puts the ground, in metres, on the page.
   Float64List ground() {
     var (pr, qr) = _rows();
     var sp = math.sin(elevation), cp = math.cos(elevation);
@@ -291,16 +263,14 @@ class _View {
   /// pixelsPerMetre is how big a metre is in the middle of the picture.
   double get pixelsPerMetre => scale;
 
-  /// pixelsPerMetreAt is how big a metre standing upright at [x], [y] looks
-  /// -- smaller the further it is from the camera.
+  /// pixelsPerMetreAt is how big a metre standing upright at [x], [y] looks.
   double pixelsPerMetreAt(double x, double y) {
     if (distance <= 0) return scale;
     var depth = camera(x, y, 0).$3;
     return scale * distance / math.max(distance * 0.05, distance + depth);
   }
 
-  /// unproject is the point on the ground under [page], or null where the
-  /// ground is not under it at all -- above the horizon.
+  /// unproject is the ground point under [page], or null above the horizon.
   Offset? unproject(Offset page) {
     var m = ground();
     // The homography's own three rows, out of the 4x4 it is handed in as.
@@ -321,10 +291,8 @@ class _View {
     return Offset(wx, wy);
   }
 
-  /// flat is whether the ground is seen from straight above.
   bool get flat => elevation > math.pi / 2 - 0.01 && side.abs() < 0.01;
 
-  /// fit is the view [spec] asks for, fitted into [rect].
   static _View fit(Rect rect, ProceduralSpec spec, _Field field) {
     var half = spec.choice("area") == 1;
     var window = _window(spec, field, half);
@@ -342,8 +310,7 @@ class _View {
       cam.side * math.pi / 180,
     );
 
-    // Fitted to the corners of what has to be seen, and to the tops of the
-    // stands where there are any.
+    // Fitted to the corners of what must be seen, and the stands' tops.
     var points = <(double, double, double)>[
       for (var x in [window.left, window.right])
         for (var y in [window.top, window.bottom]) (x, y, 0),
@@ -370,8 +337,7 @@ class _View {
     view.ox = available.center.dx - view.scale * (minX + maxX) / 2;
     view.oy = available.center.dy + view.scale * (minY + maxY) / 2;
 
-    // Then zoomed about the middle of the frame, and moved: the Size and
-    // the two position settings.
+    // Then zoomed about the frame's middle and moved (Size and position).
     var c = available.center;
     var zoom = (spec.scale / 0.05).clamp(0.05, 20.0);
     view.scale *= zoom;
@@ -396,9 +362,8 @@ class _View {
   }
 }
 
-/// PitchCamera is where a pitch is seen from, in the settings' own terms:
-/// degrees of tilt up and down and to the side, degrees of turn on the
-/// ground, how strong the perspective is, and where the picture is moved to.
+/// PitchCamera is a pitch's viewpoint in the settings' terms: degrees of
+/// tilt (up, sideways) and turn, perspective strength, and the picture's move.
 typedef PitchCamera = ({
   double tilt,
   double side,
@@ -526,7 +491,6 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
   var surround = spec.choice("surround");
   var painted = spec.on("painted");
 
-  // What is round it all.
   canvas.drawRect(all, Paint()..color = _darken(spec.background, 0.45));
   if (!view.flat) {
     // A sky of sorts, where the ground stops short of the top of the frame.
@@ -552,8 +516,7 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
   var ground = _View._window(spec, field, false).inflate(surround == 1 ? 8 : 4);
   var half = spec.choice("area") == 1;
   if (half) {
-    // Half a pitch is half a pitch: cut at the halfway line rather than
-    // running on out of the frame.
+    // Half a pitch is cut at the halfway line, not run out of the frame.
     var shown = _View._window(spec, field, true);
     canvas.clipRect(Rect.fromLTRB(shown.left, -1000, 1000, 1000));
   }
@@ -563,8 +526,7 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
         Paint()..color = _darken(spec.background, 0.55));
   }
   if (surround == 2) {
-    // The track goes down first, and the field fills the infield inside
-    // its kerb -- not a rectangle of grass laid over the bends.
+    // The track first; the field fills the infield inside its kerb.
     _track(canvas, field, spec);
     canvas.save();
     canvas.clipRRect(_oval(field, _trackInner - 0.2));
@@ -635,9 +597,8 @@ int _autoSurface(PitchSport sport) => switch (sport) {
       _ => PitchSurface.stripes,
     };
 
-/// _surface lays the playing surface: over the apron in a slightly darker
-/// shade -- or in the accent, where the run-off is painted -- and over the
-/// field of play in the background colour, finished as the surface asks.
+/// _surface lays the apron a shade darker (or in the accent, as run-off) and
+/// the field of play in the background colour, finished as the surface asks.
 void _surface(ui.Canvas canvas, _Field field, ProceduralSpec spec, Rect ground,
     bool painted,
     {Rect? infield}) {
@@ -651,7 +612,6 @@ void _surface(ui.Canvas canvas, _Field field, ProceduralSpec spec, Rect ground,
             RRect.fromRectAndRadius(field.field, const Radius.circular(8.53))))
       : (Path()..addRect(field.field));
 
-  // The apron.
   if (!ice) {
     var runoff = painted &&
             (field.sport == PitchSport.tennis ||
@@ -671,8 +631,7 @@ void _surface(ui.Canvas canvas, _Field field, ProceduralSpec spec, Rect ground,
   switch (kind) {
     case PitchSurface.stripes:
     case PitchSurface.checks:
-      // The mowing pattern: bands along the length, the grass lying two
-      // ways -- and, for checks, across it too.
+      // The mowing pattern: bands along the length (and across, for checks).
       var bands = 4 + (spec.density * 18).round() * 1;
       var w = field.length / bands;
       var light = Paint()..color = _lighten(bg, 0.06 + spec.variation * 0.05);
@@ -737,8 +696,7 @@ void _speckle(ui.Canvas canvas, Rect area, ProceduralSpec spec, Paint paint,
         ..strokeCap = StrokeCap.round);
 }
 
-/// _woodFloor is a maple floor: strips along the length, each its own shade,
-/// with the joints between the boards staggered.
+/// _woodFloor is a maple floor: shaded strips with staggered board joints.
 void _woodFloor(ui.Canvas canvas, Rect area, ProceduralSpec spec) {
   const strip = 0.0571; // 2¼ inches, the width of a maple floor board.
   var bg = spec.background;
@@ -1168,8 +1126,7 @@ void _rugbyUnion(_Pen pen, _Field f, ProceduralSpec spec) {
   for (var x in <double>[0, 22, 50, 78, l]) {
     pen.line(x, 0, x, w);
   }
-  // Dashed: ten metres either side of halfway, and five in from each try
-  // line.
+  // Dashed: ten metres either side of halfway, five in from each try line.
   for (var x in <double>[40, 60, 5, l - 5]) {
     pen.dashed(x, 0, x, w, 1, 1);
   }
@@ -1276,17 +1233,15 @@ void _gridiron(_Pen pen, _Field f, ProceduralSpec spec, bool painted) {
 // --------------------------------------------------------------------------
 
 /// _standDepth is how far the stands run back from the boards, and
-/// _standHeight how high they rise: in proportion to the field, so an arena
-/// round a court is not a stadium round a postage stamp, then scaled by the
-/// "standSize" setting.
+/// _standHeight how high they rise: in proportion to the field (an arena
+/// round a court is not a stadium round a postage stamp), times "standSize".
 double _standDepth(Rect window, [ProceduralSpec? spec]) =>
     (math.max(window.width, window.height) * 0.24).clamp(7.0, 26.0) *
     (spec?.p("standSize") ?? 1);
 double _standHeight(Rect window, [ProceduralSpec? spec]) =>
     _standDepth(window, spec) * 0.62;
 
-/// _tiers is how many tiers the stands are built in, and _tierGap the
-/// walkway between one and the next.
+/// _tiers is how many tiers the stands have, and _tierGap the walkway between.
 int _tiers(ProceduralSpec? spec) => (spec?.p("tiers") ?? 1).round().clamp(1, 3);
 const double _tierGap = 1.4;
 
@@ -1318,8 +1273,7 @@ Rect _trackOuter(_Field f, [ProceduralSpec? spec]) {
       height: 2 * (outer + 9));
 }
 
-/// _oval is the track's shape [r] metres out from its middle: two straights
-/// and two bends.
+/// _oval is the track's shape [r] metres out from its middle.
 RRect _oval(_Field f, double r) => RRect.fromRectAndRadius(
     Rect.fromCenter(
         center: f.field.center, width: _trackStraight + 2 * r, height: 2 * r),
@@ -1333,9 +1287,8 @@ const _trackColours = [
   Color(0xFF6A3F8E), // purple
 ];
 
-/// _track is the running track's ground: the verge round it, the lanes and
-/// the kerb. Laid before the field, which then fills the infield inside the
-/// kerb; the field events go on after it -- see _trackDetails.
+/// _track lays the running track's ground (verge, lanes, kerb) before the
+/// field fills the infield; the field events follow in _trackDetails.
 void _track(ui.Canvas canvas, _Field f, ProceduralSpec spec) {
   var lanes = _lanes(spec);
   var outer = _trackInner + lanes * _trackLane;
@@ -1366,9 +1319,8 @@ void _track(ui.Canvas canvas, _Field f, ProceduralSpec spec) {
         ..color = const Color(0xFFE8E8E8));
 }
 
-/// _trackDetails is what is painted on a track and in its infield: the
-/// finish line and the lane numbers, the staggered starts round the first
-/// bend, and the field events in the two ends of the infield.
+/// _trackDetails paints the finish line and lane numbers, the staggered
+/// starts round the first bend, and the field events in the infield's ends.
 void _trackDetails(_Pen pen, _Field f, ProceduralSpec spec) {
   var lanes = _lanes(spec);
   var outer = _trackInner + lanes * _trackLane;
@@ -1412,8 +1364,7 @@ void _trackDetails(_Pen pen, _Field f, ProceduralSpec spec) {
   canvas.drawRect(
       Rect.fromCenter(center: hj + const Offset(-1.2, 0), width: 3, height: 5),
       Paint()..color = const Color(0xFF2F5FA8));
-  // The throws in the other: the shot circle and the discus cage, with the
-  // lines of their sectors running into the infield.
+  // The throws in the other: shot circle and discus cage, sectors inward.
   var shot = Offset(f.field.right + 22, c.dy - 7);
   var disc = Offset(f.field.right + 22, c.dy + 7);
   for (var (at, r) in [(shot, 1.0675), (disc, 1.25)]) {
@@ -1434,8 +1385,7 @@ void _trackDetails(_Pen pen, _Field f, ProceduralSpec spec) {
       pen.withColour(const Color(0xFF2B2B2B), 0.12).stroke);
 }
 
-/// _trackOutside is the long jump, outside the back straight: a runway on a
-/// strip of verge, its board and its sand pit.
+/// _trackOutside is the long jump: runway, board and pit by the back straight.
 void _trackOutside(_Pen pen, _Field f, ProceduralSpec spec) {
   if (!spec.on("fieldEvents")) return;
   var outer = _trackInner + _lanes(spec) * _trackLane;
@@ -1470,10 +1420,9 @@ List<Offset> _ring(Rect window, double d, double corner) {
     }
   }
 
-  // Corners, joined by the straights between them; each straight cut into
-  // pieces so that sorting by distance from the camera works piece by piece.
-  // As many pieces at every distance out, worked out from the window alone,
-  // so that one ring's points pair with the next ring's.
+  // Corners joined by straights, each cut into pieces so sorting by distance
+  // from the camera works piece by piece; as many at every distance out,
+  // from the window alone, so one ring's points pair with the next's.
   var along = math.max(1, ((window.width - 2 * corner) / 6).round());
   var across = math.max(1, ((window.height - 2 * corner) / 6).round());
   void straight(Offset a, Offset b, int n) {
@@ -1493,8 +1442,7 @@ List<Offset> _ring(Rect window, double d, double corner) {
   return pts;
 }
 
-/// _standOpen is whether the stand between [a] and [b] is in a corner of a
-/// ground whose corners are open, and so not built at all.
+/// _standOpen is whether the stand between [a] and [b] is an open corner.
 bool _standOpen(Rect window, ProceduralSpec spec, Offset a, Offset b) {
   var mid = (a + b) / 2;
   return spec.choice("corners") == 1 &&
@@ -1502,9 +1450,8 @@ bool _standOpen(Rect window, ProceduralSpec spec, Offset a, Offset b) {
       (mid.dy < window.top || mid.dy > window.bottom);
 }
 
-/// _standFacing is whether the stand between [a] and [b] faces the camera:
-/// its seats look towards it over the pitch. One that faces away is the
-/// near stand, between the camera and the pitch.
+/// _standFacing is whether the stand between [a] and [b] looks towards the
+/// camera over the pitch; one facing away is the near stand.
 bool _standFacing(_View view, Rect window, Offset a, Offset b) {
   if (view.flat) return true;
   var mid = (a + b) / 2;
@@ -1515,8 +1462,7 @@ bool _standFacing(_View view, Rect window, Offset a, Offset b) {
 }
 
 /// _facingAmount is how squarely the stand between [a] and [b] faces the
-/// camera: one for a stand straight across the pitch from it, falling to
-/// nought where the stands turn into the near one.
+/// camera: one straight across the pitch, falling to nought at the near one.
 double _facingAmount(_View view, Rect window, Offset a, Offset b) {
   if (view.flat) return 1;
   var mid = (a + b) / 2;
@@ -1529,22 +1475,19 @@ double _facingAmount(_View view, Rect window, Offset a, Offset b) {
   return ((d1 - d0) / most).clamp(0.0, 1.0);
 }
 
-/// _standShown is whether the stand between [a] and [b] is one the picture
-/// is fitted round: built, and facing the camera. A near stand (see
-/// _stadium) is drawn in front and allowed to run out of the frame.
+/// _standShown is whether the picture is fitted round the stand between [a]
+/// and [b]: built and facing the camera. A near stand may run out of frame.
 bool _standShown(
         _View view, Rect window, ProceduralSpec spec, Offset a, Offset b) =>
     !_standOpen(window, spec, a, b) && _standFacing(view, window, a, b);
 
 /// _inFront is whether [x], [y], [z] is far enough in front of the camera
-/// to be drawn: a near stand can stand round the camera itself, and what is
-/// behind it projects to nonsense.
+/// to draw; a near stand can surround it, and behind projects to nonsense.
 bool _inFront(_View view, double x, double y, double z) =>
     view.distance <= 0 ||
     view.distance + view.depthOf(x, y, z) > view.distance * 0.15;
 
-/// _stadiumExtent is every point the stands reach, for fitting the picture
-/// round exactly what is drawn of them.
+/// _stadiumExtent is every point the stands reach, to fit the picture round.
 Iterable<(double, double, double)> _stadiumExtent(
     _View view, Rect window, ProceduralSpec spec) sync* {
   var back = _ring(window, _standReach(window, spec), 6);
@@ -1563,9 +1506,8 @@ Iterable<(double, double, double)> _stadiumExtent(
   }
 }
 
-/// _pylonFeet is where the floodlight pylons stand: at the corners, and
-/// only the far ones where the camera looks across the ground -- a near one
-/// would stand in front of everything.
+/// _pylonFeet is where the floodlight pylons stand: the corners, only the
+/// far ones when the camera looks across, as a near one blocks everything.
 List<Offset> _pylonFeet(_View view, Rect window, ProceduralSpec spec) {
   var box = window.inflate(_standReach(window, spec) + 2);
   var middle = view.depthOf(window.center.dx, window.center.dy);
@@ -1578,9 +1520,8 @@ List<Offset> _pylonFeet(_View view, Rect window, ProceduralSpec spec) {
 double _pylonHeight(Rect window, ProceduralSpec spec) =>
     _standTop(window, spec) * 1.25 + 4;
 
-/// _stadium is the boards round the pitch and the stands rising behind
-/// them, in tiers, under a roof, full of people -- the near stand left out
-/// where the camera is in it.
+/// _stadium is the boards round the pitch and the stands behind them, in
+/// tiers, roofed and full, leaving out a near stand the camera is in.
 void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
     Rect ground, List<(double, void Function())> items,
     {required List<(double, void Function())> far,
@@ -1590,9 +1531,8 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
   var top0 = _standTop(window0, spec);
   var showNear = spec.p("nearStands") > 0;
 
-  /// into is the list the stand between [a] and [b] is drawn from: the far
-  /// stands, the near ones, or none -- an open corner, or a piece of the
-  /// near stand the camera is standing in.
+  /// into is the list the stand between [a] and [b] goes in: far, near, or
+  /// none (an open corner, or near-stand pieces round the camera).
   List<(double, void Function())>? into(Offset a, Offset b) {
     if (_standOpen(window0, spec, a, b)) return null;
     if (_standFacing(view, window0, a, b)) return far;
@@ -1659,8 +1599,7 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
     }
   }
 
-  // The stands: a tier of rows of seats, rising away from the pitch, then a
-  // walkway, then the next tier set further back and higher.
+  // The stands: tiers of rising seat rows, a walkway between, each higher.
   var crowd = spec.p("crowd");
   const people = [
     Color(0xFFF2F2F2),
@@ -1760,9 +1699,8 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
     }
   }
 
-  // The back wall along the top, and any roof: a canopy over the back of
-  // the stand or the whole of it, pitched down towards the pitch, ribbed,
-  // with a fascia along its leading edge.
+  // The back wall along the top, and any roof over the back of the stand or
+  // all of it: pitched down towards the pitch, ribbed, with a fascia.
   var reach = _standReach(window, spec);
   var back = _ring(window, reach, 6);
   var z = topRing ?? 1.5 + height;
@@ -1836,7 +1774,6 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
     ));
   }
 
-  // Floodlight pylons at the four corners.
   if (spec.on("pylons")) {
     var tall = _pylonHeight(window, spec);
     for (var foot in _pylonFeet(view, window, spec)) {
@@ -1874,10 +1811,9 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
 }
 
 /// _drawStadium draws what stands up off the ground, furthest first: [items]
-/// (goals, boards) sharp, and the stadium ([far] and [near]) through a depth
-/// of field, each piece blurred and the near ones faded by its distance from
-/// the pitch, so focus falls off gradually rather than stand by stand. The
-/// stadium is clipped to outside the pitch's outline.
+/// (goals, boards) sharp, the stadium ([far], [near]) through a depth of
+/// field, each piece blurred and near ones faded by distance, so focus falls
+/// off gradually. The stadium is clipped to outside the pitch's outline.
 void _drawStadium(
     ui.Canvas canvas,
     _View view,
@@ -2101,8 +2037,7 @@ void _goals(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
       for (var (x0, inward) in [(0.0, 1.0), (l, -1.0)]) {
         double x(double d) => x0 + inward * d;
         add(x(board), w / 2, () {
-          // The stanchion behind the end line, the arm, the board and the
-          // ring at ten feet.
+          // The stanchion behind the end line, the arm, the board, the ring.
           var stand = post(_darken(spec.background, 0.6), 1.6);
           canvas.drawLine(p(x(-1.2), w / 2), p(x(-1.2), w / 2, 2.9), stand);
           canvas.drawLine(

@@ -1,8 +1,7 @@
-// character_move.dart is how a new 3D character stands and moves, as the
-// Character Studio's Move step sets it: a stance -- placed by where its
-// hands and feet go, worked out for the body's own limbs (vrm_pose.dart) --
-// the shape of each hand, each foot turned at the ankle, and the body
-// turned by hand.
+// character_move.dart is how a 3D character stands and moves, as the
+// Studio's Move step sets it: a stance (placed by where its hands and feet
+// go, solved for the body's own limbs in vrm_pose.dart), each hand's shape,
+// each foot turned at the ankle, and the body turned by hand.
 
 /// moveStances are the stances, by name.
 const List<String> moveStances = [
@@ -24,8 +23,7 @@ const List<String> moveStances = [
   "Fighting guard",
 ];
 
-/// handShapes are the hand shapes, with their names. "relaxed" is also
-/// "as the stance has it".
+/// handShapes are the hand shapes; "relaxed" is also the stance's own.
 const List<(String, String)> handShapes = [
   ("relaxed", "Relaxed"),
   ("open", "Open"),
@@ -56,8 +54,8 @@ const List<(String, String)> moveFoot = [
   ("toes", "Toes"),
 ];
 
-/// moveMotions are the motions, by name: made as they play, from the
-/// stance and this body, so they never come out the wrong size.
+/// moveMotions are the motions, by name: made as they play, from the stance
+/// and this body, so they are never the wrong size.
 const List<String> moveMotions = [
   "Still",
   "Idle",
@@ -119,7 +117,6 @@ const List<String> moveDots = [
   "head"
 ];
 
-/// CharacterMove is how the character stands and moves. Immutable.
 class CharacterMove {
   final String stance;
 
@@ -191,7 +188,6 @@ class CharacterMove {
   /// offsetOf is dot [k]'s offset, nought where it has none.
   List<double> offsetOf(String k) => offsets[k] ?? const [0.0, 0.0, 0.0];
 
-  /// withOffset is this with dot [k] dragged to [o].
   CharacterMove withOffset(String k, List<double> o) => copyWith(
       offsets: {...offsets, k: o}
         ..removeWhere((_, v) => v.every((x) => x.abs() < 1e-6)));

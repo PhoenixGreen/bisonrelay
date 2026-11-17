@@ -8,12 +8,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 
-// canvas_scene.dart is one canvas of several in a document.
-//
-// A scene is a set of elements, the order they are drawn in, a length in
-// frames and the actions along it. A document plays its scenes one after
-// another; see CanvasDocument.scene. The page's size, guides and publishing
-// settings belong to the document, not to a scene.
+// canvas_scene.dart is one canvas of several in a document: a set of
+// elements, their drawing order, a length in frames and the actions along
+// it. A document plays its scenes one after another (CanvasDocument.scene);
+// the page's size, guides and publishing settings are the document's.
 
 /// SceneTransitionFamily groups the kinds in the picker, so choosing is "what
 /// sort of change" and then "which one".
@@ -32,9 +30,8 @@ enum SceneTransitionFamily {
   const SceneTransitionFamily(this.label);
 }
 
-/// SceneTransitionWay is which way a transition that has a direction goes.
-/// A setting of its own, so the kinds list does not spell out every
-/// direction.
+/// SceneTransitionWay is which way a transition with a direction goes: a
+/// setting of its own, so the kinds need not spell out every direction.
 enum SceneTransitionWay {
   /// inPlace grows where it is rather than crossing the page.
   inPlace("In place"),
@@ -49,8 +46,7 @@ enum SceneTransitionWay {
   bool get horizontal => this == left || this == right || this == inPlace;
 
   /// waysFor is the directions worth offering for one kind. Barn doors take
-  /// an axis rather than a side, since left-and-right looks the same as
-  /// right-and-left.
+  /// an axis rather than a side: left-and-right looks like right-and-left.
   static List<SceneTransitionWay> waysFor(SceneTransitionKind kind) {
     if (kind == SceneTransitionKind.barn) return const [left, up];
     if (kind == SceneTransitionKind.shapeWipe) return values;
@@ -68,7 +64,6 @@ enum SceneTransitionWay {
       values.firstWhere((w) => w.name == name, orElse: () => right);
 }
 
-/// SceneTransitionKind is how one scene becomes the next.
 enum SceneTransitionKind {
   /// cut is no transition at all, and the default.
   cut("Cut"),
@@ -263,7 +258,6 @@ enum SceneTransitionKind {
   /// kinds do not throw their paint in the same places.
   int get seed => index * 7919;
 
-  /// isCut is whether nothing is drawn between the two scenes.
   bool get isCut => this == cut;
 
   static SceneTransitionKind fromName(String? name) =>
@@ -274,7 +268,6 @@ enum SceneTransitionKind {
 class SceneTransition {
   final SceneTransitionKind kind;
 
-  /// frames is how long it takes.
   final int frames;
 
   /// overlap is how many of those frames both scenes are playing for. Zero
@@ -285,10 +278,9 @@ class SceneTransition {
   /// color is what a transition through a colour goes through.
   final Color color;
 
-  /// ease is how the movement is timed, for the ones that move.
+  /// ease is how the movement is timed, for the kinds that move.
   final SceneTransitionEase ease;
 
-  /// way is which direction the ones with a direction go.
   final SceneTransitionWay way;
 
   /// shape is what opens, for the shape wipe: any shape an element can be.
@@ -326,8 +318,8 @@ class SceneTransition {
   final double soundVolume;
   final int soundLead;
 
-  /// label is what its slot is called (Ken, 2026-11-10), or "" for what it
-  /// does: "→ the next scene · its kind".
+  /// label is what its slot is called, or "" for what it does: "→ the next
+  /// scene · its kind".
   final String label;
 
   const SceneTransition({
@@ -527,7 +519,6 @@ class SceneTransition {
       );
 }
 
-/// SceneTransitionEase is how a moving transition is timed.
 enum SceneTransitionEase {
   straight("Straight"),
   smooth("Smooth"),
@@ -557,11 +548,10 @@ enum SceneTransitionEase {
   }
 }
 
-/// SceneCamera is a slow move over a whole scene, from one framing to
-/// another across its length: a push in, a pull out, a drift across.
-///
-/// A framing is a zoom, never less than one so the page is always filled,
-/// and the point it is centred on, as fractions of the page.
+/// SceneCamera is a slow move over a whole scene from one framing to
+/// another: a push in, a pull out, a drift. A framing is a zoom (never less
+/// than one, so the page is filled) and the point it centres on, as
+/// fractions of the page.
 class SceneCamera {
   final double fromZoom;
   final double fromX;
@@ -593,10 +583,9 @@ class SceneCamera {
   });
 
   /// at is the framing [t] of the way through the scene: a zoom, and the
-  /// point of [page] at the middle of the picture -- held far enough in from
-  /// the edges that the picture never runs off the page.
-  ///
-  /// [seconds] into the scene times its shake; without it, [t] does.
+  /// point of [page] at the middle of the picture, held in from the edges
+  /// so the picture never runs off the page. [seconds] into the scene times
+  /// its shake; without it, [t] does.
   (double, Offset) at(double t, Rect page, {double? seconds}) {
     var e = ease.apply(t.clamp(0.0, 1.0));
     var zoom = math.max(1.0, fromZoom + (toZoom - fromZoom) * e);
@@ -725,28 +714,24 @@ class CanvasScene {
   /// slot; a channel not here keeps playing. See CanvasController.gameSound.
   final Map<String, String> gameSounds;
 
-  /// gameSoundsAtEnd are what each mixer channel does as a game leaves
-  /// this scene -- for the next, or ending on it -- as [gameSounds] says
-  /// for its start (Ken: the meadow's music stopped as it ends).
+  /// gameSoundsAtEnd are what each mixer channel does as a game leaves this
+  /// scene, for the next or ending on it, as [gameSounds] says for its start.
   final Map<String, String> gameSoundsAtEnd;
 
-  /// cues are this scene's own cues, by name, a row each -- its own
-  /// channels' and elements' rows of slots, launched together -- or null,
-  /// none named yet. A game's master has the cues of the channels every
-  /// scene shares (the document's, SessionGrid.scenes); a scene's are its
-  /// own (Ken, 2026-11-10: per-canvas cues). See CanvasCues.
+  /// cues are this scene's own cues, by name, a row each (its channels' and
+  /// elements' slots, launched together), or null with none named. A game's
+  /// master has the cues of the channels every scene shares (the document's,
+  /// SessionGrid.scenes). See CanvasCues.
   final List<String>? cues;
 
-  /// cover marks this canvas as the outside of a document rather than one of
-  /// its leaves; see PageCover. Kept on the scene, not as a position on the
-  /// document, so it survives reordering. Read only when the document is
-  /// pages.
+  /// cover marks this canvas as the outside of a document rather than a
+  /// leaf; see PageCover. Kept on the scene so it survives reordering. Read
+  /// only when the document is pages.
   final PageCover cover;
 
   /// transition is how this scene gives way to the next, or null for the
-  /// document's default (CanvasDocument.defaultTransition, the master
-  /// scene's). Null rather than a copy, so changing the default reaches
-  /// every scene without its own.
+  /// document's default (the master scene's). Null rather than a copy, so
+  /// changing the default reaches every scene without its own.
   final SceneTransition? transition;
 
   /// camera is this scene's slow move, or null to hold still. Applied in
@@ -754,11 +739,9 @@ class CanvasScene {
   /// lands where it looks.
   final SceneCamera? camera;
 
-  /// bus is the scene's own strip: everything heard in the scene -- its
-  /// channels, its elements' sounds, its transition's -- sums into it, through
-  /// its devices, EQ, compressor and fader, on its way to the master. The
-  /// master's own sounds go straight to the master. As it is made, it changes
-  /// nothing.
+  /// bus is the scene's own strip: everything heard in the scene sums into
+  /// it, through its devices and fader, on the way to the master. The
+  /// master's own sounds go straight to the master. As made, it is neutral.
   final ChannelMix bus;
 
   const CanvasScene({
@@ -792,7 +775,6 @@ class CanvasScene {
   /// it, or null where it has none or has been told not to.
   CanvasBackground? get sharedBackground => backgroundOff ? null : background;
 
-  /// custom is whether this scene has a transition of its own.
   bool get custom => transition != null;
 
   CanvasScene copyWith({

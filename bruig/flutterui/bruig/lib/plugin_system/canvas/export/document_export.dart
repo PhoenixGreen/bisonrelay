@@ -18,14 +18,11 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/foundation.dart';
 
-// document_export.dart is a canvas published as something to read.
-//
-// A PDF is the pages exactly; an EPUB is the pages in a reader that turns
-// them; an interactive EPUB also keeps what can be pressed, animated or
-// played. Each is one leaf per scene, in order. Written for a document of
-// pages (see CanvasKind) but a set of scenes works the same way.
+// document_export.dart publishes a canvas to read: a PDF of the pages, an
+// EPUB that turns them, or an interactive EPUB keeping what can be
+// pressed, animated or played; one leaf per scene, in order.
 
-/// DocumentAs is which of the three.
+/// DocumentAs is which of the three formats.
 enum DocumentAs {
   pdf("PDF", "Every page, exactly as designed — for printing and for sending"),
   epub("EPUB", "A book of pages an e-reader turns, laid out as designed"),
@@ -45,14 +42,10 @@ enum DocumentAs {
 /// DocumentProgress reports how far the export has got, a page at a time.
 typedef DocumentProgress = void Function(int done, int total);
 
-/// renderDocumentPage draws leaf [index], exactly as the editor shows it.
-///
-/// Not renderFrame, which draws a frame of the sequence rather than a given
-/// scene. And in a spread, the facing leaf's contents are drawn too, clipped
-/// to this page, so an element laid across the gutter is printed on both
-/// halves.
-///
-/// The caller owns the image and must dispose it.
+/// renderDocumentPage draws leaf [index] as the editor shows it (not
+/// renderFrame, a frame of the sequence). In a spread the facing leaf is
+/// drawn too, clipped, so an element across the gutter prints on both
+/// halves. The caller must dispose the image.
 Future<ui.Image> renderDocumentPage(
   CanvasDocument document,
   int index, {
@@ -73,10 +66,8 @@ Future<ui.Image> renderDocumentPage(
         background: document.backgroundOf(index),
       );
 
-  // As it settles, everything arrived: the page as it is read -- printed,
-  // shown by a reader that runs no script, and behind an interactive book's
-  // start (Ken, 2026-11-13: the book opened on a blank page, its frame 0,
-  // before anything had arrived).
+  // As it settles, everything arrived: the page as read in print, by a
+  // reader running no script, and behind an interactive book's start.
   var settled = settledFrameOf(page);
 
   void draw(ui.Canvas canvas) {
@@ -134,7 +125,7 @@ Future<CanvasExport?> renderDocument(
   await loadExportShaders();
   try {
     // The book's cover picture: the cover page, opaque and no bigger than a
-    // reader takes (Ken, 2026-11-13: Apple Books showed no cover at first).
+    // reader takes (see _coverPicture).
     Uint8List? cover;
     if (as != DocumentAs.pdf) {
       var front = document.pageCovers.indexOf(PageCover.front);
@@ -157,7 +148,7 @@ Future<CanvasExport?> renderDocument(
     var sheets = <PdfPicture>[];
 
     // An interactive book's sound and video: converted once for the book,
-    // placed page by page. See epub_media.dart.
+    // placed page by page (see epub_media.dart).
     var builder = as == DocumentAs.interactiveEpub
         ? await EpubMediaBuilder.start(
             scale: scale, images: images, audioKbps: soundKbps)
@@ -240,9 +231,8 @@ Future<CanvasExport?> renderDocument(
   }
 }
 
-/// _titleOf is a title page to fold into the page after it (see EpubStart):
-/// a first scene that stands still, whose one button goes to the second,
-/// which moves -- with nothing else on it to press or hear.
+/// _titleOf is a title page to fold into the next (see EpubStart): a still
+/// first scene whose only button goes to the moving second.
 ButtonElement? _titleOf(CanvasDocument document) {
   if (document.isPages) return null;
   var scenes = document.allScenes;
@@ -265,8 +255,8 @@ ButtonElement? _titleOf(CanvasDocument document) {
   return play;
 }
 
-/// _startOf draws the title page twice -- without its Play, and the Play
-/// cut from it -- for the page after it to start behind.
+/// _startOf draws the title page twice, without its Play and the Play cut
+/// from it, for the page after it to start behind.
 Future<EpubStart?> _startOf(CanvasDocument document, ButtonElement play,
     double scale, CanvasImageSource? images) async {
   var scene = document.allScenes[0];
@@ -333,14 +323,12 @@ EpubSide _sideOf(CanvasDocument document, List<PageCover> covers, int index) {
   return pageIsLeft(index) ? EpubSide.left : EpubSide.right;
 }
 
-/// _linksOn is every button on a page that goes to another page or opens a
-/// URL. Buttons that play, show or hide are EpubActions: see
-/// EpubMediaBuilder.page.
+/// _linksOn is every button on a page going to another page or a URL;
+/// those that play, show or hide are EpubActions (EpubMediaBuilder.page).
 List<EpubLink> _linksOn(
     CanvasDocument document, CanvasScene scene, int index, double pixels) {
   var links = <EpubLink>[];
-  // The master's buttons too: they are drawn on every page, and a book's
-  // navigation lives there.
+  // The master's buttons too: drawn on every page, a book's navigation.
   for (var element in [
     ...?document.masterScene?.elements,
     ...scene.elements,
@@ -351,10 +339,8 @@ List<EpubLink> _linksOn(
     switch (action.kind) {
       case ButtonActionKind.goToScene:
         var to = document.sceneIndexNamed(action.elementId);
-        // To a page that moves: #play, which plays it from the top as soon
-        // as it has loaded, without its start screen -- the press that went
-        // there was the press to play (Ken's infographic: Play on a title
-        // page, then the page that builds).
+        // To a page that moves: #play, played from the top once loaded,
+        // with no start screen: the press that went there was the play.
         if (to >= 0 && to != index) {
           var moves = document.allScenes[to].frames > 1;
           href = "page$to.xhtml${moves ? "#play" : ""}";

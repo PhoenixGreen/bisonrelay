@@ -23,15 +23,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-// data_source_settings.dart is the "where do these numbers come from" panel,
-// for a table and a chart. The easy path is the short one: choose a preset,
-// choose a competition, press Refresh. Under that, the address, the path to
-// the rows and the columns are the mapping the preset filled in, left
-// visible so anything the presets do not cover is still reachable.
+// data_source_settings.dart is the "where do these numbers come from" panel
+// for tables and charts: preset, competition, Refresh. The preset's
+// address, rows path and columns stay visible for whatever it misses.
 
-/// dataSourceSection is the Data section of a table's settings: the whole
-/// section, because its Refresh button sits on the heading, must work with
-/// the section shut, and needs the state that knows whether one is running.
+/// dataSourceSection is a table's Data section, whole, as its heading's
+/// Refresh works shut and must know whether one is running.
 Widget dataSourceSection(
         BuildContext context,
         CanvasController controller,
@@ -45,10 +42,7 @@ Widget dataSourceSection(
       key: ValueKey("source-${e.id}"),
     );
 
-/// sourceRefreshButton is the Refresh button on its own, for a section that
-/// is not the data source's: the Table section, where somebody looking at
-/// the cells wants them again. The same refresh (see _runRefresh). Null
-/// where there is no source to read.
+/// sourceRefreshButton is the same Refresh for the Table section, or null.
 Widget? sourceRefreshButton(
     BuildContext context,
     CanvasController controller,
@@ -76,15 +70,14 @@ class _RefreshButton extends StatefulWidget {
 }
 
 class _RefreshButtonState extends State<_RefreshButton> {
-  /// _busy is a refresh in progress. A second press would make a second
-  /// request and race the first one into the document.
+  /// _busy is a refresh running: a second would race it into the document.
   bool _busy = false;
 
   @override
   Widget build(BuildContext context) {
     var source = widget.target.source;
     return CanvasIconButton(
-      // It hangs off a section's heading, not off a row of controls.
+      // It hangs off a section's heading, not a row of controls.
       tight: true,
       icon: _busy ? Icons.hourglass_empty : Icons.refresh,
       tooltip: !source.on
@@ -108,10 +101,8 @@ class _RefreshButtonState extends State<_RefreshButton> {
   }
 }
 
-/// chartSourceSection is the same panel on a chart, deliberately: presets,
-/// address, key and mapping are the same job for any element, and two
-/// copies stop agreeing. What differs is what happens to what comes back,
-/// which is [_Target].
+/// chartSourceSection is the same panel on a chart, deliberately, as two
+/// copies would drift; only what becomes of the rows differs ([_Target]).
 Widget chartSourceSection(
         BuildContext context,
         CanvasController controller,
@@ -125,11 +116,8 @@ Widget chartSourceSection(
       key: ValueKey("source-${e.id}"),
     );
 
-/// _Target is the element the panel is filling in. What differs between a
-/// table and a chart is what arriving rows become: a table takes them as
-/// they are, keeps the columns the reader filled in and re-sorts; a chart
-/// picks two of the columns and thins thousands of points to what a canvas
-/// can draw.
+/// _Target is the element being filled: a table keeps the reader's columns
+/// and re-sorts; a chart picks columns and thins thousands of points.
 abstract class _Target {
   final CanvasController controller;
   final SettingsWrite write;
@@ -141,29 +129,26 @@ abstract class _Target {
   CanvasElement get element;
   DataSource get source;
 
-  /// chart is which presets are offered and which extra controls are shown.
+  /// chart is which presets are offered and which extra controls shown.
   bool get chart;
 
-  /// remember prefixes the keys the open/shut sections are stored under, so a
-  /// chart's Columns section is not opened by having opened a table's.
+  /// remember prefixes the open sections' keys, so table and chart differ.
   String get remember;
 
-  /// noun is what the tooltips call the thing being filled in.
+  /// noun is what tooltips call the thing being filled.
   String get noun;
 
-  /// label is the section's heading: a chart already has a Data section (the
-  /// numbers themselves), so this one says where they come from.
+  /// label is the heading: a chart's Data section is already its numbers.
   String get label;
 
-  /// setSource writes the recipe back, with nothing fetched.
+  /// setSource writes the recipe back, fetching nothing.
   void setSource(DataSource next) {
     begin();
     write(withSource(next));
     commit();
   }
 
-  /// typeSource writes it as it is typed: one change for the whole field,
-  /// closed by [commit] as the field is left.
+  /// typeSource writes while typing, one change closed by [commit].
   void typeSource(DataSource next) {
     begin();
     write(withSource(next));
@@ -171,45 +156,36 @@ abstract class _Target {
 
   CanvasElement withSource(DataSource next);
 
-  /// choosePreset applies a whole recipe, including whatever else about the
-  /// element it implies. [fromRows] is written with the recipe in one change:
-  /// two writes would read the old element for the second.
+  /// choosePreset applies a recipe and what it implies, with [fromRows] in
+  /// the same change, as a second write would read the old element.
   void choosePreset(DataPreset preset, String choice, {bool? fromRows});
 
-  /// receive puts what came back into the element, and says what happened.
-  /// Async because a table collects its pictures on the way in, one request
-  /// per badge.
+  /// receive takes the rows in; async, as a table fetches its badges.
   Future<String> receive(List<List<String>> rows, DataSource next,
       {required bool allowed,
       required bool proxied,
       List<List<String>> raw = const []});
 
-  /// rowKeys is what the element already has a row for, in its own order:
-  /// what DataSource.fromRows reads. A table's are the cells of the match
-  /// column; a chart's are the labels along its axis (for a coin comparison,
-  /// the coins).
+  /// rowKeys is what the element has rows for, in order (DataSource
+  /// .fromRows): a table's match cells, a chart's axis labels.
   List<String> get rowKeys => const [];
 
-  /// rowsFor is the element's own rows for the keys in [keys], as they stand
-  /// now -- what a refresh puts back for a row the source did not send.
+  /// rowsFor is the current rows for [keys], kept when the source omits one.
   List<List<String>> rowsFor(List<String> keys) => const [];
 
-  /// picturesMatter is whether a column can hold a picture, and whether one
-  /// can be kept across a refresh: a table's cell can show a badge chosen by
-  /// hand; on a chart they would be two switches that do nothing.
+  /// picturesMatter is whether a column can hold a picture kept across a
+  /// refresh: a table's badge, yes; on a chart the switches do nothing.
   bool get picturesMatter => true;
 
-  /// moveColumn shifts a column along the row, carrying whatever refers to
-  /// the columns by number with it.
+  /// moveColumn shifts a column, carrying references by number.
   void moveColumn(int from, int to);
 
-  /// removeColumn takes one out, likewise.
+  /// removeColumn removes one, likewise.
   void removeColumn(int at);
 
-  /// extras are the controls this element adds: which columns a chart draws,
-  /// and how many points it keeps. [lastRows] is what the last refresh in this
-  /// sitting returned, handed in rather than saved: thousands of rows in every
-  /// canvas is not worth one dropdown not asking again.
+  /// extras are the element's own controls (a chart's drawn columns and
+  /// point count). [lastRows] is passed in, not saved: thousands of rows in
+  /// every canvas are not worth it.
   List<Widget> extras(List<List<String>> lastRows,
           [List<List<String>> lastRaw = const [],
           List<String> fields = const []]) =>
@@ -265,8 +241,7 @@ class _TableTarget extends _Target {
 
   @override
   void choosePreset(DataPreset preset, String choice, {bool? fromRows}) {
-    // A preset brings its hidden headings with it: its badge and position
-    // columns are named for the mapping and not drawn.
+    // A preset brings its hidden badge and position columns.
     begin();
     write(element.copyWith(
       source: preset.applyTo(source, choice).copyWith(fromRows: fromRows),
@@ -277,7 +252,7 @@ class _TableTarget extends _Target {
 
   @override
   void moveColumn(int from, int to) {
-    // The cells move with the mapping, not only on the next refresh.
+    // The cells move with the mapping now, not on the next refresh.
     begin();
     write(element.copyWith(
       source: source.withColumnMoved(from, to),
@@ -311,8 +286,7 @@ class _TableTarget extends _Target {
     commit();
   }
 
-  /// _cellsMoved is one row with a cell shifted along it. A short row is left
-  /// alone rather than padded: a ragged table is one being typed.
+  /// _cellsMoved shifts a cell along a row; a short row is being typed.
   static List<String> _cellsMoved(List<String> row, int from, int to) {
     if (from >= row.length || to >= row.length) return row;
     var next = [...row];
@@ -327,26 +301,21 @@ class _TableTarget extends _Target {
       List<List<String>> raw = const []}) async {
     rows =
         await collectPictures(rows, next, allowFetching: allowed && !proxied);
-    // The table as it is now, not as it was when the fetch began: moved,
-    // resized or restyled meanwhile, that is kept. Deleted, nothing to fill.
+    // The table as it is now, keeping edits made during the fetch.
     var element = freshOf(controller, this.element);
     if (element == null) return "The table has gone.";
 
-    // The columns the reader fills in themselves, put back from what was
-    // there before, matched by name so a badge follows its team.
+    // The reader's own columns, put back by name so a badge follows its team.
     rows = keepColumns(element.rows, rows, next, headerRow: element.headerRow);
-    // And the column names the reader gave them: rules pick their cells by
-    // column name, so renamed headers would switch every rule off.
+    // And the reader's column names, which rules pick cells by.
     rows = keepHeaders(element.rows, rows, headerRow: element.headerRow);
 
-    // Sorted on the way in, so a refresh keeps the table's order rather
-    // than the order the source sent.
+    // Sorted on the way in, keeping the table's order, not the source's.
     begin();
     var table = element.copyWith(rows: rows, source: next).sorted();
     write(table);
 
-    // The charts of the same sheet come with it in the same step (see
-    // data_sync.dart), so the two never show different weeks side by side.
+    // The sheet's charts follow in the same step (see data_sync.dart).
     var followers = element.sheet == null
         ? 0
         : viewsOf(controller.document, element.sheet!.sheet)
@@ -382,8 +351,7 @@ class _ChartTarget extends _Target {
 
   @override
   List<List<String>> rowsFor(List<String> keys) {
-    // A chart has no cells, only a label and its values, so the row put
-    // back is the label with nothing against it: a gap, which is the truth.
+    // A chart row put back is its label alone: a gap, which is the truth.
     var want = keys.toSet();
     var at = source.matchColumn < 0 ? 0 : source.matchColumn;
     var width = source.columns.isEmpty ? at + 1 : source.columns.length;
@@ -431,8 +399,7 @@ class _ChartTarget extends _Target {
 
   @override
   void choosePreset(DataPreset preset, String choice, {bool? fromRows}) {
-    // A chart preset brings its mapping: which column is the axis, which
-    // are the series, and how many points are worth drawing.
+    // A chart preset brings its axis, series and point count.
     begin();
     write(element.copyWith(
       source: preset.applyTo(source, choice).copyWith(fromRows: fromRows),
@@ -441,8 +408,7 @@ class _ChartTarget extends _Target {
         valueColumns: preset.chartValues,
         maxPoints: preset.chartPoints,
       ),
-      // And the drawing, where the recipe wants one: open, high, low and
-      // close are candlesticks, not four lines.
+      // And its drawing: open, high, low and close are candlesticks.
       type: preset.chartType,
     ));
     commit();
@@ -456,14 +422,12 @@ class _ChartTarget extends _Target {
     // The chart as it is now: see the table's.
     var element = freshOf(controller, this.element);
     if (element == null) return "The chart has gone.";
-    // Keeping what has been decided about how each series looks: a refresh
-    // brings new values, it is not somebody asking for their colours back.
+    // Series looks are kept: a refresh brings values, not colours.
     var data = chartDataFromRows(rows, element.fromSource,
         when: datesIn(raw, element.fromSource.categoryColumn),
         keeping: element.data.series);
     begin();
-    // The numbers land in the chart's own data, so once fetched they are
-    // edited, coloured and animated like typed numbers.
+    // Into the chart's own data, so fetched numbers edit like typed ones.
     write(element.copyWith(data: data, source: next));
     commit();
     return data.isEmpty
@@ -487,16 +451,13 @@ class _ChartTarget extends _Target {
     (int, String) named(int c) =>
         (c, columns[c].header.isEmpty ? "Column ${c + 1}" : columns[c].header);
 
-    // Whether the axis is a date, which is what makes an interval mean
-    // anything: from the column's own format, so it shows before a refresh.
+    // A date axis, from the column's format, gives an interval meaning.
     var axisIsDate = map.categoryColumn >= 0 &&
         map.categoryColumn < columns.length &&
         columns[map.categoryColumn].date.isNotEmpty;
 
     return [
-      // The columns of its sheet it draws (data_sheet.dart): labels from
-      // one, a series from each chosen -- live, as the sheet is one set of
-      // numbers with the table showing it (Ken, 2026-11-15).
+      // The sheet columns it draws (data_sheet.dart), live.
       if (sheetLink case var link?)
         if (controller.sheetById(link.sheet) case var sheet?) ...[
           CanvasControlGroup(label: "Labels", children: [
@@ -533,9 +494,7 @@ class _ChartTarget extends _Target {
                 "and this chart always agree."),
           ]),
         ],
-      // A row per series, each saying where it comes from: every field the
-      // source turned out to hold is offered against each, and picking one
-      // with no column yet adds it.
+      // A row per series and its source; a field with no column adds one.
       CanvasControlGroup(label: "Series data", children: [
         CanvasDropdown<int>(
           key: const ValueKey("chartAxisColumn"),
@@ -548,8 +507,7 @@ class _ChartTarget extends _Target {
         ),
         for (var (i, c) in map.valueColumns.indexed) ...[
           const CanvasLineBreak(),
-          // Narrow enough that the two of them and the button stay on one
-          // line down a narrow sidebar: the row is the series.
+          // Narrow, so the row fits one line in a narrow sidebar.
           seriesPicker(
             index: i,
             column: c,
@@ -559,8 +517,7 @@ class _ChartTarget extends _Target {
             onChanged: (next) =>
                 _bindSeries(i, next, lastRows, lastRaw, fields),
           ),
-          // How this series' figures are written, on the row that says where
-          // they come from rather than as another row over the grid.
+          // This series' figure style, on its source row.
           CanvasDropdown<NumberStyle?>(
             key: ValueKey("chartSeriesNumbers$i"),
             label: "Shown as",
@@ -568,8 +525,7 @@ class _ChartTarget extends _Target {
                 ? element.data.series[i].numbers?.style
                 : null,
             width: 94,
-            // The name alone, without the example: at this width it would be
-            // cut to "Millions…".
+            // The name alone: at this width the example is cut.
             options: [
               (null, "As the chart"),
               for (var style in NumberStyle.values) (style, style.label),
@@ -606,8 +562,7 @@ class _ChartTarget extends _Target {
             "offered even where the mapping has no column for it yet; "
             "choosing one adds the column."),
         const CanvasLineBreak(),
-        // Readings on the dates asked for, rather than one point in every so
-        // many. Only where the axis is a date.
+        // Readings on chosen dates, for a date axis.
         if (axisIsDate) ...[
           CanvasDropdown<IntervalUnit>(
             label: "A reading",
@@ -622,8 +577,7 @@ class _ChartTarget extends _Target {
           if (map.interval.on) ...[
             CanvasNumberField(
               label: "Every",
-              // The unit, so the pair reads as a sentence: "A reading — Yearly.
-              // Every — 2 years."
+              // The unit, so it reads "A reading — Yearly. Every — 2 years."
               suffix: _unitWords(map.interval.unit, map.interval.every),
               value: map.interval.every.toDouble(),
               min: 1,
@@ -637,8 +591,8 @@ class _ChartTarget extends _Target {
                   lastRaw),
               onCommit: commit,
             ),
-            // The anchor: a yearly reading on the seventh of February can be
-            // compared with last year's; one from wherever the data begins cannot.
+            // The anchor: a yearly reading on 7 February compares with last
+            // year's; one from wherever the data begins does not.
             if (map.interval.unit.hasMonth)
               CanvasDropdown<int>(
                 label: "In",
@@ -697,9 +651,7 @@ class _ChartTarget extends _Target {
                     lastRows,
                     lastRaw),
               ),
-            // What a reading is made of: a fact about the series the numbers cannot
-            // tell. A year of transactions a day adds up; a year of seconds between
-            // blocks does not.
+            // Sum or not: daily transactions add up; block times do not.
             CanvasDropdown<IntervalPick>(
               label: "Each one is",
               value: map.interval.how,
@@ -746,9 +698,8 @@ class _ChartTarget extends _Target {
     ];
   }
 
-  /// _bindSeries points series [index] at [column], adding the series where
-  /// there is not one yet. [column] past the end of the mapping is a field
-  /// with no column yet, which is added first: see seriesPicker.
+  /// _bindSeries points series [index] at [column], adding it if missing;
+  /// [column] past the mapping is a new field's column (see seriesPicker).
   void _bindSeries(int index, int column, List<List<String>> rows,
       [List<List<String>> raw = const [], List<String> fields = const []]) {
     var next = boundSeries(element, index, column, fields);
@@ -762,10 +713,8 @@ class _ChartTarget extends _Target {
     commit();
   }
 
-  /// _writeSeriesStyle writes one series' own way of showing a figure, with
-  /// the chart's decimals and grouping, or takes it back to the chart's. Null
-  /// forgets it through ChartSeries.copyWith's writtenLikeChart, since the
-  /// ordinary copyWith keeps a null's old value.
+  /// _writeSeriesStyle writes or reverts a series' figure style; null goes
+  /// through writtenLikeChart, as plain copyWith keeps a null's old value.
   void _writeSeriesStyle(int index, NumberStyle? style) {
     if (index >= element.data.series.length) return;
     var out = [...element.data.series];
@@ -778,8 +727,7 @@ class _ChartTarget extends _Target {
     commit();
   }
 
-  /// _nextFree is a column not already drawn, for a series being added; the
-  /// first one where there is none.
+  /// _nextFree is an undrawn column for a new series, else the first.
   int _nextFree(ChartSourceMap map, List<SourceColumn> columns) {
     for (var c = 0; c < columns.length; c++) {
       if (c != map.categoryColumn && !map.valueColumns.contains(c)) return c;
@@ -787,9 +735,7 @@ class _ChartTarget extends _Target {
     return columns.isEmpty ? 0 : columns.length - 1;
   }
 
-  /// _setMap changes what is drawn, and redraws it where it can: at once
-  /// with the rows from this sitting's refresh, otherwise on the next Refresh,
-  /// since the column asked for was never in the document.
+  /// _setMap changes what is drawn, redrawn now or on the next Refresh.
   void _setMap(ChartSourceMap next, List<List<String>> rows,
       [List<List<String>> raw = const []]) {
     begin();
@@ -812,23 +758,20 @@ String _summary(DataSource source) {
   return "$name · ${DateFormat("d MMM, HH:mm").format(source.fetchedAt!.toLocal())}";
 }
 
-/// _runRefresh is the whole point of the panel: go and get it, map it, and
-/// hand it to whatever asked for it. A function shared by the Data and Table
-/// sections' buttons, so the coin list and the derived form guide are never
-/// forgotten in a copy. Null where nothing came back, having said why.
+/// _runRefresh fetches, maps and hands the rows over, shared by both
+/// sections' buttons so the coin list and form guide are never lost. Null
+/// where nothing came back, having said why.
 Future<FetchedRows?> _runRefresh(
     BuildContext context, _Target target, bool allowed) async {
   var snackbar = SnackBarModel.of(context);
   var source = target.source;
 
-  // What to ask for, where the element's own rows decide: worked out now,
-  // not saved into the address, since the rows change.
+  // Worked out now, not saved into the address, as the rows change.
   var asking = source;
   var wanted = <String>[];
   var preset = presetById(source.preset);
   if (source.fromRows && preset != null && preset.choiceFromRows) {
-    // What the source files each row under, which is not always what the row
-    // says: XRP is filed as ripple. See CanvasRowNames.idFor.
+    // What the source files each row under: XRP is ripple (idFor).
     wanted = [
       for (var cell in target.rowKeys)
         if (CanvasRowNames.idFor(preset, cell).isNotEmpty)
@@ -845,7 +788,7 @@ Future<FetchedRows?> _runRefresh(
 
   if (!await confirmSource(context, source) || !context.mounted) return null;
 
-  // Asked whatever the source: a file's rows can still name pictures to fetch.
+  // Asked whatever the source: a file's rows can still name pictures.
   var proxied = allowed && await networkIsProxied();
   var result = await loadData(asking, allowFetching: allowed, proxied: proxied);
   if (!context.mounted) return null;
@@ -856,18 +799,15 @@ Future<FetchedRows?> _runRefresh(
 
   var rows = result.rows!;
 
-  // A second look, for a source that cannot say everything in one answer:
-  // the football form guide is worked out from the free fixtures.
+  // A second look where needed: the form guide is derived from fixtures.
   if (preset?.derive != null) {
     rows = await preset!.derive!(rows, asking,
         (url) => fetchJsonAt(url, allowFetching: allowed, proxied: proxied));
     if (!context.mounted) return null;
   }
 
-  // A row asked for and not sent back is kept, not dropped: it is almost
-  // always a name spelled another way (BNB is binancecoin), and the row is
-  // where it would be corrected. Matched through the request's own mapping,
-  // so a row back as "XRP" is the ripple that was asked for.
+  // A row not returned is kept: nearly always a different spelling (BNB is
+  // binancecoin), corrected on the row. Matched by the request's mapping.
   var missing = rowsMissingFrom(wanted, rows, asking.matchColumn,
       idOf:
           preset == null ? null : (cell) => CanvasRowNames.idFor(preset, cell));
@@ -904,27 +844,22 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
   /// _busy is a refresh in progress, as in _RefreshButtonState.
   bool _busy = false;
 
-  /// _fields is what the last refresh turned out to contain: every path that
-  /// led to a value in the first record. Not in the document: it is a fact
-  /// about what came back, not the design.
+  /// _fields is the paths in the last refresh's first record, not saved.
   List<String> get _fields =>
       target.controller.lastFetched[target.element.id]?.fields ?? const [];
 
-  /// _hasKey is whether a key has been saved for this address's host. The key
-  /// itself is never read back into the interface.
+  /// _hasKey is whether a key is saved for this host; it is never shown.
   bool _hasKey = false;
   String _forHost = "";
 
   _Target get target => widget.target;
   DataSource get source => target.source;
 
-  /// _rawRows is the same rows with the dates still in them, for a chart
-  /// choosing its points by date. Empty unless a column is a date.
+  /// _rawRows is the rows with dates intact, for date-chosen points.
   List<List<String>> get _rawRows =>
       target.controller.lastFetched[target.element.id]?.raw ?? const [];
 
-  /// _rows is what the last refresh in this sitting returned, read from the
-  /// controller so a refresh from the Table section's button is seen here.
+  /// _rows is this sitting's last refresh, from the controller.
   List<List<String>> get _rows =>
       target.controller.lastFetched[target.element.id]?.rows ?? const [];
 
@@ -953,16 +888,14 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
   void _set(DataSource next) => target.setSource(next);
 
-  /// _refresh reads the source and remembers what it turned out to hold, so
-  /// the mapping controls can change their mind without asking again.
+  /// _refresh reads the source and remembers what it held.
   Future<void> _refresh() async {
     var allowed = context.read<CanvasPreferences>().allowFetching;
     setState(() => _busy = true);
     try {
       await _runRefresh(context, target, allowed);
       if (!mounted) return;
-      // _runRefresh has already put what came back on the controller, which
-      // is where the mapping controls read it from. This only has to redraw.
+      // _runRefresh put the rows on the controller; just redraw.
       setState(() {});
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -986,9 +919,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     var preset = presetById(source.preset);
     var allowed = context.watch<CanvasPreferences>().allowFetching;
 
-    // In a section of its own -- see element_sections.dart -- laid out
-    // flat: the section is the fold, and its refresh is on the section's
-    // heading.
+    // Its own flat section, the refresh on its heading.
     var flat = CanvasCards.on(context);
     var where = boxed(
       context,
@@ -997,8 +928,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         remember: target.remember,
         flat: flat,
         trailing: _summary(source),
-        // In the heading, so a table is refreshed with one press without opening
-        // anything, with when it was last updated on the button that changes it.
+        // On the heading: one press refreshes, and shows the last update.
         action: CanvasIconButton(
           tight: true,
           icon: _busy ? Icons.hourglass_empty : Icons.refresh,
@@ -1016,9 +946,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       ),
     );
 
-    // The mapping is its own pair of sections, not more layers inside this
-    // one, which were three deep. Hidden while the numbers are typed in:
-    // there is nothing to map.
+    // The mapping is its own sections, hidden while numbers are typed.
     if (source.kind == DataKind.typed && source.columns.isEmpty) {
       return where;
     }
@@ -1040,17 +968,14 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     );
   }
 
-  /// _fieldNames is what the last refresh turned out to contain and what the
-  /// preset says a record carries, together: the discovery walks only the
-  /// first record, so a field some records lack would otherwise look missing.
+  /// _fieldNames is the refresh's fields plus the preset's.
   List<String> _fieldNames(DataPreset? preset) => <String>{
         ...?preset?.fields,
         ..._fields,
       }.toList()
         ..sort();
 
-  /// _sourceControls is where the numbers come from: the preset, the address
-  /// or the file, and the key.
+  /// _sourceControls is the preset, address or file, and key.
   List<Widget> _sourceControls(
       BuildContext context, DataPreset? preset, bool allowed) {
     return [
@@ -1081,8 +1006,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             width: 168,
             options: [
               ...preset.choices,
-              // Whatever the element already has rows for: the reader's own set,
-              // beside the presets' baskets.
+              // Whatever the element has rows for, beside the presets' sets.
               if (preset.choiceFromRows)
                 (
                   _fromRows,
@@ -1090,12 +1014,10 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                       "for the ${target.noun}"
                 ),
             ],
-            // Through the preset rather than the source: the choice decides the
-            // mapping too (dcrdata keeps each series in an array named after it).
+            // Through the preset, as the choice sets the mapping too.
             onChanged: (code) {
               if (code == _fromRows) {
-                // The address is left until a refresh, when the rows are read; written
-                // now it would go stale when a row was added.
+                // The address waits for a refresh, or it goes stale.
                 _set(source.copyWith(fromRows: true));
                 return;
               }
@@ -1103,8 +1025,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               target.choosePreset(preset, code, fromRows: false);
             },
           ),
-        // Said where the choice is made: with this off, renaming a row does not
-        // change what is fetched.
+        // With this off, renaming a row does not change what is fetched.
         if (preset != null && !source.fromRows && preset.choiceFromRows)
           CanvasHint(
               "The ${preset.choiceLabel.toLowerCase()} above are fixed lists: "
@@ -1112,9 +1033,8 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               "choose your own, pick “Whatever is in the ${target.noun}” — "
               "then the rows decide, and renaming one changes what is asked "
               "for."),
-        // Ask the source what it has: the built-in list is short, hand-written
-        // and sometimes wrong (CoinGecko files Firo under "zcoin"). Kept for
-        // next time.
+        // Ask the source what it has: the built-in list is short and
+        // sometimes wrong (Firo is "zcoin"). Kept for next time.
         if (preset != null && preset.namesAddress.isNotEmpty && source.fromRows)
           _LookUpNames(preset: preset, noun: preset.choiceLabel.toLowerCase()),
         if (preset != null && source.fromRows && preset.choiceFromRows)
@@ -1134,8 +1054,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       ]),
       if (preset != null) CanvasHint(preset.note),
 
-      // What this element does with what arrives. Empty for a table, which
-      // takes the rows as they are.
+      // What this element does with arriving rows; empty for a table.
       ...target.extras(_rows, _rawRows, _fieldNames(preset)),
 
       if (source.kind == DataKind.file)
@@ -1167,8 +1086,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             onCommit: target.commit,
           ),
         ]),
-        // The group's caption says whether there is a key, so the field does
-        // not caption itself as well.
+        // The group's caption says whether there is a key.
         CanvasControlGroup(label: _hasKey ? "Key active" : "Key", children: [
           _KeyField(host: source.host, saved: _hasKey, onSaved: _checkKey),
           CanvasHint(_hasKey
@@ -1186,8 +1104,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     ];
   }
 
-  /// _columnControls is the mapping: which field lands in which column, and
-  /// in what order.
+  /// _columnControls is the mapping: which field in which column.
   List<Widget> _columnControls(DataPreset? preset) {
     var fields = _fieldNames(preset);
     return [
@@ -1212,8 +1129,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           onPressed: () => _set(source
               .copyWith(columns: [...source.columns, const SourceColumn()])),
         ),
-        // A custom field is an ordinary column with a recipe instead of a
-        // field, so it is added here.
+        // A custom field is a column with a recipe, added here.
         CanvasIconButton(
           icon: Icons.functions,
           tooltip: "Add a column built from other fields",
@@ -1255,16 +1171,12 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     return header.isEmpty ? "Column ${i + 1}" : header;
   }
 
-  /// _oneColumn is a single column, as a line that opens: closed, its name and
-  /// what it is mapped to; open, everything about it. A league table is a dozen
-  /// columns of six or seven settings each. Remembered by name, so the one left
-  /// open stays open when a column is moved past it.
+  /// _oneColumn is a column as an opening line (a league table has a dozen
+  /// of six settings each), remembered by name so it stays open when moved.
   Widget _oneColumn(
       int i, SourceColumn column, List<String> fields, DataPreset? preset) {
-    // Two different questions. "builds" is whether the cell is a recipe
-    // instead of a field, which decides whether there is a field to choose.
-    // "custom" is whether it is laid out as one, which includes a column the
-    // preset fills in itself (the form guide: a spread and no template).
+    // "builds": the cell is a recipe, with no field to choose. "custom": it
+    // is laid out as one, including a preset-filled column (the form guide).
     var builds = column.template.isNotEmpty;
     var custom = _isCustom(column, preset);
     return CanvasExpander(
@@ -1282,9 +1194,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             onChanged: (v) => _setColumn(i, column.copyWith(header: v)),
             onCommit: target.commit,
           ),
-          // One control: once a refresh has said what is in the data, a list of
-          // the paths, holding whatever the column is set to even if the source
-          // has stopped sending it, rather than silently changing the mapping.
+          // A path list keeping the column's setting even if no longer sent.
           if (fields.isNotEmpty && !builds)
             CanvasDropdown<String>(
               label: "Field",
@@ -1303,8 +1213,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               onChanged: (v) => _setColumn(i, column.copyWith(path: v)),
             )
           else if (!builds)
-            // Before the first refresh there is nothing to list, so the path is
-            // typed, as for a source nobody has written a preset for.
+            // Before a refresh there is nothing to list: type the path.
             CanvasTextField(
               label: "Path",
               value: column.path,
@@ -1312,8 +1221,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               onChanged: (v) => _setColumn(i, column.copyWith(path: v)),
               onCommit: target.commit,
             ),
-          // A column becomes custom by being given a recipe. A toggle: a custom
-          // field starts as a copy of the field it replaces ("{points}").
+          // A recipe makes it custom, starting as its field ("{points}").
           CanvasToggle(
             label: "Built from fields",
             value: builds,
@@ -1326,8 +1234,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           ),
         ]),
 
-        // What it is built from, where it is built rather than taken, with the
-        // rest of the column's settings.
+        // What a built column is built from.
         if (custom)
           CanvasControlGroup(label: "Built from", children: [
             CanvasTextField(
@@ -1363,8 +1270,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                 "${fields.isEmpty ? "" : " Fields: ${fields.join(", ")}."}"),
           ]),
 
-        // The two conversions, beside the field they convert: the difference
-        // between a readable column and atoms or epoch seconds.
+        // Conversions from atoms or epoch seconds, beside the field.
         CanvasControlGroup(label: "As it arrives", children: [
           CanvasNumberField(
             label: "Divide by",
@@ -1403,8 +1309,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               "the value as a time and writes it out in that format."),
         ]),
 
-        // The order of the columns is the order of the table, so a column can
-        // be moved here.
+        // Column order is table order, so a column can be moved here.
         CanvasControlGroup(label: "This column", children: [
           CanvasIconButton(
             icon: Icons.west,
@@ -1436,9 +1341,8 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       ));
 }
 
-/// _axisLabel says which axis the categories run along, which depends on how
-/// the chart is drawn: along the bottom for most, down the side for
-/// horizontal bars, and round the middle for a pie.
+/// _axisLabel says which axis the categories run along: the bottom for
+/// most, the side for horizontal bars, round the middle for a pie.
 String _axisLabel(ChartType type) => switch (type) {
       ChartType.horizontalBar => "Along the y axis",
       ChartType.radar => "One per spoke",
@@ -1450,8 +1354,7 @@ String _axisLabel(ChartType type) => switch (type) {
       _ => "Along the x axis",
     };
 
-/// _unitWords is an interval's unit as a word, singular or plural to match
-/// the number in front of it: "year", "2 years".
+/// _unitWords is an interval's unit as a word: "year", "2 years".
 String _unitWords(IntervalUnit unit, int many) {
   var word = switch (unit) {
     IntervalUnit.none => "point",
@@ -1464,7 +1367,7 @@ String _unitWords(IntervalUnit unit, int many) {
   return many == 1 ? word : "${word}s";
 }
 
-/// _ordinal is a day of the month as somebody would say it: 1st, 2nd, 7th.
+/// _ordinal is a day of the month as said: 1st, 2nd, 7th.
 String _ordinal(int day) {
   if (day >= 11 && day <= 13) return "${day}th";
   return switch (day % 10) {
@@ -1475,8 +1378,8 @@ String _ordinal(int day) {
   };
 }
 
-/// _intervalWords says an interval the way somebody would: "One reading a
-/// year, on 7 February" rather than "unit: year, month: 2, day: 7".
+/// _intervalWords says an interval in words: "One reading a year, on 7
+/// February" rather than "unit: year, month: 2, day: 7".
 String _intervalWords(ChartInterval interval) {
   const months = [
     "January", "February", "March", "April", "May", "June", //
@@ -1501,10 +1404,9 @@ String _intervalWords(ChartInterval interval) {
   return "One reading $how$on";
 }
 
-/// rowsMissingFrom is which of the things asked for did not come back,
-/// matched on the loose key the request was built from ("Bitcoin Cash"
-/// asked as bitcoin-cash). Empty where nothing was asked for by name. The
-/// message names them, and the refresh keeps their rows.
+/// rowsMissingFrom is what was asked for by name and did not come back,
+/// matched on the loose key ("Bitcoin Cash" as bitcoin-cash). The message
+/// names them, and the refresh keeps their rows.
 List<String> rowsMissingFrom(
     List<String> wanted, List<List<String>> rows, int matchColumn,
     {String Function(String)? idOf}) {
@@ -1515,28 +1417,24 @@ List<String> rowsMissingFrom(
     for (var row in rows)
       if (at < row.length) key(row[at]),
   };
-  // The rows that come back name the coin, and the key asked for is the
-  // id: almost always the same word. Where a source files things under
-  // another name, this says so: what came back is not what was asked for.
+  // Rows name the coin and the key is the id, nearly always one word; where
+  // a source files it otherwise, this says so.
   return [
     for (var key in wanted)
       if (!came.contains(key)) key,
   ];
 }
 
-/// _keyOf is what the source files a cell under, for matching a row that came
-/// back against one that was asked for.
+/// _keyOf is what the source files a cell under, for matching.
 String _keyOf(DataSource source, String cell) {
   var preset = presetById(source.preset);
   return preset == null ? asRowKey(cell) : CanvasRowNames.idFor(preset, cell);
 }
 
-/// _fromRows is the choice that means "ask for whatever the element already
-/// has rows for". Not a real choice code, so it can never collide with one.
+/// _fromRows is the "ask for the element's rows" choice; no real code.
 const String _fromRows = "\u0000rows";
 
-/// _choiceOf works out which of a preset's choices the current address is, so
-/// the dropdown shows what is actually set rather than always the first one.
+/// _choiceOf is which preset choice the current address is.
 String _choiceOf(DataPreset preset, DataSource source) {
   for (var (code, _) in preset.choices) {
     if (source.where == preset.address(code)) return code;
@@ -1544,15 +1442,13 @@ String _choiceOf(DataPreset preset, DataSource source) {
   return preset.choices.first.$1;
 }
 
-/// _KeyField takes an API key and saves it, and never shows one back. Its
-/// own widget holding its own text: a CanvasTextField resets to its bound
-/// value (here, empty) on every rebuild, so the key seemed to vanish. Saved
-/// on a button, so a key half pasted is not a key half saved.
+/// _KeyField takes and saves an API key, never showing one back. It keeps
+/// its own text, as a CanvasTextField resets to its (empty) bound value on
+/// rebuild; a button saves, so a half-pasted key is not half saved.
 class _KeyField extends StatefulWidget {
   final String host;
 
-  /// saved is whether there is already a key for this host, which is all the
-  /// interface ever says about one. A key is never shown back.
+  /// saved is whether a key exists for this host; it is never shown.
   final bool saved;
 
   final VoidCallback onSaved;
@@ -1579,15 +1475,13 @@ class _KeyFieldState extends State<_KeyField> {
     widget.onSaved();
   }
 
-  /// _buttonRoom is what the save button beside the field takes.
+  /// _buttonRoom is the save button's width beside the field.
   static const double _buttonRoom = 40;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      // The width that is actually there: only this row's parent knows the
-      // room it has. Unbounded in the settings band above the canvas, which
-      // scrolls sideways; there the field takes a fixed width.
+      // In the unbounded settings band the field takes a fixed width.
       builder: (context, constraints) {
         var room = constraints.maxWidth.isFinite
             ? constraints.maxWidth - _buttonRoom
@@ -1622,19 +1516,16 @@ class _KeyFieldState extends State<_KeyField> {
   }
 }
 
-/// _isCustom is whether a column builds its cell rather than taking one: a
-/// template or a spread, or a path the preset fills in itself, so that its
-/// layout settings are listed for it whether or not any are set yet.
+/// _isCustom is whether a column builds its cell (template, spread, or
+/// preset-filled path), so its layout settings are always listed.
 bool _isCustom(SourceColumn column, DataPreset? preset) =>
     column.template.isNotEmpty ||
     column.spread > 0 ||
     (preset?.derived.contains(column.path) ?? false);
 
-/// boundSeries is [element] with series [index] drawn from [column], defined
-/// once for the per-series row and the grid's headers. [column] past the end
-/// of the mapping is one of [fields] with no column yet: it gets one, named
-/// after itself, in one gesture. Below zero is typed in: the series stays
-/// and stops being filled from the source.
+/// boundSeries is [element] with series [index] from [column]. Past the
+/// mapping it is a new field's column, named after it; below zero is typed,
+/// the series no longer filled from the source.
 ChartElement boundSeries(
     ChartElement element, int index, int column, List<String> fields) {
   var map = element.fromSource;
@@ -1659,18 +1550,15 @@ ChartElement boundSeries(
       source: source, fromSource: map.copyWith(valueColumns: next));
 }
 
-/// spareFields are the paths a refresh found that the mapping has no column
-/// for, in the order offered: defined once, so the list and the arithmetic
-/// that turns "the third spare one" into a column agree.
+/// spareFields are the refresh's paths with no column, in offer order, so
+/// the list and "the third spare one" agree.
 List<String> spareFields(List<SourceColumn> columns, List<String> fields) => [
       for (var field in fields)
         if (!columns.any((c) => c.path == field || c.template == field)) field,
     ];
 
-/// seriesPicker is one series and where its numbers come from, shared by the
-/// chart's Data settings and its grid's header. [fields] are the paths the
-/// last refresh found, offered beside the mapped columns; choosing one adds
-/// a column for it.
+/// seriesPicker is one series and its source, for the chart's Data settings
+/// and grid header; picking one of [fields] adds a column.
 Widget seriesPicker({
   required int index,
   required int column,
@@ -1684,8 +1572,8 @@ Widget seriesPicker({
   return CanvasDropdown<int>(
     key: ValueKey("chartSeriesColumn$index"),
     label: label ?? "Series ${index + 1}",
-    // A field with no column yet is numbered past the end of the mapping,
-    // in list order, so the value says both the field and its new column.
+    // A field with no column is numbered past the mapping's end in list
+    // order, so the value names both the field and its new column.
     value: column,
     width: width,
     options: [
@@ -1697,8 +1585,7 @@ Widget seriesPicker({
   );
 }
 
-/// _LookUpNames asks a source for everything it has, once. Its own widget,
-/// as the Refresh button is, to know whether a request is running.
+/// _LookUpNames asks a source for all it has, once, tracking the request.
 class _LookUpNames extends StatefulWidget {
   final DataPreset preset;
   final String noun;
@@ -1715,8 +1602,7 @@ class _LookUpNamesState extends State<_LookUpNames> {
   @override
   void initState() {
     super.initState();
-    // Whatever was fetched in some earlier sitting, so the list is there
-    // without anybody pressing anything twice.
+    // Whatever an earlier sitting fetched, so the list is there unasked.
     CanvasRowNames.load(widget.preset.id).then((_) {
       if (mounted) setState(() {});
     });
@@ -1775,8 +1661,7 @@ class _LookUpNamesState extends State<_LookUpNames> {
   }
 }
 
-/// sheetColumnName is column [c] of [link]'s range of [sheet] by its
-/// heading, or its letter where it has none.
+/// sheetColumnName is column [c]'s heading, or its letter.
 String sheetColumnName(DataSheet sheet, SheetLink link, int c) {
   var heading = sheetShown(sheet, link.range.r0, link.range.c0 + c).trim();
   var letter = columnName(link.range.c0 + c);

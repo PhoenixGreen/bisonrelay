@@ -7,57 +7,43 @@ import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/storage/character_designs.dart';
 import 'package:path/path.dart' as path;
 
-// canvas_storage.dart is the whole filesystem side of the canvas library:
-// JSON documents in plain folders under "<appDataDir>/Canvas".
-//
-// The same shape as the post library (see
-// writing_tools/post_library/post_storage.dart): one level of folders, a
-// hidden order file, names sanitised down to a known-safe set, so saved
-// canvases behave as saved posts do. Written straight from Dart: a plugin
-// has no filesystem, which is why installing one is safe.
+// canvas_storage.dart is the filesystem side of the canvas library: JSON
+// documents in plain folders under "<appDataDir>/Canvas", shaped as the post
+// library is (post_storage.dart): one level of folders, a hidden order file,
+// names sanitised to a known-safe set. Written from Dart: a plugin has no
+// filesystem, which is why installing one is safe.
 
-/// _libraryDirName is the folder inside the app data directory, beside
-/// downloads, palettes, themes and my-posts.
+/// _libraryDirName is the library's folder in the app data directory.
 const _libraryDirName = "Canvas";
 
-/// canvasPicturesFolder is where the pictures live, inside the library.
-/// Named here because the listing has to leave it out: it is a real, visible
-/// folder, which would otherwise show as a folder of canvases.
+/// canvasPicturesFolder is where pictures live in the library: a real
+/// folder, named here so the listing can leave it out.
 const canvasPicturesFolder = "Pictures";
 
-/// canvasAudioFolder and canvasVideoFolder are where sounds and videos live,
-/// beside the pictures and left out of the listing for the same reason. See
-/// CanvasMedia.
+/// canvasAudioFolder and canvasVideoFolder hold sounds and videos, likewise.
 const canvasAudioFolder = "Audio";
 const canvasVideoFolder = "Videos";
 
-/// canvasVectorFolder is where vector drawings live -- .svg files, kept apart
-/// from the pictures because a drawing is edited point by point and a
-/// picture is not. See VectorElement.
+/// canvasVectorFolder is where .svg drawings live, apart from the pictures
+/// because a drawing is edited point by point. See VectorElement.
 const canvasVectorFolder = "Vectors";
 
-/// canvasModelFolder is where imported 3D models live -- .glb and .gltf
-/// files. See CanvasMedia.
 const canvasModelFolder = "Models";
 
-/// canvasVoicesFolder, canvasSoundBankFolder and the rest are the folders
-/// things are downloaded to, the first time they are wanted: the voices
-/// speech is made with (kokoro_speech.dart, qwen_speech.dart), the
-/// instruments' sound bank (part_render.dart) and the VRoid characters
-/// (vroid_assets.dart).
+/// canvasVoicesFolder, canvasSoundBankFolder and the rest are where things
+/// are downloaded when first wanted: speech voices, the sound bank
+/// (part_render.dart) and the VRoid characters (vroid_assets.dart).
 const canvasVoicesFolder = "voices";
 const canvasSoundBankFolder = "soundbanks";
 const canvasVroidFolder = "VRoid";
 
-/// canvasRuntimesFolder is where the Code element's runners keep what they
-/// unpack or fetch the first time they run: Pyodide for Python, Yaegi for
-/// Go (code_run_host.dart).
+/// canvasRuntimesFolder is where the Code element's runners unpack or fetch
+/// what they need on first run: Pyodide, Yaegi (code_run_host.dart).
 const canvasRuntimesFolder = "Runtimes";
 
-/// isCanvasAppFolder is whether [name] is one of the folders the app keeps
-/// its own things in at the top of the library. None is listed with the
-/// documents, and no folder of documents can take one's name. Without
-/// regard to case, as the file system on a Mac has none.
+/// isCanvasAppFolder is whether [name] is one of the app's own folders at
+/// the top of the library. None is listed with the documents, and no folder
+/// of documents can take one's name. Case-blind, as a Mac's file system is.
 bool isCanvasAppFolder(String name) => _appFolders.contains(name.toLowerCase());
 
 final _appFolders = {
@@ -76,28 +62,23 @@ final _appFolders = {
     f.toLowerCase(),
 };
 
-/// canvasExtension is what a saved canvas is called on disk: its own
-/// extension rather than ".json", so the listing need not open a file to
-/// know it, and an exported canvas is recognisable when it comes back.
+/// canvasExtension is its own, not ".json", so the listing need not open a
+/// file, and an exported canvas is known when it comes back.
 const canvasExtension = ".bcanvas";
 
-/// _orderFile keeps a folder's chosen order, hidden from the listing by its
-/// leading dot -- the same arrangement, and for the same reasons, as the post
-/// library's.
+/// _orderFile keeps a folder's chosen order, hidden by its leading dot.
 const _orderFile = ".order";
 
-/// maxNameLength bounds a folder or document name, well under what any
-/// filesystem allows, because the name also has to fit in a sidebar row.
+/// maxNameLength bounds a folder or document name, well under any
+/// filesystem's limit, because it must fit in a sidebar row.
 const int maxNameLength = 64;
 
-/// CanvasEntry is one row of the library.
 class CanvasEntry {
-  /// name is what the user sees and typed. For a document this is the
-  /// filename without its extension.
+  /// name is what the user typed; a document's filename less its extension.
   final String name;
 
-  /// folder is the folder this lives in, or "" for the top level. Never a
-  /// path: the library is one level deep.
+  /// folder is its folder, or "" for the top level. Never a path: the
+  /// library is one level deep.
   final String folder;
 
   final bool isFolder;
@@ -114,8 +95,7 @@ class CanvasEntry {
 }
 
 /// inTestsUnaimed is whether this is a test that has not said where its
-/// library is: the real one, and what is downloaded on this machine, is not
-/// looked in.
+/// library is: the real library and this machine's downloads are not read.
 bool get inTestsUnaimed =>
     Platform.environment.containsKey("FLUTTER_TEST") &&
     !CanvasStorage.overridden;
@@ -129,11 +109,9 @@ Future<void> writeWhole(String file, List<int> bytes) async {
   await temp.rename(file);
 }
 
-/// writeWholeText is [writeWhole] for text.
 Future<void> writeWholeText(String file, String text) =>
     writeWhole(file, utf8.encode(text));
 
-/// CanvasStorage reads and writes the library.
 class CanvasStorage {
   /// rootOverride replaces the app data directory, for tests: a real
   /// directory rather than a mocked filesystem, to prove that a name from a
@@ -141,27 +119,21 @@ class CanvasStorage {
   @visibleForTesting
   static String? rootOverride;
 
-  /// overridden is whether a test has said where the library is.
   static bool get overridden => rootOverride != null;
 
-  /// liveAssetIds is every stored picture that some saved canvas still uses:
-  /// every folder and document, since one picture can be used by several
-  /// canvases -- and the 3D characters' decals.
+  /// liveAssetIds is every stored picture a saved canvas still uses, in any
+  /// folder, and the 3D characters' decals.
   static Future<Set<String>> liveAssetIds() async =>
       {...(await liveIds()).$1, ...await CharacterDesigns.pictureIds()};
 
-  /// liveMediaIds is every stored sound or video that some saved canvas still
-  /// uses -- [liveAssetIds] for the media store.
+  /// liveMediaIds is [liveAssetIds] for the media store.
   static Future<Set<String>> liveMediaIds() async =>
       {...(await liveIds()).$2, ...await CharacterDesigns.vectorIds()};
 
   /// liveIds is every saved canvas's pictures and media, in one walk of the
-  /// library (one level deep, as the post library is).
-  ///
-  /// A document is read only when it has changed since it was last read --
-  /// by its modified time and size -- and then off the editor's isolate: a
-  /// tidy after every save once read every canvas whole, twice, in the
-  /// middle of editing. A zip bundle is not a document and is left alone.
+  /// library. A document is read only when its modified time or size has
+  /// changed, and off the editor's isolate: a tidy runs after every save and
+  /// must not read every canvas mid-edit. A zip bundle is left alone.
   static Future<(Set<String>, Set<String>)> liveIds() async {
     var assets = <String>{}, media = <String>{};
     var folders = <String>[""];
@@ -185,8 +157,7 @@ class CanvasStorage {
     return (assets, media);
   }
 
-  /// _ids is each document's pictures and media as last read, with the
-  /// modified time and size they were read at.
+  /// _ids caches each document's pictures and media by modified time and size.
   static final Map<String, (DateTime, int, Set<String>, Set<String>)> _ids =
       {};
 
@@ -209,9 +180,8 @@ class CanvasStorage {
     }
   }
 
-  /// sharedDir is `<appDataDir>/shared`, beside the library and downloads:
-  /// where a canvas published to Files > Shared is written, and written
-  /// over when it is published again. Created on first use.
+  /// sharedDir is `<appDataDir>/shared`: where a canvas published to Files >
+  /// Shared is written, and overwritten on republish. Created on first use.
   static Future<String> sharedDir() async {
     var root = rootOverride ?? await defaultAppDataDir();
     var dir = path.join(root, sharedFilesDirName);
@@ -227,23 +197,22 @@ class CanvasStorage {
     return dir;
   }
 
-  /// speechTakesDir is where a Speech device's takes are kept until they are
-  /// saved or put on the timeline: beside the library, not in it -- the
-  /// Audio library is only what the reader keeps. A tidy deletes those no
-  /// canvas has any more: see CanvasLibrary.tidy.
+  /// speechTakesDir keeps a Speech device's takes until saved or put on the
+  /// timeline: beside the library, since the Audio library is only what the
+  /// reader keeps. A tidy deletes those no canvas has (CanvasLibrary.tidy).
   static Future<String> speechTakesDir() async {
     var dir = path.join(await libraryDir(), ".speech-takes");
     await Directory(dir).create(recursive: true);
     return dir;
   }
 
-  /// sanitizeName reduces what the user typed to something safe as a single
-  /// path segment, or returns null if nothing usable is left.
+  /// sanitizeName reduces what the user typed to a safe single path segment,
+  /// or null if nothing usable is left.
   ///
-  /// The security boundary of the feature: every name reaching the filesystem
-  /// comes from a text field, and "../../config" or a separator would write
-  /// anywhere. A known-safe set is kept and everything else dropped, rather
-  /// than blacklisting dangerous forms.
+  /// The security boundary of the feature: every name reaching the
+  /// filesystem comes from a text field, and "../../config" or a separator
+  /// would write anywhere. A known-safe set is kept and the rest dropped,
+  /// rather than blacklisting dangerous forms.
   static String? sanitizeName(String raw) {
     var out = StringBuffer();
     for (var rune in raw.trim().runes) {
@@ -269,8 +238,8 @@ class CanvasStorage {
     }
     if (name.length > maxNameLength) name = name.substring(0, maxNameLength);
     name = name.trim();
-    // Windows keeps these names for devices: a canvas called "NUL" (one sent
-    // by somebody else, say) could be neither saved nor opened there.
+    // Windows reserves these names for devices: a canvas called "NUL" (one
+    // received, say) could be neither saved nor opened there.
     if (RegExp(r"^(con|prn|aux|nul|com\d|lpt\d)$", caseSensitive: false)
         .hasMatch(name)) {
       name = "$name canvas";
@@ -279,8 +248,8 @@ class CanvasStorage {
   }
 
   /// _dirFor resolves a folder name to a directory, refusing anything the
-  /// sanitiser would not have produced: a folder name also arrives from the
-  /// saved "which folder was open" preference and from a document's path.
+  /// sanitiser would not produce: names also arrive from the saved "open
+  /// folder" preference and from a document's path.
   static Future<String?> _dirFor(String folder) async {
     var root = await libraryDir();
     if (folder.isEmpty) return root;
@@ -294,8 +263,8 @@ class CanvasStorage {
     return path.join(dir, "$name$canvasExtension");
   }
 
-  /// list returns a folder's contents: its subfolders when at the top level,
-  /// then its documents, in the saved order and alphabetically after it.
+  /// list is a folder's contents: subfolders at the top level, then
+  /// documents, in saved order and alphabetically after it.
   static Future<List<CanvasEntry>> list(String folder) async {
     var dir = await _dirFor(folder);
     if (dir == null) return [];
@@ -306,13 +275,11 @@ class CanvasStorage {
       await for (var entry in Directory(dir).list(followLinks: false)) {
         var base = path.basename(entry.path);
         if (base.startsWith(".")) continue;
-        // The app's own folders are real ones, so they can be opened and
-        // looked at; the listing leaves them out by name.
+        // The app's folders are real; the listing leaves them out by name.
         if (isCanvasAppFolder(base)) continue;
 
         if (entry is Directory) {
-          // One level only: subfolders are listed at the top and never
-          // inside one.
+          // One level only: subfolders are listed at the top, never inside.
           if (folder.isEmpty) {
             folders.add(CanvasEntry(name: base, folder: "", isFolder: true));
           }
@@ -341,10 +308,9 @@ class CanvasStorage {
     var order = await _readOrder(dir);
     if (order.isEmpty) return [...folders, ...documents];
 
-    // Names rather than positions, so a file renamed or deleted outside the
-    // app drops out of the order instead of shifting everything after it.
-    // Anything the order does not mention follows what it does, folders first,
-    // which is where a listing with no order of its own puts them.
+    // Names, not positions, so a file renamed or deleted outside the app
+    // drops out of the order instead of shifting the rest. Anything unnamed
+    // follows, folders first, as an unordered listing puts them.
     var left = {
       for (var e in [...folders, ...documents]) orderKeyFor(e): e,
     };
@@ -360,10 +326,9 @@ class CanvasStorage {
     ];
   }
 
-  /// orderKeyFor is how an entry is named in the order file. A folder is
-  /// prefixed and a document is not: that tells them apart, so a folder and
-  /// a canvas of the same name are two lines, and a bare name (as in older
-  /// order files) still means a document.
+  /// orderKeyFor is an entry's name in the order file. A folder is prefixed
+  /// and a document is not, so a folder and a canvas of one name are two
+  /// lines, and a bare name (as in older order files) means a document.
   static String orderKeyFor(CanvasEntry entry) =>
       entry.isFolder ? "f:${entry.name}" : entry.name;
 
@@ -380,9 +345,8 @@ class CanvasStorage {
     }
   }
 
-  /// saveOrder writes the order a listing should come back in. Takes the
-  /// entries rather than names, so folders and documents cannot be confused
-  /// (see [orderKeyFor]).
+  /// saveOrder writes the order a listing comes back in. Takes entries, not
+  /// names, so folders and documents cannot be confused ([orderKeyFor]).
   static Future<void> saveOrder(
       String folder, List<CanvasEntry> entries) async {
     var dir = await _dirFor(folder);
@@ -396,12 +360,10 @@ class CanvasStorage {
     }
   }
 
-  /// keepPlace keeps a renamed or copied entry where its original was: the
-  /// order is a list of names, and a name it does not mention goes to the
-  /// end. [after] puts the new name directly after the old one and leaves the
-  /// old one, which is a copy; without it the new name takes the old one's
-  /// place, which is a rename. Nothing happens where there is no order file,
-  /// since the listing is alphabetical then.
+  /// keepPlace keeps a renamed or copied entry where its original was (an
+  /// unnamed entry goes to the end). With [after], a copy: the new name goes
+  /// right after the old. Without, a rename: the new name takes its place.
+  /// Nothing happens without an order file, the listing being alphabetical.
   static Future<void> keepPlace(String folder,
       {required String was, required String now, bool after = false}) async {
     var dir = await _dirFor(folder);
@@ -424,9 +386,9 @@ class CanvasStorage {
     }
   }
 
-  /// load reads one document, or null when it is missing or unreadable: the
-  /// caller says so and leaves the file alone. See CanvasDocument.decode on
-  /// why a document that will not parse must never be overwritten.
+  /// load reads one document, or null when missing or unreadable: the caller
+  /// says so and leaves the file alone. See CanvasDocument.decode on why a
+  /// document that will not parse must never be overwritten.
   static Future<CanvasDocument?> load(String folder, String name) async {
     var file = await pathFor(folder, name);
     if (file == null) return null;
@@ -437,18 +399,17 @@ class CanvasStorage {
     }
   }
 
-  /// save writes a document, creating its folder if it does not exist yet,
-  /// and returns whether it was written. The name is sanitised by the caller;
-  /// this refuses rather than corrects, so a save never silently goes
-  /// somewhere else.
+  /// save writes a document, creating its folder, and returns whether it was
+  /// written. The caller sanitises the name; this refuses rather than
+  /// corrects, so a save never silently goes somewhere else.
   static Future<bool> save(
       String folder, String name, CanvasDocument document) async {
     var dir = await _dirFor(folder);
     if (dir == null || sanitizeName(name) != name) return false;
     try {
       await Directory(dir).create(recursive: true);
-      // Written to a temporary file and renamed (see writeWhole), so an
-      // interrupted save never leaves a truncated document.
+      // Via a temporary file and a rename (writeWhole), so an interrupted
+      // save never leaves a truncated document.
       await writeWholeText(
           path.join(dir, "$name$canvasExtension"), document.encode());
       return true;
@@ -478,12 +439,11 @@ class CanvasStorage {
     var source = await pathFor(folder, from);
     var target = await pathFor(folder, to);
     if (source == null || target == null) return false;
-    // Refuses to write over an existing document: renaming onto a name in
-    // use is a mistake, and there is nothing to undo it with.
+    // Never over an existing document: there is nothing to undo it with.
     if (await File(target).exists()) return false;
     try {
       await File(source).rename(target);
-      // Under its new name, in the place it was already in.
+      // Under its new name, in its old place.
       await keepPlace(folder, was: from, now: to);
       return true;
     } catch (_) {
@@ -491,11 +451,9 @@ class CanvasStorage {
     }
   }
 
-  /// move puts a canvas in another folder, keeping its name. Its own method
-  /// rather than a rename, because the check differs: it refuses a name
-  /// already in use *there*, the only way a move can destroy anything. The
-  /// order file is not touched: the canvas drops out of the old order and
-  /// lands at the end of the new folder.
+  /// move puts a canvas in another folder, keeping its name. Not a rename:
+  /// it refuses a name in use *there*, the only way a move can destroy
+  /// anything. The canvas lands at the end of the new folder's order.
   static Future<bool> move(String from, String name, String to) async {
     if (from == to) return true;
     var source = await pathFor(from, name);
@@ -513,17 +471,15 @@ class CanvasStorage {
     }
   }
 
-  /// folderNames is every folder in the library, in the order a listing shows
-  /// them. For the "move to" list.
+  /// folderNames is every folder, in listing order, for the "move to" list.
   static Future<List<String>> folderNames() async => [
         for (var entry in await list(""))
           if (entry.isFolder) entry.name,
       ];
 
-  /// renameFolder renames a folder, with everything in it. Separate from
-  /// [rename], which appends the document extension to both names. Refuses
-  /// to write over anything that already exists, since that would merge two
-  /// folders with no way back.
+  /// renameFolder renames a folder with its contents. Separate from
+  /// [rename], which appends the document extension. Refuses to write over
+  /// anything existing, which would merge two folders with no way back.
   static Future<bool> renameFolder(String from, String to) async {
     var clean = sanitizeName(to);
     if (clean == null || sanitizeName(from) != from) return false;
@@ -534,8 +490,7 @@ class CanvasStorage {
       var target = Directory(path.join(library, clean));
       if (!await source.exists() || await target.exists()) return false;
       await source.rename(target.path);
-      // A folder is ordered among the documents at the top level, under a
-      // name of its own -- see [orderKeyFor].
+      // A top-level folder's order key is its own ([orderKeyFor]).
       await keepPlace("", was: "f:$from", now: "f:$clean");
       return true;
     } catch (exception) {
@@ -556,9 +511,9 @@ class CanvasStorage {
     }
   }
 
-  /// deleteFolder removes a folder and everything in it, and refuses when it
-  /// still holds documents unless [force] says otherwise: there is no undo,
-  /// so the caller counts what is inside and asks again.
+  /// deleteFolder removes a folder and its contents, refusing one that still
+  /// holds documents unless [force]: there is no undo, so the caller counts
+  /// what is inside and asks again.
   static Future<bool> deleteFolder(String name, {bool force = false}) async {
     var dir = await _dirFor(name);
     if (dir == null || name.isEmpty) return false;
@@ -576,9 +531,8 @@ class CanvasStorage {
     }
   }
 
-  /// uniqueName returns [wanted], or the first "wanted 2", "wanted 3" that is
-  /// free. Used by Duplicate and by Save As, where refusing would be a dead
-  /// end rather than a safeguard.
+  /// uniqueName is [wanted], or the first free "wanted 2", "wanted 3". For
+  /// Duplicate and Save As, where refusing would be a dead end.
   static Future<String> uniqueName(String folder, String wanted) async {
     var clean = sanitizeName(wanted) ?? "Canvas";
     if (!await exists(folder, clean)) return clean;

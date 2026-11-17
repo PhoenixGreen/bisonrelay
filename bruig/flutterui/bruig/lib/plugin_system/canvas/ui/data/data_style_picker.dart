@@ -9,12 +9,10 @@ import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// data_style_picker.dart is the Style row of the Data Studio's Table and
-// Charts tabs (Ken, 2026-11-17: the six styles replace the Looks): the
-// element itself drawn in each style, the one it has outlined.
+// data_style_picker.dart is the Studio's Style row: the element drawn in
+// each of the six styles, its own outlined.
 
 class DataStylePicker extends StatelessWidget {
-  /// element is the chart or table, as it is.
   final CanvasElement element;
   final ValueChanged<DataStyle> onPick;
   const DataStylePicker(

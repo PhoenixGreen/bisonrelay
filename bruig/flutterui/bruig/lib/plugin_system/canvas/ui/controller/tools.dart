@@ -1,21 +1,17 @@
 part of '../canvas_controller.dart';
 
-// Colour replacement, reuse, sound tools, the clip editor, warping and the piano roll.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// Colour replacement, reuse, sound tools, the clip editor, warping and the
+// piano roll: CanvasController methods, its state in canvas_controller.dart.
 
 extension CanvasTools on CanvasController {
-  /// replaceColour makes every use of [from] on the document -- in any
-  /// scene, the master, the backgrounds, charts, text and transitions -- [to],
-  /// as one change. Opacity is kept: a half-strength shade of [from] becomes
-  /// a half-strength shade of [to].
+  /// replaceColour makes every use of [from] in the document [to], as one
+  /// change, keeping each use's opacity.
   void replaceColour(Color from, Color to) {
     var next =
         CanvasDocument.fromJson(recoloured(_document.toJson(), from, to));
     apply(next);
   }
 
-  /// textStyles are the document's named text styles.
   List<NamedTextStyle> get textStyles => _document.textStyles;
 
   /// saveTextStyle makes [e]'s type a named style -- the next "Style N" if
@@ -36,8 +32,7 @@ extension CanvasTools on CanvasController {
     return name;
   }
 
-  /// useTextStyle sets text [id] in style [name], or lets it keep its own
-  /// type with an empty name.
+  /// useTextStyle sets text [id] in style [name], or its own type for "".
   void useTextStyle(String id, String name) {
     var style = textStyles.where((t) => t.name == name).firstOrNull;
     apply(_everyElement(_document, (e, _) {
@@ -67,8 +62,7 @@ extension CanvasTools on CanvasController {
     }));
   }
 
-  /// useCounterStyle sets counter [id]'s number -- or its [words] -- in
-  /// style [name], or lets it keep its own type with an empty name.
+  /// useCounterStyle is useTextStyle for counter [id]'s number, or [words].
   void useCounterStyle(String id, String name, {bool words = false}) {
     var style = textStyles.where((t) => t.name == name).firstOrNull;
     apply(_everyElement(_document, (e, _) {
@@ -80,8 +74,7 @@ extension CanvasTools on CanvasController {
     }));
   }
 
-  /// saveCounterStyle makes counter [e]'s number type -- or its [words]'
-  /// -- a named style, the next "Style N", and sets it in it.
+  /// saveCounterStyle is saveTextStyle for counter [e]'s number, or [words].
   String saveCounterStyle(CounterElement e, {bool words = false}) {
     var taken = {for (var t in textStyles) t.name};
     var name = "";
@@ -119,8 +112,7 @@ extension CanvasTools on CanvasController {
         transient: transient);
   }
 
-  /// removeTextStyle forgets style [name]; the texts set in it keep their
-  /// type as their own.
+  /// removeTextStyle forgets style [name]; its texts keep its type as theirs.
   void removeTextStyle(String name) {
     var next = _document.copyWith(textStyles: [
       for (var t in textStyles)
@@ -137,10 +129,9 @@ extension CanvasTools on CanvasController {
     }));
   }
 
-  /// staggerArrivals has the elements [ids] come in one after another, [gap]
-  /// frames apart, in order across the canvas -- left to right, or top to
-  /// bottom where [downwards]. The first keeps its timing; each later one's
-  /// keyframes move so its arrival starts [gap] after the one before's.
+  /// staggerArrivals has elements [ids] arrive [gap] frames apart, left to
+  /// right or, [downwards], top to bottom. The first keeps its timing; the
+  /// rest have their keyframes shifted to start [gap] after the one before.
   void staggerArrivals(List<String> ids, int gap, {bool downwards = false}) {
     var rate = math.max(1, _document.frameRate);
     // Its arrival's start; or, with none, its first keyframe or clip.
@@ -176,8 +167,7 @@ extension CanvasTools on CanvasController {
     apply(next);
   }
 
-  /// _runStartOf is the frame of the run element [id]'s own frames count
-  /// from: its scene's start, or nought on the master.
+  /// _runStartOf is where [id]'s frames count from: its scene's start, or 0.
   int _runStartOf(String id) {
     for (var (i, scene) in _document.allScenes.indexed) {
       if (scene.elements.any((e) => e.id == id)) {
@@ -187,9 +177,8 @@ extension CanvasTools on CanvasController {
     return 0;
   }
 
-  /// newChannelName is "Channel" and the next number not already taken. A
-  /// channel holds sound, and a video's soundtrack beside it, so it is not
-  /// "Audio".
+  /// newChannelName is "Channel" and the next free number: not "Audio", as a
+  /// channel also holds a video's soundtrack.
   String newChannelName() {
     var taken = {for (var c in timelineChannels) c.name};
     for (var n = 1;; n++) {
@@ -197,12 +186,10 @@ extension CanvasTools on CanvasController {
     }
   }
 
-  /// newChannelId is an id for a channel not made yet.
   String newChannelId() => "ch${newElementId()}";
 
-  /// moveClipToChannel puts [lane]'s sound on [to] -- taking its name and its
-  /// strip -- or, with none, on a channel of its own. The channel it leaves
-  /// is gone if it was the last thing on it.
+  /// moveClipToChannel puts [lane]'s sound on [to], or a channel of its own;
+  /// the channel it leaves goes if it was the last thing on it.
   void moveClipToChannel(TimedLane lane, TimelineChannel? to,
       {bool transient = false}) {
     var e = lane.element;
@@ -220,9 +207,8 @@ extension CanvasTools on CanvasController {
     _setClips([(lane.element, moved)], transient: transient);
   }
 
-  /// splitClip cuts [lane]'s sound in two at [frame] of the scene: what is
-  /// before stays, and what is after becomes a sound of its own on the same
-  /// channel, starting where the cut was. The knife.
+  /// splitClip cuts [lane]'s sound at [frame] of the scene, the part after
+  /// becoming a sound of its own on the same channel, where the cut was.
   bool splitClip(TimedLane lane, int frame) {
     var e = lane.element;
     // A sound, or a video -- whose two halves are two videos in the same
@@ -288,9 +274,8 @@ extension CanvasTools on CanvasController {
     return false;
   }
 
-  /// selectedChannels are the channels picked -- by their strips, by a sound
-  /// on them, or by a box dragged across them -- which a cut at the playhead
-  /// is made on.
+  /// selectedChannels are the channels picked -- by strip, sound or a box
+  /// dragged across them -- which a cut at the playhead is made on.
   Set<String> get selectedChannels => _selectedChannels;
 
   /// selectedChannel is the one channel picked, where one is; setting it
@@ -310,16 +295,14 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// toggleChannel adds [key] to the channels picked, or takes it out.
   void toggleChannel(String key) {
     var next = {..._selectedChannels};
     if (!next.remove(key)) next.add(key);
     selectChannels(next);
   }
 
-  /// cutAtPlayhead cuts the selected channel -- or the channel of the sound
-  /// selected -- where the playhead is: every sound on it the playhead is
-  /// part way through. The knife's key.
+  /// cutAtPlayhead cuts every sound the playhead is part way through on the
+  /// selected channel, or the selected sound's: the knife's key.
   bool cutAtPlayhead() {
     var keys = {..._selectedChannels};
     if (keys.isEmpty) {
@@ -353,12 +336,10 @@ extension CanvasTools on CanvasController {
     apply(next);
   }
 
-  /// renameChannel names [channel], on every sound it holds.
   /// rowColour is row [key]'s colour -- an element's row by its id, a
-  /// sound's by its channel's key -- on the timeline, the mixer and the
-  /// slots (Ken, 2026-11-10: each row its own, given, and changeable from
-  /// its header): the one picked, kept on its element or its sounds, or else
-  /// the one it is given, the same for it every time (rowPalette).
+  /// sound's by its channel's key -- on the timeline, mixer and slots: the
+  /// one picked, kept on its element or sounds, or else its given colour,
+  /// the same every time (rowPalette).
   Color rowColour(String key) {
     var channel = timelineChannels.where((c) => c.key == key).firstOrNull;
     int? picked;
@@ -396,6 +377,7 @@ extension CanvasTools on CanvasController {
     apply(next);
   }
 
+  /// renameChannel names [channel], on every sound it holds.
   void renameChannel(TimelineChannel channel, String name) {
     var named = name.trim();
     if (named.isEmpty) return;
@@ -406,8 +388,7 @@ extension CanvasTools on CanvasController {
     ]);
   }
 
-  /// snapping is whether a sound dragged on the timeline lands on the
-  /// seconds and the playhead when it comes near them.
+  /// snapping is whether a dragged sound snaps to seconds and the playhead.
   bool get snapping => _snapping;
 
   set snapping(bool value) {
@@ -416,8 +397,7 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// timelineTool is what a press on a sound on the timeline does: take hold
-  /// of it, or cut it in two.
+  /// timelineTool is what a press on a timeline sound does: grab or cut.
   TimelineTool get timelineTool => _timelineTool;
 
   set timelineTool(TimelineTool value) {
@@ -426,14 +406,12 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// setLaneHeight changes one channel's height.
   void setLaneHeight(String channel, double height) {
     laneHeights[channel] = height;
     notifyListeners();
   }
 
-  /// mixerOpen is whether the mixer is shown, under the canvas. The
-  /// reader's, kept by the screen -- see panelState.
+  /// mixerOpen is whether the mixer shows; the reader's, kept (panelState).
   bool get mixerOpen => _mixerOpen;
 
   set mixerOpen(bool open) {
@@ -448,10 +426,9 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// mixerSmallest is the mixer smaller still than minimised: its strips
-  /// without their names, and without the rail of bands down its right --
-  /// only what each channel is doing. Dragged down past its least, or the
-  /// Mixer button's step after minimised.
+  /// mixerSmallest is the mixer smaller still than minimised: strips without
+  /// names or the band rail, only what each channel is doing. Reached by
+  /// dragging below minimised, or the Mixer button's step after it.
   bool get mixerSmallest => _mixerOpen && _mixerSmallest;
 
   set mixerSmallest(bool on) {
@@ -461,9 +438,8 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// mixerMinimised is the mixer folded to its shortest: one line of
-  /// channels, each its name over its meter on its side -- as it is dragged
-  /// all the way down. Open still.
+  /// mixerMinimised is the mixer folded to one line of channels, each its
+  /// name over its sideways meter, as dragged all the way down. Still open.
   bool get mixerMinimised => _mixerOpen && _mixerMinimised;
 
   set mixerMinimised(bool on) {
@@ -474,9 +450,8 @@ extension CanvasTools on CanvasController {
   }
 
   /// panelState is how the panels under the canvas were left, whatever
-  /// canvas is open -- the mixer open, minimised or smallest, the effects
-  /// open, the devices folded, the channels' size and the strip column's
-  /// width -- for the screen to keep. See restorePanels.
+  /// canvas is open -- mixer size, effects, folded devices, channel size and
+  /// strip column width -- for the screen to keep. See restorePanels.
   Map<String, dynamic> get panelState => {
         "mixer": !_mixerOpen
             ? "hidden"
@@ -494,8 +469,7 @@ extension CanvasTools on CanvasController {
         "header": _headerWidth,
       };
 
-  /// restorePanels puts the panels back as [state] -- from panelState --
-  /// says, without telling anyone: the screen does it as it opens.
+  /// restorePanels puts back [state] from panelState, without notifying.
   void restorePanels(Map<String, dynamic> state) {
     switch (state["mixer"]) {
       case "shown":
@@ -525,9 +499,8 @@ extension CanvasTools on CanvasController {
     }
   }
 
-  /// canvasView is how this canvas was being looked at -- its channels'
-  /// heights, its narrow strips, the timeline's zoom and the effects'
-  /// channel -- for the screen to keep with its name. See restoreCanvasView.
+  /// canvasView is how this canvas is looked at -- channel heights, narrow
+  /// strips, zoom, effects channel -- kept with its name: restoreCanvasView.
   Map<String, dynamic> get canvasView => {
         if (laneHeights.isNotEmpty)
           "lanes": {
@@ -543,8 +516,7 @@ extension CanvasTools on CanvasController {
         if (_effectsOf case var e?) "effectsOf": e,
       };
 
-  /// restoreCanvasView looks at this canvas as [state] -- from canvasView
-  /// -- says: nothing for one never looked at.
+  /// restoreCanvasView applies [state] from canvasView; none if never seen.
   void restoreCanvasView(Map<String, dynamic> state) {
     laneHeights.clear();
     if (state["lanes"] case Map lanes) {
@@ -570,9 +542,8 @@ extension CanvasTools on CanvasController {
   }
 
   /// effectsChannel is the strip the timeline's effects button opens: the
-  /// channel picked -- in the mixer or on the timeline -- or the master
-  /// when that is what is picked, or else the channel of the sound picked,
-  /// or else the master.
+  /// channel or master picked in the mixer or timeline, else the picked
+  /// sound's channel, else the master.
   String get effectsChannel {
     var channels = timelineChannels;
     if (selectedChannel case var k?) {
@@ -590,8 +561,7 @@ extension CanvasTools on CanvasController {
     return mixerMasterKey;
   }
 
-  /// effectsOpen is whether the effects panel is shown: the chain of
-  /// effectsOf, in a panel of its own over the mixer.
+  /// effectsOpen is whether the effects panel shows effectsOf's chain.
   bool get effectsOpen => _effectsOpen;
 
   set effectsOpen(bool open) {
@@ -605,9 +575,8 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// effectsFocus is the device the effects panel was last asked to show --
-  /// "eq", "comp", "duck" ... -- and effectsFocusCount how many times it has
-  /// been asked, so asking for the same one again scrolls to it again.
+  /// effectsFocus is the device last asked for ("eq", "comp" ...), and
+  /// effectsFocusCount how often, so asking again scrolls to it again.
   String? get effectsFocus => _effectsFocus;
 
   int get effectsFocusCount => _effectsFocusCount;
@@ -637,8 +606,7 @@ extension CanvasTools on CanvasController {
   /// a part's piano roll -- is widened: every setting, and the most room.
   bool get editorWide => _editorWide;
 
-  /// settingsShut is whether editor [kind]'s settings -- "roll" or "clip"
-  /// -- are folded away: see _settingsShut.
+  /// settingsShut is whether editor [kind]'s settings are folded away.
   bool settingsShut(String kind) => _settingsShut[kind] ?? false;
 
   void toggleSettingsShut(String kind) {
@@ -646,9 +614,8 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// analysing is whether device [id] of strip [owner] has its display
-  /// on: the real sound drawn, rather than a picture of its settings.
-  /// Off until switched on.
+  /// analysing is whether device [id] of strip [owner] has its display on:
+  /// the real sound drawn, rather than a picture of its settings.
   bool analysing(String owner, String id) =>
       _analysing.contains("$owner|$id");
 
@@ -659,13 +626,11 @@ extension CanvasTools on CanvasController {
     }
   }
 
-  /// showingB is whether device [id] of strip [owner] is heard with its
-  /// second set of settings: see toggleAB.
+  /// showingB is whether device [id] of strip [owner] is on its B set.
   bool showingB(String owner, String id) => _abB.contains("$owner|$id");
 
-  /// toggleAB swaps device [id]'s settings with its other set, as the
-  /// prototype's A|B: pressed first, B starts as a copy of A, to change and
-  /// compare by ear. One undo step.
+  /// toggleAB swaps device [id]'s settings with its other set (A|B), as one
+  /// undo step. Pressed first, B starts as a copy of A, to compare by ear.
   void toggleAB(String owner, String id) {
     var devices = devicesOf(owner);
     var i = deviceIndexOf(devices, id);
@@ -685,8 +650,7 @@ extension CanvasTools on CanvasController {
     endInteraction();
   }
 
-  /// showingBOf is whether the card kept as [key] is heard with its second
-  /// set: see toggleABOf.
+  /// showingBOf is showingB for the card kept as [key]: see toggleABOf.
   bool showingBOf(String key) => _abB.contains(key);
 
   /// toggleABOf is toggleAB for a card whose settings are a whole thing --
@@ -714,11 +678,9 @@ extension CanvasTools on CanvasController {
   }
 
   /// motionCurvesShown is whether the Motion view shows its Curves: the
-  /// picked clip's keys across the whole panel, as the prototype's Curves
-  /// tab (Ken, 2026-11-08).
+  /// picked clip's keys across the whole panel.
   bool get motionCurvesShown => _motionCurves;
 
-  /// showMotionCurves opens the Curves on [clip] of [element].
   void showMotionCurves(String element, String clip) {
     pickMotion(element, clip);
     _motionCurves = true;
@@ -726,8 +688,7 @@ extension CanvasTools on CanvasController {
   }
 
   /// trackCurvesShown is whether the Motion view shows the Curves of the
-  /// Keyframes card's keyframes -- an element's own, or a team player's --
-  /// across the panel, as a clip's Curves (Ken, 2026-11-09).
+  /// Keyframes card's keyframes -- an element's own, or a team player's.
   bool get trackCurvesShown => _trackCurves;
 
   /// trackCurvesFrame is the keyframe the Curves opened on, picked there.
@@ -791,7 +752,6 @@ extension CanvasTools on CanvasController {
   /// channel [effectsOf]: its recording's notes, moved -- see pitch_edit.dart.
   bool get pitchShown => _pitchShown;
 
-  /// showPitch opens [key]'s recording in the Pitch editor, in the Chain.
   void showPitch(String key) {
     _effectsOf = key;
     _effectsOpen = true;
@@ -808,13 +768,11 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// instrumentShown is whether the Chain's sound is on the Instrument
-  /// editor of the channel [effectsOf]: how its instrument plays -- see
-  /// instrument_shape.dart.
+  /// instrumentShown is whether the Chain's sound is on channel
+  /// [effectsOf]'s Instrument editor: how its instrument plays.
   bool get instrumentShown => _instrumentShown;
 
-  /// showInstrument opens [key]'s instrument in the Instrument editor, in
-  /// the Chain.
+  /// showInstrument opens [key]'s instrument in the Chain's Instrument editor.
   void showInstrument(String key) {
     _effectsOf = key;
     _effectsOpen = true;
@@ -831,15 +789,13 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// setInstrumentShape changes how [channel]'s instrument plays.
   void setInstrumentShape(
           String channel, InstrumentShape Function(InstrumentShape) change,
           {bool transient = false}) =>
       setChannelPart(channel, (p) => p.copyWith(shape: change(p.shape)),
           transient: transient);
 
-  /// speechShown is whether the Chain's sound is on the channel's Speech:
-  /// see showSpeech.
+  /// speechShown is whether the Chain shows the channel's Speech: showSpeech.
   bool get speechShown => _speechShown;
 
   /// showSpeech opens [key]'s Speech in the Chain: its script, its takes and
@@ -883,7 +839,6 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// editedClip is the clip the editor is open on.
   SessionClip? get editedClip {
     var t = clipEditing;
     if (t == null) return null;
@@ -987,8 +942,7 @@ extension CanvasTools on CanvasController {
     unawaited(_startClip(t.channel, t.row!, clip, at));
   }
 
-  /// clipPreviewing is whether the open clip is playing, for its editor's
-  /// Play to show Stop.
+  /// clipPreviewing is whether the open clip plays, so Play shows Stop.
   bool get clipPreviewing {
     var t = clipEditing;
     if (t == null) return false;
@@ -998,8 +952,7 @@ extension CanvasTools on CanvasController {
   }
 
   /// selectedSlot is the clip slot last clicked: picked out in the mixer,
-  /// and -- as Ableton's Clip View always shows the clip selected -- the one
-  /// in the clip editor, where that is open.
+  /// and shown in the clip editor where that is open, as Ableton's is.
   (String, int)? get selectedSlot => _selectedSlot;
 
   void selectSlot(String channel, int row) {
@@ -1017,8 +970,7 @@ extension CanvasTools on CanvasController {
       clip.midi == instrumentChannel(channel);
 
   /// moveClip moves the clip in [fromChannel]'s slot [fromRow] to
-  /// [toChannel]'s [toRow] -- in place of what was there -- or, with
-  /// [copy], puts a copy of it there. One change to undo.
+  /// [toChannel]'s [toRow], replacing it, or copies it with [copy]. One undo.
   void moveClip(String fromChannel, int fromRow, String toChannel, int toRow,
       {bool copy = false}) {
     var clip = session.at(fromChannel, fromRow);
@@ -1077,9 +1029,8 @@ extension CanvasTools on CanvasController {
     );
   }
 
-  /// useNoteTool uses [tool] on the open MIDI clip's picked notes -- or all
-  /// of them -- on [grid] beats where it steps (the piano roll's grid; a
-  /// sixteenth otherwise).
+  /// useNoteTool uses [tool] on the open MIDI clip's picked notes, or all,
+  /// stepping [grid] beats (the piano roll's grid; a sixteenth otherwise).
   void useNoteTool(NoteTool tool, {double grid = 0.25}) {
     var t = clipEditing;
     var clip = editedClip;
@@ -1105,8 +1056,7 @@ extension CanvasTools on CanvasController {
     editClip((c) => c.copyWith(notes: notes));
   }
 
-  /// _keepSound stores [wav] -- a WAV file's bytes -- as a new sound in
-  /// the library -- see speechStore -- answering its id, or null.
+  /// _keepSound stores WAV bytes [wav] as a library sound: its id, or null.
   Future<String?> _keepSound(Uint8List wav) async {
     var dir = await Directory.systemTemp.createTemp("canvas-clip");
     try {
@@ -1118,9 +1068,8 @@ extension CanvasTools on CanvasController {
     }
   }
 
-  /// reverseClip plays the open audio clip backwards: a reversed copy of
-  /// its file, made and kept in the library, the original kept too -- so
-  /// pressed again, it is the original once more. Answers why not.
+  /// reverseClip plays the open audio clip backwards from a reversed copy
+  /// kept beside the original, so pressed again it is undone. Says why not.
   Future<String?> reverseClip() async {
     var clip = editedClip;
     var sound = clip?.sound;
@@ -1137,8 +1086,7 @@ extension CanvasTools on CanvasController {
     if (audio == null) return "Its sound could not be read.";
     var (l, r) = audio;
     var n = l.length;
-    // Turned round and written out away from the app's own isolate, as it
-    // was read.
+    // Reversed and written out off the UI isolate, as it was read.
     var id = await _keepSound(await _reversedWavAway(l, r));
     if (id == null || _disposed) return "The reversed sound could not be kept.";
     var length = n / mixRate;
@@ -1161,11 +1109,10 @@ extension CanvasTools on CanvasController {
       ? sound.end - sound.start
       : math.max(0, sound.length - sound.start);
 
-  /// _markersMirrored is [clip] with its warp markers turned round with its
+  /// _markersMirrored is [clip] with its warp markers reversed with its
   /// sound ([seconds] of it played): a moment from its start becomes that
-  /// moment from its end. Its end is pinned too, where its start was, since
-  /// past the last marker a sound goes at its tempo; without it a sound
-  /// reversed twice would not be as it was.
+  /// moment from its end. Its end is pinned where its start was, since past
+  /// the last marker a sound goes at its tempo: reversed twice, it matches.
   SessionClip _markersMirrored(SessionClip clip, double seconds) {
     if (clip.markers.isEmpty || seconds <= 0) return clip;
     var last = clip.warpMap.beatAt(seconds);
@@ -1177,10 +1124,6 @@ extension CanvasTools on CanvasController {
     ]);
   }
 
-  /// cropClip keeps only what the open clip plays -- from its start, or its
-  /// loop's start where that is earlier, to its loop's end -- as a new file
-  /// for an audio clip, or the notes there for a MIDI one, and moves its
-  /// start and loop to match. Answers why not.
   /// _cutsOf is where [clip] is cut into slices [by], in seconds into its
   /// file, its start and its loop's end included -- or why it cannot be.
   Future<(List<double>, String?)> _cutsOf(SessionClip clip, SliceBy by) async {
@@ -1253,11 +1196,10 @@ extension CanvasTools on CanvasController {
         "to reach 0 dB";
   }
 
-  /// sliceToInstrument cuts the open audio clip at its hits into a new
-  /// MIDI channel that plays them, as the prototype's Slice: [pads], each
-  /// slice on a drum pad, struck to its end; else each on a key from C2,
-  /// with a note clip in its first slot playing them where they were. One
-  /// undo step. Says what it did.
+  /// sliceToInstrument cuts the open audio clip at its hits into a new MIDI
+  /// channel that plays them: with [pads], each slice on a drum pad, struck
+  /// to its end; else each on a key from C2, with a note clip in its first
+  /// slot playing them where they were. One undo step. Says what it did.
   Future<String?> sliceToInstrument({required bool pads}) async {
     var t = clipEditing;
     var clip = editedClip;
@@ -1325,10 +1267,9 @@ extension CanvasTools on CanvasController {
         : "Made a note clip of $count slices, on the channel “${made.name}”";
   }
 
-  /// sliceClip cuts the audio clip the editor is open on into slices --
-  /// at its hits, or every beat or bar of it as it plays -- each a clip of
-  /// its own in the channel's empty slots under it, playing that stretch of
-  /// the same sound: as one undo step. Why not, or null.
+  /// sliceClip cuts the open audio clip into slices -- at its hits, or each
+  /// beat or bar -- each a clip in the channel's empty slots under it,
+  /// playing that stretch: one undo step. Why not, or null.
   Future<String?> sliceClip(SliceBy by) async {
     var t = clipEditing;
     var clip = editedClip;
@@ -1374,6 +1315,10 @@ extension CanvasTools on CanvasController {
     return null;
   }
 
+  /// cropClip keeps only what the open clip plays -- from its start, or its
+  /// loop's start where that is earlier, to its loop's end -- as a new file
+  /// for an audio clip, or the notes there for a MIDI one, and moves its
+  /// start and loop to match. Answers why not.
   Future<String?> cropClip() async {
     var clip = editedClip;
     if (clip == null) return null;
@@ -1498,9 +1443,8 @@ extension CanvasTools on CanvasController {
           assetId: id,
           name: "${sound.name.isEmpty ? "Clip" : sound.name} (warped)",
           length: frames / mixRate);
-      // Written onto the clip as it is now, if it is still there and still
-      // wants this: not a change of its own to undo -- the file follows
-      // the clip.
+      // Written onto the clip as it now is, if still there and still wanting
+      // this: not an undo step of its own, as the file follows the clip.
       if (session.find(clip.id) case (var ch, var row)?) {
         var now = session.at(ch, row)!;
         // (A timeline sound's clip is written by renderTimelineClip.)
@@ -1628,10 +1572,9 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// rollContent is what the piano roll shows, in beats: the notes, the
-  /// controllers' curves, and how long it is -- a clip's length, or a
-  /// part's, to the end of the bar after its last note and never under
-  /// four bars.
+  /// rollContent is what the piano roll shows, in beats: notes, controller
+  /// curves and length -- a clip's, or a part's to the end of the bar after
+  /// its last note, never under four bars.
   RollContent? get rollContent {
     var t = pianoRoll;
     if (t == null) return null;
@@ -1805,8 +1748,7 @@ extension CanvasTools on CanvasController {
         (beats * _document.audio.secondsPerBeat * _document.frameRate).round();
   }
 
-  /// movePart moves the piano roll's part along the timeline by [bars],
-  /// never before the start.
+  /// movePart moves the piano roll's part by [bars], never before the start.
   void movePart(int bars) {
     var t = pianoRoll;
     if (t == null || t.row != null) return;
@@ -1817,8 +1759,7 @@ extension CanvasTools on CanvasController {
     setTimedClip(e, e.clip.copyWith(at: math.max(0, e.clip.at + by)));
   }
 
-  /// rollPlayhead is where playing has got in what the piano roll shows,
-  /// in beats, or null where it is not playing.
+  /// rollPlayhead is where playing is in the piano roll, in beats, or null.
   double? get rollPlayhead {
     var t = pianoRoll;
     if (t == null || !playing) return null;
@@ -1833,14 +1774,11 @@ extension CanvasTools on CanvasController {
     return _nowInPart(e) / math.max(0.001, _document.audio.secondsPerBeat);
   }
 
-  /// pickStrip picks the channel [key] -- or the master, mixerMasterKey --
-  /// from the mixer: picked on the timeline too, and its chain the one the
-  /// effects panel shows.
-  ///
-  /// One thing is picked in the mixer at a time (Ken, 2026-11-08): the
-  /// strip alone -- or, an element's own sound, with its element, the two
-  /// being one thing. With the Chain out, its chain comes up: the master's,
-  /// a scene's bus, a return's, a channel's.
+  /// pickStrip picks channel [key] -- or the master, mixerMasterKey -- from
+  /// the mixer: picked on the timeline too, its chain the one the effects
+  /// panel shows. One thing is picked in the mixer at a time: the strip
+  /// alone, or an element's own sound with its element, the two being one
+  /// thing. With the Chain out, its chain comes up.
   void pickStrip(String key) {
     // A transition's slot was pressed, in this same press: it has picked
     // itself (pickJoin), and the strip's pick -- the scene shown -- would
@@ -1852,12 +1790,11 @@ extension CanvasTools on CanvasController {
         ? _selection.length == 1 && _selection.first == owner
         : _selection.isEmpty;
     var chainOut = _animationOpen || _effectsOpen;
-    // Pressed again -- every press on a strip picks it, a fader grabbed
-    // too -- with nothing to change: nothing told (Ken's systems review,
-    // 2026-11-08: each press rebuilt the editor once or twice over).
-    // The scene's strip, with the Chain on its motion: the scene's own
-    // chain -- its clips, transition and camera -- as a click on the scene
-    // on the timeline opens (Ken, 2026-11-08); on its sound, its bus.
+    // Pressed again -- every press on a strip picks it, a fader grab too --
+    // with nothing to change, nothing is told: each press would rebuild the
+    // editor. The scene's strip with the Chain on its motion opens the
+    // scene's own chain (clips, transition, camera), as a click on the
+    // scene on the timeline does; on its sound, its bus.
     var sceneMotion = key == sceneBusKey && _animationOpen;
     if (picked &&
         selectedChannel == key &&
@@ -1882,12 +1819,10 @@ extension CanvasTools on CanvasController {
   }
 
   /// pickJoin picks the transition after scene [join] from its slot on the
-  /// Scenes strip: the strip, and the Chain on that transition -- on the
-  /// press itself, the strip's own pick in the same press passed by (Ken,
-  /// 2026-11-10: picking a transition took two clicks, or picked another:
-  /// the strip, picked as it was pressed, opened the scene shown, and the
-  /// slot's own pick came after -- or, the slot built again under the
-  /// pointer, not at all).
+  /// Scenes strip -- the strip, and the Chain on that transition -- on the
+  /// press itself, as a slot rebuilt under the pointer may see nothing
+  /// later. The strip's own pick in the same press is passed by, or it would
+  /// open the scene shown in its place.
   void pickJoin(int join) {
     // Picked already in this same press: by its launch strip, then the card
     // the strip is on.
@@ -1911,9 +1846,8 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// restoreShown puts back whether the cues were showing, as the
-  /// preferences kept it -- without notifying, as restoreFit, because it
-  /// runs while the page is being built.
+  /// restoreShown puts back whether the cues showed, from the preferences,
+  /// without notifying: it runs while the page is being built.
   void restoreShown({required bool cues}) {
     _cuesShown = cues;
   }
@@ -1937,8 +1871,7 @@ extension CanvasTools on CanvasController {
   int get laneSize => _laneSize;
 
   /// nextLaneSize steps every channel to the next of laneSizeHeights, round
-  /// to the first after the last -- putting back any dragged one, as the
-  /// button means all of them.
+  /// to the first, putting back any dragged one: the button means them all.
   void nextLaneSize() {
     // Three: small, medium and large.
     _laneSize = (_laneSize + 1) % 3;
@@ -1957,9 +1890,8 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// waveformOf is [assetId]'s shape, as peaks from nought to one across the
-  /// whole file, or null until it has been read -- it is read on first asking,
-  /// off the main thread, and the timeline is told when it arrives.
+  /// waveformOf is [assetId]'s peaks (0 to 1) across the file, or null until
+  /// read: read off the main thread on first asking, the timeline told then.
   Float32List? waveformOf(String assetId) {
     if (CanvasController._waveforms.containsKey(assetId)) {
       return CanvasController._waveforms[assetId];
@@ -2004,10 +1936,9 @@ extension CanvasTools on CanvasController {
   }
 
   /// _replacedAnywhere is [doc] with [next] in place of the element of its
-  /// id, wherever that is: the canvas being edited, the master seen from a
-  /// scene, or another scene; null where it is none of them. A clip on a
-  /// scene is held within that scene's frames; the master's goes where it is
-  /// put.
+  /// id: on the canvas edited, the master seen from a scene, or another
+  /// scene; null if none. A scene's clip is held within its frames; the
+  /// master's goes where put.
   CanvasDocument? _replacedAnywhere(CanvasDocument doc, CanvasElement next) {
     List<CanvasElement> swapped(List<CanvasElement> list) =>
         [for (var e in list) e.id == next.id ? next : e];
@@ -2135,9 +2066,8 @@ extension CanvasTools on CanvasController {
     }
   }
 
-  /// _duckEnvelopes is how far each channel is ducked over the run -- see
-  /// duckEnvelopes -- worked out again only when the document has changed or
-  /// a recording's shape has been read since.
+  /// _duckEnvelopes is how far each channel is ducked over the run, redone
+  /// only when the document changes or a recording's shape is read.
   Map<String, List<GainPoint>> _duckEnvelopes() {
     if (identical(_duckFor, _document) &&
         _duckWaves == CanvasController._waveforms.length) {
@@ -2180,16 +2110,14 @@ extension CanvasTools on CanvasController {
     endInteraction();
   }
 
-  /// _joinedCuts is the timeline's sounds as they are played: a sound cut in
-  /// two, its halves still end to end on one channel, is played as the one
-  /// sound it was. The second half is cued with nothing, and the first runs
-  /// on through the join; played as two, the frame-stepped playhead would
-  /// make a skip at the cut.
-  ///
-  /// Only where nothing would be lost by it: the same file, the second
-  /// starting in it where the first stops and on the timeline where the
-  /// first ends, no fade at the join, neither looping. The level is whichever
-  /// half the playhead is in, so each half's volume line still holds.
+  /// _joinedCuts is the timeline's sounds as played: a sound cut in two, its
+  /// halves still end to end on one channel, plays as one sound -- the
+  /// second cued with nothing, the first running on through the join --
+  /// since the frame-stepped playhead would make a skip at the cut. Only
+  /// where nothing is lost: the same file, the second starting in it where
+  /// the first stops and on the timeline where the first ends, no fade at
+  /// the join, neither looping. The level is the half the playhead is in,
+  /// so each half's volume line holds.
   List<(CanvasElement, int?)> _joinedCuts(List<(CanvasElement, int)> items) {
     var rate = math.max(1, _document.frameRate);
     bool joins(AudioElement a, AudioElement b) {

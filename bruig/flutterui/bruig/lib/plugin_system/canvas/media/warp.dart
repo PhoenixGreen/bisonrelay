@@ -5,36 +5,16 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart'
     show ControlPoint;
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 
-// warp.dart is warping: a sound laid on the song's beats, faster or slower
-// than it was recorded, without its pitch moving -- and moved in pitch
-// without its speed changing. Ableton's warp modes, each the way that
-// suits a kind of sound:
-//
-//  - Beats: cut at its hits, each piece played as it was, where its hit
-//    falls on the beat. Drums stay sharp; slowed down, gaps open after
-//    each hit.
-//  - Tones: WSOLA -- the sound overlapped from pieces a few hundredths of
-//    a second long, each chosen to join the last where it fits best. One
-//    voice or instrument at a time.
-//  - Texture: a phase vocoder with a long window, its phases loosened a
-//    little: pads, noise, washes.
-//  - Complex: a phase vocoder with its phases locked to the peaks they
-//    belong to, and set afresh at each hit: whole mixes and vocals.
-//  - Re-pitch: read faster or slower, as a record is: speed is pitch.
-//
-// It is done ahead of time, not as it plays: a warped clip is rendered into
-// a file of its own, at the song's tempo, as a MIDI clip's notes are -- see
-// CanvasController.
-//
-// Everything here works on both sides at once, so the stereo picture is
-// kept: one choice of where to read, for both.
+// warp.dart lays a sound on the song's beats at another speed, pitch kept,
+// or moves its pitch, in Ableton's modes: Beats, Tones (WSOLA), Texture and
+// Complex (phase vocoders), Re-pitch. Rendered ahead into a file, as MIDI
+// clips are; both sides read alike, so the stereo picture is kept.
 
 const double _rate = 48000;
 
-/// renderWarp is [l] and [r] (at 48kHz) from [from] to [to] seconds,
-/// warped by [clip]: laid on the song's beats at [secondsPerBeat] by its
-/// warp map, in its mode, and moved [semitones] in pitch. Unwarped, it is
-/// only moved in pitch -- re-pitched, so faster or slower with it.
+/// renderWarp is [l] and [r] (48kHz) from [from] to [to] seconds, laid on
+/// the beats by [clip]'s warp map in its mode and moved [semitones].
+/// Unwarped, it is only re-pitched.
 (Float32List, Float32List) renderWarp(
   Float32List l,
   Float32List r, {
@@ -60,13 +40,11 @@ const double _rate = 48000;
 }
 
 /// declickSeconds is how long a clip's Fade fades: long enough that a cut
-/// part way through a wave does not click, short enough not to be heard as
-/// a fade.
+/// mid-wave does not click, too short to hear as a fade.
 const double declickSeconds = 0.004;
 
-/// declick fades [l] and [r] in from each of [ins] and out to each of
-/// [outs], in seconds -- a clip's start and its loop's, and its loop's end
-/// -- in place.
+/// declick fades [l] and [r] in place, in from each of [ins] and out to
+/// each of [outs] (seconds): a clip's start, its loop's start and end.
 void declick(Float32List l, Float32List r,
     {List<double> ins = const [], List<double> outs = const []}) {
   var n = (declickSeconds * 48000).round();
@@ -90,9 +68,8 @@ void declick(Float32List l, Float32List r,
   }
 }
 
-/// fadeEdges fades [l] and [r] in from each of [ins] and out to each of
-/// [outs] -- each a place, in seconds, and how long its fade is -- the way
-/// [curve] goes (nought to one, [u] of the way), in place.
+/// fadeEdges fades [l] and [r] in place at [ins] and [outs] (place and
+/// length in seconds) along [curve].
 void fadeEdges(Float32List l, Float32List r,
     {List<(double, double)> ins = const [],
     List<(double, double)> outs = const [],
@@ -120,9 +97,8 @@ void fadeEdges(Float32List l, Float32List r,
   }
 }
 
-/// _envelop applies [envelopes] to [l] and [r] -- the clip's sound from its
-/// first beat, at [secondsPerBeat] -- in place: its gain, squared so half
-/// way is well down (twelve decibels), and its pan as a balance.
+/// _envelop applies [envelopes] to [l] and [r] in place: gain squared, so
+/// half way is 12 dB down, and pan as a balance.
 void _envelop(Float32List l, Float32List r,
     Map<ClipEnvelope, List<ControlPoint>> envelopes, double secondsPerBeat) {
   var gain = envelopes[ClipEnvelope.gain] ?? const [];
@@ -157,8 +133,7 @@ void _envelop(Float32List l, Float32List r,
   var length = (b - a) / _rate;
   var p = math.pow(2, semitones / 12).toDouble();
   if (!warp) {
-    // As it is -- a copy, to be changed -- or re-pitched: read p times as
-    // fast.
+    // As it is (a copy, to be changed), or re-pitched: read p times as fast.
     if (p == 1) return (Float32List.fromList(sl), Float32List.fromList(sr));
     return _readAlong(sl, sr, (length / p * _rate).round(), (u) => u * p);
   }
@@ -171,8 +146,8 @@ void _envelop(Float32List l, Float32List r,
     case WarpMode.beats:
       return _beats(sl, sr, outLength, source, map, spb, p);
     case WarpMode.tones || WarpMode.texture || WarpMode.complex:
-      // Stretched p times longer than wanted, then read p times as fast:
-      // the length wanted, p higher.
+      // Stretched p times longer, then read p times as fast: the length
+      // wanted, p higher.
       double longer(double v) => source(v / p);
       var stretched = mode == WarpMode.tones
           ? _wsola(sl, sr, (outLength * p * _rate).round(), longer)
@@ -184,16 +159,12 @@ void _envelop(Float32List l, Float32List r,
   }
 }
 
-// ---------------------------------------------------------------------------
-// Reading at another speed
-// ---------------------------------------------------------------------------
+// ---- Reading at another speed -------------------------------------------
 
 const int _sincHalf = 12;
 
-/// _readAlong is [n] samples read from [l] and [r] at [at] seconds for each
-/// output's second: between samples by a windowed sinc, its cut-off lowered
-/// where it reads faster than it was recorded, so the highs do not fold
-/// back down.
+/// _readAlong is [n] samples read from [l] and [r] at [at] seconds per
+/// output second, by a windowed sinc low-passed when reading fast.
 (Float32List, Float32List) _readAlong(
     Float32List l, Float32List r, int n, double Function(double u) at) {
   var ol = Float32List(n), or = Float32List(n);
@@ -231,13 +202,10 @@ const int _sincHalf = 12;
   return (ol, or);
 }
 
-// ---------------------------------------------------------------------------
-// Beats
-// ---------------------------------------------------------------------------
+// ---- Beats --------------------------------------------------------------
 
-/// _beats lays each hit where the map puts it, played as it was -- p times
-/// as fast, for its pitch -- until the next hit, or the next hit's place,
-/// whichever comes first; faded out there, so it does not click.
+/// _beats (drums) plays each hit as it was where the map puts it, until the
+/// next hit or its place, faded there. Slowed, gaps open.
 (Float32List, Float32List) _beats(
     Float32List l,
     Float32List r,
@@ -254,7 +222,7 @@ const int _sincHalf = 12;
   for (var i = 0; i + 1 < hits.length; i++) {
     var s0 = hits[i], s1 = hits[i + 1];
     var u0 = map.beatAt(s0) * spb, u1 = map.beatAt(s1) * spb;
-    // As long as its own piece, read p times as fast, or as its place.
+    // As long as its own piece at p times as fast, or as its place.
     var span = math.min((s1 - s0) / p, u1 - u0);
     if (span <= 0) continue;
     var start = (u0 * _rate).round();
@@ -271,17 +239,14 @@ const int _sincHalf = 12;
   return (ol, or);
 }
 
-// ---------------------------------------------------------------------------
-// Tones: WSOLA
-// ---------------------------------------------------------------------------
+// ---- Tones: WSOLA -------------------------------------------------------
 
 const int _wsolaN = 1024;
 const int _wsolaHop = _wsolaN ~/ 2;
 const int _wsolaTolerance = 256;
 
-/// _wsola is [n] samples of [l] and [r], each piece of [_wsolaN] read from
-/// where [at] says, moved by up to [_wsolaTolerance] to where it best
-/// carries on from the last piece -- so the voice's waves join.
+/// _wsola (one voice or instrument) reads each [_wsolaN] piece where [at]
+/// says, moved up to [_wsolaTolerance] to best continue the last.
 (Float32List, Float32List) _wsola(
     Float32List l, Float32List r, int n, double Function(double u) at) {
   var ol = Float32List(n + _wsolaN), or = Float32List(n + _wsolaN);
@@ -302,8 +267,8 @@ const int _wsolaTolerance = 256;
     if (last != null) {
       // Where the last piece would naturally have gone on to.
       var natural = last + _wsolaHop;
-      // Coarse, every fourth place and every eighth sample; then fine,
-      // every place near the best and every sample.
+      // Coarse (every fourth place, every eighth sample), then fine round
+      // the best.
       double score(int d, int step) {
         var s = 0.0;
         for (var k = 0; k < _wsolaN; k += step) {
@@ -349,9 +314,7 @@ const int _wsolaTolerance = 256;
   return (Float32List.sublistView(ol, 0, n), Float32List.sublistView(or, 0, n));
 }
 
-// ---------------------------------------------------------------------------
-// Complex and Texture: a phase vocoder
-// ---------------------------------------------------------------------------
+// ---- Complex and Texture: a phase vocoder -------------------------------
 
 /// _Fft is a complex FFT of one size, its tables made once.
 class _Fft {
@@ -380,8 +343,8 @@ class _Fft {
     }
   }
 
-  /// run transforms [re] and [im] in place: forward, or [inverse] (then
-  /// scaled by 1/n).
+  /// run transforms [re] and [im] in place: forward, or [inverse] (scaled
+  /// by 1/n).
   void run(Float64List re, Float64List im, {bool inverse = false}) {
     for (var i = 0; i < n; i++) {
       var j = _flip[i];
@@ -420,12 +383,10 @@ class _Fft {
 
 double _wrap(double a) => a - 2 * math.pi * (a / (2 * math.pi)).roundToDouble();
 
-/// _vocoder is [n] samples of [l] and [r] read where [at] says, frame by
-/// frame through their spectra: each partial's phase carried on from the
-/// frame before at the frequency it is heard at, so it sounds unbroken
-/// whatever the speed. Complex: phases locked to the peak each bin belongs
-/// to, and set afresh at a hit. [texture]: a longer window, peaks not
-/// locked, phases loosened a little.
+/// _vocoder reads [l] and [r] where [at] says, frame by frame, each
+/// partial's phase carried at its heard frequency. Complex (mixes, vocals):
+/// phases locked to peaks, reset at hits. [texture] (pads): longer window,
+/// phases loosened.
 (Float32List, Float32List) _vocoder(
     Float32List l, Float32List r, int n, double Function(double u) at,
     {bool texture = false}) {
@@ -444,7 +405,7 @@ double _wrap(double a) => a - 2 * math.pi * (a / (2 * math.pi)).roundToDouble();
   var dice = math.Random(7);
   double sample(Float32List x, int i) => i >= 0 && i < x.length ? x[i] : 0;
 
-  // One frame of both sides, at [pos]: left as real, right as imaginary,
+  // One frame of both sides at [pos], left as real and right as imaginary:
   // one transform for both.
   var re = Float64List(size), im = Float64List(size);
   (Float64List, Float64List, Float64List, Float64List) frame(int pos) {
@@ -474,15 +435,15 @@ double _wrap(double a) => a - 2 * math.pi * (a / (2 * math.pi)).roundToDouble();
     var pos = (at(out / _rate) * _rate).round();
     var (magL, argL, magR, argR) = frame(pos);
     var (_, prevL, _, prevR) = frame(pos - hop);
-    // A hit: much louder than the frame a hop before -- its phases taken
-    // as they are, so the attack stays sharp.
+    // A hit (much louder than a hop before): phases taken as they are, so
+    // the attack stays sharp.
     var energy = 0.0;
     for (var k = 0; k <= half; k++) {
       energy += magL[k] * magL[k] + magR[k] * magR[k];
     }
     var hit = !texture && energy > energyBefore * 4 && energy > 1e-6;
     energyBefore = energy;
-    // Texture's loosening, the same on both sides: they stay together.
+    // Texture's loosening, the same on both sides so they stay together.
     var jitter = texture
         ? Float64List.fromList(
             [for (var k = 0; k <= half; k++) (dice.nextDouble() - 0.5) * 0.6])
@@ -497,8 +458,8 @@ double _wrap(double a) => a - 2 * math.pi * (a / (2 * math.pi)).roundToDouble();
         }
         continue;
       }
-      // Each bin's frequency as heard, from how far its phase went in a
-      // hop; carried on that far.
+      // Each bin's heard frequency, from how far its phase went in a hop;
+      // carried on that far.
       var advance = Float64List(half + 1);
       for (var k = 0; k <= half; k++) {
         var expected = 2 * math.pi * k * hop / size;
@@ -510,8 +471,8 @@ double _wrap(double a) => a - 2 * math.pi * (a / (2 * math.pi)).roundToDouble();
         }
         continue;
       }
-      // Locked: a peak's phase carried on; each bin round it kept where
-      // it was against the peak.
+      // Locked: a peak's phase carried on, each bin round it kept against
+      // the peak.
       var peaks = <int>[];
       for (var k = 2; k < half - 1; k++) {
         if (mag[k] > mag[k - 1] &&
@@ -565,15 +526,13 @@ double _wrap(double a) => a - 2 * math.pi * (a / (2 * math.pi)).roundToDouble();
   return (Float32List.sublistView(ol, 0, n), Float32List.sublistView(or, 0, n));
 }
 
-// ---------------------------------------------------------------------------
-// Hearing hits, and a tempo
-// ---------------------------------------------------------------------------
+// ---- Hearing hits, and a tempo ------------------------------------------
 
 const int _onsetSize = 1024;
 const int _onsetHop = 512;
 
-/// _flux is how much louder each hop's spectrum got than the hop before's,
-/// summed over its bins: high where something is struck.
+/// _flux is how much louder each hop's spectrum got than the last, summed
+/// over bins: high where something is struck.
 Float64List _flux(Float32List l, Float32List r) {
   var fft = _Fft(_onsetSize);
   var frames = math.max(0, (l.length - _onsetSize) ~/ _onsetHop + 1);
@@ -599,8 +558,8 @@ Float64List _flux(Float32List l, Float32List r) {
   return out;
 }
 
-/// onsets are where [l] and [r] are struck, in seconds: peaks of the
-/// flux well over the flux round them.
+/// onsets are where [l] and [r] are struck, in seconds: flux peaks well
+/// over the flux round them.
 List<double> onsets(Float32List l, Float32List r) {
   var flux = _flux(l, r);
   var out = <double>[];
@@ -617,8 +576,8 @@ List<double> onsets(Float32List l, Float32List r) {
     }
     var mean = sum / count;
     if (flux[f] < mean * 1.5 + 1) continue;
-    // To the sample: where, in the frame, it first rises to a third of
-    // its loudest -- a little before, so the hit's start is kept.
+    // To the sample: where it first rises to a third of its loudest in the
+    // frame, a little before, so the hit's start is kept.
     var from = f * _onsetHop, to = math.min(l.length, from + _onsetSize);
     var peak = 0.0;
     for (var i = from; i < to; i++) {
@@ -636,11 +595,8 @@ List<double> onsets(Float32List l, Float32List r) {
   return out;
 }
 
-/// estimateTempo is the tempo [l] and [r] are played at, in beats a
-/// minute: the beat its hits keep returning on, put in the octave nearest
-/// [near] -- and, where the sound is a whole number of bars of
-/// [beatsPerBar] at a tempo close to that, that tempo exactly, as a loop
-/// cut to its bars is.
+/// estimateTempo is the BPM [l] and [r]'s hits recur at, in the octave
+/// nearest [near]; exact where the sound is a whole number of bars.
 double estimateTempo(Float32List l, Float32List r,
     {double near = 120, int beatsPerBar = 4}) {
   var seconds = l.length / _rate;

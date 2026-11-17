@@ -13,11 +13,9 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 
-// audio_painter.dart draws an Audio element: its icon in whichever state the
-// sound is in, and the mute switch and volume bar beside it when it has them.
-//
-// The layout is worked out once, in audioParts, and the stage hit-tests the
-// same rectangles the painter draws.
+// audio_painter.dart draws an Audio element: its icon in the sound's state,
+// and the mute switch and volume bar beside it. The layout is worked out
+// once, in audioParts, and the stage hit-tests the same rectangles.
 
 /// AudioState is the sound's live state, which the document does not hold:
 /// on screen it is what the reader has done; in an export, the idle state.
@@ -26,21 +24,20 @@ class AudioState {
   final bool muted;
   final double volume;
 
-  /// keys are an instrument's keys sounding -- under the playhead, or held
-  /// down -- and recording whether what is played is being written down.
+  /// keys are an instrument's keys sounding (under the playhead, or held
+  /// down), and recording whether what is played is being written down.
   final Set<int> keys;
   final bool recording;
 
   /// next are the keys a practice take is waiting for, lit blue.
   final Set<int> next;
 
-  /// places are where a neck's keys sounding are played, by key: the
-  /// string and fret pressed, or the part's fingering (see fretting.dart).
-  /// A key with none is placed with the others sounding.
+  /// places are where a neck's sounding keys are played, by key: the string
+  /// and fret, or the part's fingering (see fretting.dart). A key with none
+  /// is placed with the others sounding.
   final Map<int, FretPlace> places;
 
-  /// left are the keys sounding the left hand plays (see scoreLeftHand),
-  /// lit in the instrument's leftAccent.
+  /// left are sounding keys the left hand plays (scoreLeftHand): leftAccent.
   final Set<int> left;
 
   const AudioState(
@@ -56,10 +53,9 @@ class AudioState {
   factory AudioState.idle(AudioElement e) =>
       AudioState(muted: e.clip.muted, volume: e.clip.volume);
 
-  /// atFrame is [e] as it is at [frame] of a page at [frameRate] where
-  /// nothing is live -- a video being made, a page drawn: an instrument's
-  /// keys lit with the notes under the playhead, as the editor lights them
-  /// while it plays (Ken, 2026-11-14: in a video, the keys stayed dark).
+  /// atFrame is [e] at [frame] of a page at [frameRate] where nothing is
+  /// live (a video being made, a page drawn): an instrument's keys lit with
+  /// the notes under the playhead, as the editor lights them while playing.
   factory AudioState.atFrame(AudioElement e, int frame, int frameRate,
       {CanvasDocument? doc}) {
     var part = e.instrument;
@@ -79,17 +75,14 @@ class AudioParts {
   final Rect icon;
   final Rect? mute;
 
-  /// volume is the whole bar, which is what is pressed; the track drawn is a
-  /// thinner line through its middle.
+  /// volume is the whole bar, which is pressed; the track is a thin line.
   final Rect? volume;
 
   const AudioParts(this.icon, this.mute, this.volume);
 }
 
-/// audioParts lays out [e] inside [bounds].
-///
-/// The icon is a square as tall as the box's inside, centred when nothing is
-/// beside it.
+/// audioParts lays out [e] inside [bounds]. The icon is a square as tall as
+/// the box's inside, centred when nothing is beside it.
 AudioParts audioParts(AudioElement e, Rect bounds) {
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) {
@@ -121,7 +114,6 @@ AudioParts audioParts(AudioElement e, Rect bounds) {
   return AudioParts(icon, mute, volume);
 }
 
-/// volumeAt is the volume a press at [x] on [bar] asks for.
 double volumeAt(Rect bar, double x) {
   var inset = bar.height * 0.2;
   var from = bar.left + inset, to = bar.right - inset;
@@ -158,8 +150,7 @@ void paintAudio(ui.Canvas canvas, Rect bounds, AudioElement e, AudioState state,
   if (!drawnPicture) {
     _paintGlyph(canvas, parts.icon.deflate(parts.icon.width * 0.18), e, state);
   }
-  // A custom muted picture says so itself; any other picture is struck
-  // through.
+  // A custom muted picture says so itself; any other picture is struck through.
   if (state.muted && (drawnPicture ? e.mutedPicture.isEmpty : false)) {
     _strike(canvas, parts.icon.deflate(parts.icon.width * 0.15), e);
   }
@@ -168,7 +159,6 @@ void paintAudio(ui.Canvas canvas, Rect bounds, AudioElement e, AudioState state,
   if (parts.volume case var v?) _paintVolume(canvas, v, e, state);
 }
 
-/// _paintGlyph draws the built-in icon for [e] in [r].
 void _paintGlyph(ui.Canvas canvas, Rect r, AudioElement e, AudioState state) {
   var on = state.playing;
   var ink = on ? e.accent : e.iconColor;

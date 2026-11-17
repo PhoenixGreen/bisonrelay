@@ -9,9 +9,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/play_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// game_counts_settings.dart is the numbers a game keeps (coins, lives, keys)
-// in the Game panel with nothing picked: a card each, opened to change it.
-// Pickups and hazards change them; a Counter element shows one.
+// game_counts_settings.dart is a game's counts (coins, lives, keys) as
+// cards in the Game panel. Pickups and hazards change them; Counters show.
 
 /// _justAdded is the count added last, opened for its name to be given.
 String? _justAdded;
@@ -42,8 +41,8 @@ List<Widget> gameCountCards(CanvasController controller) {
   ];
 }
 
-/// countRule is what happens to [c], in a line: "At 0: start again on
-/// Title" -- and whether a Counter shows it.
+/// countRule is what happens to [c] in a line ("At 0: start again on
+/// Title"), and whether a Counter shows it.
 String countRule(CanvasDocument doc, GameCount c) {
   String scene(String id) {
     var i = doc.sceneIndexNamed(id);

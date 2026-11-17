@@ -12,27 +12,21 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// video_export.dart writes MP4 and WebM through the system's ffmpeg, if it is
-// there; it also finds ffmpeg for the other features that use it.
-//
-// Flutter encodes only PNG, and a video encoder is not something to write by
-// hand (the GIF is: see gif_encoder.dart). [ffmpegPath] is asked when the
-// publish sheet opens, so a reader without ffmpeg sees [ffmpegHelp] and a
-// disabled row while choosing, rather than a silent failure on Publish.
+// video_export.dart writes MP4 and WebM through the system's ffmpeg, and
+// finds ffmpeg for the features that use it. [ffmpegPath] is asked when the
+// publish sheet opens, so [ffmpegHelp] shows while choosing, not on Publish.
 
-/// _found is the answer to "is ffmpeg here", worked out once, even when the
-/// answer is no: the publish sheet asks on every build. Installing ffmpeg
-/// takes an app restart to be seen.
+/// _found is whether ffmpeg is here, worked out once even when not: the
+/// publish sheet asks every build. A new install needs an app restart.
 String? _found;
 bool _looked = false;
 
-/// _looking is the look while it is under way, so a second ask waits for it
-/// -- rather than hearing "not installed" from a look not yet done.
+/// _looking is the look under way, so a second ask waits for it rather
+/// than hearing "not installed" from a look not yet done.
 Future<String?>? _looking;
 
-/// _candidates are the places an ffmpeg tends to be when it is not on PATH.
-/// A macOS GUI app does not inherit the shell's PATH, so a Homebrew install
-/// is invisible to `which`.
+/// _candidates are where ffmpeg tends to be off PATH: a macOS GUI app
+/// lacks the shell's PATH, so `which` misses a Homebrew install.
 const List<String> _candidates = [
   "/opt/homebrew/bin/ffmpeg",
   "/usr/local/bin/ffmpeg",
@@ -41,10 +35,8 @@ const List<String> _candidates = [
   r"C:\ffmpeg\bin\ffmpeg.exe",
 ];
 
-/// ffmpegHelp is what to tell somebody who has not got one.
-///
-/// ffmpeg is not bundled because libx264 is GPL and Bison Relay is ISC:
-/// shipping them together would relicense the app.
+/// ffmpegHelp is what to tell somebody without ffmpeg. Not bundled: libx264
+/// is GPL and Bison Relay ISC, so shipping both would relicense the app.
 const String ffmpegHelp =
     "Publishing a video or a sound needs ffmpeg, which is not installed. "
     "Install it with "
@@ -83,9 +75,8 @@ Future<String?> _findFfmpeg() async {
   return null;
 }
 
-/// useFfmpegForTest fixes what [ffmpegPath] answers: a script that records
-/// its arguments, or null for "there is not one". [forgetFfmpegForTest] puts
-/// it back.
+/// useFfmpegForTest fixes [ffmpegPath]'s answer: an argument-recording
+/// script, or null for none. [forgetFfmpegForTest] puts it back.
 @visibleForTesting
 void useFfmpegForTest(String? path) {
   _looked = true;
@@ -127,9 +118,8 @@ enum VideoFormat {
       this.label, this.mime, this.extension, this.encoder, this.note);
 }
 
-/// VideoQuality is the constant-rate factor handed to ffmpeg: lower is better
-/// and larger. One label, two numbers, because x264 (0..51) and VP9 (0..63)
-/// use different scales.
+/// VideoQuality is ffmpeg's constant-rate factor (lower: better, larger);
+/// two numbers a label, as x264 (0..51) and VP9 (0..63) scale differently.
 enum VideoQuality {
   high("Best", 18, 24),
   balanced("Balanced", 23, 31),
@@ -143,15 +133,11 @@ enum VideoQuality {
   int crfFor(VideoFormat format) => format == VideoFormat.webm ? _vp9 : _h264;
 }
 
-/// renderVideo draws every frame and hands them to ffmpeg.
-///
-/// Raw pixels go down ffmpeg's standard input (see _renderPiped): encoding
-/// each frame as a PNG cost over ten times the drawing. If the pipe fails for
-/// any reason, the frames are written as PNGs to a temporary directory
-/// instead.
-///
-/// Returns null when there is no ffmpeg, when it fails, or when the document
-/// has no frames. The caller reports it; see [ffmpegHelp].
+/// renderVideo draws every frame and hands them to ffmpeg. Raw pixels go
+/// down its standard input (see _renderPiped), as encoding each frame as a
+/// PNG costs over ten times the drawing; if the pipe fails, the frames are
+/// written as PNGs to a temporary directory instead. Null when there is no
+/// ffmpeg, it fails, or the document has no frames; see [ffmpegHelp].
 Future<CanvasExport?> renderVideo(
   CanvasDocument document, {
   double scale = 1,
@@ -160,7 +146,7 @@ Future<CanvasExport?> renderVideo(
   VideoQuality quality = VideoQuality.balanced,
   GifProgress? onProgress,
 
-  /// sound is how its sound is written -- see AudioOptions.videoArgs.
+  /// sound is how its sound is written: see AudioOptions.videoArgs.
   AudioOptions sound = const AudioOptions(),
 
   /// viaFiles skips the pipe and writes every frame as a numbered PNG: the
@@ -260,11 +246,9 @@ Future<CanvasExport?> renderVideo(
   }
 }
 
-/// _renderPiped draws every frame and writes its raw pixels to ffmpeg.
-///
-/// Both of ffmpeg's output pipes are drained from the start, and each frame
-/// is flushed before the next is drawn. Returns null where anything went
-/// wrong, so the caller can fall back to files.
+/// _renderPiped writes every frame's raw pixels to ffmpeg, draining both
+/// its output pipes and flushing each frame; null on any failure, so the
+/// caller falls back to files.
 Future<CanvasExport?> _renderPiped(
   CanvasDocument document, {
   required String ffmpeg,
@@ -280,8 +264,7 @@ Future<CanvasExport?> _renderPiped(
   Directory? work;
   var media = ExportMedia.of(document, scale: scale);
   try {
-    // Raw pixels carry no size, so the first frame is drawn before ffmpeg
-    // starts and kept.
+    // Raw pixels carry no size: the first frame is drawn first, and kept.
     backdrop =
         await ExportBackdrop.prepare(document, scale: scale, images: images);
     var first = await renderFrame(document,
@@ -330,8 +313,7 @@ Future<CanvasExport?> _renderPiped(
             await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
         if (raw == null) throw StateError("no pixels");
         process!.stdin.add(raw.buffer.asUint8List());
-        // Flushed per frame for backpressure; otherwise every drawn frame
-        // queues in memory.
+        // Flushed per frame for backpressure, or every frame queues.
         await process.stdin.flush();
       } finally {
         image.dispose();
@@ -360,8 +342,7 @@ Future<CanvasExport?> _renderPiped(
       if (why.contains("Unknown encoder")) {
         debugPrint("This ffmpeg has no ${format.encoder}: ${format.label} "
             "needs a build that includes it.");
-        // Returns null like any failure, so renderVideo still retries
-        // through files.
+        // Null like any failure, so renderVideo retries via files.
         return null;
       }
       debugPrint("ffmpeg could not write the video: $why");
@@ -391,10 +372,9 @@ Future<CanvasExport?> _renderPiped(
   }
 }
 
-/// _soundArgs is the sound of the media on the timeline as ffmpeg arguments:
-/// the mix rendered to one WAV in [work] (see mix_render.dart) as an input
-/// after the picture's, and how it is encoded. Empty when there is nothing to
-/// hear.
+/// _soundArgs is the timeline's sound as ffmpeg arguments: the mix rendered
+/// to one WAV in [work] (see mix_render.dart), as an input after the
+/// picture's, and how it is encoded. Empty when there is nothing to hear.
 Future<({List<String> inputs, List<String> output})> _soundArgs(
     ExportMedia? media, VideoFormat format, String ffmpeg, String work,
     [AudioOptions sound = const AudioOptions()]) async {
@@ -441,8 +421,7 @@ List<String> _input(CanvasDocument document, String work) => [
 List<String> _encoderArgs(
         CanvasDocument document, VideoFormat format, VideoQuality quality) =>
     [
-      // yuv420p is what QuickTime, phones and browsers play, and 4:2:0 cannot
-      // have an odd dimension.
+      // yuv420p plays everywhere, and 4:2:0 cannot have an odd side.
       "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
       "-pix_fmt", "yuv420p",
       "-c:v", format.encoder,
@@ -467,9 +446,8 @@ String _numbered(int frame) =>
 /// _even is what the scale filter above will have made of a dimension.
 int _even(int side) => math.max(2, side - (side % 2));
 
-/// estimateVideoBytes is a rough guess at a video's size, for the line under
-/// the publish sheet: bytes per pixel at the chosen quality, times the
-/// pixels, times the frames. Orders of magnitude only.
+/// estimateVideoBytes is a rough guess at a video's size: bytes per pixel
+/// at the quality, times pixels, times frames. Orders of magnitude only.
 int estimateVideoBytes(CanvasDocument document,
     {double scale = 1,
     VideoFormat format = VideoFormat.mp4,
@@ -486,8 +464,7 @@ int estimateVideoBytes(CanvasDocument document,
   };
   // VP9 lands around two thirds of x264 at a matched quality.
   if (format == VideoFormat.webm) perPixel *= 0.65;
-  // A canvas animation is mostly still, so frames after the first cost a
-  // fraction of it.
+  // An animation is mostly still: later frames cost a fraction.
   var first = pixels * perPixel;
   var rest = math.max(0, document.playFrames - 1) * pixels * perPixel * 0.15;
   return (first + rest).round() + 40000;

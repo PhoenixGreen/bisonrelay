@@ -17,36 +17,29 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
-// files_panel.dart is the Files tab: the saved canvases, in their folders.
-//
-// A plain listing of a directory, no index, as the post library is: a canvas
-// copied in from elsewhere appears, one deleted outside the app goes. One level
-// of folders. Laid out like the post library's sidebar, so the two lists of
-// files work alike.
-//
-// There is no permanent Save button: a saved canvas saves itself (see
-// CanvasController.scheduleAutosave) and New canvas names its file at once.
-// Only a canvas with no file behind it, such as one started from a preset, gets
-// a Save chip.
+// files_panel.dart is the Files tab: the saved canvases, in their folders,
+// one level deep. A plain listing of a directory, no index, as the post
+// library is, and laid out like it: a canvas copied in appears, one deleted
+// outside the app goes. No permanent Save button: a saved canvas saves
+// itself (CanvasController.scheduleAutosave) and New canvas names its file
+// at once; only a canvas with no file (one from a preset) gets a Save chip.
 
 class CanvasFilesPanel extends StatefulWidget {
   final CanvasController controller;
 
-  /// onOpen is called with a document read from disk. What to do about unsaved
-  /// work in the editor is the screen's decision.
+  /// onOpen is called with a document read from disk; what to do about
+  /// unsaved work in the editor is the screen's decision.
   final Future<void> Function(String folder, String name) onOpen;
 
-  /// onPublish opens the publish sheet for a saved canvas without opening it
-  /// in the editor first.
+  /// onPublish opens the publish sheet for a saved canvas without opening it.
   final void Function(String folder, String name) onPublish;
 
-  /// onNew starts an empty canvas under a name that has already been checked.
-  /// Left to the screen, which owns the question of unsaved work.
+  /// onNew starts an empty canvas under a name already checked, left to the
+  /// screen, which owns the question of unsaved work.
   final Future<void> Function(String folder, String name) onNew;
 
-  /// showing is whether this tab is the one on display. The panel is kept
-  /// alive while hidden (Offstage in canvas_screen.dart), so it reads the
-  /// directory again when it comes back.
+  /// showing is whether this tab is on display. Kept alive while hidden
+  /// (Offstage in canvas_screen.dart), it rereads the directory on return.
   final bool showing;
 
   const CanvasFilesPanel({
@@ -91,10 +84,10 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     super.dispose();
   }
 
-  /// _onControllerChanged redraws the "open" and "unsaved" marks, which follow
-  /// the editor rather than the disk -- only when they change: the editor
-  /// notifies at every frame of play and every step of a drag, and this
-  /// panel is built even while another tab shows.
+  /// _onControllerChanged redraws the "open" and "unsaved" marks, which
+  /// follow the editor rather than the disk, only when they change: the
+  /// editor notifies at every frame of play and every step of a drag, and
+  /// this panel is built even while another tab shows.
   void _onControllerChanged() {
     var now = (controller.folder, controller.name, controller.dirty);
     if (now == _marks) return;
@@ -106,9 +99,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
 
   Future<void> _reload() async {
     var entries = await CanvasStorage.list(_folder);
-    // The folder may have been renamed or deleted since (from another
-    // window, say). An empty listing alone does not prove it, so ask the
-    // top level whether the folder is still there.
+    // The folder may have been renamed or deleted since (from another window,
+    // say). An empty listing alone does not prove it, so ask the top level.
     if (_folder.isNotEmpty && entries.isEmpty) {
       var top = await CanvasStorage.list("");
       if (!top.any((e) => e.isFolder && e.name == _folder)) {
@@ -140,9 +132,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
   Future<bool> _confirm(String title, String message) =>
       askToConfirm(context, title: title, message: message, confirm: "Delete");
 
-  /// _freeName is [wanted] as a file name, or null with the reason said. A
-  /// taken name is refused rather than overwritten: there is no undo for a
-  /// replaced canvas.
+  /// _freeName is [wanted] as a file name, or null with the reason said: a
+  /// taken name is refused, as a replaced canvas cannot be undone.
   Future<String?> _freeName(String wanted, SnackBarModel snackbar) async {
     var clean = CanvasStorage.sanitizeName(wanted);
     if (clean == null) {
@@ -156,9 +147,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     return clean;
   }
 
-  /// _saveNow writes this canvas out, for somebody who would rather not wait
-  /// for the autosave (three seconds of quiet, and on leaving the canvas: see
-  /// CanvasScreen._confirmDiscard).
+  /// _saveNow writes this canvas out now, rather than at the autosave (three
+  /// seconds of quiet, and on leaving: CanvasScreen._confirmDiscard).
   Future<void> _saveNow() async {
     var snackbar = SnackBarModel.of(context);
     var name = controller.name;
@@ -168,8 +158,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     ok ? snackbar.success("Saved $name.") : snackbar.error("Unable to save.");
   }
 
-  /// _saveAs files a canvas that has no file behind it (one started from a
-  /// preset), from the Save chip.
+  /// _saveAs files a canvas with no file behind it, from the Save chip.
   Future<void> _saveAs() async {
     var snackbar = SnackBarModel.of(context);
     var wanted = await _ask("Save canvas as", "Name",
@@ -187,9 +176,9 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await _reload();
   }
 
-  /// _import reads a canvas somebody sent and puts it in the library. Both
-  /// forms (plain document and bundle) go through unpackCanvas. The pictures
-  /// are stored first, so a canvas never appears without its photographs.
+  /// _import reads a canvas somebody sent into the library. Both forms
+  /// (plain document and bundle) go through unpackCanvas. The pictures are
+  /// stored first, so a canvas never appears without its photographs.
   Future<void> _import() async {
     var snackbar = SnackBarModel.of(context);
     var chosen = await FilePicker.platform.pickFiles(
@@ -201,8 +190,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     var at = file?.path;
     if (at == null) return;
 
-    // Read and taken apart off the UI isolate, its size checked first, as a
-    // canvas received in a chat is: a big or crafted file froze the app.
+    // Read and taken apart off the UI isolate, size checked first, as a
+    // canvas from a chat is: a big or crafted file must not freeze the app.
     var bundle = await unpackCanvasFile(File(at));
     if (!mounted) return;
     if (bundle == null) {
@@ -285,8 +274,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       return;
     }
     await CanvasStorage.delete(entry.folder, entry.name);
-    // What only that canvas used goes with it, except assets, which stay
-    // in the library until removed there.
+    // What only that canvas used goes with it; assets stay in the library.
     unawaited(CanvasLibrary.tidy(open: {
       ...controller.document.assetIds,
       ...controller.document.mediaIds,
@@ -294,9 +282,9 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await _reload();
   }
 
-  /// _move asks which folder a canvas should go to, and puts it there. A
-  /// dialog rather than a drag onto a folder row: there are only a handful
-  /// of destinations, and a drag onto a row is easy to miss.
+  /// _move asks which folder a canvas should go to, and puts it there: a
+  /// dialog rather than a drag onto a folder row, since there are only a
+  /// handful of destinations and a row is easy to miss.
   Future<void> _move(CanvasEntry entry) async {
     var snackbar = SnackBarModel.of(context);
     var folders = await CanvasStorage.folderNames();
@@ -318,8 +306,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, folder),
               child: Row(children: [
-                // The library itself, outside every folder: "Top level", not the
-                // section's own name, which read as one more folder.
+                // The library itself, outside every folder: "Top level",
+                // not the section's name, which reads as another folder.
                 Icon(
                     folder.isEmpty
                         ? Icons.home_outlined
@@ -396,8 +384,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (_folder.isNotEmpty)
         Material(
-          // Its own Material inside the list: the sidebar's let the highlight
-          // spill over other sections and stay put when the list scrolled.
+          // Its own Material inside the list: the sidebar's would let the
+          // highlight spill over other sections and stay put on scroll.
           type: MaterialType.transparency,
           child: InkWell(
             onTap: () {
@@ -440,8 +428,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     itemCount: _entries.length,
                     onReorderItem: _reorder,
-                    // The drag starts from the row's own button: a hold anywhere on the
-                    // row would take the place of the tap that opens the canvas.
+                    // The drag starts from the row's own button: a hold
+                    // anywhere would take the tap that opens the canvas.
                     buildDefaultDragHandles: false,
                     itemBuilder: (context, i) => _row(theme, _entries[i], i),
                   ),
@@ -451,8 +439,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     ]);
   }
 
-  /// _actions is the bar along the bottom: the things that make something new,
-  /// below the list as in the post library.
+  /// _actions is the bar along the bottom: the things that make something
+  /// new, below the list as in the post library.
   Widget _actions(ThemeNotifier theme) => Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -465,9 +453,9 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             _action(theme, Icons.save_outlined, "Save canvas", _saveAs)
           else
             _action(theme, Icons.add_box_outlined, "New canvas", _newCanvas),
-          // Icons only, for the least used. Save stays even though a saved
-          // canvas writes itself out: the autosave is invisible, and a button
-          // that says the work is on disk is still worth having.
+          // Icons only, for the least used. Save stays though a saved canvas
+          // writes itself out: the autosave is invisible, and a button that
+          // says the work is on disk is still worth having.
           if (controller.name != null)
             _iconAction(theme, Icons.save_outlined,
                 controller.dirty ? "Save now" : "Saved", _saveNow),
@@ -479,7 +467,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         ]),
       );
 
-  /// _iconAction is a chip with no words, for an action whose icon says it. A
+  /// _iconAction is a chip with no words, for an action its icon says. A
   /// Tooltip is safe here, outside the reorderable rows (see _rowButton).
   Widget _iconAction(ThemeNotifier theme, IconData icon, String tooltip,
           VoidCallback onTap) =>
@@ -502,8 +490,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         onPressed: onTap,
       );
 
-  /// _reorderHint says once, under the list, that rows can be held and moved:
-  /// a tooltip inside a reorderable row is not possible (see _rowButton).
+  /// _reorderHint says once, under the list, that rows can be held and
+  /// moved: a tooltip inside a reorderable row is not possible.
   Widget? _reorderHint(ThemeNotifier theme) {
     if (_entries.length < 2) return null;
     return Padding(
@@ -516,8 +504,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
   }
 
   /// _reorder writes the new order down (CanvasStorage.saveOrder, which the
-  /// listing reads back). Folders move too; the order file marks folders, so a
-  /// folder and a canvas of the same name cannot swap places.
+  /// listing reads back). The order file marks folders, so a folder and a
+  /// canvas of the same name cannot swap places.
   Future<void> _reorder(int from, int to) async {
     if (from < 0 || from >= _entries.length) return;
     var entries = [..._entries];
@@ -528,9 +516,9 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await CanvasStorage.saveOrder(_folder, entries);
   }
 
-  /// _newCanvas starts the empty preset, the same "new canvas" as on the
-  /// Presets tab, and names it at once: a canvas with a file saves itself from
-  /// then on, and a taken name is found before the work rather than after.
+  /// _newCanvas starts the empty preset (the Presets tab's "new canvas") and
+  /// names it at once: a canvas with a file saves itself from then on, and a
+  /// taken name is found before the work rather than after.
   Future<void> _newCanvas() async {
     var snackbar = SnackBarModel.of(context);
     var wanted = await _ask("New canvas", "Name");
@@ -597,22 +585,18 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     );
   }
 
-  /// _rowButton is the one control at the end of a row: tap it for the menu,
-  /// hold it to drag the row.
-  ///
-  /// It must have no Tooltip. A Tooltip is an OverlayPortal, and reordering
-  /// moves a row's element rather than rebuilding it, which re-attaches the
-  /// overlay child mid-layout: the framework refuses and the sidebar becomes a
-  /// red error box. _reorderHint says what the tooltip would have.
+  /// _rowButton is the one control at a row's end: tap for the menu, hold
+  /// to drag the row. It must have no Tooltip: a Tooltip is an
+  /// OverlayPortal, and reordering moves a row's element, re-attaching the
+  /// overlay child mid-layout, which the framework refuses.
   Widget _rowButton(ThemeNotifier theme, CanvasEntry entry, int index) {
     var button = Builder(
-      // A Builder so the menu is anchored to this button: the State's own
-      // context is the whole sidebar.
+      // A Builder, so the menu anchors here, not to the whole sidebar.
       builder: (buttonContext) => Semantics(
         button: true,
         label: "More — press and hold to move",
         child: GestureDetector(
-          // Opaque, so the tap stops here rather than reaching the row's own
+          // Opaque, so the tap stops here rather than reaching the row's
           // InkWell and opening the canvas under the menu.
           behavior: HitTestBehavior.opaque,
           onTap: () => _openRowMenu(buttonContext, entry),
@@ -632,9 +616,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     );
   }
 
-  /// _saveAsPreset keeps a saved canvas in the Presets sidebar, read from the
-  /// file rather than the editor, so it is the saved version even while
-  /// something else is open (as publishing does).
+  /// _saveAsPreset keeps a saved canvas in the Presets sidebar, read from
+  /// the file, so it is the saved version even while another is open.
   Future<void> _saveAsPreset(CanvasEntry entry) async {
     var snackbar = SnackBarModel.of(context);
     var name = await askForPresetName(context, "Save this canvas as a preset",
@@ -653,9 +636,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     snackbar.success("Saved ${saved.name} to Presets › Canvas.");
   }
 
-  /// _openRowMenu shows the row's menu under the button that was tapped:
-  /// showMenu by hand, because a PopupMenuButton wraps itself in a Tooltip
-  /// (see _rowButton).
+  /// _openRowMenu shows the row's menu under its button, by hand, since a
+  /// PopupMenuButton wraps itself in a Tooltip (see _rowButton).
   Future<void> _openRowMenu(
       BuildContext buttonContext, CanvasEntry entry) async {
     var box = buttonContext.findRenderObject() as RenderBox?;
@@ -681,8 +663,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             ]
           : const [
               PopupMenuItem(value: "publish", child: Text("Publish…")),
-              // A copy of the file as it is now: later edits leave the preset as it
-              // was.
+              // A copy of the file now: later edits leave the preset be.
               PopupMenuItem(
                   value: "preset", child: Text("Save canvas as preset")),
               PopupMenuItem(value: "duplicate", child: Text("Duplicate")),

@@ -44,22 +44,19 @@ import 'package:bruig/plugin_system/canvas/ui/score/score_studio.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // canvas_screen.dart is the Canvas section: a sidebar, the canvas, a settings
-// band above it and a timeline below. It exists only while the Canvas
-// feature is turned on (see canvas_nav.dart). The band and the timeline
-// belong to the canvas rather than the sidebar, so they are inside the
-// content area and stop at its edges.
+// band above it and a timeline below, present only while the Canvas feature
+// is on (see canvas_nav.dart). The band and timeline belong to the canvas,
+// so they sit inside the content area and stop at its edges.
 
-/// startsWithSettingsOpen is whether a canvas just started should open with
-/// the canvas settings line already out: when nothing is on it yet, since
-/// the page's shape and export width are decided before anything is put on
-/// it. A preset arrives with its shape chosen and something drawn in it.
-/// allScenes rather than scenes: a document with one scene keeps its
-/// elements on the document and leaves the list empty.
+/// startsWithSettingsOpen is whether a new canvas opens with the canvas
+/// settings line out: when nothing is on it yet, since its shape and export
+/// width are decided first. A preset arrives with both. allScenes, not
+/// scenes: a one-scene document keeps its elements on the document.
 bool startsWithSettingsOpen(CanvasDocument document) =>
     document.allScenes.every((scene) => scene.elements.isEmpty);
 
-/// CanvasScreenTitle is the page heading, which follows the menu: renaming the
-/// destination in Settings > Appearance > Menu renames the heading too.
+/// CanvasScreenTitle is the page heading, which follows the menu's name for
+/// the destination (Settings > Appearance > Menu).
 class CanvasScreenTitle extends StatelessWidget {
   const CanvasScreenTitle({super.key});
 
@@ -79,20 +76,16 @@ class CanvasScreen extends StatefulWidget {
 }
 
 class _CanvasScreenState extends State<CanvasScreen> {
-  /// _controller holds the editing session, and it outlives this page: read
-  /// from the provider and not disposed here, so leaving Canvas for a chat and
-  /// coming back finds the same document, selection, zoom, frame and undo
-  /// history, unsaved edits included.
+  /// _controller holds the editing session and outlives this page: read from
+  /// the provider, not disposed here, so leaving Canvas and coming back finds
+  /// the same document, selection, zoom, frame and undo history.
   late final CanvasController _controller = context.read<CanvasController>();
 
   final GlobalKey<CanvasStageState> _stageKey = GlobalKey<CanvasStageState>();
 
-  /// _sidebars is how the sidebar is set out (see sidebar_layout.dart):
-  /// shown or not and how, which sidebar is on show, and their panels. Kept
-  /// in the preferences as it changes.
+  /// _sidebars is how the sidebar is set out (sidebar_layout.dart), kept.
   late SidebarLayout _sidebars;
 
-  /// _bodies are the sidebar panels' bodies, built once each.
   late final SidebarPanelBodies _bodies = SidebarPanelBodies(
     controller: _controller,
     onOpen: _open,
@@ -106,60 +99,50 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// which the controller mutates and replaces.
   String _selectionRevision = "";
 
-  /// _sidebarVisible is whether the sidebar is showing, one way or the other.
-  /// the Writing page's: hiding it is "give me the width for a minute".
+  /// _sidebarVisible is whether the sidebar is showing, one way or another.
   bool get _sidebarVisible =>
       _audioKind ? _audioSidebarShown : _sidebars.mode != SidebarMode.hidden;
 
   /// _audioSidebarShown is whether an audio document's sidebar is out: shut
-  /// to begin with, and always full height, as its panels fill the page.
-  /// For this session, so it leaves the sidebar of a design as it was.
+  /// at first, always full height, and for this session only, so a design's
+  /// sidebar is left as it was.
   bool _audioSidebarShown = false;
 
-  /// _aboveAllowed is whether the sidebar can sit above the bottom panels:
-  /// only with the canvas on screen beside it.
+  /// _aboveAllowed: the sidebar sits above the panels only beside a canvas.
   bool get _aboveAllowed => _shown && !_audioKind;
 
-  /// _canvasSettingsOpen is whether the canvas settings line is out. Closed
-  /// to begin with: the ratio and export width are set once and then rarely
-  /// touched.
+  /// _canvasSettingsOpen is whether the canvas settings line is out.
   bool _canvasSettingsOpen = false;
 
-  /// _guidesOpen is whether the grid and guides line is out. Only one of the
-  /// two lines at a time: they open in the same place.
+  /// _guidesOpen is whether the grid and guides line is out; the two lines
+  /// share a place, so only one opens at a time.
   bool _guidesOpen = false;
 
-  /// _timelineOpen is whether the transport and the strip under the canvas
-  /// are showing: off to begin with and then whatever it was left as (see
-  /// CanvasPreferences.timeline), since most canvases are still designs.
+  /// _timelineOpen is whether the transport and strip under the canvas show:
+  /// off at first, then as left (CanvasPreferences.timeline).
   bool _timelineOpen = false;
 
   /// _canvasShown is whether the canvas is on screen. Put away, it is kept
-  /// (its zoom, selection, tools) but neither drawn nor touched, and the
-  /// mixer and effects fill the room. For this session.
+  /// but neither drawn nor touched, and the panels fill the room. Per session.
   bool _canvasShown = true;
 
-  /// _audioKind is an audio document: worked on the timeline and the
-  /// mixer, so its timeline is always out.
+  /// _audioKind is an audio document, whose timeline is always out.
   bool get _audioKind => _controller.document.kind.isAudio;
 
-  /// _noCanvas is a document with no picture (Ratio "None"), whose canvas
-  /// is away for good.
+  /// _noCanvas is a document with no picture (Ratio "None").
   bool get _noCanvas => _audioKind && !_controller.document.hasCanvas;
   bool get _shown => _canvasShown && !_noCanvas && !_controller.chainFull;
   bool get _timelineShown => _timelineOpen || _audioKind;
 
-  /// _dockOpen is whether any panel under the canvas is open.
   bool get _dockOpen => DockPanel.values.any(_controller.dockOpen);
 
-  /// _dockRoom is the room the panels under the canvas have: everything
-  /// under the settings bar and over the play bar, less what of the canvas
-  /// stays in view while it is shown.
+  /// _dockRoom is the panels' room: from the settings bar to the play bar,
+  /// less what of the canvas stays in view while shown.
   double get _dockRoom => math.max(
       0.0, _pageSeen - _topSeen - dockBarHeight - (_shown ? canvasLeast : 0));
 
-  /// _keepDock keeps where the panels open, as it changes: only when it
-  /// has, since this hears every change, which playing is every frame.
+  /// _keepDock keeps where the panels open, only when it has changed: this
+  /// hears every change, which playing is every frame.
   void _keepDock() {
     if (identical(_controller.dock, _dockKept)) return;
     _dockKept = _controller.dock;
@@ -168,8 +151,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   DockLayout? _dockKept;
 
-  /// _viewKey is the canvas whose view (see CanvasController.canvasView) is
-  /// being kept, by its folder and name; null for one never saved.
+  /// _viewKey is the folder and name of the canvas whose view is kept;
+  /// null for one never saved.
   String? _viewKey;
   bool _viewKeyKnown = false;
   Timer? _keepTimer;
@@ -178,19 +161,19 @@ class _CanvasScreenState extends State<CanvasScreen> {
       ? null
       : "${_controller.folder ?? ""}/${_controller.name}";
 
-  /// _keepPanels keeps how the panels were left (see panelState and
-  /// canvasView) a moment after they change, not on every change, which while
-  /// playing is every frame. When another canvas opens, the last one's view is
-  /// kept and its own put back.
+  /// _keepPanels keeps how the panels were left (panelState, canvasView) a
+  /// moment after they change, not on every change: playing is every frame.
+  /// When another canvas opens, the last one's view is kept and its own put
+  /// back.
   void _keepPanels() {
     var key = _canvasKey;
     if (!_viewKeyKnown || key != _viewKey) {
       if (_viewKeyKnown) _savePanels();
       _viewKeyKnown = true;
       _viewKey = key;
-      // As it was left or, one never looked at, as it starts (not the last
-      // canvas's channels and zoom). After this change has been told:
-      // putting it back tells again.
+      // As left, or as it starts for one never looked at -- not the last
+      // canvas's channels and zoom. After this change was told: putting it
+      // back tells again.
       var view = key == null ? null : _prefs.canvasView(key);
       scheduleMicrotask(() {
         if (mounted && _canvasKey == key) {
@@ -217,8 +200,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
-  /// _prefs is the preferences, taken once: they are kept as the page is
-  /// left, when looking them up is no longer allowed.
+  /// _prefs is taken once: it is kept as the page is left, when looking it
+  /// up is no longer allowed.
   late final CanvasPreferences _prefs =
       Provider.of<CanvasPreferences>(context, listen: false);
 
@@ -231,8 +214,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (push != null && push.session) push.refresh();
   }
 
-  /// _keepShown saves which timeline rows are showing whenever one is shown
-  /// or hidden: the preferences skip a value that has not changed.
+  /// _keepShown saves which timeline rows show; unchanged values are skipped.
   void _keepShown() {
     var prefs = Provider.of<CanvasPreferences>(context, listen: false);
     prefs.cuesShown = _controller.cuesShown;
@@ -274,28 +256,26 @@ class _CanvasScreenState extends State<CanvasScreen> {
         _open(folder, name);
       }
     });
-    // Returning to a page left where the settings are counts as having
-    // used them.
+    // Returning to a page left on the settings counts as having used them.
     _designUsed =
         _sidebars.byId(_sidebars.current)?.panels.contains("settings") == true;
     _timelineOpen = prefs.timeline;
-    // The frame the reader last chose, before anything is drawn. It belongs
-    // to them rather than the document (see CanvasPreferences.fit). restoreFit
-    // rather than the setter, which notifies: notifying a provided controller
-    // inside initState marks an inherited widget dirty mid-build.
+    // The frame the reader last chose, before anything is drawn: theirs, not
+    // the document's (CanvasPreferences.fit). restoreFit, not the setter:
+    // notifying a provided controller in initState marks an inherited widget
+    // dirty mid-build.
     for (var fit in CanvasFit.values) {
       if (fit.name == prefs.fit) _controller.restoreFit(fit);
     }
     _controller.restoreShown(cues: prefs.cuesShown);
-    // The mixer as it was left: its bands, its returns, its height and the
-    // effects panel's.
+    // The mixer as left: bands, returns, its height and the effects panel's.
     _controller.restoreMixer(prefs.mixerBands, prefs.returnsShown);
     _controller.restoreMixerLook(prefs.mixerLook);
     // Where the panels open, as left, before which are open.
     _controller.restoreDock(prefs.dock);
-    // On the first visit of the session only: after it, the controller
-    // already holds how the panels were left and what was being worked on,
-    // and reopening the last saved file would throw away unsaved edits.
+    // First visit of the session only: after it, the controller holds the
+    // panels and the work, and reopening the last saved file would throw
+    // away unsaved edits.
     if (!_controller.opened) _controller.restorePanels(prefs.panels);
     if (!_controller.opened) _reopenLast(prefs);
     _controller.markOpened();
@@ -308,14 +288,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _controller.addListener(_keepDock);
     _keepPanels();
     // A text element can take its words from the Writing library, edited
-    // elsewhere, so while this page is open those documents are re-read every
-    // few seconds. A canvas with none does no work. See TextDocumentWatch.
+    // elsewhere, so those documents are re-read every few seconds while this
+    // page is open; a canvas with none does no work.
     _documents = TextDocumentWatch(_controller)..start();
   }
 
-  /// _reopenLast puts back whatever was open when the page was last left.
-  /// It fails quietly: the file may have gone, and an empty canvas is a fine
-  /// place to start.
+  /// _reopenLast puts back what was open when the page was left, failing
+  /// quietly: the file may be gone.
   Future<void> _reopenLast(CanvasPreferences prefs) async {
     if (prefs.lastName.isEmpty) return;
     var document = await CanvasStorage.load(prefs.lastFolder, prefs.lastName);
@@ -327,8 +306,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// the controller notifies on every edit, and the stage, band and timeline
   /// all listen for themselves.
   void _onSelectionChanged() {
-    // Whatever the frame has ended up as, written down: this is the one
-    // place that sees every way it can change, the keyboard included.
+    // Written down here, the one place that sees every way the frame can
+    // change, the keyboard included.
     var prefs = Provider.of<CanvasPreferences>(context, listen: false);
     if (prefs.fit != _controller.fit.name) prefs.fit = _controller.fit.name;
 
@@ -338,14 +317,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (next == _selectionRevision) return;
     if (!mounted) return;
 
-    // Choosing something on the canvas goes to the Design tab, where its
-    // settings are. Only when something has been chosen (clearing must not
-    // leave the file list), and only once the reader has been to Design this
-    // session (see _designUsed).
+    // Choosing something goes to the Design tab, where its settings are --
+    // only on a choice (clearing must not leave the file list), and only once
+    // Design has been used this session (_designUsed).
     var chose = next.isNotEmpty && next != _selectionRevision;
     setState(() => _selectionRevision = next);
-    // Not from the Game panel, which shows what is chosen too: its game
-    // settings.
+    // Not from the Game panel, which shows the chosen element's game settings.
     if (chose &&
         _designUsed &&
         _sidebars.current != _holding("settings") &&
@@ -354,12 +331,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
-  /// _gameSeen is whether the canvas was a game when last looked at.
   bool _gameSeen = false;
 
-  /// _followGame opens the Game panel as the canvas is made into a game (the
-  /// Make game button in the bar) and goes back to Design as it stops being
-  /// one.
+  /// _followGame opens the Game panel as the canvas becomes a game, and goes
+  /// back to Design as it stops being one.
   void _followGame() {
     var game = _controller.document.game;
     if (game == _gameSeen || !mounted) return;
@@ -394,39 +369,32 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _keepTimer?.cancel();
     _savePanels();
     // Everything the page set going stops when it is left (see leavePage):
-    // the session goes on, but a canvas nobody is looking at would have no
-    // off switch on screen. Just after this frame: stopping notifies
-    // watchers, some of which are being taken down in this frame with the
-    // tree locked.
+    // a canvas nobody is looking at has no off switch on screen. Just after
+    // this frame: stopping notifies watchers, some being taken down in this
+    // frame with the tree locked.
     var controller = _controller;
     scheduleMicrotask(controller.leavePage);
     // Not disposed: the session outlives this page (see _controller).
     super.dispose();
   }
 
-  /// _documents re-reads the Writing library documents this canvas draws.
   TextDocumentWatch? _documents;
 
-  /// _designUsed is whether the Design tab has been opened this session,
-  /// however it was reached. It gates the automatic switch to it: see
-  /// _onSelectionChanged.
+  /// _designUsed is whether Design has been opened this session; it gates
+  /// the switch to it in _onSelectionChanged.
   bool _designUsed = false;
 
   /// _holding is the sidebar [panel] is in, or the first there is.
   String _holding(String panel) =>
       _sidebars.sidebarOf(panel)?.id ?? _sidebars.sidebars.first.id;
 
-  /// _showPanel shows the sidebar [panel] is in.
   void _showPanel(String panel) => _showSidebar(_holding(panel));
 
-  /// _showSidebar shows sidebar [id].
   void _showSidebar(String id) => _setSidebars(_sidebars.copyWith(current: id));
 
-  /// _setSidebars is the sidebar set out as [next], kept.
   void _setSidebars(SidebarLayout next) {
     if (!mounted) return;
-    // An audio document's sidebar is shown or put away for the session,
-    // its place left as it was for the designs.
+    // An audio document's sidebar is per session; a design's is kept.
     if (_audioKind && next.mode == SidebarMode.hidden) {
       setState(() => _audioSidebarShown = false);
       return;
@@ -438,16 +406,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _prefs.sidebars = next;
   }
 
-  /// _customise opens the sidebars' settings.
   void _customise() => showCustomiseSidebars(context,
       controller: _controller, read: () => _sidebars, write: _setSidebars);
 
-  /// _confirmDiscard keeps unsaved work, and asks only where it cannot. Called
-  /// before opening a different canvas and before starting from a preset.
-  ///
-  /// A canvas with a file of its own is saved rather than asked about: it
-  /// autosaves anyway (see CanvasController.scheduleAutosave). Only a canvas
-  /// never saved, or one whose save fails, gets the question.
+  /// _confirmDiscard keeps unsaved work before another canvas or a preset
+  /// opens, asking only where it cannot: a canvas with a file is saved (it
+  /// autosaves anyway); only one never saved, or whose save fails, is asked.
   Future<bool> _confirmDiscard() async {
     if (!_controller.dirty) return true;
     if (_controller.name != null && await _controller.save()) return true;
@@ -476,15 +440,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
-  /// _newCanvas starts an empty one, already filed under [name]. Saved at
-  /// once, so it autosaves from then on (see
-  /// CanvasController.scheduleAutosave) and Files needs no Save button.
+  /// _newCanvas starts an empty canvas filed under [name], saved at once so
+  /// it autosaves from then on and Files needs no Save button.
   Future<void> _newCanvas(String folder, String name) async {
     var snackbar = SnackBarModel.of(context);
     if (!await _confirmDiscard()) return;
 
-    // The empty preset rather than a bare CanvasDocument, so this and the
-    // Presets tab's "Empty canvas" are the same thing.
+    // The empty preset, so this and the Presets tab's "Empty canvas" match.
     _controller.load(emptyCanvas().copyWith(title: name));
     var saved = await _controller.saveAs(folder, name);
     if (!mounted) return;
@@ -499,8 +461,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _openCanvasSettings();
   }
 
-  /// _openCanvasSettings puts the canvas settings line out, for a canvas
-  /// starting from nothing (see startsWithSettingsOpen).
+  /// _openCanvasSettings puts the settings line out for a canvas starting
+  /// from nothing.
   void _openCanvasSettings() {
     if (!mounted) return;
     setState(() {
@@ -510,9 +472,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     });
   }
 
-  /// _openPreset starts a new canvas from a preset. The document is handed in
-  /// already built, so editing the new canvas cannot change the panel's
-  /// thumbnail.
+  /// _openPreset starts a new canvas from a preset, handed in already built
+  /// so editing it cannot change the panel's thumbnail.
   Future<void> _openPreset(
       CanvasPreset? preset, CanvasDocument document) async {
     if (!await _confirmDiscard()) return;
@@ -534,8 +495,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
       snackbar.error("Unable to read $name.");
       return;
     }
-    // Published from the file rather than from the editor, so "publish that
-    // one" means the saved version even when something else is open.
+    // From the file, not the editor: "publish that one" means the saved
+    // version even when something else is open.
     await showPublishSheet(
       context,
       document: document,
@@ -574,8 +535,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   ? _codeStudioPage(context, code)
                   : _withoutCodeStudio(context)));
 
-  /// _dataStudioPage is the Data Studio, given the whole page in place of
-  /// the canvas: see data_studio.dart.
+  /// _dataStudioPage is the Data Studio in place of the canvas.
   Widget _dataStudioPage(BuildContext context, String sheet) {
     var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
@@ -600,8 +560,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       ? _studio3dPage(context)
                       : _canvasPage(context)));
 
-  /// _codeStudioPage is the Code Studio, given the whole page in place of
-  /// the canvas: see code_studio.dart.
+  /// _codeStudioPage is the Code Studio in place of the canvas.
   Widget _codeStudioPage(BuildContext context, String code) {
     var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
@@ -615,8 +574,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 onDone: _controller.closeCodeStudio)));
   }
 
-  /// _scoreStudioPage is the Score Studio, given the whole page in place of
-  /// the canvas: see score_studio.dart.
+  /// _scoreStudioPage is the Score Studio in place of the canvas.
   Widget _scoreStudioPage(BuildContext context, String score) {
     var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
@@ -630,8 +588,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 onDone: _controller.closeScoreStudio)));
   }
 
-  /// _studio3dPage is the Character Studio, given the whole page in place of
-  /// the canvas: see character_studio_3d.dart.
+  /// _studio3dPage is the Character Studio in place of the canvas.
   Widget _studio3dPage(BuildContext context) {
     var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
@@ -663,12 +620,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
       canSitAbove: _aboveAllowed,
     );
 
-    // Hidden means nothing beside the canvas. Not through
-    // SecondarySideMenuLayout, which would put its own sidebar back where the
-    // panel had been. The Writing page does the same. Above the panels
-    // under the canvas, it is the content's own, beside the canvas and over
-    // the panels -- except on a window too narrow for a sidebar at all,
-    // where it goes the way a full-height one does.
+    // Hidden means nothing beside the canvas -- not via
+    // SecondarySideMenuLayout, which would put its own sidebar back, as the
+    // Writing page also avoids. Above the panels, the sidebar is the
+    // content's own, except on a window too narrow for one, where it goes
+    // the way a full-height one does.
     var narrow = MediaQuery.sizeOf(context).width < kSidebarCollapseWidth;
     if (!_sidebarVisible) return ScreenWithChatSideMenu(client, content);
     if (_sidebars.mode == SidebarMode.above && !narrow && _aboveAllowed) {
@@ -685,10 +641,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
       SecondarySideMenuLayout(
         storageKey: "canvas",
         list: sidebar,
-        // The collapsed drawer rebuilds the sidebar from a stored builder and
-        // has no other way to know that what it shows has changed: which
-        // sidebar, and what is selected (the Layers panel shows its
-        // settings).
+        // The collapsed drawer rebuilds from a stored builder and cannot
+        // otherwise know which sidebar or selection it shows has changed.
         sidebarRevision: (
           _sidebars.current,
           _selectionRevision,
@@ -703,8 +657,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   late double _aboveWidth =
       _prefs.sidebarAboveWidth > 0 ? _prefs.sidebarAboveWidth : 300;
 
-  /// _besideSidebar is the sidebar in the content, left of the canvas and
-  /// over the panels, its right edge dragged to make it wider or narrower.
+  /// _besideSidebar is the sidebar left of the canvas and over the panels,
+  /// its right edge dragged to resize it.
   Widget _besideSidebar(ThemeNotifier theme, Widget sidebar) =>
       Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SizedBox(
@@ -729,12 +683,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
         ),
       ]);
 
-  /// _topSeen and _pageSeen are the heights of the band with the strip under
-  /// it, and of the whole page, when last laid out, for the timeline to fit
-  /// between. See _Measured. Reported by the page rather than read from a
-  /// LayoutBuilder or GlobalKeys: the sidebar's own LayoutBuilder moves this
-  /// page about, and rebuilding it mid-layout takes its tooltips with it,
-  /// which asserts.
+  /// _topSeen and _pageSeen are the heights of the band with its strip, and
+  /// of the whole page, at last layout, for the timeline to fit between (see
+  /// _Measured). Reported, not read from a LayoutBuilder or GlobalKeys: the
+  /// sidebar's LayoutBuilder moves this page, and rebuilding it mid-layout
+  /// takes its tooltips with it, which asserts.
   double _topSeen = 48;
   double _pageSeen = double.infinity;
 
@@ -749,10 +702,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
-  /// _canvasAway is what is in the canvas's room while it is put away: behind
-  /// the panels, which fill it as they do over the canvas, or, with neither
-  /// the mixer nor the effects open, a word on where they are and the way
-  /// back.
+  /// _canvasAway fills the canvas's room while it is away: the panels, or a
+  /// word on where they are and the way back.
   Widget _canvasAway(ThemeNotifier theme) => ColoredBox(
         key: const ValueKey("canvasAway"),
         color: theme.colors.surface,
@@ -823,8 +774,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                           Provider.of<CanvasPreferences>(context, listen: false)
                               .timeline = _timelineOpen;
                         }),
-                        // Only while the sidebar is away; on the band, with every other control
-                        // on this page.
+                        // Only while the sidebar is away; on the band, with
+                        // every other control on this page.
                         onShowSidebar: _sidebarVisible
                             ? null
                             : _audioKind
@@ -849,8 +800,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   // stage's state and stops it painting and being hit.
                   child: Offstage(
                     offstage: !_shown,
-                    // The whole canvas area is a drop target, so an element dragged out of
-                    // the sidebar lands where it was let go.
+                    // The whole canvas area is a drop target: an element
+                    // dragged from the sidebar lands where it was let go.
                     child: DragTarget<ElementKind>(
                       onAcceptWithDetails: (details) {
                         var stage = _stageKey.currentState;
@@ -864,8 +815,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                         ));
                       },
                       builder: (context, candidate, rejected) =>
-                          // And an asset from the Assets sidebar, or a stock result (fetched when
-                          // it lands), becomes the element that shows it, where it was let go.
+                          // An asset or stock result (fetched as it lands)
+                          // becomes the element showing it, where let go.
                           DragTarget<Object>(
                         onWillAcceptWithDetails: (d) =>
                             droppedKind(d.data) != null,
@@ -888,11 +839,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
                           color: candidate.isEmpty && assets.isEmpty
                               ? null
                               : theme.colors.primary.withValues(alpha: 0.06),
-                          // Each part of the page in a layer of its own
-                          // (here and below): the stage redraws at every
-                          // frame of play, and without these the timeline,
-                          // the mixer and the sidebar were redrawn with
-                          // it.
+                          // Each part of the page in its own layer (here and
+                          // below): the stage redraws every frame of play,
+                          // and must not take the timeline, mixer and
+                          // sidebar with it.
                           child: RepaintBoundary(
                             child: CanvasStage(
                               key: _stageKey,
@@ -906,8 +856,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   ),
                 ),
                 if (!_shown) Positioned.fill(child: _canvasAway(theme)),
-                // The tool in hand on a picture, and what to do with it, over the top
-                // of the canvas where the eye is: see image_tool_hint.dart.
+                // The tool in hand on a picture, and what to do with it, over
+                // the canvas: see image_tool_hint.dart.
                 if (_shown)
                   Positioned(
                     top: 10,
@@ -917,8 +867,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                         child:
                             Column(mainAxisSize: MainAxisSize.min, children: [
                       ImageToolHint(controller: _controller),
-                      // A drawing's hint as well: only one is ever being edited. (A
-                      // character is drawn in the Character Studio, with its own bar.)
+                      // A drawing's hint as well: only one is edited at once.
                       VectorToolHint(controller: _controller),
                     ])),
                   ),
@@ -945,8 +894,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         },
       );
 
-  /// _publish opens the publish sheet for whatever is in the editor, from the
-  /// settings band's Publish button.
+  /// _publish opens the publish sheet for what is in the editor.
   void _publish() => showPublishSheet(
         context,
         document: _controller.document,
@@ -961,21 +909,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
 /// short: the timeline gives way rather than pushing it out.
 const double canvasLeast = 120;
 
-/// canvasSecondLine is the strip that opens under the band: the canvas
-/// settings, or the grid and guides. Above the canvas rather than over it,
-/// so it pushes the design down instead of covering its top edge, as the
-/// timeline does at the bottom. A list of its own so a test can see where
-/// it sits in the column.
+/// canvasSecondLine is the strip under the band: canvas settings, or grid
+/// and guides. Above the canvas, not over it, so it pushes the design down
+/// rather than covering its top. A list so a test can see where it sits.
 List<Widget> canvasSecondLine({Widget? settings, Widget? guides}) => [
       if (settings != null) settings,
-      // Never both at once, which the two toggles see to; if one gets through,
-      // the settings win.
+      // Never both; if one gets through, the settings win.
       if (settings == null && guides != null) guides,
     ];
 
-/// _PageLayout lays the page out: [top] (the settings band) as tall as it
-/// is, [bottom] (the dock) as tall as it is under it, and [middle] (the
-/// canvas) in what is left between, never less than nothing.
+/// _PageLayout lays out [top] (the settings band) and [bottom] (the dock)
+/// at their heights, and [middle] (the canvas) in what is left, never less
+/// than nothing.
 class _PageLayout extends MultiChildLayoutDelegate {
   static const top = 0, middle = 1, bottom = 2;
 
@@ -998,9 +943,8 @@ class _PageLayout extends MultiChildLayoutDelegate {
   bool shouldRelayout(_PageLayout oldDelegate) => false;
 }
 
-/// _Measured tells [onHeight] its child's height whenever layout changes it,
-/// after the frame, so the change is a build of its own, not one in the
-/// middle of layout.
+/// _Measured tells [onHeight] its child's height when layout changes it,
+/// after the frame, so the change is a build of its own, not mid-layout.
 class _Measured extends SingleChildRenderObjectWidget {
   final ValueChanged<double> onHeight;
   const _Measured({required this.onHeight, required super.child});

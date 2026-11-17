@@ -1,8 +1,6 @@
 part of '../canvas_controller.dart';
 
-// A canvas played as a game, and practising.
-// Part of CanvasController: the state is the class's, in
-// canvas_controller.dart; these are its methods.
+// A canvas played as a game, and practising. Part of CanvasController.
 
 extension CanvasGame on CanvasController {
   /// gameTabOpen is whether the Game tab is showing: the stage draws what a
@@ -16,22 +14,20 @@ extension CanvasGame on CanvasController {
   }
 
   /// gaming is whether the canvas is being played as a game: what is set to
-  /// be played answers the keys and the controllers, and the view follows
-  /// the player. See canvas_game.dart.
+  /// be played answers keys and controllers, and the view follows the
+  /// player. See canvas_game.dart.
   bool get gaming => _game != null;
 
-  /// game is the game going, or null.
   GameRun? get game => _game;
 
-  /// gameView is the canvas as the game has it now, for the stage to draw
-  /// -- or null, not playing.
+  /// gameView is the canvas as the game has it now, for the stage to draw,
+  /// or null when not playing.
   CanvasDocument? get gameView => _gameView;
 
   /// gameFraming is how a game frames the page: the view following its
-  /// player as close as it asks (GameRun.framing), with the scene's Camera
-  /// on it -- its push in, its shake, moving round the player -- or the
-  /// scene's framing alone where the game asks for none. Null for the page
-  /// as it is.
+  /// player as closely as it asks (GameRun.framing), with the scene's Camera
+  /// on it (push in, shake, moves round the player), or the scene's framing
+  /// alone where the game asks for none. Null for the page as it is.
   (double, Offset)? get gameFraming {
     var run = _game;
     var scene = sceneFraming(_document, _frame, live: liveMotion);
@@ -55,13 +51,10 @@ extension CanvasGame on CanvasController {
     );
   }
 
-  /// gameChange is the scene a game is leaving, while its transition plays:
-  /// as it was last seen and on which frame, the transition, and how far
-  /// through it is (0 to 1, eased) -- or null, none playing. A game's next
-  /// scene arrives as the timeline's does.
-  ///
-  /// With what its elements were playing from their slots as it was left,
-  /// held there: the next scene's start clears them.
+  /// gameChange is the scene a game is leaving while its transition plays:
+  /// as last seen and on which frame, the transition, and how far through
+  /// it is (0 to 1, eased), or null when none is playing. Its elements'
+  /// slot playback is held as it was left; the next scene's start clears it.
   (CanvasDocument, int, SceneTransition, double, LiveMotion)? get gameChange {
     var left = _gameLeft;
     if (left == null || !gaming) return null;
@@ -75,11 +68,11 @@ extension CanvasGame on CanvasController {
     return (from, at, over, over.ease.apply(t.clamp(0.0, 1.0)), live);
   }
 
-  /// _gameLeaving keeps the scene being left, as it was last seen, for its
-  /// transition to play from -- where there is one to play.
+  /// _gameLeaving keeps the scene being left, as last seen, for its
+  /// transition to play from.
   void _gameLeaving() {
     _gameSceneEndSounds();
-    // As last seen -- or, left on its very first step, as it is now.
+    // As last seen, or as it is now if left on its very first step.
     var seen = _gameView ??
         switch (_game) {
           var run? => spoken(
@@ -92,8 +85,8 @@ extension CanvasGame on CanvasController {
         : (seen, _frame, over, _gameClock, motionPlayer.frozen());
   }
 
-  /// makingGame is whether the canvas is being made into a game -- see
-  /// CanvasDocument.game. Stopped being one, it stops being played.
+  /// makingGame is whether the canvas is being made into a game (see
+  /// CanvasDocument.game). Turned off, it stops being played.
   set makingGame(bool on) {
     if (on == _document.game) return;
     if (!on) gaming = false;
@@ -103,15 +96,15 @@ extension CanvasGame on CanvasController {
   set gaming(bool on) {
     if (on == gaming) return;
     if (on) {
-      // On the scene it starts on -- a title screen, a menu -- and back to
+      // Start on its own first scene (a title, a menu), and come back to
       // the one being worked on after.
       _sceneBeforeGame = _document.at;
       var start = _document.gameStart.isEmpty
           ? -1
           : _document.sceneIndexNamed(_document.gameStart);
       if (start >= 0 && start != _document.at) goToScene(start);
-      // From its beginning -- a title, a wait for Space -- not wherever the
-      // playhead was left while it was being made.
+      // From its beginning (a title, a wait for Space), not wherever the
+      // playhead was left while editing.
       frame = 0;
       var run = GameRun();
       _game = run;
@@ -131,16 +124,16 @@ extension CanvasGame on CanvasController {
         stepGame(math.min(dt, 0.05));
       });
       if (!playing) play();
-      // And the sounds the scene it starts on asks for -- after Play, which
-      // stops slots playing on their own.
+      // The start scene's sounds after Play, which stops slots playing on
+      // their own.
       _gameSceneSounds();
       _gameMotionStart();
     } else {
       // The game's slots stop with it, at once rather than on the next bar,
-      // while it is still a game on its own clock.
+      // while it is still on its own clock.
       _haltClips();
-      // Its elements' slots too: back on their timelines, and what moves
-      // for ever on the timeline's time again.
+      // Its elements' slots too: back on their timelines, and endless
+      // motion back on the timeline's time.
       motionPlayer.clear();
       motionPlayer.running = null;
       for (var id in _gameSounded) {
@@ -148,7 +141,7 @@ extension CanvasGame on CanvasController {
       }
       _gameSounded.clear();
       _gameClockWatch.stop();
-      // Held by a pause, let go: the engine is everyone's.
+      // Held by a pause, let go: the engine is shared.
       if (_gamePaused) {
         if (audio.engine case DartAudioEngine e) e.held = false;
       }
@@ -169,15 +162,15 @@ extension CanvasGame on CanvasController {
     notifyListeners();
   }
 
-  /// gamePaused is whether a game being played is held: the bodies still,
-  /// the timeline stopped, until it is let go again.
+  /// gamePaused is whether a game being played is held: bodies still, the
+  /// timeline stopped.
   bool get gamePaused => _gamePaused;
 
   set gamePaused(bool on) {
     if (!gaming || on == _gamePaused) return;
     _gamePaused = on;
-    // Its sound held with it -- every voice where it is -- and its slots'
-    // clock, so they go on from there.
+    // Its sound held with it, every voice where it is, and its slots' clock,
+    // so they go on from there.
     if (audio.engine case DartAudioEngine e) e.held = on;
     if (on) {
       _gameClockWatch.stop();
@@ -197,7 +190,7 @@ extension CanvasGame on CanvasController {
   void stepGame(double dt) {
     var run = _game;
     if (run == null) return;
-    // Its slots, on its own clock -- held or not, stopped on its timeline
+    // Its slots, on its own clock, held or not, stopped on its timeline
     // or not.
     if (_clipChannels.isNotEmpty) {
       _sessionStep(_sessionNow);
@@ -207,9 +200,9 @@ extension CanvasGame on CanvasController {
     // The elements' slots on the game's clock, before the bodies move
     // against where they have got to.
     if (motionPlayer.offTimeline) _motionStep();
-    // The game's own time, for what moves for ever: on through a stop on
-    // the timeline and past its end (see LiveMotion.running). As far on as
-    // this step goes, so what is drawn is where the bodies met it.
+    // The game's own time, for endless motion: on through a timeline stop
+    // and past its end (see LiveMotion.running). As far as this step goes,
+    // so what is drawn is where the bodies met it.
     motionPlayer.running = run.clock + dt;
     run.step(_document, _frame, dt, live: liveMotion);
     // What the game asked for: a sound, another scene, the end.
@@ -217,8 +210,8 @@ extension CanvasGame on CanvasController {
     run.events.clear();
     for (var event in asked) {
       if (event.sound case var ref?) gameSound(ref, from: event.soundFrom);
-      // Another scene: a chosen one, the next -- the game over after the
-      // last -- or, started again, the game's first.
+      // Another scene: a chosen one, the next (game over after the last),
+      // or the game's first when restarted.
       if (event.scene case var id?) _gameScene(run, id);
       if (event.next) {
         var next = _document.at + 1;
@@ -260,9 +253,8 @@ extension CanvasGame on CanvasController {
   /// waitingFor is the action a stop is waiting for, by id, or null.
   String? get waitingFor => _waitingFor;
 
-  /// _waitForAction holds a stop until [id] is pressed -- on the keyboard
-  /// or a controller -- and then plays on. Play pressed meanwhile ends the
-  /// wait too.
+  /// _waitForAction holds a stop until [id] is pressed on keyboard or
+  /// controller, then plays on. Pressing Play meanwhile also ends the wait.
   void _waitForAction(String id) {
     _endWait();
     _waitingFor = id;
@@ -310,36 +302,34 @@ extension CanvasGame on CanvasController {
     _waitPads = null;
   }
 
-  /// _gameScene goes to the scene [id] -- by id or name -- for the game:
-  /// its players where they were put, the counts carried on.
+  /// _gameScene goes to scene [id] (by id or name) for the game: its
+  /// players where they were put, the counts carried on.
   void _gameScene(GameRun run, String id) {
     var to = _document.sceneIndexNamed(id);
     if (to < 0) return;
     _gameEnter(run, to);
   }
 
-  /// _gameEnter is the game gone on to scene [to]: the one left giving way,
-  /// and this one from its beginning -- not the frame it was left on while
-  /// it was made -- its timeline playing, its sounds and clips started. A
-  /// stop the scene left had held (a title's "Press Space") held the
-  /// timeline for the rest of the game: every level stood at its first
-  /// frame (Ken: "the Sunken Ruins level doesn't play").
+  /// _gameEnter moves the game on to scene [to]: the one left giving way,
+  /// this one from its beginning (not the frame it was left on while
+  /// editing), its timeline playing, its sounds and clips started. A stop
+  /// held by the scene left (a title's "Press Space") must not carry over,
+  /// or it holds the timeline of every later level at its first frame.
   void _gameEnter(GameRun run, int to) {
     _gameLeaving();
     goToScene(to);
     frame = 0;
     run.newScene();
-    // Played, as the game's start plays it -- before its sounds, since Play
+    // Played, as the game's start plays it, before its sounds, since Play
     // stops slots playing on their own.
     if (!playing) play();
     _gameSceneSounds();
     _gameMotionStart();
   }
 
-  /// _gameRestart is the game begun again: its counts at their starts,
-  /// and on the scene it begins on (CanvasDocument.gameStart) -- or, with
-  /// none chosen, this one from its beginning -- its sounds and clips
-  /// started as they were.
+  /// _gameRestart begins the game again: counts at their starts, on the
+  /// scene it begins on (CanvasDocument.gameStart, else this one from its
+  /// beginning), its sounds and clips started as they were.
   void _gameRestart(GameRun run) {
     run.startOver(_document);
     if (_document.gameStart.isNotEmpty &&
@@ -350,9 +340,9 @@ extension CanvasGame on CanvasController {
     _gameEnter(run, _document.at);
   }
 
-  /// _touchClipPlaying is whether [id] is playing a clip a touch or a hit
-  /// started -- a coin's pop, a foe's fall -- for which a pickup taken, or
-  /// a foe beaten, stays in view.
+  /// _touchClipPlaying is whether [id] is playing a clip a touch or hit
+  /// started (a coin's pop, a foe's fall), during which a taken pickup or
+  /// beaten foe stays in view.
   bool _touchClipPlaying(String id) {
     // One copy of an element reused, by its key: its element's clips.
     var at = id.indexOf("#");
@@ -368,20 +358,19 @@ extension CanvasGame on CanvasController {
   }
 
   /// _gameMotionStart is a scene beginning in a game: its elements' slots
-  /// cleared, and the clips that start with the scene started.
+  /// cleared and the clips that start with the scene started.
   void _gameMotionStart() {
     motionPlayer.clear();
     fireMotionTrigger(ClipTriggerKind.sceneStarts);
   }
 
-  /// gameSound plays what a game asks for by [ref] -- see gameSoundOf: a
+  /// gameSound plays what a game asks for by [ref] (see gameSoundOf): a
   /// sound on the canvas, from its start; a mixer slot, at once unless its
-  /// own Launch waits for a beat or a bar; or a channel's slots stopped, at
-  /// once.
+  /// Launch waits for a beat or bar; or a channel's slots stopped, at once.
   ///
-  /// [from], given, is where across the page the sound is set off -- an
-  /// instance of an element reused, touched -- for a sound placed on the
-  /// canvas to be heard from there.
+  /// [from], if given, is where across the page the sound is set off (a
+  /// touched instance of a reused element), so a placed sound is heard
+  /// from there.
   void gameSound(String ref, {double? from}) {
     switch (gameSoundOf(ref)) {
       case GameSoundElement(:var id):
@@ -409,10 +398,10 @@ extension CanvasGame on CanvasController {
     }
   }
 
-  /// spoken is [doc] with each character that speaks for a channel -- see
-  /// CharacterPerformance.speaksFor -- speaking while a slot is heard on
-  /// it: its mouth the take's at the moment it has got to, and shown. [doc]
-  /// itself where nobody is speaking.
+  /// spoken is [doc] with each character that speaks for a channel (see
+  /// CharacterPerformance.speaksFor) speaking while a slot is heard on it:
+  /// its mouth the take's at the moment reached, and shown. [doc] itself
+  /// where nobody is speaking.
   CanvasDocument spoken(CanvasDocument doc) {
     if (_clipChannels.isEmpty) return doc;
     var changed = false;
@@ -440,20 +429,20 @@ extension CanvasGame on CanvasController {
   }
 
   /// _speaking3dAs is 3D character [e] saying what its channel's slot says
-  /// now, and shown while it does -- or null where nothing is heard on it.
+  /// now, shown while it does, or null where nothing is heard on it.
   Character3dElement? _speaking3dAs(Character3dElement e) {
     var mouth = _heardMouth(e.performance.speaksFor);
-    // Nothing heard on its channel: its mouth shut, rather than the face's
-    // own -- a narrator's face made smiling open-mouthed (Kai's) was left
-    // open after every line (Ken, 2026-11-10).
+    // Nothing heard on its channel: its mouth shut rather than the face's
+    // own, which may have been made open-mouthed and would stay open after
+    // every line.
     if (mouth == null) {
       return _clipChannels.containsKey(e.performance.speaksFor)
           ? e.performing(e.performance
               .copyWith(mouths: [(t: -1e6, shape: MouthShape.rest)]))
           : null;
     }
-    // Held from long before whatever frame of its scene is drawn: it is
-    // the mouth now, wherever its scene has got to.
+    // Held from long before any frame of its scene: it is the mouth now,
+    // wherever its scene has got to.
     var spoke =
         e.performing(e.performance.copyWith(mouths: [(t: -1e6, shape: mouth)]));
     return e.visible
@@ -482,10 +471,10 @@ extension CanvasGame on CanvasController {
     return mouth;
   }
 
-  /// _slotMouths are the mouths of the slot [clipId] playing [sound], by
-  /// its file's frames: from its words, where it is a Speech device's take
-  /// -- found on any channel -- or from its loudness, read once in the
-  /// background (null until it has been).
+  /// _slotMouths are the mouths of slot [clipId] playing [sound], by its
+  /// file's frames: from its words for a Speech device's take (found on any
+  /// channel), else from its loudness, read once in the background (null
+  /// until then).
   List<MouthKey>? _slotMouths(String clipId, MediaSource sound, int rate) {
     var key = "$clipId:${sound.assetId}:$rate";
     if (_mouthsOfSlots.containsKey(key)) return _mouthsOfSlots[key];
@@ -515,9 +504,9 @@ extension CanvasGame on CanvasController {
               from: "slot:$clipId"),
       ];
     }
-    // From its words at once, where it has them -- and, once its sound has
-    // been read, kept to the voice as it is heard (mouthsFromWordsHeard):
-    // words timed by length alone drift from it.
+    // From its words at once, where it has them, and once its sound has been
+    // read, fitted to the voice as heard (mouthsFromWordsHeard): words timed
+    // by length alone drift from it.
     _mouthsOfSlots[key] =
         words == null ? null : mouthsFromWords(words, frameRate: rate);
     unawaited(() async {
@@ -547,7 +536,7 @@ extension CanvasGame on CanvasController {
   }
 
   /// _gameSceneEndSounds is what each channel does as the game leaves the
-  /// scene showing -- for another, or ending on it: see
+  /// scene showing, for another or ending on it: see
   /// CanvasScene.gameSoundsAtEnd.
   void _gameSceneEndSounds() {
     for (var MapEntry(key: channel, value: does)
@@ -557,9 +546,9 @@ extension CanvasGame on CanvasController {
   }
 
   /// _gamePress is [id] pressed by an action while the game plays: what a
-  /// click on it would do -- a Button's own action, else the press it was
-  /// given. Shown or hidden is the game's, not the document's: stopped, the
-  /// gate is where it was put. A link is not followed mid-game.
+  /// click would do (a Button's own action, else its press). Shown or
+  /// hidden is the game's state, not the document's: stopped, the gate is
+  /// where it was put. A link is not followed mid-game.
   void _gamePress(GameRun run, String id) {
     var e = _document.elementById(id);
     if (e == null) return;
@@ -579,12 +568,11 @@ extension CanvasGame on CanvasController {
     }
   }
 
-  /// _gameKey is [gameKey], as a key handler.
   bool _gameKey(KeyEvent event) => gameKey(event);
 
   /// gameKey is a key while playing: held, let go, and taken where it
-  /// presses one of the actions, so Space jumps rather than pausing.
-  /// Escape stops the game.
+  /// presses an action, so Space jumps rather than pausing. Escape stops
+  /// the game.
   @visibleForTesting
   bool gameKey(KeyEvent event) {
     var run = _game;
@@ -619,8 +607,8 @@ extension CanvasGame on CanvasController {
     return sheet is SheetElement ? sheet.tempo : 1;
   }
 
-  /// _practised is the sheet being practised, the instrument it follows,
-  /// and its part -- or null where one of them has gone.
+  /// _practised is the sheet being practised, the instrument it follows and
+  /// its part, or null where one of them has gone.
   (SheetElement, AudioElement, InstrumentPart)? get _practised {
     var sheet = _practice == null ? null : _document.elementById(_practice!);
     if (sheet is! SheetElement) return null;
@@ -636,9 +624,9 @@ extension CanvasGame on CanvasController {
       inst.clip.at + (n.end * math.max(1, _document.frameRate)).round();
 
   /// importScore puts MusicXML [score] into the part of the instrument
-  /// [sheet] shows, in place of its notes -- laid on this canvas's tempo,
-  /// so its bars are this canvas's bars -- and writes [sheet] in its key.
-  /// One change to undo. Answers why not.
+  /// [sheet] shows, replacing its notes, on this canvas's tempo so its bars
+  /// are this canvas's, and writes [sheet] in its key. One undo step.
+  /// Returns why not, or null.
   String? importScore(SheetElement sheet, MusicXmlScore score) {
     // A sheet showing a score part: the file becomes that score, its part
     // the one the sheet shows, on the same channel.
@@ -686,8 +674,8 @@ extension CanvasGame on CanvasController {
     return null;
   }
 
-  /// exportScore is the part [sheet] shows, as MusicXML -- written as it is
-  /// engraved -- or null where it shows none.
+  /// exportScore is the part [sheet] shows as MusicXML, written as it is
+  /// engraved, or null where it shows none.
   String? exportScore(SheetElement sheet) {
     var e = _document.elementById(sheet.follows);
     if (e is! AudioElement || e.instrument == null) return null;
@@ -696,8 +684,8 @@ extension CanvasGame on CanvasController {
         title: sheet.title, tempo: audio.tempo);
   }
 
-  /// startPractice starts a take on [sheet]: the marks cleared, playing
-  /// from the playhead.
+  /// startPractice starts a take on [sheet]: marks cleared, playing from
+  /// the playhead.
   void startPractice(SheetElement sheet) {
     if (playing) pause();
     _marks.clear();
@@ -738,7 +726,7 @@ extension CanvasGame on CanvasController {
       );
 
   /// _practiceHolds is whether the playhead holds before [next], waiting
-  /// to be played -- Wait for me, a note of the player's there unplayed.
+  /// to be played: Wait for me, with a note of the player's there unplayed.
   bool _practiceHolds(int next) {
     var p = _practised;
     if (p == null) return false;
@@ -754,17 +742,17 @@ extension CanvasGame on CanvasController {
     return _waiting.isNotEmpty;
   }
 
-  /// _practiceStep is the playhead gone from [was] to [now]: the other
-  /// hand's notes started and stopped, and -- playing along -- the notes
-  /// gone by unplayed marked missed.
+  /// _practiceStep is the playhead moved from [was] to [now]: the other
+  /// hand's notes started and stopped, and, when playing along, notes gone
+  /// by unplayed marked missed.
   void _practiceStep(int was, int now) {
     var p = _practised;
     if (p == null) return;
     var (sheet, inst, part) = p;
     var channel = CanvasController._channelOf(inst);
     if (now < was) {
-      // Round a loop: everything let go, and the take begun again -- the
-      // notes from where it starts again marked afresh, each time round.
+      // Round a loop: everything let go and the take begun again, its notes
+      // marked afresh each time round.
       for (var k in _accompanying) {
         audio.noteOff(channel, k);
       }
@@ -814,9 +802,8 @@ extension CanvasGame on CanvasController {
       if (_waiting.isEmpty) return;
       var hit = _waiting.where((i) => part.notes[i].key == key).firstOrNull;
       if (hit != null) {
-        // Found: it goes on. Right only where it was right the first time:
-        // a wrong key before it stays marked, so the score says how the take
-        // really went.
+        // Found: it goes on. Right only if right the first time: a wrong
+        // key before it stays marked, so the score is honest.
         _waiting.remove(hit);
         _found.add(hit);
         _marks.putIfAbsent(hit, () => NoteMark.right);
@@ -852,12 +839,11 @@ extension CanvasGame on CanvasController {
     }
   }
 
-  /// addMidiChannel adds a MIDI channel: an instrument on a channel of its
-  /// own, to be played into live from a MIDI keyboard, with Record. On a
-  /// piece of sound with no canvas it lives on the timeline alone; on a
-  /// canvas, its keyboard is on the canvas too. Picked, so a MIDI keyboard
-  /// plays it and its settings are open. [onCanvas] false keeps its keyboard
-  /// off the page whatever the canvas.
+  /// addMidiChannel adds a MIDI channel: an instrument on its own channel,
+  /// played live from a MIDI keyboard, with Record. With no canvas it lives
+  /// on the timeline alone; on a canvas its keyboard is on the page too,
+  /// unless [onCanvas] is false. Picked, so a MIDI keyboard plays it and
+  /// its settings are open.
   AudioElement addMidiChannel({bool onCanvas = true}) {
     var e = newInstrument(_document);
     // Named for what it plays, numbered where that is taken: Piano, Piano 2.
@@ -875,8 +861,8 @@ extension CanvasGame on CanvasController {
   }
 
   /// addEmptyAudioChannel adds an audio channel with nothing on it yet: a
-  /// named lane for sounds to be dropped onto, and a strip in the mixer --
-  /// its clip slots, its effects -- ready before there is a sound.
+  /// lane for sounds to be dropped onto, with its mixer strip (slots,
+  /// effects) ready.
   AudioElement addEmptyAudioChannel() {
     var taken = {for (var c in timelineChannels) c.name};
     var name = "Audio";
@@ -892,7 +878,6 @@ extension CanvasGame on CanvasController {
     return e;
   }
 
-  /// setInstrument changes [e]'s part.
   void setInstrument(AudioElement e, InstrumentPart part,
       {bool transient = false}) {
     var current = _document.elementById(e.id);

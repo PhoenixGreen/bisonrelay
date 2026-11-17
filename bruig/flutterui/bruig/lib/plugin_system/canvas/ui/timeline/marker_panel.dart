@@ -10,13 +10,12 @@ import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart'
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// marker_panel.dart is the play bar's Marker menu (Ken, 2026-11-08: "the
-// marker menu needs a redesign ... more like the length, frame rate settings
-// menu"): a panel, as the timing's is. At its top, the markers before and
-// after; then the marker under the playhead -- what it does as five picture
-// buttons with a line about the one chosen, and its fields captioned under
-// them -- or, with none there, the same five buttons to add one; then every
-// marker in the canvas, to jump to.
+// marker_panel.dart is the play bar's Marker menu, a panel as the timing's
+// is. At its top, the markers before and after; then the marker under the
+// playhead -- what it does as five picture buttons with a line about the
+// one chosen, and its fields captioned under them -- or, with none there,
+// the same five buttons to add one; then every marker in the canvas, to
+// jump to.
 
 /// markerKinds are the kinds the panel offers, in its order, each with the
 /// colour its flag is drawn in.
@@ -199,8 +198,8 @@ class MarkerPanel extends StatelessWidget {
         },
         onCommit: controller.endInteraction,
       ),
-      // Whether its label is seen on the canvas while playback holds at it
-      // (Ken, 2026-11-10); on the ruler, it always is.
+      // Whether its label is seen on the canvas while playback holds at it;
+      // on the ruler, it always is.
       if (here.kind != TimelineActionKind.locator)
         SizedBox(
           width: 170,
@@ -231,8 +230,8 @@ class MarkerPanel extends StatelessWidget {
         ),
       if (here.kind == TimelineActionKind.loop ||
           here.kind == TimelineActionKind.jump)
-        // Where it goes, in the ruler's terms (the approved design): a bar
-        // for a piece of sound counted in them, else a frame.
+        // Where it goes, in the ruler's terms: a bar for a piece of sound
+        // counted in them, else a frame.
         if (_framesPerBar(document) case var perBar? when perBar > 0)
           CanvasNumberField(
             key: const ValueKey("actionTarget"),

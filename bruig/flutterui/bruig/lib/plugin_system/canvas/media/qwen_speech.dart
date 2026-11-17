@@ -12,26 +12,17 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// qwen_speech.dart is the Speech device's expressive voices: Qwen3-TTS
-// 1.7B CustomVoice (Apache 2.0), nine voices that take a direction in
-// plain words for each line -- "laughing as you speak", "close to tears".
-// It is run by qwen3-tts (MIT), a C program that speaks with the model on
-// the computer's own processor.
-//
-// Neither is shipped. Both are downloaded once to the library's "voices"
-// folder (the program from its release, the model from a fixed revision),
-// every file checked against its SHA-256. The program is built for Apple
-// Silicon Macs and Linux; elsewhere these voices are not offered.
-//
-// Its server mode would keep the model loaded between runs, but it listens
-// on every network, not only localhost, so it is not used.
+// qwen_speech.dart is the Speech device's expressive voices: Qwen3-TTS 1.7B
+// CustomVoice (Apache 2.0), nine voices directed per line in plain words,
+// run on the CPU by qwen3-tts (MIT). Both are downloaded once, pinned and
+// SHA-256 checked; Apple Silicon and Linux only. Its server mode is unused:
+// it listens on every network, not only localhost.
 
 /// qwenVersion is the program's release; qwenRevision the model's.
 const qwenVersion = "v0.23.0";
 const qwenRevision = "0c0e3051f131929182e2c023b9537f8b1c68adfe";
 
-/// _programs are the program's builds: one for each computer it runs on,
-/// its size and SHA-256.
+/// _programs are the program's builds per platform: name, size, SHA-256.
 const _programs = <Abi, (String, int, String)>{
   Abi.macosArm64: (
     "macos-arm64",
@@ -109,10 +100,8 @@ const _modelFiles = <(String, int, String)>[
   ),
 ];
 
-/// qwenProgram is the program's name in its folder.
 const qwenProgram = "qwen_tts";
 
-/// qwenSupported is whether the program is built for this computer.
 bool get qwenSupported => _programs.containsKey(Abi.current());
 
 /// qwenFilesOverride is what is downloaded instead, for tests.
@@ -149,18 +138,17 @@ List<PinnedFile> get qwenFiles {
   ];
 }
 
-/// qwenBytes is the whole download, for saying how big it is first.
+/// qwenBytes is the whole download size, to say before downloading.
 int get qwenBytes => qwenFiles.fold(0, (n, f) => n + f.bytes);
 
-/// QwenDownload is the expressive voices' download, one for every Speech
+/// QwenDownload is the expressive voices' download, shared by every Speech
 /// device.
 class QwenDownload extends PinnedDownload {
   static final instance = QwenDownload();
   QwenDownload() : super(() => qwenDir(), () => qwenFiles);
 }
 
-/// qwenVoices are the nine, each with the accent it keeps in every
-/// language it speaks.
+/// qwenVoices are the nine, each keeping its accent in every language.
 const qwenVoices = [
   SpeechVoice("ryan", "Ryan", "English · lively, rhythmic", gender: "m"),
   SpeechVoice("aiden", "Aiden", "American · sunny, clear", gender: "m"),
@@ -174,7 +162,6 @@ const qwenVoices = [
   SpeechVoice("sohee", "Sohee", "Korean accent · warm, rich", gender: "f"),
 ];
 
-/// qwenLanguages are what the voices speak.
 const qwenLanguages = [
   "English",
   "Chinese",
@@ -188,8 +175,8 @@ const qwenLanguages = [
   "Italian",
 ];
 
-/// qwenDirection is what the voice is told for [line], with [expression]
-/// -- nought to one -- saying how far to take it.
+/// qwenDirection is what the voice is told for [line], [expression] (nought
+/// to one) saying how far to take it.
 String qwenDirection(SpeechLine line, double expression) {
   var say = line.say.trim();
   if (say.isEmpty) {
@@ -202,10 +189,8 @@ String qwenDirection(SpeechLine line, double expression) {
   return say;
 }
 
-/// qwenSampling is the temperature and nucleus for [steadiness], nought to
-/// one. At the middle: 0.9 as the model comes, and 1.1 with a direction,
-/// since lower flattens a direction into the words said plainly. Steadier
-/// narrows both.
+/// qwenSampling is the temperature and nucleus for [steadiness]: at the
+/// middle 0.9, or 1.1 with a direction, which lower values flatten.
 (double, double) qwenSampling(double steadiness, {required bool directed}) {
   var s = steadiness.clamp(0.0, 1.0);
   var temperature = (directed ? 1.25 : 1.05) - 0.3 * s;
@@ -213,10 +198,8 @@ String qwenDirection(SpeechLine line, double expression) {
   return (temperature, nucleus);
 }
 
-/// qwenArguments are the program's for [text] -- a line's words, or a
-/// script of several as qwenScript writes them -- said as [direction]:
-/// the voice, the language, the direction, how freely (temperature and
-/// nucleus), how fast, and [seed] -- another seed, another take.
+/// qwenArguments are the program's arguments for [text] said as
+/// [direction]: voice, language, sampling, speed and [seed].
 List<String> qwenArguments(
     String dir, SpeechSpec spec, String direction, String text, String out,
     {required int seed, bool compose = false}) {
@@ -226,8 +209,7 @@ List<String> qwenArguments(
   var (temperature, nucleus) =
       qwenSampling(spec.steadiness, directed: direction.isNotEmpty);
   var rate = spec.speed.clamp(0.7, 1.3);
-  // A line that runs on is stopped at three times as long as its words
-  // should take.
+  // A line that runs on is stopped at three times its words' length.
   var words = text
       .replaceAll(RegExp(r"\[[^\]]*\]"), " ")
       .split(RegExp(r"\s+"))
@@ -251,26 +233,20 @@ List<String> qwenArguments(
   ];
 }
 
-/// spokenText is [line]'s words as the expressive voices say them: its
-/// cues left out -- they are put in afterwards, see qwenScript.
+/// spokenText is [line]'s words without its cues, which are put in after
+/// (see qwenScript).
 String spokenText(SpeechLine line) => [
       for (var p in parseScript(line.text))
         if (p is SpokenText) p.text
     ].join(" ");
 
-// ---------------------------------------------------------------------------
-// Several lines, and their cues, in one run
-// ---------------------------------------------------------------------------
-//
-// The program loads its model for each run (nine seconds of a short line's
-// twenty) and only its server could take lines one after another. So the
-// lines are spoken in one run, those said softly in a second, each stretch
-// kept apart by the program's pause markup. It renders a pause as exact
-// silence, which speech never is: the take is cut there, and the cues (our
-// recordings, or pauses) put into the voice's own pauses.
+// ---- Several lines, and their cues, in one run --------------------------
+// The model loads on each run (nine seconds of a short line's twenty), so
+// lines are spoken in one run, soft ones in another, split by pause markup.
+// A pause renders as exact silence, where the take is cut and cues go in.
 
-/// QwenGap is what is between two stretches of speech in a run: the lines'
-/// ends, and the cues.
+/// QwenGap is what lies between two stretches of speech in a run: line
+/// ends and cues.
 sealed class QwenGap {
   const QwenGap();
 }
@@ -297,12 +273,9 @@ class QwenJoin extends QwenGap {
   const QwenJoin();
 }
 
-/// QwenSpoken is one stretch of speech in a run -- a section, or the part
-/// of one on either side of a whisper's edge: what it says, whether it is
-/// whispered, which of its words are a cue written into them -- a laugh, a
-/// cough -- not timed as a word, and its beats: the cues that are not
-/// words, each after so many of its words, put where the voice paused for
-/// them -- see qwenPlaceBeats.
+/// QwenSpoken is one stretch of a run (a section, or part of one either
+/// side of a whisper): its text, whether whispered, which words are
+/// written-in cues not timed as words, and its beats (see qwenPlaceBeats).
 class QwenSpoken {
   final String text;
   final bool whisper;
@@ -315,39 +288,33 @@ class QwenSpoken {
   List<TimedWord> words(double seconds) =>
       spoken(estimateWords(SpokenText(text).words, 0, seconds));
 
-  /// spoken is [all] -- its words and the cues written in them, timed --
-  /// with the cues left out.
+  /// spoken is [all] (words and written-in cues, timed) without the cues.
   List<TimedWord> spoken(List<TimedWord> all) => [
         for (var (i, w) in all.indexed)
           if (!cues.contains(i)) w
       ];
 }
 
-/// qwenWritten are the cues the expressive voices are given written into
-/// the words, so they do them in the same breath: after the words before
-/// them ("the way, haha.") or, with none, before the words after. Our
-/// recording here sounds laid on; a sigh or breath written so sounds
-/// strange. Each is said two ways: within a sentence, and as a sentence of
-/// its own.
+/// qwenWritten are cues written into the words, so the voice does them in
+/// the same breath ("the way, haha."); a recording there sounds laid on.
+/// Each has two forms: within a sentence, and as one of its own.
 const qwenWritten = {
   SpeechCue.laugh: ("haha", "Haha!"),
   SpeechCue.cough: ("ahem", "Ahem."),
 };
 
-/// QwenScript is a run's text, and what it is to be cut into: its stretches
-/// of speech in order and the gaps round them, each a list.
+/// QwenScript is a run's text and how it is to be cut: its stretches in
+/// order and the gaps round them.
 class QwenScript {
   final List<QwenSpoken> spoken;
 
-  /// gaps are those before each stretch, and after the last: one more than
+  /// gaps are those before each stretch and after the last: one more than
   /// [spoken]. An empty one is no gap.
   final List<List<QwenGap>> gaps;
   const QwenScript(this.spoken, this.gaps);
 
-  /// runs are its stretches as the program is given them: those said
-  /// aloud in one run, those said softly -- a whisper -- in another, each
-  /// run's direction being one. Its stretches are kept apart by a pause,
-  /// which the take is cut at.
+  /// runs are its stretches as the program gets them: aloud in one run,
+  /// whispered in another, a pause between each, where the take is cut.
   List<({bool soft, String text, List<int> stretches})> get runs => [
         for (var soft in [false, true])
           if ([
@@ -365,13 +332,12 @@ class QwenScript {
       ];
 }
 
-/// qwenMark is the pause written between two stretches of a run: longer
-/// than any silence speech has, it renders as exact silence, which speech
-/// never is.
+/// qwenMark is the pause written between a run's stretches: longer than
+/// any natural silence, it renders as exact silence, which speech never is.
 const qwenMark = 0.6;
 
 /// qwenBreathing is the expression past which the voice breathes between
-/// sentences: the vivid third, where it is told to be.
+/// sentences: the vivid third.
 const qwenBreathing = 0.66;
 
 /// qwenSoftly is [direction] said softly, for a whisper: see softly in
@@ -381,20 +347,17 @@ String qwenSoftly(String direction) {
   return direction.isEmpty || direction == soft ? soft : "$direction $soft";
 }
 
-/// qwenSoftLevel is how loud a stretch said softly is kept: the voice asked
-/// to speaks low but hardly less loud, 2dB at most.
+/// qwenSoftLevel is how loud a soft stretch is kept: asked to speak low,
+/// the voice is hardly quieter, 2dB at most.
 const qwenSoftLevel = 0.7;
 
 final _leadingMarks = RegExp(r"^[.,!?;:…]+");
 
-/// qwenScript is [lines] (sections) as one run's markup, each section one
-/// stretch spoken in one go: cut at every cue, the voice audibly restarts.
-/// So cues are written in: a laugh and a cough as words (see qwenWritten);
-/// a breath, a sigh and a pause as a beat, "...", which the voice pauses
-/// at, our recording or pause put into that pause afterwards (see
-/// timeWords), since the voice's own breath there is inaudible. Only a
-/// whisper's edge cuts a section. Cues the voices cannot do mid-line
-/// (stress, a slower stretch) are left out: the direction covers them.
+/// qwenScript is [lines] as one run's markup, a section a stretch, as cut
+/// at every cue the voice audibly restarts. Laughs and coughs are written
+/// as words; breaths, sighs and pauses as a "..." beat, our recording put in
+/// after (see timeWords). Only a whisper's edge cuts a section; stress and
+/// slowing are left to the direction.
 QwenScript qwenScript(List<SpeechLine> lines) {
   var spoken = <QwenSpoken>[];
   var gaps = <List<QwenGap>>[[]];
@@ -404,12 +367,12 @@ QwenScript qwenScript(List<SpeechLine> lines) {
     var cues = <int>{};
     var beats = <(int, QwenGap)>[];
     bool? whisper;
-    // A cue with no words before it: written before the words after it.
+    // A cue with no words before it is written before the words after.
     String? before =
         line.own.isEmpty && line.direction == SpeechDirection.laughing
             ? "Haha,"
             : null;
-    // A cue just written within a sentence: a comma after it, before the
+    // A cue just written within a sentence: a comma after it before the
     // words go on.
     var cueOpen = false;
     void close() {
@@ -425,7 +388,7 @@ QwenScript qwenScript(List<SpeechLine> lines) {
     // A beat after the words so far: "..." on the last of them.
     void beat() {
       if (words.isEmpty) return;
-      // A sentence's end is a pause already: as it is.
+      // A sentence's end is a pause already.
       if (RegExp(r"[.!?…]$").hasMatch(words.last)) return;
       words.last = "${words.last.replaceAll(RegExp(r"[,;:]$"), "")}...";
     }
@@ -434,8 +397,7 @@ QwenScript qwenScript(List<SpeechLine> lines) {
       switch (p) {
         case SpokenText t:
           if (whisper != null && whisper != t.whisper && words.isNotEmpty) {
-            // A whisper starting or ending: cut there, to be whispered
-            // after.
+            // A whisper starting or ending: cut there, to whisper after.
             close();
             gaps.last.add(const QwenJoin());
           }
@@ -443,7 +405,7 @@ QwenScript qwenScript(List<SpeechLine> lines) {
           // The program's own markup is not the reader's to write.
           var text =
               t.text.replaceAll("|", ",").replaceAll(RegExp(r"[\[\]]"), "");
-          // A stop or comma written after a cue is the words' before it.
+          // A stop or comma written after a cue belongs to the words before.
           if (_leadingMarks.firstMatch(text) case var m?) {
             if (words.isNotEmpty) {
               words.last = "${words.last.replaceAll(RegExp(r"[,;:]$"), "")}"
@@ -492,22 +454,17 @@ QwenScript qwenScript(List<SpeechLine> lines) {
   return QwenScript(spoken, gaps);
 }
 
-/// _readApart is the samples of the WAV [bytes], read away from the
-/// screen's thread -- by a function of its own, so that nothing but the
-/// bytes is sent there: a closure in _say would take the running program
-/// with it, which cannot be sent.
+/// _readApart is WAV [bytes]' samples, read off the UI thread by a
+/// top-level function: a closure would capture the unsendable program.
 Future<Float32List?> _readApart(Uint8List bytes) =>
     Isolate.run(() => readWav16(ByteData.sublistView(bytes)));
 
-/// QwenBeat is a beat put into a stretch: [sound] in at [at] seconds -- and
-/// for a pause, the voice's own pause around it, [hush], from and to, made
-/// silent too, so the whole gap is silence.
+/// QwenBeat is a beat in a stretch: [sound] at [at] seconds, and for a
+/// pause the voice's own pause round it ([hush]) silenced too.
 typedef QwenBeat = ({double at, Float32List sound, (double, double)? hush});
 
-/// qwenPlaceBeats puts [beats] into [sound], at the mix rate, the voice
-/// faded out and in again across 10ms either side, so no click is heard
-/// where it was not quite silent. Answers the sound, and where each went
-/// in and for how long, for the words after to be moved on by.
+/// qwenPlaceBeats puts [beats] into [sound], fading the voice over 10ms
+/// either side; returns the sound and each beat's place and length.
 (Float32List, List<(double, double)>) qwenPlaceBeats(
     Float32List sound, List<QwenBeat> beats) {
   const fade = 480;
@@ -555,14 +512,12 @@ typedef QwenBeat = ({double at, Float32List sound, (double, double)? hush});
   return (Float32List.fromList(out), moved);
 }
 
-/// qwenCut cuts [pcm] -- a run's take, at 24kHz -- at its exact silences of
-/// at least [least] seconds: the stretches of sound between, and whether
-/// it began and ended with one. Null where it has not [markers] of them,
-/// for a run that is not as written.
+/// qwenCut cuts [pcm] (24kHz) at exact silences of at least [least]
+/// seconds; null without [markers] of them, as the run is not as written.
 ({List<Float32List> sounds, bool leading, bool trailing})? qwenCut(
     Float32List pcm, int markers,
     {double least = 0.35}) {
-  // Asked for none, a silence of the voice's own is not one to cut at.
+  // Asked for none: a silence of the voice's own is not a cut.
   if (markers == 0) return (sounds: [pcm], leading: false, trailing: false);
   var need = (least * 24000).round();
   var runs = <(int, int)>[];
@@ -591,10 +546,8 @@ typedef QwenBeat = ({double at, Float32List sound, (double, double)? hush});
   );
 }
 
-/// qwenTrimmed is [pcm], at 24kHz, without the near-silence the model
-/// leaves before and after its words -- a second and a half of it, at
-/// times, which joined into a take is a hesitation nobody wrote. A breath
-/// of it is kept at each end.
+/// qwenTrimmed is [pcm] (24kHz) without the model's near-silence round its
+/// words (up to 1.5 s, a hesitation nobody wrote), a breath kept each end.
 Float32List qwenTrimmed(Float32List pcm, {double floor = 0.004}) {
   var first = 0, last = pcm.length - 1;
   while (first < pcm.length && pcm[first].abs() < floor) {
@@ -609,11 +562,9 @@ Float32List qwenTrimmed(Float32List pcm, {double floor = 0.004}) {
       (last + 1 + margin).clamp(0, pcm.length));
 }
 
-/// QwenSpeech speaks with the expressive voices: the lines sharing a
-/// direction in one run, cut apart -- see qwenScript. A line that comes out
-/// far longer or shorter than its words should take -- the model running
-/// on, or stopping short -- is spoken again by itself with another seed,
-/// twice at most; the nearest is kept.
+/// QwenSpeech speaks lines sharing a direction in one run, cut apart (see
+/// qwenScript). A line far off its expected length is respoken alone with
+/// another seed, twice at most, keeping the nearest.
 class QwenSpeech extends SpeechEngine {
   @override
   Future<List<SpeechVoice>> voices() async => qwenVoices;
@@ -644,7 +595,7 @@ class QwenSpeech extends SpeechEngine {
     var bestOff = double.infinity;
     for (var attempt = 0; attempt < 3; attempt++) {
       var take = (await _run(dir, spec, [line], seed + attempt * 7919)).single;
-      // How far out it is: its length against what its words should take.
+      // How far out: its length against its words' expected length.
       var off = (take.seconds - expected).abs() / (expected + 0.5);
       if (off < bestOff) {
         best = take;
@@ -659,7 +610,7 @@ class QwenSpeech extends SpeechEngine {
   Future<List<SpokenAudio>> speakLines(
       SpeechSpec spec, List<SpeechLine> lines) async {
     var dir = await _ready(lines);
-    // The lines said the same way, together: a run's direction is one.
+    // Lines said the same way together: a run has one direction.
     var groups = <String, List<int>>{};
     for (var (i, l) in lines.indexed) {
       groups.putIfAbsent(qwenDirection(l, spec.expression), () => []).add(i);
@@ -680,8 +631,7 @@ class QwenSpeech extends SpeechEngine {
     return [for (var t in out) t!];
   }
 
-  /// _ready is the folder the voices are in, once it is sure [lines] can be
-  /// spoken there.
+  /// _ready is the voices' folder, once sure [lines] can be spoken there.
   Future<String> _ready(List<SpeechLine> lines) async {
     if (lines.any((l) => spokenText(l).trim().isEmpty)) {
       throw const SpeechException("The line has no words.");
@@ -698,14 +648,12 @@ class QwenSpeech extends SpeechEngine {
     return dir;
   }
 
-  /// _run speaks [lines], all said the same way: a take of each, its cues
-  /// in place. Its stretches said aloud are one run, those said softly --
-  /// a whisper -- another, a run's direction being one; a run that cannot
-  /// be cut as it was written is done again a line at a time.
+  /// _run speaks [lines], all said the same way, with cues in place; a run
+  /// that cannot be cut as written is redone a line at a time.
   Future<List<SpokenAudio>> _run(
       String dir, SpeechSpec spec, List<SpeechLine> lines, int seed) async {
-    // Told to be vivid, it breathes between its sentences, as a voice
-    // given the room does.
+    // Told to be vivid, it breathes between sentences, as a voice given
+    // the room does.
     var script = qwenScript([
       for (var l in lines)
         spec.expression > qwenBreathing
@@ -731,7 +679,7 @@ class QwenSpeech extends SpeechEngine {
           for (var l in lines) ...await _run(dir, spec, [l], seed)
         ];
       } else {
-        // One line's stretches, not to be told apart: each by itself.
+        // One line's stretches cannot be told apart: each by itself.
         for (var k in run.stretches) {
           stopper.check();
           pieces[k] = await _say(
@@ -761,8 +709,8 @@ class QwenSpeech extends SpeechEngine {
             var sound = await cueRecording(s.cue, man: man);
             if (sound == null) break;
             takes.last.add((sound, Float32List.fromList(sound), const []));
-            // A breath in leads straight into the words; a laugh, a sigh or
-            // a cough has a moment after it.
+            // A breath in leads straight into the words; a laugh, sigh or
+            // cough has a moment after it.
             if (s.cue != SpeechCue.breath) takes.last.add(silence(0.12));
         }
       }
@@ -772,8 +720,8 @@ class QwenSpeech extends SpeechEngine {
       await gap(script.gaps[k]);
       var piece = pieces[k]!;
       var sound = await Isolate.run(() => upsample2x(qwenTrimmed(piece)));
-      // Said softly, it is quieter too: the voice, asked to, speaks low
-      // but hardly less loud.
+      // Said softly, it is made quieter too: the voice speaks low but
+      // hardly less loud.
       if (said.whisper) sound = softly(sound, by: qwenSoftLevel);
       // Timed, and its beats placed, by the voice's own pauses.
       var timed = timeWords(sound, SpokenText(said.text).words);
@@ -790,8 +738,8 @@ class QwenSpeech extends SpeechEngine {
                   }());
         switch (gap) {
           case QwenPause p:
-            // The gap all silence, the voice's own pause with it, as long
-            // as asked -- or as long as the voice's own, where longer.
+            // The gap all silence, the voice's own pause with it, as long as
+            // asked or as the voice's own, whichever is longer.
             beats.add((
               at: (a + b) / 2,
               sound: silence(math.max(0.0, p.seconds - (b - a))).$1,
@@ -801,8 +749,8 @@ class QwenSpeech extends SpeechEngine {
             var cue = await cueRecording(s.cue, man: man);
             if (cue == null) break;
             beats.add(switch (s.cue) {
-              // A breath in leads into the words after it; one out
-              // follows those before; a sigh has a moment either side.
+              // A breath in leads into the words after; one out follows
+              // those before; a sigh has a moment either side.
               SpeechCue.breath => (
                   at: math.max(a, b - 0.04),
                   sound: cue,
@@ -843,8 +791,8 @@ class QwenSpeech extends SpeechEngine {
     return [for (var pieces in takes) assembleTake(pieces)];
   }
 
-  /// _say runs the program on [text], said as [direction]: its take at
-  /// 24kHz, as it wrote it. Stop ends the program.
+  /// _say runs the program on [text] said as [direction]: its take at
+  /// 24kHz. Stop ends the program.
   Future<Float32List> _say(
       String dir, SpeechSpec spec, String direction, String text, int seed,
       {required bool compose}) async {

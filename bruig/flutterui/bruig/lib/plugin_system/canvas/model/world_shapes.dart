@@ -1,5 +1,5 @@
 // world_shapes.dart is the world's countries as outlines, for the tile
-// map's drawn way (Ken, 2026-11-17: the improvements report's leftovers).
+// map's drawn way.
 // GENERATED from world-atlas 2.0.2 countries-110m (ISC, (c) 2013-2019
 // Michael Bostock; drawn from Natural Earth, public domain) and the codes
 // of i18n-iso-countries 7.11.0 (MIT, (c) 2016 widdix GmbH). Each line: the

@@ -9,8 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 // guides are part of the design; whether they are shown is saved too.
 // Nothing here is drawn on an export (see scene_renderer.dart).
 
-/// GuideAxis is which way a guide runs: a vertical guide is a vertical line,
-/// fixed at an x.
+/// GuideAxis is which way a guide runs: a vertical one is fixed at an x.
 enum GuideAxis {
   vertical("Vertical"),
   horizontal("Horizontal");
@@ -99,8 +98,7 @@ enum CanvasAlign {
   bool get across => this == left || this == centreX || this == right;
 }
 
-/// CanvasRulers is which edges of the window carry a ruler. All are off by
-/// default.
+/// CanvasRulers is which window edges carry a ruler (none by default).
 class CanvasRulers {
   final bool top;
   final bool left;
@@ -139,8 +137,7 @@ class CanvasRulers {
       );
 }
 
-/// CanvasGuides is the whole arrangement: the grid, the lines, the rulers and
-/// what snaps to what.
+/// CanvasGuides is the grid, the guides, the rulers and what snaps to what.
 class CanvasGuides {
   /// showGrid and gridSize are the regular grid. The size is in document
   /// units, so a grid on a 1280-wide canvas is the same grid at any zoom.
@@ -179,8 +176,7 @@ class CanvasGuides {
 
   final CanvasRulers rulers;
 
-  /// showRulers hides the rulers without forgetting which edges they were
-  /// on.
+  /// showRulers hides the rulers without forgetting their edges.
   final bool showRulers;
 
   const CanvasGuides({
@@ -200,8 +196,7 @@ class CanvasGuides {
     this.showRulers = true,
   });
 
-  /// isDefault is whether every setting is at its default, so nothing need
-  /// be saved.
+  /// isDefault is whether every setting is at its default: nothing to save.
   bool get isDefault =>
       !showGrid &&
       gridSize == 40 &&

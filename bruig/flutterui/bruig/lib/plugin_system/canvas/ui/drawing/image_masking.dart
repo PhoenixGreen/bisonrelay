@@ -20,9 +20,8 @@ import 'package:flutter/services.dart';
 // putting masks together, and turning a point on the canvas into a point of
 // the picture a layer shows.
 
-/// lookOf is the picture the layer [layerId] of [e] shows, with everything
-/// done to it: the element itself for the base layer, a picture layer's look
-/// for one of those, and null for a layer with no picture.
+/// lookOf is the picture the layer [layerId] of [e] shows, edits and all:
+/// the element for the base layer, a picture layer's look, or null.
 ImageElement? lookOf(ImageElement e, String layerId) {
   var layer = e.layerById(layerId);
   if (layer == null) return null;
@@ -37,8 +36,7 @@ ImageElement? lookOf(ImageElement e, String layerId) {
   };
 }
 
-/// withLook is [e] with the layer [layerId]'s picture replaced by [look] --
-/// see lookOf.
+/// withLook is [e] with the picture lookOf gives for [layerId] as [look].
 ImageElement withLook(ImageElement e, String layerId, ImageElement look) {
   var layer = e.layerById(layerId);
   if (layer == null) return e;
@@ -63,9 +61,8 @@ class LayerPicture {
   final Size size;
   final ImagePlacement placement;
 
-  /// _inFrame is whether points are measured in the element's own frame --
-  /// the base picture's, and a frame-masked layer's -- rather than in a
-  /// picture layer's own turned box.
+  /// _inFrame is whether points are measured in the element's frame (for the
+  /// base picture and frame-masked layers), not a picture layer's turned box.
   final bool _inFrame;
 
   LayerPicture._(this.space, this.layer, this.size, this.placement,
@@ -90,16 +87,15 @@ class LayerPicture {
     var look = lookOf(e, layerId);
     if (layer == null || look == null) return null;
     var space = LayerSpace(e, layer);
-    // The base picture's place is its own now, as a picture layer's is.
+    // The base picture has a place of its own, as a picture layer has.
     var rect = space.rect;
     var placement = placeImage(size, rect, look.fit,
         crop: look.crop, framing: look.framing);
     return LayerPicture._(space, layer, size, placement);
   }
 
-  /// toPicture is [canvasPoint] as a fraction of the picture across and down
-  /// -- not held to the picture, so a stroke that runs off its edge stays one
-  /// stroke.
+  /// toPicture is [canvasPoint] as a fraction of the picture across and
+  /// down, unclamped, so a stroke that runs off the edge stays one stroke.
   Offset toPicture(Offset canvasPoint) {
     var local =
         _inFrame ? space.toFrame(canvasPoint) : space.toLayer(canvasPoint);
@@ -132,8 +128,7 @@ class LayerPicture {
     return _inFrame ? space.fromFrame(local) : space.fromLayer(local);
   }
 
-  /// canvasPerPixel is how many canvas units one of the picture's pixels is
-  /// drawn across.
+  /// canvasPerPixel is the canvas units one picture pixel is drawn across.
   double get canvasPerPixel =>
       placement.src.width == 0 ? 1 : placement.dst.width / placement.src.width;
 
@@ -142,8 +137,7 @@ class LayerPicture {
   double get shortSide => math.min(size.width, size.height);
 }
 
-/// MaskCombine is how a subject that has been found goes into a mask that
-/// may have one already.
+/// MaskCombine is how a found subject goes into a mask that may have one.
 enum MaskCombine { replace, add, subtract }
 
 /// SubjectFinder asks the operating system for a picture's subject -- see
@@ -156,8 +150,7 @@ class SubjectFinder {
   /// the button straight away rather than a frame later.
   static bool? get known => _available;
 
-  /// available is whether this machine can find a subject: macOS 14 or
-  /// later. Asked once.
+  /// available is whether this machine can find a subject: macOS 14 or later.
   static Future<bool> available() async {
     var known = _available;
     if (known != null) return known;
@@ -170,10 +163,9 @@ class SubjectFinder {
     }
   }
 
-  /// find is the subject of the picture [assetId] -- every subject, or the
-  /// one at [at], a fraction of the picture -- as a grey PNG; null where
-  /// there is none to be found. Throws a message fit to show where finding
-  /// failed rather than found nothing.
+  /// find is the subject of the picture [assetId] (all, or the one at the
+  /// fraction [at]) as a grey PNG, or null if there is none. Throws a message
+  /// fit to show when finding fails rather than finds nothing.
   static Future<Uint8List?> find(String assetId, {Offset? at}) async {
     var path = await CanvasAssets.pathOf(assetId);
     if (path == null) throw "The picture's file could not be found";
@@ -217,8 +209,7 @@ const _alphaToGrey = ColorFilter.matrix([
   0, 0, 0, 0, 255, //
 ]);
 
-/// maskPng renders whatever [draw] puts down as alpha, over a picture of
-/// [size] pixels, into a grey PNG.
+/// maskPng renders what [draw] puts down, as alpha at [size], to a grey PNG.
 Future<Uint8List?> maskPng(Size size, void Function(ui.Canvas) draw) async {
   var w = size.width.round(), h = size.height.round();
   if (w <= 0 || h <= 0) return null;
@@ -251,9 +242,8 @@ void drawGreyAsAlpha(ui.Canvas canvas, ui.Image grey, Size size,
 }
 
 /// combinedSubject is [found] put into [mask]'s subject as [how] says, as a
-/// grey PNG for a picture of [size] pixels. [current] is the mask's subject
-/// decoded, where it has one; where it has none, the whole picture is its
-/// subject, as it is drawn.
+/// grey PNG of [size] pixels. [current] is the mask's subject decoded; null
+/// means the whole picture is the subject, as it is drawn.
 Future<Uint8List?> combinedSubject(ImageMask mask, ui.Image? current,
     ui.Image found, Size size, MaskCombine how) {
   return maskPng(size, (canvas) {
@@ -284,9 +274,8 @@ Size _maskSizeFor(Size picture) {
 }
 
 /// _cutInto runs [job] off the main thread and lays its answer into a new
-/// mask for a picture of [size]: over [base] (drawn first) at [region] of
-/// the picture, adding what was found -- or, with [subtract], taking away
-/// what was found not to be the subject.
+/// mask for a picture of [size], over [base] at [region]: adding what was
+/// found, or with [subtract] taking away what was found not to be subject.
 Future<Uint8List?> _cutInto(SegmentJob job, Size size, Rect region,
     {required void Function(ui.Canvas, Size) base,
     required bool subtract}) async {
@@ -332,11 +321,9 @@ Future<Uint8List?> _cutInto(SegmentJob job, Size size, Rect region,
   }
 }
 
-/// quickSelectMask is [mask] with what a quick-select stroke along [stroke]
-/// (fractions of [picture]) found added to it, or with [subtract] taken
-/// out, as a grey PNG with the old mask's marks worked in. The cut is made
-/// round the stroke only, as every quick-select brush works; a picture whose
-/// mask is empty starts with nothing kept.
+/// quickSelectMask is [mask] with what a stroke along [stroke] (fractions of
+/// [picture]) found added, or with [subtract] taken out, as a grey PNG. The
+/// cut is made round the stroke only; an empty mask starts with nothing kept.
 Future<Uint8List?> quickSelectMask(ui.Image picture, ImageMask mask,
     ui.Image? subject, List<Offset> stroke, double radius,
     {required bool subtract}) async {
@@ -435,11 +422,9 @@ Future<Uint8List?> quickSelectMask(ui.Image picture, ImageMask mask,
   });
 }
 
-/// guessSubjectMask finds a picture's subject by colour and edge alone, where
-/// the operating system cannot: its border taken as background and its
-/// middle (or what is at [at]) as subject, the cut finding the edge between.
-/// Rougher than the operating system's, and meant to be finished with the
-/// brush.
+/// guessSubjectMask finds a subject by colour and edge where the operating
+/// system cannot: border as background, middle (or [at]) as subject, the
+/// cut finding the edge between. Rougher; meant to be finished by brush.
 Future<Uint8List?> guessSubjectMask(ui.Image picture, {Offset? at}) async {
   var size = Size(picture.width.toDouble(), picture.height.toDouble());
   var k = math.min(1.0, math.sqrt(90000 / (size.width * size.height)));
@@ -479,8 +464,7 @@ Future<Uint8List?> guessSubjectMask(ui.Image picture, {Offset? at}) async {
       subtract: false, base: (_, __) {});
 }
 
-/// _alphaImage is one byte a pixel of alpha as a picture -- white at that
-/// alpha -- for drawing back into a mask.
+/// _alphaImage is one byte a pixel of alpha as white, for drawing into a mask.
 Future<ui.Image> _alphaImage(Uint8List alpha, int w, int h) {
   var rgba = Uint8List(w * h * 4);
   for (var i = 0; i < alpha.length; i++) {
@@ -495,11 +479,10 @@ Future<ui.Image> _alphaImage(Uint8List alpha, int w, int h) {
   return done.future;
 }
 
-/// refineEdgeMask is [mask] with its edge worked out afresh wherever a
-/// refining stroke along [stroke] (fractions of [picture]) went -- hair
-/// strands and soft edges given the alpha their colours say they have -- as
-/// a grey PNG: the new subject, with the old mask's marks worked into it.
-/// Nothing outside the stroke changes, at whatever size the mask is kept.
+/// refineEdgeMask is [mask] as a grey PNG with its edge worked out afresh
+/// along [stroke] (fractions of [picture]): hair and soft edges given the
+/// alpha their colours say. Nothing outside the stroke changes, at whatever
+/// size the mask is kept.
 Future<Uint8List?> refineEdgeMask(ui.Image picture, ImageMask mask,
     ui.Image? subject, List<Offset> stroke, double radius) async {
   if (stroke.isEmpty) return null;

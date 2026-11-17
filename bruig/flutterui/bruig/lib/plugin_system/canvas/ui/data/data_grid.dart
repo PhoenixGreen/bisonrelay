@@ -9,18 +9,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// data_grid.dart is the Data Studio's sheet: a spreadsheet's grid, as Calc
-// lays one out (Ken, 2026-11-15: "more inline with common spreadsheet
-// software like open office") -- column letters across the top, row numbers
-// down the side, a cell picked or a range dragged out, typed into, copied
-// and pasted with Calc, Excel or Sheets as tab-separated text.
-//
-// The cells are painted, only those in view, under a pair of scroll views
-// that do nothing but scroll: a big sheet scrolls as quickly as a small
-// one. The headers are painted beside them, following the scrolling.
-//
-// It edits nothing itself: what is typed, pasted and cleared goes to the
-// Data Studio, which writes it into the sheet through the controller.
+// data_grid.dart is the Data Studio's sheet: a spreadsheet grid as Calc
+// lays one out, copied and pasted with Calc, Excel or Sheets as
+// tab-separated text. Only the cells in view are painted, under scroll
+// views that only scroll, so a big sheet scrolls as fast as a small one. It
+// edits nothing itself: changes go to the Data Studio, which writes them
+// through the controller.
 
 const double dataRowHeight = 26;
 const double dataColumnWidth = 104;
@@ -101,9 +95,8 @@ class DataGrid extends StatefulWidget {
   final void Function(int r, int c, List<List<String>> rows) onPaste;
   final ValueChanged<CellRange> onClear;
 
-  /// onFill is the fill handle -- the square at the selection's corner --
-  /// dragged down or across: the selection carried on over [to] (a series
-  /// continued, a formula copied), as in Calc.
+  /// onFill is the fill handle dragged: the selection carried on over [to]
+  /// (a series continued, a formula copied), as in Calc.
   final void Function(CellRange from, CellRange to)? onFill;
   final List<DataOutline> outlines;
   final DataGridLook look;
@@ -120,14 +113,12 @@ class DataGrid extends StatefulWidget {
   /// rather than its name (as the tables showing the sheet do).
   final CanvasImageStore? images;
 
-  /// onResize gives the grid a new size, rows by columns: the − and + at
-  /// the end of the row numbers and of the column letters (Ken, 2026-11-16),
-  /// with a box for how many. None, and the grid has no such ends.
+  /// onResize resizes the grid, rows by columns, by the − and + at the ends
+  /// of the headers; without it there are no such ends.
   final void Function(int rows, int columns)? onResize;
 
-  /// onRowsOrColumns puts [n] rows (or columns) in before [at], or takes
-  /// them out from it: the menu a row number or column letter opens on a
-  /// right-click.
+  /// onRowsOrColumns puts [n] rows (or columns) in before [at], or takes them
+  /// out from it: the right-click menu of a row number or column letter.
   final void Function(
       {required bool rows,
       required bool insert,
@@ -166,14 +157,13 @@ class DataGridState extends State<DataGrid> {
   final TextEditingController _edit = TextEditingController();
   final FocusNode _editFocus = FocusNode();
 
-  /// _editing is the cell being typed into, or null.
   (int, int)? _editing;
   DateTime _lastDown = DateTime.fromMillisecondsSinceEpoch(0);
   (int, int)? _lastDownAt;
   bool _dragging = false;
 
-  /// _fillTo is where the fill handle has been dragged to: the cells it
-  /// would fill, or null when it isn't being dragged.
+  /// _fillTo is where the fill handle has been dragged to: the cells it would
+  /// fill, or null when not dragged.
   CellRange? _fillTo;
   bool _filling = false;
 
@@ -184,8 +174,7 @@ class DataGridState extends State<DataGrid> {
   int get _rows => widget.sheet.shownRows;
   int get _cols => widget.sheet.shownColumns;
 
-  /// How many rows and columns the − and + at the grid's ends take off or
-  /// put on.
+  // How many the − and + at the grid's ends take off or put on.
   final TextEditingController _rowStep = TextEditingController(text: "1");
   final TextEditingController _columnStep = TextEditingController(text: "1");
   String _shown(int r, int c) =>
@@ -219,7 +208,6 @@ class DataGridState extends State<DataGrid> {
     super.dispose();
   }
 
-  /// editing is whether a cell is being typed into.
   bool get editing => _editing != null;
 
   /// startEdit types into the selection's anchor: from [initial] (a key
@@ -254,9 +242,8 @@ class DataGridState extends State<DataGrid> {
     _focus.requestFocus();
   }
 
-  /// _select picks [s] -- and, unless [stay], scrolls to the cell it was
-  /// moved to. A whole row or column picked by its header stays where the
-  /// view is, as in Calc (it went to the last row).
+  /// _select picks [s], scrolling to it unless [stay]; a whole row or column
+  /// picked by its header leaves the view put, as in Calc.
   void _select(DataSel s, {bool stay = false}) {
     var clamp = DataSel(s.ar.clamp(0, _rows - 1), s.ac.clamp(0, _cols - 1),
         s.fr.clamp(0, _rows - 1), s.fc.clamp(0, _cols - 1));
@@ -265,7 +252,6 @@ class DataGridState extends State<DataGrid> {
     if (!stay) _reveal(clamp.fr, clamp.fc);
   }
 
-  /// _reveal scrolls cell [r], [c] into view.
   void _reveal(int r, int c) {
     if (!_v.hasClients || !_h.hasClients) return;
     var top = r * dataRowHeight, bottom = top + dataRowHeight;
@@ -389,9 +375,8 @@ class DataGridState extends State<DataGrid> {
     }
   }
 
-  /// _headerMenu is the right-click menu of a row number or column letter:
-  /// rows (or columns) put in either side of those picked, or taken out --
-  /// the row it was opened on picked first, unless it is among them.
+  /// _headerMenu is a header's right-click menu: rows or columns put in
+  /// either side of the picked ones, or taken out.
   Future<void> _headerMenu(Offset global, Offset local,
       {required bool column}) async {
     var on = onRowsOrColumns;
@@ -445,15 +430,13 @@ class DataGridState extends State<DataGrid> {
     _focus.requestFocus();
   }
 
-  /// onRowsOrColumns is the grid's own, or null.
   void Function(
       {required bool rows,
       required bool insert,
       required int at,
       required int n})? get onRowsOrColumns => widget.onRowsOrColumns;
 
-  /// _step is how many the − and + at an end take off or put on: what is
-  /// typed in its box, 1 when that isn't a number.
+  /// _step is how many an end's − and + change: its box's number, or 1.
   int _step(TextEditingController box) =>
       math.max(1, int.tryParse(box.text.trim()) ?? 1);
 
@@ -544,8 +527,7 @@ class DataGridState extends State<DataGrid> {
     );
   }
 
-  /// copyText is the selection as Calc and Excel take it: rows of cells
-  /// apart by tabs, a line apiece.
+  /// copyText is the selection as Calc and Excel take it: tabs and lines.
   String copyText() {
     var g = _now.range;
     var used = widget.sheet.used;
@@ -563,8 +545,8 @@ class DataGridState extends State<DataGrid> {
     pasteText(text);
   }
 
-  /// pasteText puts [text] -- tab-separated, or comma-separated where there
-  /// is no tab -- in at the selection.
+  /// pasteText puts [text], tab-separated (or comma-separated where there is
+  /// no tab), in at the selection.
   void pasteText(String text) {
     var lines =
         text.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
@@ -889,15 +871,13 @@ class DataGridState extends State<DataGrid> {
   }
 }
 
-/// _Headers paints the column letters or the row numbers in view, those
-/// of the selection lit.
+/// _Headers paints the headers in view, the selection's lit.
 class _Headers extends CustomPainter {
   final DataGridLook look;
   final ScrollController scroll;
   final bool columns;
   final int from, to;
 
-  /// count is how many the grid has: none drawn past them.
   final int count;
   _Headers(
       {required this.look,
@@ -990,8 +970,8 @@ class _Cells extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     var dy = v.hasClients ? v.offset : 0.0, dx = h.hasClients ? h.offset : 0.0;
-    // From the first row and column even scrolled past them (a bounce at
-    // the top or left edge gives a negative offset).
+    // From the first row and column even scrolled past them (a bounce
+    // at the top or left edge gives a negative offset).
     var r0 = math.max(0, (dy / dataRowHeight).floor());
     var c0 = math.max(0, (dx / dataColumnWidth).floor());
     // No further than the grid's last row and column.
@@ -1064,8 +1044,8 @@ class _Cells extends CustomPainter {
             continue;
           }
         }
-        // Numbers to the right and errors in red, by what the cell is
-        // worth, not how it is written ("\$14.20" is a number).
+        // Numbers to the right and errors in red, by what the cell is worth,
+        // not how it is written ("\$14.20" is a number).
         var value = sheetValue(sheet, r, c);
         var number = value is double;
         var bad = value is SheetError;

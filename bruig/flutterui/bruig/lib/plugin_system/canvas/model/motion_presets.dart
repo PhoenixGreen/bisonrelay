@@ -2,13 +2,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // motion_presets.dart is the ready-made motions. Each writes a clip's keys;
-// after that the clip is only its keys, and editing one sets
-// MotionClip.edited.
-//
-// Where a motion means a place it keys a place, not a number: a slide in
-// comes from just off the edge whatever the page's shape.
+// editing one then sets MotionClip.edited. A motion that means a place keys
+// a place, not a number: a slide in starts just off the edge on any page.
 
-/// MotionWay is which way a slide goes.
 enum MotionWay {
   left("The left edge"),
   right("The right edge"),
@@ -19,13 +15,11 @@ enum MotionWay {
   const MotionWay(this.label);
 }
 
-/// MotionPreset is one ready-made motion.
 class MotionPreset {
   final String name;
   final MotionKind kind;
 
-  /// ways is the directions it can go, where it has a choice; the first is
-  /// its own.
+  /// ways is the directions it can go, its own first.
   final List<MotionWay> ways;
 
   /// aims is whether it goes to, or looks at, another element.
@@ -33,8 +27,7 @@ class MotionPreset {
   final double length;
   final ClipHold? after;
 
-  /// loops is whether it goes round: every loop does, and so does a camera
-  /// that follows somebody.
+  /// loops is whether it goes round: every loop, and a camera that follows.
   final bool loops;
   final Map<MotionProp, List<MotionKey>> Function(MotionWay way, String target)
       write;
@@ -43,7 +36,6 @@ class MotionPreset {
       {this.ways = const [], this.aims = false, this.after, bool? loops})
       : loops = loops ?? kind == MotionKind.loop;
 
-  /// clip is a new clip of this motion, called [id].
   MotionClip clip(String id,
       {MotionWay? way, String target = "", int layer = 0}) {
     var c = MotionClip.ofKind(id, kind,
@@ -56,8 +48,7 @@ class MotionPreset {
     return c.copyWith(after: after, loop: loops);
   }
 
-  /// onto is [c] rewritten as this motion: its keys replaced, its name too
-  /// unless it was given its own.
+  /// onto rewrites [c] as this motion: its keys, and its name unless renamed.
   MotionClip onto(MotionClip c, {MotionWay? way, String target = ""}) =>
       c.copyWith(
         kind: kind,
@@ -99,7 +90,7 @@ MotionPlaceKind _edge(MotionWay w) => switch (w) {
 MotionProp _axis(MotionWay w) =>
     w == MotionWay.left || w == MotionWay.right ? MotionProp.x : MotionProp.y;
 
-/// motionPresets are every ready-made motion, in the order they are listed.
+/// motionPresets are every ready-made motion, in listed order.
 final List<MotionPreset> motionPresets = [
   // Arriving.
   MotionPreset(
@@ -329,20 +320,17 @@ final List<MotionPreset> motionPresets = [
       after: ClipHold.rest),
 ];
 
-/// presetsFor are the ready-made motions of [kind].
 List<MotionPreset> presetsFor(MotionKind kind) => [
       for (var p in motionPresets)
         if (p.kind == kind) p
     ];
 
-/// presetNamed is the ready-made motion called [name], or null.
 MotionPreset? presetNamed(String name) =>
     motionPresets.where((p) => p.name == name).firstOrNull;
 
-/// cameraZoomOf is how close a camera clip gets -- the furthest its scale
-/// keys go from 1 -- or null for a clip that does not zoom (a shake). What
-/// the clip card's Zoom knob shows (Ken's privacy video, 2026-11-11: "Push
-/// in on…" went to 1.7 and could not be told otherwise).
+/// cameraZoomOf is how close a camera clip gets (the furthest its scale
+/// keys go from 1), or null for a clip that does not zoom. The clip card's
+/// Zoom knob shows it, so a push in can be set.
 double? cameraZoomOf(MotionClip c) {
   if (c.kind != MotionKind.camera) return null;
   double? most;
@@ -354,8 +342,8 @@ double? cameraZoomOf(MotionClip c) {
   return most == null || (most - 1).abs() < 1e-6 ? null : most;
 }
 
-/// withCameraZoom is [c] going to [zoom] instead: every scale key that was
-/// not 1 set to it, so a push in, a follow and a pull back keep their shape.
+/// withCameraZoom sets every scale key of [c] that is not 1 to [zoom], so a
+/// push in, a follow and a pull back keep their shape.
 MotionClip withCameraZoom(MotionClip c, double zoom) => c.copyWith(keys: {
       for (var MapEntry(key: prop, value: keys) in c.keys.entries)
         prop: prop != MotionProp.scale
@@ -370,9 +358,8 @@ MotionClip withCameraZoom(MotionClip c, double zoom) => c.copyWith(keys: {
               ],
     });
 
-/// cameraShakeOf is how hard a camera clip that shakes does -- its largest
-/// sideways or up-and-down move, in pixels -- or null for one that zooms
-/// or does not move by numbers.
+/// cameraShakeOf is a shaking camera clip's largest sideways or vertical
+/// move in pixels, or null for one that zooms or does not move by numbers.
 double? cameraShakeOf(MotionClip c) {
   if (c.kind != MotionKind.camera || cameraZoomOf(c) != null) return null;
   var most = 0.0;
@@ -388,8 +375,8 @@ double? cameraShakeOf(MotionClip c) {
   return most > 0 ? most : null;
 }
 
-/// withCameraShake is [c] shaking [strength] pixels at most: every move
-/// scaled by as much.
+/// withCameraShake is [c] shaking [strength] pixels at most, every move
+/// scaled to match.
 MotionClip withCameraShake(MotionClip c, double strength) {
   var was = cameraShakeOf(c);
   if (was == null) return c;

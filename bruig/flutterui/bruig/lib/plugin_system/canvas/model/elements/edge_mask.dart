@@ -1,8 +1,8 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// edge_mask.dart is a mask an element's box wears with nothing drawn by hand:
-// softened edges and a fade from a side or the middle. It is for moving
-// pictures in a box (video, generated patterns); a picture has the full,
+// edge_mask.dart is a mask an element's box wears with nothing drawn by
+// hand: softened edges and a fade from a side or the middle, for moving
+// pictures in a box (video, generated patterns). A picture has the full,
 // brush-drawn mask in image_mask.dart.
 
 /// EdgeFade is where an edge mask fades the box out.
@@ -23,15 +23,13 @@ enum EdgeFade {
       values.firstWhere((f) => f.name == name, orElse: () => none);
 }
 
-/// EdgeMask is an element's box softened and faded.
 class EdgeMask {
   /// feather is how soft the edges are, as a share of the box's shorter
   /// side: 0.1 is a tenth of it fading away all round.
   final double feather;
 
   /// fade is which way it fades, and reach how far in: a share of the box
-  /// across the way it fades -- of half of it for the fades from two sides
-  /// and from the middle.
+  /// across the fade (of half of it for fades from two sides or the middle).
   final EdgeFade fade;
   final double reach;
 

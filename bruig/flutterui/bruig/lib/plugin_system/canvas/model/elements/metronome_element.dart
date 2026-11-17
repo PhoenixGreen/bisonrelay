@@ -2,15 +2,12 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// metronome_element.dart is a metronome on a canvas (Ken, 2026-11-15: "a
-// stand alone metronome, that looks like a metronome and has an adjustable
-// bpm for practice"): a wooden pyramid, its pendulum swinging a beat each
-// way and its weight sliding down the arm as it goes faster, with buttons
-// to set the beats a minute (or tap them), the beats in a bar, and to start
-// and stop it -- clicking as it goes, the bar's first beat louder.
-//
-// Whether it is going is the reader's, not the document's (see
-// CanvasMetronomes): a canvas opens with it still.
+// metronome_element.dart is a metronome on a canvas for practice: a wooden
+// pyramid, its pendulum swinging a beat each way and its weight sliding
+// down as it speeds up, with buttons for the beats a minute (or tap), the
+// beats in a bar, and start and stop; it clicks, the bar's first beat
+// louder. Whether it is going is the reader's (see CanvasMetronomes), so a
+// canvas opens with it still.
 
 /// metronomeSlowest and metronomeFastest are the beats a minute it goes
 /// between, as a clockwork one's.
@@ -20,13 +17,10 @@ const metronomeSlowest = 30.0, metronomeFastest = 240.0;
 /// them: 1 is every beat alike.
 const metronomeBeats = [1, 2, 3, 4, 6];
 
-/// MetronomeElement is the element itself.
 class MetronomeElement extends CanvasElement {
-  /// bpm is how many beats a minute.
   final double bpm;
 
-  /// beats is how many beats in a bar, its first clicked louder; 1 for
-  /// every beat alike.
+  /// beats is beats in a bar, the first louder; 1 for all alike.
   final int beats;
 
   /// body is the wood's colour, and accent the lamp's and the playing's.

@@ -9,17 +9,13 @@ import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:flutter/painting.dart';
 
 // element_effects.dart is the motions that cut a thing up instead of moving
-// it: a mosaic, a glitch, and a grid of tiles thrown about.
-//
-// Other motions are a transform and an opacity, drawn once. These draw the
+// it: a mosaic, a glitch, and a grid of tiles thrown about. These draw the
 // thing once per tile or slice, so they take the drawing as a closure, which
 // lets one implementation serve shapes, pictures and text.
 
-/// paintCutEffect draws [what], [p] of the way through a cutting motion.
-///
-/// [box] is the rectangle being cut, in the coordinates [what] draws in.
-/// Returns false where the motion is not a cutting one, so a caller can fall
-/// through to the ordinary transform.
+/// paintCutEffect draws [what], [p] of the way through a cutting motion, in
+/// [box], in [what]'s coordinates. False where the motion does not cut, so a
+/// caller can fall through to the ordinary transform.
 bool paintCutEffect(ui.Canvas canvas, Rect box, TextMotion motion,
     EffectSpec effect, double p, void Function() what) {
   if (!motion.cuts || box.isEmpty) return false;
@@ -43,15 +39,12 @@ bool paintCutEffect(ui.Canvas canvas, Rect box, TextMotion motion,
   return true;
 }
 
-/// _paintMosaic draws the thing coarse and lets it resolve.
-///
-/// A canvas cannot be read back mid-paint, so the drawing is drawn small and
-/// magnified back up with nearest-neighbour sampling: each small pixel
-/// becomes a block.
+/// _paintMosaic draws the thing coarse and lets it resolve. A canvas cannot
+/// be read back mid-paint, so it is drawn small and magnified with
+/// nearest-neighbour sampling: each small pixel becomes a block.
 void _paintMosaic(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
     void Function() what) {
-  // From [pieces] blocks across down to one design unit, where it is simply
-  // drawn.
+  // From [pieces] blocks across down to one design unit, then simply drawn.
   var coarsest = box.width / math.max(1, effect.pieces);
   var cell = coarsest * (1 - p);
   if (cell <= 1.05) {
@@ -79,12 +72,9 @@ void _paintMosaic(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
 }
 
 /// _paintGlitch is a picture on a broken signal: bands torn sideways, rows
-/// showing the wrong part of the picture, dropouts, and the colour channels
-/// coming apart.
-///
-/// It jumps rather than slides: progress is chopped into ticks and everything
-/// is worked out from the tick, so bands hold still and then snap somewhere
-/// new. The damage thins out tick by tick.
+/// showing the wrong part, dropouts, colour channels apart. It jumps rather
+/// than slides: progress is chopped into ticks and all worked out from the
+/// tick, so bands hold still then snap, the damage thinning each tick.
 void _paintGlitch(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
     void Function() what) {
   var slices = math.max(3, effect.pieces);
@@ -155,10 +145,8 @@ void _paintGlitch(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
   torn(0);
 }
 
-/// _paintPieces cuts the thing into a grid and gives every tile its own
-/// arrival: thrown out from the middle, turned, and faded.
-///
-/// The tiles are roughly square whatever the element's shape.
+/// _paintPieces cuts the thing into a grid of roughly square tiles and gives
+/// each its own arrival: thrown out from the middle, turned, and faded.
 void _paintPieces(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
     void Function() what) {
   var across = math.max(1, effect.pieces);
@@ -208,10 +196,8 @@ void _paintPieces(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
   }
 }
 
-/// _throwFrom is the distance a scatter of 1 throws a piece.
-///
-/// The short side, or a quarter of the long side if larger, so thin things
-/// such as lines still throw their pieces visibly.
+/// _throwFrom is the distance a scatter of 1 throws a piece: the short side,
+/// or a quarter of the long side if larger, so thin things still throw.
 double _throwFrom(Rect box) =>
     math.max(box.shortestSide, box.longestSide * 0.25);
 
@@ -225,10 +211,8 @@ double _stagger(double p, int slot, int count, double spread) {
   return ((p - start) / each).clamp(0.0, 1.0);
 }
 
-/// _noise is a repeatable 0..1 from two whole numbers.
-///
-/// A hash rather than a random generator, so a frame draws the same on every
-/// paint, machine and export.
+/// _noise is a repeatable 0..1 from two whole numbers: a hash, not a random
+/// generator, so a frame draws the same on every paint, machine and export.
 double _noise(int seed, int i) {
   var n = (seed * 374761393 + i * 668265263) & 0x7FFFFFFF;
   n = (n ^ (n >> 13)) * 1274126177 & 0x7FFFFFFF;
@@ -240,8 +224,7 @@ double _noise(int seed, int i) {
 int _shuffled(int seed, int i, int count) =>
     (_noise(seed + 3, i) * count).floor().clamp(0, math.max(0, count - 1));
 
-/// _about is a scale about a point, as the flat column-major list
-/// ImageFilter.matrix wants.
+/// _about is a scale about a point, as ImageFilter.matrix's column-major list.
 Float64List _about(double x, double y, double by) => Float64List.fromList([
       by, 0, 0, 0, //
       0, by, 0, 0, //
@@ -249,13 +232,10 @@ Float64List _about(double x, double y, double by) => Float64List.fromList([
       x - x * by, y - y * by, 0, 1, //
     ]);
 
-/// paintArriving draws [what] part way through [animation], wherever [pose]
-/// says it has got to.
-///
-/// Shared by shapes and pictures: the element is drawn by a closure, and
-/// everything here works on its rectangle. It reads the pose's reveal and
-/// close channels (as charts and text do); missing, they are 1 and 0 and the
-/// element is drawn as if not animated.
+/// paintArriving draws [what] part way through [animation], where [pose]
+/// says it has got to. The element is drawn by a closure, so shapes and
+/// pictures share it. It reads the pose's reveal and close channels;
+/// missing, they are 1 and 0, drawn as if not animated.
 void paintArriving(ui.Canvas canvas, Rect box, ElementAnimation animation,
     Keyframe pose, void Function() what,
     {Offset? pivot}) {

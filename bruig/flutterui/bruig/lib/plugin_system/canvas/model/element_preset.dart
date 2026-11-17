@@ -8,10 +8,9 @@ import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 // with a name on it, so a new setting needs nothing here. Choosing one puts
 // an ordinary, fully editable element on the canvas.
 
-/// ElementPreset is a saved element, ready to be put on a canvas again.
 class ElementPreset {
-  /// id is how the preset is addressed on disk and in the panel. Built-in
-  /// ones carry a name chosen in code; saved ones get one from the clock.
+  /// id is how the preset is addressed on disk and in the panel: a name
+  /// chosen in code for built-in ones, one from the clock for saved ones.
   final String id;
 
   final String name;

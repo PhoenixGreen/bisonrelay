@@ -5,13 +5,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 
-// character_cast3d.dart is the ready-made cast: characters made in the
-// Character Studio and shipped with the app, to place as they are or to
-// start a character from. Each is new when it is changed: it has no id of
-// its own, so Done in the Studio keeps it as the user's.
+// character_cast3d.dart is the ready-made cast shipped with the app. Each
+// has no id, so Done in the Studio keeps a changed one as the user's.
 
-/// ReadyMade is one of the cast: the character, and its picture among the
-/// app's assets for the list.
+/// ReadyMade is one of the cast: the character, and its listed picture.
 typedef ReadyMade = ({CharacterDesign design, String picture});
 
 CharacterShape _shape(String hair,
@@ -52,7 +49,7 @@ ReadyMade _made(String name, String body, CharacterShape shape,
       picture: "assets/canvas/character_cast/${name.toLowerCase()}.png",
     );
 
-/// readyMadeCast is the cast, in the order it is listed.
+/// readyMadeCast is the cast, in listed order.
 final List<ReadyMade> readyMadeCast = [
   _made(
       "Ada",

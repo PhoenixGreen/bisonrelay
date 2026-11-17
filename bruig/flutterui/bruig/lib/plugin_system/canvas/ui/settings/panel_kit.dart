@@ -10,20 +10,16 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// panel_kit.dart is the parts of the sectioned settings panel: a section
-// that folds, holding cards; a row of picture tiles; a section's tools; and
-// the stepper. Nothing here knows what an element is; see settings/README.md
-// for the rows inside a section.
+// panel_kit.dart is the sectioned settings panel's parts: folding sections,
+// picture tiles, tools, the stepper. Element-agnostic; see
+// settings/README.md for the rows inside a section.
 
-/// stepperHeight is a stepper's box. Taller than the other controls' because
-/// the arrows are pressed rather than aimed at.
+/// stepperHeight is taller than other controls: arrows are pressed, not aimed.
 const double stepperHeight = 30;
 
-/// CanvasStepper is a number with an arrow either side of it. The arrows
-/// nudge it a [step] at a time, repeating while held; the number is dragged
-/// sideways to run it, from the first pixel, and double-clicked to type one.
-/// Changed from [defaultValue], its caption turns the accent colour and
-/// gains a ↺ that puts it back.
+/// CanvasStepper is a number with arrows that repeat while held; dragged it
+/// runs, double-clicked it is typed. Off [defaultValue] its caption takes
+/// the accent and a ↺.
 class CanvasStepper extends StatefulWidget implements CanvasGrowable {
   @override
   double get least => width;
@@ -37,15 +33,13 @@ class CanvasStepper extends StatefulWidget implements CanvasGrowable {
   /// step is how far an arrow moves it. Null is its last digit.
   final double? step;
 
-  /// dragStep is how far one pixel of a drag moves it. Null is its last
-  /// digit, or a fifth of [step] where that is coarser, so a whole range is
-  /// not hundreds of pixels long.
+  /// dragStep is a drag pixel's step: null is the last digit, or [step] / 5
+  /// where coarser, so a range is not hundreds of pixels.
   final double? dragStep;
 
   final String suffix;
 
-  /// defaultValue is what it starts at, for the ↺. Null where it has no one
-  /// value it starts at -- a position.
+  /// defaultValue is its start, for the ↺; null where it has none (a place).
   final double? defaultValue;
 
   final double width;
@@ -56,13 +50,11 @@ class CanvasStepper extends StatefulWidget implements CanvasGrowable {
   final ValueChanged<double> onChanged;
   final VoidCallback? onCommit;
 
-  /// name keys its arrows, number and reset -- "$name-less" -- for a
-  /// stepper drawn on behalf of a field that carries the key itself. Null is
-  /// the stepper's own key.
+  /// name keys its arrows, number and reset ("$name-less") for a stepper
+  /// drawn for a keyed field; null uses the stepper's own key.
   final String? name;
 
-  /// fill makes it as wide as it is given, for one laid out by hand -- in a
-  /// row of its own rather than a line of a group.
+  /// fill makes it as wide as given, for one laid out in its own row.
   final bool fill;
 
   const CanvasStepper({
@@ -84,7 +76,6 @@ class CanvasStepper extends StatefulWidget implements CanvasGrowable {
     super.key,
   });
 
-  /// changed is whether it is away from [defaultValue].
   bool get changed {
     var d = defaultValue;
     if (d == null) return false;
@@ -108,9 +99,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
   Timer? _repeat;
   bool _held = false;
 
-  /// _running is the value while an arrow is held, counted here rather than
-  /// read back off the widget: the repeats can come faster than the panel
-  /// rebuilds, and each one read from a value that had not caught up.
+  /// _running is the held value, counted here: repeats outpace rebuilds.
   double _running = 0;
 
   double get _digit => math.pow(10, -widget.decimals).toDouble();
@@ -122,7 +111,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
       ? v.round().toString()
       : v.toStringAsFixed(widget.decimals);
 
-  /// _sub is the key of one of its parts, where it has a name to key them by.
+  /// _sub keys one of its parts, where it has a name to key them by.
   Key? _sub(String part) {
     var name = widget.name ??
         (widget.key is ValueKey<String>
@@ -133,8 +122,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
 
   double _clamp(double v) => v.clamp(widget.min, widget.max).toDouble();
 
-  /// _snap rounds to the field's digits, so arrows from 0.1 land on 0.3 and
-  /// not on 0.30000000000000004.
+  /// _snap rounds to the field's digits: 0.3, not 0.30000000000000004.
   double _snap(double v) =>
       double.parse(_clamp(v).toStringAsFixed(widget.decimals));
 
@@ -178,8 +166,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
 
   void _nudge(int by) {
     var next = _snap(_running + by * _step);
-    // Held at a limit: nothing more to say, rather than the same value
-    // written sixteen times a second.
+    // Held at a limit: say nothing rather than repeat the same value.
     if (next == _running && _held) return;
     _running = next;
     widget.onChanged(_running);
@@ -277,8 +264,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
         onPointerMove: (event) {
           if (!_down) return;
           var travelled = event.position.dx - _startX;
-          // A few pixels of give, so the two presses of a double-click do
-          // not nudge the number on their way.
+          // A few pixels of give, so a double-click does not nudge it.
           if (!_dragging && travelled.abs() < 3) return;
           _dragging = true;
           var fine = HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0;
@@ -312,10 +298,8 @@ class _CanvasStepperState extends State<CanvasStepper> {
     );
   }
 
-  /// _built is what [build] made last, from [_was]: a stepper showing the
-  /// same as it did is handed back as it was, so an edit elsewhere in the
-  /// panel does not go through every stepper in it. Everything it does when
-  /// pressed reads [widget] then, so nothing kept is out of date.
+  /// _built is the last build, handed back unchanged while [_was] is, so
+  /// other edits skip it; its handlers read [widget] live.
   Widget? _built;
   List<Object?> _was = const [];
 
@@ -402,8 +386,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
                 ? accent.withValues(alpha: 0.55)
                 : theme.colors.outlineVariant),
       ),
-      // Stretched, so each arrow is pressed over the box's whole height,
-      // not just over its icon.
+      // Stretched, so each arrow is pressable over the box's full height.
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _arrow(theme, Icons.chevron_left, -1, "less"),
         Container(width: 1, color: theme.colors.outlineVariant),
@@ -419,8 +402,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // No room kept for a caption it has not got: a look's row
-            // stands its stepper level with its name.
+            // No room for a missing caption, so a look's row stays level.
             if (widget.label.isNotEmpty) ...[
               SizedBox(height: cardLabelHeightIn(context), child: caption),
               SizedBox(height: cardLabelGapIn(context)),
@@ -445,9 +427,8 @@ class _CanvasStepperState extends State<CanvasStepper> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Caption and box together are as tall as any other captioned
-          // control, so a stepper stands level with the buttons and fields
-          // beside it: the box's extra height comes out of the gap.
+          // Caption and box are as tall as any captioned control, so steppers
+          // stand level; the box's extra height comes out of the gap.
           SizedBox(height: controlLabelHeight, child: caption),
           SizedBox(
               height: math.max(0.0,
@@ -466,12 +447,10 @@ class _CanvasStepperState extends State<CanvasStepper> {
   }
 }
 
-/// CanvasKept is [builder]'s widget, built again only when one of [deps]
-/// changes, or something it reads from above (the theme, say). Every edit
-/// rebuilds the panel, and a widget handed back unchanged is a subtree
-/// Flutter skips. What it is handed must be everything it shows, and what it
-/// does when pressed must look up what is current then: a widget kept is a
-/// callback kept.
+/// CanvasKept is [builder]'s widget, rebuilt only when [deps] or inherited
+/// state change, as Flutter skips an unchanged subtree. Pass everything it
+/// shows; handlers must read current state, as a kept widget's callbacks
+/// are kept too.
 class CanvasKept extends StatefulWidget {
   final List<Object?> deps;
   final WidgetBuilder builder;
@@ -506,8 +485,7 @@ class _CanvasKeptState extends State<CanvasKept> {
   }
 }
 
-/// CanvasTile is one choice in a row of [CanvasTiles]: a picture of what it
-/// does and the word for it.
+/// CanvasTile is one choice in [CanvasTiles]: a picture and its name.
 class CanvasTile<T> {
   final T value;
   final String label;
@@ -516,37 +494,29 @@ class CanvasTile<T> {
   final WidgetBuilder? preview;
   final IconData? icon;
 
-  /// paint draws what choosing it does, as [preview] does -- once, into a
-  /// small picture kept and drawn again as it is: see TileSnapshot. Preferred
-  /// to [preview] for anything drawn through a layer or a filter.
+  /// paint draws the choice once into a kept picture (see TileSnapshot);
+  /// preferred to [preview] for anything through a layer or filter.
   final TilePaint? paint;
 
-  /// drawnFrom is everything [preview] draws from, where it is not just
-  /// [value] -- the picture a filter is shown on. Given, or with no preview
-  /// at all, a tile in a folding card is built once and kept until it
-  /// changes; see CanvasKept.
+  /// drawnFrom is what [preview] draws from beyond [value]; given, a tile in
+  /// a folding card is built once and kept (see CanvasKept).
   final Object? drawnFrom;
 
   const CanvasTile(this.value, this.label,
       {this.preview, this.icon, this.drawnFrom, this.paint});
 }
 
-/// TilePaint draws a tile's picture into [size].
 typedef TilePaint = void Function(Canvas canvas, Size size);
 
-/// _snapshots is every tile's picture, drawn once, the most recently drawn
-/// last: a scrolled strip otherwise drew every tile's filter, blend layer and
-/// shader again on every frame.
+/// _snapshots is every tile's picture, drawn once, most recent last.
 final LinkedHashMap<String, ui.Image> _snapshots = LinkedHashMap();
 const int _snapshotsKept = 240;
 
-/// TileSnapshot is [paint] drawn once at the size it is shown, kept as
-/// [id], and drawn from then on as that picture with its corners rounded.
+/// TileSnapshot is [paint] drawn once at its size and kept as [id].
 class TileSnapshot extends StatelessWidget {
   final String id;
 
-  /// slot is which tile this is, whatever it shows: while [holding], the
-  /// picture it showed last is shown again rather than a new one drawn.
+  /// slot is which tile this is: while [holding], its last picture shows.
   final String? slot;
   final TilePaint paint;
   final Color ground;
@@ -559,15 +529,12 @@ class TileSnapshot extends StatelessWidget {
       this.radius = 5,
       super.key});
 
-  /// holding is whether a control is being dragged: every tile drawn from
-  /// what it changes would be drawn again on every step of the drag --
-  /// thirty tiles a step, some of them figures in 3D -- so each keeps its
-  /// picture until the drag is let go.
+  /// holding is whether a control is dragged: tiles keep their pictures till
+  /// it ends, or thirty (some 3D) would redraw each step.
   static bool Function() holding = _never;
   static bool _never() => false;
 
-  /// letGo is the panels closed: the hook no longer holds their editor,
-  /// and the pictures kept go.
+  /// letGo is the panels closed: their editor and kept pictures go.
   static void letGo() {
     holding = _never;
     for (var image in _snapshots.values) {
@@ -576,9 +543,8 @@ class TileSnapshot extends StatelessWidget {
     _snapshots.clear();
   }
 
-  /// stoodIn counts the pictures drawn with something standing in for
-  /// what is not ready -- a body still being made: a tile drawn so is not
-  /// kept, and is drawn again when [arrived] says the real thing is here.
+  /// stoodIn counts pictures drawn with a stand-in (a body being made): not
+  /// kept, and redrawn when [arrived] says the real thing is here.
   static int Function() stoodIn = _none;
   static int _none() => 0;
   static Listenable? arrived;
@@ -590,7 +556,7 @@ class TileSnapshot extends StatelessWidget {
           MediaQuery.maybeDevicePixelRatioOf(context) ?? 1, arrived));
 }
 
-/// _lastIn is the snapshot each tile slot last showed, by its key.
+/// _lastIn is the snapshot each tile slot last showed, by key.
 final Map<String, String> _lastIn = {};
 
 class _SnapshotPainter extends CustomPainter {
@@ -604,8 +570,7 @@ class _SnapshotPainter extends CustomPainter {
       this.ratio, Listenable? arrived)
       : super(repaint: arrived);
 
-  /// _stale is whether this painter showed an older picture, held while a
-  /// control was dragged: the next one draws afresh.
+  /// _stale is whether this showed a picture held during a drag.
   bool _stale = false;
 
   ui.Image _image(Size size) {
@@ -665,12 +630,9 @@ class _SnapshotPainter extends CustomPainter {
       old._stale || old.id != id || old.ground != ground || old.ratio != ratio;
 }
 
-/// CanvasTiles is a choice made by looking rather than by reading: a grid of
-/// small pictures, each named under it.
-///
-/// Pointed at, a tile is tried on the canvas through [onPreview] -- null when
-/// the pointer leaves -- as a dropdown's options are; see CanvasDropdown. With
-/// [multiple], each tile is switched on and off by itself and wears a tick.
+/// CanvasTiles is a choice made by looking: small named pictures, each
+/// tried on the canvas through [onPreview] while pointed at (null on leave).
+/// With [multiple], each toggles and wears a tick.
 class CanvasTiles<T> extends StatelessWidget {
   final String? label;
   final List<CanvasTile<T>> tiles;
@@ -680,28 +642,24 @@ class CanvasTiles<T> extends StatelessWidget {
   final int columns;
   final bool multiple;
 
-  /// keyOf names each tile, for the tests.
+  /// keyOf names each tile, for tests.
   final String Function(T)? keyOf;
 
-  /// previewHeight is how tall the picture on each tile is.
   final double previewHeight;
 
-  /// help is what the choice does, behind the "?" of its card.
+  /// help is what the choice does, behind its card's "?".
   final String help;
 
-  /// ticked is which tiles wear a tick, where that is not the same as which
-  /// are lit -- an effect that is on, whose settings are shut. Null is the
-  /// lit ones, with [multiple].
+  /// ticked is which tiles wear a tick where that differs from lit (an
+  /// effect on, settings shut); null is the lit ones.
   final bool Function(T)? ticked;
 
-  /// scrolls lays the tiles in one line that scrolls sideways rather than
-  /// in rows, at [tileWidth] each.
+  /// scrolls lays the tiles in one scrolling line at [tileWidth] each.
   final bool scrolls;
   final double tileWidth;
 
-  /// foldAs makes the card fold, remembered under that name: shut, its tiles
-  /// are one line that scrolls sideways, the one chosen in view and named in
-  /// the heading; open, all of them.
+  /// foldAs makes the card fold, remembered by that name: shut, one line
+  /// with the chosen tile named; open, all.
   final String? foldAs;
 
   const CanvasTiles({
@@ -742,7 +700,7 @@ class CanvasTiles<T> extends StatelessWidget {
     });
     if (card && foldAs != null) return _FoldingTiles<T>(tiles: this);
     if (card && scrolls) return _ScrollingTiles<T>(tiles: this);
-    // In a section, a card of its own, named, with the "?" beside the name.
+    // In a section, a card of its own, named, with "?" beside the name.
     if (card) {
       return canvasCard(context,
           title: label == null ? null : canvasCardTitle(context, label!),
@@ -818,7 +776,7 @@ class CanvasTiles<T> extends StatelessWidget {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Stack(children: [
                   if (t.paint != null)
-                    // Drawn once and kept -- see TileSnapshot.
+                    // Drawn once and kept (see TileSnapshot).
                     SizedBox(
                       height: previewHeight,
                       width: double.infinity,
@@ -879,18 +837,14 @@ class CanvasTiles<T> extends StatelessWidget {
   }
 }
 
-/// CanvasSections is a run of [CanvasSection]s, down the panel.
 class CanvasSections extends StatefulWidget {
   final List<Widget> children;
 
-  /// parts is what the element is made of -- a picture's layers -- shown
-  /// over the sections, and over the menu's bar: not a section, so not one
-  /// of its names.
+  /// parts is what the element is made of (a picture's layers), over the
+  /// sections and menu bar; not a section.
   final Widget? parts;
 
-  /// quick is the few settings the element is changed by most, under its
-  /// parts and over its sections (see CanvasQuickStrip): never a section
-  /// away, in either layout.
+  /// quick is the most-changed settings, over the sections (CanvasQuickStrip).
   final Widget? quick;
 
   const CanvasSections({
@@ -904,15 +858,13 @@ class CanvasSections extends StatefulWidget {
   State<CanvasSections> createState() => _CanvasSectionsState();
 }
 
-/// settingsAsMenu is whether element settings are laid out as a menu -- the
-/// sections' names in a bar across the top, one section shown at a time --
-/// rather than as sections down the panel that fold. Switched by the
-/// settings panel's icon, and kept: see toggleSettingsLayout.
+/// settingsAsMenu shows element settings as a menu (one section at a time)
+/// instead of folding sections; kept (see toggleSettingsLayout).
 final ValueNotifier<bool> settingsAsMenu = ValueNotifier(false);
 
 bool _layoutRead = false;
 
-/// readSettingsLayout reads the layout kept from last time, once.
+/// readSettingsLayout reads the kept layout, once.
 void readSettingsLayout() {
   if (_layoutRead) return;
   _layoutRead = true;
@@ -924,20 +876,18 @@ void readSettingsLayout() {
   });
 }
 
-/// toggleSettingsLayout swaps the layout, and keeps it.
+/// toggleSettingsLayout swaps the layout and keeps it.
 void toggleSettingsLayout() {
   settingsAsMenu.value = !settingsAsMenu.value;
   StorageManager.saveData("canvasSettingsMenu", settingsAsMenu.value);
 }
 
-/// _menuChosen is the section last chosen in the menu, as "remember|title":
-/// the same section if it is there, else one of the same name -- Animation
-/// on a text and then on a picture -- else the first.
+/// _menuChosen is the last menu section as "remember|title": that one, else
+/// one of the same name, else the first.
 String? _menuChosen;
 
-/// _MenuItem is one section as the menu names it: its name, and -- for the
-/// end of the bar, where they go in the menu -- its "?" and whether it has
-/// a reset to offer. [state] is the section, for its reset and action.
+/// _MenuItem is one section in the menu: name, "?", whether it can reset;
+/// [state] is the section, for reset and action.
 class _MenuItem {
   final String remember;
   final String title;
@@ -950,8 +900,7 @@ class _MenuItem {
   const _MenuItem(this.remember, this.title, this.icon, this.changed,
       {this.help = "", this.resets = false, this.action, this.state});
 
-  /// Equal whatever its [action]: that is a widget, made anew at every
-  /// build, and comparing it had every build of the panel cause another.
+  /// Equal whatever its [action], a new widget each build.
   @override
   bool operator ==(Object other) =>
       other is _MenuItem &&
@@ -966,9 +915,8 @@ class _MenuItem {
   int get hashCode => Object.hash(remember, title, icon, changed, help, resets);
 }
 
-/// _MenuScope tells the sections under a menu which of them is chosen.
-/// [owner] null is no menu: a section inside a chosen section's body is
-/// drawn as a section again.
+/// _MenuScope tells the sections under a menu which is chosen. [owner] null
+/// is no menu: a section inside a chosen section's body draws as a section.
 class _MenuScope extends InheritedWidget {
   final _CanvasSectionsState? owner;
   final String? active;
@@ -984,9 +932,8 @@ class _MenuScope extends InheritedWidget {
 }
 
 class _CanvasSectionsState extends State<CanvasSections> {
-  /// _items is the sections found under the menu, in order. Found by
-  /// looking, after a frame, rather than read off [CanvasSections.children]:
-  /// a background's sections are built deep inside its own settings.
+  /// _items is the menu's sections, found after a frame, not read off
+  /// [CanvasSections.children], as a background's are built deep inside.
   List<_MenuItem> _items = const [];
   bool _looking = false;
   final ScrollController _bar = ScrollController();
@@ -994,12 +941,10 @@ class _CanvasSectionsState extends State<CanvasSections> {
   final GlobalKey _barView = GlobalKey();
   String? _shown;
 
-  /// _scroll is the panel's scroll, followed so the bar stays at its top --
-  /// see _follow.
+  /// _scroll is the panel's scroll, followed by _follow.
   ScrollPosition? _scroll;
 
-  /// _stick is how far down its place the bar is drawn, to be at the top of
-  /// the panel while the sections under it are scrolled past.
+  /// _stick is how far down the bar is drawn to stay at the panel's top.
   double _stick = 0;
   final GlobalKey _under = GlobalKey();
 
@@ -1024,9 +969,7 @@ class _CanvasSectionsState extends State<CanvasSections> {
   /// _barRoom is the bar's height and the room round it.
   static const double _barRoom = 38 + 2 + 6;
 
-  /// _follow keeps the bar at the top of the panel: scrolled past its own
-  /// place, it is drawn that much further down, as far as the end of the
-  /// sections under it.
+  /// _follow keeps the bar at the panel's top while its sections scroll.
   void _follow() {
     var place = _under.currentContext?.findRenderObject();
     var view = Scrollable.maybeOf(context, axis: Axis.vertical)
@@ -1067,7 +1010,7 @@ class _CanvasSectionsState extends State<CanvasSections> {
       if (!listEquals(found, _items)) {
         setState(() => _items = found);
       } else {
-        // The same sections: their newest actions, shown at the next build.
+        // The same sections: their newest actions, shown next build.
         _items = found;
       }
     });
@@ -1087,8 +1030,7 @@ class _CanvasSectionsState extends State<CanvasSections> {
       for (var i in _items) {
         if (i.title == title) return i.remember;
       }
-      // Position is a rebuilt panel's Layout (Ken, 2026-11-11), and the
-      // other way: the same section, carried between the two.
+      // Position (older panels) and Layout are the same section.
       var same = const {"Position": "Layout", "Layout": "Position"}[title];
       for (var i in _items) {
         if (i.title == same) return i.remember;
@@ -1120,13 +1062,11 @@ class _CanvasSectionsState extends State<CanvasSections> {
         }
         _look();
         var active = _active;
-        // Where the section is once laid out, the bar is put back where it
-        // belongs.
+        // Once the section is laid out, the bar goes back where it belongs.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _follow();
         });
-        // The bar over the sections, drawn after them so what scrolls under
-        // it goes under it; moved down to stay at the top of the panel.
+        // The bar drawn after the sections, so they scroll under it.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -1157,19 +1097,17 @@ class _CanvasSectionsState extends State<CanvasSections> {
         );
       });
 
-  /// _menuBar is the menu: a name for each section, in a line that scrolls
-  /// sideways, the one chosen bold and underlined -- and at its end, kept in
-  /// view, the chosen section's "?", action and reset.
+  /// _menuBar is the menu: section names in a scrolling line, the chosen one
+  /// bold and underlined, its "?", action and reset at the end.
   Widget _menuBar(BuildContext context, String? active) {
     var theme = ThemeNotifier.of(context);
     var accent = theme.colors.primary;
     var muted = theme.colors.onSurfaceVariant;
-    // The one chosen brought into view, once each time it changes.
+    // The chosen one scrolled into view, once each time it changes.
     if (active != null && active != _shown) {
       _shown = active;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Sideways only: ensureVisible would scroll the panel too, up or
-        // down to the bar.
+        // Sideways only: ensureVisible would scroll the panel too.
         var tab = _tabKeys[active]?.currentContext?.findRenderObject();
         var view = _barView.currentContext?.findRenderObject();
         if (tab is! RenderBox || view is! RenderBox || !_bar.hasClients) {
@@ -1236,8 +1174,7 @@ class _CanvasSectionsState extends State<CanvasSections> {
     return Container(
       key: const ValueKey("settingsMenu"),
       height: 38,
-      // Close over the first setting: the bar names the section, so there
-      // is no heading between them.
+      // Close to the first setting: the bar names the section.
       margin: const EdgeInsets.only(top: 2, bottom: 6),
       decoration: BoxDecoration(
         color: theme.colors.surfaceContainerLow,
@@ -1269,39 +1206,32 @@ class _CanvasSectionsState extends State<CanvasSections> {
   }
 }
 
-/// CanvasSection is one subject of an element's settings (where it is, its
-/// mask, its colour) as a card that folds. Shut, it is its icon, its name and
-/// a line saying how it is set, so the panel reads as a summary. [changes]
-/// puts a dot on it and, open, a reset beside the chevron. Open, what is
-/// inside is in cards: see CanvasCards.
+/// CanvasSection is one subject of an element's settings as a folding card:
+/// shut, an icon, name and summary line. [changes] adds a dot and, open, a
+/// reset. Open, its contents are cards (see CanvasCards).
 class CanvasSection extends StatefulWidget {
   final IconData icon;
   final String title;
   final String summary;
 
-  /// scope is a tag beside the title for a section that is not about what
-  /// the rest are -- "Whole image" on a picture's frame, under a layer's
-  /// settings.
+  /// scope is a tag beside the title ("Whole image" on a layer's frame).
   final String? scope;
 
   final int changes;
   final VoidCallback? onReset;
 
-  /// action is a button on the heading row, outside its fold: what a
-  /// section does without being opened -- refreshing a table's data.
+  /// action is a heading button outside the fold (a table's Refresh).
   final Widget? action;
 
   /// remember names where its open state is kept, as CanvasExpander's.
   final String remember;
   final bool initiallyOpen;
 
-  /// forceOpen opens it, whenever it turns true: a tool in hand opens the
-  /// section it belongs to, picked from the keyboard or not.
+  /// forceOpen opens it whenever it turns true, as a held tool does.
   final bool forceOpen;
   final List<Widget> children;
 
-  /// glyph is drawn instead of [icon]: a rebuilt panel's sections are drawn
-  /// with its prototype's own (see SectionGlyph).
+  /// glyph is drawn instead of [icon] (see SectionGlyph).
   final SectionGlyph? glyph;
 
   const CanvasSection({
@@ -1320,14 +1250,12 @@ class CanvasSection extends StatefulWidget {
     super.key,
   });
 
-  /// openAll starts every section open, for the tests of what a control
-  /// does rather than of where it is folded away.
+  /// openAll starts every section open, for tests of what controls do.
   @visibleForTesting
   static bool openAll = false;
 
-  /// forced is [forceOpen], or a section inside this one forced open: a
-  /// tool taken up in a picture's Retouch opens its Look too, and in the
-  /// menu picks Look's tab.
+  /// forced is [forceOpen], or a forced section inside: a tool in a
+  /// picture's Retouch opens its Look, or picks its tab in the menu.
   bool get forced => forceOpen || children.any(_forces);
 
   static bool _forces(Widget w) => switch (w) {
@@ -1383,15 +1311,13 @@ class _CanvasSectionState extends State<CanvasSection> {
     keepSection(widget.remember, _open);
   }
 
-  /// _help is the notes among the section's own children -- a hint not in
-  /// any card -- said once, by the "?" on its heading row.
+  /// _help is the section's own hints, said once by its heading's "?".
   String get _help => [
         for (var c in widget.children)
           if (c is CanvasHint) c.message
       ].join("\n\n");
 
-  /// _heading is the section's heading line: its icon, its name and what is
-  /// set in it, and -- open, with something changed -- its reset.
+  /// _heading is icon, name, summary, and a reset when open and changed.
   Widget _heading(ThemeNotifier theme, bool open, bool changed) {
     var dense = CanvasDense.on(context);
     var accent = theme.colors.primary;
@@ -1479,9 +1405,7 @@ class _CanvasSectionState extends State<CanvasSection> {
           ),
         ),
       ),
-      // Outside the heading's ink, so pressing them does not fold the
-      // section; all left of the fold's arrow, which keeps every heading's
-      // far right the same.
+      // Outside the heading's ink, so pressing them does not fold it.
       if (_help.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(right: 6),
@@ -1522,9 +1446,8 @@ class _CanvasSectionState extends State<CanvasSection> {
     ]);
   }
 
-  /// _menuBody is the section as the menu shows it, chosen: everything in
-  /// it and nothing over it -- its name is in the bar, and its "?", action
-  /// and reset at the bar's end.
+  /// _menuBody is the chosen section in the menu: contents only, its name,
+  /// "?", action and reset being in the bar.
   Widget _menuBody() => RepaintBoundary(
         // A section inside this one is a section again, not a menu item.
         child: _MenuScope(
@@ -1548,11 +1471,8 @@ class _CanvasSectionState extends State<CanvasSection> {
         ),
       );
 
-  /// _nested is the section inside another one's cards: a fold among that
-  /// section's cards, drawn as CanvasExpander's are, keeping what a section
-  /// has -- its summary, its changed dot and reset, its "?" and action, and
-  /// a tool opening it. A picture's Retouch, Colour and Effects inside its
-  /// Look (Ken, 2026-11-11: the shared section names, the tools inside kept).
+  /// _nested is a section inside another's cards: a fold keeping summary,
+  /// dot, reset, "?", action and tool-opening (Retouch inside Look).
   Widget _nested(ThemeNotifier theme) {
     var muted = theme.colors.onSurfaceVariant;
     var open = _open;
@@ -1640,8 +1560,7 @@ class _CanvasSectionState extends State<CanvasSection> {
         ]),
         body: !open
             ? const SizedBox.shrink()
-            // Its own name for the cards inside, so a card named as the
-            // fold is still not named twice.
+            // Its own name for the cards inside, so the fold's is not repeated.
             : CanvasCards(
                 title: widget.title,
                 child: Column(
@@ -1670,8 +1589,7 @@ class _CanvasSectionState extends State<CanvasSection> {
     if (CanvasCards.on(context)) return _nested(theme);
     var open = _open;
     var changed = widget.changes > 0;
-    // Painted on its own: one section changed is that section painted
-    // again, not the whole panel.
+    // Painted on its own, so one changed section repaints alone.
     return RepaintBoundary(
         child: Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1689,8 +1607,7 @@ class _CanvasSectionState extends State<CanvasSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // The heading is kept unless what it says has changed: rebuilt on
-          // every edit, the headings were half of a shut panel's work.
+          // The heading is kept unless its text changes: it was half the work.
           CanvasKept(
             deps: [
               widget.icon,
@@ -1728,9 +1645,7 @@ class _CanvasSectionState extends State<CanvasSection> {
   }
 }
 
-/// _ToolRow is a line of tools that scrolls sideways, with the one at
-/// [active] brought into view whenever it changes -- only as far as it
-/// takes, so a tool already in view stays where it is.
+/// _ToolRow is a scrolling line of tools keeping [active] in view.
 class _ToolRow extends StatefulWidget {
   final int active;
   final double step;
@@ -1780,9 +1695,8 @@ class _ToolRowState extends State<_ToolRow> {
   }
 }
 
-/// CanvasToolTiles is a section's tools, as tiles with their names under
-/// them, and -- on a line of their own below -- the settings of the one in
-/// hand. Pressing the tool in hand puts it down again.
+/// CanvasToolTiles is a section's tools as named tiles and, on a line
+/// below, the held tool's settings. Pressing the held tool puts it down.
 class CanvasToolTiles<T> extends StatelessWidget {
   final List<(T, IconData, String)> tools;
   final T? active;
@@ -1793,20 +1707,18 @@ class CanvasToolTiles<T> extends StatelessWidget {
   /// settings are the active tool's, under the tiles.
   final List<Widget> settings;
 
-  /// help is what the tools are for, behind the "?" of their card.
+  /// help is what the tools are for, behind their card's "?".
   final String help;
 
-  /// alsoActive lights a tool besides the one in hand -- the select tool
-  /// whose picks an align tool lines up.
+  /// alsoActive lights another tool too (select, under an align tool).
   final bool Function(T)? alsoActive;
 
   /// lit is whether [tool] is drawn as in hand.
   bool lit(T tool) => tool == active || (alsoActive?.call(tool) ?? false);
 
-  /// idle is what is said under the tiles with none of them picked.
+  /// idle is what is said under the tiles with none picked.
   final String idle;
 
-  /// title is the card's name.
   final String title;
 
   const CanvasToolTiles({
@@ -1832,8 +1744,7 @@ class CanvasToolTiles<T> extends StatelessWidget {
       for (var t in tools)
         if (t.$1 == active) t
     ].firstOrNull;
-    // The tool's own notes go behind the card's "?", never on a row of its
-    // settings.
+    // The tool's notes go behind the card's "?", never on a settings row.
     var notes = [
       for (var w in settings)
         if (w is CanvasHint) w.message
@@ -1849,15 +1760,13 @@ class CanvasToolTiles<T> extends StatelessWidget {
       children: [
         Padding(
           padding: EdgeInsets.only(right: card ? 10 : 0),
-          // A line that scrolls sideways, each tile its own width: squeezed
-          // to fit, six tools came out too narrow for their names.
+          // A scrolling line, each tile its own width, so names are not cut.
           child: LayoutBuilder(builder: (context, box) {
             const gap = 6.0;
             var n = tools.length;
             var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
             var each = math.max(64.0, (width - gap * (n - 1)) / n);
-            // The tool in hand kept in view, when picked from elsewhere (a
-            // layers strip's Add, a key).
+            // The held tool kept in view when picked elsewhere (Add, a key).
             return _ToolRow(
                 active: tools.indexWhere((t) => t.$1 == active),
                 step: each + gap,
@@ -1963,14 +1872,11 @@ class CanvasToolTiles<T> extends StatelessWidget {
   }
 }
 
-/// _labelRoom is what a tile in a strip needs under its picture: its border
-/// and padding and a line of its name at the reader's text size.
+/// _labelRoom is a strip tile's room under its picture at the text size.
 double _labelRoom(BuildContext context) =>
     math.max(30.0, 16 + MediaQuery.textScalerOf(context).scale(9.5) * 1.35);
 
-/// _ScrollingTiles is a card of tiles in one line that scrolls sideways,
-/// with the one chosen brought into view, so a kind chosen at the far end is
-/// seen on coming back to the panel.
+/// _ScrollingTiles is a card of tiles in one line, the choice kept in view.
 class _ScrollingTiles<T> extends StatefulWidget {
   final CanvasTiles<T> tiles;
   const _ScrollingTiles({required this.tiles, super.key});
@@ -1982,9 +1888,8 @@ class _ScrollingTiles<T> extends StatefulWidget {
 class _ScrollingTilesState<T> extends State<_ScrollingTiles<T>> {
   final ScrollController _strip = ScrollController();
 
-  /// _shown is the tile last brought into view: brought there once when it
-  /// is chosen, not on every rebuild, which would snap the line back under
-  /// somebody scrolling it.
+  /// _shown is the tile last scrolled into view: once when chosen, not
+  /// every rebuild, which would snap the line back under someone scrolling.
   int _shown = -1;
 
   @override
@@ -2010,8 +1915,7 @@ class _ScrollingTilesState<T> extends State<_ScrollingTiles<T>> {
               _shown = at;
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!_strip.hasClients) return;
-                // Only as far as it takes to be in view: one already in
-                // view stays where it is.
+                // Only as far as needed: one already in view stays put.
                 var left = at * (t.tileWidth + gap);
                 var right = left + t.tileWidth;
                 var now = _strip.offset;
@@ -2027,8 +1931,7 @@ class _ScrollingTilesState<T> extends State<_ScrollingTiles<T>> {
             }
             return SizedBox(
               height: t.previewHeight + _labelRoom(context),
-              // Every tile built, not only those in view: a handful, and a
-              // tile scrolled out of view is still one to reach.
+              // Every tile built: a handful, and off-screen ones are reachable.
               child: SingleChildScrollView(
                 key: ValueKey("tilesRow-${t.label}"),
                 controller: _strip,
@@ -2061,10 +1964,8 @@ class _FoldingTiles<T> extends StatefulWidget {
 class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
   late bool _open = rememberedSection(widget.tiles.foldAs!) ?? false;
 
-  /// _kept is [tile], built once and kept while it shows the same -- see
-  /// CanvasKept. Pressed, it picks through the tiles as they are now: the
-  /// pick of the build it was kept from would write back what that build
-  /// knew.
+  /// _kept is [tile], kept while unchanged (see CanvasKept); it picks
+  /// through the current tiles, as the old build's pick is stale.
   Widget _kept(BuildContext context, ThemeNotifier theme, CanvasTile<T> tile) {
     var t = widget.tiles;
     void tapped() => widget.tiles.onPick(tile.value);
@@ -2142,8 +2043,7 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
                 size: 18, color: theme.colors.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
-          // Its own share of a narrow row too, cut short rather than run
-          // off it (Ken's log: 12 px over at 103 wide, with larger text).
+          // Its share of a narrow row, cut short at large text sizes.
           Flexible(
             child: DefaultTextStyle.merge(
                 maxLines: 1,
@@ -2164,15 +2064,15 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
     var body = LayoutBuilder(builder: (context, box) {
       var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
       var each = math.max(40.0, (width - gap * (t.columns - 1)) / t.columns);
-      // Open, clicked too: a tile tried on a hover would be the tile chosen,
-      // and the settings hanging on it would come and go under the pointer.
+      // Open, clicked too: a tile tried on hover would be chosen, and its
+      // settings would come and go under the pointer.
       if (_open) {
         return Wrap(spacing: gap, runSpacing: gap, children: [
           for (var tile in t.tiles)
             SizedBox(width: each, child: _kept(context, theme, tile)),
         ]);
       }
-      // The one chosen brought into view -- once, when it is chosen.
+      // The chosen one scrolled into view, once, when chosen.
       var at = t.tiles.indexWhere((tile) => t.selected(tile.value));
       if (at >= 0 && at != _shown) {
         _shown = at;
@@ -2189,8 +2089,8 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
           key: ValueKey("tilesStrip-${t.foldAs}"),
           controller: _strip,
           scrollDirection: Axis.horizontal,
-          // Clicked, never tried on a hover: trying a tile chose it, the strip
-          // scrolled it into view, and the pointer landed on the next.
+          // Clicked, never tried on hover: a tried tile would scroll into
+          // view and the pointer land on the next.
           child: Row(children: [
             for (var (i, tile) in t.tiles.indexed)
               Padding(
@@ -2209,8 +2109,7 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
   }
 }
 
-/// _unlinked is which side fields have been split into their four, for this
-/// run of the app.
+/// _unlinked is which side fields are split into four, this run.
 final Set<String> _unlinked = {};
 
 void forgetPanelsForTest() {
@@ -2221,10 +2120,9 @@ void forgetPanelsForTest() {
   CanvasSection.openAll = false;
 }
 
-/// CanvasSidesField is four numbers that are usually one -- a border's
-/// sides, a box's corners, its padding -- as one stepper with a link beside
-/// it. Pressed, the link splits it into the four, two to a line; pressed
-/// again, they join on the first. Four that already differ show split.
+/// CanvasSidesField is four numbers usually one (sides, corners, padding)
+/// as one stepper and a link that splits them, two to a line; pressed again
+/// they join on the first. Four that differ show split.
 class CanvasSidesField extends StatefulWidget {
   final String label;
 
@@ -2234,15 +2132,14 @@ class CanvasSidesField extends StatefulWidget {
   /// values are the four, in the order of [parts].
   final List<double> values;
 
-  /// parts are what each of the four is called on its own stepper, and
-  /// [partKeys] how each is keyed.
+  /// parts name each of the four, and [partKeys] key them.
   final List<String> parts;
   final List<String> partKeys;
 
   final double max;
   final double step;
 
-  /// onChanged sets one of the four -- or, with a null side, all of them.
+  /// onChanged sets one of the four, or all with a null side.
   final void Function(int? side, double value) onChanged;
   final VoidCallback? onCommit;
 
@@ -2301,8 +2198,7 @@ class _CanvasSidesFieldState extends State<CanvasSidesField> {
     var split = _split;
     var link = CanvasIconButton(
       key: ValueKey("${widget.name}Link"),
-      // Not the chain the proportion lock wears: these are four sides,
-      // shown as one box or as its edges.
+      // Not the proportion lock's chain: four sides, as a box or edges.
       icon: split ? Icons.border_outer : Icons.border_all,
       tooltip: split ? "All four the same" : "Set each one",
       active: split,
@@ -2344,8 +2240,7 @@ class _CanvasSidesFieldState extends State<CanvasSidesField> {
             child: link),
       ]);
     }
-    // A line of its own, the width of the panel -- or, along the band over
-    // the canvas, which has no width to fill, a width of its own.
+    // A line of its own, or its own width on the unbounded band.
     return SizedBox(
       width: CanvasControlScope.isInline(context) ? 260 : double.infinity,
       child: body,
@@ -2353,14 +2248,11 @@ class _CanvasSidesFieldState extends State<CanvasSidesField> {
   }
 }
 
-/// SectionGlyph is one of a rebuilt panel's section icons, as its prototype
-/// draws them: what it says, how it looks, where it is, how it moves, and
-/// the rest.
+/// SectionGlyph is a section icon: content, look, layout, motion, more.
 enum SectionGlyph { content, look, layout, motion, more }
 
-/// _GlyphPainter draws [glyph] from the prototype's own lines (its 24-unit
-/// SVG paths, stroked 1.8 wide with round ends) in a 16-pixel square at the
-/// middle of the box.
+/// _GlyphPainter draws [glyph] from its 24-unit SVG paths, stroked 1.8 wide
+/// with round ends, in a 16-pixel square at the box's middle.
 class _GlyphPainter extends CustomPainter {
   final SectionGlyph glyph;
   final Color colour;

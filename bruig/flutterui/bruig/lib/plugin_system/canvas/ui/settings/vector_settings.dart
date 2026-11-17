@@ -29,22 +29,18 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/vector_layers.dart';
 
-// vector_settings.dart is a drawing's settings: which drawing, how it sits in
-// its box, editing it point by point -- and while it is being edited, how
-// the picked shape is painted and how the edit points themselves look.
+// vector_settings.dart is a drawing's settings: which drawing, its fit,
+// point editing, and the picked shape's paint.
 
-/// startVectorEditing opens [e] for editing point by point.
-///
-/// A drawing not yet taken apart is taken apart first. Where that would lose
-/// something -- a gradient made solid, words left out -- the reader is told
-/// what and asked first, since from then on the shapes are what is drawn.
+/// startVectorEditing opens [e] for point editing, taking it apart first;
+/// where that loses something (a gradient, words) the reader is asked.
 Future<void> startVectorEditing(
     BuildContext context, CanvasController controller, VectorElement e) async {
   if (e.edited) {
     controller.editVector(e.id);
     return;
   }
-  // Nothing in it yet: a blank drawing, for the pen.
+  // Nothing in it yet: a blank drawing for the pen.
   if (!e.hasDrawing) {
     controller.replaceElement(blankDrawing(e));
     controller.editVector(e.id);
@@ -78,8 +74,8 @@ Future<void> startVectorEditing(
   controller.editVector(e.id);
 }
 
-/// _drawingAspect is a drawing's own proportions, read from its file, or
-/// null where it says none.
+/// _drawingAspect is a drawing's proportions from its file, or null where
+/// it gives none.
 Future<double?> _drawingAspect(String id) async {
   var bytes = await CanvasMedia.load(MediaKind.vector, id);
   if (bytes == null) return null;
@@ -89,10 +85,8 @@ Future<double?> _drawingAspect(String id) async {
   return box.width / box.height;
 }
 
-/// vectorPanel is [e]'s panel, laid out as every rebuilt element's is (Ken,
-/// 2026-11-11: batch 4, "similar tools" to a picture): its shapes over a
-/// quick strip, then Content -- the drawing, and its Drawing tools as a fold
-/// that a tool in hand opens -- Look, Layout (with the crop), Motion and More.
+/// vectorPanel is [e]'s panel: shapes over a quick strip, then Content
+/// (the drawing and its tools fold), Look, Layout (with crop), Motion, More.
 Widget vectorPanel(
     BuildContext context,
     CanvasController controller,
@@ -107,7 +101,7 @@ Widget vectorPanel(
   }
 
   return elementPanel(context, controller, e, write, begin, commit,
-      // Its shapes, once it has been taken apart into them.
+      // Its shapes, once taken apart into them.
       parts: e.edited && (e.shapes?.isNotEmpty ?? false)
           ? VectorLayersList(
               key: const ValueKey("vectorLayersList"),
@@ -127,7 +121,7 @@ Widget vectorPanel(
               ),
               flex: 1,
               min: 110),
-          // Its one colour, while it is still its file's drawing.
+          // Its one colour, while still its file's drawing.
           if (!e.edited)
             cell(
                 CanvasColorButton(
@@ -173,8 +167,8 @@ List<Widget> vectorSettings(
   var picked = controller.vectorShape;
   var one = picked >= 0 && picked < shapes.length;
 
-  /// change applies [edit] to the shape picked, or to every shape where none
-  /// is: recolouring a whole one-colour icon is one change, not twelve.
+  /// change applies [edit] to the picked shape, or every shape with none
+  /// picked: recolouring a one-colour icon is one change, not twelve.
   void change(VectorShape Function(VectorShape) edit, {bool live = false}) {
     if (shapes.isEmpty) return;
     var next = [
@@ -205,8 +199,8 @@ List<Widget> vectorSettings(
     VectorTool.knife: "Knife",
     VectorTool.text: "Text",
   };
-  // The align tool lights the select tool whose picks it lines up, as
-  // well as itself.
+  // The align tool lights the select tool whose picks it lines up, as well
+  // as itself.
   var lit = controller.vectorTool == VectorTool.align
       ? (controller.vectorAlignsShapes
           ? VectorTool.selectShapes
@@ -233,9 +227,8 @@ List<Widget> vectorSettings(
       (tool, vectorToolIcon(tool), short[tool]!),
   ];
   var drawing = <Widget>[
-    // The tools, as a picture's mask tools are: picking one opens the
-    // drawing to work on with it, and pressing the one in hand again
-    // puts the drawing down.
+    // The tools, as a picture's mask tools: picking one opens the drawing
+    // to work on; pressing the held one again puts the drawing down.
     CanvasToolTiles<VectorTool>(
       key: const ValueKey("vectorTools"),
       help: editing
@@ -270,8 +263,8 @@ List<Widget> vectorSettings(
             ]
           : const [],
     ),
-    // The picked layer's colours -- or every shape's, with none
-    // picked -- with the tools that make and change them.
+    // The picked layer's colours (every shape's, with none picked), with
+    // the tools that make and change them.
     if (e.edited && shown != null)
       _shapeGroup(e, shapes, picked, one, shown, change, commit,
           points: editing ? controller.vectorPicks : const {},
@@ -299,14 +292,12 @@ List<Widget> vectorSettings(
         initiallyOpen: true,
         forceOpen: editing,
         children: drawing),
-    // How it and its shapes come in, loop and go: the Chain's Motion view
-    // (Ken, 2026-11-08).
+    // How it and its shapes come in, loop and go: the Chain's Motion view.
   ];
 }
 
-/// vectorDrawingControls is the drawing itself, for the foot of Position:
-/// which drawing it is -- another, or one used before -- how it sits in its
-/// box, the one colour over it before it is edited, and back to the file's.
+/// vectorDrawingControls is the drawing under Position: which one, its fit,
+/// a tint before editing, and back to the file's.
 Widget vectorDrawingControls(
     BuildContext context,
     CanvasController controller,
@@ -320,8 +311,8 @@ Widget vectorDrawingControls(
     commit();
   }
 
-  /// use puts the drawing [id] in, given the drawing's proportions as a
-  /// picture is -- the box shrunk to them, never grown.
+  /// use puts drawing [id] in, fitting the box to its proportions as for a
+  /// picture: shrunk, never grown.
   Future<void> use(String id) async {
     var aspect = await _drawingAspect(id);
     var next =
@@ -377,9 +368,8 @@ Widget vectorDrawingControls(
         options: [for (var f in VectorFit.values) (f, f.label)],
         onChanged: (v) => now(e.copyWith(fit: v)),
       ),
-      // One colour over the whole drawing, which keeps it a reference to
-      // its file (see VectorElement.tint): the only way to colour it before
-      // it is taken apart, and offered after only to take one off.
+      // A tint keeps it a reference to its file (VectorElement.tint): the
+      // only colouring before it is taken apart; after, only removable.
       if (!e.edited || e.tint != null)
         CanvasColorButton(
           key: const ValueKey("vectorTint"),
@@ -419,19 +409,16 @@ Widget vectorDrawingControls(
   );
 }
 
-/// vectorWhole is [e]'s whole drawing in its own units -- the space a crop
-/// is a share of: the view box once it has been taken apart, and the file's
-/// own size before. Empty while the file has not been read yet.
+/// vectorWhole is [e]'s drawing bounds in its own units, the crop's space:
+/// the view box once taken apart, the file's size before; empty unread.
 ui.Rect vectorWhole(CanvasController controller, VectorElement e) {
   if (e.edited) return e.viewBox;
   var drawn = controller.images.resolveVector(e.assetId);
   return drawn == null ? ui.Rect.zero : ui.Offset.zero & drawn.size;
 }
 
-/// vectorCropControls are how much is trimmed off each edge of the drawing
-/// and the button that shows all of it again: a picture's Crop, for a
-/// drawing. The box is trimmed with it, so what is left stays where it is --
-/// see VectorElement.croppedTo.
+/// vectorCropControls are a picture's Crop for a drawing: the box is
+/// trimmed with it, so what is left stays put (VectorElement.croppedTo).
 Widget vectorCropControls(CanvasController controller, VectorElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var whole = vectorWhole(controller, e);
@@ -479,10 +466,8 @@ Widget vectorCropControls(CanvasController controller, VectorElement e,
   );
 }
 
-/// _dormantIf is [settings] as they are, or -- while there is nothing yet
-/// for them to work on, [idle] -- shown faint and out of reach, with [wake]
-/// saying what brings them to life: what a tool can do is seen before it is
-/// used.
+/// _dormantIf shows [settings] faint and unreachable while [idle], with
+/// [wake] saying what wakes them, so a tool's abilities show early.
 List<Widget> _dormantIf(bool idle, String wake, List<Widget> settings) => idle
     ? [
         for (var w in settings)
@@ -493,13 +478,13 @@ List<Widget> _dormantIf(bool idle, String wake, List<Widget> settings) => idle
       ]
     : settings;
 
-/// _toolSettings is the settings of the tool in hand, for the row under
-/// the tools -- empty for a tool with none just now.
+/// _toolSettings is the held tool's settings for the row under the tools:
+/// empty for a tool with none just now.
 List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
   var picks = controller.vectorPicks;
   switch (controller.vectorTool) {
-    // The handles of the points picked: how the pair move together, what a
-    // drag of one may change, and two quick fixes.
+    // The picked points' handles: how the pair move together, what dragging
+    // one may change, and two quick fixes.
     case VectorTool.select || VectorTool.pen:
       var idle = picks.isEmpty;
       var first = idle ? null : vectorNodeAt(e, picks.first);
@@ -538,8 +523,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
     case VectorTool.selectShapes:
       return const [];
     case VectorTool.align:
-      // Shapes, where the select shapes tool was the last used; points
-      // otherwise.
+      // Shapes, where the select shapes tool was last used; else points.
       var shapes = controller.vectorAlignsShapes;
       var enough =
           shapes ? controller.vectorItems.length >= 2 : picks.length >= 2;
@@ -587,8 +571,8 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
           onChanged: (v) => controller.vectorCornerSize = v,
         ),
       ];
-    // The brush: its colour, where it shows -- by the colour, as the colour
-    // is what it is shown on -- and its size and edge.
+    // The brush: its colour, where it shows (by the colour, as that is what
+    // it is shown on), size and edge.
     case VectorTool.tint || VectorTool.shadow || VectorTool.highlight:
       return [
         // Shadow and highlight take their colour from what they paint on.
@@ -645,7 +629,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
             onPressed: controller.clearVectorTints,
           ),
       ];
-    // The operators: what the shapes picked are combined by.
+    // The operators the picked shapes are combined by.
     case VectorTool.boolean:
       return [
         for (var (op, icon) in const [
@@ -689,7 +673,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
           onChanged: (v) => controller.vectorKnifeGap = v,
         ),
       ];
-    // The shapes: which to draw, its own settings, and its colours.
+    // The shapes: which to draw, its settings and colours.
     case VectorTool.shapes:
       var kind = controller.vectorShapeKind;
       return [
@@ -786,8 +770,8 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
           ),
         ],
       ];
-    // The eraser: rubbing out, or taking out whole lines; how big, how soft,
-    // and what it rubs out.
+    // The eraser: rubbing out or removing whole lines; size, softness, and
+    // what it rubs out.
     case VectorTool.eraser:
       var rub = !controller.vectorEraseWhole;
       return [
@@ -842,8 +826,8 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
             ),
         ],
       ];
-    // The picked points' own thickness, to type: a share of the shape's
-    // stroke width -- 1 as set, 2 twice as thick.
+    // The picked points' own thickness, typed as a share of the stroke
+    // width: 1 as set, 2 twice as thick.
     case VectorTool.scale:
       var idle = picks.isEmpty;
       var width = idle ? 1.0 : vectorNodeAt(e, picks.first)?.width ?? 1;
@@ -875,9 +859,8 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
   }
 }
 
-/// _brushPicker is the pencil's main row: which brush, its colour and size,
-/// how see-through and how steadied, and keeping it as a brush of one's
-/// own. Watches the saved brushes as well as the controller.
+/// _brushPicker is the pencil's row: brush, colour, size, opacity,
+/// steadying, saving. Watches the saved brushes too.
 Widget _brushPicker(CanvasController controller) {
   var store = SavedPresetStore.brushes;
   store.load();
@@ -888,8 +871,8 @@ Widget _brushPicker(CanvasController controller) {
       var saved = [
         for (var p in store.presets) (p, VectorBrush.fromJson(p.data)),
       ];
-      // Which entry the brush in hand is: the saved one or the built-in one
-      // it still draws exactly as, by name -- or itself, changed.
+      // Which entry the held brush is: the saved or built-in one it still
+      // draws exactly as, by name, or itself, changed.
       String? picked;
       for (var (p, b) in saved) {
         if (p.name == brush.name && b.sameAs(brush)) picked = "saved:${p.id}";
@@ -935,8 +918,8 @@ Widget _brushPicker(CanvasController controller) {
             }
           },
         ),
-        // A line, a fill, or both -- never neither: turning one off turns
-        // the other on.
+        // A line, a fill, or both, never neither: turning one off turns the
+        // other on.
         CanvasToggle(
           key: const ValueKey("vectorBrushLine"),
           label: "Line",
@@ -959,8 +942,8 @@ Widget _brushPicker(CanvasController controller) {
           onChanged: (v) => controller.vectorBrush =
               brush.copyWith(fill: v, line: v ? brush.line : true),
         ),
-        // The fill colour by the Fill switch, and the quick fill by that:
-        // both fill with it.
+        // The fill colour by the Fill switch, and the quick fill by it: both
+        // fill with it.
         CanvasColorButton(
           key: const ValueKey("vectorPencilFill"),
           label: "Fill",
@@ -1041,7 +1024,7 @@ Widget _brushPicker(CanvasController controller) {
               ? null
               : () async {
                   var name = brush.name.trim();
-                  // A built-in brush's name is the built-in brush's.
+                  // A built-in brush's name belongs to it.
                   if (builtInBrushes.any((b) => b.name == name)) {
                     name = "$name (mine)";
                   }
@@ -1065,8 +1048,8 @@ Widget _brushPicker(CanvasController controller) {
   );
 }
 
-/// _toolMore is the tool in hand's settings beyond its row: for the pencil,
-/// what shapes its line, and what the pen's buttons do.
+/// _toolMore is the held tool's settings beyond its row: for the pencil,
+/// what shapes its line and what the pen's buttons do.
 List<Widget> _toolMore(CanvasController controller) {
   if (controller.vectorTool != VectorTool.pencil) return const [];
   var brush = controller.vectorBrush;
@@ -1178,8 +1161,8 @@ List<Widget> _toolMore(CanvasController controller) {
           value: TabletInput.instance.reading,
           onChanged: (v) {
             TabletInput.instance.reading = v;
-            // The reader is not the controller's, so nothing else tells the
-            // panel to redraw the switch: setting the brush to itself does.
+            // The reader is not the controller's, so nothing else redraws the
+            // switch: setting the brush to itself does.
             controller.vectorBrush = controller.vectorBrush;
           },
         ),
@@ -1235,7 +1218,7 @@ String _toolKey(VectorTool tool) => switch (tool) {
       VectorTool.text => "T",
     };
 
-/// _toolHint is how [tool] is used, said where the reader is looking.
+/// _toolHint is how [tool] is used, shown where the reader is looking.
 String _toolHint(VectorTool tool) => switch (tool) {
       VectorTool.select => "Click a shape to pick it. Drag across the drawing "
           "-- or in from outside it -- to pick the points in a box. Click a "
@@ -1320,9 +1303,8 @@ String _toolHint(VectorTool tool) => switch (tool) {
           "does.",
     };
 
-/// _shapeGroup is how the picked shape -- or every shape, with none picked
-/// -- is painted. Line ends and corners are offered only where they would
-/// change something: ends on a line that has ends, corners on a line.
+/// _shapeGroup is how the picked shape, or all with none picked, is
+/// painted; ends and corners only where they change something.
 Widget _shapeGroup(
     VectorElement e,
     List<VectorShape> shapes,
@@ -1338,9 +1320,8 @@ Widget _shapeGroup(
   var lined = considered.any((s) => s.stroke != null);
   var open = considered.any((s) => s.paths.any((p) => !p.closed));
 
-  // With points picked, their own end and corner: the ends of open lines
-  // among them take an end, the rest a corner. Each can go back to the
-  // shape's.
+  // With points picked, their own end and corner: open line ends among them
+  // take an end, the rest a corner. Each can revert to the shape's.
   var ends = <VectorPick>{}, corners = <VectorPick>{};
   for (var pick in points) {
     if (pick.shape >= shapes.length) continue;
@@ -1365,8 +1346,8 @@ Widget _shapeGroup(
     remember: "vectorShapeMore",
     tooltip: "Ends & corners",
     rule: false,
-    // A row for each paint: its colour and what goes with it, and a button
-    // to take it off, or put it on.
+    // A row per paint: its colour and what goes with it, and a button to
+    // remove or add it.
     row: [
       if (shown.fill != null) ...[
         CanvasColorButton(
@@ -1511,9 +1492,8 @@ Widget _shapeGroup(
   );
 }
 
-/// _PenMeter shows what the pen is telling the app: its pressure as a bar
-/// and a number, and its tilt, or that no pen reading is arriving (a mouse,
-/// or a tablet the app cannot hear).
+/// _PenMeter shows what the pen reports: pressure as a bar and number, and
+/// tilt, or that no pen reading arrives (a mouse, or an unheard tablet).
 class _PenMeter extends StatefulWidget {
   const _PenMeter({super.key});
 
@@ -1528,10 +1508,8 @@ class _PenMeterState extends State<_PenMeter> {
   @override
   void initState() {
     super.initState();
-    // A tenth of a second: quick enough to follow a press, and nothing like
-    // the couple of hundred readings a second the pen sends.
-    // Built again only when what it shows has changed: a panel left open
-    // is not redrawn ten times a second for a pen nobody holds.
+    // A tenth of a second follows a press, far below the pen's rate; rebuilt
+    // only on change, so an open panel does not redraw for an idle pen.
     _tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
       var t = TabletInput.instance;
       var now = (t.fresh, t.heard, t.eraser, t.buttons,
@@ -1590,8 +1568,7 @@ class _PenMeterState extends State<_PenMeter> {
   }
 }
 
-/// _textSettings is the text tool's row: the type -- face, weight, slant,
-/// size, spacing, line height, alignment -- and colour of the text being
+/// _textSettings is the text tool's row: type and colour of the text being
 /// typed or picked, and of new text.
 List<Widget> _textSettings(VectorElement e, CanvasController controller) {
   var px = VectorSpace(e).unitsPer;
@@ -1680,7 +1657,7 @@ List<Widget> _textSettings(VectorElement e, CanvasController controller) {
     CanvasColorButton(
       key: const ValueKey("vectorTextColour"),
       label: "Colour",
-      // The text's own, where there is text being typed or picked.
+      // The text's own, where text is being typed or picked.
       color: (() {
             var i = controller.vectorTyping >= 0
                 ? controller.vectorTyping

@@ -12,9 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
 // vector_editing.dart is the arithmetic of editing a drawing point by point:
-// where a drawing's point is on the canvas and back, what is under the pointer,
-// and the edits themselves (move a point or handle, add or remove a point, make
-// one a corner or smooth). Kept out of the stage, which only has to ask.
+// canvas and drawing coordinates, what is under the pointer, and the edits
+// themselves. Kept out of the stage, which only has to ask.
 
 /// VectorTool is what a press on a drawing being edited does.
 enum VectorTool {
@@ -84,14 +83,12 @@ class VectorSpace {
         _cos = math.cos(e.rotation * math.pi / 180),
         _sin = math.sin(e.rotation * math.pi / 180);
 
-  /// toCanvas is where a point of the drawing is on the canvas.
   Offset toCanvas(Offset v) {
     var at = Offset(v.dx * _p.sx + _p.dx, v.dy * _p.sy + _p.dy) - _centre;
     return _centre +
         Offset(at.dx * _cos - at.dy * _sin, at.dx * _sin + at.dy * _cos);
   }
 
-  /// toDrawing is the point of the drawing under a point of the canvas.
   Offset toDrawing(Offset c) {
     var at = c - _centre;
     var un = _centre +
@@ -108,10 +105,9 @@ class VectorSpace {
   }
 }
 
-/// hitVector is what is under [canvasPoint] on [e] within [reach] canvas
-/// units: a handle of the point picked, then any point of the shape picked,
-/// then nothing. [picks] are the points picked, which can be taken hold of
-/// whichever shape they are on.
+/// hitVector is what is under [canvasPoint] on [e] within [reach] canvas units:
+/// a handle of [picked], then any of [picks] whatever shape it is on, then any
+/// point of [shape], or null.
 VectorHit? hitVector(VectorElement e, Offset canvasPoint, double reach,
     {required int shape,
     VectorPick? picked,
@@ -120,8 +116,7 @@ VectorHit? hitVector(VectorElement e, Offset canvasPoint, double reach,
   if (shapes == null) return null;
   var space = VectorSpace(e);
   bool near(Offset v) => (space.toCanvas(v) - canvasPoint).distance <= reach;
-  // Handles first, so one lying on its own point can still be pulled
-  // out of it.
+  // Handles first, so one lying on its own point can still be pulled out.
   if (picked != null) {
     var node = _nodeAt(e, picked);
     if (node != null) {
@@ -153,14 +148,12 @@ VectorHit? hitVector(VectorElement e, Offset canvasPoint, double reach,
   return null;
 }
 
-/// vectorSoloOf is, while a drawing's layers are soloed, the first shape of
-/// the one layer of [e] that can be worked on, or null. Set by the controller
-/// only while Solo is on: see CanvasController.vectorSolo.
+/// vectorSoloOf gives, while Solo is on, the first shape of the one layer of
+/// [e] that can be worked on, or null. See CanvasController.vectorSolo.
 int? Function(VectorElement e)? vectorSoloOf;
 
-/// shapeHeld is whether shape [index] of [e] is out of reach on the canvas:
-/// its layer hidden or locked (see VectorShape.hidden), or held by another
-/// being soloed. A combined shape goes by the first of its run.
+/// shapeHeld is whether shape [index] of [e] is out of reach: its layer hidden
+/// or locked, or another soloed. A combined shape goes by its run's first.
 bool shapeHeld(VectorElement e, int index) {
   var shapes = e.shapes;
   if (shapes == null || index < 0 || index >= shapes.length) return false;
@@ -171,9 +164,8 @@ bool shapeHeld(VectorElement e, int index) {
   return solo != null && solo != group;
 }
 
-/// shapeAt is the topmost shape of [e] under [canvasPoint] (inside its fill,
-/// or within [reach] of its stroke), or -1. Hidden or locked shapes are
-/// passed over.
+/// shapeAt is the topmost shape of [e] not held, under [canvasPoint] (inside
+/// its fill or within [reach] of its stroke), or -1.
 int shapeAt(VectorElement e, Offset canvasPoint, double reach) {
   var shapes = e.shapes;
   if (shapes == null) return -1;
@@ -223,10 +215,9 @@ VectorElement withVectorNode(VectorElement e, VectorPick pick, VectorNode n) {
   return e.withShape(pick.shape, shape.copyWith(paths: paths));
 }
 
-/// movedVector is [e] with the part [part] of the point at [pick] put at
-/// [canvasPoint]. A smooth point's other handle swings round with the one
-/// moved, keeping its own length; [breakHandles] moves the one alone, which
-/// is how a smooth point is made a corner by hand.
+/// movedVector is [e] with [part] of the point at [pick] moved to
+/// [canvasPoint]. A smooth point's other handle swings round with it, keeping
+/// its length; [breakHandles] moves one alone, making the point a corner.
 VectorElement movedVector(
     VectorElement e, VectorPick pick, VectorPart part, Offset canvasPoint,
     {bool breakHandles = false,
@@ -289,10 +280,9 @@ enum VectorHandleDrag {
   const VectorHandleDrag(this.label);
 }
 
-/// withHandles gives the points in [picks] handles that move as [mode] says.
-/// Free leaves them as they are. Aligned and mirrored line them up (a point
-/// with none is first given a pair along the line between its neighbours),
-/// and mirrored evens their lengths.
+/// withHandles sets how the handles of [picks] move. Free leaves them; aligned
+/// and mirrored line them up (a point with none gets a pair along its
+/// neighbours' line), and mirrored evens their lengths.
 VectorElement withHandles(
     VectorElement e, Set<VectorPick> picks, VectorHandles mode) {
   var next = e;
@@ -380,10 +370,9 @@ enum VectorAlign {
   const VectorAlign(this.label);
 }
 
-/// withAligned lines the points in [picks] up as [how] says, in the drawing's
-/// units: to the edge or middle of the box round them, or spread evenly
-/// between the two outermost. A joint counts as one point, all its ends
-/// moving together.
+/// withAligned lines [picks] up as [how] says, in drawing units: to an edge or
+/// the middle of their box, or spread evenly between the outermost two. A joint
+/// counts as one point.
 VectorElement withAligned(
     VectorElement e, Set<VectorPick> picks, VectorAlign how) {
   var all = joinedTo(e, picks);
@@ -432,9 +421,8 @@ VectorElement withAligned(
   return next;
 }
 
-/// joinedTo is [picks] and every point lying exactly on one of them: the
-/// other ends of a joint (where a branch leaves a line, or two lines meet),
-/// which move as one point.
+/// joinedTo is [picks] plus every point lying exactly on one of them: the other
+/// ends of a joint, which move as one point.
 Set<VectorPick> joinedTo(VectorElement e, Set<VectorPick> picks) {
   var at = <Offset>{
     for (var p in picks)
@@ -451,9 +439,8 @@ Set<VectorPick> joinedTo(VectorElement e, Set<VectorPick> picks) {
   };
 }
 
-/// nearestSegment is the segment of shape [shape] nearest [canvasPoint], as
-/// its run, the point it starts from, and how far along it is; null where
-/// none is within [reach].
+/// nearestSegment is the segment of [shape] nearest [canvasPoint] within
+/// [reach], as its run, starting point and how far along; or null.
 (int path, int from, double t)? nearestSegment(
     VectorElement e, int shape, Offset canvasPoint, double reach) {
   var shapes = e.shapes;
@@ -492,10 +479,9 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
       p3 * (t * t * t);
 }
 
-/// _split is the segment from [a] to [b] split [t] of the way along, so
-/// its shape does not change: [a] with its out handle shortened, the new
-/// point between, and [b] with its in handle shortened. The new point is as
-/// thick as the line was there.
+/// _split splits the segment [a]-[b] at [t] without changing its shape: [a] and
+/// [b] with shortened handles, and the new point between, as thick as the line
+/// is there.
 (VectorNode, VectorNode, VectorNode) _split(
     VectorNode a, VectorNode b, double t) {
   // de Casteljau: the curve split in two at t, through the same points.
@@ -522,9 +508,8 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
   );
 }
 
-/// withPointAdded is [e] with a point put into the segment of [path] that
-/// starts at point [from], [t] of the way along, splitting the curve without
-/// changing its shape. The new point's pick is returned with it.
+/// withPointAdded puts a point [t] along the segment of [path] that starts at
+/// point [from], keeping the curve's shape, and returns its pick too.
 (VectorElement, VectorPick) withPointAdded(
     VectorElement e, int shape, int path, int from, double t) {
   var s = e.shapes![shape];
@@ -544,10 +529,10 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
 }
 
 /// cornerAt undoes a rounded corner (two corner points joined by a curve, as
-/// withCornered and rounded boxes make them) that the point at [pick] is one
-/// end of: the drawing with the pair replaced by the sharp point where the two
-/// sides meet, that point's pick, how far back along each side the rounding
-/// went, and the pair's picks. Null where the point is no such corner.
+/// withCornered and rounded boxes make) with the point at [pick] at one end. It
+/// returns the drawing with the pair replaced by the sharp point where the
+/// sides meet, that point's pick, how far back the rounding went, and the
+/// pair's picks; null where there is no such corner.
 (VectorElement, VectorPick, double, Set<VectorPick>)? cornerAt(
     VectorElement e, VectorPick pick) {
   var shapes = e.shapes;
@@ -559,8 +544,7 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
   var n = nodes.length;
   if (pick.node >= n || n < 3) return null;
   Offset unit(Offset v) => v.distance == 0 ? Offset.zero : v / v.distance;
-  // The pair the point is in: it and the one after, or the one before
-  // and it, whichever is a curve between two corners.
+  // The pair: this point and the next, or the one before and this.
   for (var j in [pick.node, pick.node - 1]) {
     if (!run.closed && (j < 1 || j + 2 > n)) continue;
     var ai = (j + n) % n, bi = (j + 1) % n;
@@ -600,11 +584,10 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
   return null;
 }
 
-/// withCornered rounds (or, with [round] off, cuts) the corner at [pick],
-/// [reach] back along each side in the drawing's units and never past
-/// halfway: the point becomes two, joined by a near-circular curve or a
-/// straight cut. Null where there is no corner to round: a line's end, or a
-/// joint, whose other lines would be left behind.
+/// withCornered rounds (or, without [round], cuts) the corner at [pick],
+/// [reach] back along each side in drawing units and never past halfway: one
+/// point becomes two, joined by a near-circular curve or a straight cut. Null
+/// for a line's end, or a joint, whose other lines would be left behind.
 (VectorElement, Set<VectorPick>)? withCornered(
     VectorElement e, VectorPick pick, double reach,
     {bool round = true}) {
@@ -718,8 +701,7 @@ VectorElement withSmoothToggled(VectorElement e, VectorPick pick) {
           smooth: true));
 }
 
-/// withPointsMoved is [e] with every point in [picks] moved by [by], in the
-/// drawing's units, handles and all.
+/// withPointsMoved moves [picks] [by] in drawing units, handles and all.
 VectorElement withPointsMoved(
     VectorElement e, Set<VectorPick> picks, Offset by) {
   var shapes = [...?e.shapes];
@@ -755,8 +737,7 @@ VectorShape _strokesMoved(VectorShape s, Offset by) => s.copyWith(
       erasures: [for (var t in s.erasures) t.mapped((p) => p + by)],
     );
 
-/// picksIn is every point of [e] whose place on the canvas is inside
-/// [canvasRect], a box dragged across the drawing.
+/// picksIn is every point of [e] inside the dragged box [canvasRect].
 Set<VectorPick> picksIn(VectorElement e, Rect canvasRect) {
   var space = VectorSpace(e);
   return {
@@ -786,13 +767,11 @@ Rect? picksBox(VectorElement e, Set<VectorPick> picks) {
   return box;
 }
 
-/// withoutPoints is [e] with every point in [picks] taken out, all at once.
+/// withoutPoints is [e] with all of [picks] taken out at once.
 ///
-/// A point in the middle of a line joins its neighbours up. A joint breaks
-/// the lines there instead (there is no one neighbour to join to), and every
-/// line meeting at it loses its end there. A run left with fewer than two
-/// points goes, and a shape left with no runs goes with it. Picks no longer
-/// there are passed over.
+/// A point mid-line joins its neighbours up. A joint breaks the lines there
+/// instead, each losing its end. A run left with fewer than two points goes,
+/// and a shape left with no runs goes too. Picks that are gone are passed over.
 VectorElement withoutPoints(VectorElement e, Set<VectorPick> picks) {
   var all = e.shapes ?? const <VectorShape>[];
   var joints = <Offset>{};
@@ -855,8 +834,7 @@ VectorElement withoutPoints(VectorElement e, Set<VectorPick> picks) {
       finish();
     }
     if (!changed) {
-      // A shape combining into one that went combines into nothing: it is
-      // a shape of its own now.
+      // A shape combining into one that went is a shape of its own.
       shapes.add(droppedBase && s.combine != null
           ? s.copyWith(clearCombine: true)
           : s);
@@ -872,10 +850,9 @@ VectorElement withoutPoints(VectorElement e, Set<VectorPick> picks) {
   return e.copyWith(shapes: shapes);
 }
 
-/// connectedPicks is every point connected to the part of shape [shape] at
-/// [at] (drawing units): the run whose inside it is in (or, off every run's
-/// inside, the shape's first), and every run joined to it at a joint,
-/// transitively, of any shape.
+/// connectedPicks is every point connected to shape [shape] at [at] (drawing
+/// units): the run whose inside holds it (else the shape's first), and every
+/// run joined to it at a joint, transitively, in any shape.
 Set<VectorPick> connectedPicks(VectorElement e, int shape, Offset at) {
   var shapes = e.shapes ?? const <VectorShape>[];
   if (shape < 0 || shape >= shapes.length) return const {};
@@ -905,10 +882,9 @@ Set<VectorPick> connectedPicks(VectorElement e, int shape, Offset at) {
   }
 }
 
-/// copiedShapes is what copying the points in [picks] copies: of each run, the
-/// stretches of consecutive picked points (the whole run, closed if it was,
-/// where all are picked), each in a copy of its shape. A lone point has no
-/// line to copy.
+/// copiedShapes is what copying [picks] copies: each run's stretches of
+/// consecutive picked points (the whole run, still closed, where all are
+/// picked), each in a copy of its shape. A lone point has no line to copy.
 List<VectorShape> copiedShapes(VectorElement e, Set<VectorPick> picks) {
   var out = <VectorShape>[];
   for (var (si, s) in (e.shapes ?? const <VectorShape>[]).indexed) {
@@ -974,7 +950,7 @@ List<VectorShape> copiedShapes(VectorElement e, Set<VectorPick> picks) {
   );
 }
 
-/// allPicks is every point of [e].
+/// allPicks is every point of [e] not on a held shape.
 Set<VectorPick> allPicks(VectorElement e) => {
       for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed)
         if (!shapeHeld(e, s))
@@ -982,15 +958,14 @@ Set<VectorPick> allPicks(VectorElement e) => {
             for (var n = 0; n < run.nodes.length; n++) VectorPick(s, p, n),
     };
 
-/// pencilShape is a stroke of the pencil as a shape: the pen's [samples],
-/// drawn with [brush] in [colour], [width] wide at full pressure (in the
-/// drawing's units). Null with no samples.
+/// pencilShape is a pencil stroke as a shape: [samples] drawn with [brush] in
+/// [colour], [width] wide at full pressure (drawing units); null with no
+/// samples.
 ///
-/// The wobble is smoothed as the brush says; the width at each point comes
-/// from the pen's pressure (or its speed, slow being heavy, where it gives
-/// none), its tilt, and the stroke's direction for a broad nib; the ends
-/// taper. The result is thinned to the points the line needs, with smooth
-/// handles, so hundreds of readings become a few dozen points.
+/// The wobble is smoothed as the brush says. Each point's width comes from
+/// pressure (or speed, slow being heavy), tilt, and direction for a broad nib;
+/// the ends taper. Thinned to the points the line needs, with smooth handles,
+/// so hundreds of readings become a few dozen points.
 VectorShape? pencilShape(VectorElement e, List<PenSample> samples,
     VectorBrush brush, Color colour, double width,
     {Color? fillColour}) {
@@ -1078,9 +1053,8 @@ VectorShape? pencilShape(VectorElement e, List<PenSample> samples,
   var kept = [for (var i in keep) pts[i]];
   var nodes = <VectorNode>[];
   for (var (k, i) in keep.indexed) {
-    // Smooth through the kept points: each handle along the line from the
-    // point before to the point after, a third as long as its own side
-    // (thinning spaces points unevenly, and one length would kink them).
+    // Each handle along the line from the point before to the one after, a
+    // third of its own side: thinned points are uneven, one length kinks.
     var inside = k > 0 && k < kept.length - 1;
     var dir = inside ? kept[k + 1] - kept[k - 1] : Offset.zero;
     dir = dir.distance == 0 ? Offset.zero : dir / dir.distance;
@@ -1110,10 +1084,9 @@ VectorShape? pencilShape(VectorElement e, List<PenSample> samples,
   );
 }
 
-/// mirroredStrokes is a pencil stroke and its mirror images: [samples] as
-/// drawn, then reflected across the drawing's upright middle where [across],
-/// its level middle where [down], and both where both (one, two or four
-/// strokes). Each comes with its brush, a broad nib's angle mirrored too.
+/// mirroredStrokes is a pencil stroke and its mirror images: across the
+/// drawing's upright middle where [across], its level middle where [down], or
+/// both, each with its brush, a broad nib's angle mirrored too.
 List<(List<PenSample>, VectorBrush)> mirroredStrokes(
     VectorElement e, List<PenSample> samples, VectorBrush brush,
     {bool across = false, bool down = false}) {
@@ -1144,10 +1117,9 @@ List<(List<PenSample>, VectorBrush)> mirroredStrokes(
   ];
 }
 
-/// _simplified is which of [pts] a line through them needs, to within
-/// [tolerance]: Douglas-Peucker, first and last always kept. A point's
-/// half-width in [halves] counts as well as its place, so a stroke that swells
-/// on a straight stretch keeps the points it swells at.
+/// _simplified is which of [pts] a line needs to within [tolerance]:
+/// Douglas-Peucker, keeping first and last. Half-widths in [halves] count too,
+/// so a stroke swelling on a straight stretch keeps the points it swells at.
 List<int> _simplified(List<Offset> pts, List<double> halves, double tolerance) {
   if (pts.length < 3) return [for (var i = 0; i < pts.length; i++) i];
   var keep = List<bool>.filled(pts.length, false);
@@ -1183,8 +1155,7 @@ List<int> _simplified(List<Offset> pts, List<double> halves, double tolerance) {
   ];
 }
 
-/// withoutShapesAt is [e] with every shape under [canvasPoint] taken out:
-/// the pen's eraser.
+/// withoutShapesAt is [e] without every shape under [canvasPoint]: the eraser.
 VectorElement withoutShapesAt(
     VectorElement e, Offset canvasPoint, double reach) {
   var next = e;
@@ -1200,9 +1171,8 @@ VectorElement withoutShapesAt(
   }
 }
 
-/// groupStarts is where each of [e]'s groups (a shape and the shapes combined
-/// into it) starts in its shapes, in order: what the playlist lists and
-/// moves.
+/// groupStarts is where each group of [e] (a shape and those combined into it)
+/// starts among its shapes: what the playlist lists and moves.
 List<int> groupStarts(VectorElement e) {
   var out = <int>[];
   var i = 0;
@@ -1213,9 +1183,8 @@ List<int> groupStarts(VectorElement e) {
   return out;
 }
 
-/// withGroupMoved is [e] with group [from] moved to be group [to]: a shape and
-/// those combined into it moved together in the playlist, which is also
-/// drawing order.
+/// withGroupMoved moves group [from] to [to], a shape and those combined into
+/// it together. Playlist order is drawing order.
 VectorElement withGroupMoved(VectorElement e, int from, int to) {
   var groups = [
     for (var d in vectorDrawn(e.shapes ?? const <VectorShape>[])) d.members
@@ -1238,10 +1207,9 @@ VectorElement withCue(VectorElement e, int group, {VectorCue? cue, int? gap}) {
   return e.withShape(i, s.copyWith(cue: cue, cueGap: gap));
 }
 
-/// withStagger is [e] with its shapes coming in one after another, each
-/// starting a third of the way before the one ahead finishes, each taking the
-/// arrival's [span] in its own frames, the whole fitted into the arrival (see
-/// cueTimes).
+/// withStagger brings [e]'s shapes in one after another, each starting a third
+/// of the way before the one ahead ends and taking [span] of its own frames,
+/// the whole fitted into the arrival (see cueTimes).
 VectorElement withStagger(VectorElement e, int span) {
   var overlap = -(span / 3).round();
   var next = e;
@@ -1271,11 +1239,10 @@ VectorElement withCueLength(VectorElement e, int group, int? length) {
           : s.copyWith(cueLength: math.max(1, length)));
 }
 
-/// withStartAt is [e] with group [group] (not the first) starting [start]
-/// frames into the drawing's arrival, in the shapes' own frames, expressed as
-/// the cue that puts it there: with the one before, after it, or after a gap
-/// (negative to overlap). Never before the one before starts. [span] is the
-/// arrival, for shapes that take as long as it. See withTimingBaked.
+/// withStartAt starts group [group] (not the first) [start] frames into the
+/// arrival, in the shapes' own frames, as the cue that puts it there: with the
+/// one before, after it, or after a gap (negative to overlap), never before the
+/// one before starts. [span] is the arrival. See withTimingBaked.
 VectorElement withStartAt(VectorElement e, int group, int start, int span) {
   if (group <= 0) return e;
   var times = naturalTimes(e.shapes ?? const <VectorShape>[], span);
@@ -1289,11 +1256,10 @@ VectorElement withStartAt(VectorElement e, int group, int start, int span) {
   return withCue(e, group, cue: VectorCue.gap, gap: start - end);
 }
 
-/// withTimingBaked is [e] with its shapes' timing written out in timeline
-/// frames as it plays now: each shape's length set and every gap scaled by
-/// however much the arrival has been stretched round them. Done before a
-/// shape's own timing is changed, so the change is in frames seen on the
-/// timeline.
+/// withTimingBaked writes [e]'s shape timing out in timeline frames as it
+/// plays: each shape's length set and every gap scaled by how far the arrival
+/// is stretched round them. Done before a shape's own timing changes, so the
+/// change is in timeline frames.
 VectorElement withTimingBaked(VectorElement e, int rate) {
   var shapes = e.shapes;
   var span = vectorArrivalSpan(e, rate)?.$2;
@@ -1310,9 +1276,8 @@ VectorElement withTimingBaked(VectorElement e, int rate) {
   return e.copyWith(shapes: next);
 }
 
-/// withSpanFitted is [e] with its arrival stretched or shortened so it
-/// exactly covers every shape's coming in, making the shapes' own frames the
-/// timeline's. See withTimingBaked.
+/// withSpanFitted fits [e]'s arrival exactly to its shapes' coming in, so
+/// their own frames are the timeline's. See withTimingBaked.
 VectorElement withSpanFitted(VectorElement e, int rate) {
   var shapes = e.shapes;
   var arrival = vectorArrivalSpan(e, rate);
@@ -1338,9 +1303,8 @@ enum VectorLanes {
   VectorLanes get next => values[(index + 1) % values.length];
 }
 
-/// groupExtent is where group [group] of [e] lies (its shapes' outlines,
-/// without line widths) in the drawing's units: the box the shapes tool
-/// moves and resizes it by.
+/// groupExtent is the box round group [group]'s outlines, without line widths,
+/// in drawing units: what the shapes tool moves and resizes it by.
 Rect? groupExtent(VectorElement e, int group) {
   var starts = groupStarts(e);
   if (group < 0 || group >= starts.length) return null;
@@ -1354,9 +1318,8 @@ Rect? groupExtent(VectorElement e, int group) {
   return box;
 }
 
-/// withGroupFitted is [e] with group [group] moved and stretched from the
-/// box [from] to the box [to]: every point, its handles, and the tints and
-/// rub-outs laid on it, the way a picture is stretched by its corners.
+/// withGroupFitted moves and stretches group [group] from box [from] to [to]:
+/// points, handles, tints and rub-outs, as a picture is stretched.
 VectorElement withGroupFitted(VectorElement e, int group, Rect from, Rect to) {
   var starts = groupStarts(e);
   if (group < 0 || group >= starts.length) return e;
@@ -1475,11 +1438,9 @@ List<int> groupMembers(VectorElement e, int base) {
   ];
 }
 
-/// withCombined is the shapes in [picked] combined by [op]: the lowest of
-/// them is what the others are combined into, and they are moved up to sit
-/// just after it, in the order they were. Each picked shape brings the
-/// shapes already combined into it. Returns the drawing and where the
-/// result now starts.
+/// withCombined combines the shapes in [picked] by [op] into the lowest of
+/// them, moving the others (each with the shapes already combined into it) up
+/// to just after it, in order. Returns the drawing and where the result starts.
 (VectorElement, int) withCombined(
     VectorElement e, Set<int> picked, VectorCombine op) {
   var shapes = e.shapes ?? const <VectorShape>[];
@@ -1520,14 +1481,13 @@ VectorElement blankDrawing(VectorElement e) => e.copyWith(
     viewBox: Rect.fromLTWH(0, 0, math.max(1, e.width), math.max(1, e.height)),
     shapes: const []);
 
-/// withPenPoint is [e] with a point put down by the pen at [canvasPoint],
-/// joined on from the point [from], or with none as the first point of a new
-/// shape painted like [like] or plainly. Returns the new point's pick, which
-/// the next point joins on from.
+/// withPenPoint puts a pen point at [canvasPoint], joined on from [from], or,
+/// with none, as the first point of a new shape painted like [like] or plainly.
+/// Returns the new point's pick, which the next point joins on from.
 ///
-/// From the end of an open run, the run goes on; from its first point, the
-/// run is reversed and goes on. From anywhere else (mid-run, or a closed run)
-/// a new run starts there in the same shape: a branch.
+/// From an open run's end the run goes on; from its first point it is reversed
+/// and goes on. From anywhere else a new run starts there in the same shape: a
+/// branch.
 (VectorElement, VectorPick) withPenPoint(
     VectorElement e, VectorPick? from, Offset canvasPoint,
     {VectorShape? like}) {
@@ -1584,9 +1544,8 @@ VectorElement blankDrawing(VectorElement e) => e.copyWith(
   return (e.copyWith(shapes: shapes), VectorPick(shapes.length - 1, 0, 0));
 }
 
-/// withWidths is [e] with each point in [from] given its width there times
-/// [factor]: a line made thicker or thinner at those points. Kept between
-/// nothing and twenty times the shape's stroke width.
+/// withWidths sets each point in [from] to its width there times [factor], kept
+/// between nought and twenty times the shape's stroke width.
 VectorElement withWidths(
     VectorElement e, Map<VectorPick, double> from, double factor) {
   var next = e;
@@ -1641,9 +1600,8 @@ VectorElement withStrokeOn(VectorElement e, Set<int> on, VectorTint stroke,
   return e.copyWith(shapes: shapes);
 }
 
-/// shadeOf is [colour] in shadow ([shade] below nought) or highlighted: a
-/// shadow deeper and slightly cooler, a highlight lighter and slightly warmer,
-/// as cel shading does.
+/// shadeOf is [colour] shadowed ([shade] below nought), deeper and cooler, or
+/// highlighted, lighter and warmer, as cel shading does.
 Color shadeOf(Color colour, int shade) => shade < 0
     ? Color.lerp(colour, const Color(0xFF2A2140), 0.3)!
     : Color.lerp(colour, const Color(0xFFFFF6E8), 0.38)!;
@@ -1707,7 +1665,8 @@ VectorElement withPenClosed(VectorElement e, VectorPick run) {
   return e.withShape(run.shape, s.copyWith(paths: paths));
 }
 
-/// pointsNear is every point of [e] within [reach] of [canvasPoint].
+/// pointsNear is every point of [e] not on a held shape within [reach] of
+/// [canvasPoint].
 Set<VectorPick> pointsNear(VectorElement e, Offset canvasPoint, double reach) {
   var space = VectorSpace(e);
   return {
@@ -1788,11 +1747,9 @@ Rect? shapeExtent(VectorShape shape) {
   return box;
 }
 
-/// boxedToDrawing is [e] with its box fitted to what is drawn (every shape,
-/// plus half of each stroke), grown or shrunk as editing has left it. The
-/// drawing stays where it is on the page: the box and the drawing's space
-/// change together, and a turned element is shifted to turn about the right
-/// point.
+/// boxedToDrawing fits [e]'s box to what is drawn (every shape plus half its
+/// stroke). The drawing stays put on the page: box and drawing space change
+/// together, and a turned element is shifted to turn about the right point.
 VectorElement boxedToDrawing(VectorElement e) {
   var shapes = e.shapes;
   if (shapes == null || shapes.isEmpty) return e;
@@ -1837,8 +1794,7 @@ VectorElement boxedToDrawing(VectorElement e) {
       height: box.height) as VectorElement;
 }
 
-/// takeApart reads [e]'s file and takes it apart into shapes, or returns
-/// null where the file cannot be found or read.
+/// takeApart reads [e]'s file as shapes, or null where it cannot be read.
 Future<SvgImport?> takeApart(VectorElement e) async {
   if (e.assetId.isEmpty) return null;
   var bytes = await CanvasMedia.load(MediaKind.vector, e.assetId);

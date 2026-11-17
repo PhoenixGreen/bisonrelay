@@ -5,17 +5,14 @@ import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
     show LayerBlend;
 
-// procedural_layers.dart is the patterns laid over a background's own. Each
-// layer is a whole background recipe, laid on with an opacity and a blend.
+// procedural_layers.dart is the patterns laid over a background's own, each
+// a whole background recipe laid on with an opacity and a blend.
 
-/// maxBackgroundLayers is how many layers can be laid over a background.
 const int maxBackgroundLayers = 3;
 
-/// BackgroundLayer is one pattern laid over a background.
-///
-/// Only the pattern of its [spec] is drawn: the base colour (except for a
-/// plain layer, whose base is all it has), light and effects are the
-/// background's. It keeps the background's time at its own speed.
+/// BackgroundLayer is one pattern laid over a background. Only its [spec]'s
+/// pattern is drawn (a plain layer: its base colour); light and effects are
+/// the background's. It keeps the background's time at its own speed.
 class BackgroundLayer {
   final ProceduralSpec spec;
   final double opacity;

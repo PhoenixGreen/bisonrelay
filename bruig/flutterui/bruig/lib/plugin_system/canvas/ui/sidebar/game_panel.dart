@@ -21,11 +21,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 // game_panel.dart is the Game tab, shown while the canvas is being made into a
-// game (see CanvasDocument.game): a heading for what is picked, with Play, then
-// flat sections, each saying in a line how it is set, with what the game still
-// lacks first. With an element picked, what it does in the game (every element
-// is still until given something to do); with nothing or the background
-// picked, the game itself: its scenes, counts, players and controls.
+// game (CanvasDocument.game): a heading for what is picked, with Play, then
+// flat sections, each saying in a line how it is set, what the game lacks
+// first. With an element picked, what it does in the game; with nothing or the
+// background picked, the game: scenes, counts, players and controls.
 
 class CanvasGamePanel extends StatelessWidget {
   final CanvasController controller;
@@ -67,8 +66,7 @@ class CanvasGamePanel extends StatelessWidget {
         },
       );
 
-  /// _heading is what is picked -- its kind and how it is played, in a
-  /// coloured tile -- or the game; and Play.
+  /// _heading is what is picked (its kind and play, a tile) or the game; Play.
   Widget _heading(BuildContext context, CanvasElement? picked) {
     var colors = ThemeNotifier.of(context).colors;
     var doc = controller.document;
@@ -153,9 +151,8 @@ class CanvasGamePanel extends StatelessWidget {
     );
   }
 
-  /// _gameSettings are what the whole game has: what it still lacks, its
-  /// scenes, the counts it keeps, and its controls -- or, with nothing on
-  /// this scene played yet, the games to start from first.
+  /// _gameSettings are the whole game's: what it lacks, its scenes, counts
+  /// and controls, or, with nothing played yet, the games to start from.
   List<Widget> _gameSettings() {
     var doc = controller.document;
     var scenes = doc.allScenes;
@@ -273,11 +270,8 @@ class CanvasGamePanel extends StatelessWidget {
   }
 
   /// _sceneSounds is what each mixer channel does as the game comes to the
-  /// scene showing: keeps playing, stops, or plays one of its slots -- see
-  /// CanvasScene.gameSounds.
-  ///
-  /// [atEnd] is the same as the game leaves the scene: see
-  /// CanvasScene.gameSoundsAtEnd.
+  /// scene showing (CanvasScene.gameSounds): plays on, stops, or plays a
+  /// slot; with [atEnd], as the game leaves it (gameSoundsAtEnd).
   Widget _sceneSounds({bool atEnd = false}) {
     var doc = controller.document;
     var scene = doc.scene;
@@ -353,10 +347,8 @@ class CanvasGamePanel extends StatelessWidget {
     );
   }
 
-  /// _elementSettings are what [e] does when the game is played.
   List<Widget> _elementSettings(CanvasElement e) {
-    // One undo step a change, however many writes a drag makes, as in the
-    // rest of the settings.
+    // One undo step a change, however many writes a drag makes.
     void write(CanvasElement next) {
       controller.beginInteraction();
       controller.replaceElement(next, transient: true);
@@ -376,7 +368,7 @@ class CanvasGamePanel extends StatelessWidget {
 }
 
 /// _CheckRow is one thing the game needs: a tick or a mark, what it is and
-/// how it stands, and -- lacking it -- the button that adds it.
+/// how it stands, and, lacking it, the button that adds it.
 class _CheckRow extends StatelessWidget {
   final GameCheck check;
   final VoidCallback onFix;
@@ -536,8 +528,7 @@ class _StartFromState extends State<_StartFrom> {
   }
 }
 
-/// _ControlsSection is the game's controls, said in a line -- and, with
-/// Change, each player's keys and buttons.
+/// _ControlsSection is the game's controls in a line; Change shows all keys.
 class _ControlsSection extends StatefulWidget {
   final CanvasController controller;
   const _ControlsSection({required this.controller});
@@ -585,9 +576,8 @@ class _ControlsSectionState extends State<_ControlsSection> {
   }
 }
 
-/// _SceneStrip is the game's scenes, small, in a row: the flag on the one it
-/// starts on, the bar where the master shows -- and, with a master, a click
-/// on one shows it there or not.
+/// _SceneStrip is the game's scenes, small, in a row: a flag on the first,
+/// the bar where the master shows; with a master, a click toggles it there.
 class _SceneStrip extends StatelessWidget {
   final CanvasController controller;
   final bool hasMaster;
@@ -687,8 +677,7 @@ class _SceneStrip extends StatelessWidget {
   }
 }
 
-/// _SceneThumb draws one scene, small, with the document's own renderer --
-/// as the Scenes panel does.
+/// _SceneThumb draws one scene small with the document's renderer.
 class _SceneThumb extends CustomPainter {
   final CanvasDocument document;
   final int index;

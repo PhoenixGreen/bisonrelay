@@ -6,12 +6,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
 
-// code_task_element.dart is a task card beside a Code panel (Ken,
-// 2026-11-15: "interactive tasks that tell the user if they passed the test
-// and that they are ready to move onto the next lesson"), as a synth's task
-// card is beside its rack: what to do, the checks it is marked by -- ticked
-// as the code is typed -- and a button that checks it all, builds it too,
-// and says whether it passed.
+// code_task_element.dart is a task card beside a Code panel, as a synth's
+// task card is beside its rack: what to do, the checks it is marked by
+// (ticked as the code is typed), and a button that checks it all, builds
+// it, and says whether the student passed and can move on.
 
 /// CodeCheckKind is what a check looks at.
 enum CodeCheckKind {
@@ -21,13 +19,11 @@ enum CodeCheckKind {
   /// lacks: the code no longer says it.
   lacks("The code no longer has"),
 
-  /// changes: the code no longer says [CodeCheck.before], and says
-  /// [CodeCheck.text] -- "coins++" made "coins += 2" (Ken: easier to set
-  /// than a pattern).
+  /// changes: [CodeCheck.before] gone and [CodeCheck.text] there ("coins++"
+  /// made "coins += 2"), easier to set than a pattern.
   changes("The code changes"),
 
-  /// builds: the project builds and runs without an error: looked at only
-  /// when Check is pressed.
+  /// builds: the project builds and runs cleanly; checked on Check only.
   builds("It builds and runs"),
 
   /// prints: its Run panel's last run printed it.
@@ -47,9 +43,8 @@ class CodeCheck {
   /// file is the file it looks in, by name; empty for every file.
   final String file;
 
-  /// text is what it looks for -- any of its lines, each an answer it
-  /// accepts (see [answers]) -- and [pattern] whether it is instead one
-  /// regular expression.
+  /// text is what it looks for: any of its lines, each an accepted answer
+  /// (see [answers]), or, with [pattern], one regular expression.
   final String text;
   final bool pattern;
 
@@ -82,8 +77,6 @@ class CodeCheck {
           before: before ?? this.before,
           count: (count ?? this.count).clamp(1, 999));
 
-  /// answers are what it accepts: each line of [text], any of which does;
-  /// a pattern is one.
   List<String> get answers => pattern
       ? [if (text.isNotEmpty) text]
       : [
@@ -91,10 +84,10 @@ class CodeCheck {
             if (l.trim().isNotEmpty) l.trim()
         ];
 
-  /// _loose is [words] as a pattern: spaces anywhere in it, or none, match
-  /// any run of spaces in the code or none (so `fontSize:40` and
-  /// `fontSize: 40` both count), and it is found only as whole words
-  /// (`fontSize: 48` is not in `fontSize: 480`).
+  /// _loose is [words] as a pattern: spaces in it, or none, match any run of
+  /// spaces in the code or none (`fontSize:40` and `fontSize: 40` both
+  /// count), found only as whole words (`fontSize: 48` is not in
+  /// `fontSize: 480`).
   static RegExp _loose(String words) {
     var chars = words.replaceAll(RegExp(r"\s+"), "").split("");
     bool word(String c) => RegExp(r"\w").hasMatch(c);
@@ -105,10 +98,10 @@ class CodeCheck {
     return RegExp(b.toString());
   }
 
-  /// timesIn is how many times [code] says any of [words]' answers: a
-  /// pattern as written, or loosely (see [_loose]). Null while a pattern is
-  /// being counted: one written with the card is counted off the UI
-  /// isolate, as it may never finish (see PatternCounts).
+  /// timesIn is how many times [code] says any of [words]' answers: a pattern
+  /// as written, or loosely (see [_loose]). Null while a pattern is being
+  /// counted: one written with the card is counted off the UI isolate, as it
+  /// may never finish (see PatternCounts).
   static int? timesIn(String code, List<String> words, {bool pattern = false}) {
     var n = 0;
     for (var w in words) {
@@ -195,7 +188,6 @@ class CodeCheck {
   }
 }
 
-/// CodeTaskElement is the card itself.
 class CodeTaskElement extends CanvasElement {
   /// code is the Code panel it marks, by id.
   final String code;
@@ -260,8 +252,7 @@ class CodeTaskElement extends CanvasElement {
           accent: accent ?? this.accent,
           textSize: (textSize ?? this.textSize).clamp(4.0, 1000.0));
 
-  /// codeIn is the Code panel it marks in [doc], and the Run panel that
-  /// runs that.
+  /// codeIn is the Code panel it marks in [doc], and its Run panel.
   (CodeElement?, CodeRunElement?) codeIn(CanvasDocument? doc) {
     var c = doc?.elementById(code);
     if (c is! CodeElement) return (null, null);

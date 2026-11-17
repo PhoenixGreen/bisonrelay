@@ -2,16 +2,12 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 // device_scope.dart is what a device's screen shows of the real sound while
-// its display is on (Ken, 2026-11-08: "the Gate visual doesn't show real
-// audio signal"; displays start off, to save the work): the sound going
-// into the device and coming out of it -- the last few milliseconds as a
-// wave, and the last few seconds as peaks -- and, for a device that keeps
-// one, a reading of its own (a vocoder's bands, a gate's opening).
+// its display is on (off by default, to save work): sound in and out as a
+// wave and as peaks, and any reading of its own (a vocoder's bands).
 
-/// ScopeReading is a device's sound in and out, oldest first: [inWave] and
-/// [outWave] the latest samples (both sides mixed), [inPeaks] and
-/// [outPeaks] the loudest of every [DeviceScope.chunk] samples over the
-/// last few seconds, and [own] the device's reading, or null.
+/// ScopeReading is a device's sound in and out, oldest first: latest
+/// samples ([inWave], [outWave]), loudest of each [DeviceScope.chunk] over
+/// seconds ([inPeaks], [outPeaks]), and [own] reading, or null.
 typedef ScopeReading = ({
   Float32List inWave,
   Float32List outWave,
@@ -22,12 +18,11 @@ typedef ScopeReading = ({
 
 /// Readable is a device with a reading of its own for its screen.
 abstract class Readable {
-  /// reading is what it last did, as its screen draws it: a vocoder's
-  /// bands' levels, a gate's gain.
+  /// reading is what it last did, for its screen: a vocoder's band levels,
+  /// a gate's gain.
   Float32List get reading;
 }
 
-/// DeviceScope keeps what passes one device: see [ScopeReading].
 class DeviceScope {
   /// waveLength is how many samples of wave are kept: about 40 ms.
   static const int waveLength = 2048;
@@ -56,7 +51,7 @@ class DeviceScope {
     }
   }
 
-  /// after is that stretch come out of it, [device] what ran it.
+  /// after is that stretch come out, [device] what ran it.
   void after(Float32List l, Float32List r, int n, Object? device) {
     var at = _start;
     for (var i = 0; i < n; i++) {
@@ -77,7 +72,7 @@ class DeviceScope {
     if (device is Readable) _own = device.reading;
   }
 
-  /// reading is what it has kept, oldest first: copies, to be sent on.
+  /// reading is what it has kept, oldest first, copied to be sent on.
   ScopeReading get reading {
     Float32List from(Float32List ring, int at) {
       var out = Float32List(ring.length);

@@ -11,9 +11,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/team_photo_editor.dart';
 
 // team_settings.dart is a team's settings.
 
-/// teamSettings is a whole team's controls, in the order a team is set up:
-/// game, shape, who is in it, colour, dot size. The squad list is behind an
-/// expander: eleven rows of four fields outweighs every other setting.
+/// teamSettings is a team's controls in setup order; the squad list sits
+/// in an expander, as eleven rows of four fields outweigh the rest.
 List<Widget> teamSettings(
     BuildContext context,
     CanvasController controller,
@@ -21,8 +20,8 @@ List<Widget> teamSettings(
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit) {
-  /// now is a change made in one go -- a dropdown, a colour, a switch -- which
-  /// is its own undo step.
+  /// now is a one-go change (a dropdown, colour or switch), its own undo
+  /// step.
   void now(TeamElement next) {
     begin();
     write(next);
@@ -42,9 +41,8 @@ List<Widget> teamSettings(
               hideCaption: true,
               rule: false,
               children: [
-                // The pitch the team stands on. Linked, it goes wherever the pitch
-                // goes -- moved, turned, zoomed or tilted -- and its players are
-                // kept in the pitch's own metres. See team_painter.dart.
+                // The team's pitch: linked, it follows the pitch and keeps
+                // players in its metres. See team_painter.dart.
                 _pitchDropdown(controller, e, now),
                 CanvasDropdown<TeamSport>(
                   key: const ValueKey("teamSport"),
@@ -52,9 +50,8 @@ List<Widget> teamSettings(
                   value: e.sport,
                   width: 138,
                   options: [for (var s in TeamSport.values) (s, s.label)],
-                  // Changing the sport re-lays the squad out and numbers it afresh,
-                  // since a formation belongs to one game and the squad size changes
-                  // with it.
+                  // Changing sport re-lays and renumbers the squad: a
+                  // formation belongs to one game, and squad size changes.
                   onChanged: (v) => now(e.withSport(v)),
                 ),
                 CanvasDropdown<TeamFormation>(
@@ -71,17 +68,16 @@ List<Widget> teamSettings(
                   value: e.spread,
                   width: 108,
                   options: [for (var v in FormationSpread.values) (v, v.label)],
-                  // The same eleven positions, two pictures: the shape at kick-off sits
-                  // inside its own half, the shape in possession has its forwards over
-                  // the halfway line. See FormationSpread.
+                  // The same eleven positions at kick-off (own half) or in
+                  // possession (forwards past halfway). See FormationSpread.
                   onChanged: (v) =>
                       now(e.withFormation(e.formation, spread: v)),
                 ),
                 CanvasToggle(
                   label: "Attack left",
                   value: e.mirrored,
-                  // Turning the team round re-lays it out, which is how the away side
-                  // faces the home side rather than both running at the same goal.
+                  // Turning the team round re-lays it, so the away side faces
+                  // the home side rather than both attacking one goal.
                   onChanged: (v) =>
                       now(e.withFormation(e.formation, mirror: v)),
                 ),
@@ -100,16 +96,16 @@ List<Widget> teamSettings(
                   tooltip: "Reset formation",
                   onPressed: () => now(e.withFormation(e.formation)),
                 ),
-                // The ball: one more thing on the pitch that moves the way a player
-                // does -- dragged, keyframed, or sent along a path.
+                // The ball: one more thing on the pitch moving as a player does
+                // (dragged, keyframed, or sent along a path).
                 CanvasToggle(
                   key: const ValueKey("teamBall"),
                   label: "Ball",
                   value: e.ball != null,
                   onChanged: (v) => now(e.withBall(v)),
                 ),
-                // Positions rather than names, as a switch: the names are kept, and
-                // turning it off brings them back.
+                // Positions instead of names, as a switch: the names are kept
+                // and return when it is off.
                 CanvasIconButton(
                   key: const ValueKey("teamNameByPosition"),
                   icon: Icons.badge_outlined,
@@ -203,8 +199,8 @@ List<Widget> teamSettings(
               color: e.outlineColor,
               onChanged: (c) => now(e.copyWith(outlineColor: c)),
             ),
-            // The element's own opacity, not a second one: two multiplying make a
-            // control that seems not to work whenever the other is down.
+            // The element's own opacity, not a second: two multiplying make a
+            // control that seems broken whenever the other is down.
             CanvasNumberField(
               label: "Opacity",
               decimals: 2,
@@ -229,7 +225,7 @@ List<Widget> teamSettings(
               width: 56,
               onChanged: (v) {
                 begin();
-                // Locked, the two move together, keeping a player marker a circle.
+                // Locked, the two move together, keeping a marker circular.
                 write(e.copyWith(
                     dotWidth: v, dotHeight: e.lockDotAspect ? v : e.dotHeight));
               },
@@ -358,8 +354,8 @@ List<Widget> teamSettings(
   ];
 }
 
-/// _squadList is the team sheet: one row per player, goalkeeper first, its
-/// coordinates in canvas units rather than the fractions stored.
+/// _squadList is the team sheet: a row per player, goalkeeper first, in
+/// canvas units rather than the stored fractions.
 Widget _squadList(
         BuildContext context,
         CanvasController controller,
@@ -368,8 +364,8 @@ Widget _squadList(
         VoidCallback begin,
         VoidCallback commit,
         void Function(TeamElement) now) =>
-    // Boxed, like every other element's sections: shut, it is a heading in a
-    // box rather than a line of text running into the settings under it.
+    // Boxed like every element's sections: shut, a heading in a box, not a
+    // line of text running into the settings below.
     boxed(
         context,
         CanvasExpander(
@@ -393,8 +389,8 @@ Widget _squadList(
                   commit: commit,
                 ),
               ),
-            // At the ordinary size, as a grid of cells is: card-sized, a squad
-            // was three ragged lines a player.
+            // At the ordinary size, as a cell grid is: card-sized, a player
+            // took three ragged lines.
             for (var i = 0; i < e.players.length; i++)
               CanvasCards.none(_PlayerRow(
                 key: ValueKey("player-$i-${e.id}"),
@@ -409,9 +405,8 @@ Widget _squadList(
           ],
         ));
 
-/// _teamPhotoRow is the squad's one photo: added, swapped or taken off.
-/// Adding one shows the team as portraits, which is the only token a face
-/// is drawn in.
+/// _teamPhotoRow is the squad's photo: add, swap or remove. Adding one shows
+/// portraits, the only token that draws a face.
 Widget _teamPhotoRow(
     BuildContext context, TeamElement e, void Function(TeamElement) now) {
   TeamElement withPhoto(String id) => e.copyWith(
@@ -517,8 +512,8 @@ Widget _ballGroup(TeamElement e, void Function(TeamElement) now,
   ]);
 }
 
-/// _PlayerRow is one line of the team sheet: a widget, so its fields keep
-/// their state (and the caret) across the rebuild every keystroke causes.
+/// _PlayerRow is one team sheet line: a widget, so its fields keep state
+/// (and the caret) across the rebuild each keystroke causes.
 class _PlayerRow extends StatelessWidget {
   final CanvasController controller;
   final TeamElement team;
@@ -543,9 +538,8 @@ class _PlayerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     var spot = team.players[index];
     var centre = team.centreOf(spot);
-    // On a pitch, where they stand is said in its metres -- along the
-    // field from the left end and across it from the bottom touchline --
-    // which is a position that means the same whatever the pitch is doing.
+    // On a pitch, position is in its metres (from the left end and bottom
+    // touchline), the same whatever the pitch is doing.
     var ground = teamGround(controller.document, team, controller.frame);
     var field =
         ground == null ? null : teamFieldPoint(team, spot, ground.place);
@@ -555,7 +549,7 @@ class _PlayerRow extends StatelessWidget {
       write(team.withPlayer(index, next));
     }
 
-    /// moveTo writes a canvas coordinate back as the fraction it is stored as.
+    /// moveTo writes a canvas coordinate back as its stored fraction.
     void moveTo({double? x, double? y}) {
       if (ground != null && field != null) {
         var (dx, dy) = spotFromField(
@@ -571,8 +565,7 @@ class _PlayerRow extends StatelessWidget {
       ));
     }
 
-    // Half a group apart, so each player's two lines read as one entry
-    // rather than running into the next player's.
+    // Half a group apart, so each player's two lines read as one entry.
     return Padding(
       padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
       child: CanvasWrap(children: [
@@ -615,8 +608,8 @@ class _PlayerRow extends StatelessWidget {
           onChanged: (v) => moveTo(y: v),
           onCommit: commit,
         ),
-        // A photo for the portrait, from a file or from the pictures the
-        // canvas already has -- and taken off again. Not for the ball.
+        // A portrait photo from a file or the canvas's pictures, and
+        // removal. Not for the ball.
         if (!spot.ball) ...[
           CanvasIconButton(
             key: ValueKey("photo-$index-${team.id}"),
