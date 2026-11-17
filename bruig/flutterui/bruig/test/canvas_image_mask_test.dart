@@ -11,7 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_masking.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_masking.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 

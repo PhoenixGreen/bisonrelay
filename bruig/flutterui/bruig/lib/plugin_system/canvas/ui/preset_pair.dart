@@ -3,7 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart'
     show CanvasDropdown;
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
 import 'package:flutter/widgets.dart';
 

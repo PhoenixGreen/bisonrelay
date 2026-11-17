@@ -504,7 +504,7 @@ class TimelineAction {
 
   /// noteAt is where its label sits on the canvas while playback holds at
   /// it -- its centre, as shares of the canvas's width and height -- and
-  /// noteSize how big, one the standard (see ui/marker_note.dart).
+  /// noteSize how big, one the standard (see ui/timeline/marker_note.dart).
   final Offset noteAt;
   final double noteSize;
 

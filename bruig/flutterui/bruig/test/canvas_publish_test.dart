@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/ui/publish_sheet.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/publish_sheet.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:shared_preferences/shared_preferences.dart';

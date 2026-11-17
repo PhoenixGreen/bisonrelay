@@ -5,11 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
-import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show motionModulated;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:flutter/material.dart';

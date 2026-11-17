@@ -4,7 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_master_times_test.dart is the master's clips timed on the run's

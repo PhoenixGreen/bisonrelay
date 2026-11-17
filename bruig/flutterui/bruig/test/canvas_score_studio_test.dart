@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/score_edit.dart';
 import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/score_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/score/score_studio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';

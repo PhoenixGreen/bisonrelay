@@ -1,4 +1,4 @@
-import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/row_header.dart';
 import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;

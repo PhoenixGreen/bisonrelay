@@ -15,12 +15,12 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
-import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/automation_lanes.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart'
+import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart'
     show faderPosition, faderDb;
-import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart'
     show kSecondaryMouseButton, PointerDeviceKind;

@@ -8,9 +8,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_element_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_lanes.dart'
     show motionRowsOf;
-import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
@@ -19,10 +19,10 @@ import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/code_editor.dart';
-import 'package:bruig/plugin_system/canvas/ui/code_live_preview.dart';
-import 'package:bruig/plugin_system/canvas/ui/code_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/code/code_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/code/code_live_preview.dart';
+import 'package:bruig/plugin_system/canvas/ui/code/code_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';

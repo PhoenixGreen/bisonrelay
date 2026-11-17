@@ -1,8 +1,8 @@
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
-import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';

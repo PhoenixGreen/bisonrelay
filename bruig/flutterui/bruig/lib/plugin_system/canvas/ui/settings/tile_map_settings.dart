@@ -24,7 +24,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_settings.dart' show findGrid;
-import 'package:bruig/plugin_system/canvas/ui/tile_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/tile_painting.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show setEquals;

@@ -15,8 +15,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

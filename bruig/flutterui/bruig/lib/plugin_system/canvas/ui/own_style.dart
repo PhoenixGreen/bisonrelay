@@ -14,10 +14,11 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
     show MotionPhase;
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart'
     show ownClipOf;
-import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart' show phaseColour;
+import 'package:bruig/plugin_system/canvas/ui/timeline/keys_strip.dart'
+    show phaseColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageElement;

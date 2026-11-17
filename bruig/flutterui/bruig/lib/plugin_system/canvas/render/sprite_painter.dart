@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 
 /// SpritePaintView is what the renderer needs to show a sprite being
 /// painted: the frame, its pixels as they are now, the frame before it to
-/// show faintly, and whether to rule the pixels. See ui/sprite_painting.dart.
+/// show faintly, and whether to rule the pixels. See ui/drawing/sprite_painting.dart.
 typedef SpritePaintView = ({int frame, ui.Image? live, int? onion, bool grid});
 
 /// spritePaintingOf is how the sprite [SpriteElement] is shown while it is

@@ -4,7 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_guides_test.dart is about where a dragged element actually lands.

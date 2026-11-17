@@ -1,17 +1,17 @@
 import 'dart:typed_data';
 
-import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/model_picking.dart';
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
-import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
-import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';

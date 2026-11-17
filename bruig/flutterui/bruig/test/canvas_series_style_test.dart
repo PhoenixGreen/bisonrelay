@@ -4,7 +4,7 @@ import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/data/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';

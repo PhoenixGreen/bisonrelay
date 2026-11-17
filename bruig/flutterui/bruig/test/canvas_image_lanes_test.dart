@@ -7,9 +7,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart'
     show VectorCue;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/image_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:flutter/material.dart';

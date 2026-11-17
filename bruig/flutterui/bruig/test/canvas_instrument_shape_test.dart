@@ -10,8 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/instrument_editor.dart'
+import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/sound/instrument_editor.dart'
     show envelopePoints;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;

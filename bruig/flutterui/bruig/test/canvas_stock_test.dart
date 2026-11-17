@@ -1,7 +1,7 @@
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
-import 'package:bruig/plugin_system/canvas/ui/stock_import.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/stock_import.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_stock_test.dart is the four stock libraries on paper: the request

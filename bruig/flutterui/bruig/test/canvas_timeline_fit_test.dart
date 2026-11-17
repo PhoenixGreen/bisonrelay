@@ -1,6 +1,6 @@
-import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/panel_heights.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/panel_heights.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // The panels under the canvas -- the mixer, the effects, the timeline --

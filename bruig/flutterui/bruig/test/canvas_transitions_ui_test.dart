@@ -3,10 +3,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/chain_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show DeviceKnob;
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
 import 'support/canvas_chain_helpers.dart';
 import 'package:flutter/material.dart';

@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/render/image_look.dart';
 import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';

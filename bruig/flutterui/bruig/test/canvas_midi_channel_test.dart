@@ -12,10 +12,10 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show DeviceKnob;
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';

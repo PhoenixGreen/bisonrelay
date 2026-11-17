@@ -13,7 +13,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
-import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/sprite_painting.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_export.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';

@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.da
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_face_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/character/character_face_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

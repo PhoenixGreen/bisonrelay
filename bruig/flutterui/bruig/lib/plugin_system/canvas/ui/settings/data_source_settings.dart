@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
+import 'package:bruig/plugin_system/canvas/ui/data/data_connect.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';

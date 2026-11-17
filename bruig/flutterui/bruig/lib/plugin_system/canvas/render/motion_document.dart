@@ -212,7 +212,7 @@ MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
 }
 
 /// LiveMotion is what each element is playing from its slots at this moment,
-/// on [clock] (see ui/motion_player.dart). Handed to the renderer by whoever
+/// on [clock] (see ui/motion/motion_player.dart). Handed to the renderer by whoever
 /// runs it; an export has nothing playing and is drawn from the timeline.
 abstract class LiveMotion {
   double get clock;

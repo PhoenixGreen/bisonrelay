@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_timelines.dart';
-import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart'
+import 'package:bruig/plugin_system/canvas/ui/data/data_charts_design.dart'
     show columnKinds, ColumnKind;
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';

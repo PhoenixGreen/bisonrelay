@@ -17,8 +17,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_items.dart';
 import 'package:flutter/material.dart';
 
 // colour_panel.dart is the Design sidebar's Colour section: the colours of

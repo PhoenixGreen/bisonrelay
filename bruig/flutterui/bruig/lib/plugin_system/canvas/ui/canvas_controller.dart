@@ -50,11 +50,11 @@ import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
     show ffmpegDecode, readWholeAway;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart'
     show StripProcessor, mixRate;
-import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
+import 'package:bruig/plugin_system/canvas/ui/sound/element_sound.dart'
     show ownChannelOf, soundOwnerOf;
-import 'package:bruig/plugin_system/canvas/ui/row_header.dart'
+import 'package:bruig/plugin_system/canvas/ui/timeline/row_header.dart'
     show givenRowColour;
-import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
 import 'dart:io' show Directory, File;
@@ -89,8 +89,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.da
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
-import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
-import 'package:bruig/plugin_system/canvas/ui/tile_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/sprite_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/tile_painting.dart';
 import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart' show tileMapEditingOf;
 import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart' show spritePaintingOf;
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -109,19 +109,19 @@ import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_masking.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_masking.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
-import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
-import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
+import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart'
     show channelClip;
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_items.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -141,7 +141,7 @@ import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart'
     show macroValue;
-import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
+import 'package:bruig/plugin_system/canvas/ui/game/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart' show
         ControlAction,
         GameSoundElement,
@@ -188,9 +188,9 @@ import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart'
     show MotionEditing, motionId, everyMotion;
 import 'package:bruig/plugin_system/canvas/model/instances.dart'
     show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;

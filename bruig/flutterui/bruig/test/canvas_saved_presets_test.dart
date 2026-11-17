@@ -11,7 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/saved_preset.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:flutter/material.dart';

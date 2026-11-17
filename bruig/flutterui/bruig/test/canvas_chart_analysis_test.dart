@@ -8,7 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/tile_maps.dart';
 import 'package:bruig/plugin_system/canvas/model/world_map.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/data_charts_design.dart'
+import 'package:bruig/plugin_system/canvas/ui/data/data_charts_design.dart'
     show columnKinds, ColumnKind;
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';

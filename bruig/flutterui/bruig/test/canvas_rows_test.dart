@@ -7,10 +7,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_rows.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/sound/element_sound.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

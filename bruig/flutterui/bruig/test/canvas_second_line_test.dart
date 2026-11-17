@@ -1,4 +1,4 @@
-import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
 import 'support/canvas_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

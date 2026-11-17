@@ -11,8 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_pose.dart'
     show kickSeconds;
-import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/plugin_system/canvas/ui/game/canvas_game.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

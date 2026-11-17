@@ -11,10 +11,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/sheet_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
     show presetsFor;
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show isStageScene;
-import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart'
     show modelClipsOnto;
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart'
     show AssetKind, CanvasLibrary, LibraryAsset;
@@ -47,7 +47,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/tile_map_settings.dart';

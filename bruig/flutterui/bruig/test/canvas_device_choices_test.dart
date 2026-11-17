@@ -7,8 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/chain_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';

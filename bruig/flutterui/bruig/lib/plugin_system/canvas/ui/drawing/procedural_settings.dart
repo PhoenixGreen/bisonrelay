@@ -1,0 +1,2245 @@
+import 'package:bruig/plugin_system/canvas/model/procedural_effects.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_layers.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_palettes.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_params.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
+import 'package:bruig/plugin_system/canvas/presets/background_looks.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/procedural_thumb.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/recent_pictures.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/pitch_orbit_pad.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/pitch_views.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
+
+// procedural_settings.dart is the controls for a generated background, the
+// same for the canvas's own background and a background element: one recipe,
+// one panel. The five shared controls (density, scale, intensity, variation,
+// seed) and the colours are shown for every style, so every generator makes
+// all five mean something; see render/procedural/generators.dart.
+
+/// ProceduralSettings edits a [ProceduralSpec].
+class ProceduralSettings extends StatelessWidget {
+  final ProceduralSpec spec;
+  final ValueChanged<ProceduralSpec> onChanged;
+  final VoidCallback onBegin;
+  final VoidCallback onCommit;
+
+  /// onReset puts the whole thing back to its default, where the caller has
+  /// something for that to mean. Null leaves the button out.
+  final VoidCallback? onReset;
+
+  /// canvasFrames is how long the canvas is, for the button that makes one
+  /// run of the movement fit it; null where there is none to offer.
+  final int? canvasFrames;
+
+  /// label names the group. Empty by default, as both callers want: the
+  /// panel's own header already says whose background this is.
+  final String label;
+
+  /// layer is whether this is a layer laid over a background rather than the
+  /// background itself: only its pattern is drawn, so the light, the lens, the
+  /// film and the run of the movement are not offered.
+  final bool layer;
+
+  /// fill is whether this is a pattern painted into letters, a box or a
+  /// shape, whose style, look, colours and amounts are on the row above:
+  /// only the style's own settings and the effects are left.
+  final bool fill;
+
+  /// sections lays the settings out in the sections every element's panel
+  /// has -- the pattern, its colours, its movement, its effects and its
+  /// light -- each remembered open or shut under [rememberAs]. See
+  /// panel_kit.dart.
+  final bool sections;
+  final String rememberAs;
+
+  /// kindPicker is the choice of what the background draws -- this
+  /// pattern, or a stage -- put first in its Pattern layers. Null where
+  /// there is no such choice: a layer, a fill. See backdrop_settings.dart.
+  final Widget? kindPicker;
+
+  const ProceduralSettings({
+    this.kindPicker,
+    this.sections = false,
+    this.rememberAs = "background",
+    required this.spec,
+    required this.onChanged,
+    required this.onBegin,
+    required this.onCommit,
+    this.onReset,
+    this.canvasFrames,
+    this.label = "",
+    this.layer = false,
+    this.fill = false,
+    super.key,
+  });
+
+  void _set(ProceduralSpec next) => onChanged(next);
+
+  /// _rings and _ringsNow are _set and _setNow for the Rings style's own
+  /// settings, which live in a spec of their own. See RingSpec.
+  void _rings(RingSpec next) => _set(spec.copyWith(rings: next));
+
+  void _ringsNow(RingSpec next) => _setNow(spec.copyWith(rings: next));
+
+  /// _put is the icon for one of the two placings, replaced or taken away.
+  /// One of each, in the order the placings are written: a document carrying
+  /// more than one of a placing is collapsed to the first when touched.
+  void _put(RingSpec rings, RingIconPlace place, RingIcon? next) {
+    var kept = {
+      for (var p in RingIconPlace.values)
+        p: p == place
+            ? next
+            : rings.icons.where((icon) => icon.place == p).firstOrNull,
+    };
+    _ringsNow(rings.copyWith(icons: [
+      for (var p in RingIconPlace.values)
+        if (kept[p] != null) kept[p]!,
+    ]));
+  }
+
+  /// _iconSlot is one of the two: the picture, what it is drawn like, and --
+  /// around a ring -- the other pictures it may be drawn as and how far each
+  /// of them is allowed to differ from the rest.
+  List<Widget> _iconSlot(
+      BuildContext context, RingSpec rings, RingIconPlace place) {
+    var at = place.name;
+    var icon = rings.icons.where((i) => i.place == place).firstOrNull;
+    var around = place == RingIconPlace.around;
+
+    void set(RingIcon next) => _put(rings, place, next);
+
+    // Nothing chosen yet: the two ways of choosing one, and what it would do.
+    if (icon == null) {
+      return [
+        CanvasIconButton(
+          key: ValueKey("ringIconPick-$at"),
+          icon: Icons.add_photo_alternate,
+          tooltip: "Choose a picture from a file",
+          onPressed: () async {
+            var id = await pickCanvasImage(context);
+            if (id == null) return;
+            set(RingIcon(asset: id, place: place));
+          },
+        ),
+        CanvasIconButton(
+          key: ValueKey("ringIconLibrary-$at"),
+          icon: Icons.photo_library_outlined,
+          tooltip: "Use a picture you have already added",
+          onPressed: () async {
+            var id = await showRecentPictures(context);
+            if (id == null) return;
+            set(RingIcon(asset: id, place: place));
+          },
+        ),
+        CanvasHint(around
+            ? "Pictures spaced around a ring like beads on it, each turned to "
+                "face out of it. They inherit the ring: where it is, how big "
+                "it has grown and how far through its fade it is."
+            : "One picture in the middle of the rings, sized against the ring "
+                "it is tied to -- so it arrives, swells and dissolves with "
+                "it."),
+      ];
+    }
+
+    return [
+      CanvasIconButton(
+        key: ValueKey("ringIconPick-$at"),
+        icon: Icons.image_outlined,
+        tooltip: "Choose a different picture from a file",
+        onPressed: () async {
+          var id = await pickCanvasImage(context);
+          if (id == null) return;
+          set(icon.copyWith(asset: id));
+        },
+      ),
+      // And out of the pictures this canvas already has, which is where an
+      // icon usually comes from.
+      CanvasIconButton(
+        key: ValueKey("ringIconLibrary-$at"),
+        icon: Icons.photo_library_outlined,
+        tooltip: "Use a picture you have already added",
+        onPressed: () async {
+          var id = await showRecentPictures(context);
+          if (id == null) return;
+          set(icon.copyWith(asset: id));
+        },
+      ),
+      CanvasNumberField(
+        key: ValueKey("ringIconRing-$at"),
+        label: "On ring",
+        width: 54,
+        value: icon.ring.toDouble(),
+        // Nought is no ring at all, for the one in the middle: a picture tied
+        // to the movement, simply there while rings come and go.
+        min: around ? 1 : 0,
+        max: 200,
+        onChanged: (v) => set(icon.copyWith(ring: v.round())),
+        onCommit: onCommit,
+      ),
+      if (!around && icon.ring <= 0)
+        const CanvasHint(
+            "On no ring. It lives the length of one run rather than of a "
+            "ring, and its size is a fraction of the page rather than of a "
+            "radius. With both fades held it is simply there, for the whole "
+            "animation."),
+      if (around)
+        CanvasNumberField(
+          key: ValueKey("ringIconCount-$at"),
+          label: "How many",
+          width: 54,
+          value: icon.count.toDouble(),
+          min: 1,
+          max: 60,
+          onChanged: (v) => set(icon.copyWith(count: v.round())),
+          onCommit: onCommit,
+        ),
+      CanvasNumberField(
+        key: ValueKey("ringIconSize-$at"),
+        label: "Size",
+        decimals: 2,
+        width: 58,
+        value: icon.size,
+        min: 0.01,
+        max: 4,
+        onChanged: (v) {
+          onBegin();
+          set(icon.copyWith(size: v));
+        },
+        onCommit: onCommit,
+      ),
+      CanvasNumberField(
+        key: ValueKey("ringIconTurn-$at"),
+        label: "Turn",
+        width: 54,
+        suffix: "\u00b0",
+        value: icon.turn,
+        min: -360,
+        max: 360,
+        onChanged: (v) {
+          onBegin();
+          set(icon.copyWith(turn: v));
+        },
+        onCommit: onCommit,
+      ),
+      // One colour rather than its own, as a line drawing carried by a ring
+      // usually wants: the design's colour, not whatever it was drawn in.
+      CanvasToggle(
+        key: ValueKey("ringIconTinted-$at"),
+        label: "Colour it",
+        value: icon.tinted,
+        onChanged: (v) => set(icon.copyWith(tinted: v)),
+      ),
+      if (icon.tinted)
+        CanvasColorButton(
+          key: ValueKey("ringIconTint-$at"),
+          label: "Colour",
+          color: icon.tint,
+          onChanged: (c) => set(icon.copyWith(tint: c)),
+        ),
+      CanvasIconButton(
+        key: ValueKey("ringIconRemove-$at"),
+        icon: Icons.close,
+        tooltip: "Take this picture off the rings",
+        onPressed: () => _put(rings, place, null),
+      ),
+      if (around) ...[
+        // What it may be drawn as instead, and how often. Six of one picture
+        // round a ring is a pattern; a crest, a ball and a boot is a set.
+        const CanvasLineBreak(),
+        for (var (n, pick) in icon.also.indexed) ...[
+          CanvasIconButton(
+            key: ValueKey("ringIconAlsoPick-$at$n"),
+            icon: pick.asset.isEmpty
+                ? Icons.add_photo_alternate
+                : Icons.image_outlined,
+            tooltip: "Choose this picture from a file",
+            onPressed: () async {
+              var id = await pickCanvasImage(context);
+              if (id == null) return;
+              set(_withPick(icon, n, pick.copyWith(asset: id)));
+            },
+          ),
+          CanvasIconButton(
+            key: ValueKey("ringIconAlsoLibrary-$at$n"),
+            icon: Icons.photo_library_outlined,
+            tooltip: "Use a picture you have already added",
+            onPressed: () async {
+              var id = await showRecentPictures(context);
+              if (id == null) return;
+              set(_withPick(icon, n, pick.copyWith(asset: id)));
+            },
+          ),
+          CanvasNumberField(
+            key: ValueKey("ringIconAlsoWeight-$at$n"),
+            label: "How often",
+            decimals: 1,
+            width: 58,
+            value: pick.weight,
+            min: 0,
+            max: 100,
+            onChanged: (v) {
+              onBegin();
+              set(_withPick(icon, n, pick.copyWith(weight: v)));
+            },
+            onCommit: onCommit,
+          ),
+          CanvasIconButton(
+            key: ValueKey("ringIconAlsoRemove-$at$n"),
+            icon: Icons.close,
+            tooltip: "Stop using this picture",
+            onPressed: () => set(icon.copyWith(also: [
+              for (var (m, other) in icon.also.indexed)
+                if (m != n) other,
+            ])),
+          ),
+          // A line each: two pictures' buttons side by side cannot be told apart.
+          const CanvasLineBreak(),
+        ],
+        // The first picture's own share, which only means anything once there
+        // is something to share with.
+        if (icon.also.isNotEmpty)
+          CanvasNumberField(
+            key: ValueKey("ringIconWeight-$at"),
+            label: "First one",
+            decimals: 1,
+            width: 58,
+            value: icon.weight,
+            min: 0,
+            max: 100,
+            onChanged: (v) {
+              onBegin();
+              set(icon.copyWith(weight: v));
+            },
+            onCommit: onCommit,
+          ),
+        CanvasIconButton(
+          key: ValueKey("ringIconAlsoAdd-$at"),
+          icon: Icons.library_add_outlined,
+          tooltip: "Another picture to use around this ring",
+          onPressed: () =>
+              set(icon.copyWith(also: [...icon.also, const RingPick()])),
+        ),
+        if (icon.also.isNotEmpty)
+          const CanvasHint(
+              "Each place around the ring takes one of these pictures at "
+              "random. How often is how much of the draw it gets: one at two "
+              "comes up twice as often as one at one, and one at nought "
+              "never."),
+        // How far each one may differ from the rest: pictures threaded on a
+        // wire, or pictures that happen to be near a ring.
+        const CanvasLineBreak(),
+        ..._drift(icon, place, "When", "Time", icon.driftWhen,
+            (d) => icon.copyWith(driftWhen: d)),
+        ..._drift(icon, place, "Where", "Position", icon.driftWhere,
+            (d) => icon.copyWith(driftWhere: d)),
+        ..._drift(icon, place, "Size", "Size", icon.driftSize,
+            (d) => icon.copyWith(driftSize: d),
+            limit: 4),
+        ..._drift(icon, place, "Turn", "Turn", icon.driftTurn,
+            (d) => icon.copyWith(driftTurn: d),
+            limit: 360, decimals: 0, suffix: "\u00b0"),
+        // A share of what the ring is drawn at, so nought is invisible and one is
+        // the ring's own strength; never more, since a ring at full strength
+        // cannot be brightened.
+        ..._drift(icon, place, "Fade", "Fade", icon.driftFade,
+            (d) => icon.copyWith(driftFade: d),
+            least: 0),
+        const CanvasHint(
+            "How far each of these pictures is allowed to differ from the "
+            "rest, and every one of them takes its own place in the range. "
+            "Time is measured in the ring's life, so a picture moved through "
+            "it sits off the line -- ahead of the ring or behind it -- and "
+            "arrives and leaves at its own moment. One moved past either end "
+            "of the life is not born yet, or gone. Position is measured in "
+            "the gap to the next picture. Size is added to one: a half is "
+            "half as big again. Fade is a share of the strength its ring is "
+            "drawn at, so a half is half of it and nought is nothing."),
+      ],
+      // What a picture in the middle may be told rather than inheriting from its
+      // ring, each off (inherit) until switched on. Only in the middle: a set
+      // going round a ring differs by the ranges above.
+      if (!around) ...[
+        const CanvasLineBreak(),
+        CanvasToggle(
+          key: ValueKey("ringIconOwnFade-$at"),
+          label: "Own opacity",
+          value: icon.opacity != null,
+          onChanged: (v) =>
+              set(icon.copyWith(setOpacity: true, opacity: v ? 1.0 : null)),
+        ),
+        if (icon.opacity != null)
+          CanvasNumberField(
+            key: ValueKey("ringIconOpacity-$at"),
+            label: "Opacity",
+            decimals: 2,
+            width: 58,
+            value: icon.opacity!,
+            min: 0,
+            max: 1,
+            onChanged: (v) {
+              onBegin();
+              set(icon.copyWith(setOpacity: true, opacity: v));
+            },
+            onCommit: onCommit,
+          ),
+        CanvasToggle(
+          key: ValueKey("ringIconOwnSmallest-$at"),
+          label: "Smallest",
+          value: icon.smallest != null,
+          onChanged: (v) =>
+              set(icon.copyWith(setSmallest: true, smallest: v ? 0.1 : null)),
+        ),
+        if (icon.smallest != null)
+          CanvasNumberField(
+            key: ValueKey("ringIconSmallest-$at"),
+            label: "No smaller than",
+            decimals: 2,
+            width: 58,
+            value: icon.smallest!,
+            min: 0,
+            max: 4,
+            onChanged: (v) {
+              onBegin();
+              set(icon.copyWith(setSmallest: true, smallest: v));
+            },
+            onCommit: onCommit,
+          ),
+        CanvasToggle(
+          key: ValueKey("ringIconOwnLargest-$at"),
+          label: "Largest",
+          value: icon.largest != null,
+          onChanged: (v) =>
+              set(icon.copyWith(setLargest: true, largest: v ? 0.4 : null)),
+        ),
+        if (icon.largest != null)
+          CanvasNumberField(
+            key: ValueKey("ringIconLargest-$at"),
+            label: "No bigger than",
+            decimals: 2,
+            width: 58,
+            value: icon.largest!,
+            min: 0,
+            max: 4,
+            onChanged: (v) {
+              onBegin();
+              set(icon.copyWith(setLargest: true, largest: v));
+            },
+            onCommit: onCommit,
+          ),
+        CanvasToggle(
+          key: ValueKey("ringIconHoldIn-$at"),
+          label: "No fade in",
+          value: icon.holdIn,
+          onChanged: (v) => set(icon.copyWith(holdIn: v)),
+        ),
+        CanvasToggle(
+          key: ValueKey("ringIconHoldOut-$at"),
+          label: "No fade out",
+          value: icon.holdOut,
+          onChanged: (v) => set(icon.copyWith(holdOut: v)),
+        ),
+        CanvasToggle(
+          key: ValueKey("ringIconFirstRun-$at"),
+          label: "First run only",
+          value: icon.firstRunOnly,
+          onChanged: (v) => set(icon.copyWith(firstRunOnly: v)),
+        ),
+        const CanvasHint(
+            "Off, each of these is inherited from the ring the picture is "
+            "tied to. Own opacity draws it at one strength whatever the ring "
+            "is doing. Smallest and largest hold its size between two "
+            "fractions of the page, so it stops growing with the ring rather "
+            "than growing out of the picture. The two fades leave out the "
+            "ring's arrival or its departure, and first run only says it "
+            "once."),
+      ],
+    ];
+  }
+
+  /// _withPick is [icon] with one of its other pictures replaced.
+  RingIcon _withPick(RingIcon icon, int which, RingPick next) =>
+      icon.copyWith(also: [
+        for (var (n, pick) in icon.also.indexed)
+          if (n == which) next else pick,
+      ]);
+
+  /// _drift is the two ends of one of an icon's scatter ranges: a pair, since
+  /// the useful thing to say is usually lopsided (a little smaller and a lot
+  /// bigger, late but never early). See RingDrift.
+  List<Widget> _drift(
+    RingIcon icon,
+    RingIconPlace place,
+    String name,
+    String label,
+    RingDrift value,
+    RingIcon Function(RingDrift) put, {
+    double limit = 1,
+    double? least,
+    int decimals = 2,
+    String suffix = "",
+  }) =>
+      [
+        for (var (which, end) in [("Least", value.least), ("Most", value.most)])
+          CanvasNumberField(
+            key: ValueKey("ringIcon$name$which-${place.name}"),
+            label: which == "Least" ? "$label from" : "to",
+            decimals: decimals,
+            width: 54,
+            suffix: suffix,
+            value: end,
+            min: least ?? -limit,
+            max: limit,
+            onChanged: (v) {
+              onBegin();
+              _put(
+                  spec.rings,
+                  place,
+                  put(which == "Least"
+                      ? value.copyWith(least: v)
+                      : value.copyWith(most: v)));
+            },
+            onCommit: onCommit,
+          ),
+      ];
+
+  void _setNow(ProceduralSpec next) {
+    onBegin();
+    onChanged(next);
+    onCommit();
+  }
+
+  /// _sectionOf is which section [w], one of [_groups], belongs in.
+  static String _sectionOf(Widget w) {
+    if (w is Padding && w.child is CanvasExpander) w = w.child!;
+    var label = switch (w) {
+      CanvasControlGroup g => g.label,
+      CanvasExpander x => x.label,
+      _ => "",
+    };
+    return switch (label) {
+      "Colours" || "Amount" => "colour",
+      "Movement" => "movement",
+      "Effects" => "effects",
+      "Lights" => "lights",
+      _ => "pattern",
+    };
+  }
+
+  /// _sectioned is [groups] -- [_groups], or a layer's -- in sections. A
+  /// section that is one expander is that expander's contents: the section
+  /// is the fold now.
+  List<Widget> _sectioned(List<Widget> groups) {
+    var by = <String, List<Widget>>{};
+    for (var g in groups) {
+      (by[_sectionOf(g)] ??= []).add(g);
+    }
+    List<Widget> unfolded(List<Widget> ws) {
+      if (ws.length != 1) return ws;
+      var w = ws.single;
+      if (w is Padding && w.child is CanvasExpander) w = w.child!;
+      if (w is! CanvasExpander) return ws;
+      return [
+        if (w.action != null)
+          Align(alignment: Alignment.centerRight, child: w.action!),
+        ...w.children,
+      ];
+    }
+
+    var look = lookMatching(spec)?.name;
+    Widget part(String name, IconData icon, String title, String summary,
+            {bool open = false}) =>
+        CanvasSection(
+          key: ValueKey("backgroundSection-$name"),
+          icon: icon,
+          title: title,
+          summary: summary,
+          remember: "$rememberAs.$name",
+          initiallyOpen: open,
+          children: unfolded(by[name]!),
+        );
+    return [
+      if (by.containsKey("pattern"))
+        part("pattern", Icons.blur_on, "Pattern",
+            [spec.style.label, if (look != null) look].join(" · "),
+            open: true),
+      if (by.containsKey("colour"))
+        part("colour", Icons.palette_outlined, "Colour and amount",
+            "Density ${(spec.density * 100).round()}%"),
+      if (by.containsKey("movement"))
+        part("movement", Icons.animation, "Movement",
+            spec.animated || layer ? "Moves" : "Still"),
+      if (by.containsKey("effects"))
+        part("effects", Icons.auto_awesome_outlined, "Effects",
+            fx.any ? "On" : "None"),
+      if (by.containsKey("lights"))
+        part("lights", Icons.light_mode_outlined, "Lights",
+            light.on ? "Spotlight" : "None"),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (fill) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ..._ownGroups(),
+            if (spec.style.usesGlyphs) _symbols(),
+            if (spec.style == ProceduralStyle.metal) _metalGroup(),
+            _effects(),
+          ]);
+    }
+    if (!layer) return _Layered(owner: this);
+    var groups = _groups(context);
+    if (sections) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: _sectioned(groups));
+    }
+    // Down the column like every other element's settings: a Row of five
+    // groups in a narrow sidebar overflows, and does not shrink.
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: groups);
+  }
+
+  RingSpec get rings => spec.rings;
+  LightSpec get light => spec.light;
+  MetalSpec get metal => spec.metal;
+
+  /// _light, _lightNow and _metalSet are _set and _setNow for the two specs
+  /// of their own, the way _rings is for the rings.
+  void _light(LightSpec next) => _set(spec.copyWith(light: next));
+  void _lightNow(LightSpec next) => _setNow(spec.copyWith(light: next));
+  void _metalSet(MetalSpec next) => _set(spec.copyWith(metal: next));
+
+  List<Widget> _groups(BuildContext context) => [
+        CanvasControlGroup(label: label, hideCaption: label.isEmpty, children: [
+          // See patternStyleDropdown.
+          patternStyleDropdown(
+            key: const ValueKey("backgroundStyle"),
+            spec: spec,
+            onChanged: _setNow,
+          ),
+          // The seed and its shuffle together: the number is seldom typed, but
+          // pressed until something good appears, then written down.
+          CanvasNumberField(
+            label: "Seed",
+            value: spec.seed.toDouble(),
+            min: 0,
+            max: 1000000,
+            width: 62,
+            onChanged: (v) => _set(spec.copyWith(seed: v.round())),
+            onCommit: onCommit,
+          ),
+          CanvasIconButton(
+            icon: Icons.casino_outlined,
+            tooltip: "Try the next variation",
+            onPressed: () => _setNow(spec.shuffled()),
+          ),
+          // Back to the beginning, beside the shuffle: the two ways out of a
+          // pattern fiddled with past remembering.
+          if (onReset != null && !layer)
+            CanvasIconButton(
+              key: const ValueKey("resetBackground"),
+              icon: Icons.restart_alt,
+              tooltip: "Put every setting here back to its default",
+              onPressed: onReset,
+            ),
+          if (spec.style == ProceduralStyle.pitch)
+            CanvasDropdown<PitchSport>(
+              label: "Sport",
+              value: spec.sport,
+              width: 148,
+              options: [for (var s in PitchSport.values) (s, s.label)],
+              onChanged: (v) => _setNow(spec.copyWith(sport: v)),
+            ),
+        ]),
+        if (looksFor(spec.style).isNotEmpty)
+          CanvasExpander(
+            label: "Looks",
+            remember: "background.looks",
+            initiallyOpen: true,
+            trailing: lookMatching(spec)?.name ?? "Custom",
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: canvasGroupGap - 10),
+                child: LooksGrid(
+                  spec: spec,
+                  onPick: (look) => _setNow(withLook(spec, look)),
+                ),
+              ),
+            ],
+          ),
+        CanvasControlGroup(label: "Colours", children: [
+          // All three at once, chosen to go together -- and the colours the
+          // app itself is wearing, for a background that matches it.
+          patternPaletteDropdown(
+            context,
+            key: const ValueKey("backgroundPalette"),
+            spec: spec,
+            onChanged: _setNow,
+          ),
+          const CanvasLineBreak(),
+          // The base colour, and the colour it fades to if it fades: both in the
+          // picker, where a gradient is set. A layer's base is the background's,
+          // unless the layer is plain: a wash of colour, nothing but its base.
+          if (!layer || spec.style == ProceduralStyle.plain)
+            CanvasColorButton(
+              label: "Base",
+              color: spec.background,
+              gradient: spec.gradient,
+              onChanged: (c) => _setNow(spec.copyWith(background: c)),
+              onGradientChanged: (g) => _setNow(g == null
+                  ? spec.copyWith(flatBackground: true)
+                  : spec.copyWith(gradient: g)),
+            ),
+          CanvasColorButton(
+            label: "Main",
+            color: spec.foreground,
+            gradient: spec.foregroundFade,
+            onChanged: (c) => _setNow(spec.copyWith(foreground: c)),
+            onGradientChanged: (g) => _setNow(g == null
+                ? spec.copyWith(flatForeground: true)
+                : spec.copyWith(foregroundFade: g)),
+          ),
+          CanvasColorButton(
+            label: "Accent",
+            color: spec.accent,
+            gradient: spec.accentFade,
+            onChanged: (c) => _setNow(spec.copyWith(accent: c)),
+            onGradientChanged: (g) => _setNow(g == null
+                ? spec.copyWith(flatAccent: true)
+                : spec.copyWith(accentFade: g)),
+          ),
+        ]),
+        CanvasControlGroup(label: "Amount", children: [
+          CanvasNumberField(
+            label: "Density",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: spec.density,
+            onChanged: (v) {
+              onBegin();
+              _set(spec.copyWith(density: v));
+            },
+            onCommit: onCommit,
+          ),
+          // Size and Variation: the pattern's own unit and how far it may differ
+          // from itself. Not for Rings, which says those in its own words (a width
+          // and three amounts of jitter).
+          if (spec.style != ProceduralStyle.rings &&
+              spec.style != ProceduralStyle.pitch)
+            CanvasNumberField(
+              label: "Size",
+              width: 62,
+              value: spec.scale,
+              min: 0.004,
+              max: 0.25,
+              decimals: 3,
+              onChanged: (v) {
+                onBegin();
+                _set(spec.copyWith(scale: v));
+              },
+              onCommit: onCommit,
+            ),
+          CanvasNumberField(
+            label: "Brightness",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: spec.intensity,
+            onChanged: (v) {
+              onBegin();
+              _set(spec.copyWith(intensity: v));
+            },
+            onCommit: onCommit,
+          ),
+          if (spec.style != ProceduralStyle.rings)
+            CanvasNumberField(
+              label: "Variation",
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              value: spec.variation,
+              onChanged: (v) {
+                onBegin();
+                _set(spec.copyWith(variation: v));
+              },
+              onCommit: onCommit,
+            ),
+          CanvasNumberField(
+            label: "Rotation",
+            value: spec.rotation,
+            min: -360,
+            max: 360,
+            width: 54,
+            suffix: "°",
+            onChanged: (v) => _set(spec.copyWith(rotation: v)),
+            onCommit: onCommit,
+          ),
+        ]),
+        ..._ownGroups(),
+        if (spec.style.usesGlyphs) _symbols(),
+        // The Metal texture's own settings, as Rings has its own: how coarse the
+        // brushing is or how far the rust has got has no name among the five.
+        if (spec.style == ProceduralStyle.metal) _metalGroup(),
+        // The Rings style's own settings: where each ring starts, where it ends
+        // and what happens on the way is no other style's question.
+        if (spec.style == ProceduralStyle.rings) ...[
+          // The sections after the first are behind headings, shut until wanted:
+          // seventeen number fields, each with its own state, focus node and
+          // controller, cost forty milliseconds on every build of this panel.
+          CanvasControlGroup(label: "Rings", children: [
+            CanvasNumberField(
+              key: const ValueKey("ringCount"),
+              label: "How many",
+              value: rings.count.toDouble(),
+              min: 1,
+              max: 200,
+              width: 54,
+              onChanged: (v) => _rings(rings.copyWith(count: v.round())),
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringWidth"),
+              label: "Width",
+              decimals: 4,
+              width: 66,
+              // A thousandth a pixel rather than the ten-thousandth the digits
+              // imply: across a fifth of the page, the last digit is two thousand
+              // pixels of drag. Shift still gives ten-thousandths.
+              step: 0.001,
+              value: rings.width,
+              min: 0.0005,
+              max: 0.2,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(width: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringAccentEvery"),
+              label: "Accent every",
+              value: rings.accentEvery.toDouble(),
+              min: 0,
+              max: 50,
+              width: 54,
+              onChanged: (v) => _rings(rings.copyWith(accentEvery: v.round())),
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringSpacing"),
+              label: "Spacing",
+              decimals: 2,
+              width: 62,
+              value: rings.spacing,
+              min: 0.05,
+              max: 0.95,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(spacing: v));
+              },
+              onCommit: onCommit,
+            ),
+          ]),
+          CanvasExpander(
+              label: "Where they run",
+              remember: "rings.where",
+              children: [
+                CanvasControlGroup(
+                    label: "Where they run",
+                    hideCaption: true,
+                    children: [
+                      // The near end and the far end, captioned by which of them a ring
+                      // sets off from: shrinking runs the journey the other way, so the
+                      // near end is where a ring arrives. A field saying "starts at"
+                      // that is really where it stops builds sets that begin off the page.
+                      for (var near in [!rings.inward, rings.inward])
+                        if (near)
+                          CanvasNumberField(
+                            key: const ValueKey("ringFrom"),
+                            label: rings.inward ? "Ends at" : "Starts at",
+                            decimals: 2,
+                            width: 62,
+                            value: rings.from,
+                            min: 0,
+                            max: 2,
+                            onChanged: (v) {
+                              onBegin();
+                              _rings(rings.copyWith(from: v));
+                            },
+                            onCommit: onCommit,
+                          )
+                        else
+                          CanvasNumberField(
+                            key: const ValueKey("ringTo"),
+                            label: rings.inward ? "Starts at" : "Ends at",
+                            decimals: 2,
+                            width: 62,
+                            value: rings.to,
+                            min: 0,
+                            max: 2,
+                            onChanged: (v) {
+                              onBegin();
+                              _rings(rings.copyWith(to: v));
+                            },
+                            onCommit: onCommit,
+                          ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringCentreX"),
+                        label: "From across",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.centreX,
+                        min: -0.5,
+                        max: 1.5,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(centreX: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringCentreY"),
+                        label: "From down",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.centreY,
+                        min: -0.5,
+                        max: 1.5,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(centreY: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasToggle(
+                        key: const ValueKey("ringInward"),
+                        label: "Shrink",
+                        value: rings.inward,
+                        onChanged: (v) => _ringsNow(rings.copyWith(inward: v)),
+                      ),
+                      const CanvasHint(
+                          "Nought is the middle of the page and one is its furthest "
+                          "corner, so a ring that ends at one has left the picture. "
+                          "Shrink runs the same journey backwards."),
+                    ]),
+              ]),
+          CanvasExpander(
+              label: "Arriving and leaving",
+              remember: "rings.fade",
+              children: [
+                CanvasControlGroup(
+                    label: "Arriving and leaving",
+                    hideCaption: true,
+                    children: [
+                      CanvasToggle(
+                        key: const ValueKey("ringBuildUp"),
+                        label: "Build up",
+                        value: rings.buildUp,
+                        onChanged: (v) => _ringsNow(rings.copyWith(buildUp: v)),
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringFadeIn"),
+                        label: "Fade in",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.fadeIn,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(fadeIn: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringFadeOut"),
+                        label: "Fade out",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.fadeOut,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(fadeOut: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasDropdown<RingEdge>(
+                        key: const ValueKey("ringEdge"),
+                        label: "Edge",
+                        value: rings.edge,
+                        width: 92,
+                        options: [for (var e in RingEdge.values) (e, e.label)],
+                        onChanged: (v) => _ringsNow(rings.copyWith(edge: v)),
+                      ),
+                      const CanvasHint(
+                          "Fade in and out are what happens at the two ends "
+                          "of one ring's life. Build up is what happens at "
+                          "the start of the animation: the page begins empty "
+                          "and the rings arrive one at a time, rather than "
+                          "opening on a set that is already there."),
+                    ]),
+              ]),
+          CanvasExpander(
+              label: "How much they differ",
+              remember: "rings.jitter",
+              children: [
+                CanvasControlGroup(
+                    label: "How much they differ",
+                    hideCaption: true,
+                    children: [
+                      CanvasNumberField(
+                        key: const ValueKey("ringSpacingJitter"),
+                        label: "Spacing",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.spacingJitter,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(spacingJitter: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringWidthJitter"),
+                        label: "Width",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.widthJitter,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(widthJitter: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringColorJitter"),
+                        label: "Colour",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.colorJitter,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(colorJitter: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                    ]),
+              ]),
+          CanvasExpander(
+              label: "Texture",
+              remember: "rings.texture",
+              children: [
+                CanvasControlGroup(
+                    label: "Texture",
+                    hideCaption: true,
+                    children: [
+                      CanvasNumberField(
+                        key: const ValueKey("ringNoise"),
+                        label: "Noise",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.noise,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(noise: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringGlitch"),
+                        label: "Glitch",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.glitch,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(glitch: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringDistortion"),
+                        label: "Distortion",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.distortion,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(distortion: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                      CanvasNumberField(
+                        key: const ValueKey("ringGrunge"),
+                        label: "Grunge",
+                        decimals: 2,
+                        width: 62,
+                        value: rings.grunge,
+                        min: 0,
+                        max: 1,
+                        onChanged: (v) {
+                          onBegin();
+                          _rings(rings.copyWith(grunge: v));
+                        },
+                        onCommit: onCommit,
+                      ),
+                    ]),
+              ]),
+          // What the rings are carrying: its own heading, shut until wanted, with
+          // room under it so two headings do not read as one section.
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: CanvasExpander(
+              label: "Icons",
+              remember: "rings.icons",
+              trailing: rings.icons.isEmpty ? null : "${rings.icons.length}",
+              children: [
+                // Two and no more: one in the middle of the rings, and one set
+                // spaced around a ring. Several pictures means several in the
+                // one set going round, not several sets.
+                for (var place in RingIconPlace.values) ...[
+                  if (place != RingIconPlace.values.first)
+                    const CanvasSeparator(),
+                  CanvasControlGroup(
+                    label: place.label,
+                    children: _iconSlot(context, rings, place),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+        _effects(),
+        // A layer keeps the background's time, at a pace of its own.
+        if (layer && spec.style.canAnimate)
+          CanvasControlGroup(label: "Movement", children: [
+            CanvasNumberField(
+              key: const ValueKey("layerSpeed"),
+              label: "Speed",
+              decimals: 2,
+              width: 62,
+              value: spec.speed,
+              min: 0,
+              max: 6,
+              onChanged: (v) {
+                onBegin();
+                _set(spec.copyWith(speed: v));
+              },
+              onCommit: onCommit,
+            ),
+          ]),
+        if (!layer && spec.style.canAnimate)
+          CanvasControlGroup(label: "Movement", children: [
+            CanvasToggle(
+              key: const ValueKey("animate"),
+              label: "Animate",
+              value: spec.animated,
+              onChanged: (v) => _setNow(spec.copyWith(animated: v)),
+            ),
+            // How many runs, and how long a rest between them. Nought times is
+            // for ever, so there is no separate Loop switch. Either setting makes
+            // the movement counted, so Frames takes over from Speed.
+            if (spec.animated) ...[
+              CanvasNumberField(
+                key: const ValueKey("loopTimes"),
+                label: "Times",
+                width: 54,
+                value: spec.loopTimes.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(loopTimes: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              CanvasNumberField(
+                key: const ValueKey("loopGap"),
+                label: "Gap",
+                width: 54,
+                value: spec.loopGap.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(loopGap: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+            ],
+            if (spec.animated && !spec.inRuns)
+              CanvasNumberField(
+                key: const ValueKey("speed"),
+                label: "Speed",
+                decimals: 2,
+                width: 62,
+                value: spec.speed,
+                min: 0.05,
+                max: 6,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(speed: v));
+                },
+                onCommit: onCommit,
+              ),
+            // A loop that comes back to where it began, for an export that
+            // goes round without a jump. See paintProcedural.
+            if (spec.animated && !spec.inRuns) ...[
+              CanvasNumberField(
+                key: const ValueKey("seamlessFrames"),
+                label: "Loop every",
+                width: 62,
+                value: spec.loopFrames.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(loopFrames: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              if (canvasFrames != null)
+                CanvasIconButton(
+                  key: const ValueKey("seamlessFit"),
+                  icon: Icons.all_inclusive,
+                  tooltip: "Loop the canvas",
+                  onPressed: () =>
+                      _setNow(spec.copyWith(loopFrames: canvasFrames)),
+                ),
+              if (spec.loopFrames > 0)
+                CanvasNumberField(
+                  key: const ValueKey("seamlessBlend"),
+                  label: "Blend",
+                  decimals: 2,
+                  width: 58,
+                  value: spec.loopBlend,
+                  min: 0.02,
+                  max: 1,
+                  onChanged: (v) {
+                    onBegin();
+                    _set(spec.copyWith(loopBlend: v));
+                  },
+                  onCommit: onCommit,
+                ),
+            ],
+            if (spec.inRuns) ...[
+              CanvasNumberField(
+                key: const ValueKey("passFrames"),
+                label: "Frames",
+                width: 62,
+                value: spec.passFrames.toDouble(),
+                min: 1,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(passFrames: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              // The run made to fit what it is under: a movement that finishes after
+              // the last frame is never seen to end.
+              if (canvasFrames != null)
+                CanvasIconButton(
+                  key: const ValueKey("passFramesFit"),
+                  icon: Icons.fit_screen_outlined,
+                  tooltip: "Make one run the length of the canvas "
+                      "($canvasFrames frames)",
+                  onPressed: () =>
+                      _setNow(spec.copyWith(passFrames: canvasFrames)),
+                ),
+              const CanvasHint(
+                  "How many frames one run takes, start to finish. Finished "
+                  "means finished: for rings, every ring born, travelled and "
+                  "gone, with nothing left on the page. Times is how many "
+                  "runs there are -- nought is for ever -- and Gap is how "
+                  "many frames of stillness sit between one and the next."),
+            ],
+            // A rest in the middle: which frame it stops on, how long it stays
+            // stopped, and how long it eases into and out of the stop. The
+            // pattern's clock is held while the document's goes on, so it picks
+            // up exactly where it left off.
+            if (spec.animated) ...[
+              // On a line of their own: where it rests is a separate question
+              // from whether it moves, how fast and how long.
+              const CanvasLineBreak(),
+              CanvasNumberField(
+                key: const ValueKey("pauseAt"),
+                label: "Pause at",
+                width: 58,
+                value: spec.pauseAt.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(pauseAt: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              CanvasNumberField(
+                key: const ValueKey("pauseFor"),
+                label: "Paused for",
+                width: 58,
+                value: spec.pauseFor.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(pauseFor: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              if (spec.pauseFor > 0)
+                CanvasNumberField(
+                  key: const ValueKey("pauseEase"),
+                  label: "Easing",
+                  width: 58,
+                  value: spec.pauseEase.toDouble(),
+                  min: 0,
+                  max: 1000,
+                  onChanged: (v) {
+                    onBegin();
+                    _set(spec.copyWith(pauseEase: v.round()));
+                  },
+                  onCommit: onCommit,
+                ),
+            ],
+          ]),
+        // The light, which every style has: behind a heading and shut until
+        // wanted, since most backgrounds are not lit.
+        if (!layer)
+          CanvasExpander(
+            label: "Lights",
+            remember: "background.light",
+            trailing: light.on ? "Spotlight" : "None",
+            children: [
+              CanvasControlGroup(label: "Lights", hideCaption: true, children: [
+                CanvasToggle(
+                  key: const ValueKey("lightOn"),
+                  label: "Spotlight",
+                  value: light.on,
+                  onChanged: (v) => _lightNow(light.copyWith(on: v)),
+                ),
+                if (!light.on)
+                  const CanvasHint("A single light thrown over the background, "
+                      "whichever one it is. A pattern lit from somewhere reads "
+                      "as a place rather than as wallpaper."),
+                if (light.on) ...[
+                  CanvasColorButton(
+                    key: const ValueKey("lightColour"),
+                    label: "Colour",
+                    color: light.color,
+                    onChanged: (c) => _lightNow(light.copyWith(color: c)),
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightBrightness"),
+                    label: "Brightness",
+                    value: light.brightness,
+                    min: 0,
+                    max: 2,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(brightness: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightSize"),
+                    label: "Size",
+                    value: light.size,
+                    min: 0.02,
+                    max: 3,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(size: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightFalloff"),
+                    label: "Falloff",
+                    value: light.falloff,
+                    min: 0,
+                    max: 1,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(falloff: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  const CanvasLineBreak(),
+                  // As a fraction of the frame, not pixels, so a light set on the
+                  // stage is in the same place in a bigger export.
+                  CanvasNumberField(
+                    key: const ValueKey("lightX"),
+                    label: "X",
+                    value: light.x,
+                    min: -1,
+                    max: 2,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(x: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightY"),
+                    label: "Y",
+                    value: light.y,
+                    min: -1,
+                    max: 2,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(y: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightDirection"),
+                    label: "Direction",
+                    value: light.direction,
+                    min: -360,
+                    max: 360,
+                    width: 58,
+                    suffix: "°",
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(direction: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightReach"),
+                    label: "Reach",
+                    value: light.reach,
+                    min: 0,
+                    max: 1,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(reach: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasHint(light.reach > 0
+                      ? "Direction is which way the light is thrown, off a "
+                          "compass. Reach is how far it rakes across the "
+                          "surface, and the pool is thrown forward from X and "
+                          "Y rather than sitting in the middle of it."
+                      : "A light shone straight on lands as a circle whichever "
+                          "way it is pointed. Turn Reach up to rake it across "
+                          "the surface and the direction starts to show."),
+                ],
+              ]),
+            ],
+          ),
+      ];
+
+  /// _symbols is the character set the glyph styles draw from.
+  Widget _symbols() => CanvasControlGroup(label: "Symbols", children: [
+        // A set to start from, and the set itself as one string, so a
+        // character is added by typing it.
+        CanvasDropdown<String>(
+          key: const ValueKey("glyphSet"),
+          label: "Set",
+          value:
+              glyphSets.where((g) => g.$2 == spec.glyphs).firstOrNull?.$1 ?? "",
+          width: 110,
+          options: [
+            if (!glyphSets.any((g) => g.$2 == spec.glyphs)) ("", "Your own"),
+            for (var (name, _) in glyphSets) (name, name),
+          ],
+          onChanged: (name) {
+            for (var (n, glyphs) in glyphSets) {
+              if (n == name) _setNow(spec.copyWith(glyphs: glyphs));
+            }
+          },
+        ),
+        CanvasTextField(
+          label: "Characters used",
+          value: spec.glyphs,
+          width: 240,
+          onChanged: (v) => _set(spec.copyWith(glyphs: v)),
+          onCommit: onCommit,
+        ),
+        CanvasIconButton(
+          icon: Icons.restart_alt,
+          tooltip: "Back to the default characters",
+          onPressed: () => _setNow(spec.copyWith(glyphs: defaultGlyphs)),
+        ),
+      ]);
+
+  /// _metalGroup is the Metal texture's own settings.
+  Widget _metalGroup() => CanvasControlGroup(label: "Metal", children: [
+        CanvasNumberField(
+          key: const ValueKey("metalRoughness"),
+          label: "Roughness",
+          value: metal.roughness,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(roughness: v));
+          },
+          onCommit: onCommit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("metalShine"),
+          label: "Shine",
+          value: metal.shine,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(shine: v));
+          },
+          onCommit: onCommit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("metalRust"),
+          label: "Rust",
+          value: metal.rust,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(rust: v));
+          },
+          onCommit: onCommit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("metalDamage"),
+          label: "Damage",
+          value: metal.damage,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(damage: v));
+          },
+          onCommit: onCommit,
+        ),
+        const CanvasHint("The colours above are the sheet: Base is the "
+            "metal, Main is the sheen along the brushing, and Accent is "
+            "the rust. Shine is matt at nought and mirrored at one."),
+      ]);
+
+  /// _ownGroups is the style's own settings, under their headings. See
+  /// StyleParam.
+  List<Widget> _ownGroups() {
+    var params = spec.style.params;
+    if (params.isEmpty) return const [];
+    bool shows(StyleParam p) =>
+        p.onlyWhen.entries.every((w) => w.value.contains(spec.choice(w.key)));
+
+    var groups = <String, List<Widget>>{};
+    var fineTune = <Widget>[];
+    var pitch = spec.style == ProceduralStyle.pitch;
+    for (var p in params) {
+      if (!shows(p)) continue;
+      // A pitch's camera is moved with the orbit pad; its numbers are there
+      // for getting one exactly right, behind it.
+      if (pitch && _fineTune.contains(p.id)) {
+        fineTune.add(_paramControl(p));
+        continue;
+      }
+      (groups[p.group ?? spec.style.label] ??= []).add(_paramControl(p));
+      // A pitch's Size is how far in the camera is, so it is with the
+      // camera, as a zoom: one fits the frame.
+      if (spec.style == ProceduralStyle.pitch && p.id == "view") {
+        groups["Camera"]!.add(CanvasNumberField(
+          key: const ValueKey("pitchZoom"),
+          label: "Zoom",
+          value: spec.scale / 0.05,
+          min: 0.1,
+          max: 5,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _set(spec.copyWith(scale: v * 0.05));
+          },
+          onCommit: onCommit,
+        ));
+        groups["Camera"]!.add(pitchShotDropdown(spec, _setNow));
+        groups["Camera"]!.add(_orbitPad());
+        groups["Camera"]!.add(PitchSavedViews(spec: spec, onChanged: _setNow));
+      }
+    }
+    if (fineTune.isNotEmpty) {
+      groups["Camera"]!.add(CanvasExpander(
+        label: "Fine tune",
+        remember: "pitch.fineTune",
+        children: [CanvasWrap(children: fineTune)],
+      ));
+    }
+    return [
+      for (var MapEntry(key: label, value: children) in groups.entries)
+        CanvasControlGroup(label: label, children: children),
+    ];
+  }
+
+  static const _fineTune = {
+    "perspective",
+    "tiltV",
+    "tiltH",
+    "turn",
+    "panX",
+    "panY"
+  };
+
+  /// _orbitPad is the pitch's camera as one control. See PitchOrbitPad.
+  Widget _orbitPad() {
+    var cam = pitchCamera(spec);
+    return PitchOrbitPad(
+      value: (
+        tilt: cam.tilt,
+        side: cam.side,
+        turn: cam.turn,
+        perspective: cam.perspective,
+        zoom: spec.scale / 0.05,
+      ),
+      onBegin: onBegin,
+      onCommit: onCommit,
+      onChanged: (v) => _set(spec
+          .withParam("tiltV", v.tilt)
+          .withParam("tiltH", v.side)
+          .withParam("turn", v.turn)
+          .withParam("perspective", v.perspective)
+          .copyWith(scale: v.zoom * 0.05)),
+    );
+  }
+
+  Widget _paramControl(StyleParam p) {
+    var key = ValueKey("param-${p.id}");
+    if (p.isChoice) {
+      return CanvasDropdown<int>(
+        key: key,
+        label: p.label,
+        value: spec.choice(p.id),
+        width: 110,
+        options: [for (var (i, c) in p.choices.indexed) (i, c)],
+        onChanged: (v) {
+          // And whatever this answer puts in place with it.
+          var next = spec.withParam(p.id, v.toDouble());
+          for (var MapEntry(:key, :value) in (p.sets[v] ?? const {}).entries) {
+            next = next.withParam(key, value);
+          }
+          // A pitch's View starts on its first shot, framing and all.
+          if (spec.style == ProceduralStyle.pitch && p.id == "view") {
+            var first = pitchShots[v]?.firstOrNull;
+            if (first != null) next = withPitchCamera(next, first.$2);
+          }
+          _setNow(next);
+        },
+      );
+    }
+    if (p.toggle) {
+      return CanvasToggle(
+        key: key,
+        label: p.label,
+        value: spec.on(p.id),
+        onChanged: (v) => _setNow(spec.withParam(p.id, v ? 1 : 0)),
+      );
+    }
+    return CanvasNumberField(
+      key: key,
+      label: p.label,
+      value: spec.p(p.id),
+      min: p.min,
+      max: p.max,
+      decimals: p.decimals,
+      width: 62,
+      onChanged: (v) {
+        onBegin();
+        _set(spec.withParam(p.id, v));
+      },
+      onCommit: onCommit,
+    );
+  }
+
+  EffectsSpec get fx => spec.effects;
+
+  /// _fxField is one of the effects' numbers.
+  Widget _fxField(String id, String label, double value, double min, double max,
+          EffectsSpec Function(double) put,
+          {int decimals = 2, String suffix = ""}) =>
+      CanvasNumberField(
+        key: ValueKey("fx-$id"),
+        label: label,
+        value: value,
+        min: min,
+        max: max,
+        decimals: decimals,
+        suffix: suffix,
+        width: 62,
+        onChanged: (v) {
+          onBegin();
+          _set(spec.copyWith(effects: put(v)));
+        },
+        onCommit: onCommit,
+      );
+
+  /// _effects is what is done to the pattern once it is drawn: behind a
+  /// heading, like the light, every one off until wanted, with room under it
+  /// as the rings' Icons have.
+  Widget _effects() => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: CanvasExpander(
+          label: "Effects",
+          remember: "background.effects",
+          trailing: fx.any ? "On" : "None",
+          children: [
+            CanvasControlGroup(label: "Finish", children: [
+              _fxField("opacity", "Pattern", fx.opacity, 0, 1,
+                  (v) => fx.copyWith(opacity: v)),
+              _fxField(
+                  "glow", "Glow", fx.glow, 0, 2, (v) => fx.copyWith(glow: v)),
+              if (fx.glow > 0)
+                _fxField("glowSize", "Spread", fx.glowSize, 0, 1,
+                    (v) => fx.copyWith(glowSize: v)),
+              _fxField(
+                  "blur", "Blur", fx.blur, 0, 1, (v) => fx.copyWith(blur: v)),
+              if (!layer)
+                CanvasNumberField(
+                  key: const ValueKey("fx-vignette"),
+                  label: "Vignette",
+                  min: 0,
+                  max: 1,
+                  decimals: 2,
+                  width: 62,
+                  value: spec.vignette,
+                  onChanged: (v) {
+                    onBegin();
+                    _set(spec.copyWith(vignette: v));
+                  },
+                  onCommit: onCommit,
+                ),
+              if (!layer) ...[
+                const CanvasLineBreak(),
+                _fxField("grain", "Grain", fx.grain, 0, 1,
+                    (v) => fx.copyWith(grain: v)),
+              ],
+              if (fx.grain > 0 && !layer)
+                _fxField("grainSize", "Grain size", fx.grainSize, 0.3, 12,
+                    (v) => fx.copyWith(grainSize: v),
+                    decimals: 1),
+              if (fx.grain > 0 && spec.animated && !layer)
+                CanvasToggle(
+                  key: const ValueKey("fx-grainMoves"),
+                  label: "Moves",
+                  value: fx.grainMoves,
+                  onChanged: (v) => _setNow(
+                      spec.copyWith(effects: fx.copyWith(grainMoves: v))),
+                ),
+              if (!layer)
+                _fxField("scanlines", "Scanlines", fx.scanlines, 0, 1,
+                    (v) => fx.copyWith(scanlines: v)),
+              if (fx.scanlines > 0 && !layer)
+                _fxField("scanlineSize", "Line gap", fx.scanlineSize, 1, 40,
+                    (v) => fx.copyWith(scanlineSize: v),
+                    decimals: 1),
+            ]),
+            // Where the eye goes, and where the pattern keeps out of the way of
+            // what is put on top of it.
+            CanvasControlGroup(label: "Focus", children: [
+              _fxField("focus", "Fade out", fx.focus, 0, 1,
+                  (v) => fx.copyWith(focus: v)),
+              if (fx.focus > 0) ...[
+                _fxField("focusSize", "Size", fx.focusSize, 0, 2,
+                    (v) => fx.copyWith(focusSize: v)),
+                _fxField("focusX", "X", fx.focusX, -0.5, 1.5,
+                    (v) => fx.copyWith(focusX: v)),
+                _fxField("focusY", "Y", fx.focusY, -0.5, 1.5,
+                    (v) => fx.copyWith(focusY: v)),
+              ],
+            ]),
+            CanvasControlGroup(label: "Keep clear", children: [
+              CanvasDropdown<ClearArea>(
+                key: const ValueKey("fx-clear"),
+                label: "Area",
+                value: fx.clear,
+                width: 90,
+                options: [for (var a in ClearArea.values) (a, a.label)],
+                onChanged: (v) =>
+                    _setNow(spec.copyWith(effects: fx.copyWith(clear: v))),
+              ),
+              if (fx.clear != ClearArea.none) ...[
+                _fxField("clearSize", "Size", fx.clearSize, 0, 1,
+                    (v) => fx.copyWith(clearSize: v)),
+                _fxField("clearSoftness", "Softness", fx.clearSoftness, 0, 1,
+                    (v) => fx.copyWith(clearSoftness: v)),
+                _fxField("clearAmount", "Amount", fx.clearAmount, 0, 1,
+                    (v) => fx.copyWith(clearAmount: v)),
+              ],
+            ]),
+            if (!layer)
+              CanvasControlGroup(label: "Colour grade", children: [
+                _fxField(
+                    "hue", "Hue", fx.hue, -180, 180, (v) => fx.copyWith(hue: v),
+                    decimals: 0, suffix: "°"),
+                _fxField("saturation", "Saturation", fx.saturation, -1, 1,
+                    (v) => fx.copyWith(saturation: v)),
+                _fxField("contrast", "Contrast", fx.contrast, -1, 1,
+                    (v) => fx.copyWith(contrast: v)),
+                _fxField("brightness", "Brightness", fx.brightness, -1, 1,
+                    (v) => fx.copyWith(brightness: v)),
+              ]),
+          ],
+        ),
+      );
+}
+
+/// _Layered is a background's settings with its layers: a list of them over
+/// the settings of the one chosen, which is this panel's to remember, not
+/// the document's.
+class _Layered extends StatefulWidget {
+  final ProceduralSettings owner;
+  const _Layered({required this.owner});
+
+  @override
+  State<_Layered> createState() => _LayeredState();
+}
+
+class _LayeredState extends State<_Layered> {
+  /// editing is nought for the background's own pattern, or one more than
+  /// the index of the layer being edited.
+  int editing = 0;
+
+  ProceduralSettings get owner => widget.owner;
+  ProceduralSpec get spec => owner.spec;
+
+  void _layers(List<BackgroundLayer> next, {int? select}) {
+    owner.onBegin();
+    owner.onChanged(spec.copyWith(layers: next));
+    owner.onCommit();
+    if (select != null) setState(() => editing = select);
+  }
+
+  void _put(int i, BackgroundLayer next, {bool now = true}) {
+    var layers = [...spec.layers];
+    layers[i] = next;
+    if (now) {
+      _layers(layers);
+    } else {
+      owner.onChanged(spec.copyWith(layers: layers));
+    }
+  }
+
+  /// _added is a new layer: a fine dot grid in the background's own colours,
+  /// screened over it -- something to see at once, and to change from there.
+  BackgroundLayer _added() {
+    var first = looksFor(ProceduralStyle.dotGrid).firstOrNull?.spec ??
+        const ProceduralSpec(style: ProceduralStyle.dotGrid);
+    return BackgroundLayer(
+      spec: first.copyWith(
+        background: spec.background,
+        foreground: spec.foreground,
+        accent: spec.accent,
+        vignette: 0,
+      ),
+      opacity: 0.6,
+      blend: LayerBlend.screen,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var layers = spec.layers;
+    var at = editing.clamp(0, layers.length);
+    var theme = ThemeNotifier.of(context);
+
+    Widget row(int index) {
+      // Index nought is the background; the rest are layers, top first.
+      var isBase = index == 0;
+      var layer = isBase ? null : layers[index - 1];
+      var shown = isBase
+          ? spec.copyWith(layers: const [])
+          : layer!.spec.copyWith(
+              background: layer.spec.style == ProceduralStyle.plain
+                  ? null
+                  : spec.background,
+              vignette: 0);
+      var chosen = at == index;
+      return Material(
+        key: ValueKey("layerRow-$index"),
+        color:
+            chosen ? theme.colors.surfaceContainerHighest : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: () => setState(() => editing = index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            child: Row(children: [
+              Opacity(
+                opacity: layer?.visible == false ? 0.35 : 1,
+                child: ProceduralThumb(shown),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isBase
+                      ? "Background · ${spec.style.label}"
+                      : "${layer!.spec.style.label}"
+                          "${layer.blend == LayerBlend.normal ? "" : " · ${layer.blend.label}"}",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: chosen
+                          ? theme.colors.onSurface
+                          : theme.colors.onSurfaceVariant),
+                ),
+              ),
+              if (!isBase) ...[
+                CanvasIconButton(
+                  key: ValueKey("layerEye-$index"),
+                  icon: layer!.visible
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  tooltip: layer.visible ? "Hide" : "Show",
+                  tight: true,
+                  onPressed: () =>
+                      _put(index - 1, layer.copyWith(visible: !layer.visible)),
+                ),
+                CanvasIconButton(
+                  key: ValueKey("layerUp-$index"),
+                  icon: Icons.arrow_upward,
+                  tooltip: "Move up",
+                  tight: true,
+                  onPressed: index == layers.length
+                      ? null
+                      : () {
+                          var next = [...layers];
+                          next.insert(index, next.removeAt(index - 1));
+                          _layers(next, select: index + 1);
+                        },
+                ),
+                CanvasIconButton(
+                  key: ValueKey("layerDown-$index"),
+                  icon: Icons.arrow_downward,
+                  tooltip: "Move down",
+                  tight: true,
+                  onPressed: index == 1
+                      ? null
+                      : () {
+                          var next = [...layers];
+                          next.insert(index - 2, next.removeAt(index - 1));
+                          _layers(next, select: index - 1);
+                        },
+                ),
+                CanvasIconButton(
+                  key: ValueKey("layerDelete-$index"),
+                  icon: Icons.delete_outline,
+                  tooltip: "Remove",
+                  tight: true,
+                  onPressed: () =>
+                      _layers([...layers]..removeAt(index - 1), select: 0),
+                ),
+              ],
+            ]),
+          ),
+        ),
+      );
+    }
+
+    var list = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Top first, as a stack is seen from above: the background at the
+        // bottom, since everything else is laid on it.
+        for (var i = layers.length; i >= 0; i--) row(i),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: const ValueKey("addLayer"),
+            onPressed: layers.length >= maxBackgroundLayers
+                ? null
+                : () =>
+                    _layers([...layers, _added()], select: layers.length + 1),
+            icon: const Icon(Icons.add, size: 16),
+            label: Text(layers.length >= maxBackgroundLayers
+                ? "Three layers at most"
+                : "Add layer"),
+          ),
+        ),
+      ],
+    );
+
+    List<Widget> body;
+    if (at == 0) {
+      body = owner._groups(context);
+      if (owner.sections) body = owner._sectioned(body);
+    } else {
+      var layer = layers[at - 1];
+      body = [
+        CanvasControlGroup(label: "Layer", children: [
+          CanvasNumberField(
+            key: const ValueKey("layerOpacity"),
+            label: "Opacity",
+            value: layer.opacity,
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            onChanged: (v) {
+              owner.onBegin();
+              _put(at - 1, layer.copyWith(opacity: v), now: false);
+            },
+            onCommit: owner.onCommit,
+          ),
+          CanvasDropdown<LayerBlend>(
+            key: const ValueKey("layerBlend"),
+            label: "Blend",
+            value: layer.blend,
+            width: 110,
+            options: [for (var b in LayerBlend.values) (b, b.label)],
+            onChanged: (v) => _put(at - 1, layer.copyWith(blend: v)),
+          ),
+        ]),
+        ProceduralSettings(
+          key: ValueKey("layerSettings-$at"),
+          layer: true,
+          sections: owner.sections,
+          rememberAs: "${owner.rememberAs}.layer",
+          spec: layer.spec,
+          onBegin: owner.onBegin,
+          onCommit: owner.onCommit,
+          onChanged: (s) => _put(at - 1, layer.copyWith(spec: s), now: false),
+        ),
+      ];
+    }
+
+    if (owner.sections) {
+      // The layers as a section of their own, and the picked one's
+      // settings under them, its opacity and blend in their own section.
+      var picked = at == 0 ? null : layers[at - 1];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CanvasSection(
+            key: const ValueKey("backgroundSection-layers"),
+            icon: Icons.layers_outlined,
+            title: "Pattern layers",
+            summary: layers.isEmpty
+                ? "One pattern"
+                : "${layers.length + 1} patterns · editing "
+                    "${at == 0 ? "the background" : "layer $at"}",
+            remember: "${owner.rememberAs}.layers",
+            children: [if (owner.kindPicker case var k?) k, list],
+          ),
+          if (picked != null)
+            CanvasSection(
+              key: const ValueKey("backgroundSection-layer"),
+              icon: Icons.tune,
+              title: "Layer $at",
+              summary: "${(picked.opacity * 100).round()}% · "
+                  "${picked.blend.label}",
+              remember: "${owner.rememberAs}.layer",
+              initiallyOpen: true,
+              children: [body.first],
+            ),
+          ...(picked == null ? body : body.skip(1)),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // "Pattern layers" rather than "Layers", which is already the name
+        // of the sidebar's list of everything on the canvas.
+        CanvasExpander(
+          label: "Pattern layers",
+          remember: "background.layers",
+          initiallyOpen: true,
+          trailing: layers.isEmpty ? "None" : "${layers.length}",
+          children: [
+            if (owner.kindPicker case var k?) k,
+            Padding(
+              padding: const EdgeInsets.only(bottom: canvasGroupGap - 10),
+              child: list,
+            ),
+          ],
+        ),
+        ...body,
+      ],
+    );
+  }
+}
+
+/// patternStyleDropdown chooses a generated pattern's style, shown rather
+/// than named, under the kind of thing each one is. Choosing one starts from
+/// its first look: a style in the last style's colours and numbers is rarely
+/// a good picture of it.
+Widget patternStyleDropdown({
+  Key? key,
+  required ProceduralSpec spec,
+  required ValueChanged<ProceduralSpec> onChanged,
+  String label = "Style",
+  double width = 150,
+}) =>
+    CanvasDropdown<ProceduralStyle>(
+      key: key,
+      label: label,
+      value: spec.style,
+      width: width,
+      options: [
+        for (var f in StyleFamily.values)
+          for (var s in ProceduralStyle.values)
+            if (s.family == f) (s, s.label),
+      ],
+      groupOf: (s) => s.family.label,
+      leading: (s) => ProceduralThumb(styleThumbSpec(s)),
+      onChanged: (v) {
+        if (v == spec.style) return;
+        var first = looksFor(v).firstOrNull;
+        onChanged(first == null
+            ? spec.copyWith(style: v, params: const {})
+            : withLook(spec, first));
+      },
+    );
+
+/// patternLookDropdown chooses one of a style's looks, each shown.
+Widget patternLookDropdown({
+  Key? key,
+  required ProceduralSpec spec,
+  required ValueChanged<ProceduralSpec> onChanged,
+  double width = 150,
+}) {
+  var looks = looksFor(spec.style);
+  var chosen = lookMatching(spec)?.name ?? "";
+  return CanvasDropdown<String>(
+    key: key,
+    label: "Look",
+    value: chosen,
+    width: width,
+    options: [
+      if (chosen.isEmpty) ("", "Custom"),
+      for (var l in looks) (l.name, l.name),
+    ],
+    leading: (name) {
+      var look = looks.where((l) => l.name == name).firstOrNull;
+      return look == null
+          ? const SizedBox(width: 36, height: 20)
+          : ProceduralThumb(look.spec);
+    },
+    onChanged: (name) {
+      for (var l in looks) {
+        if (l.name == name) onChanged(withLook(spec, l));
+      }
+    },
+  );
+}
+
+/// patternPaletteDropdown recolours a pattern with one of the palettes, or
+/// the colours the app is wearing.
+Widget patternPaletteDropdown(
+  BuildContext context, {
+  Key? key,
+  required ProceduralSpec spec,
+  required ValueChanged<ProceduralSpec> onChanged,
+  double width = 150,
+}) {
+  var theme = themePalette(context);
+  var name = theme.matches(spec)
+      ? "theme"
+      : backgroundPalettes.where((p) => p.matches(spec)).firstOrNull?.name ??
+          "";
+  BackgroundPalette? named(String n) => n == "theme" ? theme : paletteNamed(n);
+  return CanvasDropdown<String>(
+    key: key,
+    label: "Palette",
+    value: name,
+    width: width,
+    options: [
+      if (name == "") ("", "Custom"),
+      ("theme", "My theme"),
+      for (var p in backgroundPalettes) (p.name, p.name),
+    ],
+    leading: (n) => paletteSwatch(named(n)),
+    onChanged: (n) {
+      var p = named(n);
+      if (p != null) onChanged(p.on(spec));
+    },
+  );
+}
+
+/// themePalette is the colours the app is wearing, as a palette.
+BackgroundPalette themePalette(BuildContext context) {
+  var c = Theme.of(context).colorScheme;
+  return BackgroundPalette("My theme", c.surface, c.primary, c.secondary,
+      baseTo: c.surfaceContainerHighest);
+}
+
+/// paletteSwatch is a palette's colours side by side, or a blank the same
+/// size for none.
+Widget paletteSwatch(BackgroundPalette? p) => SizedBox(
+      width: 36,
+      height: 16,
+      child: p == null
+          ? null
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var c in p.colours)
+                      Expanded(child: ColoredBox(color: c)),
+                  ]),
+            ),
+    );

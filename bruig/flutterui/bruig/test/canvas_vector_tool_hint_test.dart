@@ -3,8 +3,8 @@ import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_tool_hint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

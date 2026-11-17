@@ -11,7 +11,7 @@ import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/pitch_views.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';

@@ -30,9 +30,9 @@ import 'package:bruig/plugin_system/plugin_system.dart';
 export 'package:bruig/plugin_system/canvas/canvas_nav.dart';
 export 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 export 'package:bruig/plugin_system/canvas/canvas_settings.dart';
-export 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+export 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
 // A canvas file played where Files previews one: see canvas_file_player.dart.
-export 'package:bruig/plugin_system/canvas/ui/canvas_file_player.dart'
+export 'package:bruig/plugin_system/canvas/ui/screen/canvas_file_player.dart'
     show CanvasFilePlayer, openCanvasFile;
 // The editing session and the empty document, so main() can provide one that
 // outlives the page. Nothing else outside this directory should need either.

@@ -15,8 +15,8 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
-import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_channels.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:flutter_test/flutter_test.dart';
 

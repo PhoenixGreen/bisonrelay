@@ -18,7 +18,7 @@ import 'package:bruig/plugin_system/canvas/render/score_engraver.dart';
 import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:flutter/material.dart';

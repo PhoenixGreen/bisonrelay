@@ -5,11 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
-import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_clip_display.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_clip_display.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show boxOf, motionSceneOf;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
@@ -18,7 +18,7 @@ import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryMouseButton;
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
-import 'package:bruig/plugin_system/canvas/ui/curve_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/curve_view.dart';
 import 'package:flutter/services.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:flutter_test/flutter_test.dart';

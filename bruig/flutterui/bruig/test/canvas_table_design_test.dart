@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/table_design.dart';
 import 'package:bruig/plugin_system/canvas/model/table_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/data_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/data/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/warp.dart';
-import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/sound/clip_editor.dart';
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
@@ -18,7 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryMouseButton, PointerScrollEvent;

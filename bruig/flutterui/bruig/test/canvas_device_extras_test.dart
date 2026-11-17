@@ -17,7 +17,7 @@ import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/chain_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

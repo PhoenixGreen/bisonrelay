@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';

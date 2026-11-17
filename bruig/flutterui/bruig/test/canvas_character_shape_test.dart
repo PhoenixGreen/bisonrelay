@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_shape.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/character/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

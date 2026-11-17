@@ -52,7 +52,7 @@ class MediaSource {
   final double length;
 
   /// posterId, soundId, width, height and fps describe a video file, found
-  /// when it was added (ui/media_picking.dart).
+  /// when it was added (ui/picking/media_picking.dart).
   ///
   /// The poster is a still stored as an ordinary picture, so an export or a
   /// bundle opened without ffmpeg still shows the video. The sound is the

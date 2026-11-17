@@ -15,17 +15,17 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
-import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart'
+import 'package:bruig/plugin_system/canvas/ui/game/canvas_game.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart'
     show StageHandle;
-import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_lanes.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Canvas, Paint;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;

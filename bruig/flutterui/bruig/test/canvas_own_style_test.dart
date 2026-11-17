@@ -11,17 +11,17 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
-import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show DeviceKnob;
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
-import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart'
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart'
     show shapeOf, VectorShapeKind;
-import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart'
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart'
     show groupStarts;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';

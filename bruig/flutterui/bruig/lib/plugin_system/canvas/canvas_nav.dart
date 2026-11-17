@@ -1,6 +1,6 @@
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
 import 'package:flutter/material.dart';
 
 // canvas_nav.dart puts the Canvas section in the navigation while the feature

@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_move_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/character/character_move_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

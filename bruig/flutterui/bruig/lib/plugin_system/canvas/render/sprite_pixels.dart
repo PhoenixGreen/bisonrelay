@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 // sprite_pixels.dart is a sprite sheet's pixels, held to paint on: what the
-// Sprite element's pixel painter (ui/sprite_painting.dart) draws with.
+// Sprite element's pixel painter (ui/drawing/sprite_painting.dart) draws with.
 
 /// SpritePixels is a sheet's pixels: dots and lines in a colour or cleared,
 /// runs filled, colours picked up, frames copied, the sheet grown, and the

@@ -8,11 +8,11 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
     show MotionPhase;
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
-import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show ChainGroupColour;
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
 import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
 import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';

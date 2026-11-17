@@ -3,7 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_new_settings_open_test.dart is whether a canvas opens with the

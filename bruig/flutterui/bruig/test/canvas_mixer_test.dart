@@ -20,13 +20,13 @@ import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show DeviceKnob;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

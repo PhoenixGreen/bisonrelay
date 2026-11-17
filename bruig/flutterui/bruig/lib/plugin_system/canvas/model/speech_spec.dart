@@ -664,7 +664,7 @@ class SpeechSpec {
   final String clip;
 
   /// document is the Writing Tools document the script is read from, kept
-  /// up to date as it is edited (ui/text_documents.dart). Its wasText is the
+  /// up to date as it is edited (ui/picking/text_documents.dart). Its wasText is the
   /// script typed before, restored when it is let go.
   final TextDocumentRef document;
 

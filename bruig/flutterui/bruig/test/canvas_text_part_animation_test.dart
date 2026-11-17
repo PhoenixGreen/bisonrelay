@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/canvas_arrival_fixture.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 
 // canvas_text_part_animation_test.dart is a part of the text arriving on its
 // own account, at its own moment.

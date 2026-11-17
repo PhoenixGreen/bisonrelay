@@ -1,4 +1,4 @@
-import 'package:bruig/plugin_system/canvas/ui/canvas_strip.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';

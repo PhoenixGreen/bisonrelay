@@ -1,4 +1,4 @@
-import 'package:bruig/plugin_system/canvas/ui/data_editor_shell.dart';
+import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_data_editor_height_test.dart is how tall the box round a grid of
