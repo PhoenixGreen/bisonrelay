@@ -255,13 +255,15 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
         paintPitch(canvas, rect, s.copyWith(scale: givenScale), cover: area);
       case ProceduralStyle.metal:
         // Brushed is drawn here; the other finishes are in metals.dart.
-        if (s.choice("finish") == MetalFinish.brushed) {
-          _metal(canvas, area, s);
-        } else {
-          _metalFinish(canvas, area, s);
-        }
+        _lattice(
+            canvas,
+            area,
+            s,
+            s.choice("finish") == MetalFinish.brushed
+                ? _metalColours
+                : _metalFinishColours);
       case ProceduralStyle.surface:
-        _surface(canvas, area, s);
+        _lattice(canvas, area, s, _surfaceColours);
     }
   }
 
@@ -585,15 +587,56 @@ void paintLight(ui.Canvas canvas, Rect rect, LightSpec light) {
 /// land on slopes, never on matt rust. Brushing is stretched smooth noise,
 /// dents [worley], scratches [ridged]. Size is feature size, Brightness the
 /// light, Variation the brushing's stretch, Density how far relief tilts.
-void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
-  var m = spec.metal;
-  var short = math.min(rect.width, rect.height);
-  if (short <= 0) return;
+/// _lattices is the lit surfaces' colour grids (Metal and Surface), newest
+/// last. Working one out is most of a still frame's cost (about 60 ms at
+/// 1080p) and depends only on the design and the size, so a still export,
+/// a thumbnail or a stage without a raster cache works it out once. Each
+/// is up to 800 KB, so only a few are kept.
+final _lattices = <_LatticeKey, Int32List>{};
+const _latticeKeep = 4;
 
+/// _LatticeKey is the design written out, the exact colours (written out,
+/// they are rounded to bytes) and the lattice's size.
+typedef _LatticeKey = (
+  String,
+  (double, double, double),
+  (double, double, double),
+  (double, double, double),
+  double,
+  double,
+  double,
+);
+
+final _designs = Expando<String>("latticeDesign");
+
+/// _lattice draws [spec]'s lit surface over [rect], its colours from [make]
+/// or from the last time the same design was drawn at the same size.
+void _lattice(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
+    Int32List Function(Rect, ProceduralSpec, int cols, int rows) make) {
+  if (math.min(rect.width, rect.height) <= 0) return;
   // A lattice point per pixel (see latticeDetail), at most 448 a side, and
   // no coarser: a feature under two cells across cannot be shown.
   var cols = (rect.width * latticeDetail).round().clamp(8, 448);
   var rows = (rect.height * latticeDetail).round().clamp(8, 448);
+  (double, double, double) rgb(Color c) => (c.r, c.g, c.b);
+  var key = (
+    _designs[spec] ??= "${spec.toJson()}",
+    rgb(spec.background),
+    rgb(spec.foreground),
+    rgb(spec.accent),
+    rect.width,
+    rect.height,
+    latticeDetail,
+  );
+  var colours = _lattices.remove(key) ?? make(rect, spec, cols, rows);
+  _lattices[key] = colours;
+  if (_lattices.length > _latticeKeep) _lattices.remove(_lattices.keys.first);
+  _drawGrid(canvas, rect, cols, rows, colours);
+}
+
+Int32List _metalColours(Rect rect, ProceduralSpec spec, int cols, int rows) {
+  var m = spec.metal;
+  var short = math.min(rect.width, rect.height);
   var stepX = rect.width / cols, stepY = rect.height / rows;
 
   // In units of the shorter side, so the sheet is the same at any size. The
@@ -792,32 +835,7 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
     }
   }
 
-  // One triangle strip per lattice row, not one huge Vertices for the sheet.
-  var paint = Paint();
-  var positions = Float32List((cols + 1) * 4);
-  var strip = Int32List((cols + 1) * 2);
-  for (var iy = 0; iy < rows; iy++) {
-    var top = rect.top + iy * stepY;
-    var bottom = top + stepY;
-    for (var ix = 0; ix <= cols; ix++) {
-      var x = rect.left + ix * stepX;
-      positions[ix * 4] = x;
-      positions[ix * 4 + 1] = top;
-      positions[ix * 4 + 2] = x;
-      positions[ix * 4 + 3] = bottom;
-      strip[ix * 2] = colours[iy * (cols + 1) + ix];
-      strip[ix * 2 + 1] = colours[(iy + 1) * (cols + 1) + ix];
-    }
-    var vertices = ui.Vertices.raw(
-      ui.VertexMode.triangleStrip,
-      Float32List.fromList(positions),
-      colors: Int32List.fromList(strip),
-    );
-    // Modulated with a white paint, so the vertex colours draw unchanged.
-    canvas.drawVertices(vertices, ui.BlendMode.modulate,
-        paint..color = const Color(0xFFFFFFFF));
-    vertices.dispose();
-  }
+  return colours;
 }
 
 /// _paintBase fills the frame before the generator runs.

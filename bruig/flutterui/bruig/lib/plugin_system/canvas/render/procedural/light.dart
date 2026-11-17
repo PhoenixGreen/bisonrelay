@@ -10,13 +10,25 @@ part of 'generators.dart';
 /// colour from [at] (0xAARRGGBB), blended across each cell. A few hundred
 /// corners stand in for a million pixels; the GPU blends between them.
 void _colourGrid(ui.Canvas canvas, Rect rect, int cols, int rows,
-    int Function(double u, double v) at) {
+        int Function(double u, double v) at) =>
+    _drawGrid(canvas, rect, cols, rows, _gridColours(cols, rows, at));
+
+/// _gridColours is each corner's colour from [at], row by row.
+Int32List _gridColours(
+    int cols, int rows, int Function(double u, double v) at) {
   var colours = Int32List((cols + 1) * (rows + 1));
   for (var iy = 0; iy <= rows; iy++) {
     for (var ix = 0; ix <= cols; ix++) {
       colours[iy * (cols + 1) + ix] = at(ix / cols, iy / rows);
     }
   }
+  return colours;
+}
+
+/// _drawGrid draws [colours] (see _gridColours) over [rect], one triangle
+/// strip per row rather than one huge Vertices for the sheet.
+void _drawGrid(
+    ui.Canvas canvas, Rect rect, int cols, int rows, Int32List colours) {
   var paint = Paint()..color = const Color(0xFFFFFFFF);
   var positions = Float32List((cols + 1) * 4);
   var strip = Int32List((cols + 1) * 2);

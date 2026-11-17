@@ -16,12 +16,10 @@ abstract final class MetalFinish {
   static const riveted = 7;
 }
 
-void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
+Int32List _metalFinishColours(
+    Rect rect, ProceduralSpec spec, int cols, int rows) {
   var m = spec.metal;
   var short = math.min(rect.width, rect.height);
-  if (short <= 0) return;
-  var cols = (rect.width * latticeDetail).round().clamp(8, 448);
-  var rows = (rect.height * latticeDetail).round().clamp(8, 448);
   var stepX = rect.width / cols, stepY = rect.height / rows;
   var size = math.max(0.08, spec.scale / 0.05);
   var ceiling = math.min(cols, rows) / 2.2;
@@ -190,6 +188,6 @@ void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
       height[at] = h;
     }
   }
-  _shadeLattice(canvas, rect, spec, cols, rows, height, red, green, blue, gloss,
+  return _shadeLattice(rect, spec, cols, rows, height, red, green, blue, gloss,
       metal: mirror, gain: 0.35 + spec.density * 1.1);
 }

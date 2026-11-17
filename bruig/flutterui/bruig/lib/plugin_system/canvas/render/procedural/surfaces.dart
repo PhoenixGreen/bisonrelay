@@ -48,13 +48,9 @@ double _smooth(double a, double b, double x) {
   return (f1, f2, id);
 }
 
-void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
+Int32List _surfaceColours(
+    Rect rect, ProceduralSpec spec, int cols, int rows) {
   var short = math.min(rect.width, rect.height);
-  if (short <= 0) return;
-  // A point a pixel, capped, as in _metal: the lattice is a ceiling on how
-  // fine anything can be.
-  var cols = (rect.width * latticeDetail).round().clamp(8, 448);
-  var rows = (rect.height * latticeDetail).round().clamp(8, 448);
   var stepX = rect.width / cols, stepY = rect.height / rows;
   var size = math.max(0.08, spec.scale / 0.05);
   var ceiling = math.min(cols, rows) / 2.2;
@@ -319,18 +315,18 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
     }
   }
 
-  _shadeLattice(
-      canvas, rect, spec, cols, rows, height, red, green, blue, gloss);
+  return _shadeLattice(
+      rect, spec, cols, rows, height, red, green, blue, gloss);
 }
 
-/// _shadeLattice lights a lattice of heights and colours and draws it, for
+/// _shadeLattice lights a lattice of heights and colours into a colour per
+/// point (see _gridColours), for
 /// the surfaces and the metal finishes. Lit from up and to the left: a
 /// diffuse light lifted so the far side is shaded rather than black, and a
 /// highlight as tight as each point's gloss. [metal] is how much each point
 /// mirrors its surroundings rather than scattering; a tinted reflection,
 /// more than any highlight, is what reads as metal.
-void _shadeLattice(
-    ui.Canvas canvas,
+Int32List _shadeLattice(
     Rect rect,
     ProceduralSpec spec,
     int cols,
@@ -367,7 +363,7 @@ void _shadeLattice(
         return c;
       });
 
-  _colourGrid(canvas, rect, cols, rows, (fu, fv) {
+  return _gridColours(cols, rows, (fu, fv) {
     var ix = (fu * cols).round(), iy = (fv * rows).round();
     var at = iy * (cols + 1) + ix;
     var left = height[iy * (cols + 1) + math.max(0, ix - 1)];
