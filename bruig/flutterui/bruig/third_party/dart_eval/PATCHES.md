@@ -17,3 +17,6 @@ Changes:
 
 Used through pubspec.yaml's dependency_overrides, so flutter_eval uses it
 too. When a release of dart_eval has the fix, go back to it from pub.dev.
+
+Trimmed (2026-11-17): pubspec.lock is left out; bruig's own lock file
+pins the versions.

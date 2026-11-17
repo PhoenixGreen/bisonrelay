@@ -12,3 +12,7 @@ Changes:
 Used by the Code element's Run panel to draw a Flutter app's widgets
 (lib/plugin_system/canvas/media/code_dart_runner.dart). When a release of
 flutter_eval builds against bruig's Flutter, go back to it from pub.dev.
+
+Trimmed (2026-11-17): the upstream example app (examples/), its binding
+generator (tool/, Makefile, build.yaml), FUNDING.yml and pubspec.lock are
+left out. Only lib/ and the package files bruig builds against are kept.
