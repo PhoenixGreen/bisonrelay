@@ -113,6 +113,15 @@ class overrides `setState` so its parts may call it, and keeps any method
 used as a listener: an extension's tear-off is a new closure each time, so
 `removeListener` would not find it.
 
+**Collections by topic.** A file of many small widgets or functions keeps
+what the rest is built round, and its topics are parts beside it, named
+after it: `controls.dart` (controls_layout, _groups, _fields, _buttons,
+_pickers), `settings/panel_kit.dart`, `settings/text_settings.dart`,
+`sound/instrument_editor.dart`, the mixer (`canvas_mixer_*`,
+`mixer_plugins_*`, `mixer_devices_*`), `render/scene_renderer.dart`,
+`render/paint_util.dart`, `render/procedural/pitch.dart` and
+`export/epub_layers.dart`. Code that imports the file still sees all of it.
+
 **Listening.** Most widgets listen to the controller. Two things notify it
 many times a second: the steps of a gesture (a drag, typing on the canvas:
 `apply(transient: true)` between `beginInteraction` and `endInteraction`) and
