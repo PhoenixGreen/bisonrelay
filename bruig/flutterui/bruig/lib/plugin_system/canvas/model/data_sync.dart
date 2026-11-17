@@ -547,6 +547,10 @@ CanvasDocument dataRefreshed(CanvasDocument doc) {
   });
 }
 
+/// _sheetIds is each list of sheets' ids. Lists of sheets are replaced,
+/// never changed, so one set per list holds.
+final _sheetIds = Expando<Set<String>>("sheetIds");
+
 /// dataSynced is [next], a change from [was], with its sheets and every
 /// view of them in step; [next] itself when it changed no data.
 CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
@@ -554,13 +558,37 @@ CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
       identical(was.elements, next.elements)) {
     return next;
   }
+  // Most edits touch no sheet and no view of one (a drag step, say): seen
+  // here from indexes kept per list, without building the maps below.
+  if (identical(was.sheets, next.sheets)) {
+    var ids = _sheetIds[next.sheets] ??= {for (var s in next.sheets) s.id};
+    var quiet = true;
+    for (var e in next.elements) {
+      if (!isDataView(e)) continue;
+      var link = linkOf(e);
+      if (link == null ||
+          !ids.contains(link.sheet) ||
+          !identical(was.elementById(e.id), e)) {
+        quiet = false;
+        break;
+      }
+    }
+    if (quiet) return next;
+  }
   var sheets = {for (var s in next.sheets) s.id: s};
   var before = {for (var e in was.elements) e.id: e};
-  var changed = <String>{
-    for (var s in next.sheets)
-      if (!identical(was.sheets.where((w) => w.id == s.id).firstOrNull, s))
-        s.id,
-  };
+  // The sheets changed, found by id: searching the old list for each sheet
+  // cost the square of their number on every edit, a drag step included.
+  var changed = <String>{};
+  if (!identical(was.sheets, next.sheets)) {
+    var wasSheets = <String, DataSheet>{};
+    for (var w in was.sheets) {
+      wasSheets.putIfAbsent(w.id, () => w);
+    }
+    for (var s in next.sheets) {
+      if (!identical(wasSheets[s.id], s)) changed.add(s.id);
+    }
+  }
   var relinked = <String, SheetLink>{};
   var remake = <String>{};
   var orphan = false;
