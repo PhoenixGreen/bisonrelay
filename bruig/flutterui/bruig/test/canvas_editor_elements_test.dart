@@ -147,35 +147,29 @@ void main() {
       // tall, and a tap at a point outside the viewport hits nothing.
       await _openPlayers(tester);
 
-      /// press taps a control inside one player's row.
-      ///
-      /// Scoped to the row rather than found by tooltip alone, because the
-      /// element's own Lock and Hide sit above the squad list with exactly the
-      /// same tooltips -- so `.first` locks the whole team instead of the
-      /// goalkeeper. And scrolled into view first: eleven rows of four fields
-      /// is taller than the settings column, so most of the squad is below the
-      /// fold and a tap at its computed position lands outside the viewport.
-      Future<void> press(int index, String tooltip) async {
-        var finder = find.descendant(
-          of: find.byKey(ValueKey("player-$index-${teamIn(controller).id}")),
-          matching: byTip(tooltip),
-        );
-        await tester.ensureVisible(finder);
+      /// press chooses [item] from one player's ⋯ menu: scrolled into view
+      /// first, as eleven rows are taller than the settings column.
+      Future<void> press(int index, String item) async {
+        var id = teamIn(controller).id;
+        var more = find.byKey(ValueKey("more-$index-$id"));
+        await tester.ensureVisible(more);
         await tester.pumpAndSettle();
-        await tester.tap(finder);
+        await tester.tap(more);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey("$item-$index-$id")));
         await tester.pumpAndSettle();
       }
 
-      await press(0, "Lock in place");
+      await press(0, "lock");
       expect(teamIn(controller).players.first.locked, isTrue);
       expect(teamIn(controller).locked, isFalse,
           reason: "locking a player must not lock the whole team");
 
-      await press(0, "Hide");
+      await press(0, "hide");
       expect(teamIn(controller).players.first.hidden, isTrue);
 
       var second = teamIn(controller).players[1].number;
-      await press(0, "Bring forward");
+      await press(0, "forward");
       expect(teamIn(controller).players[0].number, second,
           reason: "the keeper moved up one, so the next player is now first");
     });
@@ -255,14 +249,18 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
-      if (byTip("Lock in place").evaluate().isEmpty) {
+      var more = find.byKey(const ValueKey("more-0-t"));
+      if (more.evaluate().isEmpty) {
         await tester.ensureVisible(find.text("PLAYERS"));
         await tester.pumpAndSettle();
         await tester.tap(find.text("PLAYERS"));
         await tester.pumpAndSettle();
       }
-
-      expect(byTip("Lock in place"), findsWidgets,
+      await tester.ensureVisible(more);
+      await tester.pumpAndSettle();
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(find.text("Lock in place"), findsOneWidget,
           reason: "a player is not a layer and has nowhere else to be locked");
     });
   });

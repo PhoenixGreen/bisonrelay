@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -565,129 +566,177 @@ class _PlayerRow extends StatelessWidget {
       ));
     }
 
-    // Half a group apart, so each player's two lines read as one entry.
-    return Padding(
-      padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
-      child: CanvasWrap(children: [
-        if (!spot.ball)
-          CanvasTextField(
-            key: ValueKey("num-$index-${team.id}"),
-            label: index == 0 && team.sport.hasKeeper ? "GK" : "No.",
-            value: spot.number,
-            width: 42,
-            onChanged: (v) => set(spot.copyWith(number: v)),
-            onCommit: commit,
+    var theme = ThemeNotifier.of(context);
+    void flip(PlayerSpot next) => now(team.withPlayer(index, next));
+
+    // A switch that is on shows as a badge under the row, so nothing that
+    // is on is hidden in the menu; pressed, it turns off.
+    Widget badge(String name, Widget mark, String tip, VoidCallback off) =>
+        CanvasTip(
+          message: tip,
+          child: GestureDetector(
+            key: ValueKey("$name-badge-$index-${team.id}"),
+            onTap: off,
+            child: Container(
+              width: 18,
+              height: 18,
+              margin: const EdgeInsets.only(right: 4),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  color: theme.colors.primary.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(9)),
+              child: IconTheme(
+                  data: IconThemeData(size: 11, color: theme.colors.primary),
+                  child: DefaultTextStyle(
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colors.primary),
+                      child: mark)),
+            ),
           ),
-        CanvasTextField(
-          key: ValueKey("name-$index-${team.id}"),
-          label: "Name",
-          value: spot.name,
-          width: 104,
-          onChanged: (v) => set(spot.copyWith(name: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          key: ValueKey("x-$index-${team.id}"),
-          label: field == null ? "X" : "Along",
-          decimals: field == null ? 0 : 1,
-          value: field?.dx ?? centre.dx,
-          min: -100000,
-          max: 100000,
-          width: 54,
-          onChanged: (v) => moveTo(x: v),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          key: ValueKey("y-$index-${team.id}"),
-          label: field == null ? "Y" : "Across",
-          decimals: field == null ? 0 : 1,
-          value: field?.dy ?? centre.dy,
-          min: -100000,
-          max: 100000,
-          width: 54,
-          onChanged: (v) => moveTo(y: v),
-          onCommit: commit,
-        ),
+        );
+    var badges = [
+      if (spot.captain && !spot.ball)
+        badge("captain", const Text("C"), "Captain: press to stop",
+            () => flip(spot.copyWith(captain: false))),
+      if (spot.highlight)
+        badge(
+            "highlight",
+            const Icon(Icons.highlight),
+            "Highlighted: press to stop",
+            () => flip(spot.copyWith(highlight: false))),
+      if (spot.locked)
+        badge("locked", const Icon(Icons.lock), "Locked: press to unlock",
+            () => flip(spot.copyWith(locked: false))),
+      if (spot.hidden)
+        badge("hidden", const Icon(Icons.visibility_off),
+            "Hidden: press to show", () => flip(spot.copyWith(hidden: false))),
+    ];
+
+    /// item is one of the ⋯ menu's choices; [on] ticks a switch that is on.
+    Widget item(String key, String label, VoidCallback? onPressed,
+            {bool? on}) =>
+        MenuItemButton(
+          key: ValueKey("$key-$index-${team.id}"),
+          leadingIcon: SizedBox(
+              width: 16,
+              child: on == true ? const Icon(Icons.check, size: 16) : null),
+          onPressed: onPressed,
+          child: Text(label),
+        );
+
+    // Everything but the number, name and place, in one menu: a row of nine
+    // buttons for each of eleven players was most of what the panel built.
+    var more = MenuAnchor(
+      menuChildren: [
         // A portrait photo from a file or the canvas's pictures, and
         // removal. Not for the ball.
         if (!spot.ball) ...[
-          CanvasIconButton(
-            key: ValueKey("photo-$index-${team.id}"),
-            icon: spot.photo.isEmpty
-                ? Icons.add_a_photo_outlined
-                : Icons.account_circle,
-            tooltip: spot.photo.isEmpty ? "Add photo" : "Change photo",
-            active: spot.photo.isNotEmpty,
-            onPressed: () async {
-              var id = await pickCanvasImage(context);
-              if (id == null) return;
-              now(team.withPlayer(index, spot.copyWith(photo: id)));
-            },
-          ),
-          CanvasIconButton(
-            icon: Icons.photo_library_outlined,
-            tooltip: "Photo from library",
-            onPressed: () async {
-              var id = await showRecentPictures(context);
-              if (id == null) return;
-              now(team.withPlayer(index, spot.copyWith(photo: id)));
-            },
-          ),
+          item("photo", spot.photo.isEmpty ? "Add photo…" : "Change photo…",
+              () async {
+            var id = await pickCanvasImage(context);
+            if (id == null) return;
+            flip(spot.copyWith(photo: id));
+          }),
+          item("photoLibrary", "Photo from library…", () async {
+            var id = await showRecentPictures(context);
+            if (id == null) return;
+            flip(spot.copyWith(photo: id));
+          }),
           if (spot.photo.isNotEmpty)
-            CanvasIconButton(
-              icon: Icons.no_photography_outlined,
-              tooltip: "Remove photo",
-              onPressed: () =>
-                  now(team.withPlayer(index, spot.copyWith(photo: ""))),
-            ),
-          CanvasIconButton(
-            key: ValueKey("captain-$index-${team.id}"),
-            icon: Icons.copyright,
-            tooltip: "Captain",
-            active: spot.captain,
-            onPressed: () => now(
-                team.withPlayer(index, spot.copyWith(captain: !spot.captain))),
-          ),
+            item("photoRemove", "Remove photo",
+                () => flip(spot.copyWith(photo: ""))),
+          const Divider(height: 8),
+          item("captain", "Captain",
+              () => flip(spot.copyWith(captain: !spot.captain)),
+              on: spot.captain),
         ],
-        CanvasIconButton(
-          key: ValueKey("highlight-$index-${team.id}"),
-          icon: Icons.highlight,
-          tooltip: "Highlight",
-          active: spot.highlight,
-          onPressed: () => now(team.withPlayer(
-              index, spot.copyWith(highlight: !spot.highlight))),
-        ),
-        CanvasIconButton(
-          icon: spot.locked ? Icons.lock : Icons.lock_open,
-          tooltip: spot.locked ? "Unlock" : "Lock in place",
-          active: spot.locked,
-          onPressed: () =>
-              now(team.withPlayer(index, spot.copyWith(locked: !spot.locked))),
-        ),
-        CanvasIconButton(
-          icon: spot.hidden ? Icons.visibility_off : Icons.visibility,
-          tooltip: spot.hidden ? "Show" : "Hide",
-          active: spot.hidden,
-          onPressed: () =>
-              now(team.withPlayer(index, spot.copyWith(hidden: !spot.hidden))),
-        ),
-        if (!spot.ball)
-          CanvasIconButton(
-            icon: Icons.arrow_upward,
-            tooltip: "Bring forward",
-            onPressed: index >= team.players.length - 1
-                ? null
-                : () => now(team.movePlayer(index, index + 1)),
-          ),
-        if (!spot.ball)
-          CanvasIconButton(
-            icon: Icons.arrow_downward,
-            tooltip: "Send to back",
-            onPressed: index <= 0
-                ? null
-                : () => now(team.movePlayer(index, index - 1)),
-          ),
-      ]),
+        item("highlight", "Highlight",
+            () => flip(spot.copyWith(highlight: !spot.highlight)),
+            on: spot.highlight),
+        item("lock", "Lock in place",
+            () => flip(spot.copyWith(locked: !spot.locked)),
+            on: spot.locked),
+        item("hide", "Hide", () => flip(spot.copyWith(hidden: !spot.hidden)),
+            on: spot.hidden),
+        if (!spot.ball) ...[
+          const Divider(height: 8),
+          item(
+              "forward",
+              "Bring forward",
+              index >= team.players.length - 1
+                  ? null
+                  : () => now(team.movePlayer(index, index + 1))),
+          item("back", "Send to back",
+              index <= 0 ? null : () => now(team.movePlayer(index, index - 1))),
+        ],
+      ],
+      builder: (context, menu, _) => CanvasIconButton(
+        key: ValueKey("more-$index-${team.id}"),
+        icon: Icons.more_horiz,
+        tooltip: "More for this player",
+        active: menu.isOpen,
+        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+      ),
+    );
+
+    // Half a group apart, so each player reads as one entry.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CanvasWrap(children: [
+            if (!spot.ball)
+              CanvasTextField(
+                key: ValueKey("num-$index-${team.id}"),
+                label: index == 0 && team.sport.hasKeeper ? "GK" : "No.",
+                value: spot.number,
+                width: 36,
+                onChanged: (v) => set(spot.copyWith(number: v)),
+                onCommit: commit,
+              ),
+            CanvasTextField(
+              key: ValueKey("name-$index-${team.id}"),
+              label: "Name",
+              value: spot.name,
+              width: 72,
+              onChanged: (v) => set(spot.copyWith(name: v)),
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              key: ValueKey("x-$index-${team.id}"),
+              label: field == null ? "X" : "Along",
+              decimals: field == null ? 0 : 1,
+              value: field?.dx ?? centre.dx,
+              min: -100000,
+              max: 100000,
+              width: 48,
+              onChanged: (v) => moveTo(x: v),
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              key: ValueKey("y-$index-${team.id}"),
+              label: field == null ? "Y" : "Across",
+              decimals: field == null ? 0 : 1,
+              value: field?.dy ?? centre.dy,
+              min: -100000,
+              max: 100000,
+              width: 48,
+              onChanged: (v) => moveTo(y: v),
+              onCommit: commit,
+            ),
+            more,
+          ]),
+          if (badges.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Row(mainAxisSize: MainAxisSize.min, children: badges),
+            ),
+        ],
+      ),
     );
   }
 }

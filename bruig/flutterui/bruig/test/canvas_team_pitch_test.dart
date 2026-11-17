@@ -436,16 +436,19 @@ void main() {
       expect(find.byKey(const ValueKey("teamFaces")), findsOneWidget);
       await choose(tester, "teamKit", "Stripes");
       expect(teamIn(controller, id).kitPattern, KitPattern.stripes);
-      var captain = find.byKey(ValueKey("captain-2-$id"));
+      var more = find.byKey(ValueKey("more-2-$id"));
       // The squad list is shut until it is opened.
-      if (captain.evaluate().isEmpty) {
+      if (more.evaluate().isEmpty) {
         var players = find.text("PLAYERS");
         await tester.ensureVisible(players);
         await tester.tap(players);
         await tester.pumpAndSettle();
       }
-      await tester.ensureVisible(captain);
-      await tester.tap(captain);
+      // Captain is in the player's ⋯ menu.
+      await tester.ensureVisible(more);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey("captain-2-$id")));
       await tester.pumpAndSettle();
       expect(teamIn(controller, id).players[2].captain, isTrue);
     });
