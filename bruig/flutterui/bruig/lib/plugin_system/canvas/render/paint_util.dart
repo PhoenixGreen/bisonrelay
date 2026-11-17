@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:bruig/plugin_system/canvas/render/image_look.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
@@ -81,6 +82,24 @@ ui.Path dashedOutline(String shape, Rect box, double on, double every,
   }
   return _dashed[key] = dashes;
 }
+
+/// retirePainter disposes [painter], which a cache has let go of, once the
+/// paint going on is over: a painter handed out earlier in the same paint
+/// can be the oldest kept, and so the one let go, and still be drawn with.
+/// Caches' painters are never kept past a paint by their callers.
+void retirePainter(TextPainter painter) {
+  if (_retired.isEmpty) {
+    scheduleMicrotask(() {
+      for (var p in _retired) {
+        p.dispose();
+      }
+      _retired.clear();
+    });
+  }
+  _retired.add(painter);
+}
+
+final _retired = <TextPainter>[];
 
 /// clearTextLayouts lets go of every text laid out and kept.
 void clearTextLayouts() {
@@ -172,7 +191,9 @@ TextPainter labelPainter(
     maxLines: maxLines,
     ellipsis: ellipsis,
   )..layout(maxWidth: maxWidth);
-  if (_labels.length >= _labelCap) _labels.remove(_labels.keys.first);
+  if (_labels.length >= _labelCap) {
+    retirePainter(_labels.remove(_labels.keys.first)!);
+  }
   _labels[key] = painter;
   return painter;
 }
@@ -233,7 +254,7 @@ TextPainter layoutText(
       parts: parts,
       over: over);
   if (_layouts.length >= _layoutCap) {
-    _layouts.remove(_layouts.keys.first);
+    retirePainter(_layouts.remove(_layouts.keys.first)!);
   }
   _layouts[key] = painter;
   return painter;
@@ -736,7 +757,9 @@ double paintRunsInBox(
   }
   paintTp(painter, canvas, Offset(box.left, box.top + dy));
   if (clip) canvas.restore();
-  return painter.height;
+  var height = painter.height;
+  painter.dispose();
+  return height;
 }
 
 /// drawnPixels renders [draw] into a [w] x [h] picture and reads it back as

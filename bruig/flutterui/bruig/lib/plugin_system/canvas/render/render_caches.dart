@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/brush_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_mask_painter.dart';
@@ -26,4 +27,5 @@ void clearRenderCaches() {
   clearWorkingPixels();
   clearTextLayouts();
   clearGlyphs();
+  clearCodeLayouts();
 }

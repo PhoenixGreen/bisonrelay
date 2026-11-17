@@ -188,6 +188,9 @@ extension CanvasInstruments on CanvasController {
   /// lights it, is told, unless the editor shows it too (while recording,
   /// practising or step input).
   void _keysChanged() {
+    // A key let go of after the canvas shut (a stepped note's release, a
+    // MIDI note off) has nothing left to light.
+    if (_disposed) return;
     keysHeld.value++;
     if (_recording || _clipRecord != null || _practice != null || _rollStep) {
       notifyListeners();

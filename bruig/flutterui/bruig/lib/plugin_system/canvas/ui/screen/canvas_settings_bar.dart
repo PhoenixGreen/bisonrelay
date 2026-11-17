@@ -1201,8 +1201,10 @@ class _ZoomFieldState extends State<_ZoomField> {
       // At the reader's text size, which is what the reading is drawn at.
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
+    var width = painter.width;
+    painter.dispose();
     // The padding either side, and the room the caret needs at the end.
-    return painter.width + 4 + 6;
+    return width + 4 + 6;
   }
 
   @override

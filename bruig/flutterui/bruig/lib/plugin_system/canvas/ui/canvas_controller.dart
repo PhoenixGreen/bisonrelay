@@ -1610,11 +1610,11 @@ class CanvasController extends ChangeNotifier {
   /// keysHeld ticks when a key is pressed or let go live, for the stage to
   /// draw held keys by. The sound is sent first and only the stage redraws,
   /// not the whole editor, so a key's note is heard at once.
-  final ValueNotifier<int> keysHeld = ValueNotifier(0);
+  final ValueNotifier<int> keysHeld = _Beat();
 
   /// playheadMoved ticks each time the playhead moves on in play, so what
   /// draws only the playhead (the piano roll's line) need not rebuild.
-  final ValueNotifier<int> playheadMoved = ValueNotifier(0);
+  final ValueNotifier<int> playheadMoved = _Beat();
 
   double _rollStepGrid = 0.25;
   double? _stepAt;
@@ -1793,6 +1793,19 @@ class CanvasController extends ChangeNotifier {
     chartGlideBeat.removeListener(_glideBeat);
     chartGlides.clear();
     slotsScroll.dispose();
+    // A stepped note's release, due shortly, would land after the end.
+    if (_stepped[this] case (var timer, _, _)) timer.cancel();
+    _stepped[this] = null;
+    for (var n in <ChangeNotifier>[
+      studio3dOpen,
+      scoreStudio,
+      codeStudio,
+      dataStudio,
+      keysHeld,
+      playheadMoved,
+    ]) {
+      n.dispose();
+    }
     _heardWatch?.cancel();
     _previewDir?.delete(recursive: true).catchError((_) => _previewDir!);
     _disposed = true;
@@ -1844,4 +1857,25 @@ class CanvasController extends ChangeNotifier {
 /// _Chrome is the notifier behind [CanvasController.chrome].
 class _Chrome extends ChangeNotifier {
   void tell() => notifyListeners();
+}
+
+/// _Beat is a counter ticked to say something moved (a key, the playhead),
+/// which goes quiet once disposed: ticks come from timers, players and code
+/// runners that can land a moment after the canvas has shut, and there is
+/// nothing left then to tell.
+class _Beat extends ValueNotifier<int> {
+  _Beat() : super(0);
+
+  bool _gone = false;
+
+  @override
+  set value(int v) {
+    if (!_gone) super.value = v;
+  }
+
+  @override
+  void dispose() {
+    _gone = true;
+    super.dispose();
+  }
 }

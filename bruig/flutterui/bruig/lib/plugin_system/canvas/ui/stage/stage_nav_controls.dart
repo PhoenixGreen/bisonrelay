@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_gizmo.dart';
@@ -323,15 +324,8 @@ class _OrbitBallPainter extends CustomPainter {
       }
       canvas.drawCircle(a.at, named ? 8 : 6, Paint()..color = colour);
       if (named) {
-        var text = TextPainter(
-          text: TextSpan(
-              text: a.name,
-              style: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white)),
-          textDirection: TextDirection.ltr,
-        )..layout();
+        var text = labelPainter(a.name,
+            size: 9, weight: FontWeight.w700, colour: Colors.white);
         text.paint(canvas, a.at - Offset(text.width / 2, text.height / 2));
       }
     }

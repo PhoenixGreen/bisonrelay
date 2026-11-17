@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -1293,18 +1294,14 @@ class _TimelinePainter extends CustomPainter {
       canvas.drawRect(Rect.fromLTRB(from, 0, to, _rulerHeight),
           Paint()..color = colour.withValues(alpha: 0.22));
       canvas.drawRect(Rect.fromLTRB(from, 0, to, 3), Paint()..color = colour);
-      var name = TextPainter(
-        text: TextSpan(
-            text: section.name,
-            style: TextStyle(
-                fontSize: 10,
-                height: 1,
-                fontWeight: FontWeight.w600,
-                color: colors.onSurface)),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: "…",
-      )..layout(maxWidth: (to - from - 8).clamp(0.0, 400.0));
+      var name = labelPainter(section.name,
+          size: 10,
+          height: 1,
+          weight: FontWeight.w600,
+          colour: colors.onSurface,
+          maxLines: 1,
+          ellipsis: "…",
+          maxWidth: (to - from - 8).clamp(0.0, 400.0));
       name.paint(canvas, Offset(from + 4, 5));
     }
     var pxPerBar = xAt(perBar) - xAt(0);
@@ -1331,10 +1328,8 @@ class _TimelinePainter extends CustomPainter {
       var x = xAt(bar * perBar);
       if (bar % every == 0) {
         canvas.drawLine(Offset(x, 0), Offset(x, _rulerHeight), line);
-        var label = TextPainter(
-          text: TextSpan(text: "${bar + 1}", style: numbers),
-          textDirection: TextDirection.ltr,
-        )..layout();
+        var label = labelPainter("${bar + 1}",
+            size: 11, height: 1, colour: numbers.color!);
         label.paint(canvas, Offset(x + 4, _rulerHeight - label.height - 4));
       } else {
         canvas.drawLine(Offset(x, 0), Offset(x, 9), tick);
@@ -1389,10 +1384,8 @@ class _TimelinePainter extends CustomPainter {
         var x = xFor(f);
         if (run % major == 0) {
           canvas.drawLine(Offset(x, 0), Offset(x, _rulerHeight), line);
-          var label = TextPainter(
-            text: TextSpan(text: "${rulerNumber(f, origin)}", style: numbers),
-            textDirection: TextDirection.ltr,
-          )..layout();
+          var label = labelPainter("${rulerNumber(f, origin)}",
+              size: 11, height: 1, colour: numbers.color!);
           label.paint(canvas, Offset(x + 5, _rulerHeight - label.height - 4));
         } else if (medium != null && run % medium == 0) {
           canvas.drawLine(Offset(x, 0), Offset(x, 9), mid);
@@ -1474,15 +1467,13 @@ class _TimelinePainter extends CustomPainter {
       // Its label beside it, always, where it has one ("On the canvas" is
       // whether the canvas shows it: see MarkerNote).
       if (a.label.isNotEmpty) {
-        var text = TextPainter(
-          text: TextSpan(
-              text: a.label,
-              style: TextStyle(
-                  fontSize: 10, fontWeight: FontWeight.w600, color: colour)),
-          textDirection: TextDirection.ltr,
-          maxLines: 1,
-          ellipsis: "…",
-        )..layout(maxWidth: 140);
+        var text = labelPainter(a.label,
+            size: 10,
+            weight: FontWeight.w600,
+            colour: colour,
+            maxLines: 1,
+            ellipsis: "…",
+            maxWidth: 140);
         text.paint(canvas, Offset(x + _flagWidth + 3, 1));
       }
     }
@@ -1510,17 +1501,13 @@ class _TimelinePainter extends CustomPainter {
         ink,
       );
       if (name.isEmpty) continue;
-      var text = TextPainter(
-        text: TextSpan(
-            text: name,
-            style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: colors.primary)),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: "…",
-      )..layout(maxWidth: 120);
+      var text = labelPainter(name,
+          size: 10,
+          weight: FontWeight.w600,
+          colour: colors.primary,
+          maxLines: 1,
+          ellipsis: "…",
+          maxWidth: 120);
       text.paint(canvas, Offset(x + _flagWidth + 3, bottom - 12));
     }
   }

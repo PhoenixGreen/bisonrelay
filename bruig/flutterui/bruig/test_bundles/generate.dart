@@ -38,6 +38,8 @@ const alone = {
   // Needs a process where no look's shader has been loaded yet: once one
   // is, it stays, and an export that forgot to load it would still pass.
   "canvas_document_export_looks_test.dart",
+  // Turns Flutter's leak tracker on, which then stays on for the process.
+  "canvas_leaks_test.dart",
   // This guard, which reads the bundles themselves.
   "test_bundles_cover_test.dart",
 };

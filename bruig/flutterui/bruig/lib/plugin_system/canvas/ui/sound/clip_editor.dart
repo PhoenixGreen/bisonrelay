@@ -357,45 +357,79 @@ typedef _Sound = ({
 
 final Map<String, Future<_Sound?>> _soundsOf = {};
 
+/// _soundsKept is how many sounds are kept read, and _spectraKept how many
+/// spectrograms: a sound is its whole left and right (three minutes is
+/// about 60 MB), so every one the clip editor ever opened, kept for the
+/// rest of the session, added up. The oldest go; a spectrogram is not
+/// disposed, as the editor may still be showing it, and is freed with it.
+const int _soundsKept = 3, _spectraKept = 6;
+
+/// _keepRecent drops [map]'s oldest entries past [most], [also] with them.
+void _keepRecent(Map<String, Object?> map, int most,
+    [Map<String, Object?>? also]) {
+  while (map.length > most) {
+    var oldest = map.keys.first;
+    map.remove(oldest);
+    also?.remove(oldest);
+  }
+}
+
 const int _peakSlices = 4000;
 
 final Map<String, Future<ui.Image?>> _spectraOf = {};
 
-Future<ui.Image?> _spectrumOf(String assetId) =>
-    _spectraOf[assetId] ??= () async {
-      var audio = await CanvasController.clipAudio(assetId);
-      if (audio == null) {
-        unawaited(_spectraOf.remove(assetId));
-        return null;
+Future<ui.Image?> _spectrumOf(String assetId) {
+  // Asked for again: to the back of the queue, so the oldest go first.
+  if (_spectraOf.remove(assetId) case var kept?) {
+    return _spectraOf[assetId] = kept;
+  }
+  var making = _spectraOf[assetId] = () async {
+    var audio = await CanvasController.clipAudio(assetId);
+    if (audio == null) {
+      unawaited(_spectraOf.remove(assetId));
+      return null;
+    }
+    var (l, r) = audio;
+    var made = await Isolate.run(() {
+      var mono = Float32List(l.length);
+      for (var i = 0; i < l.length; i++) {
+        mono[i] = (l[i] + r[i]) / 2;
       }
-      var (l, r) = audio;
-      var made = await Isolate.run(() {
-        var mono = Float32List(l.length);
-        for (var i = 0; i < l.length; i++) {
-          mono[i] = (l[i] + r[i]) / 2;
-        }
-        return spectrogramOf(mono);
-      });
-      var done = Completer<ui.Image>();
-      ui.decodeImageFromPixels(made.rgba, made.columns, made.rows,
-          ui.PixelFormat.rgba8888, done.complete);
-      return _spectraMade[assetId] = await done.future;
-    }();
+      return spectrogramOf(mono);
+    });
+    var done = Completer<ui.Image>();
+    ui.decodeImageFromPixels(made.rgba, made.columns, made.rows,
+        ui.PixelFormat.rgba8888, done.complete);
+    var image = await done.future;
+    // Not kept if it was let go of while it was made.
+    if (_spectraOf.containsKey(assetId)) _spectraMade[assetId] = image;
+    return image;
+  }();
+  _keepRecent(_spectraOf, _spectraKept, _spectraMade);
+  return making;
+}
 
 final Map<String, ui.Image> _spectraMade = {};
 
-Future<_Sound?> _soundOf(String assetId) => _soundsOf[assetId] ??= () async {
-      var audio = await CanvasController.clipAudio(assetId);
-      // Not kept, unread: read again next time.
-      if (audio == null) {
-        unawaited(_soundsOf.remove(assetId));
-        return null;
-      }
-      var (l, r) = audio;
-      // Off the UI isolate: a whole song's peaks and hits there hold up the
-      // mixer's sound.
-      return Isolate.run(() => _drawingOf(l, r));
-    }();
+Future<_Sound?> _soundOf(String assetId) {
+  if (_soundsOf.remove(assetId) case var kept?) {
+    return _soundsOf[assetId] = kept;
+  }
+  var reading = _soundsOf[assetId] = () async {
+    var audio = await CanvasController.clipAudio(assetId);
+    // Not kept, unread: read again next time.
+    if (audio == null) {
+      unawaited(_soundsOf.remove(assetId));
+      return null;
+    }
+    var (l, r) = audio;
+    // Off the UI isolate: a whole song's peaks and hits there hold up the
+    // mixer's sound.
+    return Isolate.run(() => _drawingOf(l, r));
+  }();
+  _keepRecent(_soundsOf, _soundsKept);
+  return reading;
+}
 
 _Sound _drawingOf(Float32List l, Float32List r) {
   var n = l.length;

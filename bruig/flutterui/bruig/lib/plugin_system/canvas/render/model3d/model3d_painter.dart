@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/render/model3d/model_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
@@ -88,15 +89,11 @@ void _standIn(ui.Canvas canvas, Rect box, Object3dElement e,
   ]) {
     canvas.drawLine(a, b, ink);
   }
-  var text = TextPainter(
-    text: TextSpan(
-        text: says,
-        style: TextStyle(
-            fontSize: math.max(9, box.shortestSide / 16),
-            color: const Color(0xCC8A93A6))),
-    textAlign: TextAlign.center,
-    textDirection: TextDirection.ltr,
-  )..layout(maxWidth: box.width);
+  var text = labelPainter(says,
+      size: math.max(9, box.shortestSide / 16),
+      colour: const Color(0xCC8A93A6),
+      align: TextAlign.center,
+      maxWidth: box.width);
   text.paint(canvas,
       Offset(box.center.dx - text.width / 2, front.bottom + s * 0.08));
 }

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
@@ -846,14 +847,12 @@ class _EmptyLanePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
           ..color = lit ? colors.primary : colors.outlineVariant);
-    var text = TextPainter(
-      text: TextSpan(
-          text: label,
-          style: TextStyle(fontSize: 10.5, color: colors.onSurfaceVariant)),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: "…",
-    )..layout(maxWidth: math.max(0, size.width - 12));
+    var text = labelPainter(label,
+        size: 10.5,
+        colour: colors.onSurfaceVariant,
+        maxLines: 1,
+        ellipsis: "…",
+        maxWidth: math.max(0, size.width - 12));
     text.paint(canvas, Offset(6, (size.height - text.height) / 2));
   }
 

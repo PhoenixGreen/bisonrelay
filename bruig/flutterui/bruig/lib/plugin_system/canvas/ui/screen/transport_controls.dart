@@ -25,7 +25,9 @@ double fitWidth(BuildContext context, String text, TextStyle style) {
     textScaler: MediaQuery.textScalerOf(context),
     maxLines: 1,
   )..layout();
-  return painter.width.ceilToDouble();
+  var width = painter.width.ceilToDouble();
+  painter.dispose();
+  return width;
 }
 
 /// TransportGroup is one of the bar's boxes: a few controls about one thing.

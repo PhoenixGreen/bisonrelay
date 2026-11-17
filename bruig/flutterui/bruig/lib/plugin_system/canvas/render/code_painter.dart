@@ -842,22 +842,34 @@ void _paintPane(Canvas canvas, CodeElement e, CodeColours c, CodePaneBox pane,
   canvas.restore();
 }
 
-// _bodies keeps each Code panel's laid-out file text, by the element it was
-// laid out for -- elements never change, so an edited panel is a new one and
+// _bodies keeps Code panels' laid-out file text, by the element it was laid
+// out for -- elements never change, so an edited panel is a new one and
 // misses -- then by the file, how much of it is typed, its size and its
 // colours (a theme's const set). Laid out afresh every frame, a long file was
-// most of a panel's drawing. A few are kept for each, as a panel typing out
-// makes a new one a frame; the rest go with the element.
+// most of a panel's drawing. One map for every panel, oldest out (disposed
+// once the paint is over), so a replaced panel's text is let go of properly.
 final _bodies =
-    Expando<Map<(CodeFile, int, double, CodeColours), TextPainter>>();
+    <(CodeElement, CodeFile, int, double, CodeColours), TextPainter>{};
+const _bodyCap = 48;
+
+/// clearCodeLayouts lets go of every Code panel's text kept: see
+/// clearRenderCaches.
+void clearCodeLayouts() {
+  for (var p in [..._bodies.values, ..._gutters.values]) {
+    p.dispose();
+  }
+  _bodies.clear();
+  _gutters.clear();
+}
 
 TextPainter _body(
     CodeElement e, CodeFile f, int typed, double fs, CodeColours c) {
-  var kept = _bodies[e] ??= {};
-  var key = (f, typed, fs, c);
-  if (kept[key] case var hit?) return hit;
-  if (kept.length >= 8) kept.remove(kept.keys.first);
-  return kept[key] = TextPainter(
+  var key = (e, f, typed, fs, c);
+  if (_bodies[key] case var hit?) return hit;
+  if (_bodies.length >= _bodyCap) {
+    retirePainter(_bodies.remove(_bodies.keys.first)!);
+  }
+  return _bodies[key] = TextPainter(
       text: codeSpan(e, f, f.text, typed, c),
       strutStyle: codeStrut(fs),
       textDirection: TextDirection.ltr)
@@ -872,7 +884,9 @@ TextPainter _gutter(
     int first, int last, double fs, Color colour, double width) {
   var key = (first, last, fs, colour.toARGB32(), width);
   if (_gutters[key] case var hit?) return hit;
-  if (_gutters.length >= 64) _gutters.remove(_gutters.keys.first);
+  if (_gutters.length >= 64) {
+    retirePainter(_gutters.remove(_gutters.keys.first)!);
+  }
   return _gutters[key] = TextPainter(
       text: TextSpan(
           text: [for (var i = first; i < last; i++) "${i + 1}"].join("\n"),

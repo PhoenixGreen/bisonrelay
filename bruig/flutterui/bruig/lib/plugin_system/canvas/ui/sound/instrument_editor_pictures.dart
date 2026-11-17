@@ -254,12 +254,16 @@ class ZoneMap {
   const ZoneMap(this.cells, this.layers, this.ranges);
 }
 
-final Map<(SoundFont, int, int), ZoneMap> _zoneMaps = {};
+/// _zoneMaps are each sound font's zone maps, by bank and program: kept
+/// with the font, so one no longer used is let go of with its maps rather
+/// than held for good by a key here.
+final _zoneMaps = Expando<Map<(int, int), ZoneMap>>("zoneMaps");
 
 /// zoneMap is [font]'s zones for the sound at [bank] and [program], cached.
 ZoneMap? zoneMap(SoundFont font, int bank, int program) {
-  var key = (font, bank, program);
-  if (_zoneMaps[key] case var m?) return m;
+  var maps = _zoneMaps[font] ??= {};
+  var key = (bank, program);
+  if (maps[key] case var m?) return m;
   var preset = font.preset(bank, program);
   if (preset == null) return null;
   var groups = <String, int>{};
@@ -289,7 +293,7 @@ ZoneMap? zoneMap(SoundFont font, int bank, int program) {
     if (g >= 0 && g != last) ranges++;
     last = g;
   }
-  return _zoneMaps[key] = ZoneMap(cells, layers, math.max(1, ranges));
+  return maps[key] = ZoneMap(cells, layers, math.max(1, ranges));
 }
 
 /// _ZonesPainter draws a ZoneMap: keys along, velocity up, each sample
