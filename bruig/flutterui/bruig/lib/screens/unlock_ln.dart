@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:io';
 
+import 'package:bruig/components/caret_keys.dart';
 import 'package:bruig/components/copyable.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/recent_log.dart';
@@ -80,6 +81,8 @@ class _UnlockLNAppState extends State<UnlockLNApp> with WindowListener {
     return Consumer<ThemeNotifier>(
         builder: (context, theme, child) => MaterialApp(
               title: "Connect to Bison Relay",
+              // Up and Down in centred fields: see caret_keys.dart.
+              actions: {...WidgetsApp.defaultActions, ...caretKeyActions},
               navigatorKey: navkey,
               initialRoute: widget.initialRoute,
               theme: theme.theme,

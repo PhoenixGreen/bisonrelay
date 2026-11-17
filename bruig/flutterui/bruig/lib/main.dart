@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:developer' as developer;
 
+import 'package:bruig/components/caret_keys.dart';
 import 'package:bruig/components/nav_bar_width.dart';
 import 'package:bruig/components/app_frame.dart';
 import 'package:bruig/components/md_elements.dart';
@@ -691,6 +692,8 @@ class _AppState extends State<App> with WindowListener {
         builder: (context, theme, _) => MaterialApp(
               debugShowCheckedModeBanner: false,
               title: 'Bison Relay',
+              // Up and Down in centred fields: see caret_keys.dart.
+              actions: {...WidgetsApp.defaultActions, ...caretKeyActions},
               theme: theme.theme,
               navigatorKey: navkey,
               initialRoute: '/',

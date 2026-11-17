@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bruig/components/caret_keys.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/models/log.dart';
 import 'package:bruig/models/newconfig.dart';
@@ -54,6 +55,8 @@ class _NewConfigScreenState extends State<NewConfigScreen> {
         builder: (context, newconf, snackBar, theme, child) {
       return MaterialApp(
         title: "Setup New Config",
+        // Up and Down in centred fields: see caret_keys.dart.
+        actions: {...WidgetsApp.defaultActions, ...caretKeyActions},
         theme: theme.theme,
         initialRoute: "/newconf/initializing",
         routes: {
