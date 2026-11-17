@@ -221,9 +221,12 @@ class CanvasDockState extends State<CanvasDock> {
     return true;
   }
 
+  /// build lays the panels out again on [CanvasController.chrome] only:
+  /// each panel listens for itself, so a frame of play redraws what moves
+  /// with it and not the dock round it.
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: controller,
+        listenable: controller.chrome,
         builder: (context, _) {
           var theme = ThemeNotifier.of(context);
           var rows = _rows();

@@ -477,6 +477,29 @@ class CanvasController extends ChangeNotifier {
   /// _playheadOnly is set only while notifyingPlayhead runs.
   bool _playheadOnly = false;
 
+  /// chrome tells of every change but the two that come many times a
+  /// second: the playhead stepping on in play, and a gesture's edits as it
+  /// goes (a drag, typing on the canvas). What shows neither -- the band's
+  /// buttons, the play bar, the page's layout -- listens here rather than to
+  /// the controller, so a drag redraws the canvas and not the buttons round
+  /// it. Both end in an ordinary notification (endInteraction, pause), and
+  /// chrome catches up then.
+  Listenable get chrome => _chrome;
+  final _Chrome _chrome = _Chrome();
+
+  /// _rapid is set only while one of those two is being told of.
+  bool _rapid = false;
+
+  /// _notifyRapid tells listeners of a change [chrome] passes over.
+  void _notifyRapid({bool view = false}) {
+    _rapid = true;
+    try {
+      view ? _notifyView() : notifyListeners();
+    } finally {
+      _rapid = false;
+    }
+  }
+
   @override
   void notifyListeners() {
     if (_disposed) return;
@@ -519,6 +542,7 @@ class CanvasController extends ChangeNotifier {
     }
     if (!_viewOnly) _revision++;
     super.notifyListeners();
+    if (!_rapid) _chrome.tell();
   }
 
   /// arrived redraws the settings once something they draw has loaded.
@@ -1700,7 +1724,8 @@ class CanvasController extends ChangeNotifier {
     _scheduleParts();
     if (!transient && _interaction == null) _followEdits(was);
 
-    notifyListeners();
+    // A step of a gesture: endInteraction tells chrome when it is done.
+    transient && _interaction != null ? _notifyRapid() : notifyListeners();
   }
 
   /// _imagesGrown is [next] with every picture changed since [was] grown to
@@ -4207,6 +4232,7 @@ class CanvasController extends ChangeNotifier {
     _heardWatch?.cancel();
     _previewDir?.delete(recursive: true).catchError((_) => _previewDir!);
     _disposed = true;
+    _chrome.dispose();
     _partTimer?.cancel();
     _synthTarget?.cancel();
     _synthTick?.cancel();
@@ -4602,4 +4628,9 @@ class RollContent {
   final bool clip;
   const RollContent(this.notes, this.controls, this.beats,
       {required this.name, required this.clip});
+}
+
+/// _Chrome is the notifier behind [CanvasController.chrome].
+class _Chrome extends ChangeNotifier {
+  void tell() => notifyListeners();
 }

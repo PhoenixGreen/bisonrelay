@@ -71,6 +71,12 @@ class CanvasScreen extends StatefulWidget {
 
   const CanvasScreen({super.key});
 
+  /// framedForTest, where set, puts each page in place of the app's frame
+  /// (the chat side menu over it), which needs the chat client a test of
+  /// the whole editor does not have.
+  @visibleForTesting
+  static Widget Function(Widget page)? framedForTest;
+
   @override
   State<CanvasScreen> createState() => _CanvasScreenState();
 }
@@ -535,12 +541,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   ? _codeStudioPage(context, code)
                   : _withoutCodeStudio(context)));
 
+  /// _framed is [page] in the app's frame.
+  Widget _framed(BuildContext context, Widget page) =>
+      CanvasScreen.framedForTest?.call(page) ??
+      ScreenWithChatSideMenu(Provider.of<ClientModel>(context), page);
+
   /// _dataStudioPage is the Data Studio in place of the canvas.
   Widget _dataStudioPage(BuildContext context, String sheet) {
-    var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
-    return ScreenWithChatSideMenu(
-        client,
+    return _framed(
+        context,
         contentAreaFrame(
             theme,
             DataStudio(
@@ -562,10 +572,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   /// _codeStudioPage is the Code Studio in place of the canvas.
   Widget _codeStudioPage(BuildContext context, String code) {
-    var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
-    return ScreenWithChatSideMenu(
-        client,
+    return _framed(
+        context,
         contentAreaFrame(
             theme,
             CodeStudio(
@@ -576,10 +585,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   /// _scoreStudioPage is the Score Studio in place of the canvas.
   Widget _scoreStudioPage(BuildContext context, String score) {
-    var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
-    return ScreenWithChatSideMenu(
-        client,
+    return _framed(
+        context,
         contentAreaFrame(
             theme,
             ScoreStudio(
@@ -590,10 +598,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   /// _studio3dPage is the Character Studio in place of the canvas.
   Widget _studio3dPage(BuildContext context) {
-    var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
-    return ScreenWithChatSideMenu(
-        client,
+    return _framed(
+        context,
         contentAreaFrame(
             theme,
             CharacterStudio3D(
@@ -603,7 +610,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   Widget _canvasPage(BuildContext context) {
-    var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
 
     // Space plays and stops from anywhere on this page: see CanvasSpaceBar.
@@ -626,18 +632,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // content's own, except on a window too narrow for one, where it goes
     // the way a full-height one does.
     var narrow = MediaQuery.sizeOf(context).width < kSidebarCollapseWidth;
-    if (!_sidebarVisible) return ScreenWithChatSideMenu(client, content);
+    if (!_sidebarVisible) return _framed(context, content);
     if (_sidebars.mode == SidebarMode.above && !narrow && _aboveAllowed) {
-      return ScreenWithChatSideMenu(
-          client,
+      return _framed(
+          context,
           CanvasSpaceBar(
               controller: _controller,
               child: contentAreaFrame(theme,
                   _content(theme, beside: _besideSidebar(theme, sidebar)))));
     }
 
-    return ScreenWithChatSideMenu(
-      client,
+    return _framed(
+      context,
       SecondarySideMenuLayout(
         storageKey: "canvas",
         list: sidebar,
@@ -729,8 +735,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
               ),
       );
 
+  /// _content is the page under the sidebar. It is laid out again only on
+  /// [CanvasController.chrome]: what is in it listens for itself, so a drag
+  /// or a frame of play does not build the whole page again.
   Widget _content(ThemeNotifier theme, {Widget? beside}) => ListenableBuilder(
-        listenable: _controller,
+        listenable: _controller.chrome,
         builder: (context, _) {
           var dock = _timelineShown
               ? CanvasDock(

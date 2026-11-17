@@ -216,6 +216,12 @@ class CanvasTimelineState extends State<CanvasTimeline> {
 
   void _onChanged() {
     if (!mounted) return;
+    // A frame of play: the ruler and the line follow playheadMoved, so the
+    // rows are built again only when the view must move to keep up.
+    if (controller.notifyingPlayhead && !_followMoves()) {
+      _lastHead = _origin + controller.frame;
+      return;
+    }
     if (_zoomSeen < 0) _zoomSeen = controller.timelineZoomAsked;
     if (controller.timelineZoomAsked != _zoomSeen) {
       _zoomSeen = controller.timelineZoomAsked;
@@ -223,6 +229,19 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       factor == 0 ? _setView(TimelineView.whole(_total)) : _zoomBy(factor);
     }
     setState(() {});
+  }
+
+  /// _followMoves is whether the view moves on to keep up with the playhead
+  /// in play: see build, which moves it.
+  bool _followMoves() {
+    var was = _view;
+    if (was == null || !controller.playing || !controller.followPlayhead) {
+      return false;
+    }
+    var frames = _total;
+    var view = was.fitted(frames);
+    return view != was ||
+        view.following(_origin + controller.frame, frames) != view;
   }
 
   /// _frameAt is the scene's frame at horizontal position [x].
@@ -428,8 +447,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   Widget _build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var document = controller.document;
-    var actionHere =
-        document.actions.where((a) => a.frame == controller.frame).firstOrNull;
 
     // A view put back (the canvas opened as it was left) taken up. The
     // frames on screen are all of them or the stretch zoomed to, to the end
@@ -475,7 +492,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               child: TimelineColumns(
                 slotsWidth: _slotsW,
                 headerWidth: controller.headerWidth,
-                child: _body(context, theme, document, actionHere),
+                child: _body(context, theme, document),
               ),
             );
           },
@@ -820,8 +837,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// taking it from the channels. See CanvasSceneStrip.
   bool get _showScenes => _runs && !_collapsed;
 
-  Widget _body(BuildContext context, ThemeNotifier theme,
-      CanvasDocument document, TimelineAction? actionHere) {
+  Widget _body(
+      BuildContext context, ThemeNotifier theme, CanvasDocument document) {
     // The play bar, where it is drawn here: over the timeline, or under it.
     var bar = CanvasPlayBar(controller: controller);
     // Everything under the bar: the strip, the channels and the scroll bar.
@@ -911,6 +928,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                       key: const ValueKey("keyframeStrip"),
                       size: Size(constraints.maxWidth, constraints.maxHeight),
                       painter: _TimelinePainter(
+                        repaint: controller.playheadMoved,
+                        playheadNow: () => controller.frame,
                         view: _sceneView,
                         // Ticks along the whole of what is laid out (the
                         // run, where the timeline runs), counted from the
@@ -1038,10 +1057,12 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               top: _barAbove ? _transportHeight + _stripGap : 0,
               bottom: (_barBelow ? _transportHeight + _stripGap : 0) +
                   _scrollbarHeight,
-              child: _PlayheadLine(
-                  left: _leftW,
-                  x: (w) => _xFor(controller.frame, w),
-                  colour: theme.colors.primary),
+              child: ListenableBuilder(
+                  listenable: controller.playheadMoved,
+                  builder: (context, _) => _PlayheadLine(
+                      left: _leftW,
+                      x: (w) => _xFor(controller.frame, w),
+                      colour: theme.colors.primary)),
             ),
           ]);
         }
@@ -1232,7 +1253,14 @@ class _TimelinePainter extends CustomPainter {
   final (int, int)? brace;
   final bool looping;
 
+  /// playheadNow is where the playhead is as it is painted: in play the
+  /// timeline is not built again for each frame, and [frame] is where it was
+  /// when it last was, kept so a jump made since repaints.
+  final int Function() playheadNow;
+
   const _TimelinePainter({
+    super.repaint,
+    required this.playheadNow,
     this.bars,
     this.brace,
     this.looping = false,
@@ -1405,7 +1433,7 @@ class _TimelinePainter extends CustomPainter {
     _paintMarkers(canvas);
     _paintCues(canvas);
     // The playhead last, over everything, so it can be found at a glance.
-    var x = xFor(frame);
+    var x = xFor(playheadNow());
     canvas.drawLine(
         Offset(x, 0),
         Offset(x, size.height),

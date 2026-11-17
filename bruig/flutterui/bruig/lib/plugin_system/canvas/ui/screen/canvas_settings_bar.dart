@@ -79,15 +79,17 @@ class CanvasSettingsBar extends StatefulWidget {
 class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   CanvasController get controller => widget.controller;
 
+  // Not the controller itself: nothing on the band moves with a drag or a
+  // frame of play (see CanvasController.chrome).
   @override
   void initState() {
     super.initState();
-    controller.addListener(_onChanged);
+    controller.chrome.addListener(_onChanged);
   }
 
   @override
   void dispose() {
-    controller.removeListener(_onChanged);
+    controller.chrome.removeListener(_onChanged);
     super.dispose();
   }
 

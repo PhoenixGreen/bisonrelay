@@ -138,7 +138,10 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     super.dispose();
   }
 
+  /// _changed builds the bar again, except for a frame of play: only the
+  /// playhead's readout and marker follow that, on playheadMoved.
   void _changed() {
+    if (controller.notifyingPlayhead) return;
     if (mounted) setState(() {});
   }
 
@@ -173,25 +176,53 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var document = controller.document;
-    var actionHere =
-        document.actions.where((a) => a.frame == controller.frame).firstOrNull;
     return Focus(
       focusNode: _focus,
       onKeyEvent: (node, event) =>
           transportKey(controller, event) ?? KeyEventResult.ignored,
       child: SizedBox(
         height: playBarHeight,
-        child: _bar(theme, document, actionHere),
+        child: _bar(theme, document),
       ),
+    );
+  }
+
+  /// _markerButton is the bar's Markers button, naming the marker under the
+  /// playhead if there is one.
+  Widget _markerButton(CanvasDocument document, MenuController menu) {
+    var actionHere =
+        document.actions.where((a) => a.frame == controller.frame).firstOrNull;
+    return TransportButton(
+      key: const ValueKey("markerMenu"),
+      width: null,
+      tooltip: "",
+      on: actionHere != null || menu.isOpen,
+      onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(actionHere == null ? Icons.outlined_flag : Icons.flag,
+            size: 16,
+            color: actionHere == null ? null : markerColour(actionHere.kind)),
+        if (!_compact) ...[
+          const SizedBox(width: 5),
+          Text(
+              actionHere == null
+                  ? "Markers"
+                  : actionHere.label.isEmpty
+                      ? actionHere.kind.label
+                      : actionHere.label,
+              style: const TextStyle(fontWeight: FontWeight.w500)),
+        ],
+        const Icon(Icons.expand_more, size: 15),
+      ]),
     );
   }
 
   /// _bar is the play bar: transport, playhead, what is lit and the panels'
   /// switcher, the rest behind the ⋯ menu (transport_controls.dart). Sound
   /// has its tempo, metre and quantise here and counts in bars; scenes count
-  /// frames.
-  Widget _bar(ThemeNotifier theme, CanvasDocument document,
-      TimelineAction? actionHere) {
+  /// frames. The playhead's readout and marker follow playheadMoved, since
+  /// the bar is not built again for each frame of play.
+  Widget _bar(ThemeNotifier theme, CanvasDocument document) {
     var sound = document.kind.isAudio;
     var audio = document.audio;
     var rate = math.max(1, document.frameRate);
@@ -495,13 +526,16 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
       ],
       builder: (context, menu, _) =>
           Row(mainAxisSize: MainAxisSize.min, children: [
-        TransportPosition(
-          audio: audio,
-          bars: sound,
-          frame: controller.frame,
-          frames: document.frames,
-          rate: rate,
-          onGo: (f) => controller.stepFrame(f - controller.frame),
+        ListenableBuilder(
+          listenable: controller.playheadMoved,
+          builder: (context, _) => TransportPosition(
+            audio: audio,
+            bars: sound,
+            frame: controller.frame,
+            frames: document.frames,
+            rate: rate,
+            onGo: (f) => controller.stepFrame(f - controller.frame),
+          ),
         ),
         TransportButton(
           key: const ValueKey("timingMenu"),
@@ -520,29 +554,9 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: MarkerPanel(controller: controller)),
       ],
-      builder: (context, menu, _) => TransportButton(
-        key: const ValueKey("markerMenu"),
-        width: null,
-        tooltip: "",
-        on: actionHere != null || menu.isOpen,
-        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(actionHere == null ? Icons.outlined_flag : Icons.flag,
-              size: 16,
-              color: actionHere == null ? null : markerColour(actionHere.kind)),
-          if (!_compact) ...[
-            const SizedBox(width: 5),
-            Text(
-                actionHere == null
-                    ? "Markers"
-                    : actionHere.label.isEmpty
-                        ? actionHere.kind.label
-                        : actionHere.label,
-                style: const TextStyle(fontWeight: FontWeight.w500)),
-          ],
-          const Icon(Icons.expand_more, size: 15),
-        ]),
-      ),
+      builder: (context, menu, _) => ListenableBuilder(
+          listenable: controller.playheadMoved,
+          builder: (context, _) => _markerButton(document, menu)),
     );
     // What is turned on in the ⋯ menu, lit on the bar.
     var options = <(String, IconData, String, bool, VoidCallback)>[

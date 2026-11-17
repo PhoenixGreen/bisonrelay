@@ -177,7 +177,7 @@ extension CanvasPlayback on CanvasController {
         var at = (_sessionNow * rate).floor();
         if (at != _motionPainted) {
           _motionPainted = at;
-          _notifyView();
+          _notifyRapid(view: true);
         }
       }
       // The clips' envelopes of their channels' settings, moving.
@@ -839,7 +839,7 @@ extension CanvasPlayback on CanvasController {
     } else {
       _playheadOnly = true;
       try {
-        _notifyView();
+        _notifyRapid(view: true);
       } finally {
         _playheadOnly = false;
       }
