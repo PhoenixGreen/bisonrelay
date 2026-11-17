@@ -267,7 +267,6 @@ extension StagePainterHandles on StagePainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.2
             ..color = colour);
-      if (!filled) return;
     }
 
     dot(grips.inAt, blue, grips.receiving);
