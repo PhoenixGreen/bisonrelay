@@ -213,11 +213,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   /// _pushScale lays a Push's pads out in the played channel's scale.
   void _pushScale() {
-    var (root, steps) = _controller.liveScale;
+    // Heard on every change to the canvas: nothing to work out without one.
     var push = MidiInput.shared.push;
-    push?.setScale(root, steps);
+    if (push == null) return;
+    var (root, steps) = _controller.liveScale;
+    push.setScale(root, steps);
     // And, in Session mode, the slots' pads as they launch and stop.
-    if (push != null && push.session) push.refresh();
+    if (push.session) push.refresh();
   }
 
   /// _keepShown saves which timeline rows show; unchanged values are skipped.

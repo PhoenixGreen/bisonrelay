@@ -106,12 +106,14 @@ CanvasDocument castSynced(CanvasDocument was, CanvasDocument next) {
     return next;
   }
   var members = {for (var m in next.cast) m.id: m};
-  var before = {for (var e in was.elements) e.id: e};
   var changed = <String, CanvasElement>{};
   for (var e in next.elements) {
+    if (e.base.cast.isEmpty) continue;
     var m = members[e.base.cast];
     if (m == null || changed.containsKey(m.id)) continue;
-    if (identical(before[e.id], e) || sameShared(m, e)) continue;
+    // From the old document's own index (kept per list), not a map of it
+    // built on every edit.
+    if (identical(was.elementById(e.id), e) || sameShared(m, e)) continue;
     changed[m.id] = castLinked(e, m);
   }
   if (changed.isEmpty) return next;
