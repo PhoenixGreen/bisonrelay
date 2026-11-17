@@ -2894,6 +2894,12 @@ class CanvasController extends ChangeNotifier {
   late final int? Function(VectorElement) _soloHook = _soloOf;
   late final SheetMarks Function(SheetElement) _sheetMarksHook = _sheetMarks;
 
+  /// _gameKeyHook and _waitKeyHook are the keyboard handlers a game and a
+  /// waiting stop put up, made once for the same reason: HardwareKeyboard
+  /// takes a handler down only when handed the one it was given.
+  late final bool Function(KeyEvent) _gameKeyHook = _gameKey;
+  late final bool Function(KeyEvent) _waitKeyHook = _waitKey;
+
   /// _vectors is the state vectors.dart keeps: see _VectorState.
   final _VectorState _vectors = _VectorState();
 
@@ -3906,7 +3912,7 @@ class CanvasController extends ChangeNotifier {
       if (_gamePaused) {
         if (audio.engine case DartAudioEngine e) e.held = false;
       }
-      HardwareKeyboard.instance.removeHandler(_gameKey);
+      HardwareKeyboard.instance.removeHandler(_gameKeyHook);
       _gameTimer?.cancel();
       _game?.dispose();
       _game = null;

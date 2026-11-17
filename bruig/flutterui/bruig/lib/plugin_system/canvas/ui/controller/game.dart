@@ -113,7 +113,7 @@ extension CanvasGame on CanvasController {
         ..reset()
         ..start();
       unawaited(run.listen());
-      HardwareKeyboard.instance.addHandler(_gameKey);
+      HardwareKeyboard.instance.addHandler(_gameKeyHook);
       _gameState.watch
         ..reset()
         ..start();
@@ -146,7 +146,7 @@ extension CanvasGame on CanvasController {
       if (_gamePaused) {
         if (audio.engine case DartAudioEngine e) e.held = false;
       }
-      HardwareKeyboard.instance.removeHandler(_gameKey);
+      HardwareKeyboard.instance.removeHandler(_gameKeyHook);
       _gameTimer?.cancel();
       _gameTimer = null;
       _game?.dispose();
@@ -259,7 +259,7 @@ extension CanvasGame on CanvasController {
   void _waitForAction(String id) {
     _endWait();
     _gameState.waitingFor = id;
-    HardwareKeyboard.instance.addHandler(_waitKey);
+    HardwareKeyboard.instance.addHandler(_waitKeyHook);
     var input = GameInput();
     try {
       _gameState.waitPads = Gamepads.normalizedEvents.listen((e) {
@@ -299,7 +299,7 @@ extension CanvasGame on CanvasController {
   void _endWait() {
     if (_gameState.waitingFor == null) return;
     _gameState.waitingFor = null;
-    HardwareKeyboard.instance.removeHandler(_waitKey);
+    HardwareKeyboard.instance.removeHandler(_waitKeyHook);
     unawaited(_gameState.waitPads?.cancel());
     _gameState.waitPads = null;
   }
