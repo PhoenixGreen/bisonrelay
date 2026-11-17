@@ -73,7 +73,7 @@ Map<String, dynamic> written(CanvasElement e) =>
     jsonDecode(jsonEncode(e.toJson())) as Map<String, dynamic>;
 
 void main() {
-  for (var (name, element) in elementSamples()) {
+  for (var (name, element) in [...elementSamples(), ...filledSamples()]) {
     group(name, () {
       test("reads back as it was written", () {
         var json = written(element);

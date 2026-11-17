@@ -58,6 +58,9 @@ void main() {
       // Each synth module's own panel: its knobs and choices differ by kind.
       for (var (name, e) in elementSamples())
         if (name.startsWith("Synth module: ")) (name, e),
+      // As used, not as added: a dozen long-named players, columns, series
+      // and files, where a row per item is what overruns.
+      ...filledSamples(),
       for (var t in ChartType.values.where((t) => t.isInfographic))
         (
           "Chart: ${t.label}",
