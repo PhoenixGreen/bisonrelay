@@ -166,7 +166,7 @@ class CodeFile {
     return CodeFile(
         id: id,
         name: jsonString(j["name"], "file.txt"),
-        text: jsonString(j["text"], ""),
+        text: jsonText(j["text"], ""),
         colour: colorFromJson(j["colour"], codeFileColours.first));
   }
 }

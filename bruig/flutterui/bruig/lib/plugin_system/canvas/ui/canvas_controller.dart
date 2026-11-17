@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
 import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
@@ -394,6 +395,8 @@ class CanvasController extends ChangeNotifier {
     sheetPlaying = () => playing;
     // The synth modules on the stage: their keys held, their time.
     synthShowOf = synthShowFor;
+    // A task card's pattern counted off the UI isolate: drawn again.
+    PatternCounts.counted.addListener(_patternCounted);
     metronomeShowOf = metronomeShowFor;
     codeShowOf = codeShowFor;
     codeRunShowOf = codeRunShowFor;
@@ -1764,6 +1767,8 @@ class CanvasController extends ChangeNotifier {
 
   /// _glideBeat passes chart_play's beat to the stage, as keysHeld.
   void _glideBeat() => keysHeld.value++;
+
+  void _patternCounted() => notifyListeners();
 
   void apply(CanvasDocument next, {bool transient = false}) {
     _endPreview();
@@ -3440,6 +3445,11 @@ class CanvasController extends ChangeNotifier {
   /// _codeRanNow are the Run panels run by hand since the playhead last
   /// moved: their runs shown now, whatever the scene's clock says.
   final Set<String> _codeRanNow = {};
+
+  /// _codeRunHere are the Run panels run on this machine since the canvas
+  /// was opened. Only these are opened live (see liveCode): a received
+  /// canvas's run, kept with it, is a picture until Run is pressed here.
+  final Set<String> _codeRunHere = {};
   final Map<String, Map<int, double>> _codeScroll = {};
 
   /// _codeRuns are the Run panels running now, by id, and what each has
@@ -4467,6 +4477,7 @@ class CanvasController extends ChangeNotifier {
 
   @override
   void dispose() {
+    PatternCounts.counted.removeListener(_patternCounted);
     _endWait();
     chartGlideBeat.removeListener(_glideBeat);
     chartGlides.clear();

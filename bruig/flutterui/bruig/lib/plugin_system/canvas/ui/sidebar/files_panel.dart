@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:async';
@@ -195,13 +196,14 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       dialogTitle: "Open a canvas",
       // Not filtered to the extension: a canvas that has been through a
       // chat or a mail client often arrives renamed.
-      withData: true,
     );
     var file = chosen?.files.firstOrNull;
-    var bytes = file?.bytes;
-    if (bytes == null) return;
+    var at = file?.path;
+    if (at == null) return;
 
-    var bundle = await unpackCanvas(bytes);
+    // Read and taken apart off the UI isolate, its size checked first, as a
+    // canvas received in a chat is: a big or crafted file froze the app.
+    var bundle = await unpackCanvasFile(File(at));
     if (!mounted) return;
     if (bundle == null) {
       snackbar.error("That file is not a canvas.");

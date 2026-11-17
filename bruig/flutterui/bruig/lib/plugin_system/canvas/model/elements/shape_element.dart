@@ -397,7 +397,7 @@ class ShapeElement extends CanvasElement {
           padB: json["padB"] == null ? null : jsonDouble(json["padB"], 0),
           points: jsonInt(json["points"], 5),
           innerRatio: jsonDouble(json["inner"], 0.42),
-          text: jsonString(json["text"], ""),
+          text: jsonText(json["text"], ""),
           textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
               const TextSpec(fontSize: 24, weight: 700)),
           bubble: jsonSpec(json["bubble"], SpeechBubbleSpec.fromJson,

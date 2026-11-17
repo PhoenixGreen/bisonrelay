@@ -509,6 +509,9 @@ class CanvasLibrary {
           await CanvasMedia.sweep(MediaKind.audio, keep) +
           await CanvasMedia.sweep(MediaKind.video, keep) +
           await CanvasMedia.sweep(MediaKind.vector, keep) +
+          // 3D objects' models too: a canvas previewed in a chat stores its
+          // own, and they went nowhere once it was gone.
+          await CanvasMedia.sweep(MediaKind.model, keep) +
           await _sweepSpeechTakes(keep);
     } catch (_) {
       return 0;
@@ -523,6 +526,11 @@ class CanvasLibrary {
     var dir = Directory(await CanvasStorage.speechTakesDir());
     await for (var f in dir.list()) {
       if (f is File && !keep.contains(path.basename(f.path))) {
+        // Not one just made: a take said a moment ago is not in any saved
+        // canvas yet (see sweepGrace).
+        if (DateTime.now().difference(await f.lastModified()) < sweepGrace) {
+          continue;
+        }
         await f.delete();
         gone++;
       }

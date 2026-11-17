@@ -37,10 +37,20 @@ enum CodeRunShows {
 /// a word from the runner itself (fetching Python, say).
 enum CodeLogKind { log, warn, error, note }
 
+/// maxCodeLogs and maxCodeLogLength are the most of a run's output kept:
+/// its lines, and each line's characters. A program that prints for ever
+/// must fill neither the screen nor the canvas file.
+const maxCodeLogs = 2000, maxCodeLogLength = 4000;
+
 class CodeLog {
   final CodeLogKind kind;
   final String text;
   const CodeLog(this.text, {this.kind = CodeLogKind.log});
+
+  /// capped is this, its text cut to [maxCodeLogLength].
+  CodeLog get capped => text.length <= maxCodeLogLength
+      ? this
+      : CodeLog("${text.substring(0, maxCodeLogLength)}…", kind: kind);
 
   Map<String, dynamic> toJson() =>
       {"text": text, if (kind != CodeLogKind.log) "kind": kind.name};
@@ -85,8 +95,9 @@ class CodeRunResult {
         at: DateTime.tryParse(jsonString(j["at"], "")) ??
             DateTime.fromMillisecondsSinceEpoch(0),
         logs: [
-          for (var l in (j["logs"] is List ? j["logs"] as List : []))
-            if (CodeLog.fromJson(l) case var log?) log
+          for (var l
+              in (j["logs"] is List ? j["logs"] as List : []).take(maxCodeLogs))
+            if (CodeLog.fromJson(l) case var log?) log.capped
         ],
         preview: jsonString(j["preview"], ""));
   }

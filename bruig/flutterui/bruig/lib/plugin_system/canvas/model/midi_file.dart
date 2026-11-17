@@ -118,14 +118,26 @@ MidiImport _readMidiFile(Uint8List bytes) {
   // Ticks to seconds, through the tempo changes.
   // The file's own tempo at tick nought after the default, so it wins.
   tempos = _stable(tempos, (t) => t.$1);
+  // Each change's tick, the seconds to it, and the tempo after it, worked
+  // out once: a note's time is then a search, not a walk through every
+  // change (a file of a hundred thousand of each was billions of steps).
+  var marks = <(int, double, int)>[(0, 0.0, 500000)];
+  for (var (t, us) in tempos) {
+    var (from, s, tempo) = marks.last;
+    marks.add((t, s + (t - from) * tempo / division / 1e6, us));
+  }
   double seconds(int tick) {
-    var s = 0.0, from = 0, tempo = 500000;
-    for (var (t, us) in tempos) {
-      if (t >= tick) break;
-      s += (t - from) * tempo / division / 1e6;
-      from = t;
-      tempo = us;
+    // The last change before [tick]: the first mark where there is none.
+    var lo = 0, hi = marks.length - 1;
+    while (lo < hi) {
+      var mid = (lo + hi + 1) >> 1;
+      if (marks[mid].$1 < tick) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
     }
+    var (from, s, tempo) = marks[lo];
     return s + (tick - from) * tempo / division / 1e6;
   }
 

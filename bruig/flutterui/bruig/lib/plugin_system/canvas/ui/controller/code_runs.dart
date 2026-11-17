@@ -45,10 +45,12 @@ extension CanvasCodeRuns on CanvasController {
   String? get codeLive => _codeLive?.$1;
 
   /// liveCode opens Run panel [e]'s preview to be used: its page live over
-  /// it, or its Flutter app's own widgets. Only one that has run, and makes
-  /// something to look at.
+  /// it, or its Flutter app's own widgets. Only one run here, and making
+  /// something to look at: a run that came with a received canvas is its
+  /// sender's code, run by nobody here until Run is pressed.
   void liveCode(CodeRunElement e) {
     if (_codeLive?.$1 == e.id || e.result == null) return;
+    if (!_codeRunHere.contains(e.id)) return;
     var code = _document.elementById(e.code);
     var runner = runnerOf(e, code is CodeElement ? code : null);
     if (runner != CodeRunner.web && runner != CodeRunner.flutter) return;
@@ -56,9 +58,12 @@ extension CanvasCodeRuns on CanvasController {
     _codeViewChanged();
   }
 
-  /// liveCodeLog is a line printed by the live preview.
+  /// liveCodeLog is a line printed by the live preview, so long as it has
+  /// not printed [maxCodeLogs] already.
   void liveCodeLog(CodeLog l) {
-    _codeLive?.$2.add(l);
+    var live = _codeLive;
+    if (live == null || live.$2.length >= maxCodeLogs) return;
+    live.$2.add(l.capped);
     _codeViewChanged();
   }
 
@@ -96,6 +101,7 @@ extension CanvasCodeRuns on CanvasController {
     var logs = _codeRuns[e.id] = <CodeLog>[];
     // Run by hand: shown now, not when the scene's clock comes to it.
     _codeRanNow.add(e.id);
+    _codeRunHere.add(e.id);
     _codeViewChanged();
     var host = CanvasController.codeRunHost;
     CodeRunOutcome outcome;
@@ -107,7 +113,10 @@ extension CanvasCodeRuns on CanvasController {
               CodeLog("Code can't be run here.", kind: CodeLogKind.note)
             ])
           : await host.run(runner, code, entry, size, (l) {
-              logs.add(l);
+              // A program that prints for ever fills neither the screen nor
+              // the canvas file: the first [maxCodeLogs] lines are kept.
+              if (logs.length >= maxCodeLogs) return;
+              logs.add(l.capped);
               _codeViewChanged();
             });
     } catch (err) {
@@ -132,7 +141,7 @@ extension CanvasCodeRuns on CanvasController {
         result: CodeRunResult(
             runner: runner.label,
             at: DateTime.now(),
-            logs: outcome.logs,
+            logs: [for (var l in outcome.logs.take(maxCodeLogs)) l.capped],
             preview: picture)));
   }
 }

@@ -71,6 +71,37 @@ class DataFiles {
   }
 }
 
+/// DataHosts are the hosts this machine's owner has said a data source may
+/// fetch from: named here, or agreed to when asked. A received canvas's
+/// table naming its sender's server would otherwise tell that server who
+/// opened it, the moment its rows were refreshed (security review,
+/// 2026-11-17).
+class DataHosts {
+  static const _key = "canvasDataHosts";
+
+  static Future<Set<String>> _all() async =>
+      (await StorageManager.readString(_key))
+          .split("\n")
+          .where((h) => h.isNotEmpty)
+          .toSet();
+
+  /// hostOf is [where]'s host, or empty where it names none.
+  static String hostOf(String where) =>
+      (Uri.tryParse(where.trim())?.host ?? "").toLowerCase();
+
+  static Future<bool> allowed(String where) async {
+    var host = hostOf(where);
+    return host.isNotEmpty && (await _all()).contains(host);
+  }
+
+  static Future<void> allow(String where) async {
+    var host = hostOf(where);
+    if (host.isEmpty) return;
+    var all = await _all();
+    if (all.add(host)) await StorageManager.saveString(_key, all.join("\n"));
+  }
+}
+
 /// JsonResult is a source's answer read and decoded, or why it could not
 /// be: what [loadData] maps, kept whole by the Data Studio's Connect data so
 /// its columns can be chosen and previewed without asking again.
@@ -97,6 +128,14 @@ Future<JsonResult> loadJson(
       return const JsonResult.failed("There is no data source.");
 
     case DataKind.file:
+      // Only a file picked here, or agreed to when asked: a path that came
+      // inside somebody else's canvas reads nothing on its own, whoever
+      // calls this (security review, 2026-11-17).
+      if (!await DataFiles.allowed(source.where)) {
+        return JsonResult.failed(
+            "This canvas asks to read ${source.where}, which has not been "
+            "allowed here.");
+      }
       try {
         var file = File(source.where);
         var type = await FileSystemEntity.type(source.where);
@@ -260,7 +299,7 @@ Future<String?> _fetch(DataSource source) async {
     var bytes = await readCapped(response!, maxDataFileBytes);
     return bytes == null ? null : utf8.decode(bytes);
   } catch (exception) {
-    debugPrint("Unable to fetch the canvas data: $exception");
+    debugPrint("Unable to fetch the canvas data: ${exception.runtimeType}");
     return null;
   } finally {
     client.close(force: true);

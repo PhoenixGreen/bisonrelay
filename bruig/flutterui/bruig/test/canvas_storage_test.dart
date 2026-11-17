@@ -643,4 +643,10 @@ void main() {
     expect(back.map((e) => e.isFolder), [false, true],
         reason: "the canvas first, the folder second, as it was written");
   });
+
+  test("a name Windows keeps for a device is not a canvas's name", () {
+    expect(CanvasStorage.sanitizeName("NUL"), "NUL canvas");
+    expect(CanvasStorage.sanitizeName("com1"), "com1 canvas");
+    expect(CanvasStorage.sanitizeName("Nullarbor"), "Nullarbor");
+  });
 }

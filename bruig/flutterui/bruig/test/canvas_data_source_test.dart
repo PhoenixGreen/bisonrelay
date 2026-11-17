@@ -327,12 +327,15 @@ void main() {
     late Directory dir;
     setUp(() async {
       dir = await Directory.systemTemp.createTemp("canvas_data_test");
+      // Read only once allowed, as the picker allows one (see DataFiles).
+      SharedPreferences.setMockInitialValues({});
     });
     tearDown(() => dir.delete(recursive: true));
 
     test("a file becomes rows, with no connection made", () async {
       var file = File("${dir.path}/table.json");
       await file.writeAsString(jsonEncode(standings()));
+      await DataFiles.allow(file.path);
 
       var source = footballData
           .applyTo(const DataSource(), "PL")
@@ -344,6 +347,7 @@ void main() {
     });
 
     test("a missing file says so", () async {
+      await DataFiles.allow("/nowhere/at/all.json");
       var result = await loadData(const DataSource(
           kind: DataKind.file,
           where: "/nowhere/at/all.json",
@@ -353,11 +357,34 @@ void main() {
     });
 
     test("a folder, or anything but a file, is not read", () async {
+      await DataFiles.allow(dir.path);
       var result = await loadData(DataSource(
           kind: DataKind.file,
           where: dir.path,
           columns: const [SourceColumn(header: "A", path: "a")]));
       expect(result.problem, contains("not a file"));
+    });
+
+    // Whoever asks: a path that came inside a canvas reads nothing until it
+    // is allowed (security review, 2026-11-17).
+    test("a file not allowed is not read, by anything", () async {
+      var file = File("${dir.path}/secret.json")..writeAsStringSync("[]");
+      var result =
+          await loadJson(DataSource(kind: DataKind.file, where: file.path));
+      expect(result.worked, isFalse);
+      expect(result.problem, contains("not been allowed"));
+    });
+
+    test("only hosts named here, or agreed to, are fetched from", () async {
+      SharedPreferences.setMockInitialValues({});
+      expect(await DataHosts.allowed("https://evil.example/x.json"), isFalse);
+      await DataHosts.allow("https://api.football-data.org/v4/competitions");
+      expect(await DataHosts.allowed("https://API.football-data.org/other"),
+          isTrue,
+          reason: "by host, whatever the path");
+      expect(await DataHosts.allowed("https://football-data.org.evil.example/"),
+          isFalse);
+      expect(await DataHosts.allowed("not an address"), isFalse);
     });
 
     test("only files chosen here, or agreed to, are allowed", () async {
@@ -373,6 +400,7 @@ void main() {
     test("a file that is not JSON says that instead", () async {
       var file = File("${dir.path}/notjson.json");
       await file.writeAsString("Hull City, 6 points");
+      await DataFiles.allow(file.path);
       var result = await loadData(DataSource(
           kind: DataKind.file,
           where: file.path,
@@ -832,6 +860,8 @@ void main() {
       addTearDown(() => dir.delete(recursive: true));
       var file = File("${dir.path}/one.json");
       await file.writeAsString(jsonEncode([record]));
+      SharedPreferences.setMockInitialValues({});
+      await DataFiles.allow(file.path);
       return loadData(DataSource(
           kind: DataKind.file,
           where: file.path,

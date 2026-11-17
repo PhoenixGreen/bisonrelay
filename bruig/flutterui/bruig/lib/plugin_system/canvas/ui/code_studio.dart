@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/ui/code_live_preview.dart';
+import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
 import 'package:bruig/plugin_system/canvas/media/code_dart_runner.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
@@ -594,11 +596,11 @@ class _CodeStudioState extends State<CodeStudio> {
         preview = InAppWebView(
           key: ValueKey("codeStudioPage-$_runs"),
           initialData: InAppWebViewInitialData(
-              data: webPage(e, entry),
+              data: sealed(webPage(e, entry)),
               mimeType: "text/html",
               encoding: "utf-8"),
-          initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true, isInspectable: false),
+          initialSettings: sealedSettings(),
+          shouldOverrideUrlLoading: (c, action) => stayOnPage(action),
           onWebViewCreated: (w) => w.addJavaScriptHandler(
               handlerName: "codeConsole",
               callback: (args) {
@@ -634,7 +636,7 @@ class _CodeStudioState extends State<CodeStudio> {
                         // (its count) isn't kept for code that changed.
                         child: KeyedSubtree(
                             key: ValueKey("codeStudioApp-$_runs"),
-                            child: _app!)),
+                            child: ownNavigator(_app!))),
                   ),
                 ));
       } else if (runner == CodeRunner.flutter && _appError != null) {

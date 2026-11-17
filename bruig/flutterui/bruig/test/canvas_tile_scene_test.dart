@@ -245,4 +245,16 @@ void main() {
       expect((c.document.elementById("m") as TileMapElement).layers.single.name, "Ground");
     });
   });
+
+  // A map, tileset or sheet's notes come from other people: the files they
+  // name stay near them (security review, 2026-11-17).
+  test("a side file names only files near it", () {
+    expect(nearFile("/maps/town", "grass.png", only: pictureExtensions),
+        "/maps/town/grass.png");
+    expect(nearFile("/maps/town", "../tilesets/grass.png"),
+        "/maps/tilesets/grass.png", reason: "a project's sibling folder");
+    expect(nearFile("/maps/town", "../../Pictures/me.png"), isNull);
+    expect(nearFile("/maps/town", "/Users/them/me.png"), isNull);
+    expect(nearFile("/maps/town", "notes.txt", only: pictureExtensions), isNull);
+  });
 }

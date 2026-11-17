@@ -204,6 +204,9 @@ void main() {
         {"name": "Arsenal", "points": 9},
         {"name": "Spurs", "points": 4},
       ]));
+      SharedPreferences.setMockInitialValues({});
+      await DataFiles.allow(file.path);
+      await DataFiles.allow("${dir.path}/gone.json");
       var got = await fetchSheetRows(source.copyWith(where: file.path), league,
           allowed: false, proxied: false);
       expect(got.worked, isTrue);

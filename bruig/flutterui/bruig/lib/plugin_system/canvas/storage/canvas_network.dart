@@ -66,12 +66,16 @@ Future<HttpClientResponse?> canvasGet(HttpClient client, Uri uri,
 }
 
 /// readCapped is [response]'s body, or null where it is more than
-/// [maxBytes] or goes quiet for a minute.
-Future<Uint8List?> readCapped(HttpClientResponse response, int maxBytes) async {
+/// [maxBytes], goes quiet for a minute, or takes longer than [total] -- a
+/// server sending a byte every fifty-nine seconds would otherwise hold it
+/// open for as long as it liked.
+Future<Uint8List?> readCapped(HttpClientResponse response, int maxBytes,
+    {Duration total = const Duration(minutes: 10)}) async {
   var out = BytesBuilder(copy: false);
+  var took = Stopwatch()..start();
   await for (var chunk in response.timeout(const Duration(seconds: 60))) {
     out.add(chunk);
-    if (out.length > maxBytes) return null;
+    if (out.length > maxBytes || took.elapsed > total) return null;
   }
   return out.toBytes();
 }

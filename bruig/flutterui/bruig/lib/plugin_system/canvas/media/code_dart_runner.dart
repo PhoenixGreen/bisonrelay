@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:ui' as ui;
@@ -56,11 +57,26 @@ Future<List<CodeLog>> runDart(CodeElement code, CodeFile entry,
   var isolate = await Isolate.spawn(
       _dartMain, (port.sendPort, _dartFiles(code), entry.name),
       errorsAreFatal: true, onExit: port.sendPort);
+  // The isolate shares the app's memory: a program that doubles a string
+  // for ever could take all of it before the time ran out, and the app with
+  // it. Watched, it is stopped once it has taken [memoryLimit] more
+  // (security review, 2026-11-17).
+  var before = ProcessInfo.currentRss;
+  var watch = Timer.periodic(const Duration(milliseconds: 100), (_) {
+    if (done.isCompleted || ProcessInfo.currentRss - before < dartMemoryLimit) {
+      return;
+    }
+    isolate.kill(priority: Isolate.immediate);
+    log(const CodeLog("Stopped: it was taking too much memory.",
+        kind: CodeLogKind.error));
+    done.complete();
+  });
   await done.future.timeout(limit, onTimeout: () {
     isolate.kill(priority: Isolate.immediate);
     log(CodeLog("Stopped after ${limit.inSeconds} seconds.",
         kind: CodeLogKind.error));
   });
+  watch.cancel();
   port.close();
   return logs;
 }
@@ -95,6 +111,10 @@ String _plain(Object e) {
   return s.replaceFirst(RegExp(r"^(CompileError|Exception): "), "").trim();
 }
 
+/// dartMemoryLimit is the most memory a Dart program may take on top of
+/// the app's before it is stopped.
+const dartMemoryLimit = 1024 * 1024 * 1024;
+
 /// _previewName is the function added to a Flutter app's main file that
 /// gives back the widget its main runs.
 const _previewName = r"$$previewApp";
@@ -125,6 +145,11 @@ String? flutterPreviewSource(String main) {
   return null;
 }
 
+/// flutterOpLimit is the most steps one call into a Flutter app may take --
+/// its main, one widget's build, one button's press -- before it is
+/// stopped: about a second of work, far more than any lesson's app needs.
+const flutterOpLimit = 50000000;
+
 /// FlutterBuild is a Flutter app compiled: its widget, or what stopped it.
 class FlutterBuild {
   final Widget? widget;
@@ -147,7 +172,11 @@ FlutterBuild buildFlutterApp(CodeElement code, CodeFile entry) {
     var files = {..._dartFiles(code), entry.name: src};
     var compiler = Compiler()..addPlugin(flutterEvalPlugin);
     var program = compiler.compile({_package: files});
-    var runtime = Runtime.ofProgram(program)..addPlugin(flutterEvalPlugin);
+    var runtime = Runtime.ofProgram(program)
+      ..addPlugin(flutterEvalPlugin)
+      // Built on the app's own isolate, in its frames: a loop that never
+      // ends stops here, not the app (security review, 2026-11-17).
+      ..opLimit = flutterOpLimit;
     var w = runtime.executeLib("package:$_package/${entry.name}", _previewName);
     var widget = w is $Value ? w.$value : w;
     if (widget is! Widget) {

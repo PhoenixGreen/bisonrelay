@@ -76,6 +76,11 @@ class CanvasPreferences extends ChangeNotifier {
   bool get allowFetching => _allowFetching;
   bool _allowFetching = false;
 
+  /// fetchingAllowed is the fetching switch as saved, for what has no
+  /// preferences to hand (a character drawn on the stage).
+  static Future<bool> fetchingAllowed() =>
+      StorageManager.readBool(_allowFetchingKey, defaultVal: false);
+
   /// fit is how the canvas is framed -- the whole of it, or the full width.
   /// A preference, not part of the document, because it is about the
   /// reader's screen. Stored as the enum's name so reordering the fits does

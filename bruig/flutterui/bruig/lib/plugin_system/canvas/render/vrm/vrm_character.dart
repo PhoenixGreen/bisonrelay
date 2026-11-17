@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
@@ -221,6 +222,14 @@ class CharacterScene extends ChangeNotifier {
         if ((await VroidAssets.missing(vroidBodies)).isNotEmpty) {
           error = "This hair comes from a character not downloaded yet. "
               "Download the characters in Character Studio first.";
+          return;
+        }
+        // Nor unless fetching is switched on: a received canvas must not
+        // make a request the reader has said none may (security review,
+        // 2026-11-17).
+        if (!await CanvasPreferences.fetchingAllowed()) {
+          error = "This hair needs a download, and fetching is switched "
+              "off: turn it on in Settings > Plugins > Canvas.";
           return;
         }
         fetching =

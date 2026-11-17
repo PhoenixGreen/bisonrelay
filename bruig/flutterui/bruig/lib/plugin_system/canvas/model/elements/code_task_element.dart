@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
 
 // code_task_element.dart is a task card beside a Code panel (Ken,
 // 2026-11-15: "interactive tasks that tell the user if they passed the test
@@ -105,23 +106,23 @@ class CodeCheck {
   }
 
   /// timesIn is how many times [code] says any of [words]' answers: a
-  /// pattern as written, or loosely (see [_loose]).
-  static int timesIn(String code, List<String> words, {bool pattern = false}) {
+  /// pattern as written, or loosely (see [_loose]). Null while a pattern is
+  /// being counted: one written with the card is counted off the UI
+  /// isolate, as it may never finish (see PatternCounts).
+  static int? timesIn(String code, List<String> words, {bool pattern = false}) {
     var n = 0;
     for (var w in words) {
+      if (pattern) {
+        var k = PatternCounts.count(w, code);
+        if (k == null) return null;
+        n += k;
+        continue;
+      }
       try {
-        var re = pattern ? RegExp(w, multiLine: true) : _loose(w);
-        n += re.allMatches(code).length;
+        n += _loose(w).allMatches(code).length;
       } catch (_) {}
     }
     return n;
-  }
-
-  /// matches is whether [code] says it, as often as it must.
-  bool matches(String code) {
-    var a = answers;
-    if (a.isEmpty) return true;
-    return timesIn(code, a, pattern: pattern) >= count;
   }
 
   /// metBy is whether [code]'s files (and its Run panel's last run, [run])
@@ -133,11 +134,22 @@ class CodeCheck {
       case CodeCheckKind.prints:
         var logs = run?.result?.logs ?? const <CodeLog>[];
         var a = answers;
+        if (pattern) {
+          var waiting = false;
+          for (var l in logs) {
+            if (l.kind == CodeLogKind.error) continue;
+            var n = timesIn(l.text, a, pattern: true);
+            if (n == null) {
+              waiting = true;
+            } else if (n > 0) {
+              return true;
+            }
+          }
+          return waiting ? null : false;
+        }
         return logs.any((l) =>
             l.kind != CodeLogKind.error &&
-            (pattern
-                ? timesIn(l.text, a, pattern: true) > 0
-                : a.isEmpty || a.any(l.text.contains)));
+            (a.isEmpty || a.any(l.text.contains)));
       case CodeCheckKind.has || CodeCheckKind.lacks || CodeCheckKind.changes:
         if (code == null) return false;
         var all = [
@@ -146,12 +158,16 @@ class CodeCheck {
         ].join("\n");
         var a = answers;
         var times = a.isEmpty ? count : timesIn(all, a, pattern: pattern);
+        if (times == null) return null;
+        if (kind == CodeCheckKind.changes && before.trim().isNotEmpty) {
+          var was = timesIn(all, [before.trim()], pattern: pattern);
+          if (was == null) return null;
+          if (was != 0) return false;
+        }
         return switch (kind) {
           CodeCheckKind.has => times >= count,
           CodeCheckKind.lacks => times == 0,
-          _ => (before.trim().isEmpty ||
-                  timesIn(all, [before.trim()], pattern: pattern) == 0) &&
-              times > 0,
+          _ => times > 0,
         };
     }
   }

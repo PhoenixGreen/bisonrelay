@@ -89,6 +89,11 @@ const int defaultFrameCount = 1;
 /// [audioFrameRate], a hundred at 24 a second.
 const int maxFrameCount = 144000;
 
+/// maxSceneElements and maxScenes are the most of each a canvas is read
+/// with: far more than any canvas made here, and a received one's million
+/// shapes would be drawn every frame (security review, 2026-11-17).
+const int maxSceneElements = 10000, maxScenes = 1000;
+
 /// audioFrameRate is the steps a second a piece of sound's timeline counts
 /// in: fine enough that any beat lands within a few milliseconds of a step.
 const int audioFrameRate = 120;
@@ -1330,7 +1335,7 @@ class CanvasDocument {
     var sceneList = json["scenes"];
     var scenes = <CanvasScene>[
       if (sceneList is List)
-        for (var it in sceneList)
+        for (var it in sceneList.take(maxScenes))
           if (it is Map<String, dynamic>) CanvasScene.fromJson(it),
     ];
 
@@ -1352,7 +1357,7 @@ class CanvasDocument {
 
     var elements = raw is List
         ? [
-            for (var e in raw)
+            for (var e in raw.take(maxSceneElements))
               if (e is Map<String, dynamic>) elementFromJson(e),
           ]
         : const <CanvasElement>[];

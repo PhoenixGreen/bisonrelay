@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/storage/tiled_maps.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
@@ -101,14 +102,24 @@ Future<(SpriteElement?, String)> readSheet(SpriteElement e, String file) async {
     if (file.toLowerCase().endsWith(".json")) {
       notes = SheetNotes.read(await File(file).readAsString());
       if (notes == null) return (null, "That .json does not describe a sprite sheet.");
-      var beside = path.join(path.dirname(file),
-          notes.image.isNotEmpty ? notes.image : "${path.basenameWithoutExtension(file)}.png");
+      var beside = nearFile(path.dirname(file),
+          notes.image.isNotEmpty ? notes.image : "${path.basenameWithoutExtension(file)}.png",
+          only: pictureExtensions);
+      if (beside == null) {
+        return (null, "The sheet's picture must be a picture beside its .json.");
+      }
       if (!await File(beside).exists()) {
         return (null, "The sheet's picture, ${path.basename(beside)}, is not beside its .json.");
       }
       picture = beside;
     }
     var bytes = await File(picture).readAsBytes();
+    // A picture before it is stored: a sheet's notes could name any file.
+    try {
+      (await (await ui.instantiateImageCodec(bytes)).getNextFrame()).image.dispose();
+    } catch (_) {
+      return (null, "That is not a picture.");
+    }
     var id = await CanvasAssets.save(bytes);
     if (id == null) return (null, "That picture could not be stored.");
     var name = path.basenameWithoutExtension(picture);

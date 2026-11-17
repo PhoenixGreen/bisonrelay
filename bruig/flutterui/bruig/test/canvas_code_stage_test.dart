@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'dart:ui' as ui;
+import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
@@ -126,6 +127,24 @@ void main() {
     var page = key.currentState!.pageRect;
     return page.topLeft + doc * (page.width / c.document.size.width);
   }
+
+  // A received canvas carries its sender's last run: a picture, until Run
+  // is pressed here. Opening it live would run the sender's code with
+  // nobody having asked (security review, 2026-11-17).
+  test("a run that came with the canvas is not opened live", () {
+    var made = CanvasController(const CanvasDocument());
+    addTearDown(made.dispose);
+    made.addCodeLesson(starter: codeStarters.firstWhere((s) => s.key == "web"));
+    var sent = made.document.elements.whereType<CodeRunElement>().single;
+    made.replaceElement(sent.copyWith(
+        result: CodeRunResult(
+            runner: "Web", at: DateTime.utc(2026), logs: const [])));
+    var received = CanvasController(made.document);
+    addTearDown(received.dispose);
+    var r = received.document.elements.whereType<CodeRunElement>().single;
+    received.liveCode(r);
+    expect(received.codeLive, isNull);
+  });
 
   testWidgets(
       "the Code chip puts down an empty project and its Run panel; the "
@@ -680,7 +699,7 @@ void main() {
     });
 
     test("its checks: words found loosely, patterns, files, what was printed",
-        () {
+        () async {
       var c = starter0("flutter");
       const has = CodeCheck(CodeCheckKind.has, "Size 72",
           text: "TextStyle(fontSize:72)");
@@ -689,11 +708,11 @@ void main() {
           const CodeCheck(CodeCheckKind.lacks, "No 72", text: "fontSize: 72")
               .metBy(c, null),
           isFalse);
-      expect(
-          const CodeCheck(CodeCheckKind.has, "a coin count",
-                  text: r"int\s+coins\s*=\s*\d+", pattern: true)
-              .metBy(c, null),
-          isTrue);
+      const coins = CodeCheck(CodeCheckKind.has, "a coin count",
+          text: r"int\s+coins\s*=\s*\d+", pattern: true);
+      expect(coins.metBy(c, null), isNull, reason: "being counted");
+      await PatternCounts.settled();
+      expect(coins.metBy(c, null), isTrue);
       expect(
           const CodeCheck(CodeCheckKind.has, "not there",
                   file: "other.dart", text: "coins")
@@ -712,6 +731,23 @@ void main() {
       expect(
           const CodeCheck(CodeCheckKind.builds, "builds").metBy(c, run), isNull,
           reason: "known only by checking");
+    });
+
+    // A pattern comes with the canvas, and so does the code it is tried
+    // on: one that never finishes must not freeze the app as the card is
+    // drawn (security review, 2026-11-17).
+    test("a pattern that never finishes is given up on, off the UI isolate",
+        () async {
+      var c = CodeElement(const ElementBase(id: "x"),
+          files: [CodeFile(id: "f", name: "main.dart", text: "${"a" * 60}!")]);
+      const evil =
+          CodeCheck(CodeCheckKind.has, "evil", text: r"(a+)+$", pattern: true);
+      var w = Stopwatch()..start();
+      expect(evil.metBy(c, null), isNull);
+      expect(w.elapsedMilliseconds, lessThan(200), reason: "not counted here");
+      await PatternCounts.settled();
+      expect(evil.metBy(c, null), isFalse, reason: "ran over: counts nothing");
+      expect(w.elapsed, lessThan(PatternCounts.limit * 3));
     });
 
     testWidgets(

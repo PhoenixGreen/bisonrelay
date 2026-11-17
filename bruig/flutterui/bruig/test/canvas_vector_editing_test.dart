@@ -3236,4 +3236,11 @@ void main() {
       expect(back.mediaIds, contains("0123456789abcdef.svg"));
     });
   });
+
+  // A drawing comes from somebody else (security review, 2026-11-17).
+  test("a drawing nested deeper than any is refused, not a crash", () {
+    var deep = "<svg>${"<g>" * 20000}<rect width=\"1\" height=\"1\"/>"
+        "${"</g>" * 20000}</svg>";
+    expect(importSvg(deep), isNull);
+  });
 }

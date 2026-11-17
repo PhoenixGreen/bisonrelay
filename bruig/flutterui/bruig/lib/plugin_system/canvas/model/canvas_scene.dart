@@ -862,7 +862,7 @@ class CanvasScene {
       name: jsonString(json["name"], ""),
       elements: elements is List
           ? [
-              for (var e in elements)
+              for (var e in elements.take(maxSceneElements))
                 if (e is Map<String, dynamic>) elementFromJson(e),
             ]
           : const [],

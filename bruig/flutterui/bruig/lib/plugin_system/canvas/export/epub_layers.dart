@@ -2416,7 +2416,9 @@ List<EpubFrame> _liveFrames(
   if (entry == null || runnerOf(e, code) != CodeRunner.web) return const [];
   var preview = codeRunBoxes(e, e.bounds, runner: CodeRunner.web).preview;
   if (preview == null) return const [];
-  return [EpubFrame(onPage(preview), webPage(code, entry, head: ""))];
+  // Sealed off the network as it is in the app (see sealed): a reader of
+  // the book must not be told to whoever wrote the page.
+  return [EpubFrame(onPage(preview), sealed(webPage(code, entry, head: "")))];
 }
 
 /// _codeRunSpan is, while a page's layers are made, each Run panel's frame

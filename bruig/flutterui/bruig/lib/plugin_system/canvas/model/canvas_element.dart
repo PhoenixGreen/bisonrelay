@@ -106,6 +106,17 @@ int jsonInt(dynamic v, int fallback) => _i(v, fallback);
 bool jsonBool(dynamic v, bool fallback) => _b(v, fallback);
 String jsonString(dynamic v, String fallback) => _s(v, fallback);
 
+/// maxTextLength is the most characters one element's words (a text, a
+/// shape's, a code file) are read with: far more than a page holds, and a
+/// received canvas's ten million would be laid out every frame.
+const maxTextLength = 200000;
+
+/// jsonText is [jsonString] cut to [maxTextLength].
+String jsonText(dynamic v, String fallback) {
+  var s = _s(v, fallback);
+  return s.length <= maxTextLength ? s : s.substring(0, maxTextLength);
+}
+
 /// fractionsFromJson reads a flat [x, y, x, y, ...] list of points that are
 /// fractions of a picture: within a picture's width either side of it, and
 /// at most 100,000 of them, so a sent stroke cannot ask for billions of dabs.

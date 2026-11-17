@@ -388,4 +388,27 @@ void main() {
     var bIds = {for (var e in b.elements) e.id};
     expect(aIds.intersection(bIds), isEmpty);
   });
+
+  // A received canvas is read with no more than a canvas could hold: a
+  // million shapes, or ten million characters, drawn every frame, froze the
+  // app (security review, 2026-11-17).
+  test("a canvas is read with no more elements, scenes or words than any "
+      "canvas has", () {
+    var doc = CanvasDocument.fromJson({
+      "elements": [
+        for (var i = 0; i < maxSceneElements + 50; i++)
+          {"kind": "shape", "id": "s$i", "width": 10, "height": 10},
+        {"kind": "text", "id": "t", "text": "x" * (maxTextLength + 10)},
+      ],
+      "scenes": [for (var i = 0; i < maxScenes + 5; i++) {"id": "sc$i"}],
+    });
+    expect(doc.allScenes.length, lessThanOrEqualTo(maxScenes + 1));
+    var first = CanvasDocument.fromJson({
+      "elements": [
+        {"kind": "text", "id": "t", "text": "x" * (maxTextLength + 10)},
+      ],
+    });
+    expect((first.elements.single as TextElement).text.length, maxTextLength);
+    expect(doc.goToScene(0).elements.length, lessThanOrEqualTo(maxSceneElements));
+  });
 }

@@ -27,11 +27,17 @@ class SvgImport {
 /// importSvg takes [source] apart, or returns null where it is not a drawing
 /// that can be read at all.
 SvgImport? importSvg(String source) {
-  var root = _Xml.parse(source);
-  if (root == null) return null;
-  var svg = root.name == "svg" ? root : root.find("svg");
-  if (svg == null) return null;
-  return _Importer(svg).run();
+  // A drawing is somebody else's file: one that trips the reader is no
+  // drawing, not an error that stops what asked for it.
+  try {
+    var root = _Xml.parse(source);
+    if (root == null) return null;
+    var svg = root.name == "svg" ? root : root.find("svg");
+    if (svg == null) return null;
+    return _Importer(svg).run();
+  } catch (_) {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +69,7 @@ class _Node {
 }
 
 class _Xml {
+  static const _maxDepth = 256;
   static final _attr = RegExp(r'''([^\s=/>]+)\s*=\s*("([^"]*)"|'([^']*)')''');
 
   static _Node? parse(String s) {
@@ -120,7 +127,13 @@ class _Xml {
       }
       var node = _Node(name, attrs);
       stack.last.children.add(node);
-      if (!selfClosing) stack.add(node);
+      // Nested no deeper than any drawing is: the drawing is walked by
+      // recursion, and twenty thousand groups inside one another would run
+      // it out of stack (security review, 2026-11-17).
+      if (!selfClosing) {
+        if (stack.length > _maxDepth) return null;
+        stack.add(node);
+      }
     }
     return top.children.isEmpty ? null : top.children.first;
   }

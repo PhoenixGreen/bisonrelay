@@ -84,6 +84,27 @@ addEventListener("error",function(e){send("error",[e.message+(e.lineno?" (line "
 addEventListener("unhandledrejection",function(e){send("error",[String(e.reason)])});
 })();</script>''';
 
+/// sealed is [page] with a Content-Security-Policy put before anything of
+/// its own (security review, 2026-11-17). A Code element's page came with
+/// the canvas, and a page that can reach the network can tell its sender
+/// the reader's address -- past a proxy, past Tor -- or knock on the
+/// reader's own network. Sealed, it reaches nothing: its pictures, sounds
+/// and fonts are its own (data: and blob:), and only a run server at
+/// [origin] (Python's and Go's, on this machine) is let through. Written
+/// first, ahead of the page's own markup, no script of the page runs before
+/// it.
+String sealed(String page, {String origin = ""}) {
+  var o = origin.isEmpty ? "" : " $origin";
+  var policy = "default-src 'none'; "
+      "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:$o; "
+      "style-src 'unsafe-inline'$o; "
+      "img-src data: blob:$o; media-src data: blob:$o; font-src data:$o; "
+      "connect-src${o.isEmpty ? " 'none'" : o}; worker-src blob:$o; "
+      "frame-src 'none'; form-action 'none'; base-uri 'none'";
+  return '<!doctype html><meta http-equiv="Content-Security-Policy" '
+      'content="$policy">$page';
+}
+
 /// webPage is [code]'s page [entry] as one document: each stylesheet it
 /// links and each script it loads that is a file of the project put into
 /// it, and [head] (the console's capture) first. A script file run by

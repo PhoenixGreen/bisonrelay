@@ -132,4 +132,26 @@ class _CounterAppState extends State<CounterApp> {
         "import 'package:flutter/material.dart';\nvoid main() => runApp(Nope());");
     expect(buildFlutterApp(broken, broken.files.first).error, contains("Nope"));
   });
+
+  // A Flutter app is built on the app's own isolate: one that never stops
+  // must be stopped, not hang the app (security review, 2026-11-17) --
+  // even one that catches what stops it.
+  testWidgets("a Flutter app that never stops is stopped", (tester) async {
+    for (var body in [
+      "var i = 0; while (true) { i++; }",
+      "while (true) { try { while (true) {} } catch (e) {} }",
+    ]) {
+      var c = starter("flutter").withFileText("f1", """
+import 'package:flutter/material.dart';
+void main() => runApp(Spin());
+class Spin extends StatelessWidget {
+  Spin() { $body }
+  Widget build(BuildContext context) => Text("x");
+}""");
+      var w = Stopwatch()..start();
+      var b = buildFlutterApp(c, c.files.first);
+      expect(b.error, contains("too long"), reason: body);
+      expect(w.elapsed, lessThan(const Duration(seconds: 10)), reason: body);
+    }
+  });
 }

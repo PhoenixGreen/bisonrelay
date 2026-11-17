@@ -139,7 +139,9 @@ class SourceColumn {
         path: jsonString(json["p"], ""),
         picture: jsonBool(json["pic"], false),
         keep: jsonBool(json["keep"], false),
-        spread: jsonInt(json["spread"], 0),
+        // A form guide's games: a handful. A received canvas's million was
+        // filled in one at a time from the front.
+        spread: jsonInt(json["spread"], 0).clamp(0, 50),
         divider: jsonString(json["div"], ""),
         template: jsonString(json["tpl"], ""),
         divide: jsonDouble(json["div10"], 1),

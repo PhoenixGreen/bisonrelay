@@ -89,17 +89,7 @@ class FBinary extends FNode {
 
 // ---------- Parsing ----------
 
-(int, int)? _a1(String s) {
-  var m = RegExp(r"^\$?([A-Za-z]{1,3})\$?(\d+)$").firstMatch(s);
-  if (m == null) return null;
-  var c = 0;
-  for (var ch in m.group(1)!.toUpperCase().codeUnits) {
-    c = c * 26 + (ch - 64);
-  }
-  var r = int.parse(m.group(2)!);
-  if (r < 1) return null;
-  return (r - 1, c - 1);
-}
+(int, int)? _a1(String s) => cellAt(s.toUpperCase());
 
 Parser<FNode> _build() {
   var expr = undefined<FNode>();
@@ -187,12 +177,26 @@ final Map<String, FNode?> _parsed = {};
 /// where it doesn't parse. Kept, as the same few formulas are worked out
 /// again at every change.
 FNode? parseFormula(String src) {
+  // A formula longer than any sheet's (deeply nested brackets) is refused
+  // before the parser recurses through it.
+  if (src.length > maxFormulaLength) return null;
   if (_parsed.length > 4000) _parsed.clear();
   return _parsed.putIfAbsent(src, () {
-    var r = _parser.parse(src);
-    return r is Success<FNode> ? r.value : null;
+    try {
+      var r = _parser.parse(src);
+      return r is Success<FNode> ? r.value : null;
+    } catch (_) {
+      return null;
+    }
   });
 }
+
+/// maxFormulaLength is the longest formula worked out, as the spreadsheets
+/// have it.
+const maxFormulaLength = 8192;
+
+/// maxRangeCells is the most cells one range in a formula reads.
+const maxRangeCells = 1000000;
 
 // ---------- Working out ----------
 
@@ -208,6 +212,11 @@ Object? evaluateFormula(FNode node, FormulaCells cell) {
     return v;
   } on _Thrown catch (t) {
     return t.error;
+  } catch (_) {
+    // Anything else -- a number too big to round, a date past the
+    // calendar's end, a stack too deep -- is the formula's error, not the
+    // sheet's or the canvas's.
+    return SheetError.num;
   }
 }
 
@@ -235,6 +244,9 @@ class _Eval {
   Object? eval(FNode n) => switch (n) {
         FValue(:var value) => value is SheetError ? _fail(value) : value,
         FRef(:var r, :var c) => _cellValue(r, c),
+        FRange(:var r0, :var c0, :var r1, :var c1)
+            when (r1 - r0 + 1) * (c1 - c0 + 1) > maxRangeCells =>
+          _fail(SheetError.ref),
         FRange(:var r0, :var c0, :var r1, :var c1) =>
           _Grid(r1 - r0 + 1, c1 - c0 + 1, [
             for (var r = r0; r <= r1; r++)

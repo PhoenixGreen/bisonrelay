@@ -361,14 +361,9 @@ class _Tileset {
       wangs: wangs);
 
   /// _picture is [name] counted from [dir], or empty where it is not a
-  /// picture beside the map: a map from somebody else naming
-  /// /Users/them/anything would otherwise copy that file into the canvas.
-  static String _picture(String dir, String name) {
-    const pictures = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"};
-    if (name.isEmpty || path.isAbsolute(name) || name.contains(":")) return "";
-    if (!pictures.contains(path.extension(name).toLowerCase())) return "";
-    return path.normalize(path.join(dir, name));
-  }
+  /// picture near the map (see [nearFile]).
+  static String _picture(String dir, String name) =>
+      nearFile(dir, name, only: pictureExtensions) ?? "";
 
   Map<int, TileAnimation> animations(Map<int, int>? at) => {
         for (var e in frames.entries)
@@ -694,4 +689,25 @@ _X? _parseXml(String s) {
     if (m.group(4) != "/") open.add(x);
   }
   return root;
+}
+
+/// pictureExtensions are the files a map, a tileset or a sprite sheet's
+/// notes may name as its picture.
+const pictureExtensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"};
+
+/// nearFile is [name], as a map, tileset or sheet in [dir] names another
+/// file, made a path: or null where it reaches further than [dir] and the
+/// folder it is in (a project's "../tilesets" is near), names a whole path,
+/// or, given [only], is not one of those kinds. Such files come from other
+/// people, and one naming ../../Pictures/anything, or /Users/them/anything,
+/// would otherwise copy that file into a canvas the reader may send on
+/// (security review, 2026-11-17).
+String? nearFile(String dir, String name, {Set<String>? only}) {
+  if (name.isEmpty || path.isAbsolute(name) || name.contains(":")) return null;
+  if (only != null && !only.contains(path.extension(name).toLowerCase())) {
+    return null;
+  }
+  var at = path.normalize(path.join(dir, name));
+  var root = path.normalize(path.dirname(path.normalize(dir)));
+  return path.isWithin(root, at) ? at : null;
 }

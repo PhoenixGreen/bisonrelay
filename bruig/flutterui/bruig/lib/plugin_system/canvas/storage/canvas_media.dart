@@ -40,9 +40,9 @@ enum MediaKind {
   /// vector is the drawings: .svg files, bounded as pictures are.
   vector(canvasVectorFolder, 20 * 1024 * 1024),
 
-  /// model is the 3D models the old characters were made of: .glb and
-  /// .gltf files. Nothing is added to it now, and nothing in it is listed or
-  /// swept away -- what somebody imported stays theirs, where it was.
+  /// model is the 3D objects' models: .glb and .gltf files. What somebody
+  /// imported is a library asset, and stays; what nothing uses -- a
+  /// received canvas's, the canvas gone -- is swept with the rest.
   model(canvasModelFolder, 256 * 1024 * 1024);
 
   final String folder;

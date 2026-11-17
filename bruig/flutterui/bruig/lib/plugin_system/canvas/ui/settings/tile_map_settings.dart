@@ -912,7 +912,12 @@ class TileSetAdderState extends State<TileSetAdder> {
           setState(() => _said = "That .tsx does not describe a tileset with a picture.");
           return;
         }
-        picture = path.normalize(path.join(path.dirname(file), notes.image));
+        var near = nearFile(path.dirname(file), notes.image, only: pictureExtensions);
+        if (near == null) {
+          setState(() => _said = "That tileset's picture is not near it.");
+          return;
+        }
+        picture = near;
       }
       var bytes = await File(picture).readAsBytes();
       var codec = await ui.instantiateImageCodec(Uint8List.fromList(bytes));
@@ -1558,7 +1563,9 @@ class TileSceneGroupState extends State<TileSceneGroup> {
     try {
       var read = await readTiledMap(await File(file).readAsString(), json: !file.toLowerCase().endsWith(".tmx"),
           file: (p) async {
-        var f = File(path.normalize(path.join(path.dirname(file), p)));
+        var near = nearFile(path.dirname(file), p);
+        if (near == null) return null;
+        var f = File(near);
         return await f.exists() ? await f.readAsBytes() : null;
       });
       if (read == null) {

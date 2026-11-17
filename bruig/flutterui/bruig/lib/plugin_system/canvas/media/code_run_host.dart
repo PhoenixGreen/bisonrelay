@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show Size;
 
+import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/media/code_dart_runner.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
@@ -47,6 +48,45 @@ const pyodideFiles = {
       "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
 };
 
+/// sealedSettings are the settings of every browser a Code element's page
+/// is shown in: its storage its own and forgotten (no cookie follows a
+/// reader from one canvas to the next), no windows of its own, and every
+/// navigation asked about (see [stayOnPage]). See also [sealed].
+InAppWebViewSettings sealedSettings({bool transparentBackground = true}) =>
+    InAppWebViewSettings(
+        javaScriptEnabled: true,
+        isInspectable: false,
+        incognito: true,
+        javaScriptCanOpenWindowsAutomatically: false,
+        useShouldOverrideUrlLoading: true,
+        transparentBackground: transparentBackground);
+
+/// stayOnPage keeps a Code element's page where it was put: a page that
+/// sends the browser to another address tells that address who is
+/// reading. Its own frames are the policy's business (see [sealed]); only
+/// a run server at [origin] may be loaded whole.
+Future<NavigationActionPolicy> stayOnPage(NavigationAction action,
+    {String origin = ""}) async {
+  var url = action.request.url;
+  if (!action.isForMainFrame || url == null) {
+    return NavigationActionPolicy.ALLOW;
+  }
+  if (const {"about", "data", "blob"}.contains(url.scheme)) {
+    return NavigationActionPolicy.ALLOW;
+  }
+  if (origin.isNotEmpty && url.origin == origin) {
+    return NavigationActionPolicy.ALLOW;
+  }
+  return NavigationActionPolicy.CANCEL;
+}
+
+/// _localOrigin is [base]'s origin where it is this machine (the run
+/// server), else nothing.
+String _localOrigin(String base) {
+  var u = Uri.parse(base);
+  return u.host == "127.0.0.1" || u.host == "localhost" ? u.origin : "";
+}
+
 /// runLimit is how long a run may take before it is stopped: a loop that
 /// never ends must not hold the browser for ever.
 const runLimit = Duration(seconds: 20);
@@ -80,6 +120,16 @@ class AppCodeRunHost implements CodeRunHost {
       case CodeRunner.flutter:
         return _flutter(code, entry, size, onLog);
       case CodeRunner.dartpad:
+        // On Google's site: never past a proxy somebody set up so the
+        // network would not see them.
+        if (await networkIsProxied()) {
+          return const CodeRunOutcome(logs: [
+            CodeLog(
+                "DartPad isn't used while a proxy is set: it would be "
+                "reached without it.",
+                kind: CodeLogKind.note)
+          ]);
+        }
         return _browser(_dartpadPage(code, entry), size, onLog,
             base: "https://dartpad.dev/", picture: true, settle: 25);
       case CodeRunner.none:
@@ -108,17 +158,27 @@ class AppCodeRunHost implements CodeRunHost {
     if (size.width < 360) h = size.height * 360 / math.max(1, size.width);
     var done = Completer<void>();
     List<int>? shot;
+    // DartPad is a site of its own, run there on purpose; anything else is
+    // sealed off the network (see [sealed]), but for this machine's run
+    // server.
+    var origin = base == null ? "" : Uri.parse(base).origin;
+    var open = base != null && origin != _localOrigin(base);
     var view = HeadlessInAppWebView(
       initialSize: Size(w, h),
       initialData: InAppWebViewInitialData(
-          data: html,
+          data: open ? html : sealed(html, origin: origin),
           baseUrl: base == null ? null : WebUri(base),
           mimeType: "text/html",
           encoding: "utf-8"),
-      initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
-          transparentBackground: false,
-          isInspectable: false),
+      initialSettings: open
+          ? InAppWebViewSettings(
+              javaScriptEnabled: true,
+              transparentBackground: false,
+              isInspectable: false,
+              incognito: true)
+          : sealedSettings(transparentBackground: false),
+      shouldOverrideUrlLoading:
+          open ? null : (c, action) => stayOnPage(action, origin: origin),
       onWebViewCreated: (c) {
         c.addJavaScriptHandler(
             handlerName: "codeConsole",
@@ -222,24 +282,36 @@ class AppCodeRunHost implements CodeRunHost {
       onLog(l);
     }
 
+    // Fetched as every download from the canvas is (canvas_network.dart):
+    // never past a proxy, https only, its size capped.
+    if (await networkIsProxied()) {
+      note(
+          "Python isn't fetched while a proxy is set: it would be reached "
+          "without it.",
+          CodeLogKind.error);
+      return false;
+    }
     note("Fetching Python (Pyodide $pyodideVersion) the first time: "
         "about 13 MB, then kept.");
     await Directory(dir).create(recursive: true);
-    var client = HttpClient();
+    var client = canvasHttpClient();
     try {
       for (var name in missing) {
         var url = Uri.parse(
             "https://cdn.jsdelivr.net/pyodide/v$pyodideVersion/full/$name");
-        var req = await client.getUrl(url);
-        var res = await req.close();
-        if (res.statusCode != 200) {
-          note("Python could not be fetched ($name: ${res.statusCode}).",
+        var res = await canvasGet(client, url);
+        if (res == null || res.statusCode != 200) {
+          note(
+              "Python could not be fetched "
+              "($name: ${res?.statusCode ?? "refused"}).",
               CodeLogKind.error);
           return false;
         }
-        var bytes = <int>[];
-        await for (var chunk in res) {
-          bytes.addAll(chunk);
+        var bytes = await readCapped(res, 64 * 1024 * 1024);
+        if (bytes == null) {
+          note("Python's $name was too big, so it was not kept.",
+              CodeLogKind.error);
+          return false;
         }
         if (sha256.convert(bytes).toString() != pyodideFiles[name]) {
           note(

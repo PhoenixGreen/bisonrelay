@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -119,5 +120,49 @@ void main() {
     expect(movedFormula("=B1+D1", 1, -1, columns: true), "=#REF!+C1");
     expect(movedFormula("=SUM(LOG10(A1))", 0, 1), "=SUM(LOG10(A2))",
         reason: "a function's name isn't a reference");
+  });
+
+  // A received canvas's sheet is worked out as it opens, so a range or a
+  // formula can't ask for more than a sheet holds (review 2026-11-17).
+  group("limits a received sheet cannot pass", () {
+    test("a cell past the last row or column is no cell", () {
+      expect(cellAt("A1048576"), (1048575, 0));
+      expect(cellAt("A1048577"), isNull);
+      expect(cellAt("XFD1"), (0, 16383));
+      expect(cellAt("XFE1"), isNull);
+      expect(cellAt("A99999999999999999999"), isNull);
+      expect(CellRange.parse("A1:ZZZ99999999"), isNull);
+    });
+
+    test("a range of more than a million cells is an error, quickly", () {
+      var w = Stopwatch()..start();
+      var v = evaluateFormula(parseFormula("SUM(A1:XFD1048576)")!, (r, c) => 1);
+      expect(v, SheetError.ref);
+      expect(w.elapsed, lessThan(const Duration(seconds: 1)));
+    });
+
+    test("what would throw is the formula's error, not the canvas's", () {
+      Object? of(String f) => evaluateFormula(parseFormula(f)!, (r, c) => null);
+      expect(of('LEFT("a",1e309)'), isA<SheetError>());
+      expect(() => of("DATE(1000000000,1,1)"), returnsNormally);
+      expect(parseFormula("(" * 9000), isNull,
+          reason: "longer than any sheet's");
+    });
+
+    test("a long chain of formulas ends in an error, not a crash", () {
+      var sheet = DataSheet(id: "s", cells: [
+        for (var i = 0; i < 3000; i++) [i == 2999 ? "1" : "=A${i + 2}"],
+      ]);
+      expect(sheetValue(sheet, 0, 0), isA<SheetError>());
+    });
+
+    test("a sheet brings no more cells than a sheet can hold", () {
+      var big = DataSheet.fromJson({
+        "id": "s",
+        "cells": [for (var i = 0; i < 3000; i++) List.filled(1000, "x")],
+      })!;
+      var n = big.cells.fold(0, (s, r) => s + r.length);
+      expect(n, lessThanOrEqualTo(DataSheet.maxCells));
+    });
   });
 }

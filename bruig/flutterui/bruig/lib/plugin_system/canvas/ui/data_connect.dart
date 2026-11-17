@@ -117,6 +117,37 @@ String sourceSays(DataSource s) {
   return s.where.split(RegExp(r"[\\/]")).last;
 }
 
+/// confirmSource is whether [source] may be read: a file or a host already
+/// allowed here may; another is asked about first, and remembered when
+/// agreed to. A canvas's source came with it, from somebody else: their path
+/// would read whatever file it names, their address tell their server who
+/// opened it.
+Future<bool> confirmSource(BuildContext context, DataSource source) async {
+  switch (source.kind) {
+    case DataKind.file when !await DataFiles.allowed(source.where):
+      if (!context.mounted) return false;
+      var ok = await askToConfirm(context,
+          title: "Read this file?",
+          message: "This canvas reads ${source.where}. Only agree if it is a "
+              "file you meant it to read.",
+          confirm: "Read it");
+      if (ok) await DataFiles.allow(source.where);
+      return ok;
+    case DataKind.url when !await DataHosts.allowed(source.where):
+      var host = DataHosts.hostOf(source.where);
+      if (host.isEmpty || !context.mounted) return false;
+      var ok = await askToConfirm(context,
+          title: "Fetch from $host?",
+          message: "This canvas fetches its data from $host, which will see "
+              "this computer's address. Only agree if you trust it.",
+          confirm: "Fetch");
+      if (ok) await DataHosts.allow(source.where);
+      return ok;
+    default:
+      return true;
+  }
+}
+
 /// refreshSheet fetches sheet [id]'s source and puts what came in it,
 /// asking first before a file it has not been allowed to read. It answers
 /// the cells that changed, null when nothing came (having said why).
@@ -126,16 +157,7 @@ Future<Set<(int, int)>?> refreshSheet(
   if (sheet == null || !sheet.source.on) return null;
   var source = sheet.source;
   var snackbar = SnackBarModel.of(context);
-  if (source.kind == DataKind.file && !await DataFiles.allowed(source.where)) {
-    if (!context.mounted) return null;
-    var ok = await askToConfirm(context,
-        title: "Read this file?",
-        message: "This sheet reads ${source.where}. Only agree if it is a "
-            "file you meant it to read.",
-        confirm: "Read it");
-    if (!ok || !context.mounted) return null;
-    await DataFiles.allow(source.where);
-  }
+  if (!await confirmSource(context, source) || !context.mounted) return null;
   if (!context.mounted) return null;
   var allowed = context.read<CanvasPreferences>().allowFetching;
   var proxied = allowed && await networkIsProxied();
@@ -267,6 +289,26 @@ class _ConnectDataState extends State<ConnectData> {
   DataPreset? _preset;
   String _choice = "";
   DataSource _src = const DataSource();
+
+  /// _arrived is the file the sheet already read when this opened: it may
+  /// have come inside somebody else's canvas, so it is asked about before it
+  /// is read (see [_mayRead]). One picked or typed here is the reader's own.
+  String _arrived = "";
+
+  /// _mayRead is whether the file or address named now may be read: one
+  /// named here is; the one the sheet came with, only once the reader
+  /// agrees (see [confirmSource]).
+  Future<bool> _mayRead() async {
+    if (_src.where.isEmpty) return true;
+    if (_src.where != _arrived) {
+      if (_src.kind == DataKind.file) await DataFiles.allow(_src.where);
+      if (_src.kind == DataKind.url) await DataHosts.allow(_src.where);
+      return true;
+    }
+    if (!mounted) return false;
+    return confirmSource(context, _src);
+  }
+
   final TextEditingController _key = TextEditingController();
   bool _hasKey = false;
   dynamic _json;
@@ -284,6 +326,7 @@ class _ConnectDataState extends State<ConnectData> {
     var s = _sheet;
     if (widget.editing && s != null && s.source.on) {
       _src = s.source;
+      _arrived = s.source.where;
       _preset = presetById(s.source.preset);
       _kind = _preset != null
           ? _Kind.preset
@@ -355,12 +398,10 @@ class _ConnectDataState extends State<ConnectData> {
         await _checkKey();
       }
       // A file named here, by the person at this computer, may be read: the
-      // permission the file picker gives (DataFiles guards against a path
-      // that arrived inside somebody else's canvas).
-      if (_src.kind == DataKind.file && _src.where.isNotEmpty) {
-        await DataFiles.allow(_src.where);
-      }
-      if (!mounted) return;
+      // permission the file picker gives. The one the sheet arrived with is
+      // asked about (DataFiles guards against a path that came inside
+      // somebody else's canvas).
+      if (!await _mayRead() || !mounted) return;
       var allowed = context.read<CanvasPreferences>().allowFetching;
       var proxied = allowed && await networkIsProxied();
       var (asking, _) = askingFor(_src, _sheet?.cells ?? const []);
@@ -419,6 +460,7 @@ class _ConnectDataState extends State<ConnectData> {
       _problem = null;
     });
     try {
+      if (!await _mayRead() || !mounted) return;
       var allowed = context.read<CanvasPreferences>().allowFetching;
       var proxied = allowed && await networkIsProxied();
       var sheet = _sheet;

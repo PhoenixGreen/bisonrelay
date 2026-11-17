@@ -847,17 +847,31 @@ class Runtime {
     );
   }
 
+  /// opLimit is the most instructions one call into the program may run
+  /// before it is stopped with [OpLimitExceeded]: null for no limit
+  /// (bruig's patch, see PATCHES.md). A program run on the app's own
+  /// isolate -- a Flutter app built and drawn in its frames -- that loops
+  /// for ever would otherwise hang the app. Counted in the run loop itself,
+  /// outside any instruction, so the program's own try/catch cannot keep
+  /// it going: one that catches it is stopped again at its next
+  /// instruction.
+  int? opLimit;
+  int _ops = 0, _depth = 0;
+
   /// Start program execution at a specific bytecode offset.
   /// Users should use [executeLib] instead.
   dynamic execute(int entrypoint) {
     _setup();
     _prOffset = entrypoint;
+    if (_depth == 0) _ops = 0;
+    _depth++;
     try {
       callStack.add(-1);
       catchStack.add([]);
       while (true) {
         final op = pr[_prOffset++];
         op.run(this);
+        if (opLimit != null && ++_ops > opLimit!) throw OpLimitExceeded(opLimit!);
       }
     } on ProgramExit catch (_) {
       return returnValue;
@@ -867,6 +881,8 @@ class Runtime {
       throw e.exception;
     } catch (e, stk) {
       throw RuntimeException(this, e, stk);
+    } finally {
+      _depth--;
     }
   }
 
@@ -875,12 +891,18 @@ class Runtime {
   void bridgeCall(int $offset) {
     final savedOffset = _prOffset;
     _prOffset = $offset;
+    // A call from outside the program (a widget built, a button pressed)
+    // starts its own budget; one made from inside it counts against its
+    // caller's.
+    if (_depth == 0) _ops = 0;
+    _depth++;
     callStack.add(-1);
     catchStack.add([]);
     try {
       while (true) {
         final op = pr[_prOffset++];
         op.run(this);
+        if (opLimit != null && ++_ops > opLimit!) throw OpLimitExceeded(opLimit!);
       }
     } on ProgramExit catch (_) {
       _prOffset = savedOffset;
@@ -891,6 +913,8 @@ class Runtime {
       throw e.exception;
     } catch (e, stk) {
       throw RuntimeException(this, e, stk);
+    } finally {
+      _depth--;
     }
   }
 
@@ -1049,4 +1073,15 @@ class WrappedException implements Exception {
   String toString() {
     return 'WrappedException: $exception';
   }
+}
+
+/// OpLimitExceeded is a call into the program that ran more than
+/// [Runtime.opLimit] instructions (bruig's patch, see PATCHES.md).
+class OpLimitExceeded implements Exception {
+  final int limit;
+  const OpLimitExceeded(this.limit);
+
+  @override
+  String toString() => "The program ran for too long without stopping "
+      "($limit steps): a loop that never ends?";
 }

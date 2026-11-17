@@ -251,7 +251,7 @@ class StockClient {
       if (response?.statusCode != 200) return null;
       return await readCapped(response!, maxBytes);
     } catch (exception) {
-      debugPrint("Stock download failed: $exception");
+      debugPrint("Stock download failed: ${exception.runtimeType}");
       return null;
     } finally {
       client.close(force: true);
@@ -299,7 +299,9 @@ class StockClient {
       var bytes = await readCapped(response, _maxTextBytes);
       return bytes == null ? (0, "") : (200, utf8.decode(bytes));
     } catch (exception) {
-      debugPrint("Stock search failed: $exception");
+      // Its type only: an HttpException's text carries the address, and the
+      // address carries the user's key.
+      debugPrint("Stock search failed: ${exception.runtimeType}");
       return (0, "");
     } finally {
       client.close(force: true);
@@ -345,7 +347,7 @@ class StockClient {
       await partial.rename(to.path);
       return true;
     } catch (exception) {
-      debugPrint("Stock download failed: $exception");
+      debugPrint("Stock download failed: ${exception.runtimeType}");
       try {
         if (await partial.exists()) await partial.delete();
       } catch (_) {}

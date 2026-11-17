@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
 import 'package:bruig/plugin_system/canvas/media/code_dart_runner.dart';
 import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
@@ -108,11 +109,11 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
     } else if (widget.runner == CodeRunner.web) {
       body = InAppWebView(
         initialData: InAppWebViewInitialData(
-            data: webPage(widget.code, widget.entry),
+            data: sealed(webPage(widget.code, widget.entry)),
             mimeType: "text/html",
             encoding: "utf-8"),
-        initialSettings:
-            InAppWebViewSettings(javaScriptEnabled: true, isInspectable: false),
+        initialSettings: sealedSettings(),
+        shouldOverrideUrlLoading: (c, action) => stayOnPage(action),
         onWebViewCreated: (c) {
           _web = c;
           c.addJavaScriptHandler(
@@ -145,7 +146,7 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
               // run's picture is drawn without it.
               data: MediaQuery.of(context)
                   .copyWith(size: Size(w, h), textScaler: TextScaler.noScaling),
-              child: _built!,
+              child: ownNavigator(_built!),
             ),
           ),
         ),
@@ -170,3 +171,17 @@ class _CodeLivePreviewState extends State<CodeLivePreview> {
     );
   }
 }
+
+/// ownNavigator gives a lesson's app a navigator of its own. It is built
+/// inside the app's own tree, and Navigator.of would otherwise find the
+/// app's: a page pushed there covered the whole app, and stayed after the
+/// preview was shut (security review, 2026-11-17).
+Widget ownNavigator(Widget app) => HeroControllerScope.none(
+      child: Navigator(
+        onGenerateInitialRoutes: (_, __) => [
+          PageRouteBuilder<void>(
+              pageBuilder: (_, __, ___) => app,
+              transitionDuration: Duration.zero),
+        ],
+      ),
+    );

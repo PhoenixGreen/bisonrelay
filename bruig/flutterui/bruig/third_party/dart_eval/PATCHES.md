@@ -15,6 +15,13 @@ Changes:
   'int' in type cast". It now returns the boxed Variable, as the explicit
   `obj.field = ...` path above it already did.
 
+- lib/src/eval/runtime/runtime.dart, `Runtime.opLimit` (2026-11-17,
+  security review): the most instructions one call into the program may
+  run, counted in `execute`'s and `bridgeCall`'s loops, then
+  `OpLimitExceeded` is thrown. Null by default, as upstream. bruig sets it
+  for the Code element's Flutter runner, which builds a received canvas's
+  app on the UI isolate, where `while (true) {}` hung the app.
+
 Used through pubspec.yaml's dependency_overrides, so flutter_eval uses it
 too. When a release of dart_eval has the fix, go back to it from pub.dev.
 

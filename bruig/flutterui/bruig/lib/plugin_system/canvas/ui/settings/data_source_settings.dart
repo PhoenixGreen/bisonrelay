@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/ui/data_connect.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -13,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_data.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:file_picker/file_picker.dart';
@@ -843,16 +843,7 @@ Future<FetchedRows?> _runRefresh(
     asking = source.copyWith(where: preset.address(wanted.join(",")));
   }
 
-  if (source.kind == DataKind.file && !await DataFiles.allowed(source.where)) {
-    if (!context.mounted) return null;
-    var ok = await askToConfirm(context,
-        title: "Read this file?",
-        message: "This canvas reads ${source.where}. Only agree if it is a "
-            "file you meant it to read.",
-        confirm: "Read it");
-    if (!ok || !context.mounted) return null;
-    await DataFiles.allow(source.where);
-  }
+  if (!await confirmSource(context, source) || !context.mounted) return null;
 
   // Asked whatever the source: a file's rows can still name pictures to fetch.
   var proxied = allowed && await networkIsProxied();

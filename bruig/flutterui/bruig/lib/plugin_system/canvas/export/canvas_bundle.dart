@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 import 'dart:convert';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive.dart' hide ZLibDecoder;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
@@ -53,7 +54,8 @@ Future<Uint8List> packCanvas(
   var loadMedia =
       media ?? (String id) => CanvasMedia.load(CanvasMedia.kindOf(id), id);
   var archive = Archive();
-  archive.addFile(ArchiveFile.string(_documentEntry, document.encode()));
+  archive
+      .addFile(_stored(ArchiveFile.string(_documentEntry, document.encode())));
 
   for (var id in document.assetIds) {
     var bytes = await load(id);
@@ -61,8 +63,8 @@ Future<Uint8List> packCanvas(
       debugPrint("The bundle is missing the picture $id");
       continue;
     }
-    archive.addFile(
-        ArchiveFile.bytes("$_pictureDir/$id", Uint8List.fromList(bytes)));
+    archive.addFile(_stored(
+        ArchiveFile.bytes("$_pictureDir/$id", Uint8List.fromList(bytes))));
   }
 
   for (var id in document.mediaIds) {
@@ -71,13 +73,69 @@ Future<Uint8List> packCanvas(
       debugPrint("The bundle is missing the media file $id");
       continue;
     }
-    archive.addFile(
-        ArchiveFile.bytes("$_mediaDir/$id", Uint8List.fromList(bytes)));
+    archive.addFile(_stored(
+        ArchiveFile.bytes("$_mediaDir/$id", Uint8List.fromList(bytes))));
   }
 
-  // Stored, not deflated: the large entries are already compressed, and
-  // unpackCanvas's zip-bomb check relies on it.
-  return Uint8List.fromList(ZipEncoder().encode(archive, level: 0));
+  return Uint8List.fromList(ZipEncoder().encode(archive));
+}
+
+/// _stored marks [file] to be stored as it is, not deflated: the large
+/// entries are already compressed. (Level 0 was not that: it still wrote
+/// each entry as deflate, in stored blocks.)
+ArchiveFile _stored(ArchiveFile file) =>
+    file..compression = CompressionType.none;
+
+/// _TooBig is a bundle entry that inflated past the room left for it.
+class _TooBig implements Exception {}
+
+/// _Capped gathers inflated bytes, refusing more than [cap] of them.
+class _Capped implements Sink<List<int>> {
+  final int cap;
+  final _bytes = BytesBuilder(copy: false);
+  _Capped(this.cap);
+
+  @override
+  void add(List<int> chunk) {
+    if (_bytes.length + chunk.length > cap) throw _TooBig();
+    _bytes.add(chunk);
+  }
+
+  @override
+  void close() {}
+
+  Uint8List take() => _bytes.takeBytes();
+}
+
+/// _contentOf is [file]'s contents, no more than [left] bytes of them, or
+/// null where there are more, or where it is packed some way a bundle never
+/// is. A zip names each file's size, but that is what the sender wrote: the
+/// library inflates a deflated file to whatever it holds, so a few megabytes
+/// can be gigabytes. Here the bytes are counted as they come.
+Uint8List? _contentOf(ArchiveFile file, int left) {
+  var raw = file.rawContent;
+  if (raw is! ZipFile || left < 0) return null;
+  var packed = raw.getStream(decompress: false).toUint8List();
+  switch (raw.compressionMethod) {
+    case CompressionType.none:
+      return packed.length <= left ? packed : null;
+    case CompressionType.deflate:
+      var out = _Capped(left);
+      try {
+        var sink = ZLibDecoder(raw: true).startChunkedConversion(out);
+        const step = 1 << 16;
+        for (var at = 0; at < packed.length; at += step) {
+          sink.add(Uint8List.sublistView(packed, at,
+              at + step > packed.length ? packed.length : at + step));
+        }
+        sink.close();
+      } on _TooBig {
+        return null;
+      }
+      return out.take();
+    default:
+      return null;
+  }
 }
 
 /// CanvasBundle is an unpacked bundle.
@@ -96,15 +154,39 @@ class CanvasBundle {
 /// maxBundleBytes is the biggest canvas file read from a chat or a folder.
 const int maxBundleBytes = 1 << 30;
 
+/// unpackLimit is how long taking a received canvas apart may take.
+const unpackLimit = Duration(minutes: 2);
+
 /// unpackCanvasFile is [unpackCanvas] for [file], or null where it is
-/// bigger than [maxBundleBytes], since it is read whole into memory.
-Future<CanvasBundle?> unpackCanvasFile(File file) async {
+/// bigger than [maxBundleBytes], since it is read whole into memory, or
+/// where it takes longer than [limit].
+Future<CanvasBundle?> unpackCanvasFile(File file,
+    {Duration limit = unpackLimit}) async {
   if (await file.length() > maxBundleBytes) return null;
   // Read and taken apart on an isolate of its own: a bundle can be a
   // gigabyte, and the whole app waited for it -- a canvas previewed in a
-  // chat froze the chat.
-  var at = file.path;
-  return Isolate.run(() async => unpackCanvas(await File(at).readAsBytes()));
+  // chat froze the chat. One that runs over is killed rather than left
+  // running: a crafted canvas must not hold a core and its memory for as
+  // long as it likes (security review, 2026-11-17).
+  var port = ReceivePort();
+  Isolate? isolate;
+  try {
+    isolate = await Isolate.spawn(_unpackIn, (port.sendPort, file.path),
+        onExit: port.sendPort, onError: port.sendPort);
+    var answer = await port.first.timeout(limit, onTimeout: () => null);
+    return answer is CanvasBundle ? answer : null;
+  } catch (exception) {
+    debugPrint("Unable to read the canvas file: $exception");
+    return null;
+  } finally {
+    isolate?.kill(priority: Isolate.immediate);
+    port.close();
+  }
+}
+
+Future<void> _unpackIn((SendPort, String) job) async {
+  var (reply, at) = job;
+  Isolate.exit(reply, await unpackCanvas(await File(at).readAsBytes()));
 }
 
 /// unpackCanvas reads a bundle or a plain .bcanvas from outside the
@@ -118,17 +200,15 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
 
     var archive = ZipDecoder().decodeBytes(bytes);
     // A bundle is stored, not compressed (see packCanvas), so its contents
-    // are about its own size. Far more is a zip bomb, refused before
-    // anything is inflated.
-    var room = 64 * 1024 * 1024 + 4 * bytes.length;
-    var declared = 0;
-    for (var file in archive.files) {
-      declared += file.size;
-    }
-    if (declared > room) return null;
+    // are about its own size. Far more is a zip bomb: each entry is
+    // inflated against what is left of the room, and refused past it.
+    var left = 64 * 1024 * 1024 + 4 * bytes.length;
     var entry = archive.findFile(_documentEntry);
     if (entry == null) return null;
-    var document = _received(utf8.decode(entry.content));
+    var json = _contentOf(entry, left);
+    if (json == null) return null;
+    left -= json.length;
+    var document = _received(utf8.decode(json));
     if (document == null) return null;
 
     var pictures = <String, Uint8List>{};
@@ -144,15 +224,13 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
       // becomes a path.
       var id = file.name.split("/").last;
       if (id.isEmpty) continue;
-      if (file.name.startsWith("$_mediaDir/")) {
-        if (CanvasMedia.isId(id)) media[id] = Uint8List.fromList(file.content);
-        continue;
-      }
-      pictures[id] = Uint8List.fromList(file.content);
+      var isMedia = file.name.startsWith("$_mediaDir/");
+      if (isMedia && !CanvasMedia.isId(id)) continue;
+      var content = _contentOf(file, left);
+      if (content == null) return null;
+      left -= content.length;
+      (isMedia ? media : pictures)[id] = content;
     }
-    var inflated = pictures.values.fold(0, (n, b) => n + b.length) +
-        media.values.fold(0, (n, b) => n + b.length);
-    if (inflated > room) return null;
     return CanvasBundle(document, pictures, media);
   } catch (exception) {
     debugPrint("Unable to read the canvas bundle: $exception");
@@ -164,10 +242,14 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
 /// document removed (the words it last read are kept). Otherwise it would
 /// read whatever document of that name the recipient has.
 CanvasDocument? _received(String text) {
+  // A Run panel's DartPad switch is not taken either: DartPad runs the code
+  // on Google's site, telling it who reads, and that is the reader's to
+  // choose (security review, 2026-11-17).
   Object? strip(Object? v) => switch (v) {
         Map<String, dynamic> m => {
             for (var e in m.entries)
-              if (!(e.key == "document" && e.value is Map))
+              if (!(e.key == "document" && e.value is Map) &&
+                  !(e.key == "dartpad" && e.value == true))
                 e.key: strip(e.value),
           },
         List l => [for (var x in l) strip(x)],

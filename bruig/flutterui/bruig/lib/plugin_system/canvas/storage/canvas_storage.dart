@@ -269,6 +269,12 @@ class CanvasStorage {
     }
     if (name.length > maxNameLength) name = name.substring(0, maxNameLength);
     name = name.trim();
+    // Windows keeps these names for devices: a canvas called "NUL" (one sent
+    // by somebody else, say) could be neither saved nor opened there.
+    if (RegExp(r"^(con|prn|aux|nul|com\d|lpt\d)$", caseSensitive: false)
+        .hasMatch(name)) {
+      name = "$name canvas";
+    }
     return name.isEmpty ? null : name;
   }
 

@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'dart:convert';
@@ -10,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:archive/archive.dart' hide ZLibDecoder;
 import 'package:flutter_test/flutter_test.dart';
 import 'support/canvas_store_age.dart';
 
@@ -162,5 +164,62 @@ void main() {
     var id = (await CanvasAssets.save(png(5)))!;
     await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
     expect(await CanvasAssets.load(id), isNotNull);
+  });
+
+  // A zip names each file's size, but the sender writes those numbers: the
+  // archive library inflated a deflated file to whatever it held, so a few
+  // megabytes of zeros could be gigabytes in memory (review 2026-11-17).
+  test("a file that inflates past its room is refused, whatever it says",
+      () async {
+    var archive = Archive()
+      ..addFile(ArchiveFile.string(
+          "canvas.json", const CanvasDocument(title: "Bomb").encode()))
+      ..addFile(ArchiveFile.bytes(
+          "pictures/${"a" * 64}", Uint8List(80 * 1024 * 1024)));
+    var bytes = ZipEncoder().encode(archive, level: 9);
+    expect(bytes.length, lessThan(1024 * 1024), reason: "a small file");
+    expect(await unpackCanvas(bytes), isNull);
+  });
+
+  test("a bundle is written stored, and one written deflated still opens",
+      () async {
+    var id = (await CanvasAssets.save(png(7)))!;
+    var packed = await packCanvas(withPictures([id]));
+    for (var f in ZipDecoder().decodeBytes(packed).files) {
+      expect(f.compression, CompressionType.none, reason: f.name);
+    }
+    // As bundles were written before: each entry deflate, in stored blocks.
+    var old = Archive();
+    for (var f in ZipDecoder().decodeBytes(packed).files) {
+      old.addFile(ArchiveFile.bytes(f.name, f.content));
+    }
+    var back = await unpackCanvas(ZipEncoder().encode(old, level: 0));
+    expect(back, isNotNull);
+    expect(back!.pictures[id], png(7));
+  });
+
+  // DartPad runs code on Google's site: whether to is the reader's choice,
+  // not the sender's (security review, 2026-11-17).
+  test("a received Run panel does not come set to run on DartPad", () async {
+    var doc = const CanvasDocument().addElement(const CodeRunElement(
+        ElementBase(id: "r", width: 300, height: 200),
+        dartpad: true));
+    var back = (await unpackCanvas(utf8.encode(doc.encode())))!;
+    expect((back.document.elementById("r") as CodeRunElement).dartpad, isFalse);
+  });
+
+  test("a canvas file is read on an isolate of its own, and given up on",
+      () async {
+    var id = (await CanvasAssets.save(png(9)))!;
+    var dir = await Directory.systemTemp.createTemp("bundle_file");
+    addTearDown(() => dir.delete(recursive: true));
+    var file = File("${dir.path}/sent.bcanvas")
+      ..writeAsBytesSync(await packCanvas(withPictures([id])));
+    var back = await unpackCanvasFile(file);
+    expect(back?.pictures[id], png(9));
+    var junk = File("${dir.path}/junk.bcanvas")..writeAsStringSync("{nope");
+    expect(await unpackCanvasFile(junk), isNull);
+    // One that runs over its time is stopped, not waited for.
+    expect(await unpackCanvasFile(file, limit: Duration.zero), isNull);
   });
 }

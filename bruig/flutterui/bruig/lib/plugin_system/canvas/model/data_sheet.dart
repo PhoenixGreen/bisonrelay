@@ -83,16 +83,22 @@ String columnName(int c) {
 /// cellName is the cell at row [r], column [c]: "B4".
 String cellName(int r, int c) => "${columnName(c)}${r + 1}";
 
+/// maxSheetRows and maxSheetColumns are the most a sheet can be, as the
+/// spreadsheets have it (1,048,576 rows, columns to XFD). A cell named past
+/// them is no cell: a received canvas's "A1:ZZZ99999999" would otherwise be
+/// worked through cell by cell as it opens.
+const maxSheetRows = 1048576, maxSheetColumns = 16384;
+
 /// cellAt reads "B4" (or "$B$4") as its row and column; null otherwise.
 (int, int)? cellAt(String text) {
-  var m = RegExp(r"^\$?([A-Z]{1,3})\$?(\d+)$").firstMatch(text.trim());
+  var m = RegExp(r"^\$?([A-Z]{1,3})\$?(\d{1,7})$").firstMatch(text.trim());
   if (m == null) return null;
   var c = 0;
   for (var ch in m.group(1)!.codeUnits) {
     c = c * 26 + (ch - 64);
   }
   var r = int.parse(m.group(2)!);
-  if (r < 1) return null;
+  if (r < 1 || r > maxSheetRows || c > maxSheetColumns) return null;
   return (r - 1, c - 1);
 }
 
@@ -531,6 +537,26 @@ class DataSheet {
         if (folder.isNotEmpty) "folder": folder,
       };
 
+  /// maxCells is the most cells a sheet brings with it when read: a
+  /// received canvas's sheet is held in memory and worked through whole.
+  static const maxCells = 2000000;
+
+  static List<List<String>> _cellsFromJson(Object? j) {
+    var out = <List<String>>[];
+    if (j is! List) return out;
+    var left = maxCells;
+    for (var r in j.take(maxSheetRows)) {
+      if (r is! List) continue;
+      var row = [
+        for (var c in r.take(math.min(maxSheetColumns, left))) "${c ?? ""}"
+      ];
+      left -= row.length;
+      out.add(row);
+      if (left <= 0) break;
+    }
+    return out;
+  }
+
   static DataSheet? fromJson(Object? j) {
     if (j is! Map) return null;
     var id = j["id"];
@@ -538,11 +564,7 @@ class DataSheet {
     return DataSheet(
         id: id,
         name: j["name"] is String ? j["name"] as String : "Sheet",
-        cells: [
-          if (j["cells"] case List rows)
-            for (var r in rows)
-              if (r is List) [for (var c in r) "${c ?? ""}"],
-        ],
+        cells: _cellsFromJson(j["cells"]),
         formats: {
           if (j["formats"] case Map f)
             for (var MapEntry(:key, :value) in f.entries)
@@ -560,10 +582,10 @@ class DataSheet {
             ? Color(j["spotlightColour"] as int)
             : const Color(0xFFF2B33D),
         gridRows: j["gridRows"] is int
-            ? math.max(1, j["gridRows"] as int)
+            ? (j["gridRows"] as int).clamp(1, maxSheetRows)
             : defaultGridRows,
         gridColumns: j["gridColumns"] is int
-            ? math.max(1, j["gridColumns"] as int)
+            ? (j["gridColumns"] as int).clamp(1, maxSheetColumns)
             : defaultGridColumns,
         made: SheetMade.fromJson(j["made"]),
         folder: j["folder"] is String ? j["folder"] as String : "",
@@ -720,6 +742,7 @@ class _SheetCalc {
   final DataSheet sheet;
   final Map<int, Object?> _done = {};
   final Set<int> _working = {};
+  static const _maxChain = 500;
   _SheetCalc(this.sheet);
 
   Object? value(int r, int c) {
@@ -728,6 +751,9 @@ class _SheetCalc {
     var raw = sheet.raw(r, c);
     Object? v;
     if (raw.startsWith("=") && raw.length > 1) {
+      // A formula reading a formula reading one... is worked out by
+      // recursion: a chain thousands long would run out of stack.
+      if (_working.length >= _maxChain) return SheetError.ref;
       if (!_working.add(key)) return SheetError.cycle;
       try {
         var node = parseFormula(raw.substring(1));
@@ -926,7 +952,10 @@ List<double> _ruleNumbers(DataSheet sheet, CellRange range) =>
 /// column, cut to its top.
 List<int> viewRows(DataSheet sheet, SheetLink link) {
   var g = link.range;
-  var rows = [for (var r = g.r0 + 1; r <= g.r1; r++) r];
+  // Rows past the sheet's last are empty: a view of "A1:A1000000" over
+  // ten rows is ten rows.
+  var last = math.min(g.r1, math.max(sheet.rowCount - 1, g.r0));
+  var rows = [for (var r = g.r0 + 1; r <= last; r++) r];
   if (link.plain) return rows;
   if (link.whereColumn >= 0 && link.where.trim().isNotEmpty) {
     rows = [
