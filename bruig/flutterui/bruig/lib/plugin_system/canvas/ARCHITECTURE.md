@@ -250,6 +250,15 @@ somebody hostile. The rules below and where they are kept:
 
 ## Writing the code
 
+- **Never hand a torn-off extension method to something that compares it.**
+  A method of an `extension` torn off (`_gameKey` passed without calling
+  it) is a new closure every time, never equal to the last. So
+  `removeListener(_x)`, `removeHandler(_x)` and `if (hook == _x)` silently
+  fail when `_x` lives in one of the controller's or a widget's parts. Make
+  the closure once, in a field of the class (`late final _gameKeyHook =
+  _gameKey;`), and hand that out and compare against it. Listeners on a
+  `State` stay methods of the class itself.
+
 - **Comments say what and why**, never who asked or when: that is in the
   commit history, and in a comment it goes stale. Keep the comments that say
   why something must be so (the security notes, "off the UI isolate because...").
