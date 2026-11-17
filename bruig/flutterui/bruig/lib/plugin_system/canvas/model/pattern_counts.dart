@@ -57,7 +57,7 @@ abstract final class PatternCounts {
     port.close();
     if (_known.length > 2000) _known.clear();
     _known[key] = n;
-    _asking.remove(key);
+    unawaited(_asking.remove(key));
     counted.value++;
   }
 

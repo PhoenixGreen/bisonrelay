@@ -254,7 +254,7 @@ Widget _paintGroup(
             },
           ),
         if (painting.onObjects) ...[
-          CanvasStatus("An objects layer: things stood anywhere, the nearer the "
+          const CanvasStatus("An objects layer: things stood anywhere, the nearer the "
               "reader in front, and the figures put on it among them."),
           CanvasToggle(
             key: const ValueKey("tileMapSnap"),

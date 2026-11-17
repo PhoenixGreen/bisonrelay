@@ -265,7 +265,7 @@ void paintCanvasDocument(
               rect,
               Paint()
                 ..blendMode = BlendMode.plus
-                ..color = Color.fromRGBO(255, 255, 255, 1 / samples));
+                ..color = const Color.fromRGBO(255, 255, 255, 1 / samples));
           through(canvas, z0 + (zoom - z0) * t, Offset.lerp(f0, focus, t)!,
               r0 + (roll - r0) * t);
           canvas.drawPicture(picture);

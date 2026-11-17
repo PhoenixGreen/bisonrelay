@@ -355,7 +355,14 @@ class _PublishSheetState extends State<_PublishSheet> {
     // And its sounds and videos, which a bundle carries too.
     for (var id in _document.mediaIds) {
       var file = await CanvasMedia.existingPath(CanvasMedia.kindOf(id), id);
-      if (file != null) total += await File(file).length();
+      if (file == null) continue;
+      // Gone since it was found (removed in another window, say): it adds
+      // nothing, rather than leaving the estimate unshown.
+      try {
+        total += await File(file).length();
+      } on FileSystemException {
+        continue;
+      }
     }
     if (mounted) setState(() => _pictureBytes = total);
   }
@@ -713,8 +720,8 @@ class _PublishSheetState extends State<_PublishSheet> {
               ],
               if (_to == PublishTo.chat) ..._chatControls(theme),
               if (_to == PublishTo.library)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
                   child: Txt.S(
                       "The canvas becomes a document in the $publishedFolderName "
                       "folder of the post library, so a post, a page or a store "

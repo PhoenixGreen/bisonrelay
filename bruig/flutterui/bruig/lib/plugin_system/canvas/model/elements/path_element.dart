@@ -504,7 +504,7 @@ class PathElement extends CanvasElement {
   /// defaultNodes is the curve a freshly added path starts as: a shallow arc
   /// across its own box, so it visibly has handles.
   static List<PathNode> defaultNodes({int frames = 24}) => [
-        PathNode(x: 0.05, y: 0.75, outDx: 0.18, outDy: -0.22, frame: 0),
+        const PathNode(x: 0.05, y: 0.75, outDx: 0.18, outDy: -0.22, frame: 0),
         PathNode(
             x: 0.5,
             y: 0.3,

@@ -26,8 +26,8 @@ class CanvasSettingsSection extends StatelessWidget {
           onChanged: (v) => prefs.enabled = v,
         ),
       ]),
-      Padding(
-        padding: const EdgeInsets.only(right: 60, bottom: 4),
+      const Padding(
+        padding: EdgeInsets.only(right: 60, bottom: 4),
         child: Txt.S(
           "Adds a Canvas section for composing images, charts, diagrams and "
           "short animations, and publishing them into a chat, a post, a page "
@@ -36,8 +36,8 @@ class CanvasSettingsSection extends StatelessWidget {
         ),
       ),
       if (prefs.enabled) ...[
-        Padding(
-          padding: const EdgeInsets.only(right: 60, bottom: 8),
+        const Padding(
+          padding: EdgeInsets.only(right: 60, bottom: 8),
           child: Txt.S(
             "Saved canvases are kept as plain files in the Canvas folder of "
             "the app's data directory. Turning this off leaves them there.",
@@ -51,8 +51,8 @@ class CanvasSettingsSection extends StatelessWidget {
             onChanged: (v) => prefs.allowFetching = v,
           ),
         ]),
-        Padding(
-          padding: const EdgeInsets.only(right: 60, bottom: 8),
+        const Padding(
+          padding: EdgeInsets.only(right: 60, bottom: 8),
           child: Txt.S(
             "Off by default. A table or a chart can pull its numbers from a "
             "web address — a league table, a price, a count — but nothing "
@@ -66,8 +66,8 @@ class CanvasSettingsSection extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         const Txt.M("Studio colours"),
-        Padding(
-          padding: const EdgeInsets.only(right: 60, top: 4, bottom: 8),
+        const Padding(
+          padding: EdgeInsets.only(right: 60, top: 4, bottom: 8),
           child: Txt.S(
             "The colours of the mixer, the effects and the instruments. "
             "Studio is a dark desk of its own; Follow my theme takes them "

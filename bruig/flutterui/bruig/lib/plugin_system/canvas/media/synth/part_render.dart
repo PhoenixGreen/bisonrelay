@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -227,7 +228,7 @@ Future<SoundFont?> sliceFontOf(SliceKit kit) =>
     _sliceFonts[kit.key] ??= () async {
       var sound = await sliceAudioReader?.call(kit.assetId);
       if (sound == null) {
-        _sliceFonts.remove(kit.key);
+        unawaited(_sliceFonts.remove(kit.key));
         return null;
       }
       var (l, r) = sound;

@@ -197,7 +197,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
       widget.performance ?? const CharacterPerformance();
   static const int _testFps = 24;
   final CanvasController _test = CanvasController(
-      CanvasDocument(frames: _testFps * 600, frameRate: _testFps));
+      const CanvasDocument(frames: _testFps * 600, frameRate: _testFps));
   final ValueNotifier<double> _testAt = ValueNotifier(0);
   bool _testPlaying = false;
 

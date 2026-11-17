@@ -418,7 +418,7 @@ List<ReachOption> reachOptions(TableElement t, TablePart from,
       if (!body(row)) {
         out.add(ReachOption(
             "The $colName heading", TableRule(column: colKey, rows: "1")));
-        out.add(ReachOption("The header row", const TableRule(rows: "1")));
+        out.add(const ReachOption("The header row", TableRule(rows: "1")));
         break;
       }
       var who = keyAt(row);

@@ -913,7 +913,7 @@ class _ConnectDataState extends State<ConnectData> {
             sheet == null || sheet.cells.isEmpty
                 ? "The sheet is empty: it fills."
                 : "In place of what it holds now; the tables and charts showing it follow."),
-      StudioLabel("Which column says which row"),
+      const StudioLabel("Which column says which row"),
       _Choices(
         key: const ValueKey("connectMatch"),
         value: "${_src.matchColumn < 0 ? 0 : _src.matchColumn}",

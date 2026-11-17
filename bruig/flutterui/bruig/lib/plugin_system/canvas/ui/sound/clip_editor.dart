@@ -365,7 +365,7 @@ Future<ui.Image?> _spectrumOf(String assetId) =>
     _spectraOf[assetId] ??= () async {
       var audio = await CanvasController.clipAudio(assetId);
       if (audio == null) {
-        _spectraOf.remove(assetId);
+        unawaited(_spectraOf.remove(assetId));
         return null;
       }
       var (l, r) = audio;
@@ -388,7 +388,7 @@ Future<_Sound?> _soundOf(String assetId) => _soundsOf[assetId] ??= () async {
       var audio = await CanvasController.clipAudio(assetId);
       // Not kept, unread: read again next time.
       if (audio == null) {
-        _soundsOf.remove(assetId);
+        unawaited(_soundsOf.remove(assetId));
         return null;
       }
       var (l, r) = audio;

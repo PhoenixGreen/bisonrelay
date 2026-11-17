@@ -228,7 +228,8 @@ List<PanelBit> tableBits(
                     commit();
                   },
                 ),
-                CanvasHint("A league table's first column is the position, "
+                const CanvasHint(
+                    "A league table's first column is the position, "
                     "which belongs to the place rather than to the team in it — "
                     "so it stays reading 1, 2, 3 while everything else moves."),
               ]),

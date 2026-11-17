@@ -156,11 +156,11 @@ class _StockPanelState extends State<StockPanel> {
   Future<void> _choose(StockSource source) async {
     if (_kenney) setState(() => _kenney = false);
     if (source == _source) {
-      StorageManager.saveString(_sourceKey, source.name);
+      unawaited(StorageManager.saveString(_sourceKey, source.name));
       return;
     }
     _previewer.stop();
-    StorageManager.saveString(_sourceKey, source.name);
+    unawaited(StorageManager.saveString(_sourceKey, source.name));
     var hasKey = await StockKeys.has(source);
     if (!mounted) return;
     setState(() {
@@ -171,7 +171,7 @@ class _StockPanelState extends State<StockPanel> {
       _last = null;
       _problem = null;
     });
-    if (_query != null && hasKey) _run();
+    if (_query != null && hasKey) unawaited(_run());
   }
 
   void _setFilter(String id, String value) {

@@ -407,7 +407,7 @@ extension CanvasSpeech on CanvasController {
     try {
       return await job;
     } finally {
-      _speechState.shaping.remove(key);
+      unawaited(_speechState.shaping.remove(key));
     }
   }
 

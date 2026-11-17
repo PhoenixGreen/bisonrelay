@@ -35,28 +35,28 @@ class CanvasPreset {
 
 /// builtinPresets is the list, in the tab's order, emptiest first.
 final List<CanvasPreset> builtinPresets = [
-  CanvasPreset(
+  const CanvasPreset(
     id: "empty",
     label: "Empty canvas",
     description: "A plain background and nothing on it",
     icon: Icons.crop_landscape_outlined,
     build: emptyCanvas,
   ),
-  CanvasPreset(
+  const CanvasPreset(
     id: "banner",
     label: "Banner",
     description: "A generated background with a title over it",
     icon: Icons.title_outlined,
     build: bannerCanvas,
   ),
-  CanvasPreset(
+  const CanvasPreset(
     id: "chart",
     label: "Bar chart",
     description: "Five bars, axis labels and a grid",
     icon: Icons.bar_chart_outlined,
     build: chartCanvas,
   ),
-  CanvasPreset(
+  const CanvasPreset(
     id: "football",
     label: "Football pitch",
     description: "A full pitch with two elevens in a 4-4-2",

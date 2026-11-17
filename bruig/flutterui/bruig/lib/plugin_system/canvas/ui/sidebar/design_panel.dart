@@ -207,7 +207,7 @@ class _SettingsBodyState extends State<SettingsPanelBody> {
             controller: _scroll,
             // A gap under the header so the first row of small captions
             // does not read as the header's second line.
-            padding: EdgeInsets.fromLTRB(
+            padding: const EdgeInsets.fromLTRB(
                 8, (canvasGroupGap + canvasRowGap) / 2, 8, canvasGroupGap - 4),
             child: PanelHoldScope(
               hold: _hold,

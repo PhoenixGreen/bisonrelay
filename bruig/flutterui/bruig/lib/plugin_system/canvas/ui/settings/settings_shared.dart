@@ -103,12 +103,12 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
       e.curve != null &&
       controller.document.elementById(e.curve!.elementId) != null) {
     return CanvasControlGroup(label: e.kind.label, children: [
-      Padding(
-        padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
+      const Padding(
+        padding: EdgeInsets.only(top: controlLabelHeight, right: 6),
         child: SizedBox(
           height: controlHeight,
           child: Center(
-            child: const Txt.S("Placed by the line it follows"),
+            child: Txt.S("Placed by the line it follows"),
           ),
         ),
       ),
@@ -377,7 +377,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
               },
               onCommit: commit,
             ),
-            CanvasHint(
+            const CanvasHint(
                 "Everything inside the box at once, on the shape of page you "
                 "are on: the type, the line spacing, the padding, the corners "
                 "and the rules. The box itself stays where you put it. Type "

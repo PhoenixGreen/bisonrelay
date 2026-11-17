@@ -32,7 +32,7 @@ Widget backgroundPresetsSection(
     _PresetsSection(
       controller: controller,
       element: BackgroundElement(
-          ElementBase(id: "canvasBackground", name: "Background"),
+          const ElementBase(id: "canvasBackground", name: "Background"),
           spec: spec),
       onUse: (made) {
         if (made is BackgroundElement) onUse(made.spec);

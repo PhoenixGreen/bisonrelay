@@ -118,7 +118,7 @@ const _abbreviations = {
   "approx.": "approximately",
 };
 
-final _numberAt = r"\d[\d,]*(?:\.\d+)?";
+const _numberAt = r"\d[\d,]*(?:\.\d+)?";
 
 /// speakable is [text] with numbers, money, times, ordinals, symbols and
 /// sentence-ending abbreviations in words; quotes and brackets dropped, as

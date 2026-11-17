@@ -276,7 +276,7 @@ SheetLink? _pair(Picks p) => p.numbers.length < 2
         pointNames: p.names.isNotEmpty ? p.names.first : -1);
 
 final chartKinds = _withWays(<ChartKind>[
-  ChartKind(
+  const ChartKind(
       ChartType.bar,
       "Columns",
       "Compare a few amounts, or show a total each period.",
@@ -310,7 +310,7 @@ final chartKinds = _withWays(<ChartKind>[
             [_i],
             _posterColumns),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.horizontalBar,
       "Bars",
       "Rank things, especially with long names.",
@@ -350,7 +350,7 @@ final chartKinds = _withWays(<ChartKind>[
             plays: true,
             needs: _needsDates),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.groupedBar,
       "Paired columns",
       "Compare two series side by side within each group.",
@@ -368,7 +368,7 @@ final chartKinds = _withWays(<ChartKind>[
             [_a],
             _pairsSplit),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.stackedBar,
       "Stacked columns",
       "Show totals and what they're made of.",
@@ -386,7 +386,7 @@ final chartKinds = _withWays(<ChartKind>[
             [_v],
             _stackLayers),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.line,
       "Line",
       "Show change over time; compare a few trends.",
@@ -417,7 +417,7 @@ final chartKinds = _withWays(<ChartKind>[
             [_v], _drawnLines,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.area,
       "Area",
       "A total over time, or how its parts change.",
@@ -431,7 +431,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Wiped across", "Uncovered from the left.", [_v], _areaWipe,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.scatter,
       "Scatter",
       "Show how two numbers relate across many things.",
@@ -456,7 +456,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Joined", "The points joined in the order of the rows.",
             [_a], _scatterJoined),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.candlestick,
       "Candles",
       "Open, high, low and close for each period (prices).",
@@ -468,7 +468,7 @@ final chartKinds = _withWays(<ChartKind>[
             _candleClassic),
         ChartPreset("Clean", "No grid; thick candles.", [_i, _v], _candleClean),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.pie,
       "Pie",
       "Two or three shares of one whole.",
@@ -489,7 +489,7 @@ final chartKinds = _withWays(<ChartKind>[
       ],
       caveat:
           "Hard to compare more than a few slices: Bars or a Share bar read better."),
-  ChartKind(
+  const ChartKind(
       ChartType.donut,
       "Doughnut",
       "Shares of a whole with a number in the middle.",
@@ -513,7 +513,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Gapped", "Gaps between the parts: friendlier.", [_i],
             _donutGapped),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.waffle,
       "Waffle",
       "A share as so many in a hundred.",
@@ -527,7 +527,7 @@ final chartKinds = _withWays(<ChartKind>[
             "Filling in", "The squares fill one by one.", [_v], _waffleFill,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.radialBar,
       "Radial bars",
       "A few values as rings round a circle.",
@@ -540,7 +540,7 @@ final chartKinds = _withWays(<ChartKind>[
             "Swept round", "The rings sweep round in turn.", [_v], _radialSweep,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.radar,
       "Radar",
       "A profile across five or six measures.",
@@ -555,7 +555,7 @@ final chartKinds = _withWays(<ChartKind>[
       ],
       caveat:
           "The shape depends on the axis order: Radial bars or small charts are often clearer."),
-  ChartKind(
+  const ChartKind(
       ChartType.gauge,
       "Gauge",
       "One value against its range or target.",
@@ -569,7 +569,7 @@ final chartKinds = _withWays(<ChartKind>[
             plays: true),
       ],
       caveat: "Shows little for its size: a Bullet says more."),
-  ChartKind(
+  const ChartKind(
       ChartType.pictogram,
       "Pictogram",
       "Counts as rows of icons: people, coins, tickets.",
@@ -582,7 +582,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Coins", "Coins, popping in.", [_i, _v], _pictoCoins,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.sankey,
       "Flow",
       "Amounts flowing from sources into uses.",
@@ -596,7 +596,7 @@ final chartKinds = _withWays(<ChartKind>[
             "Growing", "The flows grow across in turn.", [_v], _sankeyGrow,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.treemap,
       "Treemap",
       "Many parts of a whole as rectangles.",
@@ -609,7 +609,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Leader lit", "Every tile grey but the largest.", [_a, _v],
             _treemapLit),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.timeline,
       "Timeline",
       "Events along a line.",
@@ -623,7 +623,7 @@ final chartKinds = _withWays(<ChartKind>[
             "One at a time", "Each event arrives in turn.", [_v], _timelineTurn,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.funnel,
       "Funnel",
       "Stages narrowing as people drop out.",
@@ -636,7 +636,7 @@ final chartKinds = _withWays(<ChartKind>[
             _funnelTurn,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.bubbles,
       "Bubbles",
       "Sizes as circles packed together.",
@@ -649,7 +649,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Leader lit", "Every bubble grey but the largest.",
             [_a, _v], _bubblesLit),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.bullet,
       "Bullet",
       "A value against its target and bands.",
@@ -663,7 +663,7 @@ final chartKinds = _withWays(<ChartKind>[
             "Growing", "The bars grow to their values.", [_v, _i], _bulletGrow,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.slope,
       "Slope",
       "Each thing from one value to the next.",
@@ -676,7 +676,7 @@ final chartKinds = _withWays(<ChartKind>[
         ChartPreset("Top three lit", "Every line grey but the top three.",
             [_a, _v], _slopeLit),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.shareBar,
       "Share bar",
       "One bar split into its shares.",
@@ -690,7 +690,7 @@ final chartKinds = _withWays(<ChartKind>[
             _shareWipe,
             plays: true),
       ]),
-  ChartKind(
+  const ChartKind(
       ChartType.lollipop,
       "Lollipop",
       "Ranked values with the end point in focus.",
@@ -704,7 +704,7 @@ final chartKinds = _withWays(<ChartKind>[
             [_a, _v], _lollipopLit),
       ]),
   // ---- The newer kinds, badged as new (isNew).
-  ChartKind(
+  const ChartKind(
       ChartType.diverging,
       "Diverging bars",
       "Winners and losers either side of zero; survey answers.",

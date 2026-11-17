@@ -927,6 +927,8 @@ class _GameState {
 
   String? waitingFor;
 
+  // Cancelled by the controller's _endWait, which dispose calls.
+  // ignore: cancel_subscriptions
   StreamSubscription<NormalizedGamepadEvent>? waitPads;
 
   /// sceneBeforeGame is the scene shown when the game began, to return to.

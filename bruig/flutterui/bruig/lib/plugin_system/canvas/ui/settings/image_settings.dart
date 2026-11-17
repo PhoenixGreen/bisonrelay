@@ -525,7 +525,8 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
           "it to the box, and neither leaves anything to move."),
     if (shown && framing && e.fit == ImageFit.cover)
       CanvasControlGroup(label: "Framing", rule: false, children: [
-        CanvasHint("Double-click the picture to drag it about inside its box, "
+        const CanvasHint(
+            "Double-click the picture to drag it about inside its box, "
             "and scroll to zoom."),
         for (var (label, value, apply)
             in <(String, double, ImageFraming Function(double))>[

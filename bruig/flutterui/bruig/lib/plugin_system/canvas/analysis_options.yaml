@@ -1,0 +1,16 @@
+# The canvas's own lints, over the app's (analysis_options.yaml at the
+# package root): kept to the canvas so the rest of the app is not changed.
+include: ../../../analysis_options.yaml
+
+linter:
+  rules:
+    # A future dropped inside an async function loses its errors: wrap a
+    # deliberate one in unawaited().
+    unawaited_futures: true
+    cancel_subscriptions: true
+    close_sinks: true
+    unnecessary_await_in_return: true
+    # Const widgets are made once and skipped on rebuild.
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    prefer_const_declarations: true

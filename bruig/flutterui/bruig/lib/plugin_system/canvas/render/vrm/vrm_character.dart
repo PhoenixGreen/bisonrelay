@@ -266,7 +266,7 @@ class CharacterScene extends ChangeNotifier {
       _avatar = next;
       _restyle();
       _hair();
-      next.decorate(_decals, loadDecal);
+      unawaited(next.decorate(_decals, loadDecal));
       _blushed = -1;
       _repaint();
       _changed();

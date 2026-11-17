@@ -816,11 +816,11 @@ List<Widget> codeRunSettings(
                   ]),
                 ]),
           ]),
-          PanelBit(PanelSection.more, summary: "exports", children: [
+          const PanelBit(PanelSection.more, summary: "exports", children: [
             CanvasControlGroup(
-                key: const ValueKey("codeRunExports"),
+                key: ValueKey("codeRunExports"),
                 label: "In exports",
-                children: const [
+                children: [
                   CanvasStateNote("A video plays the saved run at its time on "
                       "the timeline: nothing runs again, so every export is "
                       "the same. A book runs a web page live; Python, Go and "

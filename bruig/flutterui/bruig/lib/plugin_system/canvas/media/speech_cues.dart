@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart'
@@ -26,7 +27,7 @@ Future<Float32List?> cueRecording(SpeechCue cue, {required bool man}) {
     } catch (exception) {
       // Not cached: tried again next time.
       debugPrint("The $name sound could not be read: $exception");
-      _loaded.remove(name);
+      unawaited(_loaded.remove(name));
       return null;
     }
   }();

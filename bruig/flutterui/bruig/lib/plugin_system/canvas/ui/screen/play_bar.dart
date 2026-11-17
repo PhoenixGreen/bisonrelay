@@ -733,7 +733,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         lit,
                         const SizedBox(width: 6),
-                        HelpNote(
+                        const HelpNote(
                           id: "playBar",
                           title: "The play bar",
                           paragraphs: playBarHelp,

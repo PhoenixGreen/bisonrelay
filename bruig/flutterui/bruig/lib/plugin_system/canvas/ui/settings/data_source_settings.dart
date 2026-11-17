@@ -555,7 +555,7 @@ class _ChartTarget extends _Target {
           onPressed: () => _bindSeries(map.valueColumns.length,
               _nextFree(map, columns), lastRows, lastRaw, fields),
         ),
-        CanvasHint("One row per series. Each says which of the source's "
+        const CanvasHint("One row per series. Each says which of the source's "
             "columns it is drawn from, and the column's name is the series' "
             "name — so a chart of Market cap is labelled Market cap without "
             "typing it. Anything the last refresh turned out to hold is "
@@ -1071,7 +1071,8 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             tooltip: "Choose a file",
             onPressed: _pickFile,
           ),
-          CanvasHint("Whatever collects the data — a browser, curl, something "
+          const CanvasHint(
+              "Whatever collects the data — a browser, curl, something "
               "on a schedule — writes JSON here, and Refresh reads it. No "
               "connection is made by this app."),
         ]),
@@ -1096,7 +1097,8 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               : "Kept on this machine, never written into the canvas."),
         ]),
         if (!allowed)
-          CanvasHint("Fetching is switched off. Turn on \"Let a canvas fetch "
+          const CanvasHint(
+              "Fetching is switched off. Turn on \"Let a canvas fetch "
               "data\" in Settings > Plugins > Canvas — it is off because "
               "nothing else in this app connects out on its own, and a fetch "
               "from here would not go through the proxy in Settings."),
@@ -1116,7 +1118,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           onChanged: (v) => target.typeSource(source.copyWith(rowsPath: v)),
           onCommit: target.commit,
         ),
-        CanvasHint("A dotted route into the JSON — \"standings.0.table\" "
+        const CanvasHint("A dotted route into the JSON — \"standings.0.table\" "
             "means the table of the first standings. Leave it empty when "
             "the document is itself a list."),
       ]),

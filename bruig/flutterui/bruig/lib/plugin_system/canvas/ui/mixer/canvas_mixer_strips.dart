@@ -608,7 +608,7 @@ class _MiniNote extends StatelessWidget {
             diamond ? MainAxisAlignment.start : MainAxisAlignment.center,
         children: [
           if (diamond) ...[
-            Icon(Icons.diamond, size: 9, color: motionColour),
+            const Icon(Icons.diamond, size: 9, color: motionColour),
             const SizedBox(width: 4),
           ],
           Flexible(

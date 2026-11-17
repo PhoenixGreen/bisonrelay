@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ffi' show Abi;
 import 'dart:io';
@@ -806,7 +807,7 @@ class QwenSpeech extends SpeechEngine {
               seed: seed, compose: compose));
       var forget = stopper.whenStopped(() => program.kill());
       var errors = StringBuffer();
-      program.stdout.drain<void>();
+      unawaited(program.stdout.drain<void>());
       var said = program.stderr
           .transform(const SystemEncoding().decoder)
           .forEach(errors.write);

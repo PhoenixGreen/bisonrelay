@@ -343,8 +343,8 @@ class _NotesPainter extends CustomPainter {
             Paint()..color = s.muted.withValues(alpha: root ? 0.9 : 0.5));
       }
     }
-    canvas.drawLine(
-        Offset(keyW, top), Offset(keyW, top + h), Paint()..color = s.edge);
+    canvas.drawLine(const Offset(keyW, top), Offset(keyW, top + h),
+        Paint()..color = s.edge);
     if (t == null || t.isEmpty) return;
     var span = math.max(0.02, to - from);
     double xOf(int i) => keyW + (i * 0.02 - from) / span * w;

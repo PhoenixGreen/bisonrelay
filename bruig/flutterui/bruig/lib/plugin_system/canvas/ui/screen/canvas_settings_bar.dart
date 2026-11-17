@@ -765,7 +765,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           options: [for (var k in CanvasKind.values) (k, k.label)],
           onChanged: controller.setKind,
         ),
-        CanvasHint("Scenes are canvases played one after another — a video, "
+        const CanvasHint(
+            "Scenes are canvases played one after another — a video, "
             "an animation, a presentation, a set of images. Pages are the "
             "leaves of a document: they take covers, page numbers and facing "
             "pages, and one gives way to the next with a page turn. Choosing "

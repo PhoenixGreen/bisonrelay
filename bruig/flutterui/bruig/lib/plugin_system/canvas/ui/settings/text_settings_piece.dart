@@ -74,7 +74,7 @@ Widget _pieceQuick(
         cell(const SizedBox.shrink()),
     ]),
     const SizedBox(height: 8),
-    CanvasStateNote("Its place in the box decides how it lines up."),
+    const CanvasStateNote("Its place in the box decides how it lines up."),
   ]);
 }
 
