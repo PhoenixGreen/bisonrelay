@@ -107,7 +107,8 @@ through `apply` or one of the helpers built on it (`replaceElement`,
 fields, lifecycle and `build` in its own file and puts its behaviour in
 `part` files beside it, each an `extension` on the class: the stage, the
 charts and table designers (`data/charts_*`, `data/table_*`), the mixer's
-desk and device chain, the piano roll, the clip editor, the channels. The
+desk and device chain, the piano roll, the clip editor, the channels, the
+Speech device (whose sections take one `_SpeechView` worked out per build). The
 class overrides `setState` so its parts may call it, and keeps any method
 used as a listener: an extension's tear-off is a new closure each time, so
 `removeListener` would not find it.
