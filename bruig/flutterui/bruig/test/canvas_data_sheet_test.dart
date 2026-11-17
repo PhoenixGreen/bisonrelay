@@ -3,7 +3,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
-import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';

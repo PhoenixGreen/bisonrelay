@@ -987,7 +987,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
             CanvasDropdown<MotionWay>(
               key: const ValueKey("animPresetWay"),
               label: "Which way",
-              value: _wayOf(c, preset),
+              value: wayOf(c, preset),
               width: 150,
               options: [for (var w in preset.ways) (w, w.label)],
               onChanged: (w) => _edit(e, (c) => preset.onto(c, way: w)),
@@ -998,25 +998,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
             ? "Keys made by hand. Picking a motion replaces them."
             : "A ready-made motion writes the keys; change one and they "
                 "are yours.");
-  }
-
-  MotionWay _wayOf(MotionClip c, MotionPreset p) {
-    for (var keys in c.keys.values) {
-      for (var k in keys) {
-        if (k.value case MotionPlace(:var kind)) {
-          for (var w in p.ways) {
-            var edge = switch (w) {
-              MotionWay.left => MotionPlaceKind.offLeft,
-              MotionWay.right => MotionPlaceKind.offRight,
-              MotionWay.top => MotionPlaceKind.offTop,
-              MotionWay.bottom => MotionPlaceKind.offBottom,
-            };
-            if (edge == kind) return w;
-          }
-        }
-      }
-    }
-    return p.ways.first;
   }
 
   /// _ownWay is whether [e] has an arrival and a way out of its own -- as

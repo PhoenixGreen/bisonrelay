@@ -68,8 +68,9 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     for (var s = 0; s < k; s++) {
       for (var i = 0; i < n; i++) {
         var v = d.valueAt(s, i);
-        if (!v.isNaN && v > 0 && totals[i] > 0)
+        if (!v.isNaN && v > 0 && totals[i] > 0) {
           running[i] += v / totals[i] * 100;
+        }
       }
       stacked.add(d.series[s].copyWith(values: [...running]));
     }

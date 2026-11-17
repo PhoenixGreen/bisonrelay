@@ -49,9 +49,6 @@ extension CanvasScores on CanvasController {
     apply(scoreSynced(_document, score), transient: transient);
   }
 
-  /// removeScore takes score [id] out; its channels keep their notes.
-  void removeScore(String id) => apply(scoreRemoved(_document, id));
-
   /// openScoreStudio gives the page to the Score Studio, on score [id].
   void openScoreStudio(String id) {
     if (playing) pause();

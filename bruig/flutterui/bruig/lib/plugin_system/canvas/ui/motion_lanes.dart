@@ -1351,8 +1351,9 @@ class _LanesPainter extends CustomPainter {
               size.width);
         }
       }
-      if (e is CodeElement)
+      if (e is CodeElement) {
         _code(canvas, e, y, h, lane, tracks.length, isFolded, size.width);
+      }
       // An element reused: where each copy's clips start, as short amber
       // ticks along the top of its row (the approved design), from its first
       // clip -- only with a clip on the timeline for them to start (Ken:

@@ -237,7 +237,9 @@ void main() {
         for (var i = 0; i < d.lengthInBytes; i += 4) {
           if (d.getUint8(i) == 0xF2 &&
               d.getUint8(i + 1) == 0xC1 &&
-              d.getUint8(i + 2) == 0x4E) n++;
+              d.getUint8(i + 2) == 0x4E) {
+            n++;
+          }
         }
         return n;
       }

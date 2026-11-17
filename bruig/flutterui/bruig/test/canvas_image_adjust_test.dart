@@ -427,8 +427,6 @@ void main() {
               gradient: GradientSpec(to: ui.Color(0xFFFFFF00))));
       var dark = await pixel(over("black", [adjusting(a)]), 50, 50);
       var light = await pixel(over("white", [adjusting(a)]), 50, 50);
-      var mid = await pixel(over("grey", [adjusting(a)]), 50, 50);
-      print("gradient map: black $dark grey $mid white $light");
       near(dark, [0, 0, 255], by: 12);
       near(light, [255, 255, 0], by: 12);
     });

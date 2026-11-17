@@ -255,26 +255,6 @@ class Keyframe {
         values: values ?? this.values,
       );
 
-  /// differsFrom is whether this keyframe's pose or any channel both pin
-  /// differs from [other]'s: whether the stretch between them gets a bar on
-  /// the timeline.
-  bool differsFrom(Keyframe other) {
-    if (dx != other.dx ||
-        dy != other.dy ||
-        scale != other.scale ||
-        rotate != other.rotate ||
-        opacity != other.opacity) {
-      return true;
-    }
-    // Only the channels both pin: a missing one holds the value set before
-    // it (see ElementTrack._withHeldValues), so it is not a change.
-    for (var channel in values.keys) {
-      if (!other.values.containsKey(channel)) continue;
-      if (values[channel] != other.values[channel]) return true;
-    }
-    return false;
-  }
-
   /// withValue is this keyframe with one extra property pinned.
   Keyframe withValue(String key, double value) =>
       copyWith(values: {...values, key: value});
@@ -603,35 +583,6 @@ class TimelineAction {
         },
         noteSize: (jsonNum(json["noteSize"])?.toDouble() ?? 1).clamp(0.3, 6.0),
       );
-}
-
-/// KeyframeBand is two keyframes that belong together: the start and the end
-/// of one movement, drawn joined on the timeline and dragged as one.
-class KeyframeBand {
-  final int from;
-  final int to;
-
-  const KeyframeBand(this.from, this.to);
-
-  int get length => to - from;
-  bool get real => to > from;
-}
-
-/// bandsIn is every bar the timeline draws over [track]: one for each
-/// stretch in which something changes. None for one whose ends read the
-/// same, or one that leaves a held key (it steps at the far end rather than
-/// travelling).
-List<KeyframeBand> bandsIn(ElementTrack? track) {
-  if (track == null) return const [];
-  var out = <KeyframeBand>[];
-  var keys = [...track.keys]..sort((a, b) => a.frame - b.frame);
-  for (var i = 0; i + 1 < keys.length; i++) {
-    var from = keys[i], to = keys[i + 1];
-    if (from.easing == KeyframeEasing.hold) continue;
-    if (!from.differsFrom(to)) continue;
-    out.add(KeyframeBand(from.frame, to.frame));
-  }
-  return out;
 }
 
 /// KeyframeChannel names the extra properties a keyframe can pin, as

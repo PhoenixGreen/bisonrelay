@@ -366,7 +366,6 @@ abstract final class PitchViewKind {
   static const flat = 0;
   static const isometric = 1;
   static const broadcast = 2;
-  static const endOn = 3;
 }
 
 /// PitchSurface is its "surface" setting. Auto is whatever the sport is

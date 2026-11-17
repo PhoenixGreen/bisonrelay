@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:bruig/plugin_system/canvas/model/instrument.dart'
     show MidiControl;
@@ -371,17 +371,9 @@ class PushSurface {
   /// setScale is the scale the pads are laid out in -- the channel's Scale
   /// effect's, where it has one -- relit.
   void setScale(int root, List<int> steps) {
-    if (root == this.root && _same(steps, this.steps)) return;
+    if (root == this.root && listEquals(steps, this.steps)) return;
     this.root = root;
     this.steps = steps;
     light();
-  }
-
-  static bool _same(List<int> a, List<int> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
   }
 }

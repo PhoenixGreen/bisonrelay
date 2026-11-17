@@ -53,9 +53,6 @@ const _fadeInk = Color(0xFFE2B04A);
 /// _envelopeInk is an envelope drawn over the sound: the prototype's pink.
 const _envelopeInk = Color(0xFFF08BD0);
 
-/// editorNarrowWidth is the clip editor's width in the strip, unwidened.
-const double editorNarrowWidth = 760;
-
 /// EditorFrame is the clip editor's (or a part's piano roll's) place in the
 /// effects strip: a bar along the top with its name and buttons, as every
 /// device has, and the editor under it at the strip's height, given the
@@ -439,14 +436,6 @@ class _ClipEditorState extends State<ClipEditor> {
     );
   }
 
-  Widget _tbGroup(MixerLook look, List<Widget> children) => Container(
-        padding: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-            border: Border.all(color: look.studio.edge),
-            borderRadius: BorderRadius.circular(6)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: children),
-      );
-
   Widget _tbGap(MixerLook look) => Container(
       width: 1,
       height: 18,
@@ -499,25 +488,6 @@ class _ClipEditorState extends State<ClipEditor> {
             icon: icon, tip: tip, menu: true),
       );
 
-  MenuItemButton _menuItem(String key, String label, VoidCallback? tap,
-          {bool on = false, String? hint}) =>
-      MenuItemButton(
-        key: ValueKey(key),
-        leadingIcon: Icon(on ? Icons.check : null, size: 14),
-        onPressed: tap,
-        child: hint == null
-            ? Text(label)
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                    Text(label),
-                    Text(hint,
-                        style: const TextStyle(
-                            fontSize: 10.5, color: Color(0xFF9A98A6))),
-                  ]),
-      );
-
   Widget _audioToolbar(MixerLook look, PianoRollTarget t, SessionClip clip) {
     var repitch = clip.warp && clip.warpMode == WarpMode.repitch;
     var envKey = _envelopeKey(clip, t);
@@ -558,7 +528,7 @@ class _ClipEditorState extends State<ClipEditor> {
                   clip.warpMode.label,
                   [
                     for (var m in WarpMode.values)
-                      _menuItem(
+                      editorMenuItem(
                           "clipWarpMode-${m.name}",
                           m.label,
                           () => c.editClip(
@@ -651,14 +621,14 @@ class _ClipEditorState extends State<ClipEditor> {
                               fontSize: 10.5, color: Color(0xFF9A98A6))),
                     ),
                     for (var by in SliceBy.values)
-                      _menuItem("clipSlice-${by.name}", by.label,
+                      editorMenuItem("clipSlice-${by.name}", by.label,
                           () => _run(() => c.sliceClip(by))),
                     const Divider(height: 8),
-                    _menuItem("clipSliceNotes", "Into a note clip",
+                    editorMenuItem("clipSliceNotes", "Into a note clip",
                         () => _run(() => c.sliceToInstrument(pads: false)),
                         hint: "Each hit a note, on a new channel that plays "
                             "them"),
-                    _menuItem("clipSlicePads", "Into drum pads",
+                    editorMenuItem("clipSlicePads", "Into drum pads",
                         () => _run(() => c.sliceToInstrument(pads: true)),
                         hint: "Each hit on a pad of a new drum channel"),
                   ],
@@ -671,11 +641,11 @@ class _ClipEditorState extends State<ClipEditor> {
                   "${clip.fadeCurve.label} fades",
                   [
                     for (var f in FadeCurve.values)
-                      _menuItem("clipFadeCurve-${f.name}", f.label,
+                      editorMenuItem("clipFadeCurve-${f.name}", f.label,
                           () => c.editClip((x) => x.copyWith(fadeCurve: f)),
                           on: f == clip.fadeCurve),
                     const Divider(height: 8),
-                    _menuItem("clipFade", "A short fade at every cut",
+                    editorMenuItem("clipFade", "A short fade at every cut",
                         () => c.editClip((x) => x.copyWith(fade: !x.fade)),
                         on: clip.fade,
                         hint: "A few milliseconds at its start and its "
@@ -685,7 +655,7 @@ class _ClipEditorState extends State<ClipEditor> {
                   tip: "The way its fades go"),
               _tbGap(look),
               _tbLabel(look, "Envelope"),
-              _tbGroup(look, [
+              toolbarGroup(look, [
                 _tb(look, "clipEnvelope-off", "Off",
                     () => setState(() => _envelopes = false),
                     on: !_envelopes),
@@ -713,7 +683,7 @@ class _ClipEditorState extends State<ClipEditor> {
                           : "Setting",
                       [
                         for (var (label, k) in settings)
-                          _menuItem(
+                          editorMenuItem(
                               "clipEnvelopeTarget-$k",
                               label,
                               () => setState(() {
@@ -743,7 +713,7 @@ class _ClipEditorState extends State<ClipEditor> {
                 ),
               ],
               _tbGap(look),
-              _tbGroup(look, [
+              toolbarGroup(look, [
                 _tb(look, "clipWave", "",
                     () => setState(() => _spectral = false),
                     on: !_spectral, icon: Icons.graphic_eq, tip: "Its wave"),
@@ -2892,3 +2862,33 @@ class _TypedPlaceState extends State<_TypedPlace> {
     );
   }
 }
+
+/// toolbarGroup is a run of an editor toolbar's buttons, boxed together.
+Widget toolbarGroup(MixerLook look, List<Widget> children) => Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+          border: Border.all(color: look.studio.edge),
+          borderRadius: BorderRadius.circular(6)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: children),
+    );
+
+/// editorMenuItem is one choice in an editor toolbar's menu: ticked when
+/// [on], with a [hint] under it.
+MenuItemButton editorMenuItem(String key, String label, VoidCallback? tap,
+        {bool on = false, String? hint}) =>
+    MenuItemButton(
+      key: ValueKey(key),
+      leadingIcon: Icon(on ? Icons.check : null, size: 14),
+      onPressed: tap,
+      child: hint == null
+          ? Text(label)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                  Text(label),
+                  Text(hint,
+                      style: const TextStyle(
+                          fontSize: 10.5, color: Color(0xFF9A98A6))),
+                ]),
+    );

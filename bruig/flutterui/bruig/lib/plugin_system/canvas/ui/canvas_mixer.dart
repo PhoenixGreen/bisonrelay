@@ -87,7 +87,6 @@ part 'canvas_slots_panel.dart';
 /// mixerDefaultHeight what it opens at; how short it goes with its bands as
 /// they are is mixerLeastHeight.
 const double mixerMinHeight = 56;
-const double mixerDefaultHeight = 320;
 
 /// mixerLeastHeight is how short the mixer goes with its bands as
 /// [controller]'s C, D and M say, each at its least (a slot of clips and its
@@ -145,7 +144,6 @@ const double _edgeRoom = 4;
 /// effectsMinHeight and effectsDefaultHeight are the effects panel's: the
 /// devices are scaled to it, down to half their size.
 const double effectsMinHeight = 200;
-const double effectsDefaultHeight = 340;
 
 class CanvasMixer extends StatefulWidget {
   final CanvasController controller;

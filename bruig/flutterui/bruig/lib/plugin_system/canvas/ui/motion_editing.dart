@@ -247,8 +247,9 @@ extension MotionEditing on CanvasController {
       if (!designPlace.contains(param)) {
         _putDevice(element, next, transient: true);
         var e = document.elementById(element);
-        if (e != null)
+        if (e != null) {
           replaceElement(designWritten(e, param, v), transient: true);
+        }
         endInteraction();
         return;
       }
@@ -286,8 +287,9 @@ extension MotionEditing on CanvasController {
     var m = e.base.motion;
     var poses = m.poseDevices;
     var k = poses.indexWhere((d) => d.id == device);
-    if (k < 0)
+    if (k < 0) {
       return "Only a device that moves it can be baked, while it is on";
+    }
     var rate = math.max(1, document.frameRate);
     var frames = math.max(2, document.frames);
     var end = (frames - 1) / rate;

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast3d.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/storage/character_designs.dart';

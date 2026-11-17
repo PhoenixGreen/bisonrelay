@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/media/speech.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -35,21 +36,6 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
   /// _needsModel is whether the last listen stopped for want of the speech
   /// model, which is the one thing here that can be fetched.
   bool _needsModel = false;
-
-  /// _voices are the timed sounds a voice-over could be, longest first --
-  /// the voice is nearly always the longest thing on the timeline.
-  List<AudioElement> get _voices {
-    var d = controller.document;
-    var all = <AudioElement>[
-      for (var e in [
-        ...?d.master?.elements,
-        for (var s in d.allScenes) ...s.elements,
-      ])
-        if (e is AudioElement && e.clip.timed && !e.clip.isEmpty) e,
-    ];
-    all.sort((a, b) => b.clip.runLength.compareTo(a.clip.runLength));
-    return all;
-  }
 
   Future<void> _find(AudioElement voice) async {
     setState(() {
@@ -119,7 +105,7 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
   Widget build(BuildContext context) {
     var rate =
         controller.document.frameRate <= 0 ? 1 : controller.document.frameRate;
-    var voices = _voices;
+    var voices = voiceOvers(controller.document);
     var picked =
         voices.where((v) => v.id == _voice).firstOrNull ?? voices.firstOrNull;
     return CanvasControlGroup(
@@ -219,4 +205,18 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
       ],
     );
   }
+}
+
+/// voiceOvers are the timed sounds a voice-over could be, longest first --
+/// the voice is nearly always the longest thing on the timeline.
+List<AudioElement> voiceOvers(CanvasDocument d) {
+  var all = <AudioElement>[
+    for (var e in [
+      ...?d.master?.elements,
+      for (var s in d.allScenes) ...s.elements,
+    ])
+      if (e is AudioElement && e.clip.timed && !e.clip.isEmpty) e,
+  ];
+  all.sort((a, b) => b.clip.runLength.compareTo(a.clip.runLength));
+  return all;
 }

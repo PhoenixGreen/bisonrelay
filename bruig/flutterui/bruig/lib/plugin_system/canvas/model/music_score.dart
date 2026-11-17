@@ -4,8 +4,6 @@ import 'dart:ui' show Offset;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
-import 'package:bruig/plugin_system/canvas/model/musicxml.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart' as notation;
 
 // music_score.dart is a score as it is written (Ken, 2026-11-14: "the score
@@ -1327,41 +1325,3 @@ MusicScore scoreFromNotes(String id, List<MidiNote> notes,
         ScorePart("p1", inst.name, inst.id, staves, short: inst.short),
       ]);
 }
-
-/// instrumentForProgram is the score instrument nearest General MIDI
-/// [program]: the one that plays it, else one of its family, else a piano.
-String instrumentForProgram(int? program) {
-  if (program == null) return "piano";
-  for (var i in scoreInstruments) {
-    if (i.program == program && !i.strum) return i.id;
-  }
-  return switch (program ~/ 8) {
-    3 => "guitar",
-    4 => "bassGuitar",
-    5 => "violin",
-    7 => "clarinet",
-    8 => "flute",
-    _ => "piano",
-  };
-}
-
-/// scoreFromMusicXml is a MusicXML file made a score: its title, tempo,
-/// time and key, its notes written out.
-MusicScore scoreFromMusicXml(String id, MusicXmlScore x) {
-  var tempo = x.tempo ?? 100;
-  return scoreFromNotes(id, x.played(tempo),
-      title: x.title,
-      tempo: tempo,
-      beats: x.beatsPerBar,
-      beatUnit: x.beatUnit,
-      fifths: x.fifths);
-}
-
-/// scoreFromMidi is a MIDI file made a score of one part, for the
-/// instrument its program asks for, its seconds read at [tempo].
-MusicScore scoreFromMidi(String id, MidiImport m,
-        {String title = "", double tempo = 120}) =>
-    scoreFromNotes(id, m.notes,
-        title: title,
-        tempo: tempo,
-        instrument: instrumentForProgram(m.program));

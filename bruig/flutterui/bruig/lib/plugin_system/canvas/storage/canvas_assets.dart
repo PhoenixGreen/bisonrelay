@@ -231,18 +231,6 @@ class CanvasAssets {
     }
   }
 
-  /// sweepUnused deletes every stored picture no saved canvas refers to.
-  /// Called after a canvas is saved or deleted, the only moments the answer
-  /// changes. Failing is not reported: a missed sweep costs some unseen bytes,
-  /// and a successful save should not raise an error about tidying.
-  static Future<int> sweepUnused() async {
-    try {
-      return await sweep(await CanvasStorage.liveAssetIds());
-    } catch (_) {
-      return 0;
-    }
-  }
-
   /// sweep deletes stored pictures that no saved document refers to.
   /// [liveIds] has to be every id in the whole library plus whatever is open
   /// in the editor, since one picture can be referred to from several

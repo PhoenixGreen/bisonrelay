@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/ui/sidebar/cues_section.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
@@ -642,21 +643,6 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
   bool _busy = false;
   String _said = "";
 
-  /// _voices are the timed sounds a voice-over could be, longest first --
-  /// the voice is nearly always the longest thing on the timeline.
-  List<AudioElement> get _voices {
-    var d = controller.document;
-    var all = <AudioElement>[
-      for (var e in [
-        ...?d.master?.elements,
-        for (var s in d.allScenes) ...s.elements,
-      ])
-        if (e is AudioElement && e.clip.timed && !e.clip.isEmpty) e,
-    ];
-    all.sort((a, b) => b.clip.runLength.compareTo(a.clip.runLength));
-    return all;
-  }
-
   Future<void> _sync(AudioElement voice) async {
     setState(() {
       _busy = true;
@@ -688,7 +674,7 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
 
   @override
   Widget build(BuildContext context) {
-    var voices = _voices;
+    var voices = voiceOvers(controller.document);
     var voice =
         voices.where((v) => v.id == _voice).firstOrNull ?? voices.firstOrNull;
     return CanvasControlGroup(

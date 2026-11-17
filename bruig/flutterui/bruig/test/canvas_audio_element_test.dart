@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
@@ -193,7 +194,7 @@ void main() {
           await CanvasMedia.sweep(MediaKind.audio, {song}); // bell is unused
       expect(removed, 1);
       expect(await CanvasMedia.existingPath(MediaKind.audio, song), isNotNull);
-      await CanvasMedia.sweepUnused(open: {song});
+      await CanvasLibrary.tidy(open: {song});
       expect(await CanvasMedia.existingPath(MediaKind.audio, song), isNotNull,
           reason: "no saved canvas names it, and the open one does");
     });

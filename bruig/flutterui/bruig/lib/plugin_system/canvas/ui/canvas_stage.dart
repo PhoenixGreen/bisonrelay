@@ -3943,10 +3943,12 @@ class CanvasStageState extends State<CanvasStage>
     // drawn, and its fill.
     Path area(VectorShape s) {
       var out = Path();
-      if (s.fill != null)
+      if (s.fill != null) {
         out = Path.combine(PathOperation.union, out, vectorShapePath(s));
-      if (s.stroke != null)
+      }
+      if (s.stroke != null) {
         out = Path.combine(PathOperation.union, out, vectorLinePath(s));
+      }
       return out;
     }
 
@@ -6018,8 +6020,9 @@ class CanvasStageState extends State<CanvasStage>
               transient: true);
         }
       case _DragMode.spritePaint:
-        if (controller.spritePaint case var session?)
+        if (controller.spritePaint case var session?) {
           unawaited(session.strokeTo(doc));
+        }
       case _DragMode.tilePaint:
         controller.tilePaint?.strokeTo(doc);
       case _DragMode.vectorPoint:
@@ -6764,8 +6767,9 @@ class CanvasStageState extends State<CanvasStage>
     // into the next gesture's undo step.
     if (_mode == _DragMode.guide) _finishGuide();
     if (_mode == _DragMode.spritePaint) {
-      if (controller.spritePaint case var session?)
+      if (controller.spritePaint case var session?) {
         unawaited(session.strokeEnd());
+      }
     }
     if (_mode == _DragMode.tilePaint) controller.tilePaint?.strokeEnd();
     if (_mode == _DragMode.vectorKnife) _finishKnife();

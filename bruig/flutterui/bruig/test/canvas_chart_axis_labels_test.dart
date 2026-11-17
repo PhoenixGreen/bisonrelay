@@ -1,7 +1,6 @@
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';

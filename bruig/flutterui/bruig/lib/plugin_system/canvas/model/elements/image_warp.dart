@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -136,15 +137,7 @@ class ImageWarp {
       other is ImageWarp &&
       other.cols == cols &&
       other.rows == rows &&
-      _samePoints(other.points, points);
-
-  static bool _samePoints(List<Offset> a, List<Offset> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
+      listEquals(other.points, points);
 
   @override
   int get hashCode => Object.hash(cols, rows, points.length,

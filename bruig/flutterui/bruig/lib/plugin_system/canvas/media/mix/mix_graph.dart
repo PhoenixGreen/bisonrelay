@@ -132,7 +132,7 @@ class MixGraph {
 
   /// _loudness measures what leaves the master, kept while its settings
   /// change, so the whole song's reading is not lost to a turned knob.
-  LoudnessTap _loudness = LoudnessTap();
+  final LoudnessTap _loudness = LoudnessTap();
 
   /// _publishMaster notes what the master's cards read: the limiter's
   /// turn-down among the levels ([limitKey], as a gain), and what leaves

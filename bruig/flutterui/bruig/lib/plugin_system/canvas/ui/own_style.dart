@@ -1006,6 +1006,3 @@ class _Swatches extends StatelessWidget {
         ]);
   }
 }
-
-/// ownStudio is the studio's colours, for a caller without a look at hand.
-StudioColors ownStudio(BuildContext context) => MixerLook.of(context).studio;

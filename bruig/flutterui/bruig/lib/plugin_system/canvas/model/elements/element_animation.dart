@@ -235,8 +235,6 @@ class ElementAnimation {
   /// are [directed] and [strengthens] for the way in or the way out alone.
   bool get arrivalDirected => _directs(preset);
   bool get exitDirected => _directs(exit);
-  bool get arrivalStrengthens => _strengthens(preset);
-  bool get exitStrengthens => _strengthens(exit);
   static bool _directs(ElementAnimationPreset p) =>
       p != ElementAnimationPreset.none &&
       ((p.motion == TextMotion.rise && (p.dx != 0 || p.dy != 0)) ||

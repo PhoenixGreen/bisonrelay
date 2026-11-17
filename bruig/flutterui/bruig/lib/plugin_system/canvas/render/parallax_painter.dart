@@ -216,8 +216,9 @@ void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
         Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()), layer.spec,
         images: images);
     image = rec.endRecording().toImageSync(w, h);
-    if (_patterns.length >= 8)
+    if (_patterns.length >= 8) {
       _patterns.remove(_patterns.keys.first)?.dispose();
+    }
     _patterns[key] = image;
   }
   canvas.drawImageRect(

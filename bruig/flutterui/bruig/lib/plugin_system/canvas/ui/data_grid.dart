@@ -202,8 +202,8 @@ class DataGridState extends State<DataGrid> {
   }
 
   @override
-  void didUpdateWidget(DataGrid old) {
-    super.didUpdateWidget(old);
+  void didUpdateWidget(DataGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
     _now = widget.sel;
   }
 

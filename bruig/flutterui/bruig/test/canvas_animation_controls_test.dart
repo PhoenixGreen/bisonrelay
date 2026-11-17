@@ -192,24 +192,6 @@ void main() {
   });
 
   group("timing and preview", () {
-    test("Delay and Length move the arrival", () {
-      var c = CanvasController(const CanvasDocument()
-          .copyWith(frames: 60)
-          .addElement(drawing(
-              animation: const ElementAnimation(
-                  preset: ElementAnimationPreset.fadeIn))));
-      addTearDown(c.dispose);
-      CanvasElement now() => c.document.elementById("v")!;
-      c.beginInteraction();
-      c.setElementArrivalTiming(now(), delay: 10);
-      c.setElementArrivalTiming(now(), length: 70);
-      c.endInteraction();
-      expect(c.elementAnimationSpan(now()), (10, 70));
-      expect(c.document.frames, greaterThanOrEqualTo(81), reason: "grown");
-      c.undo();
-      expect(c.elementAnimationSpan(now()), (0, 20), reason: "one undo step");
-    });
-
     test("a preview plays one element and leaves the playhead", () {
       var c = CanvasController(const CanvasDocument()
           .copyWith(frames: 120)

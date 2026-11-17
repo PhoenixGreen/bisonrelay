@@ -2213,9 +2213,6 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
 /// run of the app.
 final Set<String> _unlinked = {};
 
-/// forgetPanelsForTest puts the panels back as a new run of the app has
-/// them: see forgetSectionsForTest.
-@visibleForTesting
 void forgetPanelsForTest() {
   TileSnapshot.letGo();
   _lastIn.clear();

@@ -92,7 +92,6 @@ class CanvasCards extends InheritedWidget {
 const double cardControlHeight = 38;
 const double cardLabelHeight = 15;
 const double cardLabelGap = 6;
-const double cardCaptioned = cardLabelHeight + cardLabelGap + cardControlHeight;
 
 /// cardGap is the room between two controls on a line in a card, and between
 /// two lines.
@@ -3366,10 +3365,6 @@ class CanvasExpander extends StatefulWidget {
 /// Shared by [CanvasExpander] and [CanvasFoldingGroup].
 final Map<String, bool> _rememberedSections = {};
 
-/// forgetSectionsForTest forgets which sections and groups were open, as a
-/// new run of the app would: for tests run one file after another in one
-/// process, each of which starts as the app does.
-@visibleForTesting
 void forgetSectionsForTest() {
   _rememberedSections.clear();
   _CanvasMoreGroupState._remembered.clear();

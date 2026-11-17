@@ -430,7 +430,7 @@ class MotionClipsCard extends StatelessWidget {
         StudioDrop<MotionWay>(
           key: const ValueKey("animPresetWay"),
           label: "Which way",
-          value: _wayOf(c, preset),
+          value: wayOf(c, preset),
           options: [for (var w in preset.ways) (w, w.label)],
           onChanged: (w) => edit((x) => preset.onto(x, way: w)),
         ),
@@ -501,31 +501,11 @@ class MotionClipsCard extends StatelessWidget {
     }
     var p = presetNamed(c.preset);
     if (p == null) return null;
-    MotionWay? way(MotionClip x) => p.ways.isEmpty ? null : _wayOf(x, p);
+    MotionWay? way(MotionClip x) => p.ways.isEmpty ? null : wayOf(x, p);
     var fresh = p.onto(c, way: way(c), target: p.aims ? target() : "");
     if (jsonEncode(fresh.toJson()) == jsonEncode(c.toJson())) return null;
     return () =>
         edit((x) => p.onto(x, way: way(x), target: p.aims ? target() : ""));
-  }
-
-  /// _wayOf is which way [p] goes as [c]'s keys have it.
-  static MotionWay _wayOf(MotionClip c, MotionPreset p) {
-    for (var keys in c.keys.values) {
-      for (var k in keys) {
-        if (k.value case MotionPlace(:var kind)) {
-          for (var w in p.ways) {
-            var edge = switch (w) {
-              MotionWay.left => MotionPlaceKind.offLeft,
-              MotionWay.right => MotionPlaceKind.offRight,
-              MotionWay.top => MotionPlaceKind.offTop,
-              MotionWay.bottom => MotionPlaceKind.offBottom,
-            };
-            if (edge == kind) return w;
-          }
-        }
-      }
-    }
-    return p.ways.first;
   }
 
   /// _kindOf is [c] made [kind]: its first ready-made motion of that kind,

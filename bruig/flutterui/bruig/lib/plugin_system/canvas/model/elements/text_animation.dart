@@ -821,19 +821,11 @@ class TextAnimation {
       ((p.motion == TextMotion.rise || p.motion == TextMotion.trail) &&
               (p.dx != 0 || p.dy != 0) ||
           p.motion == TextMotion.wipe);
-  static bool _strengthens(TextAnimationPreset p) =>
-      p != TextAnimationPreset.none &&
-      (((p.motion == TextMotion.rise || p.motion == TextMotion.trail) &&
-              (p.dx != 0 || p.dy != 0)) ||
-          p.motion == TextMotion.grow ||
-          p.motion == TextMotion.spin);
 
   /// arrivalDirected and the rest are whether a direction, or a strength,
   /// means anything for the way in, or the way out.
   bool get arrivalDirected => _directs(preset);
   bool get exitDirected => _directs(exit);
-  bool get arrivalStrengthens => _strengthens(preset);
-  bool get exitStrengthens => _strengthens(exit);
 
   /// spec is the arrival's motion as this animation plays it: turned to its
   /// direction, and moved, grown and turned as far as its strength says.

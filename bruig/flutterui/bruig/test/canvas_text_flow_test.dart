@@ -80,7 +80,7 @@ void main() {
       // text, in order.
       expect(_lorem.startsWith(first.text.trimRight()), isTrue);
       expect(_lorem.contains(second.text.trimRight()), isTrue);
-      var shown = first.text.trimRight() + " " + second.text.trimLeft();
+      var shown = "${first.text.trimRight()} ${second.text.trimLeft()}";
       expect(shown.replaceAll(RegExp(r"\s+"), " ").trim(),
           startsWith(_lorem.substring(0, 60)));
     });

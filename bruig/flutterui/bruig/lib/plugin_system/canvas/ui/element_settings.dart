@@ -443,29 +443,6 @@ const _placed = <String, (PanelSection, bool)>{
   "mask": (PanelSection.look, false),
 };
 
-/// elementCueGroup is which cue [element] arrives on.
-Widget elementCueGroup(CanvasController controller, CanvasElement element) =>
-    CanvasControlGroup(
-        key: const ValueKey("elementCue"),
-        label: "Word cue",
-        hideCaption: true,
-        rule: false,
-        children: [
-          CanvasDropdown<String>(
-            label: "Arrives on word cue",
-            value: controller.cues.any((c) => c.id == element.base.cue)
-                ? element.base.cue
-                : "",
-            width: 150,
-            options: [
-              ("", "None"),
-              for (var c in controller.cues) (c.id, c.name),
-            ],
-            onChanged: (v) =>
-                controller.cueTo(element.id, v.isEmpty ? null : v),
-          ),
-        ]);
-
 /// _backgroundElementBackdrop is a Background element's pattern, or its
 /// stage, under the choice between them.
 List<Widget> _backgroundElementBackdrop(

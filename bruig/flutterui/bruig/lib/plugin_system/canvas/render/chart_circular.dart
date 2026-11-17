@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_words.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';

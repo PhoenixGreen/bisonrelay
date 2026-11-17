@@ -18,7 +18,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
-import 'canvas_panel_helpers.dart';
 
 // canvas_charts_design_test.dart is the Data Studio's Charts tab (Ken,
 // 2026-11-15: chart design "very visual and flexible"; prototypes v5-v6):

@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/code_highlight.dart';
 import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
@@ -1050,23 +1049,6 @@ Rect? codeEditorRect(CodeElement e, int pane) {
   var b = codeBoxes(e, e.bounds);
   if (pane < 0 || pane >= b.panes.length) return null;
   return b.panes[pane].code;
-}
-
-/// codeGutterWidth is pane code's line-number column for [file].
-double codeGutterWidth(CodeElement e, CodeFile file) {
-  if (!e.lineNumbers) return e.fontSize * 0.5;
-  var digits = math.max(2, "${file.text.split("\n").length}".length);
-  return digits * codeCharWidth(e.fontSize) + e.fontSize * 1.6;
-}
-
-/// paintCodeRecorded draws [e] into an image the size of its box: for a
-/// test, or a thumbnail.
-Future<ui.Image> paintCodeImage(CodeElement e, {double seconds = 1e9}) async {
-  var rec = ui.PictureRecorder();
-  var canvas = Canvas(rec);
-  canvas.translate(-e.x, -e.y);
-  paintCode(canvas, e.bounds, e, seconds: seconds);
-  return rec.endRecording().toImage(e.width.ceil(), e.height.ceil());
 }
 
 /// codeTrackSeconds is where on [e]'s playbar track [point] is, in the

@@ -636,8 +636,9 @@ extension CanvasSpeech on CanvasController {
       }
       endInteraction();
       // The clip in the Audio library: this one in place of the last.
-      if (oldId != null && oldId != id)
+      if (oldId != null && oldId != id) {
         await CanvasController.speechUnlist(oldId);
+      }
       await CanvasController.speechLibrary(
           id,
           "Speech · ${now.voiceName.isEmpty ? "voice" : now.voiceName} · "

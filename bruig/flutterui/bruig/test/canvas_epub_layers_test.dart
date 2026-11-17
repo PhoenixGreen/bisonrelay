@@ -20,13 +20,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
@@ -43,7 +41,7 @@ import 'canvas_arrival_fixture.dart';
 import 'package:path/path.dart' as path;
 // ignore: depend_on_referenced_packages
 import 'package:xml/xml.dart';
-import 'package:bruig/plugin_system/canvas/model/motion_convert.dart';
+import 'motion_convert.dart';
 
 // canvas_epub_layers_test.dart is a page of an interactive EPUB laid out as
 // its elements, each animated by the reader: that nothing is a film of the

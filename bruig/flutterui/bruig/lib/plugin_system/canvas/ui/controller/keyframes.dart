@@ -91,16 +91,6 @@ extension CanvasKeyframes on CanvasController {
         setLength: a.length);
   }
 
-  /// textAnimationSpan is where [element]'s arrival sits on the timeline: the
-  /// frame it starts on and how many frames it takes, or nulls where it has
-  /// no keyframes yet. Read from the keyframes, which can be dragged, rather
-  /// than a number kept beside them that would go stale.
-  (int?, int?) textAnimationSpan(TextElement element) =>
-      switch (ownSpan(element, MotionKind.arrive, _document.frameRate)) {
-        (var from, var length) => (from, length),
-        null => (null, null),
-      };
-
   /// defaultAnimationFrames is how long an animation runs for when nobody
   /// has said: the same two seconds a chart's uses.
   int get defaultAnimationFrames =>
@@ -221,40 +211,6 @@ extension CanvasKeyframes on CanvasController {
   void showAnchor(String id, bool shown) {
     if (shown ? !_anchorsShown.add(id) : !_anchorsShown.remove(id)) return;
     notifyListeners();
-  }
-
-  /// setElementArrivalTiming moves [element]'s arrival on the timeline: to
-  /// start [delay] frames into the scene, and to take [length] frames --
-  /// either or both, the other left where it is. The scene grows to hold it.
-  /// Part of whatever change is under way: the caller begins and ends it.
-  void setElementArrivalTiming(CanvasElement element,
-      {int? delay, int? length}) {
-    var (at, span) = elementAnimationSpan(element);
-    if (at == null || span == null) return;
-    var from = math.max(0, delay ?? at);
-    var took = math.max(1, length ?? span);
-    if (from == at && took == span) return;
-    var document = _document;
-    if (from + took > document.frames - 1) {
-      document = document.copyWith(frames: from + took + 1);
-    }
-    var next = withOwnSpan(
-        element, MotionKind.arrive, from, from + took, document.frameRate);
-    // And what the next one is laid down with, so that trying another
-    // preset keeps the length that was typed.
-    if (length != null) {
-      next = switch (next) {
-        TextElement t =>
-          t.copyWith(animation: t.animation.copyWith(length: took)),
-        ChartElement c =>
-          c.copyWith(animation: c.animation.copyWith(length: took)),
-        _ => CanvasController._withElementAnimation(
-            next,
-            CanvasController.elementAnimationOf(element)
-                .copyWith(length: took)),
-      };
-    }
-    apply(document.withElement(next), transient: true);
   }
 
   /// previewSpanOf is the stretch of the scene a Preview of [element] plays:
@@ -403,7 +359,7 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// shiftKeyframes moves a whole band of keyframes by [delta] frames: the two
-  /// ends of an animation are one thing (see KeyframeBand). Refused rather
+  /// ends of an animation are one thing. Refused rather
   /// than clamped when either end would run off the timeline, so the band
   /// never silently squashes.
   void shiftKeyframes(String id, List<int> frames, int delta) {
@@ -432,16 +388,6 @@ extension CanvasKeyframes on CanvasController {
     replaceElement(element.withBase(track: next));
   }
 
-  /// removeKeyframe drops the pose at [frame], and the track entirely when it
-  /// was the last one, so no empty track is saved.
-  void removeKeyframe(String id, int frame) {
-    var element = _document.elementById(id);
-    var track = element?.track;
-    if (element == null || track == null) return;
-
-    replaceElement(withTrackOrNone(element, track.withoutFrame(frame)));
-  }
-
   /// setKeyframeEasing writes how the element travels *out* of a keyframe.
   /// Easing belongs to the keyframe it leaves, so copied keyframes keep it.
   /// [all] sets every keyframe on the element, and [channel] narrows that to
@@ -463,24 +409,6 @@ extension CanvasKeyframes on CanvasController {
     }
     if (identical(next, track)) return;
     replaceElement(element.withBase(track: next));
-  }
-
-  /// clearPose takes the *pose* off one frame and leaves whatever else that
-  /// keyframe pinned: what the position-size-angle-fade diamond does, so a
-  /// counter's number or a chart's arrival on the same frame is kept.
-  /// Deleting the keyframe on the timeline still deletes all of it.
-  void clearPose(String id, int frame) {
-    var element = _document.elementById(id);
-    var track = element?.track;
-    if (element == null || track == null) return;
-    var here = track.keyAt(frame);
-    if (here == null) return;
-    if (here.values.isEmpty) {
-      removeKeyframe(id, frame);
-      return;
-    }
-    replaceElement(element.withBase(
-        track: track.withKey(Keyframe(frame: frame, values: here.values))));
   }
 
   /// withoutOwnPreset is [e] with its own arrival (or way out) gone and that

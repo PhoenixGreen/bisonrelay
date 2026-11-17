@@ -1,12 +1,10 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
 import 'package:bruig/plugin_system/canvas/render/score_engraver.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_score_engraver_test.dart is a score engraved (Ken, 2026-11-14: the

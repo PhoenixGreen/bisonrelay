@@ -383,8 +383,9 @@ DataSheet _mappedBack(DataSheet sheet, CanvasElement e, SheetLink link) {
       }
     }
     for (var (k, r) in order.skip(1).indexed) {
-      if (k < data.categories.length)
+      if (k < data.categories.length) {
         put(r, g.c0 + link.labels, data.categories[k]);
+      }
     }
   }
   return out;

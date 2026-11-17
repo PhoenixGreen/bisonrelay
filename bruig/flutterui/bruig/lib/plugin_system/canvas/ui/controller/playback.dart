@@ -573,28 +573,6 @@ extension CanvasPlayback on CanvasController {
     notifyListeners();
   }
 
-  /// toggleMixerSection is a band's rail button: shown, then minimised, then
-  /// hidden, then shown again (the sends only shown and hidden). The last of
-  /// the clips, devices and mixer bands showing is never hidden: it goes back
-  /// to shown instead.
-  void toggleMixerSection(MixerSection section) {
-    var next = switch (_bandStates[section]!) {
-      BandState.shown when section == MixerSection.sends => BandState.hidden,
-      BandState.shown => BandState.minimised,
-      BandState.minimised => BandState.hidden,
-      BandState.hidden => BandState.shown,
-    };
-    if (next == BandState.hidden &&
-        CanvasController._mainBands.contains(section) &&
-        CanvasController._mainBands
-            .where((s) => s != section)
-            .every((s) => _bandStates[s] == BandState.hidden)) {
-      next = BandState.shown;
-    }
-    _bandStates[section] = next;
-    notifyListeners();
-  }
-
   /// narrowStrips is which of the mixer's columns are narrow, by key: each
   /// made narrow or wide by itself, or all together -- see setAllNarrow.
   Set<String> get narrowStrips => Set.unmodifiable(_narrowStrips);
@@ -724,14 +702,6 @@ extension CanvasPlayback on CanvasController {
           label: "Locator $count"),
     ]..sort((a, b) => a.frame.compareTo(b.frame))));
   }
-
-  /// engineLoad is how hard the mix engine is working -- the share of each
-  /// block's time spent making it, nought to one -- or null where the
-  /// editor's sound is not going through it.
-  double? get engineLoad => switch (_audio?.engine) {
-        DartAudioEngine e => e.load,
-        _ => null,
-      };
 
   void stop() {
     pause();

@@ -103,13 +103,6 @@ class FaceMix {
           gazeY: gazeY ?? this.gazeY,
           tilt: tilt ?? this.tilt);
 
-  /// withoutRegion is this with [region]'s shapes set to none.
-  FaceMix withoutRegion(String region) => _copy(w: {
-        for (final e in w.entries)
-          if (!(faceUnits[region] ?? const []).any((u) => u.$1 == e.key))
-            e.key: e.value
-      });
-
   Map<String, dynamic> toJson() => {
         if (w.isNotEmpty) "w": w,
         if (blush != 0) "blush": blush,

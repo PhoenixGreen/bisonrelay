@@ -770,12 +770,6 @@ String sheetShown(DataSheet sheet, int r, int c) {
   return format == null ? sheetText(v) : format.write(v);
 }
 
-/// sheetBlock is what [range] of [sheet] shows, a row of strings per row.
-List<List<String>> sheetBlock(DataSheet sheet, CellRange range) => [
-      for (var r = range.r0; r <= range.r1; r++)
-        [for (var c = range.c0; c <= range.c1; c++) sheetShown(sheet, r, c)],
-    ];
-
 // ---------- Colour rules ----------
 
 /// SheetRuleKind is what a colour rule does.

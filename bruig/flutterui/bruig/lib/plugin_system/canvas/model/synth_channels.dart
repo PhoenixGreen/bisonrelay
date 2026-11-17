@@ -80,19 +80,6 @@ CanvasDocument synthSynced(CanvasDocument doc, {SynthDesigned? designedAt}) {
   return next;
 }
 
-/// synthSpeakerOf is the speaker module whose channel is [channel], if it
-/// is one's.
-SynthModuleElement? synthSpeakerOf(CanvasDocument doc, String channel) {
-  for (var e in doc.elements) {
-    if (e is SynthModuleElement &&
-        e.module == SynthModuleKind.out &&
-        e.channel == channel) {
-      return e;
-    }
-  }
-  return null;
-}
-
 /// synthSpeakersHearing are the speakers module [id]'s sound reaches: the
 /// keyboard's keys play on these.
 List<SynthModuleElement> synthSpeakersHearing(CanvasDocument doc, String id) =>

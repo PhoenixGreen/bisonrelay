@@ -146,24 +146,13 @@ class PatchVoice extends Voice {
     return from.kind != SynthModuleKind.env || graph.gated.contains(src.$1);
   }
 
-  static double _blep(double t, double dt) {
-    if (t < dt) {
-      t /= dt;
-      return t + t - t * t - 1;
-    }
-    if (t > 1 - dt) {
-      t = (t - 1) / dt;
-      return t * t + t + t + 1;
-    }
-    return 0;
-  }
-
   static double _wave(String shape, double ph, double dt) => switch (shape) {
         "sine" => math.sin(2 * math.pi * ph),
         "triangle" => 1 - 4 * (ph - 0.5).abs(),
-        "sawtooth" => 2 * ph - 1 - _blep(ph, dt),
-        "square" =>
-          (ph < 0.5 ? 1.0 : -1.0) + _blep(ph, dt) - _blep((ph + 0.5) % 1, dt),
+        "sawtooth" => 2 * ph - 1 - polyBlep(ph, dt),
+        "square" => (ph < 0.5 ? 1.0 : -1.0) +
+            polyBlep(ph, dt) -
+            polyBlep((ph + 0.5) % 1, dt),
         _ => math.sin(2 * math.pi * ph),
       };
 

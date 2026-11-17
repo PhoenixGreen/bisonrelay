@@ -480,7 +480,6 @@ class ClipLayout {
   }
 
   Offset toScreen(Offset move) => _origin + move * _scale;
-  Offset toMove(Offset screen) => (screen - _origin) / _scale;
 
   /// scale is how many screen pixels a page unit is drawn as.
   double get scale => _scale;

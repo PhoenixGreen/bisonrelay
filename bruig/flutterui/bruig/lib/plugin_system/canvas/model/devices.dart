@@ -535,7 +535,7 @@ String deviceIdAt(List<MixDevice> chain, int i) =>
     chain[i].id.isEmpty ? "d$i" : chain[i].id;
 
 /// deviceKey is the mixer's name for the device with [id] -- how a strip
-/// opens it, folds it and scrolls to it -- "dev:<id>", so it follows the
+/// opens it, folds it and scrolls to it -- `dev:<id>`, so it follows the
 /// device when the chain is put in another order.
 String deviceKey(String id) => "dev:$id";
 

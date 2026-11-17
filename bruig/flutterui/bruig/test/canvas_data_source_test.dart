@@ -443,59 +443,8 @@ void main() {
     // And saved again, still no key.
     expect(doc.encode().toLowerCase(), isNot(contains("x-auth-token")));
   });
+
   group("a chart reading a table", () {
-    TableElement league() => TableElement(
-          const ElementBase(id: "t"),
-          headerRow: true,
-          rows: const [
-            ["", "Team", "GD", "Points"],
-            ["1", "Man City", "4", "6"],
-            ["2", "Arsenal", "4", "6"],
-            ["3", "Liverpool", "2", "5"],
-          ],
-        );
-
-    test("the table's header names the series", () {
-      var data = chartDataFromTable(league(),
-          const TableLink(tableId: "t", categoryColumn: 1, valueColumns: [3]));
-      expect(data.categories, ["Man City", "Arsenal", "Liverpool"]);
-      expect(data.series.single.name, "Points",
-          reason: "without anybody typing it");
-      expect(data.series.single.values, [6, 6, 5]);
-    });
-
-    test("two columns are two series", () {
-      var data = chartDataFromTable(
-          league(),
-          const TableLink(
-              tableId: "t", categoryColumn: 1, valueColumns: [2, 3]));
-      expect([for (var s in data.series) s.name], ["GD", "Points"]);
-      expect(data.series.first.values, [4, 4, 2]);
-      expect(data.series.first.color, isNot(data.series.last.color),
-          reason: "two series a reader can tell apart");
-    });
-
-    test("a column that is not numbers is flat rather than an error", () {
-      // A league table has a crest column and a form column in it, and
-      // picking one should give a chart that is obviously wrong rather than
-      // an exception.
-      var data = chartDataFromTable(league(),
-          const TableLink(tableId: "t", categoryColumn: 1, valueColumns: [1]));
-      expect(data.series.single.values, [0, 0, 0]);
-    });
-
-    test("the header row is never a data point", () {
-      var data = chartDataFromTable(league(),
-          const TableLink(tableId: "t", categoryColumn: 1, valueColumns: [3]));
-      expect(data.categories, isNot(contains("Team")));
-      expect(data.categories.length, 3);
-    });
-
-    test("a link with no columns chosen produces nothing", () {
-      expect(chartDataFromTable(league(), const TableLink(tableId: "t")).series,
-          isEmpty);
-    });
-
     test("the link survives the element's own round trip", () {
       // Read from an old file as it was; a canvas opening it makes it a
       // view of the table's sheet (canvas_data_sheet_test.dart).
@@ -790,7 +739,7 @@ void main() {
       var id = (await CanvasAssets.save(List.filled(64, 7)))!;
       await CanvasPictureCache.remember("https://crests/70.png", id);
       await ageStores();
-      await CanvasAssets.sweepUnused();
+      await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
 
       expect(await CanvasAssets.exists(id), isFalse);
       expect(await CanvasPictureCache.known("https://crests/70.png"), isNull);

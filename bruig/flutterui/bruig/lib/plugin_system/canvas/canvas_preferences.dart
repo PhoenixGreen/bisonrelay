@@ -43,8 +43,6 @@ class CanvasPreferences extends ChangeNotifier {
   static const _mixerBandsKey = "canvasMixerBands";
   static const _mixerLookKey = "canvasMixerLook";
   static const _returnsShownKey = "canvasReturnsShown";
-  static const _mixerHeightKey = "canvasMixerHeight";
-  static const _effectsHeightKey = "canvasEffectsHeight";
   static const _panelsKey = "canvasPanels";
   static const _canvasViewsKey = "canvasViews";
   static const _dockKey = "canvasDock";
@@ -198,24 +196,6 @@ class CanvasPreferences extends ChangeNotifier {
     if (_returnsShown == value) return;
     _returnsShown = value;
     StorageManager.saveBool(_returnsShownKey, value);
-  }
-
-  /// mixerHeight and effectsHeight are how tall the mixer and the effects
-  /// panel were dragged to, or nought for as they start.
-  double get mixerHeight => _mixerHeight;
-  double _mixerHeight = 0;
-  set mixerHeight(double value) {
-    if (_mixerHeight == value) return;
-    _mixerHeight = value;
-    _saveSoon(_mixerHeightKey, value.toStringAsFixed(1));
-  }
-
-  double get effectsHeight => _effectsHeight;
-  double _effectsHeight = 0;
-  set effectsHeight(double value) {
-    if (_effectsHeight == value) return;
-    _effectsHeight = value;
-    _saveSoon(_effectsHeightKey, value.toStringAsFixed(1));
   }
 
   /// sidebars is how the sidebar is set out: shown or not and how, its
@@ -399,8 +379,6 @@ class CanvasPreferences extends ChangeNotifier {
     _mixerBands = bands.isEmpty ? const [] : bands.split(",");
     _returnsShown =
         await StorageManager.readBool(_returnsShownKey, defaultVal: true);
-    _mixerHeight =
-        double.tryParse(await StorageManager.readString(_mixerHeightKey)) ?? 0;
     try {
       _dock = DockLayout.fromJson(
           jsonDecode(await StorageManager.readString(_dockKey)));
@@ -430,9 +408,6 @@ class CanvasPreferences extends ChangeNotifier {
         double.tryParse(await StorageManager.readString(_dockAboveKey)) ?? 0;
     _dockLeft =
         double.tryParse(await StorageManager.readString(_dockLeftKey)) ?? 0;
-    _effectsHeight =
-        double.tryParse(await StorageManager.readString(_effectsHeightKey)) ??
-            0;
     try {
       var saved = jsonDecode(await StorageManager.readString(_panelsKey));
       if (saved is Map<String, dynamic>) _panels = Map.unmodifiable(saved);

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:petitparser/petitparser.dart';
 
 // sheet_formula.dart is the Data element's formulas (Ken, 2026-11-15: the
@@ -793,8 +794,9 @@ const _days = [
 /// function's, and a cell's own: "0.00", "#,##0", "0%", "$#,##0.00",
 /// "dd/mm/yyyy", "d mmm yyyy", "yyyy-mm-dd", "mmmm". Text stays as it is.
 String textFormat(Object? v, String code) {
-  if (v is! double)
+  if (v is! double) {
     return v == null ? "" : (v is bool ? (v ? "TRUE" : "FALSE") : "$v");
+  }
   var lower = code.toLowerCase();
   if (RegExp(r"[dy]|m{3,}").hasMatch(lower) ||
       (lower.contains("m") && RegExp(r"[dy]").hasMatch(lower))) {
@@ -884,7 +886,7 @@ class _Ref {
   _Ref at(int r, int c) => _Ref(fixC, c, fixR, r);
   @override
   String toString() =>
-      "${fixC ? r"$" : ""}${_colName(c)}${fixR ? r"$" : ""}${r + 1}";
+      "${fixC ? r"$" : ""}${columnName(c)}${fixR ? r"$" : ""}${r + 1}";
 }
 
 String _rewrite(String raw, String? Function(_Ref a, _Ref? b) f) =>
@@ -940,12 +942,4 @@ String movedFormula(String raw, int at, int n, {bool columns = false}) {
     var nhi = hi < at ? hi : (hi > end ? hi + n : at - 1);
     return "${put(a, nlo)}:${put(b, nhi)}";
   });
-}
-
-String _colName(int c) {
-  var s = "";
-  for (var n = c + 1; n > 0; n = (n - 1) ~/ 26) {
-    s = String.fromCharCode(65 + (n - 1) % 26) + s;
-  }
-  return s;
 }

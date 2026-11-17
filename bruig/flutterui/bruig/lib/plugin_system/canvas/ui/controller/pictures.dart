@@ -51,19 +51,6 @@ extension CanvasPictures on CanvasController {
     notifyListeners();
   }
 
-  /// cardShut is whether the card [key] has been shut -- see _shutCards.
-  bool cardShut(String key) => _shutCards.contains(key);
-
-  /// toggleCard shuts the card [key] if it is open, and opens it if shut.
-  void toggleCard(String key) {
-    if (!_shutCards.remove(key)) _shutCards.add(key);
-    notifyListeners();
-  }
-
-  /// openCard opens the card [key], without a redraw of its own: it goes
-  /// with the change that is about to be made.
-  void openCard(String key) => _shutCards.remove(key);
-
   /// textLayer is the piece of [e] picked in its Layers, or null for its
   /// own words (also what a piece since removed comes back as).
   TextItem? textLayer(TextElement e) {

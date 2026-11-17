@@ -688,8 +688,9 @@ List<Widget> codeRunSettings(
                           for (var c in codes) (c.id, "${c.name} · ${c.title}"),
                         ],
                         onChanged: (id) {
-                          if (id.isNotEmpty)
+                          if (id.isNotEmpty) {
                             now(e.copyWith(code: id, entry: ""));
+                          }
                         },
                       ),
                       if (code != null)

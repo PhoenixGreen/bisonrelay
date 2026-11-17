@@ -683,7 +683,7 @@ class VrmPoser {
   final Map<VrmHumanBone, _V> _restWorld = {};
 
   /// restWorld is where [b] is at rest, in the scene, once measured.
-  _V? restWorld(VrmHumanBone b) => _restWorld[b]?.clone();
+  vm.Vector3? restWorld(VrmHumanBone b) => _restWorld[b]?.clone();
 
   /// _eased is what each eased value was last frame.
   final Map<String, Object> _eased = {};

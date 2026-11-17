@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -14,7 +15,6 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
@@ -130,25 +130,6 @@ String _looksSaid(TextElement e, Set<String> layers) {
         d.kind.label
   ];
   return names.isEmpty ? "" : names.join(", ");
-}
-
-/// _motionSaid is how [e] moves, in a few words, for the Motion heading.
-String _motionSaid(TextElement e) {
-  var kinds = {
-    for (var p in e.base.motion.placed)
-      if (e.base.motion.clip(p.clip) case var c?) c.kind
-  };
-  if (kinds.isEmpty) return "Still";
-  return [
-    if (kinds.contains(MotionKind.arrive)) "arrives",
-    if (kinds.contains(MotionKind.loop)) "loops",
-    if (kinds.contains(MotionKind.leave)) "leaves",
-    if (kinds.any((k) =>
-        k != MotionKind.arrive &&
-        k != MotionKind.loop &&
-        k != MotionKind.leave))
-      "moves",
-  ].join(", ").replaceFirstMapped(RegExp(r"^."), (m) => m[0]!.toUpperCase());
 }
 
 List<Widget> _bodySections(
@@ -528,7 +509,7 @@ List<Widget> _bodySections(
         glyph: SectionGlyph.motion,
         icon: Icons.animation,
         title: "Motion",
-        summary: _motionSaid(e),
+        summary: motionSaid(e),
         children: [
           MotionSummary(controller: controller, element: e),
           // How it comes in and goes, chosen here as in its Chain: its own

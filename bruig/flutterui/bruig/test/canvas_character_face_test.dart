@@ -64,8 +64,6 @@ void main() {
       expect(f.wearing('Gone').blush, 0.2, reason: 'its own, for one it lacks');
       expect(const FaceMix().withUnit('MTH_A', 0.3).withUnit('MTH_A', 0).w,
           isEmpty);
-      expect(faceExpressions['Furious']!.withoutRegion('mouth').w.keys,
-          unorderedEquals(['BRW_Angry', 'EYE_Angry', 'HA_Fung2']));
     });
 
     test('every shape it is made of is one of the face\'s', () {

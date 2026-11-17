@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
@@ -270,24 +271,6 @@ Future<Uint8List?> combinedSubject(ImageMask mask, ui.Image? current,
   });
 }
 
-/// _pixelsOf renders [draw] into a [w] x [h] picture and reads it back as
-/// RGBA bytes.
-Future<Uint8List> _pixelsOf(int w, int h, void Function(ui.Canvas) draw,
-    {bool straight = false}) async {
-  var recorder = ui.PictureRecorder();
-  draw(ui.Canvas(recorder));
-  var image = await recorder.endRecording().toImage(w, h);
-  try {
-    var data = await image.toByteData(
-        format: straight
-            ? ui.ImageByteFormat.rawStraightRgba
-            : ui.ImageByteFormat.rawRgba);
-    return data!.buffer.asUint8List();
-  } finally {
-    image.dispose();
-  }
-}
-
 /// _maskSide is the longest a mask made by cutting is kept at: one cut here
 /// is no sharper than the cut, and twelve megapixels of it is a slow file.
 const int _maskSide = 3000;
@@ -381,19 +364,19 @@ Future<Uint8List?> quickSelectMask(ui.Image picture, ImageMask mask,
   var h = math.max(8, (region.height * k).round());
   var into = Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble());
 
-  var rgba = await _pixelsOf(w, h, (canvas) {
+  var rgba = await drawnPixels(w, h, (canvas) {
     canvas.drawImageRect(
         picture, region, into, Paint()..filterQuality = FilterQuality.medium);
   });
   var picked = !mask.empty;
   var current = picked
-      ? await _pixelsOf(w, h, (canvas) {
+      ? await drawnPixels(w, h, (canvas) {
           canvas.scale(w / region.width, h / region.height);
           canvas.translate(-region.left, -region.top);
           canvas.drawPicture(maskPicture(mask, size, subject));
         })
       : null;
-  var brushed = await _pixelsOf(w, h, (canvas) {
+  var brushed = await drawnPixels(w, h, (canvas) {
     canvas.scale(w / region.width, h / region.height);
     canvas.translate(-region.left, -region.top);
     var paint = Paint()
@@ -462,7 +445,7 @@ Future<Uint8List?> guessSubjectMask(ui.Image picture, {Offset? at}) async {
   var k = math.min(1.0, math.sqrt(90000 / (size.width * size.height)));
   var w = math.max(8, (size.width * k).round());
   var h = math.max(8, (size.height * k).round());
-  var rgba = await _pixelsOf(w, h, (canvas) {
+  var rgba = await drawnPixels(w, h, (canvas) {
     canvas.drawImageRect(
         picture,
         Offset.zero & size,
@@ -541,16 +524,16 @@ Future<Uint8List?> refineEdgeMask(ui.Image picture, ImageMask mask,
     canvas.translate(-region.left, -region.top);
   }
 
-  var rgba = await _pixelsOf(w, h, (canvas) {
+  var rgba = await drawnPixels(w, h, (canvas) {
     inRegion(canvas);
     canvas.drawImage(
         picture, Offset.zero, Paint()..filterQuality = FilterQuality.medium);
   }, straight: true);
-  var current = await _pixelsOf(w, h, (canvas) {
+  var current = await drawnPixels(w, h, (canvas) {
     inRegion(canvas);
     canvas.drawPicture(maskPicture(mask, size, subject));
   });
-  var brushed = await _pixelsOf(w, h, (canvas) {
+  var brushed = await drawnPixels(w, h, (canvas) {
     inRegion(canvas);
     var paint = Paint()
       ..color = const Color(0xFFFFFFFF)

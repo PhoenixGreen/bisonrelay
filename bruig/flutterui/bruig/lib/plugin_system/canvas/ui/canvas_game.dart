@@ -208,8 +208,6 @@ class GameRun extends ChangeNotifier {
   /// clock is how long the game has run, in seconds.
   double clock = 0;
 
-  /// controllers are the controllers connected when [listen] ran, by name.
-  List<String> get controllers => List.unmodifiable(_controllers);
   final List<String> _controllers = [];
   StreamSubscription<NormalizedGamepadEvent>? _pads;
 

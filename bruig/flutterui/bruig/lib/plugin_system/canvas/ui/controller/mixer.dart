@@ -471,8 +471,9 @@ extension CanvasMixing on CanvasController {
   /// Every device has its id (see withDeviceIds), so a chain changed from
   /// this one -- a device taken out, one put on -- keeps the others' ids.
   List<MixDevice> devicesOf(String key) {
-    if (key == mixerMasterKey)
+    if (key == mixerMasterKey) {
       return withDeviceIds(_document.masterMix.devices);
+    }
     if (key == sceneBusKey) return withDeviceIds(sceneBus.devices);
     if (returnOf(key) case var r?) return withDeviceIds(r.devices);
     // As they play now: a setting a lane moves, where the lane has it.

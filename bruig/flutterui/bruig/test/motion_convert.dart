@@ -1,16 +1,15 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
-// motion_convert.dart turns legacy keyframe tracks into clips, frame for
-// frame, when a canvas opens.
+// motion_convert.dart turns an element's keyframe track into clips, frame
+// for frame: tests build their clips with it from keys, which are quicker to
+// write. (Canvases themselves keep their tracks: see 95549bb5.)
 //
 // An element's moves (across, down, size, turn, fade) become one clip from
 // its first keyframe to its last, holding its first pose before and its last
@@ -20,15 +19,6 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 //
 // Left as tracks, and still played: backgrounds, stages, scenery, players
 // (a team's runs), and any track keying something a clip cannot say.
-
-/// TracksConverted is what a conversion did: how many elements' keyframes
-/// became clips, and how many were kept as they were.
-class TracksConverted {
-  final CanvasDocument document;
-  final int converted;
-  final int kept;
-  const TracksConverted(this.document, this.converted, this.kept);
-}
 
 /// _groups are the keyed values a clip can say; each group's stretches share
 /// one layer.
@@ -48,43 +38,6 @@ bool convertible(CanvasElement e) {
   if (e.kind == ElementKind.player) return false;
   var known = {for (var g in _groups) ...g};
   return track.keys.every((k) => k.values.keys.every(known.contains));
-}
-
-/// hasTracks is whether [doc] has any keyframes a clip could say, in any
-/// of its scenes or its master.
-bool hasTracks(CanvasDocument doc) => [
-      for (var s in doc.allScenes) ...s.elements,
-      ...?doc.master?.elements,
-    ].any(convertible);
-
-/// convertTracks is [doc] with every element's keyframes that a clip can
-/// say made into clips, its track gone -- every scene, and the master.
-TracksConverted convertTracks(CanvasDocument doc) {
-  var rate = math.max(1, doc.frameRate);
-  var converted = 0, kept = 0;
-  List<CanvasElement> all(List<CanvasElement> elements) => [
-        for (var e in elements)
-          if (e.track == null || e.track!.keys.isEmpty)
-            e
-          else if (convertElement(e, rate) case var c?)
-            () {
-              converted++;
-              return c;
-            }()
-          else
-            () {
-              kept++;
-              return e;
-            }()
-      ];
-  var scenes = [
-    for (var s in doc.allScenes) s.copyWith(elements: all(s.elements)),
-  ];
-  var next = doc.withScenes(scenes, at: doc.at);
-  if (doc.master case CanvasScene m) {
-    next = next.copyWith(master: m.copyWith(elements: all(m.elements)));
-  }
-  return TracksConverted(next, converted, kept);
 }
 
 /// convertElement is [e] with its keyframes made into clips, or null where

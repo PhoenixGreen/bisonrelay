@@ -2675,17 +2675,6 @@ class CanvasController extends ChangeNotifier {
     return target.name;
   }
 
-  /// setPlayerKeyframe writes one player's pose at the current frame.
-  void setPlayerKeyframe(String teamId, int index, Keyframe key) {
-    var team = _document.elementById(teamId);
-    if (team is! TeamElement || index < 0 || index >= team.players.length) {
-      return;
-    }
-    var spot = team.players[index];
-    replaceElement(team.withPlayer(index,
-        spot.copyWith(track: (spot.track ?? ElementTrack.empty).withKey(key))));
-  }
-
   /// valueAt reads an animatable extra channel at the current frame, falling
   /// back to [orElse] when nothing has been keyed. See KeyframeChannel.
   double valueAt(CanvasElement element, String channel, double orElse) =>
@@ -3031,24 +3020,6 @@ class CanvasController extends ChangeNotifier {
             : track.withKey(without)));
   }
 
-  /// removePlayerKeyframe drops one, and the track with it when it was the
-  /// last, so no empty track is saved.
-  void removePlayerKeyframe(String teamId, int index, int frame) {
-    var team = _document.elementById(teamId);
-    if (team is! TeamElement || index < 0 || index >= team.players.length) {
-      return;
-    }
-    var spot = team.players[index];
-    var track = spot.track;
-    if (track == null) return;
-    var next = track.withoutFrame(frame);
-    replaceElement(team.withPlayer(
-        index,
-        next.isEmpty
-            ? spot.copyWith(clearTrack: true)
-            : spot.copyWith(track: next)));
-  }
-
   // ------------------------------------------------------------------------
   // Selection
   // ------------------------------------------------------------------------
@@ -3064,11 +3035,6 @@ class CanvasController extends ChangeNotifier {
   final List<String> _alsoPicked = [];
 
   FrameTool? _frameTool = FrameTool.image;
-
-  /// _shutCards are the settings cards under a row of kinds -- an
-  /// arrival's, an exit's, a loop's -- shut by pressing the kind chosen
-  /// again. For this run of the app; picking another kind opens its card.
-  final Set<String> _shutCards = {};
 
   /// _textLayers is the layer picked in each text element's Layers, by the
   /// element's id: one of its pieces, by the piece's id. A text element not
@@ -3576,7 +3542,7 @@ class CanvasController extends ChangeNotifier {
   // The session view: clips launched live
   // ------------------------------------------------------------------------
 
-  Quantise _launchQuantise = Quantise.bar;
+  final Quantise _launchQuantise = Quantise.bar;
 
   /// _clipChannels is what each channel is playing from its slots, and what
   /// it is about to.
@@ -4131,7 +4097,6 @@ class CanvasController extends ChangeNotifier {
   /// _presetNames are the presets last put on devices, by "strip|device".
   final Map<String, String> _presetNames = {};
 
-  double? _editorWidth;
 
   PianoRollTarget? _clipEditing;
   bool _clipEditorShown = false;

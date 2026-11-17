@@ -504,10 +504,6 @@ Set<String> sheetSounding(SheetView view) => {
           n.event
     };
 
-/// sheetLength is how long [s] plays, in seconds.
-double sheetLength(MusicScore s) =>
-    s.secondsAt(s.playOrder(), s.lengthQuarters());
-
 /// sheetProgress is how far through its playing [view]'s playhead is.
 double sheetProgress(SheetElement e, SheetView view) {
   var (from, to) = sheetSpan(e, view.score);

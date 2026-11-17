@@ -7,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
 // The chart's data, animation and key live in their own files, exported so
 // that importing chart_element.dart still brings a whole chart.
@@ -1194,20 +1193,4 @@ List<List<String>> thinTo(List<List<String>> rows, int most) {
   return [
     for (var i = 0; i < most; i++) rows[(i * step).round()],
   ];
-}
-
-/// chartDataFromTable is [link] applied to [table]: the chart's numbers taken
-/// from the table's cells, with the series named after their columns.
-ChartData chartDataFromTable(TableElement table, TableLink link,
-    {List<ChartSeries> keeping = const []}) {
-  if (!link.on) return const ChartData();
-  return chartDataFromRows(
-    table.rows,
-    ChartSourceMap(
-        categoryColumn: link.categoryColumn, valueColumns: link.valueColumns),
-    headerRow: table.headerRow,
-    // The table's name for the column, which a hidden header row still has.
-    nameOf: table.columnName,
-    keeping: keeping,
-  );
 }

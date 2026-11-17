@@ -52,9 +52,9 @@ class PresetPair<T> {
   final T none;
   const PresetPair(this.options, this.value, this.none);
 
-  List<String> get families => [
+  List<String> get families => {
         for (var o in options) o.family,
-      ].toSet().toList();
+      }.toList();
 
   /// family is [value]'s family, or "" for none.
   String get family =>

@@ -407,3 +407,23 @@ MotionClip withCameraShake(MotionClip c, double strength) {
             ],
   });
 }
+
+/// wayOf is which way [p] goes as [c]'s keys have it.
+MotionWay wayOf(MotionClip c, MotionPreset p) {
+  for (var keys in c.keys.values) {
+    for (var k in keys) {
+      if (k.value case MotionPlace(:var kind)) {
+        for (var w in p.ways) {
+          var edge = switch (w) {
+            MotionWay.left => MotionPlaceKind.offLeft,
+            MotionWay.right => MotionPlaceKind.offRight,
+            MotionWay.top => MotionPlaceKind.offTop,
+            MotionWay.bottom => MotionPlaceKind.offBottom,
+          };
+          if (edge == kind) return w;
+        }
+      }
+    }
+  }
+  return p.ways.first;
+}

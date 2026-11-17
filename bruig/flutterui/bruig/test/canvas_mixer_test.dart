@@ -1,6 +1,5 @@
 import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
-import 'dart:typed_data';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -2118,9 +2117,7 @@ void main() {
       const heights = <double>[208, 248, 288, 328, 368, 408, 448, 460];
       for (var shown in combos) {
         for (var s in MixerSection.values) {
-          while (c.bandState(s) != shown[s]) {
-            c.toggleMixerSection(s);
-          }
+          c.setMixerSection(s, shown[s]!);
         }
         for (var (i, h) in heights.indexed) {
           // Every other height, every column narrow.

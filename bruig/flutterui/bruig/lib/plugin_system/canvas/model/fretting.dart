@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
@@ -261,7 +262,7 @@ List<GuitarShape> guitarChordShapes(String symbol) {
   void add(String name, List<int> frets) {
     var shape = _withBass(frets, c.bass, c.root);
     if (shape == null) return;
-    if (out.any((s) => _same(s.frets, shape))) return;
+    if (out.any((s) => listEquals(s.frets, shape))) return;
     out.add(GuitarShape(name, shape));
   }
 
@@ -312,14 +313,6 @@ GuitarShape? guitarChord(String symbol, [int? shape]) {
   var all = guitarChordShapes(symbol);
   if (all.isEmpty) return null;
   return all[(shape ?? 0) >= 0 && (shape ?? 0) < all.length ? shape ?? 0 : 0];
-}
-
-bool _same(List<int?> a, List<int?> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }
 
 /// _withBass is [frets] with [bass] lowest: as it is where its lowest

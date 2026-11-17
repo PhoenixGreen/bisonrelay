@@ -112,14 +112,6 @@ String boxSummary(BoxSpec b) {
 String typeSummary(TextSpec t) =>
     "${t.fontFamily} · ${shortNumber(t.fontSize)}";
 
-/// expanderSection is an expander (its name, summary and heading button)
-/// shown as a section instead, since a fold inside a fold is two presses for
-/// one thing.
-Widget expanderSection(CanvasElement e, IconData icon, Widget expander,
-        {String? summary, List<Widget> extra = const []}) =>
-    expanderAsSection(icon, expander,
-        summary: summary, extra: extra, prefix: "${elementKindKey(e)}.");
-
 /// expanderAsSection is expanderSection for a part of a panel that is not an
 /// element's -- the canvas's own background -- remembered under [prefix].
 Widget expanderAsSection(IconData icon, Widget expander,

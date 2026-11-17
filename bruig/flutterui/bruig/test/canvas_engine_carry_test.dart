@@ -5,7 +5,6 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
-import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_engine_carry_test.dart is the mix going on through a change as it

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
@@ -262,15 +263,7 @@ class PitchNote {
       other.endAt == endAt &&
       other.fadeIn == fadeIn &&
       other.fadeOut == fadeOut &&
-      _sameCurve(other.curve, curve);
-
-  static bool _sameCurve(List<(double, double)> a, List<(double, double)> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
+      listEquals(other.curve, curve);
 
   @override
   int get hashCode => Object.hash(

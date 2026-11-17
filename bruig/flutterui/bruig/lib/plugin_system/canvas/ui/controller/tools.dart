@@ -772,19 +772,8 @@ extension CanvasTools on CanvasController {
 
   void toggleEditorWide() {
     _editorWide = !_editorWide;
-    _editorWidth = null;
     _effectsFocus = _clipEditorShown ? "clip" : "roll";
     _effectsFocusCount++;
-    notifyListeners();
-  }
-
-  /// editorWidth is how wide the editor has been dragged by its right edge
-  /// -- or null, as Wider or Narrower has it. Kept while the canvas is open.
-  double? get editorWidth => _editorWidth;
-
-  set editorWidth(double? width) {
-    if (width == _editorWidth) return;
-    _editorWidth = width;
     notifyListeners();
   }
 
@@ -1972,8 +1961,9 @@ extension CanvasTools on CanvasController {
   /// whole file, or null until it has been read -- it is read on first asking,
   /// off the main thread, and the timeline is told when it arrives.
   Float32List? waveformOf(String assetId) {
-    if (CanvasController._waveforms.containsKey(assetId))
+    if (CanvasController._waveforms.containsKey(assetId)) {
       return CanvasController._waveforms[assetId];
+    }
     if (CanvasController._readingWaveform.add(assetId)) _readWaveform(assetId);
     return null;
   }

@@ -472,8 +472,9 @@ extension CanvasScenes on CanvasController {
   Future<Float32List?> _waveformOf(String assetId) async {
     for (var i = 0; i < 600; i++) {
       var peaks = waveformOf(assetId);
-      if (peaks != null || CanvasController._waveforms.containsKey(assetId))
+      if (peaks != null || CanvasController._waveforms.containsKey(assetId)) {
         return peaks;
+      }
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     return null;

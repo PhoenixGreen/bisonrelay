@@ -214,24 +214,6 @@ class CanvasMedia {
     return removed;
   }
 
-  /// sweepUnused sweeps the stores against every saved canvas, and against
-  /// [open], the canvas being worked on, which may never have been saved:
-  /// otherwise a sound added to an unnamed canvas would be deleted by the
-  /// first save of any other.
-  static Future<int> sweepUnused({Set<String> open = const {}}) async {
-    try {
-      var live = {...await CanvasStorage.liveMediaIds(), ...open};
-      // A drawing can be named as a picture too -- a text element's icon
-      // reads either store -- so the drawings keep whatever either names.
-      var drawn = {...live, ...await CanvasStorage.liveAssetIds()};
-      return await sweep(MediaKind.audio, live) +
-          await sweep(MediaKind.video, live) +
-          await sweep(MediaKind.vector, drawn);
-    } catch (_) {
-      return 0;
-    }
-  }
-
   /// sniffExtension is what a file is, from its first bytes -- never from its
   /// name, which is whatever somebody called it.
   static Future<String> sniffExtension(String filePath) async {

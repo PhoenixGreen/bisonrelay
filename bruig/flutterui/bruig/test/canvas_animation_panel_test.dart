@@ -18,7 +18,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryMouseButton;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/curve_view.dart';
 import 'package:flutter/services.dart';

@@ -82,7 +82,7 @@ void main() {
     // sweep takes every picture no saved canvas refers to, and nothing here
     // has been saved.
     await ageStores();
-    await CanvasAssets.sweepUnused();
+    await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
     expect(await CanvasAssets.load(id), isNull);
 
     var bundle = (await unpackCanvas(packed))!;
@@ -160,7 +160,7 @@ void main() {
   test("a picture just stored is not swept before its canvas is saved",
       () async {
     var id = (await CanvasAssets.save(png(5)))!;
-    await CanvasAssets.sweepUnused();
+    await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
     expect(await CanvasAssets.load(id), isNotNull);
   });
 }

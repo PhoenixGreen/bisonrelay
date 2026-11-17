@@ -631,8 +631,9 @@ void _notes(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         var reach = arrow ? size * 4 : size * 1.6;
         // Past a sideways bar's end first; over an upright one's top.
         var places = LabelPlacer.around(to, box, reach);
-        if (horizontal)
+        if (horizontal) {
           places = [places[1], ...places.where((r) => r != places[1])];
+        }
         var at = placer.place(places) ??
             Rect.fromCenter(
                 center: to.translate(0, -reach - box.height / 2),
@@ -1003,8 +1004,9 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     // solid, in one ink); price bars (a tick each side for open and
     // close); or a simple range, high to low with a dot at the close.
     var way = modeOf(e.design, "candlestick");
-    if (way == "mono")
+    if (way == "mono") {
       paint.color = e.labelSpec.color.withValues(alpha: paint.color.a);
+    }
     var top = y(ohlc.top);
     var bottom = y(ohlc.bottom);
     var middle = (top + bottom) / 2;

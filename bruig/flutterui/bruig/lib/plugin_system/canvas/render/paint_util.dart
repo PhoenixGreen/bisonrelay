@@ -2344,3 +2344,21 @@ double paintRunsInBox(
   if (clip) canvas.restore();
   return painter.height;
 }
+
+/// drawnPixels renders [draw] into a [w] x [h] picture and reads it back as
+/// RGBA bytes: premultiplied, or [straight].
+Future<Uint8List> drawnPixels(int w, int h, void Function(ui.Canvas) draw,
+    {bool straight = false}) async {
+  var recorder = ui.PictureRecorder();
+  draw(ui.Canvas(recorder));
+  var image = await recorder.endRecording().toImage(w, h);
+  try {
+    var data = await image.toByteData(
+        format: straight
+            ? ui.ImageByteFormat.rawStraightRgba
+            : ui.ImageByteFormat.rawRgba);
+    return data!.buffer.asUint8List();
+  } finally {
+    image.dispose();
+  }
+}

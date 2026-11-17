@@ -6,7 +6,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
-import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_edge_cleaning_test.dart is the picture store handing back a picture

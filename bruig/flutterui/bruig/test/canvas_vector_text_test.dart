@@ -17,7 +17,6 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Color, Offset, Rect;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';

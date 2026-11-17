@@ -48,9 +48,6 @@ enum SpeechEngineKind {
   /// only as far as its cues go ([SpeechDirection.kokoro]).
   bool directs(SpeechDirection d) =>
       this != local || d == SpeechDirection.plain || d.kokoro.isNotEmpty;
-
-  /// ownWords is whether it takes a direction in the reader's own words.
-  bool get ownWords => this != local;
 }
 
 /// SpeechDirection is how a line is said: plain words for the expressive

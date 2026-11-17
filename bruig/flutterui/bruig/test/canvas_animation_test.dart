@@ -369,91 +369,6 @@ void main() {
     });
   });
 
-  group("a player's own animation", () {
-    TeamElement teamOf(CanvasController c) =>
-        c.document.elements.whereType<TeamElement>().single;
-
-    CanvasController withTeam() {
-      var team = TeamElement(
-        const ElementBase(id: "t1", x: 0, y: 0, width: 400, height: 300),
-      ).withFormation(TeamFormation.f442);
-      var controller =
-          CanvasController(const CanvasDocument(frames: 24).addElement(team));
-      controller.selectOnly("t1");
-      return controller;
-    }
-
-    test("each player animates independently", () {
-      // The whole point of a tactics diagram: the winger makes the run and
-      // everybody else holds their line. A team-wide track can only move all
-      // eleven at once, which is the one movement no move ever is.
-      var controller = withTeam();
-      addTearDown(controller.dispose);
-
-      controller.frame = 0;
-      controller.setPlayerKeyframe("t1", 6, const Keyframe(frame: 0));
-      controller.frame = 18;
-      controller.setPlayerKeyframe("t1", 6, const Keyframe(frame: 18, dx: 90));
-
-      var team = teamOf(controller);
-      expect(team.players[6].track, isNotNull);
-      expect(team.players[5].track, isNull, reason: "nobody else moved");
-
-      var rest = team.centreOf(team.players[6]);
-      expect(team.centreAt(team.players[6], 0).dx, rest.dx);
-      expect(team.centreAt(team.players[6], 18).dx, rest.dx + 90);
-      expect(
-          team.centreAt(team.players[6], 9).dx, closeTo(rest.dx + 45, 0.001));
-    });
-
-    test("a player's run survives the team being moved and resized", () {
-      // Offsets on top of a fractional resting position, so both transforms
-      // compose rather than one of them cancelling the other.
-      var controller = withTeam();
-      addTearDown(controller.dispose);
-      controller.setPlayerKeyframe("t1", 6, const Keyframe(frame: 10, dx: 60));
-
-      var team = teamOf(controller);
-      var moved = team.withBase(x: 200, y: 100) as TeamElement;
-      expect(moved.centreAt(moved.players[6], 10).dx,
-          closeTo(team.centreAt(team.players[6], 10).dx + 200, 0.001));
-    });
-
-    test("the document's length counts a player's keyframes", () {
-      // Asking the element alone reports a pitch full of runs as a still,
-      // because a team's movement lives on its players.
-      var controller = withTeam();
-      addTearDown(controller.dispose);
-      expect(controller.document.lastAnimatedFrame, 0);
-
-      controller.setPlayerKeyframe("t1", 3, const Keyframe(frame: 21));
-      expect(controller.document.lastAnimatedFrame, 21);
-    });
-
-    test("removing the last keyframe drops the track", () {
-      var controller = withTeam();
-      addTearDown(controller.dispose);
-      controller.setPlayerKeyframe("t1", 2, const Keyframe(frame: 4, dx: 5));
-      expect(teamOf(controller).players[2].track, isNotNull);
-
-      controller.removePlayerKeyframe("t1", 2, 4);
-      expect(teamOf(controller).players[2].track, isNull,
-          reason: "no empty track goes into the saved file");
-    });
-
-    test("a player's keyframes survive a round trip", () {
-      var controller = withTeam();
-      addTearDown(controller.dispose);
-      controller.setPlayerKeyframe(
-          "t1", 9, const Keyframe(frame: 14, dx: 33, dy: -12));
-
-      var back = CanvasDocument.decode(controller.document.encode())!;
-      var team = back.elements.whereType<TeamElement>().single;
-      expect(team.players[9].track!.keyAt(14)!.dx, 33);
-      expect(team.players[9].track!.keyAt(14)!.dy, -12);
-    });
-  });
-
   group("formation spread", () {
     test("own half fits everybody inside the box", () {
       var team =
@@ -560,15 +475,6 @@ void main() {
     (int, int)? own(CanvasController c, MotionKind kind) =>
         ownSpan(chartIn(c), kind, c.document.frameRate);
 
-    // A way out on the keyframes of a canvas not yet converted: what the
-    // strip's bands are dragged by.
-    void closingKeys(CanvasController c, int from, int to) =>
-        c.replaceElement(chartIn(c).withBase(
-            track: ElementTrack([
-          Keyframe(frame: from, values: const {KeyframeChannel.close: 0}),
-          Keyframe(frame: to, values: const {KeyframeChannel.close: 1}),
-        ])));
-
     test("choosing one puts its way out at the end", () {
       var controller = withChart();
       addTearDown(controller.dispose);
@@ -619,65 +525,6 @@ void main() {
 
       expect(own(controller, MotionKind.arrive), before);
       expect(chartIn(controller).animation.preset, ChartAnimationPreset.grow);
-    });
-
-    test("a pair is one band, and every other stretch is its own", () {
-      var track = ElementTrack(const [
-        Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-        Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-        Keyframe(frame: 30, values: {KeyframeChannel.close: 0}),
-        Keyframe(frame: 47, values: {KeyframeChannel.close: 1}),
-      ]);
-      var bands = bandsIn(track);
-      expect(bands.length, 2);
-      expect([bands[0].from, bands[0].to], [0, 10]);
-      expect([bands[1].from, bands[1].to], [30, 47]);
-
-      // Poses of an element moving about get a bar each now, which is a
-      // deliberate change: this said that joining them up would be inventing
-      // a relationship nobody asked for, and then somebody asked for it. The
-      // bar is read as "something happens between these two marks", and
-      // something does -- so three poses are two stretches and two bars.
-      expect([
-        for (var band in bandsIn(ElementTrack(const [
-          Keyframe(frame: 0, dx: 10),
-          Keyframe(frame: 5, dx: 20),
-          Keyframe(frame: 9, dx: 30),
-        ])))
-          [band.from, band.to]
-      ], [
-        [0, 5],
-        [5, 9],
-      ]);
-      expect(bandsIn(null), isEmpty);
-    });
-
-    test("dragging the band moves both ends and keeps its length", () {
-      var controller = withChart();
-      addTearDown(controller.dispose);
-      closingKeys(controller, 30, 47);
-      var before = bandsIn(chartIn(controller).track!).single;
-
-      controller.shiftKeyframes("c", [before.from, before.to], -6);
-      var after = bandsIn(chartIn(controller).track!).single;
-
-      expect(after.from, before.from - 6);
-      expect(after.to, before.to - 6);
-      expect(after.length, before.length);
-    });
-
-    test("and it will not push either end off the timeline", () {
-      // Refused rather than squashed: an animation that quietly lost its
-      // length at the end of the strip is one nobody would notice until they
-      // played it.
-      var controller = withChart();
-      addTearDown(controller.dispose);
-      closingKeys(controller, 30, 47);
-      var before = bandsIn(chartIn(controller).track!).single;
-
-      controller.shiftKeyframes("c", [before.from, before.to], 10);
-      var after = bandsIn(chartIn(controller).track!).single;
-      expect([after.from, after.to], [before.from, before.to]);
     });
 
     test("it draws with the exit preset, in reverse", () async {

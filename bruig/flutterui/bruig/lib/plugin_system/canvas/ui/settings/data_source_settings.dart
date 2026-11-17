@@ -350,7 +350,7 @@ class _TableTarget extends _Target {
     var followers = element.sheet == null
         ? 0
         : viewsOf(controller.document, element.sheet!.sheet)
-            .where((v) => v is ChartElement)
+            .whereType<ChartElement>()
             .length;
     commit();
     return followers == 0

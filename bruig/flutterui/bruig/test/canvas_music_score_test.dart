@@ -2,8 +2,6 @@ import 'dart:convert';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
-import 'package:bruig/plugin_system/canvas/model/musicxml.dart';
 import 'package:bruig/plugin_system/canvas/model/music_score.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -452,46 +450,6 @@ void main() {
       var e = s.parts.single.staves.single.bars.first.first;
       expect(e.pitches.single.name, "D4");
       expect(s.partNotes("p1").single.note.key, 60);
-    });
-
-    test("a MusicXML file: its title, tempo, time and key kept", () {
-      const xml = """<?xml version="1.0" encoding="UTF-8"?>
-<score-partwise version="3.1">
-  <work><work-title>Little Tune</work-title></work>
-  <part-list><score-part id="P1"><part-name>Flute</part-name></score-part></part-list>
-  <part id="P1">
-    <measure number="1">
-      <attributes><divisions>1</divisions><key><fifths>1</fifths></key>
-        <time><beats>3</beats><beat-type>4</beat-type></time></attributes>
-      <direction><sound tempo="90"/></direction>
-      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note>
-      <note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>2</duration></note>
-    </measure>
-    <measure number="2">
-      <note><pitch><step>G</step><octave>4</octave></pitch><duration>3</duration></note>
-    </measure>
-  </part>
-</score-partwise>""";
-      var s = scoreFromMusicXml("x", readMusicXml(utf8.encode(xml)));
-      expect([s.title, s.tempo, s.beats, s.beatUnit, s.fifths],
-          ["Little Tune", 90, 3, 4, 1]);
-      expect(s.barCount, 2);
-      var first = s.parts.single.staves.first.bars[0];
-      expect(first.first.pitches.single.name, "G4");
-      // However the F# is written (a minim, or crotchets tied), it plays as
-      // one note, spelled as the key has it.
-      expect([for (var n in s.partNotes("p1")) n.note.key], [67, 66, 67]);
-      expect(
-          first.skip(1).every((e) => e.pitches.single.name == "F#4"), isTrue);
-      expect(s.partNotes("p1").last.note.start, closeTo(2, 1e-9),
-          reason: "three beats at 90 are two seconds");
-    });
-
-    test("a MIDI file's program picks the instrument", () {
-      var s = scoreFromMidi("m", const MidiImport([MidiNote(60, 0, 1)], 40));
-      expect(s.parts.single.instrument, "violin");
-      expect(instrumentForProgram(27), "guitar");
-      expect(instrumentForProgram(null), "piano");
     });
   });
 }

@@ -242,16 +242,6 @@ extension CanvasSession on CanvasController {
   /// session is the clip slots and the scenes -- see session.dart.
   SessionGrid get session => _document.session;
 
-  /// launchQuantise is what a launch waits for: the next bar, as Ableton's
-  /// global quantisation does, or a finer grid, or nothing.
-  Quantise get launchQuantise => _launchQuantise;
-
-  set launchQuantise(Quantise q) {
-    if (_launchQuantise == q) return;
-    _launchQuantise = q;
-    notifyListeners();
-  }
-
   /// _sessionNow is where the session's clock is, in seconds. Playing, it
   /// keeps time with the timeline from where Play was pressed, so a clip
   /// launched on a bar is on the timeline's bar -- and goes on through a
@@ -312,8 +302,9 @@ extension CanvasSession on CanvasController {
   List<OffTimelineItem> get offTimelineItems {
     var doc = _document;
     String nameOf(String key) {
-      if (doc.elementById(key) case var e?)
+      if (doc.elementById(key) case var e?) {
         return e.name.isEmpty ? key : e.name;
+      }
       return timelineChannels.where((c) => c.key == key).firstOrNull?.name ??
           key;
     }
@@ -1114,7 +1105,9 @@ extension CanvasSession on CanvasController {
     var rec = _clipRecord;
     if (rec == null ||
         !rec.started ||
-        rec.channel != CanvasController._channelOf(e)) return;
+        rec.channel != CanvasController._channelOf(e)) {
+      return;
+    }
     var spb = math.max(0.001, _document.audio.secondsPerBeat);
     rec.held[key] = ((_sessionNow - rec.from) / spb, velocity);
   }

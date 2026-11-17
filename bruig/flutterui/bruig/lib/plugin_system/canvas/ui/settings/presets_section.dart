@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
@@ -146,31 +147,6 @@ class _PresetsSectionState extends State<_PresetsSection> {
           "changed about it will be gone.",
       confirm: "Use the preset");
 
-  Future<String?> _ask(String title, {String initial = ""}) {
-    var text = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: text,
-          autofocus: true,
-          maxLength: 60,
-          decoration: const InputDecoration(labelText: "Name"),
-          onSubmitted: (v) => Navigator.of(context).pop(v),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("Cancel")),
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(text.text),
-              child: const Text("OK")),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     var presets = store.forKind(widget.element.kind);
@@ -214,7 +190,8 @@ class _PresetsSectionState extends State<_PresetsSection> {
               icon: Icons.drive_file_rename_outline,
               tooltip: "Rename ${chosen.name}",
               onPressed: () async {
-                var name = await _ask("Rename preset", initial: chosen.name);
+                var name = await askForPresetName(context, "Rename preset",
+                    initial: chosen.name);
                 if (name == null || name.trim().isEmpty) return;
                 await store.rename(chosen, name);
                 if (mounted) setState(() => _chosen = name);
@@ -243,8 +220,8 @@ class _PresetsSectionState extends State<_PresetsSection> {
             icon: Icons.bookmark_add_outlined,
             tooltip: "Save this design as a preset",
             onPressed: () async {
-              var name =
-                  await _ask("Save as a preset", initial: widget.element.name);
+              var name = await askForPresetName(context, "Save as a preset",
+                  initial: widget.element.name);
               if (name == null || name.trim().isEmpty) return;
               // With the page it was designed on, so it comes in at the scale it was
               // saved at on a canvas of another size.

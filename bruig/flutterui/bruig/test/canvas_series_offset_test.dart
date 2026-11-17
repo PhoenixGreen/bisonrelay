@@ -1,12 +1,10 @@
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';

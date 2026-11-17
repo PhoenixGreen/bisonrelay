@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_mask_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
@@ -93,11 +94,11 @@ class EdgeCleaner {
       var w = math.max(1, (size.width * k).round());
       var h = math.max(1, (size.height * k).round());
       var into = Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble());
-      var rgba = await _read(w, h, (canvas) {
+      var rgba = await drawnPixels(w, h, (canvas) {
         canvas.drawImageRect(picture, Offset.zero & size, into,
             Paint()..filterQuality = FilterQuality.medium);
       }, straight: true);
-      var shown = await _read(w, h, (canvas) {
+      var shown = await drawnPixels(w, h, (canvas) {
         paintMaskLayer(canvas, mask, size, subject,
             placeImage(size, into, ImageFit.stretch),
             blend: BlendMode.srcOver);
@@ -135,22 +136,6 @@ class EdgeCleaner {
       // The picture stays uncleaned.
     } finally {
       _working.remove(key);
-    }
-  }
-
-  static Future<Uint8List> _read(int w, int h, void Function(ui.Canvas) draw,
-      {bool straight = false}) async {
-    var recorder = ui.PictureRecorder();
-    draw(ui.Canvas(recorder));
-    var image = await recorder.endRecording().toImage(w, h);
-    try {
-      var data = await image.toByteData(
-          format: straight
-              ? ui.ImageByteFormat.rawStraightRgba
-              : ui.ImageByteFormat.rawRgba);
-      return data!.buffer.asUint8List();
-    } finally {
-      image.dispose();
     }
   }
 

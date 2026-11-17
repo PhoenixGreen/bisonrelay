@@ -107,22 +107,6 @@ extension CanvasCopies on CanvasController {
     return id;
   }
 
-  /// moveCopies moves [ids] of [element]'s copies [by] on the page.
-  void moveCopies(String element, Set<String> ids, Offset by,
-      {bool transient = false}) {
-    var set = motionOf(element).instances;
-    if (set == null || ids.isEmpty) return;
-    setInstances(
-        element,
-        set.copyWith(items: [
-          for (var x in set.items)
-            ids.contains(x.id)
-                ? x.copyWith(dx: x.dx + by.dx, dy: x.dy + by.dy)
-                : x,
-        ]),
-        transient: transient);
-  }
-
   /// duplicateCopies puts a new copy beside each of [ids], [by] from it,
   /// picked in their place: an Alt-drag. The new ids.
   Set<String> duplicateCopies(String element, Set<String> ids, Offset by) {

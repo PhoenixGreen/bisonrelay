@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart' show snapNote;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -323,14 +324,6 @@ class _PitchEditorState extends State<PitchEditor> {
     );
   }
 
-  Widget _tbGroup(MixerLook look, List<Widget> children) => Container(
-        padding: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-            border: Border.all(color: look.studio.edge),
-            borderRadius: BorderRadius.circular(6)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: children),
-      );
-
   Widget _tbGap(MixerLook look) => Container(
       width: 1,
       height: 18,
@@ -344,25 +337,6 @@ class _PitchEditorState extends State<PitchEditor> {
         builder: (context, menu, _) => _tb(
             look, key, label, () => menu.isOpen ? menu.close() : menu.open(),
             icon: icon, tip: tip, menu: true),
-      );
-
-  MenuItemButton _menuItem(String key, String label, VoidCallback? tap,
-          {bool on = false, String? hint}) =>
-      MenuItemButton(
-        key: ValueKey(key),
-        leadingIcon: Icon(on ? Icons.check : null, size: 14),
-        onPressed: tap,
-        child: hint == null
-            ? Text(label)
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                    Text(label),
-                    Text(hint,
-                        style: const TextStyle(
-                            fontSize: 10.5, color: Color(0xFF9A98A6))),
-                  ]),
       );
 
   void _toMidi(BuildContext context) {
@@ -389,7 +363,7 @@ class _PitchEditorState extends State<PitchEditor> {
             child: Row(children: [
               // The tools, an icon each: the prototype's, their keys in
               // their tips.
-              _tbGroup(look, [
+              toolbarGroup(look, [
                 for (var t in PitchTool.values)
                   _tb(look, "pitchTool-${t.name}", "",
                       () => setState(() => _tool = t),
@@ -406,7 +380,7 @@ class _PitchEditorState extends State<PitchEditor> {
                   _snap == PitchSnap.off ? "Free" : _snap.label,
                   [
                     for (var m in PitchSnap.values)
-                      _menuItem("pitchSnap-${m.name}", m.label,
+                      editorMenuItem("pitchSnap-${m.name}", m.label,
                           () => setState(() => _snap = m),
                           on: _snap == m),
                   ],
@@ -421,7 +395,7 @@ class _PitchEditorState extends State<PitchEditor> {
                     SubmenuButton(
                       menuChildren: [
                         for (var (i, n) in keyNames.indexed)
-                          _menuItem(
+                          editorMenuItem(
                               "pitchKeyItem-$i", n, () => _setTune("key", i),
                               on: i == _rootNow),
                       ],
@@ -430,7 +404,7 @@ class _PitchEditorState extends State<PitchEditor> {
                     SubmenuButton(
                       menuChildren: [
                         for (var (i, n) in scaleNames.indexed)
-                          _menuItem("pitchScaleItem-$i", n,
+                          editorMenuItem("pitchScaleItem-$i", n,
                               () => _setTune("scale", i),
                               on: i == _scaleNow),
                       ],
@@ -442,7 +416,7 @@ class _PitchEditorState extends State<PitchEditor> {
                       ? "The notes' key and scale"
                       : "The Auto-tune's key and scale"),
               _tbGap(look),
-              _tbGroup(look, [
+              toolbarGroup(look, [
                 _tb(look, "pitchHearCorrected", "Corrected",
                     () => c.hearPitchAsSung(key, false),
                     on: !asSung, tip: "Hear it corrected"),
@@ -468,10 +442,10 @@ class _PitchEditorState extends State<PitchEditor> {
                   "pitchMore",
                   "",
                   [
-                    _menuItem(
+                    editorMenuItem(
                         "pitchToMidi", "Notes to MIDI", () => _toMidi(context),
                         hint: "A MIDI channel playing these notes"),
-                    _menuItem("pitchReset", "As recorded", () {
+                    editorMenuItem("pitchReset", "As recorded", () {
                       setState(() => _picked = {});
                       c.forgetPitch(key);
                     }, hint: "Every note as it was sung"),

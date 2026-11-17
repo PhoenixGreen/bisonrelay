@@ -94,9 +94,6 @@ class ElementInstance {
           start: start ?? this.start,
           own: own ?? this.own);
 
-  /// ownOf is its own value of [key], or null where it has the element's.
-  double? ownOf(String key) => own[key];
-
   /// withOwn is it with [key] its own [value]; null takes it back.
   ElementInstance withOwn(String key, double? value) => copyWith(
       own: value == null ? ({...own}..remove(key)) : {...own, key: value});

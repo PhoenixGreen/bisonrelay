@@ -199,29 +199,6 @@ void main() {
       expect(key?.dx, 12);
       expect(key?.values[KeyframeChannel.count], 40);
     });
-
-    test("and is left behind when the pose is taken away again", () {
-      var controller = _with(const CounterElement(_base, from: 0, to: 100));
-      addTearDown(controller.dispose);
-      controller.frame = 8;
-      controller.setValueKey(_counterIn(controller), KeyframeChannel.count, 40,
-          seed: false);
-      controller.setKeyframe(
-          "c", _counterIn(controller).poseAt(8).copyWith(frame: 8, dx: 12));
-
-      // What the pose diamond does, which is not what deleting the keyframe
-      // does: a deliberate delete on the timeline takes the whole mark, and
-      // an animation is a pair.
-      controller.clearPose("c", 8);
-      var key = _counterIn(controller).track?.keyAt(8);
-      expect(key?.values[KeyframeChannel.count], 40,
-          reason: "the diamond says position, size, angle and fade");
-      expect(key?.dx, 0);
-
-      controller.removeKeyframe("c", 8);
-      expect(_counterIn(controller).track?.keyAt(8), isNull,
-          reason: "deleting the keyframe deletes all of it");
-    });
   });
 
   group("arriving and leaving", () {

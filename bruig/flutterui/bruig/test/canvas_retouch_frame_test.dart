@@ -3,7 +3,6 @@
 // base picture, copies what is seen and lands on top of it.
 
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';

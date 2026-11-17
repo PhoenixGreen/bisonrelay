@@ -229,7 +229,7 @@ void main() {
       expect(await CanvasAssets.load(dropped), isNotNull,
           reason: "still there before the sweep");
       await ageStores();
-      await CanvasAssets.sweepUnused();
+      await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
 
       expect(await CanvasAssets.load(kept), isNotNull,
           reason: "the one a canvas still shows");
@@ -269,7 +269,7 @@ void main() {
           ]));
 
       await ageStores();
-      await CanvasAssets.sweepUnused();
+      await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
       expect(await CanvasAssets.load(icon), isNotNull,
           reason: "the icon the headline carries");
       expect(await CanvasAssets.load(fill), isNotNull,
@@ -297,13 +297,13 @@ void main() {
 
       await CanvasStorage.delete("", "One");
       await ageStores();
-      await CanvasAssets.sweepUnused();
+      await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
       expect(await CanvasAssets.load(shared), isNotNull,
           reason: "the other canvas still shows it");
 
       await CanvasStorage.delete("", "Two");
       await ageStores();
-      await CanvasAssets.sweepUnused();
+      await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
       expect(await CanvasAssets.load(shared), isNull,
           reason: "and now nothing does");
     });
@@ -322,7 +322,7 @@ void main() {
           ]));
 
       await ageStores();
-      await CanvasAssets.sweepUnused();
+      await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
       expect(await CanvasAssets.load(filed), isNotNull);
     });
 
@@ -335,7 +335,7 @@ void main() {
                       assetId: behind))));
 
       await ageStores();
-      await CanvasAssets.sweepUnused();
+      await CanvasAssets.sweep(await CanvasStorage.liveAssetIds());
       expect(await CanvasAssets.load(behind), isNotNull,
           reason: "the canvas background uses one as much as an element does");
     });

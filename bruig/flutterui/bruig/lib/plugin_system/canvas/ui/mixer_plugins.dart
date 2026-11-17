@@ -2348,10 +2348,6 @@ class DeviceFrame extends StatelessWidget {
     );
   }
 
-  /// headerInk is what reads on the header bar: light, on every skin.
-  Color get headerInk => skin.header.computeLuminance() > 0.5
-      ? const Color(0xFF1E2227)
-      : const Color(0xFFE8EAEE);
 }
 
 class _Power extends StatelessWidget {

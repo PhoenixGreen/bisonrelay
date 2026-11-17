@@ -205,12 +205,6 @@ class _TableDesignState extends State<TableDesign> {
     _pick(TablePart.style(t.rules.length));
   }
 
-  String _columnKey(int col) {
-    var head = t.header;
-    var name = col < head.length ? head[col].trim() : "";
-    return name.isEmpty ? "${col + 1}" : name;
-  }
-
   // ---- Names for the parts, as the sheet names them when there is one.
 
   String _columnLetter(int col) {
@@ -1822,7 +1816,7 @@ class _TableDesignState extends State<TableDesign> {
     var columns = <(String, String)>[
       ("", "Every column"),
       for (var col = 0; col < t.columnCount; col++)
-        (_columnKey(col), t.columnName(col)),
+        (columnKey(t, col), t.columnName(col)),
     ];
     var colValue = rule.column.trim();
     if (!columns.any((o) => o.$1.toLowerCase() == colValue.toLowerCase())) {

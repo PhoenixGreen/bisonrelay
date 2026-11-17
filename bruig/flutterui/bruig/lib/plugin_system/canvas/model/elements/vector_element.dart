@@ -926,24 +926,6 @@ ElementAnimation animatedAs(ElementAnimation drawing, ElementAnimation? mine,
   return a;
 }
 
-/// partsChanged is which parts differ between [was] and [now].
-Set<ShapeAnimationPart> partsChanged(
-        ElementAnimation was, ElementAnimation now) =>
-    {
-      if (was.preset != now.preset ||
-          was.ease != now.ease ||
-          was.scale != now.scale ||
-          was.effect != now.effect ||
-          was.direction != now.direction ||
-          was.strength != now.strength)
-        ShapeAnimationPart.arriving,
-      if (was.loop != now.loop) ShapeAnimationPart.looping,
-      if (was.exit != now.exit ||
-          was.exitDirection != now.exitDirection ||
-          was.exitStrength != now.exitStrength)
-        ShapeAnimationPart.leaving,
-    };
-
 /// pathSignature is a hash of [runs]' shape measured from their first point,
 /// so moving them all keeps it and changing any point does not.
 int pathSignature(List<VectorPath> runs) {
