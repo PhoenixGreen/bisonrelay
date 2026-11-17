@@ -708,7 +708,11 @@ extension CanvasMixing on CanvasController {
         var mix = _withClipAutomation(lane.channelKey,
             automatedAt(lane.clip.mix, now, except: held), held);
         // Its LFOs set to Sync at the tempo's rate: the engine knows none.
-        return mix.copyWith(devices: _document.synced(mix.devices));
+        // The strip itself where none is, so the runtime knows it again.
+        var devices = _document.synced(mix.devices);
+        return identical(devices, mix.devices)
+            ? mix
+            : mix.copyWith(devices: devices);
       });
     }
     audio.setMix(strips,
@@ -719,8 +723,10 @@ extension CanvasMixing on CanvasController {
         },
         master: _document.syncedMaster,
         returns: _document.syncedReturns,
-        sceneBus:
-            sceneBus.copyWith(devices: _document.synced(sceneBus.devices)),
+        sceneBus: identical(
+                _document.synced(sceneBus.devices), sceneBus.devices)
+            ? sceneBus
+            : sceneBus.copyWith(devices: _document.synced(sceneBus.devices)),
         sceneChannels: inScene,
         speakers: _document.audio.speakers,
         hear: _hear,

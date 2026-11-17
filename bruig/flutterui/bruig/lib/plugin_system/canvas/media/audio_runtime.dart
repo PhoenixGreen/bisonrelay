@@ -369,8 +369,8 @@ class AudioRuntime extends ChangeNotifier {
       if (_started) engine.setPlacement(e.key, e.value);
     }
     // The scene's bus, and which channels are heard through it.
-    var sceneKey =
-        "${sceneBus.toJson()}|${(sceneChannels.toList()..sort()).join("|")}";
+    var sceneKey = "${_written(sceneBus, sceneBus.toJson)}|"
+        "${(sceneChannels.toList()..sort()).join("|")}";
     _sceneBus = sceneBus;
     _sceneChannels = sceneChannels;
     if (sceneKey != _sceneKey) {
@@ -400,7 +400,7 @@ class AudioRuntime extends ChangeNotifier {
       var silent = mix.mute || (soloing && !solo.contains(entry.key));
       var sound = silent ? mix.copyWith(mute: true) : mix;
       // The whole strip: a send, surround pan or LFE change alone counts.
-      var signature = "$silent|${mix.toJson()}";
+      var signature = "$silent|${_written(mix, mix.toJson)}";
       _channels[entry.key] = sound;
       if (_channelSignature[entry.key] == signature) continue;
       _channelSignature[entry.key] = signature;
@@ -408,7 +408,7 @@ class AudioRuntime extends ChangeNotifier {
     }
     // Never normalised while playing: that is measured over the whole mix.
     var sound = master.copyWith(normalise: false);
-    var signature = master.toJson().toString();
+    var signature = _written(master, master.toJson);
     _master = sound;
     if (signature != _masterSignature) {
       _masterSignature = signature;
@@ -427,6 +427,13 @@ class AudioRuntime extends ChangeNotifier {
       }
     }
   }
+
+  /// _written is a strip, bus or master written out, kept per object: mixes
+  /// are immutable, and setMix is called on every edit and frame, with the
+  /// same strips more often than not.
+  static final _writtenOut = Expando<String>("mixWritten");
+  static String _written(Object mix, Map<String, dynamic> Function() json) =>
+      _writtenOut[mix] ??= "${json()}";
 
   List<ReturnChannel> _returns = const [];
   String? _returnsKey;

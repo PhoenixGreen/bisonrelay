@@ -280,10 +280,21 @@ class CanvasDocument {
   List<MixDevice> synced(List<MixDevice> devices) =>
       tempoSynced(devices, audio.tempo, beatsPerBar: audio.beatsPerBar);
 
-  MasterMix get syncedMaster =>
-      masterMix.copyWith(devices: synced(masterMix.devices));
+  /// syncedMaster and syncedReturns are the mixer's as played: the very
+  /// same objects where no LFO is synced, so the runtime knows them again.
+  MasterMix get syncedMaster {
+    var devices = synced(masterMix.devices);
+    return identical(devices, masterMix.devices)
+        ? masterMix
+        : masterMix.copyWith(devices: devices);
+  }
+
   List<ReturnChannel> get syncedReturns => [
-        for (var r in returns) r.copyWith(devices: synced(r.devices)),
+        for (var r in returns)
+          if (synced(r.devices) case var d when !identical(d, r.devices))
+            r.copyWith(devices: d)
+          else
+            r,
       ];
 
   /// audio is tempo, time signature, and how the sound is published.
@@ -1113,10 +1124,17 @@ class CanvasDocument {
   /// withElement replaces the element with [element]'s id, or does nothing
   /// if deleted: a panel torn down after a delete must not restore it.
   CanvasDocument withElement(CanvasElement element) {
+    var list = elements;
     var i = indexOf(element.id);
     if (i < 0) return this;
-    var next = [...elements];
+    var next = [...list];
     next[i] = element;
+    // The id index carried over with the one entry changed, rather than
+    // built again from nothing by the first elementById of the new list:
+    // a drag step is a withElement, and every reader asks.
+    if (_byId[list] case var old? when identical(old[element.id], list[i])) {
+      _byId[next] = Map.of(old)..[element.id] = element;
+    }
     return copyWith(elements: next);
   }
 

@@ -1183,7 +1183,24 @@ extension CanvasSpeech on CanvasController {
   /// Channels strip: each clip, how far its timeline is ahead of the scene's
   /// (the start of this scene in the run, for media that follows the run),
   /// and whether it can be changed from here.
+  ///
+  /// Kept until the document, the frame, Play all scenes or a preview
+  /// changes: the mix, the placements and the channels each ask for it on
+  /// every edit.
   List<TimedLane> get timedLanes {
+    if (_lanesKept case ((var d, var f, var all, var preview), var kept)
+        when identical(d, _document) &&
+            f == _frame &&
+            all == _playAll &&
+            preview == _previewAt) {
+      return kept;
+    }
+    var made = List<TimedLane>.unmodifiable(_makeTimedLanes());
+    _lanesKept = ((_document, _frame, _playAll, _previewAt), made);
+    return made;
+  }
+
+  List<TimedLane> _makeTimedLanes() {
     var document = _document;
     var here = {for (var e in document.elements) e.id};
     // The master's, from any scene: its channels are every scene's, so a
@@ -1260,9 +1277,19 @@ extension CanvasSpeech on CanvasController {
   /// this canvas's, and the master's seen from it. Each is on a channel so
   /// every sound has the same strip and effects; the timeline shows the
   /// channel greyed, since there is nothing on it to place in time.
+  ///
+  /// Kept per document, as timedLanes is.
   List<TimedLane> get interactiveLanes {
+    if (_pressedKept case (var d, var kept) when identical(d, _document)) {
+      return kept;
+    }
+    var made = List<TimedLane>.unmodifiable(_makeInteractiveLanes());
+    _pressedKept = (_document, made);
+    return made;
+  }
+
+  List<TimedLane> _makeInteractiveLanes() {
     var document = _document;
-    var here = {for (var e in document.elements) e.id};
     var onMaster = document.editingMaster;
     var pressed = <CanvasElement>[
       for (var e in _pageAudio)
@@ -1275,6 +1302,8 @@ extension CanvasSpeech on CanvasController {
         if (e is VideoElement && !e.isLink && !e.clip.timed && !e.clip.isEmpty)
           e,
     ];
+    if (pressed.isEmpty) return const [];
+    var here = {for (var e in document.elements) e.id};
     var master = {...?document.master?.elements.map((e) => e.id)};
     return [
       for (var e in pressed)
