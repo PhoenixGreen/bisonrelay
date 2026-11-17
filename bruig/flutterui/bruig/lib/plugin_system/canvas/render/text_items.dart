@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 
 // text_items.dart is where a text element's extra pieces are laid out, and
 // the one answer to that question: the painter and the stage both ask it, so

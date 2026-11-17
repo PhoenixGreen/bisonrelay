@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/render/model3d/model_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 
 // model3d_painter.dart draws a 3D object: its model, from the store that
 // keeps a scene for each, posed by what its clips play -- or, where 3D

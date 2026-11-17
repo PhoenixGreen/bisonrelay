@@ -6,7 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 
 // element_effects.dart is the motions that cut a thing up instead of moving
 // it: a mosaic, a glitch, and a grid of tiles thrown about.

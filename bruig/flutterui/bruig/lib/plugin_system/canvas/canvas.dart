@@ -8,22 +8,9 @@
 // it is not the app's half of a plugin capability: it is app code behind a
 // switch. See canvas_preferences.dart.
 //
-// Layout:
-//
-//   model/     the document and its elements; no Flutter beyond dart:ui
-//   render/    document plus frame number, into a ui.Canvas
-//   media/     sound, speech, MIDI and video playback; media/mix is the mix
-//              engine an export and the editor share
-//   storage/   documents, pictures, media and presets on disk
-//   export/    a document, into files (images, video, audio, PDF, EPUB) and
-//              the places they are published to
-//   presets/   built-in canvases, element presets and background looks
-//   ui/        the page: screen, controller, stage, timeline, settings
-//
-// The rule that keeps this readable: render/ and export/ know nothing about
-// widgets, a BuildContext or the app's theme. The same code draws the editing
-// stage and the exported file, and an export that read the theme would
-// change with what the sender's app happened to look like.
+// How it is built -- its layers and the rules between them, the document,
+// the editor, storage, security and tests -- is in ARCHITECTURE.md beside
+// this file.
 import 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 

@@ -1,8 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 import 'package:bruig/plugin_system/canvas/export/vector_writers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -12,8 +10,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
     show CanvasImageSource;
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/painting.dart';
 
 // vector_export.dart is a chart or a table saved as an SVG or a PDF that
 // stays sharp at any size and keeps its words as words (Ken, 2026-11-17,
@@ -58,29 +55,5 @@ Future<Uint8List?> vectorOf(CanvasElement e, VectorFormat format,
     };
   } finally {
     v.dispose();
-  }
-}
-
-/// saveVector asks where to save [e] as [format], and saves it there.
-Future<void> saveVector(
-    BuildContext context, CanvasElement e, VectorFormat format,
-    {CanvasImageSource? images, Color? ground}) async {
-  var snack = SnackBarModel.of(context);
-  var name = (e.name.isEmpty ? e.kind.label : e.name)
-      .replaceAll(RegExp(r'[\\/:*?"<>|]'), "-");
-  var path = await FilePicker.platform.saveFile(
-    dialogTitle: "Save ${e.name.isEmpty ? "it" : e.name} as ${format.label}",
-    fileName: "$name.${format.extension}",
-    type: FileType.custom,
-    allowedExtensions: [format.extension],
-  );
-  if (path == null) return;
-  try {
-    var bytes = await vectorOf(e, format, images: images, ground: ground);
-    if (bytes == null) return;
-    await File(path).writeAsBytes(bytes);
-    snack.success("Saved ${path.split(Platform.pathSeparator).last}.");
-  } catch (err) {
-    snack.error("It couldn't be saved: $err");
   }
 }
