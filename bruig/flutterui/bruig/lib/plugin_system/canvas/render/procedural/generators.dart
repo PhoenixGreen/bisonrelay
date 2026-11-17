@@ -1372,7 +1372,7 @@ void _drawRing(ui.Canvas canvas, Offset centre, double radius,
 /// _glyphCache holds laid-out characters: layout is the costliest thing here
 /// and a dense rain draws thousands a frame. Alpha has sixteen steps, so
 /// fading tails reuse painters and the cache stays bounded.
-final Map<String, TextPainter> _glyphCache = {};
+final Map<(String, String?, int, int, int), TextPainter> _glyphCache = {};
 
 void clearGlyphs() {
   for (var painter in _glyphCache.values) {
@@ -1391,13 +1391,13 @@ void _drawGlyph(
   if (color.a <= 0.004 || size < 1) return;
 
   var bucket = (color.a * 15).round();
-  var key = "$glyph|$family|${size.round()}|"
-      "${(color.r * 255).round()},${(color.g * 255).round()},"
-      "${(color.b * 255).round()}|$bucket";
+  // The key is plain values: building a string for every glyph cost more
+  // than the lookup. The colour is its red, green and blue bytes.
+  var key = (glyph, family, size.round(), color.toARGB32() & 0xffffff, bucket);
 
   var painter = _glyphCache[key];
   if (painter == null) {
-    if (_glyphCache.length >= _maxGlyphCache) _glyphCache.clear();
+    if (_glyphCache.length >= _maxGlyphCache) clearGlyphs();
     painter = TextPainter(
       text: TextSpan(
         text: glyph,

@@ -578,6 +578,7 @@ void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var trail = spec.p("trail");
   var up = spec.choice("direction") == 1;
   var heads = spec.on("headGlow");
+  var font = _glyphFont(spec);
 
   for (var ix = 0; ix < cols; ix++) {
     if (hash(spec.seed + 5, ix, 0) > spec.density * 1.4) continue;
@@ -623,7 +624,7 @@ void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
               ]));
       }
       _drawGlyph(canvas, glyphs[gi], Offset(x, y), size,
-          _fade(color, spec.intensity * fade * fade), _glyphFont(spec));
+          _fade(color, spec.intensity * fade * fade), font);
     }
   }
 }
@@ -641,6 +642,7 @@ void _symbolField(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var rnd = SeededRandom(spec.seed);
   var base = _unit(rect, spec);
   var count = 10 + (spec.density * 400).round();
+  var font = _glyphFont(spec);
 
   for (var i = 0; i < count; i++) {
     var px = rnd.next(), py = rnd.next();
@@ -666,7 +668,7 @@ void _symbolField(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         base * sizeF,
         _fade(pick < 0.2 ? spec.accent : spec.foreground,
             spec.intensity * rnd.range(0.15, 0.9)),
-        _glyphFont(spec));
+        font);
     canvas.restore();
   }
 }
