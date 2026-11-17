@@ -124,29 +124,10 @@ class PatchVoice extends Voice {
         _z2 = Float64List(graph.nodes.length),
         _stage = Int8List(graph.nodes.length);
 
-  double _in(int node, String port, double otherwise) {
-    var src = graph.inputs[node][port];
-    if (src == null) return otherwise;
-    // An envelope the gate is not patched into moves nothing.
-    var from = graph.nodes[src.$1];
-    if (from.kind == SynthModuleKind.env && !graph.gated.contains(src.$1)) {
-      return otherwise;
-    }
-    return _out[src.$1][src.$2];
-  }
-
-  bool _patched(int node, String port) {
-    var src = graph.inputs[node][port];
-    if (src == null) return false;
-    var from = graph.nodes[src.$1];
-    return from.kind != SynthModuleKind.env || graph.gated.contains(src.$1);
-  }
-
-  static double _wave(String shape, double ph, double dt) => switch (shape) {
-        "sine" => math.sin(2 * math.pi * ph),
-        "triangle" => 1 - 4 * (ph - 0.5).abs(),
-        "sawtooth" => 2 * ph - 1 - polyBlep(ph, dt),
-        "square" => (ph < 0.5 ? 1.0 : -1.0) +
+  static double _wave(int shape, double ph, double dt) => switch (shape) {
+        1 => 1 - 4 * (ph - 0.5).abs(),
+        2 => 2 * ph - 1 - polyBlep(ph, dt),
+        3 => (ph < 0.5 ? 1.0 : -1.0) +
             polyBlep(ph, dt) -
             polyBlep((ph + 0.5) % 1, dt),
         _ => math.sin(2 * math.pi * ph),
@@ -155,65 +136,67 @@ class PatchVoice extends Voice {
   @override
   void render(Float32List l, Float32List r, int n) {
     var nodes = graph.nodes;
+    // Every knob, choice and cable, looked up once for this graph rather
+    // than by name for every module every sample, which was most of a
+    // voice's time. What is worked out from them is unchanged.
+    var plan = identical(_planned, graph) ? _plan! : _planFor(graph);
+    var vals = plan.values, ins = plan.inputs, codes = plan.codes;
     var dtSample = 1 / mixRate;
+    double inp(Int32List src, int slot, double otherwise) {
+      var from = src[slot * 2];
+      return from < 0 ? otherwise : _out[from][src[slot * 2 + 1]];
+    }
+
     for (var i = 0; i < n; i++) {
       var gate = released ? 0.0 : 1.0;
       if (released) _sinceRelease += dtSample;
       double heard = 0;
       for (var k = 0; k < nodes.length; k++) {
-        var m = nodes[k];
+        var v = vals[k], src = ins[k];
         var out = _out[k];
-        switch (m.kind) {
+        switch (plan.kinds[k]) {
           case SynthModuleKind.keys:
             out[0] = gate;
             out[1] = _f0 * pitch;
           case SynthModuleKind.osc:
             // Not keyed, an oscillator drones on the A below middle C.
-            var f = _in(k, "pitch", 220) *
-                math.pow(
-                    2,
-                    m.value("octave") +
-                        m.value("detune") / 1200 +
-                        _in(k, "mod", 0) * m.value("mod") / 12);
+            var f = inp(src, 0, 220) *
+                math.pow(2, v[0] + v[1] / 1200 + inp(src, 1, 0) * v[2] / 12);
             var dt = (f / mixRate).clamp(0.0, 0.45);
-            out[0] = m.value("level") * _wave(m.choice("wave"), _phase[k], dt);
+            out[0] = v[3] * _wave(codes[k], _phase[k], dt);
             _phase[k] = (_phase[k] + dt) % 1;
           case SynthModuleKind.noise:
-            out[0] = m.value("level") * (_random.nextDouble() * 2 - 1);
+            out[0] = v[0] * (_random.nextDouble() * 2 - 1);
           case SynthModuleKind.env:
-            out[0] = _envelope(k, m, _in(k, "gate", 0) > 0.5);
+            out[0] = _envelope(k, v, inp(src, 0, 0) > 0.5);
           case SynthModuleKind.lfo:
-            var rate = m.value("rate");
-            out[0] = m.value("depth") *
-                _wave(m.choice("shape"), _phase[k], rate / mixRate);
+            var rate = v[0];
+            out[0] = v[1] * _wave(codes[k], _phase[k], rate / mixRate);
             _phase[k] = (_phase[k] + rate / mixRate) % 1;
           case SynthModuleKind.filter:
-            out[0] = _filter(k, m, _in(k, "in", 0));
+            out[0] = _filter(k, v, codes[k], inp(src, 1, 0), inp(src, 0, 0));
           case SynthModuleKind.amp:
-            var gain = _patched(k, "gain")
-                ? _gainOf(k)
+            var gain = src[2] >= 0
+                ? _gainOf(src[2], src[3])
                 // Nothing in its gain: on while the key is, off quickly
                 // once it is let go.
                 : (released ? math.max(0, 1 - _sinceRelease / 0.03) : 1.0);
-            out[0] = _in(k, "in", 0) * m.value("level") * gain;
+            out[0] = inp(src, 0, 0) * v[0] * gain;
           case SynthModuleKind.mixer:
-            out[0] = _in(k, "a", 0) * m.value("a") +
-                _in(k, "b", 0) * m.value("b") +
-                _in(k, "c", 0) * m.value("c");
+            out[0] = inp(src, 0, 0) * v[0] +
+                inp(src, 1, 0) * v[1] +
+                inp(src, 2, 0) * v[2];
           case SynthModuleKind.delay:
-            var time = (m.value("time") * (1 + 0.5 * _in(k, "time", 0)))
-                .clamp(0.01, 1.0);
-            out[0] = (_echoes[k] ??= _Echo()).step(_in(k, "in", 0), time,
-                m.value("feedback").clamp(0.0, 0.95), m.value("mix"));
+            var time = (v[0] * (1 + 0.5 * inp(src, 0, 0))).clamp(0.01, 1.0);
+            out[0] = (_echoes[k] ??= _Echo())
+                .step(inp(src, 1, 0), time, v[1].clamp(0.0, 0.95), v[2]);
           case SynthModuleKind.reverb:
-            out[0] = (_rooms[k] ??= _Room()).step(_in(k, "in", 0),
-                m.value("size"), m.value("damp"), m.value("mix"));
+            out[0] =
+                (_rooms[k] ??= _Room()).step(inp(src, 0, 0), v[0], v[1], v[2]);
           case SynthModuleKind.scope:
-            out[0] = _in(k, "in", 0);
+            out[0] = inp(src, 0, 0);
           case SynthModuleKind.out:
-            if (m.id == graph.patch.speaker) {
-              heard = _in(k, "in", 0) * m.value("volume");
-            }
+            if (codes[k] == 1) heard = inp(src, 0, 0) * v[0];
         }
       }
       onSample?.call(_out);
@@ -227,23 +210,32 @@ class PatchVoice extends Voice {
     }
   }
 
-  /// _gainOf is what is patched into an amp's gain as a level, nought to
-  /// one: an envelope as it is, an LFO swung about the middle.
-  double _gainOf(int k) {
-    var src = graph.inputs[k]["gain"]!;
-    var v = _out[src.$1][src.$2];
-    var from = graph.nodes[src.$1].kind;
-    return (from == SynthModuleKind.lfo ? 0.5 + 0.5 * v : v).clamp(0.0, 1.0);
+  /// _planned is the graph [_plan] was made for.
+  PatchGraph? _planned;
+  _Plan? _plan;
+
+  _Plan _planFor(PatchGraph g) {
+    _planned = g;
+    return _plan = _Plan(g);
+  }
+
+  /// _gainOf is what is patched into an amp's gain, from output [port] of
+  /// node [from], as a level, nought to one: an envelope as it is, an LFO
+  /// swung about the middle.
+  double _gainOf(int from, int port) {
+    var v = _out[from][port];
+    var kind = graph.nodes[from].kind;
+    return (kind == SynthModuleKind.lfo ? 0.5 + 0.5 * v : v).clamp(0.0, 1.0);
   }
 
   /// _envelope is envelope [k] a sample on: up to one over its attack, down
   /// to its sustain over its decay, held, and down to nought over its
-  /// release once its gate goes.
-  double _envelope(int k, SynthModule m, bool gate) {
-    var a = math.max(0.0005, m.value("a"));
-    var d = math.max(0.001, m.value("d"));
-    var s = m.value("s").clamp(0.0, 1.0);
-    var rel = math.max(0.001, m.value("r"));
+  /// release once its gate goes. [v] is its a, d, s and r.
+  double _envelope(int k, Float64List v, bool gate) {
+    var a = math.max(0.0005, v[0]);
+    var d = math.max(0.001, v[1]);
+    var s = v[2].clamp(0.0, 1.0);
+    var rel = math.max(0.001, v[3]);
     var step = 1 / mixRate;
     var level = _level[k];
     if (!gate && _stage[k] < 3) _stage[k] = 3;
@@ -276,15 +268,15 @@ class PatchVoice extends Voice {
   }
 
   /// _filter is filter [k] taking [x]: a state-variable filter (as
-  /// Zavalishin's), its cutoff opened by what is patched into it, its
-  /// resonance a peak at the cutoff.
-  double _filter(int k, SynthModule m, double x) {
-    var cutoff = m.value("cutoff") *
-        math.pow(2, _in(k, "cutoff", 0) * m.value("amount"));
+  /// Zavalishin's), its cutoff opened by what is patched into it ([opened]),
+  /// its resonance a peak at the cutoff. [v] is its cutoff, amount and
+  /// resonance; [type] 0 lowpass, 1 highpass, 2 bandpass.
+  double _filter(int k, Float64List v, int type, double x, double opened) {
+    var cutoff = v[0] * math.pow(2, opened * v[1]);
     cutoff = cutoff.clamp(20.0, mixRate * 0.45);
     var g = math.tan(math.pi * cutoff / mixRate);
     // Resonance 0.1 to 20: a Q from about 0.7 to 20.
-    var q = 0.7 + m.value("res").clamp(0.0, 20.0) * 0.97;
+    var q = 0.7 + v[2].clamp(0.0, 20.0) * 0.97;
     var kk = 1 / q;
     var a1 = 1 / (1 + g * (g + kk));
     var a2 = g * a1;
@@ -294,12 +286,95 @@ class PatchVoice extends Voice {
     var v2 = _z2[k] + a2 * _z1[k] + a3 * v3;
     _z1[k] = 2 * v1 - _z1[k];
     _z2[k] = 2 * v2 - _z2[k];
-    return switch (m.choice("type")) {
-      "highpass" => x - kk * v1 - v2,
-      "bandpass" => v1,
+    return switch (type) {
+      1 => x - kk * v1 - v2,
+      2 => v1,
       _ => v2,
     };
   }
+}
+
+/// _Plan is a graph's modules made ready for a voice's inner loop: for each
+/// node its kind, its knobs in the order render reads them, the source of
+/// each input it reads as (node, output) pairs (-1 where nothing is
+/// patched, or an envelope the gate does not reach), and a code: the wave
+/// or shape, the filter type, or whether it is the speaker heard.
+class _Plan {
+  final List<SynthModuleKind> kinds;
+  final List<Float64List> values;
+  final List<Int32List> inputs;
+  final Int8List codes;
+
+  _Plan._(this.kinds, this.values, this.inputs, this.codes);
+
+  factory _Plan(PatchGraph g) {
+    var n = g.nodes.length;
+    var kinds = <SynthModuleKind>[];
+    var values = <Float64List>[];
+    var inputs = <Int32List>[];
+    var codes = Int8List(n);
+    for (var (k, m) in g.nodes.indexed) {
+      kinds.add(m.kind);
+      List<String> knobs, ports;
+      switch (m.kind) {
+        case SynthModuleKind.osc:
+          (knobs, ports) =
+              (["octave", "detune", "mod", "level"], ["pitch", "mod"]);
+          codes[k] = _waveCode(m.choice("wave"));
+        case SynthModuleKind.noise:
+          (knobs, ports) = (["level"], []);
+        case SynthModuleKind.env:
+          (knobs, ports) = (["a", "d", "s", "r"], ["gate"]);
+        case SynthModuleKind.lfo:
+          (knobs, ports) = (["rate", "depth"], []);
+          codes[k] = _waveCode(m.choice("shape"));
+        case SynthModuleKind.filter:
+          (knobs, ports) = (["cutoff", "amount", "res"], ["cutoff", "in"]);
+          codes[k] = switch (m.choice("type")) {
+            "highpass" => 1,
+            "bandpass" => 2,
+            _ => 0,
+          };
+        case SynthModuleKind.amp:
+          (knobs, ports) = (["level"], ["in", "gain"]);
+        case SynthModuleKind.mixer:
+          (knobs, ports) = (["a", "b", "c"], ["a", "b", "c"]);
+        case SynthModuleKind.delay:
+          (knobs, ports) = (["time", "feedback", "mix"], ["time", "in"]);
+        case SynthModuleKind.reverb:
+          (knobs, ports) = (["size", "damp", "mix"], ["in"]);
+        case SynthModuleKind.scope:
+          (knobs, ports) = ([], ["in"]);
+        case SynthModuleKind.out:
+          (knobs, ports) = (["volume"], ["in"]);
+          codes[k] = m.id == g.patch.speaker ? 1 : 0;
+        case SynthModuleKind.keys:
+          (knobs, ports) = ([], []);
+      }
+      values.add(Float64List.fromList([for (var name in knobs) m.value(name)]));
+      var src = Int32List(math.max(2, ports.length * 2));
+      for (var (i, port) in ports.indexed) {
+        var from = g.inputs[k][port];
+        // An envelope the gate is not patched into moves nothing.
+        var live = from != null &&
+            (g.nodes[from.$1].kind != SynthModuleKind.env ||
+                g.gated.contains(from.$1));
+        src[i * 2] = live ? from.$1 : -1;
+        src[i * 2 + 1] = live ? from.$2 : 0;
+      }
+      if (ports.isEmpty) src[0] = -1;
+      inputs.add(src);
+    }
+    return _Plan._(kinds, values, inputs, codes);
+  }
+
+  /// _waveCode is a wave's or shape's name as PatchVoice._wave takes it.
+  static int _waveCode(String name) => switch (name) {
+        "triangle" => 1,
+        "sawtooth" => 2,
+        "square" => 3,
+        _ => 0,
+      };
 }
 
 /// _Echo is a delay line a second long, read between samples.
