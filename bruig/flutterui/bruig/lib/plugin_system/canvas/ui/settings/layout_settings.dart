@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // layout_settings.dart is a Layout's settings: where it starts from, its
@@ -204,6 +205,7 @@ List<Widget> layoutSettings(
                         ),
                       ],
                     ]),
+                if (cells.length > 1) _readingGroup(context, controller, e),
                 if (picked != null)
                   CanvasControlGroup(
                       key: const ValueKey("layoutCell"),
@@ -400,6 +402,132 @@ List<Widget> layoutSettings(
               ]),
         ]),
   ];
+}
+
+/// _readingGroup is the order Panel mode reads [e]'s cells in: set by
+/// clicking them in turn on the canvas, then nudged here, and a cell left
+/// out or put back.
+Widget _readingGroup(
+    BuildContext context, CanvasController controller, LayoutElement e) {
+  var theme = ThemeNotifier.of(context);
+  var ordering = controller.orderingLayout == e.id;
+  var cells = e.shownCells;
+  var reading = e.reading;
+  var left = [
+    for (var c in cells)
+      if (!reading.contains(c)) c
+  ];
+  String nameOf(LayoutCell c) =>
+      c.name.isNotEmpty ? c.name : "Cell ${cells.indexOf(c) + 1}";
+  Widget row(LayoutCell c, int? n) => Row(
+        key: ValueKey("layoutRead-${c.id}"),
+        children: [
+          SizedBox(
+            width: 22,
+            child: Text(n == null ? "–" : "$n",
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: n == null
+                        ? theme.colors.onSurfaceVariant
+                        : theme.colors.primary)),
+          ),
+          Expanded(
+            child: Text(nameOf(c),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    color: n == null
+                        ? theme.colors.onSurfaceVariant
+                        : theme.colors.onSurface)),
+          ),
+          if (n != null) ...[
+            CanvasIconButton(
+              key: ValueKey("layoutReadUp-${c.id}"),
+              icon: Icons.arrow_upward,
+              tooltip: "Read sooner",
+              tight: true,
+              onPressed:
+                  n > 1 ? () => controller.moveInReading(e, c.id, -1) : null,
+            ),
+            CanvasIconButton(
+              key: ValueKey("layoutReadDown-${c.id}"),
+              icon: Icons.arrow_downward,
+              tooltip: "Read later",
+              tight: true,
+              onPressed: n < reading.length
+                  ? () => controller.moveInReading(e, c.id, 1)
+                  : null,
+            ),
+          ],
+          CanvasIconButton(
+            key: ValueKey("layoutReadOn-${c.id}"),
+            icon: n == null
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            tooltip: n == null ? "Read it" : "Leave it out",
+            tight: true,
+            onPressed: n == null || reading.length > 1
+                ? () => controller.setCellRead(e, c.id, n == null)
+                : null,
+          ),
+        ],
+      );
+  return CanvasControlGroup(
+    key: const ValueKey("layoutReading"),
+    label: "Reading order",
+    help: "The order Panel mode steps through the cells in, when the book is "
+        "read panel by panel. Set reading order, then click the cells on "
+        "the canvas one after another; a cell not clicked is left out. "
+        "Enter or Done keeps it, Escape puts it back as it was.",
+    below: ordering
+        ? Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+                "Click the cells in the order they are read: "
+                "${controller.orderClicked.length} of ${cells.length}.",
+                style: TextStyle(
+                    fontSize: 11, color: theme.colors.onSurfaceVariant)),
+          )
+        : Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              for (var (i, c) in reading.indexed) row(c, i + 1),
+              for (var c in left) row(c, null),
+            ]),
+          ),
+    children: [
+      if (!ordering) ...[
+        CanvasTextButton(
+          key: const ValueKey("layoutSetOrder"),
+          label: "Set reading order",
+          icon: Icons.format_list_numbered,
+          onPressed: () => controller.beginReadingOrder(e),
+        ),
+        if (e.order.isNotEmpty || e.unread.isNotEmpty)
+          CanvasTextButton(
+            key: const ValueKey("layoutResetOrder"),
+            label: "Reset",
+            icon: Icons.restart_alt,
+            onPressed: () => controller.resetReadingOrder(e),
+          ),
+      ] else ...[
+        CanvasTextButton(
+          key: const ValueKey("layoutOrderDone"),
+          label: "Done",
+          icon: Icons.check,
+          onPressed: controller.finishReadingOrder,
+        ),
+        CanvasTextButton(
+          key: const ValueKey("layoutOrderCancel"),
+          label: "Cancel",
+          icon: Icons.close,
+          onPressed: () => controller.finishReadingOrder(keep: false),
+        ),
+      ],
+    ],
+  );
 }
 
 /// dockGroup is the "In a cell" controls for [e]: which Layout cell it is

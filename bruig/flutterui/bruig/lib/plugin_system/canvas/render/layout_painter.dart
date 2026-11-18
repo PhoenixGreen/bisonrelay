@@ -94,11 +94,17 @@ Path? dockClip(CanvasElement e, List<CanvasElement> elements) {
   var found = dockedCell(e, elements);
   if (found == null) return null;
   var (layout, place) = found;
-  if (layout.rotation == 0) return place.path;
+  return onPageOf(layout, place.path);
+}
+
+/// onPageOf is [path], in [layout]'s own frame, where it is on the page:
+/// turned with the layout.
+Path onPageOf(LayoutElement layout, Path path) {
+  if (layout.rotation == 0) return path;
   var c = layout.bounds.center;
   var a = layout.rotation * math.pi / 180;
   var cs = math.cos(a), sn = math.sin(a);
-  return place.path.transform(Float64List.fromList([
+  return path.transform(Float64List.fromList([
     cs, sn, 0, 0, //
     -sn, cs, 0, 0,
     0, 0, 1, 0,

@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -75,6 +77,10 @@ class CanvasSettingsBar extends StatefulWidget {
   @override
   State<CanvasSettingsBar> createState() => _CanvasSettingsBarState();
 }
+
+/// _hasLayouts is whether any page of [doc] has a Layout to read.
+bool _hasLayouts(CanvasDocument doc) => doc.allScenes
+    .any((s) => s.elements.any((e) => e is LayoutElement && e.visible));
 
 class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   CanvasController get controller => widget.controller;
@@ -189,6 +195,16 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                         controller.document.allScenes.length - 1
                     ? null
                     : () => controller.goToScene(controller.document.at + 1)),
+            // Panel mode, to try the book as a reader steps through it.
+            if (_hasLayouts(controller.document))
+              _barButton(theme,
+                  key: const ValueKey("readPanels"),
+                  icon: Icons.auto_stories_outlined,
+                  tooltip: "Read panel by panel: back and forward step "
+                      "through each page's panels, in their reading order",
+                  onPressed: () => showPanelReader(
+                      context, controller.document, controller.images,
+                      scene: controller.document.at)),
             _divider(theme),
           ],
           // The tools first: the active one changes what every gesture does.

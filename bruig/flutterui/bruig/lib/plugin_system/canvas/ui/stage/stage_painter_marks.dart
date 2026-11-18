@@ -91,6 +91,36 @@ extension StagePainterMarks on StagePainter {
       canvas.drawRect(square, white);
       canvas.drawRect(square.deflate(1.5 / scale), blue);
     }
+    // Each cell's place in the reading order: blue, or amber while it is
+    // being clicked; a ring with a dash for one left out.
+    for (var b in marks.badges) {
+      var colour =
+          b.ordering ? const Color(0xFFF2A33D) : const Color(0xFF3D7EFF);
+      var r = 13 / scale;
+      if (b.number == null) {
+        canvas.drawCircle(b.at, r, Paint()..color = const Color(0xDDFFFFFF));
+        canvas.drawCircle(
+            b.at,
+            r,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = thin * 1.4
+              ..color = colour);
+      } else {
+        canvas.drawCircle(b.at, r, Paint()..color = colour);
+      }
+      var label = TextPainter(
+        text: TextSpan(
+            text: b.number == null ? "–" : "${b.number}",
+            style: TextStyle(
+                fontSize: 13 / scale,
+                fontWeight: FontWeight.w700,
+                color: b.number == null ? colour : const Color(0xFFFFFFFF))),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      label.paint(canvas, b.at - Offset(label.width / 2, label.height / 2));
+      label.dispose();
+    }
     if (marks.picked case var path?) {
       canvas.drawPath(
           path,

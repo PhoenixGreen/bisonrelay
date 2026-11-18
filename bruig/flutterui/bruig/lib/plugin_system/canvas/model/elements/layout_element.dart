@@ -303,6 +303,11 @@ class LayoutElement extends CanvasElement {
   /// cellStyle is how a cell with no style of its own is drawn.
   final BoxSpec cellStyle;
 
+  /// order is the cells in the order a reader steps through them in Panel
+  /// mode, as set by clicking them in turn; one not in it (cut off since)
+  /// is read after, in its own place. [unread] are left out. See [reading].
+  final List<String> order, unread;
+
   const LayoutElement(
     super.base, {
     this.mode = LayoutMode.panels,
@@ -316,6 +321,8 @@ class LayoutElement extends CanvasElement {
     this.gutterColor = const Color(0x00000000),
     this.cellStyle = const BoxSpec(
         borderWidth: 4, borderColor: Color(0xFF111111), padding: 0),
+    this.order = const [],
+    this.unread = const [],
   });
 
   /// maxTracks and maxCells bound what a received file can ask for.
@@ -341,7 +348,9 @@ class LayoutElement extends CanvasElement {
       rowGutter: rowGutter,
       margin: margin,
       gutterColor: gutterColor,
-      cellStyle: cellStyle);
+      cellStyle: cellStyle,
+      order: order,
+      unread: unread);
 
   LayoutElement copyWith({
     LayoutMode? mode,
@@ -354,6 +363,8 @@ class LayoutElement extends CanvasElement {
     double? margin,
     Color? gutterColor,
     BoxSpec? cellStyle,
+    List<String>? order,
+    List<String>? unread,
   }) =>
       LayoutElement(base,
           mode: mode ?? this.mode,
@@ -365,7 +376,9 @@ class LayoutElement extends CanvasElement {
           rowGutter: (rowGutter ?? this.rowGutter).clamp(0.0, 2000.0),
           margin: (margin ?? this.margin).clamp(0.0, 2000.0),
           gutterColor: gutterColor ?? this.gutterColor,
-          cellStyle: cellStyle ?? this.cellStyle);
+          cellStyle: cellStyle ?? this.cellStyle,
+          order: order ?? this.order,
+          unread: unread ?? this.unread);
 
   LayoutCell? cellById(String id) {
     for (var c in cells) {
@@ -384,6 +397,33 @@ class LayoutElement extends CanvasElement {
     return [
       for (var id in root.cells) cellById(id) ?? LayoutCell(id: id),
     ];
+  }
+
+  /// reading is the cells in the order Panel mode reads them: those in
+  /// [order] first, as set, then the rest in their own order -- a Panels
+  /// layout's left to right and top to bottom down its cuts, a Grid's row
+  /// by row, Free cells as added -- less those [unread].
+  List<LayoutCell> get reading {
+    var shown = shownCells;
+    var own = mode == LayoutMode.grid
+        ? ([...shown]..sort((a, b) =>
+            a.row != b.row ? a.row.compareTo(b.row) : a.col.compareTo(b.col)))
+        : shown;
+    var byId = {for (var c in shown) c.id: c};
+    var seen = <String>{...unread};
+    return [
+      for (var id in order)
+        if (byId[id] case var c? when seen.add(id)) c,
+      for (var c in own)
+        if (seen.add(c.id)) c,
+    ];
+  }
+
+  /// numberOf is where cell [id] comes in [reading], from 1, or null for
+  /// one left out.
+  int? numberOf(String id) {
+    var i = reading.indexWhere((c) => c.id == id);
+    return i < 0 ? null : i + 1;
   }
 
   /// withCell is this layout with [cell] in place of the one of its id, or
@@ -412,6 +452,11 @@ class LayoutElement extends CanvasElement {
         cell,
         cell.copyWith(id: fresh, name: ""),
       ],
+      // Read straight after the half it was cut from, or left out with it.
+      order: [
+        for (var o in order) ...[o, if (o == id) fresh]
+      ],
+      unread: [...unread, if (unread.contains(id)) fresh],
     );
     return (next, fresh);
   }
@@ -434,6 +479,14 @@ class LayoutElement extends CanvasElement {
         for (var c in cells)
           if (!gone.contains(c.id)) c
       ],
+      order: [
+        for (var o in order)
+          if (!gone.contains(o)) o
+      ],
+      unread: [
+        for (var o in unread)
+          if (!gone.contains(o)) o
+      ],
     );
     return (next, gone);
   }
@@ -450,6 +503,8 @@ class LayoutElement extends CanvasElement {
         if (margin != 0) "margin": margin,
         if (gutterColor.a > 0) "gutterColor": colorToJson(gutterColor),
         "cellStyle": cellStyle.toJson(),
+        if (order.isNotEmpty) "order": order,
+        if (unread.isNotEmpty) "unread": unread,
       };
 
   factory LayoutElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -464,7 +519,15 @@ class LayoutElement extends CanvasElement {
     }
 
     var raw = json["cells"];
+    List<String> ids(Object? v) => v is List
+        ? [
+            for (var x in v.take(maxCells))
+              if (x is String && x.isNotEmpty && x.length <= 64) x
+          ]
+        : const [];
     return LayoutElement(b,
+        order: ids(json["order"]),
+        unread: ids(json["unread"]),
         mode: LayoutMode.fromName(jsonStr(json["mode"])),
         root: json["root"] == null
             ? plain.root

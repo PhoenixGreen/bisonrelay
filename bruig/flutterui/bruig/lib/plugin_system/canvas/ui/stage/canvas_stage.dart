@@ -1152,6 +1152,12 @@ class CanvasStageState extends State<CanvasStage>
         controller.vectorTool = controller.vectorTool == VectorTool.tint
             ? VectorTool.select
             : VectorTool.tint;
+      // Setting a layout's reading order: Enter keeps it, Escape does not.
+      case LogicalKeyboardKey.escape when controller.orderingLayout != null:
+        controller.finishReadingOrder(keep: false);
+      case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter
+          when controller.orderingLayout != null:
+        controller.finishReadingOrder();
       case LogicalKeyboardKey.escape:
         // One thing at a time: a warp grid's picked points, then the grid,
         // then the picture's frame, then the selection.

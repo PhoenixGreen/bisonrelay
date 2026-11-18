@@ -4,6 +4,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -101,6 +102,50 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("canvasFilePlay")));
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
+    });
+
+    // Ken, 2026-11-18: a comic book read panel by panel, back and forward.
+    testWidgets("a comic is read in Panel mode, and played again",
+        (tester) async {
+      var file = await write(
+          tester,
+          const CanvasDocument().addElement(LayoutElement(
+              const ElementBase(id: "L", width: 1280, height: 720),
+              root: const LayoutNode.cut(
+                  vertical: true,
+                  a: LayoutNode.leaf("a"),
+                  b: LayoutNode.leaf("b")),
+              cells: const [LayoutCell(id: "a"), LayoutCell(id: "b")])));
+      await show(tester, file);
+      var toggle = find.byKey(const ValueKey("canvasFilePanels"));
+      expect(toggle, findsOneWidget, reason: "offered: it has panels");
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(
+          find.byKey(const ValueKey("canvasFilePanelReader")), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("panelReaderForward")));
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey("panelReaderWhere")))
+              .data,
+          endsWith("panel 1 of 2"));
+      await tester.tap(find.byKey(const ValueKey("canvasFilePanels")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("canvasFileView")), findsOneWidget,
+          reason: "played as before");
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets("no Panel mode where there are no panels", (tester) async {
+      var file = await write(
+          tester,
+          CanvasDocument(elements: [
+            ShapeElement(const ElementBase(id: "a", width: 100, height: 100)),
+          ]));
+      await show(tester, file);
+      expect(find.byKey(const ValueKey("canvasFilePanels")), findsNothing);
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets("its buttons are pressed in the preview", (tester) async {

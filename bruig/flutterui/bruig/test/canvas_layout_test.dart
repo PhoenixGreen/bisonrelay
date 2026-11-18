@@ -267,6 +267,152 @@ void main() {
     });
   });
 
+  // Ken, 2026-11-18: "customise panel order so that if you build a comic
+  // ebook a user can go into panel mode and use the page back and forward
+  // buttons to move through the panels and pages".
+  group("reading order", () {
+    // Three panels: a over b|c.
+    LayoutElement three() => LayoutElement(_box,
+            root: const LayoutNode.cut(
+                vertical: false,
+                a: LayoutNode.leaf("a"),
+                b: LayoutNode.cut(
+                    vertical: true,
+                    a: LayoutNode.leaf("b"),
+                    b: LayoutNode.leaf("c"))),
+            cells: const [
+              LayoutCell(id: "a"),
+              LayoutCell(id: "b"),
+              LayoutCell(id: "c")
+            ]);
+    List<String> ids(LayoutElement l) => [for (var c in l.reading) c.id];
+
+    test("by default, down the cuts; a grid row by row", () {
+      expect(ids(three()), ["a", "b", "c"]);
+      var grid = LayoutElement(_box, mode: LayoutMode.grid, cells: const [
+        LayoutCell(id: "low", col: 0, row: 1),
+        LayoutCell(id: "right", col: 1, row: 0),
+        LayoutCell(id: "left", col: 0, row: 0),
+      ]);
+      expect(ids(grid), ["left", "right", "low"]);
+    });
+
+    test("set, with a cell left out; one cut off since read after it", () {
+      var l = three().copyWith(order: ["c", "a"], unread: ["b"]);
+      expect(ids(l), ["c", "a"]);
+      expect(l.numberOf("b"), isNull);
+      var (cut, fresh) = l.split("c", vertical: false);
+      expect(ids(cut), ["c", fresh, "a"], reason: "straight after its half");
+      var (merged, _) = cut.merge("c");
+      expect(merged.order, ["c", "a"]);
+    });
+
+    test("kept in the file, and junk in it read safely", () {
+      var l = three().copyWith(order: ["c", "a"], unread: ["b"]);
+      var back = LayoutElement.fromJson(l.props(), _box);
+      expect(back.order, ["c", "a"]);
+      expect(back.unread, ["b"]);
+      var junk = LayoutElement.fromJson({
+        ...l.props(),
+        "order": [1, null, "", "a", "a" * 500],
+        "unread": 7
+      }, _box);
+      expect(junk.order, ["a"]);
+      expect(junk.unread, isEmpty);
+      expect(ids(junk), ["a", "b", "c"], reason: "a twice is read once");
+    });
+
+    Future<(CanvasController, CanvasStageState)> stage(
+        WidgetTester tester, LayoutElement l) async {
+      var c = CanvasController(const CanvasDocument(
+              size: CanvasSize(ratio: CanvasRatio.a4, width: 1240))
+          .addElement(l));
+      addTearDown(c.dispose);
+      var key = GlobalKey<CanvasStageState>();
+      setTestScreen(tester, const Size(1000, 1000));
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: 1000,
+          height: 1000,
+          child: CanvasStage(key: key, controller: c))));
+      c.selectOnly("L");
+      await tester.pumpAndSettle();
+      return (c, key.currentState!);
+    }
+
+    Offset middle(LayoutElement l, String id) =>
+        layoutPlaceOf(l, _bounds, id)!.bounds.center;
+
+    for (var locked in [false, true]) {
+      testWidgets(
+          "set by clicking the cells in turn${locked ? ", locked too" : ""}",
+          (tester) async {
+        var l = three().withBase(locked: locked) as LayoutElement;
+        var (c, s) = await stage(tester, l);
+        c.beginReadingOrder(l);
+        await tester.pumpAndSettle();
+        // c, then a; b never clicked. A click on the page gives it the keys.
+        for (var id in ["c", "a"]) {
+          await tester.tapAt(s.toStagePoint(middle(l, id)));
+          await tester.pump(const Duration(milliseconds: 400));
+        }
+        expect(c.orderClicked, ["c", "a"]);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(c.orderingLayout, isNull);
+        var set = c.document.elementById("L") as LayoutElement;
+        expect(ids(set), ["c", "a"]);
+        expect(set.unread, ["b"]);
+        expect(set.root, l.root, reason: "its shape untouched");
+        expect(c.selection, {"L"}, reason: "clicking numbered, not picked");
+      });
+    }
+
+    testWidgets("Escape puts it back as it was", (tester) async {
+      var l = three().copyWith(order: ["b", "a", "c"]);
+      var (c, s) = await stage(tester, l);
+      c.beginReadingOrder(l);
+      await tester.tapAt(s.toStagePoint(middle(l, "c")));
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(
+          ids(c.document.elementById("L") as LayoutElement), ["b", "a", "c"]);
+      expect(c.orderingLayout, isNull);
+    });
+
+    testWidgets("nudged, left out and put back in the settings",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(three()));
+      addTearDown(c.dispose);
+      c.selectOnly("L");
+      setTestScreen(tester, const Size(1400, 1600));
+      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpAndSettle();
+      LayoutElement now() => c.document.elementById("L") as LayoutElement;
+      Future<void> tap(String key) async {
+        var f = find.byKey(ValueKey(key));
+        await tester.ensureVisible(f);
+        await tester.pumpAndSettle();
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      await tap("layoutReadUp-c");
+      expect(ids(now()), ["a", "c", "b"]);
+      await tap("layoutReadOn-a");
+      expect(ids(now()), ["c", "b"]);
+      expect(now().unread, ["a"]);
+      await tap("layoutReadOn-a");
+      expect(ids(now()), ["c", "b", "a"], reason: "put back, at the end");
+      await tap("layoutResetOrder");
+      expect(ids(now()), ["a", "b", "c"]);
+      await tap("layoutSetOrder");
+      expect(c.orderingLayout, "L");
+      await tap("layoutOrderCancel");
+      expect(c.orderingLayout, isNull);
+    });
+  });
+
   testWidgets("every preset, drawn", (tester) async {
     var dir = Platform.environment["LAYOUT_PNG"];
     if (dir == null) return;

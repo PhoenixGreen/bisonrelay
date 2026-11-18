@@ -98,7 +98,20 @@ class LayoutMarks {
   /// knobs is each Panels cut's own: its turn knob, and its gutter knob
   /// with the gutter's two edges beside it (see stage_layouts.dart).
   final List<LayoutCutKnobs> knobs;
-  const LayoutMarks(this.lines, this.picked, {this.knobs = const []});
+
+  /// badges is each cell's place in the reading order, at its middle.
+  final List<LayoutBadge> badges;
+  const LayoutMarks(this.lines, this.picked,
+      {this.knobs = const [], this.badges = const []});
+}
+
+/// LayoutBadge is a cell's reading number on the stage: [number] null for
+/// one left out; [ordering] while the order is being clicked.
+class LayoutBadge {
+  final Offset at;
+  final int? number;
+  final bool ordering;
+  const LayoutBadge(this.at, this.number, {this.ordering = false});
 }
 
 /// LayoutCutKnobs is where one cut's knobs are on the page: [turn] tilts

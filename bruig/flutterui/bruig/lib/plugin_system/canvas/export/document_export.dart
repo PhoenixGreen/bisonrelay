@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show settledFrameOf;
+import 'package:bruig/plugin_system/canvas/render/panel_reading.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/foundation.dart';
 
@@ -46,11 +47,16 @@ typedef DocumentProgress = void Function(int done, int total);
 /// renderFrame, a frame of the sequence). In a spread the facing leaf is
 /// drawn too, clipped, so an element across the gutter prints on both
 /// halves. The caller must dispose the image.
+///
+/// [panel] draws one of its Layout cells instead, for a book read panel by
+/// panel: zoomed to fill the page and the rest of it dimmed, as Panel mode
+/// shows it (panel_reading.dart).
 Future<ui.Image> renderDocumentPage(
   CanvasDocument document,
   int index, {
   double scale = 1,
   CanvasImageSource? images,
+  PanelStep? panel,
 }) async {
   await loadExportShaders();
   var asked = scale.clamp(0.05, maxExportScale);
@@ -70,8 +76,16 @@ Future<ui.Image> renderDocumentPage(
   // reader running no script, and behind an interactive book's start.
   var settled = settledFrameOf(page);
 
+  var view = panel == null ? null : panelView(panel, docSize);
+
   void draw(ui.Canvas canvas) {
     canvas.scale(s);
+    if (view != null) {
+      // Where the view is wider than the page, round it is dark.
+      canvas.scale(docSize.width / view.width);
+      canvas.translate(-view.left, -view.top);
+      canvas.drawRect(view, ui.Paint()..color = const ui.Color(0xFF000000));
+    }
 
     paintCanvasDocument(canvas, page,
         frame: settled, part: CanvasPaintPart.backdrop, images: images);
@@ -92,6 +106,13 @@ Future<ui.Image> renderDocumentPage(
 
     paintCanvasDocument(canvas, page,
         frame: settled, part: CanvasPaintPart.contents, images: images);
+
+    if (view != null && panel?.outline != null) {
+      canvas.drawPath(
+          ui.Path.combine(ui.PathOperation.difference,
+              ui.Path()..addRect(view.inflate(4)), panel!.outline!),
+          ui.Paint()..color = panelDim);
+    }
   }
 
   // Pictures on both leaves, read rather than their placeholders.
@@ -120,6 +141,11 @@ Future<CanvasExport?> renderDocument(
 
   /// soundKbps is the bitrate an interactive book's sound is written at.
   int soundKbps = 160,
+
+  /// panelPages follows each page of a book with a page for each of its
+  /// panels, zoomed, so any reader's page buttons step through them panel
+  /// by panel (Panel mode, panel_reading.dart). Not for a PDF.
+  bool panelPages = false,
 }) async {
   // The looks' shaders, for the pages and an interactive book's layers.
   await loadExportShaders();
@@ -145,6 +171,16 @@ Future<CanvasExport?> renderDocument(
     var scenes = document.allScenes;
     var covers = document.pageCovers;
     var pages = <EpubPage>[];
+
+    // Panel pages after each page: which file each page is, for its links.
+    var panels = panelPages && as != DocumentAs.pdf
+        ? panelSteps(document).where((p) => !p.whole).toList()
+        : const <PanelStep>[];
+    var fileOf = <int>[];
+    for (var i = 0, file = 0; i < scenes.length; i++) {
+      fileOf.add(file);
+      file += 1 + panels.where((p) => p.scene == i).length;
+    }
     var sheets = <PdfPicture>[];
 
     // An interactive book's sound and video: converted once for the book,
@@ -184,13 +220,16 @@ Future<CanvasExport?> renderDocument(
           width: image.width,
           height: image.height,
           title: document.nameOf(i),
-          side: _sideOf(document, covers, i),
+          side: panels.isEmpty ? _sideOf(document, covers, i) : EpubSide.centre,
           // The front cover the document marks, or else the first page.
           cover: document.isPages
               ? covers[i] == PageCover.front
               : i == 0 && !covers.any((c) => c == PageCover.front),
           links: as == DocumentAs.interactiveEpub
-              ? [..._linksOn(document, scene, i, pixels), ...extra.links]
+              ? [
+                  ..._linksOn(document, scene, i, pixels, fileOf: fileOf),
+                  ...extra.links
+                ]
               : const [],
           media: extra.media,
           actions: extra.actions,
@@ -201,6 +240,28 @@ Future<CanvasExport?> renderDocument(
         ));
       } finally {
         image?.dispose();
+      }
+      // Then the page's panels, each a page of its own: a picture alone.
+      var mine = [
+        for (var p in panels)
+          if (p.scene == i) p
+      ];
+      for (var (n, panel) in mine.indexed) {
+        ui.Image? image;
+        try {
+          image = await renderDocumentPage(document, i,
+              scale: scale, images: images, panel: panel);
+          var png = await image.toByteData(format: ui.ImageByteFormat.png);
+          if (png == null) return null;
+          pages.add(EpubPage(
+            png: png.buffer.asUint8List(),
+            width: image.width,
+            height: image.height,
+            title: "${document.nameOf(i)} · panel ${n + 1} of ${mine.length}",
+          ));
+        } finally {
+          image?.dispose();
+        }
       }
     }
     onProgress?.call(scenes.length, scenes.length);
@@ -220,7 +281,8 @@ Future<CanvasExport?> renderDocument(
       pages: pages,
       title: document.title,
       interactive: as == DocumentAs.interactiveEpub,
-      facing: document.isPages && document.pages.facing,
+      // Panel pages come one at a time: no spreads.
+      facing: document.isPages && document.pages.facing && panels.isEmpty,
       cover: cover,
     );
     return CanvasExport(bytes, as.mime,
@@ -325,8 +387,12 @@ EpubSide _sideOf(CanvasDocument document, List<PageCover> covers, int index) {
 
 /// _linksOn is every button on a page going to another page or a URL;
 /// those that play, show or hide are EpubActions (EpubMediaBuilder.page).
+///
+/// [fileOf] is which file each page is in the book, where panel pages come
+/// between them; by default, its own number.
 List<EpubLink> _linksOn(
-    CanvasDocument document, CanvasScene scene, int index, double pixels) {
+    CanvasDocument document, CanvasScene scene, int index, double pixels,
+    {List<int>? fileOf}) {
   var links = <EpubLink>[];
   // The master's buttons too: drawn on every page, a book's navigation.
   for (var element in [
@@ -343,7 +409,8 @@ List<EpubLink> _linksOn(
         // with no start screen: the press that went there was the play.
         if (to >= 0 && to != index) {
           var moves = document.allScenes[to].frames > 1;
-          href = "page$to.xhtml${moves ? "#play" : ""}";
+          var file = fileOf == null || to >= fileOf.length ? to : fileOf[to];
+          href = "page$file.xhtml${moves ? "#play" : ""}";
         }
       case ButtonActionKind.openLink:
         href = webLink(action.url)?.toString();

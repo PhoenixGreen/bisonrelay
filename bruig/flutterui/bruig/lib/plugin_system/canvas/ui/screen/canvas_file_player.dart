@@ -19,6 +19,9 @@ import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart'
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
+import 'package:bruig/plugin_system/canvas/render/panel_reading.dart'
+    show hasPanels;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart'
     show motionKeyName;
 import 'package:flutter/material.dart';
@@ -116,11 +119,34 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
       var c = CanvasController(doc);
       // Every scene, one after another, as a reader would see it.
       if (doc.hasScenes) c.playAll = true;
-      setState(() => _c = c);
+      setState(() {
+        _c = c;
+        _hasPanels = hasPanels(doc);
+      });
     } catch (exception) {
       if (mounted) setState(() => _error = "Unable to read it: $exception");
     }
   }
+
+  /// _panels is Panel mode on: the book read panel by panel, back and
+  /// forward, rather than played (panel_reader.dart); offered where the
+  /// canvas has Layout cells to read.
+  bool _panels = false;
+  bool _hasPanels = false;
+
+  void _togglePanels(CanvasController c) {
+    if (!_panels && c.playing) c.pause();
+    setState(() => _panels = !_panels);
+  }
+
+  Widget _panelsButton(CanvasController c) => IconButton(
+        key: const ValueKey("canvasFilePanels"),
+        icon: Icon(
+            _panels ? Icons.play_circle_outline : Icons.auto_stories_outlined),
+        tooltip:
+            _panels ? "Play it instead" : "Panel mode: read panel by panel",
+        onPressed: () => _togglePanels(c),
+      );
 
   void _close() {
     var c = _c;
@@ -198,6 +224,15 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     if (_error case var error?) return Center(child: Text(error));
     var c = _c;
     if (c == null) return const Center(child: CircularProgressIndicator());
+    if (_panels) {
+      return PanelReader(
+        key: const ValueKey("canvasFilePanelReader"),
+        document: c.document,
+        images: c.images,
+        scene: c.document.at,
+        extra: [_panelsButton(c)],
+      );
+    }
     var page = c.document.size.size;
     var aspect =
         page.width <= 0 || page.height <= 0 ? 16 / 9 : page.width / page.height;
@@ -245,6 +280,7 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
             tooltip: "From the start",
             onPressed: _again,
           ),
+          if (_hasPanels) _panelsButton(c),
         ]),
       ),
     ]);

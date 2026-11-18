@@ -25,6 +25,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/render/panel_reading.dart'
+    show hasPanels;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -144,6 +146,10 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// for, not only the one on screen. For a file and a chat only: the library
   /// and Files keep one record per canvas. See CanvasDocument.targets.
   bool _everyShape = false;
+
+  /// _panelPages follows each page of a book with its panels, a page each,
+  /// for reading panel by panel (renderDocument's panelPages).
+  bool _panelPages = false;
 
   bool _dither = true;
 
@@ -274,6 +280,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         "paper": _paper.name,
         "orientation": _orientation.name,
         "everyShape": _everyShape,
+        "panelPages": _panelPages,
         "dither": _dither,
         "colors": _colors,
         "loop": _loop,
@@ -305,6 +312,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     _paper = pick(PdfPaper.values, "paper", _paper);
     _orientation = pick(PdfOrientation.values, "orientation", _orientation);
     _everyShape = flag("everyShape", _everyShape);
+    _panelPages = flag("panelPages", _panelPages);
     _dither = flag("dither", _dither);
     _colors = number("colors", _colors).toInt().clamp(2, 256);
     _loop = flag("loop", _loop);
@@ -435,6 +443,7 @@ class _PublishSheetState extends State<_PublishSheet> {
           document,
           as: _documentAs,
           soundKbps: _sound.kbps,
+          panelPages: _panelPages && _documentAs != DocumentAs.pdf,
           scale: _scale,
           images: widget.images,
           paper: _paper,
@@ -1080,6 +1089,25 @@ class _PublishSheetState extends State<_PublishSheet> {
                 [for (var o in PdfOrientation.values) (o, o.label)],
                 (v) => setState(() => _orientation = v)),
           ],
+          if (_documentAs != DocumentAs.pdf && hasPanels(widget.document))
+            CheckboxListTile(
+              key: const ValueKey("publishPanelPages"),
+              value: _panelPages,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title:
+                  const Text("Panel by panel", style: TextStyle(fontSize: 12)),
+              subtitle: Text(
+                  "After each page, a page for each of its panels in their "
+                  "reading order, zoomed in: a reader's page buttons step "
+                  "through them. Pages come one at a time, not in spreads.",
+                  style: TextStyle(
+                      fontSize: 10, color: theme.colors.onSurfaceVariant)),
+              onChanged: _busy
+                  ? null
+                  : (v) => setState(() => _panelPages = v ?? false),
+            ),
           if (_documentAs == DocumentAs.interactiveEpub) ...[
             const SizedBox(height: 10),
             _heading("Sound"),

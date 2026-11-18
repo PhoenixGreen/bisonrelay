@@ -36,22 +36,45 @@ extension StageLayouts on CanvasStageState {
 
   /// _layoutMarks is what the painter shows of the selected Layout.
   LayoutMarks? _layoutMarks() {
-    var e = _oneLayout;
+    // Its reading numbers show locked too: the order is not its shape.
+    var chosen = _chosen;
+    var e = chosen.length == 1 && chosen.first is LayoutElement
+        ? chosen.first as LayoutElement
+        : null;
     if (e == null || !controller.showHelpers) return null;
+    var free = !e.locked;
     var lines = <(Offset, Offset)>[
-      for (var c in layoutCutLines(e, e.bounds))
-        (_outOfLayout(e, c.from), _outOfLayout(e, c.to)),
-      for (var t in layoutTrackLines(e, e.bounds))
-        (_outOfLayout(e, t.from), _outOfLayout(e, t.to)),
+      if (free) ...[
+        for (var c in layoutCutLines(e, e.bounds))
+          (_outOfLayout(e, c.from), _outOfLayout(e, c.to)),
+        for (var t in layoutTrackLines(e, e.bounds))
+          (_outOfLayout(e, t.from), _outOfLayout(e, t.to)),
+      ],
     ];
     var knobs = [
-      for (var c in layoutCutLines(e, e.bounds))
+      for (var c
+          in free ? layoutCutLines(e, e.bounds) : const <LayoutCutLine>[])
         if (_cutKnobs(e, c) case var k?)
           LayoutCutKnobs(
               _outOfLayout(e, k.turn),
               _outOfLayout(e, k.gutter),
               (_outOfLayout(e, k.edgeA.$1), _outOfLayout(e, k.edgeA.$2)),
               (_outOfLayout(e, k.edgeB.$1), _outOfLayout(e, k.edgeB.$2))),
+    ];
+    // Reading numbers, at each cell's middle: the clicked ones while the
+    // order is being set, else the layout's own.
+    var ordering = controller.orderingLayout == e.id;
+    var clicked = controller.orderClicked;
+    var badges = [
+      for (var p in layoutPlaces(e, e.bounds))
+        LayoutBadge(
+            _outOfLayout(e, _middleOf(p)),
+            ordering
+                ? (clicked.contains(p.cell.id)
+                    ? clicked.indexOf(p.cell.id) + 1
+                    : null)
+                : e.numberOf(p.cell.id),
+            ordering: ordering),
     ];
     Path? picked;
     var id = controller.layoutCell(e.id);
@@ -63,7 +86,18 @@ extension StageLayouts on CanvasStageState {
             : place.path.transform(_turnMatrix(e.bounds.center, e.rotation));
       }
     }
-    return LayoutMarks(lines, picked, knobs: knobs);
+    return LayoutMarks(lines, picked, knobs: knobs, badges: badges);
+  }
+
+  /// _middleOf is the middle of a cell's outline: the mean of its corners,
+  /// inside it whatever its slant.
+  static Offset _middleOf(LayoutPlace p) {
+    if (p.points.isEmpty) return p.bounds.center;
+    var sum = Offset.zero;
+    for (var q in p.points) {
+      sum += q;
+    }
+    return sum / p.points.length.toDouble();
   }
 
   /// _cutKnobs is where [line]'s knobs are in [e]'s own frame: the turn
@@ -153,6 +187,20 @@ extension StageLayouts on CanvasStageState {
   /// to drag or a picked Free cell's handles or inside. Answers whether it
   /// was taken.
   bool _pressLayout(Offset stage, Offset doc) {
+    // Setting the reading order: a cell clicked is numbered next; a press
+    // off the layout ends it, kept.
+    if (controller.orderingLayout case var id?) {
+      var l = controller.document.elementById(id);
+      if (l is LayoutElement &&
+          l.visible &&
+          l.bounds.contains(_intoLayout(l, doc))) {
+        var place = layoutCellAt(l, l.bounds, _intoLayout(l, doc));
+        if (place != null) controller.clickReadingOrder(place.cell.id);
+        _mode = _DragMode.none;
+        return true;
+      }
+      controller.finishReadingOrder();
+    }
     var e = _oneLayout;
     if (e == null) return false;
     // A picked Free cell: its handles size and turn it, inside moves it.

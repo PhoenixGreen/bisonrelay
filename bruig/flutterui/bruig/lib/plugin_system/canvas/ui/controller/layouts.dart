@@ -22,6 +22,83 @@ extension CanvasLayouts on CanvasController {
     notifyListeners();
   }
 
+  /// orderingLayout is the layout whose reading order is being set by
+  /// clicking its cells in turn ("Set reading order"), or null; and
+  /// orderClicked the cells clicked so far, in turn.
+  String? get orderingLayout => _layouts.ordering;
+  List<String> get orderClicked => List.unmodifiable(_layouts.clicked);
+
+  /// beginReadingOrder starts numbering [e]'s cells by clicking them.
+  void beginReadingOrder(LayoutElement e) {
+    _layouts.ordering = e.id;
+    _layouts.clicked.clear();
+    notifyListeners();
+  }
+
+  /// clickReadingOrder numbers [cell] next; clicked again, it is taken out
+  /// and those after it move up.
+  void clickReadingOrder(String cell) {
+    if (_layouts.ordering == null) return;
+    if (!_layouts.clicked.remove(cell)) _layouts.clicked.add(cell);
+    notifyListeners();
+  }
+
+  /// finishReadingOrder ends the numbering: kept, the cells clicked are the
+  /// order and those not clicked are left out (none clicked changes
+  /// nothing); not kept, the order stays as it was.
+  void finishReadingOrder({bool keep = true}) {
+    var id = _layouts.ordering;
+    if (id == null) return;
+    var e = _document.elementById(id);
+    var clicked = [..._layouts.clicked];
+    _layouts.ordering = null;
+    _layouts.clicked.clear();
+    if (keep && e is LayoutElement && clicked.isNotEmpty) {
+      setLayout(e.copyWith(order: clicked, unread: [
+        for (var c in e.shownCells)
+          if (!clicked.contains(c.id)) c.id
+      ]));
+    }
+    notifyListeners();
+  }
+
+  /// moveInReading moves [cell] [by] places in [e]'s reading order.
+  void moveInReading(LayoutElement e, String cell, int by) {
+    var ids = [for (var c in e.reading) c.id];
+    var i = ids.indexOf(cell);
+    if (i < 0) return;
+    var to = (i + by).clamp(0, ids.length - 1);
+    if (to == i) return;
+    ids
+      ..removeAt(i)
+      ..insert(to, cell);
+    setLayout(e.copyWith(order: ids));
+  }
+
+  /// setCellRead puts [cell] in [e]'s reading, at the end, or leaves it out.
+  void setCellRead(LayoutElement e, String cell, bool read) {
+    var ids = [for (var c in e.reading) c.id];
+    setLayout(read
+        ? e.copyWith(order: [
+            ...ids,
+            cell
+          ], unread: [
+            for (var u in e.unread)
+              if (u != cell) u
+          ])
+        : e.copyWith(order: [
+            for (var id in ids)
+              if (id != cell) id
+          ], unread: [
+            ...e.unread,
+            cell
+          ]));
+  }
+
+  /// resetReadingOrder reads [e]'s cells in their own order, none left out.
+  void resetReadingOrder(LayoutElement e) =>
+      setLayout(e.copyWith(order: const [], unread: const []));
+
   /// setLayout writes layout [e].
   void setLayout(LayoutElement e, {bool transient = false}) =>
       replaceElement(e, transient: transient);
@@ -224,7 +301,10 @@ extension CanvasLayouts on CanvasController {
       ];
 }
 
-/// _LayoutState is the cell picked in each layout, by element id.
+/// _LayoutState is the cell picked in each layout, by element id, and the
+/// reading order being clicked.
 class _LayoutState {
   final Map<String, String> picked = {};
+  String? ordering;
+  final List<String> clicked = [];
 }
