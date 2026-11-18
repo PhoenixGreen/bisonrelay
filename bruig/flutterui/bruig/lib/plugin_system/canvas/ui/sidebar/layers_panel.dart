@@ -164,7 +164,13 @@ class CanvasLayerRow extends StatefulWidget {
 
 class _CanvasLayerRowState extends State<CanvasLayerRow> {
   CanvasController get controller => widget.controller;
-  CanvasElement get element => widget.element;
+
+  /// element is the row's element as the document has it now, not as it
+  /// was when the list was last built: the list is rebuilt only when what
+  /// it shows changes, so a button writing the built one back would undo
+  /// every edit since -- a layout's dragged cuts lost to its lock.
+  CanvasElement get element =>
+      controller.document.elementById(widget.element.id) ?? widget.element;
 
   /// _renaming is the text field standing in for the name, or null. Held on
   /// the row so a rebuild from elsewhere cannot end an edit half way.

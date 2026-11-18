@@ -420,6 +420,50 @@ void main() {
   });
 
   group("in the settings", () {
+    // Ken, 2026-11-18: "if I lock the layout element the layout changes
+    // e.g. the layout edits get removed". The layer list is rebuilt only
+    // when what it shows changes, and its buttons wrote back the element
+    // it was built with.
+    testWidgets("locking it in the layers keeps the edits made since",
+        (tester) async {
+      var doc = const CanvasDocument()
+          .addElement(_two())
+          .addElement(ShapeElement(const ElementBase(id: "s", x: 10)));
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      setTestScreen(tester, const Size(1400, 1400));
+      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpAndSettle();
+
+      // A cut moved and tilted, as dragging its knobs would.
+      var l = c.document.elementById("L") as LayoutElement;
+      c.setLayout(l.copyWith(root: l.root.withCut(at: 0.3, tilt: 8)));
+      // And a shape moved, which the list does not show either.
+      c.replaceElement(c.document.elementById("s")!.withBase(x: 400));
+      await tester.pumpAndSettle();
+
+      // The layout's row first (the bottom one; the shape is on top), with
+      // nothing in between to rebuild the list.
+      await tester.tap(byTip("Lock").last);
+      await tester.pumpAndSettle();
+      var locked = c.document.elementById("L") as LayoutElement;
+      expect(locked.locked, isTrue);
+      expect(locked.root.at, closeTo(0.3, 1e-9));
+      expect(locked.root.tilt, 8);
+      await tester.tap(byTip("Lock").first);
+      await tester.pumpAndSettle();
+      var shape = c.document.elementById("s")!;
+      expect(shape.locked, isTrue);
+      expect(shape.x, 400, reason: "a move is not undone by its lock");
+
+      await tester.tap(byTip("Hide").first);
+      await tester.pumpAndSettle();
+      // The top row is the shape, added last.
+      shape = c.document.elementById("s")!;
+      expect(shape.visible, isFalse);
+      expect(shape.x, 400);
+    });
+
     testWidgets("a preset is started from by its picture", (tester) async {
       var c = CanvasController(const CanvasDocument().addElement(_two()));
       addTearDown(c.dispose);
