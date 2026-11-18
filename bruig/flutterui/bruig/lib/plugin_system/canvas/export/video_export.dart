@@ -7,6 +7,9 @@ import 'package:bruig/plugin_system/canvas/export/audio_export.dart';
 import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
+import 'package:bruig/plugin_system/canvas/export/panel_video.dart';
+import 'package:bruig/plugin_system/canvas/render/panel_reading.dart'
+    show panelSteps;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/foundation.dart';
@@ -152,9 +155,42 @@ Future<CanvasExport?> renderVideo(
   /// viaFiles skips the pipe and writes every frame as a numbered PNG: the
   /// fallback, asked for directly by its test.
   bool viaFiles = false,
+
+  /// panels reads a comic panel by panel at that pace, as Panel mode does
+  /// (panel_video.dart), in place of playing its timeline; silent, as the
+  /// timeline's sound would not keep time with it. Ignored where there are
+  /// no panels.
+  PanelPace? panels,
 }) async {
   var ffmpeg = await ffmpegPath();
-  if (ffmpeg == null || document.playFrames <= 0) return null;
+  if (ffmpeg == null) return null;
+  if (panels != null) {
+    var steps = panelSteps(document);
+    if (steps.any((s) => !s.whole)) {
+      // A book of paper may run at a frame a second; a glide needs more.
+      var rate = document.frameRate >= 12 ? document.frameRate : 24;
+      var exported = await _renderPanels(document.copyWith(frameRate: rate),
+          PanelTimeline(steps, rate, panels),
+          ffmpeg: ffmpeg,
+          scale: scale,
+          images: images,
+          format: format,
+          quality: quality,
+          onProgress: onProgress,
+          viaFiles: viaFiles);
+      if (exported != null || viaFiles) return exported;
+      return _renderPanels(document.copyWith(frameRate: rate),
+          PanelTimeline(steps, rate, panels),
+          ffmpeg: ffmpeg,
+          scale: scale,
+          images: images,
+          format: format,
+          quality: quality,
+          onProgress: onProgress,
+          viaFiles: true);
+    }
+  }
+  if (document.playFrames <= 0) return null;
 
   if (!viaFiles) {
     var piped = await _renderPiped(document,
@@ -359,6 +395,122 @@ Future<CanvasExport?> _renderPiped(
   } finally {
     backdrop?.dispose();
     media?.dispose();
+    try {
+      process?.kill();
+    } catch (_) {
+      // Already gone: the usual case.
+    }
+    try {
+      await work?.delete(recursive: true);
+    } catch (exception) {
+      debugPrint("Unable to clear the video's working directory: $exception");
+    }
+  }
+}
+
+/// _renderPanels writes [timeline]'s frames (PanelFrames) to ffmpeg, through
+/// the pipe or, [viaFiles], as numbered PNGs. A frame held still is the one
+/// before it again, sent without drawing. Null on any failure.
+Future<CanvasExport?> _renderPanels(
+  CanvasDocument document,
+  PanelTimeline timeline, {
+  required String ffmpeg,
+  required double scale,
+  required CanvasImageSource? images,
+  required VideoFormat format,
+  required VideoQuality quality,
+  GifProgress? onProgress,
+  bool viaFiles = false,
+}) async {
+  var frames = PanelFrames(document, timeline, scale: scale, images: images);
+  Directory? work;
+  Process? process;
+  var total = timeline.frames;
+  try {
+    work = await Directory.systemTemp.createTemp("bruig-canvas-panels");
+    var out = path.join(work.path, "canvas${format.extension}");
+    var width = frames.width, height = frames.height;
+
+    Future<Uint8List> draw(int i, ui.ImageByteFormat as) async {
+      var image = await frames.frame(i);
+      try {
+        var bytes = await image.toByteData(format: as);
+        if (bytes == null) throw StateError("no pixels");
+        return bytes.buffer.asUint8List();
+      } finally {
+        image.dispose();
+      }
+    }
+
+    int code;
+    var errors = StringBuffer();
+    Uint8List? last;
+    if (!viaFiles) {
+      process = await Process.start(ffmpeg, [
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgba",
+        "-s",
+        "${width}x$height",
+        "-framerate",
+        "${document.frameRate}",
+        "-i",
+        "-",
+        ..._encoderArgs(document, format, quality),
+        out,
+      ]);
+      // Drained from the start, as in _renderPiped.
+      var draining = [
+        process.stderr
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .forEach(errors.write),
+        process.stdout.drain<void>(),
+      ];
+      for (var i = 0; i < total; i++) {
+        if (last == null || !timeline.still(i)) {
+          last = await draw(i, ui.ImageByteFormat.rawStraightRgba);
+        }
+        process.stdin.add(last);
+        await process.stdin.flush();
+        onProgress?.call(i + 1, total);
+        await Future<void>.delayed(Duration.zero);
+      }
+      await process.stdin.close();
+      code = await process.exitCode;
+      await Future.wait(draining);
+    } else {
+      for (var i = 0; i < total; i++) {
+        if (last == null || !timeline.still(i)) {
+          last = await draw(i, ui.ImageByteFormat.png);
+        }
+        await File(path.join(work.path, _numbered(i))).writeAsBytes(last);
+        onProgress?.call(i + 1, total);
+        await Future<void>.delayed(Duration.zero);
+      }
+      var result = await Process.run(ffmpeg, [
+        "-y",
+        ..._input(document, work.path),
+        ..._encoderArgs(document, format, quality),
+        out,
+      ]);
+      code = result.exitCode;
+      errors.write(result.stderr);
+    }
+    if (code != 0) {
+      debugPrint("ffmpeg could not write the panel video: $errors");
+      return null;
+    }
+    var file = File(out);
+    if (!await file.exists()) return null;
+    return CanvasExport(await file.readAsBytes(), format.mime,
+        width: _even(width), height: _even(height));
+  } catch (exception) {
+    debugPrint("Unable to render the panel video: $exception");
+    return null;
+  } finally {
+    frames.dispose();
     try {
       process?.kill();
     } catch (_) {

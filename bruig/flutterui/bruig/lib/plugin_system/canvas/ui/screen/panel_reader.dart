@@ -227,29 +227,9 @@ class _PanelPainter extends CustomPainter {
       : super(repaint: images);
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (steps.isEmpty) return;
-    var page = doc.size.size;
-    var to = steps[at];
-    var was = from >= 0 && from < steps.length && t < 1 ? steps[from] : null;
-    List<(Path, double)> lit(PanelStep s, double share) =>
-        s.outline == null ? const [] : [(s.outline!, share)];
-    if (was != null && was.scene == to.scene) {
-      var view = Rect.lerp(panelView(was, page), panelView(to, page), t)!;
-      paintPanelView(canvas, size, doc, to.scene, view,
-          lit: [...lit(was, 1 - t), ...lit(to, t)], images: images);
-      return;
-    }
-    paintPanelView(canvas, size, doc, to.scene, panelView(to, page),
-        lit: lit(to, 1), images: images);
-    if (was != null) {
-      canvas.saveLayer(
-          Offset.zero & size, Paint()..color = Color.fromRGBO(0, 0, 0, 1 - t));
-      paintPanelView(canvas, size, doc, was.scene, panelView(was, page),
-          lit: lit(was, 1), images: images);
-      canvas.restore();
-    }
-  }
+  void paint(Canvas canvas, Size size) =>
+      paintPanelMoment(canvas, size, doc, steps, (at: at, from: from, t: t),
+          images: images);
 
   @override
   bool shouldRepaint(_PanelPainter old) =>

@@ -25,8 +25,9 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/export/panel_video.dart';
 import 'package:bruig/plugin_system/canvas/render/panel_reading.dart'
-    show hasPanels;
+    show hasPanels, panelSteps;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -150,6 +151,11 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// _panelPages follows each page of a book with its panels, a page each,
   /// for reading panel by panel (renderDocument's panelPages).
   bool _panelPages = false;
+
+  /// _panelVideo makes a video of a comic read panel by panel, at
+  /// [_panelPace] (renderVideo's panels).
+  bool _panelVideo = false;
+  PanelPace _panelPace = PanelPace.steady;
 
   bool _dither = true;
 
@@ -281,6 +287,8 @@ class _PublishSheetState extends State<_PublishSheet> {
         "orientation": _orientation.name,
         "everyShape": _everyShape,
         "panelPages": _panelPages,
+        "panelVideo": _panelVideo,
+        "panelPace": _panelPace.name,
         "dither": _dither,
         "colors": _colors,
         "loop": _loop,
@@ -290,6 +298,16 @@ class _PublishSheetState extends State<_PublishSheet> {
         "target": _target,
         "sound": _sound.toJson(),
       };
+
+  /// _panelNote is how long a panel-by-panel video runs.
+  String _panelNote() {
+    var steps = panelSteps(widget.document);
+    var rate = widget.document.frameRate >= 12 ? widget.document.frameRate : 24;
+    var seconds = PanelTimeline(steps, rate, _panelPace).frames / rate;
+    var panels = steps.where((s) => !s.whole).length;
+    return "$panels panels on ${widget.document.allScenes.length} pages, "
+        "${seconds.round()} seconds.";
+  }
 
   /// _restore sets the sheet as last published with. Anything unrecognised
   /// -- a renamed setting, a value out of range -- keeps the default.
@@ -313,6 +331,8 @@ class _PublishSheetState extends State<_PublishSheet> {
     _orientation = pick(PdfOrientation.values, "orientation", _orientation);
     _everyShape = flag("everyShape", _everyShape);
     _panelPages = flag("panelPages", _panelPages);
+    _panelVideo = flag("panelVideo", _panelVideo);
+    _panelPace = pick(PanelPace.values, "panelPace", _panelPace);
     _dither = flag("dither", _dither);
     _colors = number("colors", _colors).toInt().clamp(2, 256);
     _loop = flag("loop", _loop);
@@ -430,6 +450,7 @@ class _PublishSheetState extends State<_PublishSheet> {
           format: _videoFormat,
           quality: _videoQuality,
           sound: _sound,
+          panels: _panelVideo ? _panelPace : null,
           onProgress: (done, total) {
             if (mounted) {
               setState(() => _progress = "Rendering frame $done of $total…");
@@ -1030,12 +1051,51 @@ class _PublishSheetState extends State<_PublishSheet> {
               _videoQuality,
               [for (var q in VideoQuality.values) (q, q.label)],
               (v) => setState(() => _videoQuality = v)),
+          if (hasPanels(widget.document)) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Expanded(
+                child: CheckboxListTile(
+                  key: const ValueKey("publishPanelVideo"),
+                  value: _panelVideo,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text("Panel by panel",
+                      style: TextStyle(fontSize: 12)),
+                  subtitle: Text(
+                      "Read as Panel mode reads it: each page whole, then "
+                      "gliding to each panel in its reading order. Silent.",
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: theme.colors.onSurfaceVariant)),
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _panelVideo = v ?? false),
+                ),
+              ),
+              if (_panelVideo) ...[
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 120,
+                  child: _dropdown<PanelPace>(
+                      theme,
+                      "Pace",
+                      _panelPace,
+                      [for (var p in PanelPace.values) (p, p.label)],
+                      (v) => setState(() => _panelPace = v)),
+                ),
+              ],
+            ]),
+          ],
           const SizedBox(height: 10),
-          ..._soundControls(theme,
-              fixedRate: _videoFormat == VideoFormat.webm ? 48000 : null),
+          if (!(_panelVideo && hasPanels(widget.document)))
+            ..._soundControls(theme,
+                fixedRate: _videoFormat == VideoFormat.webm ? 48000 : null),
           _note(
               theme,
-              "${_runNote()} A video keeps every colour, where a GIF has 256, "
+              "${_panelVideo && hasPanels(widget.document) ? _panelNote() : _runNote()} "
+              "A video keeps every colour, where a GIF has 256, "
               "and is usually much smaller. ${_videoFormat.note}"),
         ];
 

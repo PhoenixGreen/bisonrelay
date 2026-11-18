@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
+import 'package:bruig/plugin_system/canvas/export/panel_video.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -17,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as path;
 import 'support/canvas_app.dart';
 
 // canvas_panel_reading_test.dart is Panel mode (panel_reading.dart,
@@ -155,6 +159,93 @@ void main() {
       var a = made(out!.data);
       // Page Two is the fifth file: One and its three panels come first.
       expect(text(a, "OEBPS/page7.xhtml"), contains('href="page4.xhtml"'));
+    });
+  });
+
+  // Ken, 2026-11-18: "can you also use the panel view when exporting a
+  // comic as a video file?"
+  group("as a video", () {
+    test("each page held whole, then a glide to each panel and a hold", () {
+      var t = PanelTimeline(panelSteps(_book()), 24, PanelPace.quick);
+      // Three pages at 1.5 s, five panels at 2 s, seven moves of 0.5 s.
+      expect(t.frames, 3 * 36 + 5 * 48 + 7 * 12);
+      expect(t.at(0), (at: 0, from: -1, t: 1.0));
+      expect(t.at(35).from, -1, reason: "still the page whole");
+      var m = t.at(36);
+      expect((m.at, m.from), (1, 0), reason: "on its way to panel one");
+      expect(m.t, inExclusiveRange(0, 1));
+      expect(t.at(36 + 12).from, -1, reason: "there, and holding");
+      expect(t.still(10), isTrue);
+      expect(t.still(36), isFalse);
+      expect(t.at(t.frames + 50).at, t.steps.length - 1);
+    });
+
+    test("its frames are cut from each page, the panel lit", () async {
+      var doc = _book();
+      var t = PanelTimeline(panelSteps(doc), 24, PanelPace.quick);
+      var frames = PanelFrames(doc, t, scale: 0.1);
+      addTearDown(frames.dispose);
+      var whole = await frames.frame(0);
+      var panel = await frames.frame(36 + 12);
+      expect((whole.width, whole.height), (frames.width, frames.height));
+      var a = await whole.toByteData();
+      var b = await panel.toByteData();
+      expect(a!.buffer.asUint8List(), isNot(b!.buffer.asUint8List()));
+      whole.dispose();
+      panel.dispose();
+    });
+
+    group("through ffmpeg", () {
+      late Directory scratch;
+      late File log;
+      setUp(() async {
+        scratch = await Directory.systemTemp.createTemp("bruig-panel-video");
+        log = File(path.join(scratch.path, "args.txt"));
+        var script = File(path.join(scratch.path, "ffmpeg"));
+        await script.writeAsString("""#!/bin/sh
+printf '%s\\n' "\$@" > "${log.path}"
+for a in "\$@"; do out="\$a"; done
+bytes=\$(cat | wc -c)
+printf 'bytes=%s\\n' "\$bytes" >> "${log.path}"
+printf '\\x00\\x00\\x00\\x18ftypisom' > "\$out"
+""");
+        await Process.run("chmod", ["+x", script.path]);
+        useFfmpegForTest(script.path);
+      });
+      tearDown(() async {
+        forgetFfmpegForTest();
+        await scratch.delete(recursive: true);
+      });
+
+      test("every frame of the reading arrives, and no sound", () async {
+        var doc = _book().copyWith(frameRate: 1);
+        var out = await renderVideo(doc, scale: 0.1, panels: PanelPace.quick);
+        expect(out, isNotNull);
+        var args = await log.readAsLines();
+        expect(args[args.indexOf("-framerate") + 1], "24",
+            reason: "a book at a frame a second, read at 24");
+        var t = PanelTimeline(panelSteps(doc), 24, PanelPace.quick);
+        var sent = args.firstWhere((a) => a.startsWith("bytes="));
+        // The frames as drawn: the size reported is made even for the
+        // encoder (175 tall here, 174 in the file).
+        var f = PanelFrames(doc, t, scale: 0.1);
+        expect(out!.height, f.height - 1);
+        expect(int.parse(sent.split("=")[1].trim()),
+            t.frames * f.width * f.height * 4);
+        expect(args, isNot(contains("-map")), reason: "silent");
+      });
+
+      test("a canvas with no panels plays as it always has", () async {
+        var doc = const CanvasDocument(size: _page, frames: 3);
+        var out = await renderVideo(doc, scale: 0.1, panels: PanelPace.quick);
+        var sent =
+            (await log.readAsLines()).firstWhere((a) => a.startsWith("bytes="));
+        expect(out, isNotNull);
+        var w = (doc.size.exportSize.width * 0.1).round(),
+            h = (doc.size.exportSize.height * 0.1).round();
+        expect(
+            int.parse(sent.split("=")[1].trim()), doc.playFrames * w * h * 4);
+      });
     });
   });
 

@@ -107,6 +107,9 @@ void paintPanelView(
   Rect view, {
   List<(Path, double)> lit = const [],
   CanvasImageSource? images,
+
+  /// page draws the page in its own units, given; by default, as printed.
+  void Function(ui.Canvas canvas, int scene)? page,
 }) {
   if (view.isEmpty || size.isEmpty) return;
   canvas.save();
@@ -114,8 +117,12 @@ void paintPanelView(
   var scale = size.width / view.width;
   canvas.scale(scale, size.height / view.height);
   canvas.translate(-view.left, -view.top);
-  paintLeaf(canvas, doc, scene,
-      frameOf: (i) => settledFrameOf(doc.goToScene(i)), images: images);
+  if (page != null) {
+    page(canvas, scene);
+  } else {
+    paintLeaf(canvas, doc, scene,
+        frameOf: (i) => settledFrameOf(doc.goToScene(i)), images: images);
+  }
   var round = Path()..addRect(view.inflate(4));
   for (var (outline, share) in lit) {
     if (share <= 0) continue;
@@ -123,4 +130,42 @@ void paintPanelView(
         Paint()..color = panelDim.withValues(alpha: panelDim.a * share));
   }
   canvas.restore();
+}
+
+/// PanelMoment is what shows at a moment of reading: step [at], arriving
+/// from step [from] (-1 for none) by [t], 0 to 1.
+typedef PanelMoment = ({int at, int from, double t});
+
+/// paintPanelMoment draws moment [m] of reading [steps] into [size]: on one
+/// page the view glides and the dimming passes from one panel to the next;
+/// between pages the new one fades in over the old. The in-app reader and
+/// a panel video both draw through it; [page] as in paintPanelView.
+void paintPanelMoment(ui.Canvas canvas, Size size, CanvasDocument doc,
+    List<PanelStep> steps, PanelMoment m,
+    {CanvasImageSource? images,
+    void Function(ui.Canvas canvas, int scene)? page}) {
+  if (steps.isEmpty || m.at < 0 || m.at >= steps.length) return;
+  var whole = doc.size.size;
+  var to = steps[m.at];
+  var was =
+      m.from >= 0 && m.from < steps.length && m.t < 1 ? steps[m.from] : null;
+  List<(Path, double)> lit(PanelStep s, double share) =>
+      s.outline == null ? const [] : [(s.outline!, share)];
+  if (was != null && was.scene == to.scene) {
+    var view = Rect.lerp(panelView(was, whole), panelView(to, whole), m.t)!;
+    paintPanelView(canvas, size, doc, to.scene, view,
+        lit: [...lit(was, 1 - m.t), ...lit(to, m.t)],
+        images: images,
+        page: page);
+    return;
+  }
+  paintPanelView(canvas, size, doc, to.scene, panelView(to, whole),
+      lit: lit(to, 1), images: images, page: page);
+  if (was != null) {
+    canvas.saveLayer(
+        Offset.zero & size, Paint()..color = Color.fromRGBO(0, 0, 0, 1 - m.t));
+    paintPanelView(canvas, size, doc, was.scene, panelView(was, whole),
+        lit: lit(was, 1), images: images, page: page);
+    canvas.restore();
+  }
 }
