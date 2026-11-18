@@ -157,6 +157,9 @@ class _PublishSheetState extends State<_PublishSheet> {
   bool _panelVideo = false;
   PanelPace _panelPace = PanelPace.steady;
 
+  /// _panelMusic lays the canvas's sound under a panel video, looped.
+  bool _panelMusic = false;
+
   bool _dither = true;
 
   /// _toTarget brings a video's sound to the master's loudness target: a
@@ -289,6 +292,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         "spreads": _spreads,
         "panelVideo": _panelVideo,
         "panelPace": _panelPace.name,
+        "panelMusic": _panelMusic,
         "dither": _dither,
         "colors": _colors,
         "loop": _loop,
@@ -333,6 +337,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     _spreads = flag("spreads", _spreads);
     _panelVideo = flag("panelVideo", _panelVideo);
     _panelPace = pick(PanelPace.values, "panelPace", _panelPace);
+    _panelMusic = flag("panelMusic", _panelMusic);
     _dither = flag("dither", _dither);
     _colors = number("colors", _colors).toInt().clamp(2, 256);
     _loop = flag("loop", _loop);
@@ -451,6 +456,7 @@ class _PublishSheetState extends State<_PublishSheet> {
           quality: _videoQuality,
           sound: _sound,
           panels: _panelVideo ? _panelPace : null,
+          panelMusic: _panelMusic && _hasTimedSound,
           onProgress: (done, total) {
             if (mounted) {
               setState(() => _progress = "Rendering frame $done of $total…");
@@ -1065,7 +1071,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                       style: TextStyle(fontSize: 12)),
                   subtitle: Text(
                       "Read as Panel mode reads it: each page whole, then "
-                      "gliding to each panel in its reading order. Silent.",
+                      "gliding to each panel in its reading order.",
                       style: TextStyle(
                           fontSize: 10,
                           color: theme.colors.onSurfaceVariant)),
@@ -1088,8 +1094,27 @@ class _PublishSheetState extends State<_PublishSheet> {
               ],
             ]),
           ],
+          if (_panelVideo && hasPanels(widget.document) && _hasTimedSound)
+            CheckboxListTile(
+              key: const ValueKey("publishPanelMusic"),
+              value: _panelMusic,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text("With its music",
+                  style: TextStyle(fontSize: 12)),
+              subtitle: Text(
+                  "The canvas's sound under the whole reading, from the "
+                  "start and round again, fading out at the end. It does "
+                  "not keep time with the panels.",
+                  style: TextStyle(
+                      fontSize: 10, color: theme.colors.onSurfaceVariant)),
+              onChanged: _busy
+                  ? null
+                  : (v) => setState(() => _panelMusic = v ?? false),
+            ),
           const SizedBox(height: 10),
-          if (!(_panelVideo && hasPanels(widget.document)))
+          if (!(_panelVideo && hasPanels(widget.document)) || _panelMusic)
             ..._soundControls(theme,
                 fixedRate: _videoFormat == VideoFormat.webm ? 48000 : null),
           _note(

@@ -157,10 +157,14 @@ Future<CanvasExport?> renderVideo(
   bool viaFiles = false,
 
   /// panels reads a comic panel by panel at that pace, as Panel mode does
-  /// (panel_video.dart), in place of playing its timeline; silent, as the
-  /// timeline's sound would not keep time with it. Ignored where there are
-  /// no panels.
+  /// (panel_video.dart), in place of playing its timeline. Ignored where
+  /// there are no panels.
   PanelPace? panels,
+
+  /// panelMusic lays the canvas's own sound under a panel video: from the
+  /// start, round again until the reading ends, fading out with it. Not in
+  /// time with the panels, which is why it is a choice; silent without.
+  bool panelMusic = false,
 }) async {
   var ffmpeg = await ffmpegPath();
   if (ffmpeg == null) return null;
@@ -177,7 +181,9 @@ Future<CanvasExport?> renderVideo(
           format: format,
           quality: quality,
           onProgress: onProgress,
-          viaFiles: viaFiles);
+          viaFiles: viaFiles,
+          music: panelMusic ? document : null,
+          sound: sound);
       if (exported != null || viaFiles) return exported;
       return _renderPanels(document.copyWith(frameRate: rate),
           PanelTimeline(steps, rate, panels),
@@ -187,7 +193,9 @@ Future<CanvasExport?> renderVideo(
           format: format,
           quality: quality,
           onProgress: onProgress,
-          viaFiles: true);
+          viaFiles: true,
+          music: panelMusic ? document : null,
+          sound: sound);
     }
   }
   if (document.playFrames <= 0) return null;
@@ -421,15 +429,36 @@ Future<CanvasExport?> _renderPanels(
   required VideoQuality quality,
   GifProgress? onProgress,
   bool viaFiles = false,
+
+  /// music is the canvas whose timeline sound goes under it, looped; null
+  /// for none (see renderVideo's panelMusic).
+  CanvasDocument? music,
+  AudioOptions sound = const AudioOptions(),
 }) async {
   var frames = PanelFrames(document, timeline, scale: scale, images: images);
   Directory? work;
   Process? process;
   var total = timeline.frames;
+  var media = music == null ? null : ExportMedia.of(music, scale: scale);
   try {
     work = await Directory.systemTemp.createTemp("bruig-canvas-panels");
     var out = path.join(work.path, "canvas${format.extension}");
     var width = frames.width, height = frames.height;
+
+    // The mix, round again for as long as the reading lasts, faded out at
+    // its end; nothing where the canvas has nothing to hear.
+    var mixed = await _soundArgs(media, format, ffmpeg, work.path, sound);
+    var seconds = total / math.max(1, document.frameRate);
+    var soundIn = mixed.inputs.isEmpty
+        ? const <String>[]
+        : ["-stream_loop", "-1", ...mixed.inputs];
+    var soundOut = mixed.inputs.isEmpty
+        ? const <String>[]
+        : [
+            ...mixed.output,
+            "-af",
+            "afade=t=out:st=${math.max(0.0, seconds - 2).toStringAsFixed(2)}:d=2",
+          ];
 
     Future<Uint8List> draw(int i, ui.ImageByteFormat as) async {
       var image = await frames.frame(i);
@@ -458,7 +487,9 @@ Future<CanvasExport?> _renderPanels(
         "${document.frameRate}",
         "-i",
         "-",
+        ...soundIn,
         ..._encoderArgs(document, format, quality),
+        ...soundOut,
         out,
       ]);
       // Drained from the start, as in _renderPiped.
@@ -492,7 +523,9 @@ Future<CanvasExport?> _renderPanels(
       var result = await Process.run(ffmpeg, [
         "-y",
         ..._input(document, work.path),
+        ...soundIn,
         ..._encoderArgs(document, format, quality),
+        ...soundOut,
         out,
       ]);
       code = result.exitCode;
@@ -511,6 +544,7 @@ Future<CanvasExport?> _renderPanels(
     return null;
   } finally {
     frames.dispose();
+    media?.dispose();
     try {
       process?.kill();
     } catch (_) {

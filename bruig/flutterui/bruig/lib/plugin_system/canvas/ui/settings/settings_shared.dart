@@ -1267,6 +1267,41 @@ List<Widget> fillBits(
         onChanged: (v) => onChanged(fill.copyWith(zoom: v)),
         onCommit: commit,
       ),
+    // Slid inside its frame, as a share of it: a face put in the middle of
+    // a Layout cell, a flame moved to the word it should rise from.
+    if (fill.on)
+      CanvasNumberField(
+        key: ValueKey("${keyPrefix}FillPanX"),
+        label: "Across",
+        value: fill.panX * 100,
+        min: -200,
+        max: 200,
+        decimals: 0,
+        suffix: "%",
+        width: 58,
+        onChanged: (v) => onChanged(fill.copyWith(panX: v / 100)),
+        onCommit: commit,
+      ),
+    if (fill.on)
+      CanvasNumberField(
+        key: ValueKey("${keyPrefix}FillPanY"),
+        label: "Down",
+        value: fill.panY * 100,
+        min: -200,
+        max: 200,
+        decimals: 0,
+        suffix: "%",
+        width: 58,
+        onChanged: (v) => onChanged(fill.copyWith(panY: v / 100)),
+        onCommit: commit,
+      ),
+    if (fill.on && (fill.panX != 0 || fill.panY != 0))
+      CanvasIconButton(
+        key: ValueKey("${keyPrefix}FillPanReset"),
+        icon: Icons.filter_center_focus,
+        tooltip: "Back to the middle",
+        onPressed: () => now(fill.copyWith(panX: 0, panY: 0)),
+      ),
     if (fill.on)
       CanvasToggle(
         key: ValueKey("${keyPrefix}FillLocked"),
@@ -1280,7 +1315,7 @@ List<Widget> fillBits(
           "the shape of the letters — so a flame or a splatter runs through "
           "the words rather than restarting inside each one. Zoom sizes it "
           "against them: 1 fits it across the words, 2 shows a quarter of it "
-          "at twice the size."),
+          "at twice the size. Across and Down slide it inside its frame."),
     // The rest of the pattern style's settings and effects, behind a
     // heading: a background's controls less those on the row above.
     if (fill.kind == TextFillKind.pattern) ...[

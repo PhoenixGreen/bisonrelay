@@ -16,6 +16,12 @@ import 'package:bruig/plugin_system/canvas/render/panel_reading.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart'
+    show parseProbe;
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -251,6 +257,13 @@ printf '\\x00\\x00\\x00\\x18ftypisom' > "\$out"
         expect(args, isNot(contains("-map")), reason: "silent");
       });
 
+      test("silent unless its music is asked for", () async {
+        await renderVideo(_book(), scale: 0.1, panels: PanelPace.quick);
+        var args = await log.readAsLines();
+        expect(args, isNot(contains("-map")));
+        expect(args, isNot(contains("-stream_loop")));
+      });
+
       test("a canvas with no panels plays as it always has", () async {
         var doc = const CanvasDocument(size: _page, frames: 3);
         var out = await renderVideo(doc, scale: 0.1, panels: PanelPace.quick);
@@ -262,6 +275,53 @@ printf '\\x00\\x00\\x00\\x18ftypisom' > "\$out"
         expect(
             int.parse(sent.split("=")[1].trim()), doc.playFrames * w * h * 4);
       });
+    });
+  });
+
+  // The real thing: a two-second tune under an eighteen-second reading.
+  testWidgets("with its music, the canvas's sound runs the whole reading",
+      (tester) async {
+    var ffmpeg = await tester.runAsync(ffmpegPath);
+    if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
+    await tester.runAsync(() async {
+      var root = await Directory.systemTemp.createTemp("panel-music");
+      CanvasStorage.rootOverride = root.path;
+      try {
+        var flac = path.join(root.path, "tune.flac");
+        await Process.run(ffmpeg, [
+          "-hide_banner", "-loglevel", "error", "-y", //
+          "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
+          "-t", "2", flac,
+        ]);
+        var id = (await CanvasMedia.saveFile(MediaKind.audio, flac))!;
+        var tune = AudioElement(const ElementBase(id: "tune"),
+            controls: const [],
+            clip: MediaClip(
+                playlist: [MediaSource(assetId: id, name: "tune", length: 2)],
+                timed: true,
+                volume: 1));
+        var doc = _book();
+        var scenes = [...doc.allScenes];
+        scenes[0] = scenes[0]
+            .copyWith(frames: 48, elements: [...scenes[0].elements, tune]);
+        doc = doc.withScenes(scenes, at: 0).copyWith(frameRate: 24);
+        var out = await renderVideo(doc,
+            scale: 0.1, panels: PanelPace.quick, panelMusic: true);
+        expect(out, isNotNull);
+        var file = path.join(root.path, "panels.mp4");
+        await File(file).writeAsBytes(out!.data);
+        var report = (await Process.run(ffmpeg, ["-hide_banner", "-i", file]))
+            .stderr
+            .toString();
+        expect(report, contains("Audio: aac"), reason: "the tune is in it");
+        var seconds =
+            PanelTimeline(panelSteps(doc), 24, PanelPace.quick).frames / 24;
+        expect(parseProbe(report)!.duration, closeTo(seconds, 0.3),
+            reason: "as long as the reading, the tune round again under it");
+      } finally {
+        CanvasStorage.rootOverride = null;
+        await root.delete(recursive: true);
+      }
     });
   });
 

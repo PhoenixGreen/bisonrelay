@@ -610,6 +610,29 @@ void main() {
       await enterValue(tester, opacity, "0.25");
       await tester.pumpAndSettle();
       expect(textIn(controller).textSpec.fill.opacity, 0.25);
+
+      // And slid inside its frame, as a share of it -- the same fields a
+      // picture in a Layout cell has (Ken, 2026-11-18: a face moved to the
+      // middle of its panel).
+      for (var (key, percent) in [
+        ("textFillPanX", "30"),
+        ("textFillPanY", "-20")
+      ]) {
+        var field = find.byKey(ValueKey(key));
+        await tester.ensureVisible(field);
+        await tester.pumpAndSettle();
+        await enterValue(tester, field, percent);
+        await tester.pumpAndSettle();
+      }
+      expect(textIn(controller).textSpec.fill.panX, closeTo(0.3, 1e-9));
+      expect(textIn(controller).textSpec.fill.panY, closeTo(-0.2, 1e-9));
+      var middle = find.byKey(const ValueKey("textFillPanReset"));
+      await tester.ensureVisible(middle);
+      await tester.pumpAndSettle();
+      await tester.tap(middle);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).textSpec.fill.panX, 0);
+      expect(textIn(controller).textSpec.fill.panY, 0);
     });
 
     testWidgets("the box can be painted with a picture or a pattern too",
