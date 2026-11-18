@@ -382,6 +382,12 @@ extension CanvasElementEditing on CanvasController {
   /// nudgeSelected moves everything chosen: the arrow keys.
   void nudgeSelected(double dx, double dy, {bool transient = false}) {
     if (_selection.isEmpty) return;
+    // A picture picked in a text's Layers moves alone, as its box on the
+    // canvas drags it (stage_text_pieces.dart).
+    if (_nudgedPiece(dx, dy) case var moved?) {
+      replaceElement(moved, transient: transient);
+      return;
+    }
     // With a picture's layers open and picture layers picked, the arrows
     // move those layers inside it; with the base picked, the picture.
     if (editingImage case var e?) {
@@ -398,6 +404,29 @@ extension CanvasElementEditing on CanvasController {
       next = next.withElement(_moved(element, dx, dy));
     }
     apply(next, transient: transient);
+  }
+
+  /// _nudgedPiece is the one selected text with its picked picture moved
+  /// [dx], [dy] on the page, or null where no picture is picked. Moved in the
+  /// text's own frame, so a turned text's picture goes the way the arrow
+  /// points; a piece held to the right-hand edge counts its side leftwards.
+  TextElement? _nudgedPiece(double dx, double dy) {
+    if (_selection.length != 1) return null;
+    var e = selected;
+    if (e is! TextElement || e.locked || e.curve != null) return null;
+    var item = textLayer(e);
+    if (item == null || !item.isIcon || item.hidden || item.locked) {
+      return null;
+    }
+    var turn = e.rotation * math.pi / 180;
+    var c = math.cos(turn), s = math.sin(turn);
+    var x = dx * c + dy * s, y = -dx * s + dy * c;
+    var across = item.slot.across == TextAlignSpec.right ? -1 : 1;
+    var moved =
+        item.copyWith(side: item.side + x * across, down: item.down + y);
+    return e.copyWith(items: [
+      for (var it in e.items) it.id == item.id ? moved : it,
+    ]);
   }
 
   /// alignSelected lines the chosen elements up on one edge or middle of the

@@ -313,6 +313,44 @@ void main() {
       expect(c.selection, {"t"});
     });
 
+    testWidgets("the arrows move it alone, Shift by ten", (tester) async {
+      // Ken: "move it using the arrows to do smaller more specific
+      // movement" -- they moved the whole text.
+      var (c, _) = await opened(tester);
+      var before = picture(c);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(picture(c).topLeft - before.topLeft,
+          offsetMoreOrLessEquals(const Offset(2, -1)));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(picture(c).topLeft - before.topLeft,
+          offsetMoreOrLessEquals(const Offset(2, 9)));
+      expect(c.document.elementById("t")!.bounds, withPicture().bounds,
+          reason: "the text stays where it was");
+      c.undo();
+      expect(picture(c).topLeft - before.topLeft,
+          offsetMoreOrLessEquals(const Offset(2, -1)),
+          reason: "each press its own step");
+    });
+
+    test("in a turned text, the way the arrow points", () {
+      var e = withPicture().withBase(rotation: 90) as TextElement;
+      var c = CanvasController(const CanvasDocument().addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly("t");
+      c.pickTextLayer("t", "pic");
+      c.nudgeSelected(10, 0);
+      var item = (c.document.elementById("t") as TextElement).items.single;
+      // A quarter turn clockwise: the page's right is the text's up.
+      expect(item.down, closeTo(-10, 1e-9));
+      expect(item.side, closeTo(0, 1e-9));
+    });
+
     test("its move and turn are kept", () {
       var item = const TextItem(
           id: "p",
