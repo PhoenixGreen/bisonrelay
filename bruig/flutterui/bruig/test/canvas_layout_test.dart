@@ -150,7 +150,11 @@ void main() {
   });
 
   group("docking", () {
-    test("a docked element follows its cell as a cut moves", () {
+    // Ken, 2026-11-18: moving and editing gutters "shouldn't edit the
+    // content in the panel e.g. it shouldn't make the content of a panel
+    // smaller or cropped"; what goes outside is hidden, and shows with the
+    // layout hidden.
+    test("a cut moved, tilted or widened leaves what is docked be", () {
       var layout = _two();
       var a = layoutPlaceOf(layout, layout.bounds, "a")!.bounds;
       var docked = ShapeElement(ElementBase(
@@ -161,13 +165,38 @@ void main() {
           height: 200,
           dock: "L:a"));
       var was = const CanvasDocument().addElement(layout).addElement(docked);
-      var moved = layout.copyWith(root: layout.root.withCut(at: 0.25));
-      var now = layoutsSynced(was, was.withElement(moved));
+      for (var edit in [
+        layout.root.withCut(at: 0.25),
+        layout.root.withCut(tilt: 12),
+        layout.root.withCut(gutter: 120),
+      ]) {
+        var now =
+            layoutsSynced(was, was.withElement(layout.copyWith(root: edit)));
+        var s = now.elementById("s")!;
+        expect(s.bounds, docked.bounds, reason: "not moved, sized or cut");
+      }
+      // And the layout resized from its far corner.
+      var bigger = layout.withBase(width: 600, height: 900);
+      expect(
+          layoutsSynced(was, was.withElement(bigger)).elementById("s")!.bounds,
+          docked.bounds);
+    });
+
+    test("the whole layout moved carries what is docked with it", () {
+      var layout = _two();
+      var docked = ShapeElement(const ElementBase(
+          id: "s", x: 150, y: 160, width: 80, height: 90, dock: "L:a"));
+      var loose = ShapeElement(const ElementBase(id: "t", x: 150));
+      var was = const CanvasDocument()
+          .addElement(layout)
+          .addElement(docked)
+          .addElement(loose);
+      var now =
+          layoutsSynced(was, was.withElement(layout.withBase(x: 130, y: 70)));
       var s = now.elementById("s")!;
-      var cell = layoutPlaceOf(moved, moved.bounds, "a")!.bounds;
-      expect(s.x, closeTo(cell.left + 10 * cell.width / a.width, 1e-6));
-      expect(s.width, closeTo((a.width - 20) * cell.width / a.width, 1e-6));
-      expect(s.height, 200, reason: "the cell's height did not change");
+      expect(s.bounds, const Rect.fromLTWH(180, 130, 80, 90),
+          reason: "by as far as the layout went, its size kept");
+      expect(now.elementById("t")!.x, 150, reason: "not docked: not moved");
     });
 
     test("one moved in the same change stays where it was put", () {
@@ -230,6 +259,11 @@ void main() {
       var out = doc.withElement(red.withBase(dockOut: true));
       expect(await at(out, Offset(a.right + 40, 400)), const Color(0xFFFF0000),
           reason: "breaking out, it reaches over");
+      var hidden =
+          doc.withElement(doc.elementById("L")!.withBase(visible: false));
+      expect(
+          await at(hidden, Offset(a.right + 40, 400)), const Color(0xFFFF0000),
+          reason: "the layout hidden, all of what is docked shows");
     });
   });
 

@@ -2,8 +2,9 @@ part of '../canvas_controller.dart';
 
 // Part of CanvasController: Layouts (layout_element.dart) -- the cell picked
 // in each, its cells split, merged, added and taken away, and elements
-// docked into a cell. What is docked follows its cell through
-// layoutsSynced (layout_sync.dart), on every change.
+// docked into a cell. What is docked moves with the whole layout through
+// layoutsSynced (layout_sync.dart), on every change; editing the cells
+// leaves it be.
 
 extension CanvasLayouts on CanvasController {
   /// layoutCell is the cell picked in layout [layoutId], or null for the

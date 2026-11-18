@@ -115,8 +115,8 @@ List<Widget> layoutSettings(
                         "rows; Free puts shapes anywhere. Double-click a cell "
                         "on the canvas to pick it; drag a cut or a grid line "
                         "to move it. Any element can be docked in a cell from "
-                        "its own Layout section: it is drawn inside it and "
-                        "moves with it.",
+                        "its own Layout section: it is drawn inside it, and "
+                        "moves with the layout.",
                     children: [
                       CanvasSegmented<LayoutMode>(
                         key: const ValueKey("layoutMode"),
@@ -413,9 +413,12 @@ Widget? dockGroup(CanvasController controller, CanvasElement e) {
   return CanvasControlGroup(
       key: const ValueKey("dockGroup"),
       label: "In a cell",
-      help: "Docked in a Layout's cell, it is drawn inside the cell and moves "
-          "and resizes with it as the layout changes. Break out lets it "
-          "reach over the cell's edge, as a figure does over a panel's line.",
+      help: "Docked in a Layout's cell, it is drawn inside the cell, and "
+          "moves when the whole layout is moved. Moving a cut or a gutter "
+          "leaves it as it is: what goes over the cell's edge is hidden, and "
+          "shows again while the layout is hidden in the layers. Break out "
+          "lets it reach over the edge, as a figure does over a panel's "
+          "line.",
       children: [
         CanvasDropdown<String>(
           key: const ValueKey("dockCell"),

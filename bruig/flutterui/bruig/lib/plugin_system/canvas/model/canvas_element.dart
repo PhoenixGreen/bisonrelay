@@ -244,8 +244,9 @@ class ElementBase {
   final String cast;
 
   /// dock is the Layout cell it is docked in, "layout id:cell id", or empty:
-  /// drawn clipped to the cell, and moved and sized with it as the layout
-  /// changes (layout_element.dart). [dockOut] lets it break out of the
+  /// drawn clipped to the cell, and moved when the whole layout is moved;
+  /// editing the layout's cells leaves it as it is (layout_sync.dart).
+  /// [dockOut] lets it break out of the
   /// cell's edge, as a figure does over a comic panel's line.
   final String dock;
   final bool dockOut;

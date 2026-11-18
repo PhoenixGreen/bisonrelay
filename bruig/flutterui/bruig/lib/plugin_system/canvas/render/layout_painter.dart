@@ -69,7 +69,8 @@ void paintLayoutCell(
 }
 
 /// dockedCell is the layout and cell [e] is docked in among [elements],
-/// or null where it is not docked, its layout has gone, or it breaks out.
+/// or null where it is not docked, its layout has gone or is hidden, or it
+/// breaks out.
 (LayoutElement, LayoutPlace)? dockedCell(
     CanvasElement e, List<CanvasElement> elements) {
   if (e.base.dock.isEmpty || e.base.dockOut) return null;
@@ -77,6 +78,9 @@ void paintLayoutCell(
   if (dock == null) return null;
   for (var l in elements) {
     if (l is LayoutElement && l.id == dock.$1) {
+      // Hidden, it hides nothing: what is docked shows whole, to be moved
+      // back inside its cell.
+      if (!l.visible) return null;
       var place = layoutPlaceOf(l, l.bounds, dock.$2);
       return place == null ? null : (l, place);
     }
