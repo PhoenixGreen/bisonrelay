@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
@@ -181,9 +183,6 @@ void paintCanvasDocument(
   String? hoveredButton,
   bool editing = false,
 
-  /// skipElement is a text element being typed into, under its text field.
-  String? skipElement,
-
   /// skipTextItem is the words of one piece of a text element (or its own
   /// words: textBodyWords) shown by an open editor; the rest is drawn.
   String? skipTextItem,
@@ -308,7 +307,6 @@ void paintCanvasDocument(
           images: images,
           editing: editing,
           hoveredButton: hoveredButton,
-          skipElement: skipElement,
           skipTextItem: skipTextItem,
           counterValue: counterValue,
           liveMotion: liveMotion,
@@ -346,7 +344,6 @@ void paintCanvasDocument(
       images: images,
       editing: editing,
       hoveredButton: hoveredButton,
-      skipElement: skipElement,
       skipTextItem: skipTextItem,
       counterValue: counterValue,
       liveMotion: liveMotion,
@@ -370,7 +367,6 @@ void _paintScene(
   CanvasImageSource? images,
   bool editing = false,
   String? hoveredButton,
-  String? skipElement,
   String? skipTextItem,
   double Function(CounterElement)? counterValue,
   LiveMotion? liveMotion,
@@ -401,7 +397,6 @@ void _paintScene(
   for (var element in inStageOrder(elements, frame,
       backdrop: doc.drawnBackground, page: doc.size.rect)) {
     if (!element.visible ||
-        element.id == skipElement ||
         hidden.contains(element.id) ||
         onMaps.contains(element.id)) {
       continue;
@@ -1057,6 +1052,15 @@ void paintElement(
             pose,
             () => paintCodeTask(canvas, bounds, e, document,
                 show: codeTaskShowOf?.call(e) ?? const CodeTaskShow()));
+      case PlayTaskElement e:
+        arriving(
+            canvas,
+            bounds,
+            const ElementAnimation(),
+            pose,
+            () => paintPlayTask(canvas, bounds, e,
+                show: playTaskShowOf?.call(e) ?? const PlayTaskShow(),
+                images: images));
       case CodeRunElement e:
         var code = document?.elementById(e.code);
         var preview = e.result?.preview ?? "";

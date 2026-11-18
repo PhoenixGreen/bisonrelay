@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
 import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
@@ -261,6 +263,7 @@ part 'controller/metronomes.dart';
 part 'controller/codes.dart';
 part 'controller/code_runs.dart';
 part 'controller/code_tasks.dart';
+part 'controller/play_tasks.dart';
 part 'controller/data_views.dart';
 part 'controller/data_sheets.dart';
 
@@ -326,6 +329,7 @@ class CanvasController extends ChangeNotifier {
     codeShowOf = codeShowFor;
     codeRunShowOf = codeRunShowFor;
     codeTaskShowOf = codeTaskShowFor;
+    playTaskShowOf = playTaskShowFor;
   }
 
   CanvasDocument _document;
@@ -1147,6 +1151,9 @@ class CanvasController extends ChangeNotifier {
   /// against (a fingerprint) and whether that built; _codeTaskBusy the
   /// cards checking now.
   final Map<String, (int, bool?)> _codeTaskChecks = {};
+
+  /// _playTasks is how far each play task card has got (play_tasks.dart).
+  final _playTasks = _PlayTaskState();
   final Set<String> _codeTaskBusy = {};
 
   /// codeRunHost runs code for Run panels: set by the app (the browser and

@@ -389,6 +389,8 @@ extension StagePress on CanvasStageState {
     // button, answer a press picked or not.
     if (element is CodeElement && _pressCode(element, doc)) return;
     if (element is CodeRunElement && _pressCodeRun(element, doc)) return;
+    // A play task's own steps, ticked by the student, and its Start again.
+    if (element is PlayTaskElement && _pressPlayTask(element, doc)) return;
     if (element is CodeTaskElement && codeTaskButtonAt(element, doc)) {
       if (controller.selection.length != 1 ||
           controller.selection.first != element.id) {

@@ -54,7 +54,9 @@ enum ElementKind {
   // What a Code panel's project makes, run (code_run_element.dart).
   codeRun("Run panel"),
   // A task marked against a Code panel's code (code_task_element.dart).
-  codeTask("Code task");
+  codeTask("Code task"),
+  // Steps ticked as an instrument's keys are played (play_task_element.dart).
+  playTask("Play task");
 
   final String label;
   const ElementKind(this.label);

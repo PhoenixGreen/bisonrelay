@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -57,6 +58,7 @@ List<(String, CanvasElement)> filledSamples() {
   var chart = newElement(ElementKind.chart, doc) as ChartElement;
   var code = newElement(ElementKind.code, doc) as CodeElement;
   var text = newElement(ElementKind.text, doc) as TextElement;
+  var task = newElement(ElementKind.playTask, doc) as PlayTaskElement;
   return [
     ("Team, filled", team.copyWith(players: players)),
     (
@@ -92,5 +94,13 @@ List<(String, CanvasElement)> filledSamples() {
       ])
     ),
     ("Text, filled", text.copyWith(text: "$long " * 60)),
+    (
+      "Play task, filled",
+      task.copyWith(text: "$long " * 4, checks: [
+        for (var (i, k) in PlayCheckKind.values.indexed)
+          PlayCheck(k, "$long step $i " * 3,
+              steps: "C2 C3+E3+G3 F#4 Bb5", count: 3, percent: 90),
+      ])
+    ),
   ];
 }

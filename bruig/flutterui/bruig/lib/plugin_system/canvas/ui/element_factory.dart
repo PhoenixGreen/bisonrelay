@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
@@ -107,6 +109,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.codeRun => Size(wide * 0.3, short * 0.78),
     // A card, a third of the page wide; its height is what it says.
     ElementKind.codeTask => Size(wide * 0.32, short * 0.3),
+    // Most of the page's width, under the music; its height is what it says.
+    ElementKind.playTask => Size(wide * 0.8, short * 0.2),
   };
 }
 
@@ -385,6 +389,14 @@ CanvasElement newElement(
             CodeCheck(CodeCheckKind.builds, "It builds and runs")
           ]);
       return card.withBase(height: codeTaskFitHeight(card, card.width));
+
+    // Listening to any instrument, with a first step to change.
+    case ElementKind.playTask:
+      var task = PlayTaskElement(base.copyWith(name: "Play task"),
+          checks: const [
+            PlayCheck(PlayCheckKind.keys, "Play Middle C", steps: "C4"),
+          ]);
+      return task.withBase(height: playTaskFitHeight(task, task.width));
 
     case ElementKind.codeRun:
       return CodeRunElement(base.copyWith(name: "Run"),

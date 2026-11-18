@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/ui/settings/play_task_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
@@ -149,6 +151,9 @@ List<Widget> elementSettings(
   }
   if (element is CodeElement) {
     return codeSettings(context, controller, element, write, begin, commit);
+  }
+  if (element is PlayTaskElement) {
+    return playTaskSettings(context, controller, element, write, begin, commit);
   }
   if (element is CodeTaskElement) {
     return codeTaskSettings(context, controller, element, write, begin, commit);

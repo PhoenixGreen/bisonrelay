@@ -21,6 +21,8 @@ const List<ElementKind> _addable = [
   ElementKind.audio,
   ElementKind.sheet,
   ElementKind.metronome,
+  // Steps ticked as the keys are played, under the music they practise.
+  ElementKind.playTask,
   ElementKind.video,
   ElementKind.background,
   ElementKind.player,
@@ -64,6 +66,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.code => Icons.code,
       ElementKind.codeRun => Icons.play_circle_outline,
       ElementKind.codeTask => Icons.fact_check_outlined,
+      ElementKind.playTask => Icons.piano,
     };
 
 class CanvasElementsPanel extends StatelessWidget {

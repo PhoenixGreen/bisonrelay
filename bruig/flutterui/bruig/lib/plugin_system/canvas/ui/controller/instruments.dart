@@ -172,6 +172,8 @@ extension CanvasInstruments on CanvasController {
     _heard();
     _soundOn(e, part, key, velocity);
     if (_practice != null) _practiceHeard(e, key);
+    // After the take's marks: a play-along step counts the note just heard.
+    _playTasksHeard(e, key);
     // Step input: written at the piano roll's cursor.
     stepNoteOn(CanvasController._channelOf(e), key, velocity);
     // Into the slot being recorded, if it is this channel's; otherwise into

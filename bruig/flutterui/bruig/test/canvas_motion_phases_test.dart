@@ -263,6 +263,7 @@ void main() {
           ElementKind.camera,
           ElementKind.synthTask,
           ElementKind.codeTask,
+          ElementKind.playTask,
           ElementKind.stage,
           ElementKind.parallax,
         }.contains(kind))
