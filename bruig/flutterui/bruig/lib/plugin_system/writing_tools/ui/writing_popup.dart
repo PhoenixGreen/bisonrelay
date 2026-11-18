@@ -208,16 +208,34 @@ class _WritingPopup extends StatelessWidget {
       change();
     }
 
+    // Turning a check off, which is one button for writing that belongs to
+    // no document and two for writing that does. Some rules are right for
+    // one piece and wrong for the next -- two spaces after a full stop --
+    // and "off" that could only mean everywhere made those a setting to be
+    // changed back and forth by hand.
+    List<Widget> turnOff() => [
+          if (prefs.document != null)
+            _action(theme, "Turn off in this document", () {
+              act(() => prefs.disableCheckHere(issue.checkId!,
+                  description: issue.ruleMessage));
+            }),
+          _action(
+              theme,
+              prefs.document != null
+                  ? "Turn off everywhere"
+                  : "Turn off this check", () {
+            act(() => prefs.disableCheck(issue.checkId!,
+                description: issue.ruleMessage));
+          }),
+        ];
+
     // The answer a check asks for, and the same pair the sidebar row offers --
     // see the note in issue_list_page.dart.
     if (issue.checkId != null && issue.kind.isCheck) {
       return [
         _action(theme, "Correct Usage",
             () => act(() => prefs.acceptUsage(issue.checkId!, issue.text))),
-        _action(theme, "Turn off this check", () {
-          act(() => prefs.disableCheck(issue.checkId!,
-              description: issue.ruleMessage));
-        }),
+        ...turnOff(),
       ];
     }
     if (issue.checkId != null) {
@@ -229,10 +247,7 @@ class _WritingPopup extends StatelessWidget {
         // the rule off for good or rewriting a sentence you were happy with.
         _action(theme, "Ignore once",
             () => act(() => prefs.ignoreMatch(issue.checkId!, issue.text))),
-        _action(theme, "Turn off this check", () {
-          act(() => prefs.disableCheck(issue.checkId!,
-              description: issue.ruleMessage));
-        }),
+        ...turnOff(),
       ];
     }
     return [

@@ -205,6 +205,28 @@ void main() {
     expect(capability(state).review("the payment"), isEmpty);
   });
 
+  // With a document open "off" is a choice of two: here, or everywhere.
+  // Pressed, not just looked for -- the button has to do what it says.
+  testWidgets("in a document, a check can be switched off there alone",
+      (tester) async {
+    var prefs = WritingPreferences()..document = "Drafts/Manuscript";
+    var state = await _open(tester, "the payment", 5, prefs: prefs, rules: [
+      GrammarRule(r"\bpayment\b", "Wordy", "fee"),
+    ]);
+
+    expect(find.text("Turn off this check"), findsNothing);
+    expect(find.text("Turn off everywhere"), findsOneWidget);
+    await tester.tap(find.text("Turn off in this document"));
+    await tester.pumpAndSettle();
+
+    expect(capability(state).review("the payment"), isEmpty);
+    expect(prefs.disabledChecks, isEmpty,
+        reason: "it was not turned off everywhere");
+    prefs.document = "Drafts/Another";
+    expect(capability(state).review("the payment"), hasLength(1),
+        reason: "the next document still has the check");
+  });
+
   // The second half of an old report: asking a thesaurus about a misspelling
   // can only ever return nothing, so it must not be offered.
   testWidgets("a misspelled word is not offered a lookup", (tester) async {

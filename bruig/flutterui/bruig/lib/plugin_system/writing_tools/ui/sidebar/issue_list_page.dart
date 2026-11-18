@@ -114,6 +114,30 @@ class _IssueRow extends StatelessWidget {
   /// telling me about this" belongs.
   List<Widget> _waysOut(ThemeNotifier theme) {
     var checkId = issue.checkId;
+    // One way to turn a rule off for writing that belongs to no document,
+    // and two for writing that does -- see the note in writing_popup.dart.
+    List<Widget> turnOff(String checkId) => prefs.document == null
+        ? [
+            dismissChip(
+                theme,
+                "Turn off",
+                () => prefs.disableCheck(checkId,
+                    description: issue.ruleMessage)),
+          ]
+        : [
+            dismissChip(
+                theme,
+                "Off in this document",
+                () => prefs.disableCheckHere(checkId,
+                    description: issue.ruleMessage)),
+            // The description is what names the rule in Settings. Without
+            // it the list there reads "check 1, check 2".
+            dismissChip(
+                theme,
+                "Off everywhere",
+                () => prefs.disableCheck(checkId,
+                    description: issue.ruleMessage)),
+          ];
     // A check asked a question, so it gets the answer the other kinds have no
     // use for. "Correct Usage" is the whole reason checks are a separate kind:
     // a reader who is told "brake" might be "break" and knows it is not needs
@@ -128,8 +152,7 @@ class _IssueRow extends StatelessWidget {
       return [
         dismissChip(theme, "Correct Usage",
             () => prefs.acceptUsage(checkId, issue.text)),
-        dismissChip(theme, "Turn off",
-            () => prefs.disableCheck(checkId, description: issue.ruleMessage)),
+        ...turnOff(checkId),
       ];
     }
     if (checkId == null) {
@@ -144,10 +167,7 @@ class _IssueRow extends StatelessWidget {
       // see the note in writing_popup.dart.
       dismissChip(
           theme, "Ignore once", () => prefs.ignoreMatch(checkId, issue.text)),
-      // The description is what names the rule in Settings. Without it the
-      // list there reads "check 1, check 2".
-      dismissChip(theme, "Turn off",
-          () => prefs.disableCheck(checkId, description: issue.ruleMessage)),
+      ...turnOff(checkId),
     ];
   }
 }

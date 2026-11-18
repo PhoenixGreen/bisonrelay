@@ -19,6 +19,7 @@ const _dictionaryKey = "writing.personalDictionary";
 const _disabledChecksKey = "writing.disabledChecks";
 const _acceptedUsagesKey = "writing.acceptedUsages";
 const _languageKey = "writing.language";
+const _documentChecksKey = "writing.documentChecks";
 
 /// WritingPreferences is the user's own overrides on top of whatever the
 /// enabled providers report.
@@ -69,6 +70,41 @@ class WritingPreferences extends ChangeNotifier {
   // provider disabled, which is when someone is most likely to be wondering
   // what they switched off.
   final Map<String, String> _disabledChecks = {};
+
+  // The checks turned off in one document only, by document and then by
+  // rule, each with its description as above.
+  //
+  // Some rules are right for one piece of writing and wrong for the next:
+  // two spaces after a full stop is a mistake in a post and the house style
+  // of somebody's manuscript. Turning the rule off everywhere and on again
+  // each time is not an answer, so the choice can be made per document.
+  final Map<String, Map<String, String>> _documentChecks = {};
+
+  /// The document whose own choices apply to what is being checked, or null
+  /// when what is being checked belongs to no document -- a chat message, a
+  /// comment, writing not yet filed anywhere.
+  ///
+  /// Set by whichever screen has a document open and cleared when it goes.
+  /// A name rather than anything richer: the library knows documents by
+  /// where they are, and tells this when one moves.
+  String? get document => _document;
+  String? _document;
+  set document(String? key) {
+    if (key == _document) return;
+    _document = key;
+    notifyListeners();
+  }
+
+  /// The checks turned off in [document] alone, by rule with its
+  /// description. Empty when no document is open.
+  Map<String, String> get documentDisabledChecks =>
+      Map.unmodifiable(_documentChecks[_document] ?? const {});
+
+  /// Every document with checks of its own turned off, for the settings
+  /// page.
+  Map<String, Map<String, String>> get allDocumentChecks => {
+        for (var e in _documentChecks.entries) e.key: Map.unmodifiable(e.value),
+      };
 
   // Persisted, and that is the whole difference between this and
   // _ignoredMatches above. A check asks a question about a word -- "brake"
@@ -133,6 +169,7 @@ class WritingPreferences extends ChangeNotifier {
     _dictionary.addAll(await _readSet(_dictionaryKey));
     _acceptedUsages.addAll(await _readSet(_acceptedUsagesKey));
     _disabledChecks.addAll(await _readChecks());
+    _documentChecks.addAll(await _readDocumentChecks());
     var stored = await StorageManager.readData(_languageKey);
     if (stored is String && stored.isNotEmpty) {
       _language = stored;
@@ -199,7 +236,11 @@ class WritingPreferences extends ChangeNotifier {
     return _ignoredThisSession.contains(key) || _dictionary.contains(key);
   }
 
-  bool isCheckDisabled(String pattern) => _disabledChecks.containsKey(pattern);
+  /// Whether a rule is off for what is being checked now: turned off
+  /// everywhere, or turned off in the open document.
+  bool isCheckDisabled(String pattern) =>
+      _disabledChecks.containsKey(pattern) ||
+      (_documentChecks[_document]?.containsKey(pattern) ?? false);
 
   /// _matchKey pairs a rule with the text it matched. The separator is a
   /// character neither part can contain, so no two pairs can collide by
@@ -289,6 +330,91 @@ class WritingPreferences extends ChangeNotifier {
     if (_disabledChecks.remove(pattern) == null) return;
     notifyListeners();
     await _writeChecks();
+  }
+
+  /// disableCheckHere turns a rule off in the open document and nowhere
+  /// else. With no document open there is no "here", and it does nothing.
+  Future<void> disableCheckHere(String pattern,
+      {String description = ""}) async {
+    var key = _document;
+    if (key == null) return;
+    var checks = _documentChecks[key] ??= {};
+    if (checks.containsKey(pattern)) return;
+    checks[pattern] = description;
+    notifyListeners();
+    await _writeDocumentChecks();
+  }
+
+  /// enableCheckHere turns a rule back on in [document], the open one unless
+  /// another is named.
+  Future<void> enableCheckHere(String pattern, {String? document}) async {
+    var key = document ?? _document;
+    var checks = _documentChecks[key];
+    if (checks == null || checks.remove(pattern) == null) return;
+    if (checks.isEmpty) _documentChecks.remove(key);
+    notifyListeners();
+    await _writeDocumentChecks();
+  }
+
+  /// documentMoved carries a document's choices to its new name. [from] and
+  /// [to] are a document each, or -- ending in a slash -- a folder each, in
+  /// which case every document under it follows.
+  Future<void> documentMoved(String from, String to) async {
+    var moved = <String, String>{};
+    for (var key in _documentChecks.keys) {
+      if (key == from) {
+        moved[key] = to;
+      } else if (from.endsWith("/") && key.startsWith(from)) {
+        moved[key] = to + key.substring(from.length);
+      }
+    }
+    if (_document == from) {
+      _document = to;
+    } else if (from.endsWith("/") && (_document?.startsWith(from) ?? false)) {
+      _document = to + _document!.substring(from.length);
+    }
+    if (moved.isEmpty) return;
+    for (var e in moved.entries) {
+      _documentChecks[e.value] = _documentChecks.remove(e.key)!;
+    }
+    notifyListeners();
+    await _writeDocumentChecks();
+  }
+
+  /// documentDeleted forgets a deleted document's choices, or a deleted
+  /// folder's where [key] ends in a slash. A document made later under the
+  /// same name is a new document and starts with none.
+  Future<void> documentDeleted(String key) async {
+    var before = _documentChecks.length;
+    _documentChecks.removeWhere(
+        (k, _) => k == key || (key.endsWith("/") && k.startsWith(key)));
+    if (_documentChecks.length == before) return;
+    notifyListeners();
+    await _writeDocumentChecks();
+  }
+
+  Future<Map<String, Map<String, String>>> _readDocumentChecks() async {
+    try {
+      var raw = await StorageManager.readData(_documentChecksKey);
+      if (raw is! String || raw.isEmpty) return {};
+      return (jsonDecode(raw) as Map<String, dynamic>).map((document, checks) =>
+          MapEntry(
+              document,
+              (checks as Map<String, dynamic>)
+                  .map((k, v) => MapEntry(k, v.toString()))));
+    } catch (exception) {
+      debugPrint("Unable to read $_documentChecksKey: $exception");
+      return {};
+    }
+  }
+
+  Future<void> _writeDocumentChecks() async {
+    try {
+      await StorageManager.saveData(
+          _documentChecksKey, jsonEncode(_documentChecks));
+    } catch (exception) {
+      debugPrint("Unable to save $_documentChecksKey: $exception");
+    }
   }
 
   Future<void> _writeChecks() async {

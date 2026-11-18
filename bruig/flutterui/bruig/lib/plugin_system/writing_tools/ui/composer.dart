@@ -7,6 +7,7 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/components/feed/post_column.dart';
 import 'package:bruig/components/feed/reading_selection.dart';
 import 'package:bruig/models/feed.dart';
+import 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
@@ -325,6 +326,13 @@ class _WritingComposerState extends State<WritingComposer> {
     var now = "${_library.openFolder}/${_library.openName}";
     if (now == _lastOpen) return;
     _lastOpen = now;
+    // The writing checks can be turned off in one document, so they have to
+    // know which one this is. Writing that has not been filed anywhere is
+    // no document, and only the choices made everywhere apply to it.
+    var name = _library.openName;
+    _writingPrefs?.document = name == null
+        ? null
+        : PostLibraryModel.documentKey(_library.openFolder, name);
     refreshPageState();
   }
 
@@ -558,6 +566,18 @@ class _WritingComposerState extends State<WritingComposer> {
       ..onAddEmbed = null;
     _postLibrary?.removeListener(syncTitle);
     _postLibrary?.removeListener(_openDocumentChanged);
+    // Whatever is checked after this screen has gone is not this document.
+    // Deferred: this runs while the tree is being taken down, and telling
+    // the preferences now would ask widgets to rebuild in the middle of it.
+    var prefs = _writingPrefs;
+    var library = _postLibrary;
+    if (prefs != null) {
+      if (library?.onDocumentMoved == prefs.documentMoved) {
+        library?.onDocumentMoved = null;
+        library?.onDocumentDeleted = null;
+      }
+      Future.microtask(() => prefs.document = null);
+    }
     _pagesModel?.removeListener(refreshPageState);
     titleFocus.dispose();
     contentFocus.dispose();
@@ -589,6 +609,7 @@ class _WritingComposerState extends State<WritingComposer> {
   // Captured for the same reason: an edit still inside the autosave debounce
   // when the editor goes away would otherwise be lost.
   PostLibraryModel? _postLibrary;
+  WritingPreferences? _writingPrefs;
 
   @override
   void initState() {
@@ -642,7 +663,12 @@ class _WritingComposerState extends State<WritingComposer> {
       // through a context that is no longer in the tree.
       _storeModel = Provider.of<StoreModel>(context, listen: false);
 
+      _writingPrefs = Provider.of<WritingPreferences>(context, listen: false);
       _postLibrary = Provider.of<PostLibraryModel>(context, listen: false)
+        // A document's own choice of checks is kept under its name, so the
+        // library says when that changes.
+        ..onDocumentMoved = _writingPrefs!.documentMoved
+        ..onDocumentDeleted = _writingPrefs!.documentDeleted
         ..watch(contentCtrl)
         ..addListener(syncTitle)
         // Which document is open decides what the publish menu offers, so

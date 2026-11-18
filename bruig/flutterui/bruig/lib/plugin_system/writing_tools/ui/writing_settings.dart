@@ -45,6 +45,7 @@ class WritingOverridesSection extends StatelessWidget {
     if (languages.length < 2 &&
         prefs.personalDictionary.isEmpty &&
         prefs.disabledChecks.isEmpty &&
+        prefs.allDocumentChecks.isEmpty &&
         prefs.acceptedUsages.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -60,6 +61,22 @@ class WritingOverridesSection extends StatelessWidget {
       for (var key in prefs.acceptedUsages)
         (key: key, text: WritingPreferences.describeUsage(key).$2)
     ]..sort((a, b) => a.text.compareTo(b.text));
+
+    var documentChecks = [
+      for (var document in prefs.allDocumentChecks.entries)
+        for (var check in document.value.entries)
+          (
+            document: document.key,
+            // A document is known by its folder and its name; the name is
+            // what the writer calls it.
+            name: document.key.substring(document.key.lastIndexOf("/") + 1),
+            id: check.key,
+            label: check.value.isEmpty ? check.key : check.value,
+          )
+    ]..sort((a, b) {
+        var byName = a.name.compareTo(b.name);
+        return byName != 0 ? byName : a.label.compareTo(b.label);
+      });
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (!inPluginPanel) ...[
@@ -91,6 +108,18 @@ class WritingOverridesSection extends StatelessWidget {
               label: Text(check.value.isEmpty ? check.key : check.value),
               onDeleted: () => prefs.enableCheck(check.key),
               tooltip: "Turn this check back on",
+            ),
+        ]),
+      if (documentChecks.isNotEmpty)
+        _chips("Checks you turned off in one document", [
+          // Named by the rule and then by the document, since the same rule
+          // can be off in several and each is a separate choice to undo.
+          for (var check in documentChecks)
+            InputChip(
+              label: Text("${check.label} \u2013 ${check.name}"),
+              onDeleted: () =>
+                  prefs.enableCheckHere(check.id, document: check.document),
+              tooltip: "Turn this check back on in ${check.name}",
             ),
         ]),
       if (usages.isNotEmpty)

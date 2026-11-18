@@ -180,12 +180,18 @@ import '../test/thesaurus_test.dart' as t173;
 import '../test/ulysses_guide_test.dart' as t174;
 import '../test/writing_analysis_test.dart' as t175;
 import '../test/writing_anchor_test.dart' as t176;
-import '../test/writing_dates_test.dart' as t177;
-import '../test/writing_ignore_test.dart' as t178;
-import '../test/writing_paragraph_scope_test.dart' as t179;
-import '../test/writing_prefs_test.dart' as t180;
-import '../test/writing_section_test.dart' as t181;
-import '../test/writing_stats_test.dart' as t182;
+import '../test/writing_benchmark_test.dart' as t177;
+import '../test/writing_dates_test.dart' as t178;
+import '../test/writing_document_checks_test.dart' as t179;
+import '../test/writing_ignore_test.dart' as t180;
+import '../test/writing_language_test.dart' as t181;
+import '../test/writing_not_prose_test.dart' as t182;
+import '../test/writing_paragraph_scope_test.dart' as t183;
+import '../test/writing_prefs_test.dart' as t184;
+import '../test/writing_rule_examples_test.dart' as t185;
+import '../test/writing_section_test.dart' as t186;
+import '../test/writing_spelling_quality_test.dart' as t187;
+import '../test/writing_stats_test.dart' as t188;
 
 void main() {
   group('area_gradient_test.dart', () {
@@ -896,28 +902,52 @@ void main() {
     setUpAll(betweenFiles);
     t176.main();
   });
-  group('writing_dates_test.dart', () {
+  group('writing_benchmark_test.dart', () {
     setUpAll(betweenFiles);
     t177.main();
   });
-  group('writing_ignore_test.dart', () {
+  group('writing_dates_test.dart', () {
     setUpAll(betweenFiles);
     t178.main();
   });
-  group('writing_paragraph_scope_test.dart', () {
+  group('writing_document_checks_test.dart', () {
     setUpAll(betweenFiles);
     t179.main();
   });
-  group('writing_prefs_test.dart', () {
+  group('writing_ignore_test.dart', () {
     setUpAll(betweenFiles);
     t180.main();
   });
-  group('writing_section_test.dart', () {
+  group('writing_language_test.dart', () {
     setUpAll(betweenFiles);
     t181.main();
   });
-  group('writing_stats_test.dart', () {
+  group('writing_not_prose_test.dart', () {
     setUpAll(betweenFiles);
     t182.main();
+  });
+  group('writing_paragraph_scope_test.dart', () {
+    setUpAll(betweenFiles);
+    t183.main();
+  });
+  group('writing_prefs_test.dart', () {
+    setUpAll(betweenFiles);
+    t184.main();
+  });
+  group('writing_rule_examples_test.dart', () {
+    setUpAll(betweenFiles);
+    t185.main();
+  });
+  group('writing_section_test.dart', () {
+    setUpAll(betweenFiles);
+    t186.main();
+  });
+  group('writing_spelling_quality_test.dart', () {
+    setUpAll(betweenFiles);
+    t187.main();
+  });
+  group('writing_stats_test.dart', () {
+    setUpAll(betweenFiles);
+    t188.main();
   });
 }

@@ -1,6 +1,8 @@
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/stats.dart';
+import 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // document_page.dart is how much there is of it: words, characters, sentences,
 // how long it takes to read and how hard it is.
@@ -20,6 +22,12 @@ class DocumentPage extends StatelessWidget {
     // here is a single pass over a message, which is nothing beside the spell
     // check already running on the same keystroke.
     var stats = WritingStats.of(text);
+    // What has been turned off in this document alone, where it can be seen
+    // and taken back without leaving the document. Null where the page is
+    // shown without the writing preferences above it.
+    var prefs = context.watch<WritingPreferences?>();
+    var offHere = (prefs?.documentDisabledChecks ?? const {}).entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
     var ease = stats.readingEaseLabel;
 
     return ListView(
@@ -55,6 +63,25 @@ class DocumentPage extends StatelessWidget {
                 color: theme.colors.onSurfaceVariant),
           ),
         ),
+        if (offHere.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 10),
+          Text("Checks turned off in this document",
+              style: TextStyle(
+                  fontSize: 11, color: theme.colors.onSurfaceVariant)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (var check in offHere)
+              InputChip(
+                visualDensity: VisualDensity.compact,
+                label: Text(check.value.isEmpty ? check.key : check.value,
+                    style: const TextStyle(fontSize: 11)),
+                onDeleted: () => prefs!.enableCheckHere(check.key),
+                tooltip: "Turn this check back on here",
+              ),
+          ]),
+        ],
       ],
     );
   }

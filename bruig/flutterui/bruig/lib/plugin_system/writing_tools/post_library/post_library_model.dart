@@ -219,6 +219,19 @@ class PostLibraryModel extends ChangeNotifier {
   /// does not delete a picture the composer is still holding.
   Set<String> Function()? alsoLive;
 
+  /// Told when a document is renamed or moved, and when one is deleted, by
+  /// whoever keeps something per document -- the writing checks turned off
+  /// in one document are kept by its name, and have to follow it.
+  ///
+  /// A document is named by [documentKey]; a folder by its name and a
+  /// trailing slash, standing for every document in it.
+  void Function(String from, String to)? onDocumentMoved;
+  void Function(String key)? onDocumentDeleted;
+
+  /// What a document is known by to anything that keeps a record per
+  /// document: its folder and its name.
+  static String documentKey(String folder, String name) => "$folder/$name";
+
   /// openFolderNamed goes into a folder, or back to the top with "".
   Future<void> openFolderNamed(String folder) async {
     _folder = folder;
@@ -350,6 +363,10 @@ class PostLibraryModel extends ChangeNotifier {
     if (entry.name == _openName && entry.folder == _openFolder) {
       _openFolder = toFolder;
     }
+    if (!entry.isFolder) {
+      onDocumentMoved?.call(documentKey(entry.folder, entry.name),
+          documentKey(toFolder, entry.name));
+    }
     await refresh();
     return true;
   }
@@ -452,6 +469,12 @@ class PostLibraryModel extends ChangeNotifier {
     if (!entry.isFolder && entry.folder == notesFolderName) {
       await NoteStorage.noteRenamed(entry.name, renamed);
     }
+    if (entry.isFolder) {
+      onDocumentMoved?.call("${entry.name}/", "$renamed/");
+    } else {
+      onDocumentMoved?.call(documentKey(entry.folder, entry.name),
+          documentKey(entry.folder, renamed));
+    }
     await refresh();
     return true;
   }
@@ -526,6 +549,9 @@ class PostLibraryModel extends ChangeNotifier {
 
   Future<void> delete(PostEntry entry) async {
     await PostStorage.delete(entry);
+    onDocumentDeleted?.call(entry.isFolder
+        ? "${entry.name}/"
+        : documentKey(entry.folder, entry.name));
     // Deleting what is open stops the autosave, which would otherwise write
     // the file straight back a second later.
     var deletedOpen = !entry.isFolder &&

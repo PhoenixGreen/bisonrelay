@@ -269,7 +269,24 @@ void _unpairedBracketTests() {
 
     // A real bracket beside an emoticon is still a real bracket.
     test("a genuine fault next to an emoticon is still caught", () {
-      expect(run("This (is unclosed :) really"), isNotEmpty);
+      expect(run("Sounds good :) but this (is unclosed"), isNotEmpty);
+      expect(run("Oh no :( and this is not opened)."), isNotEmpty);
+    });
+
+    // The same two characters as a face, doing a bracket's job. Skipped as
+    // faces, these left the bracket in front of them open and marked: every
+    // sum in a post about a budget.
+    test("a bracket that looks like a face still closes what is open", () {
+      for (var text in [
+        "the per block budget to (2889 / 8640 =) 0.34 DCR.",
+        "staking to (6.66 * 200 =) 112 DCR, and mining to (11.11 * 250 =) 2777",
+        "It is in the appendix (see page 8).",
+        "There are two kinds (as follows:) long and short.",
+        // And where it was a face after all, the bracket after it closes.
+        "It worked (well done :)) at last.",
+      ]) {
+        expect(run(text), isEmpty, reason: text);
+      }
     });
   });
 }
