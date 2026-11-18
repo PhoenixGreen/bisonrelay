@@ -1,12 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
+import 'package:bruig/plugin_system/canvas/render/layout_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
-    show panelRow, cell, CanvasQuickStrip;
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -46,6 +47,8 @@ List<Widget> layoutSettings(
   }
 
   var cells = e.shownCells;
+  // The previews are drawn again only when the layout's shape changes.
+  var shape = (e.width / math.max(1, e.height) * 50).round();
   var pickedId = controller.layoutCell(e.id);
   var picked = cells.where((c) => c.id == pickedId).firstOrNull;
   String nameOf(LayoutCell c) {
@@ -73,35 +76,37 @@ List<Widget> layoutSettings(
 
   return [
     elementPanel(context, controller, e, write, begin, commit,
-        quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
-          panelRow([
-            cell(
-                CanvasDropdown<LayoutPreset?>(
-                  key: const ValueKey("layoutPreset"),
-                  label: "Start from",
-                  value: null,
-                  options: [
-                    (null, "Choose a layout"),
-                    // By mode in the name: a group's heading would be a second
-                    // null beside "Choose a layout".
-                    for (var p in LayoutPreset.values)
-                      (p, "${p.mode.label} · ${p.label}"),
-                  ],
-                  onChanged: (p) {
-                    if (p == null) return;
-                    now(layoutFrom(e.base, p));
-                    controller.pickLayoutCell(e.id, null);
-                  },
-                ),
-                flex: 3),
-          ]),
-        ]),
         contentOpen: true,
         bits: [
           PanelBit(PanelSection.content,
               summary: "${e.mode.label} · ${cells.length} cell"
                   "${cells.length == 1 ? "" : "s"}",
               children: [
+                CanvasTiles<LayoutPreset>(
+                  key: const ValueKey("layoutPresets"),
+                  foldAs: "layout.tiles.preset",
+                  label: "Start from",
+                  help: "A ready-made layout: comic pages cut into panels, "
+                      "cards on a grid, or frames set out freely. Click one "
+                      "to start from it; what was docked in this layout is "
+                      "let go where it is.",
+                  columns: 3,
+                  previewHeight: 74,
+                  tiles: [
+                    for (var p in LayoutPreset.values)
+                      CanvasTile(p, p.label,
+                          drawnFrom: (p, shape),
+                          paint: (canvas, size) => paintLayoutPreview(
+                              canvas, size, p,
+                              boxSize: Size(e.width, e.height))),
+                  ],
+                  selected: (_) => false,
+                  keyOf: (p) => "layoutPreset-${p.name}",
+                  onPick: (p) {
+                    now(layoutFrom(e.base, p));
+                    controller.pickLayoutCell(e.id, null);
+                  },
+                ),
                 CanvasControlGroup(
                     key: const ValueKey("layoutCells"),
                     label: "Cells",

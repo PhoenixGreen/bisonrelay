@@ -137,6 +137,8 @@ extension StageDrag on CanvasStageState {
       case _DragMode.pieceMove || _DragMode.pieceSize || _DragMode.pieceTurn:
         _applyPiece(doc);
       case _DragMode.layoutCut ||
+            _DragMode.layoutCutTurn ||
+            _DragMode.layoutCutGutter ||
             _DragMode.layoutTrack ||
             _DragMode.layoutCellMove ||
             _DragMode.layoutCellSize ||

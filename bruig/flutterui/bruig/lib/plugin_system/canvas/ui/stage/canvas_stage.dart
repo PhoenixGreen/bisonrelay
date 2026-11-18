@@ -171,10 +171,13 @@ enum _DragMode {
   pieceSize,
   pieceTurn,
 
-  /// layoutCut and layoutTrack drag a Layout's cut or grid line;
+  /// layoutCut and layoutTrack drag a Layout's cut or grid line, and
+  /// layoutCutTurn and -Gutter a cut's tilt and gutter by its knobs;
   /// layoutCellMove, -Size and -Turn a picked Free cell. See
   /// stage_layouts.dart.
   layoutCut,
+  layoutCutTurn,
+  layoutCutGutter,
   layoutTrack,
   layoutCellMove,
   layoutCellSize,

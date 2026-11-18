@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -10,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/render/layout_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/painting.dart';
@@ -253,6 +255,37 @@ void main() {
     }
   });
 
+  testWidgets("every preset's preview, as the Start from card draws it",
+      (tester) async {
+    var dir = Platform.environment["LAYOUT_PNG"];
+    // A strip of previews at a tile's size, for a tall and a wide layout.
+    for (var (name, box) in [
+      ("tall", const Size(1116, 1579)),
+      ("wide", const Size(1728, 972)),
+    ]) {
+      const tile = Size(88, 74), gap = 8.0;
+      var rec = ui.PictureRecorder();
+      var canvas = ui.Canvas(rec);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 11 * (88 + gap), 74),
+          Paint()..color = const Color(0xFF1E2230));
+      for (var (i, p) in LayoutPreset.values.indexed) {
+        canvas.save();
+        canvas.translate(i * (tile.width + gap), 0);
+        paintLayoutPreview(canvas, tile, p, boxSize: box);
+        canvas.restore();
+      }
+      var pic = rec.endRecording();
+      if (dir == null) continue;
+      Directory(dir).createSync(recursive: true);
+      await tester.runAsync(() async {
+        var img = await pic.toImage(11 * (88 + 8), 74);
+        var png = await img.toByteData(format: ui.ImageByteFormat.png);
+        File("$dir/previews_$name.png")
+            .writeAsBytesSync(png!.buffer.asUint8List());
+      });
+    }
+  });
+
   group("on the canvas", () {
     Future<(CanvasController, CanvasStageState)> stage(
         WidgetTester tester, CanvasDocument doc) async {
@@ -302,6 +335,55 @@ void main() {
       expect(l.x, 100, reason: "the layout itself did not move");
     });
 
+    // A cut's line and the knobs on it, as the stage places them.
+    (LayoutCutLine, Offset, Offset) cutOf(LayoutElement l) {
+      var line = layoutCutLines(l, _bounds).single;
+      var along = line.to - line.from;
+      return (
+        line,
+        along / along.distance,
+        Offset(-along.dy, along.dx) / along.distance
+      );
+    }
+
+    testWidgets("a cut's ring knob tilts it", (tester) async {
+      var l = _two();
+      var (c, s) = await stage(tester, page(l));
+      c.selectOnly("L");
+      await tester.pumpAndSettle();
+      var (line, _, _) = cutOf(l);
+      var knob = Offset.lerp(line.from, line.to, 0.88)!;
+      await tester.timedDragFrom(s.toStagePoint(knob),
+          Offset(100 * scaleOf(s), 0), const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      // Now through the pivot and where the knob was let go.
+      var b = knob + const Offset(100, 0) - const Offset(600, 800);
+      var want = math.atan2(-b.dx, b.dy) * 180 / math.pi;
+      want = (want + 90) % 180 - 90;
+      var moved = c.document.elementById("L") as LayoutElement;
+      expect(moved.root.tilt, closeTo(want, 0.3));
+      expect(moved.root.tilt.abs(), greaterThan(5));
+      expect(moved.root.at, 0.5, reason: "it turns about its own place");
+    });
+
+    testWidgets("a cut's square knob widens its gutter", (tester) async {
+      var l = _two();
+      var (c, s) = await stage(tester, page(l));
+      c.selectOnly("L");
+      await tester.pumpAndSettle();
+      var (line, _, normal) = cutOf(l);
+      var knob = Offset.lerp(line.from, line.to, 0.25)! +
+          normal * math.max(10, 9 / scaleOf(s));
+      await tester.timedDragFrom(s.toStagePoint(knob), normal * 40 * scaleOf(s),
+          const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var moved = c.document.elementById("L") as LayoutElement;
+      expect(moved.root.gutter, closeTo(100, 2),
+          reason: "20, and twice the 40 it was pulled out by");
+      expect(moved.root.at, 0.5);
+      expect(moved.root.tilt, 0);
+    });
+
     testWidgets("Delete on a picked cell merges it", (tester) async {
       var (c, s) = await stage(tester, page(_two()));
       c.selectOnly("L");
@@ -338,6 +420,24 @@ void main() {
   });
 
   group("in the settings", () {
+    testWidgets("a preset is started from by its picture", (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(_two()));
+      addTearDown(c.dispose);
+      c.selectOnly("L");
+      setTestScreen(tester, const Size(1400, 1400));
+      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpAndSettle();
+      var tile = find.byKey(const ValueKey("layoutPreset-sixPanels"));
+      expect(tile, findsOneWidget, reason: "shut, a scrolling line of them");
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      var l = c.document.elementById("L") as LayoutElement;
+      expect(l.shownCells, hasLength(6));
+      expect(l.x, 100, reason: "in the place the old one had");
+    });
+
     testWidgets("a picked cell is cut down, and docked in", (tester) async {
       var doc = const CanvasDocument()
           .addElement(_two())

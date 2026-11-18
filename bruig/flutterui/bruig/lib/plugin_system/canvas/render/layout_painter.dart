@@ -6,6 +6,7 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
@@ -99,4 +100,28 @@ Path? dockClip(CanvasElement e, List<CanvasElement> elements) {
     0, 0, 1, 0,
     c.dx - cs * c.dx + sn * c.dy, c.dy - sn * c.dx - cs * c.dy, 0, 1,
   ]));
+}
+
+/// layoutPreviewPage is the page a preset's preview is drawn on: dark, so
+/// white gutters and light cards both show.
+const layoutPreviewPage = Color(0xFF454C5C);
+
+/// paintLayoutPreview draws preset [p] fitted in [size], laid out in a box
+/// of [boxSize] (the layout it would replace) so its gutters and lines are
+/// in the same proportion as they would be on the page -- that box held to
+/// at most 700 across, where they would vanish in a small picture.
+void paintLayoutPreview(ui.Canvas canvas, Size size, LayoutPreset p,
+    {Size boxSize = const Size(1116, 1579)}) {
+  if (size.isEmpty || boxSize.isEmpty) return;
+  var shrink = math.min(1.0, 700 / math.max(boxSize.width, boxSize.height));
+  var w = boxSize.width * shrink, h = boxSize.height * shrink;
+  var e = layoutFrom(ElementBase(id: "preview", width: w, height: h), p);
+  var fit = math.min((size.width - 6) / w, (size.height - 6) / h);
+  canvas.save();
+  canvas.translate((size.width - w * fit) / 2, (size.height - h * fit) / 2);
+  canvas.scale(fit);
+  var box = Rect.fromLTWH(0, 0, w, h);
+  canvas.drawRect(box, Paint()..color = layoutPreviewPage);
+  paintLayout(canvas, box, e);
+  canvas.restore();
 }

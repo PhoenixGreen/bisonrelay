@@ -1,7 +1,9 @@
 part of 'canvas_stage.dart';
 
 // A Layout (layout_element.dart) handled on the canvas. Selected, its lines
-// show: a Panels cut or a Grid line between tracks is dragged to move it.
+// show: a Panels cut or a Grid line between tracks is dragged to move it,
+// and each cut has two knobs -- a ring to tilt it, a square on its
+// gutter's edge to widen the gutter.
 // Double-clicked, the cell under the pointer is picked (its settings
 // show); a picked Free cell has the selection's handles, to move, size and
 // turn it. Delete takes the picked cell out (in Panels, merges it). Part of
@@ -42,6 +44,15 @@ extension StageLayouts on CanvasStageState {
       for (var t in layoutTrackLines(e, e.bounds))
         (_outOfLayout(e, t.from), _outOfLayout(e, t.to)),
     ];
+    var knobs = [
+      for (var c in layoutCutLines(e, e.bounds))
+        if (_cutKnobs(e, c) case var k?)
+          LayoutCutKnobs(
+              _outOfLayout(e, k.turn),
+              _outOfLayout(e, k.gutter),
+              (_outOfLayout(e, k.edgeA.$1), _outOfLayout(e, k.edgeA.$2)),
+              (_outOfLayout(e, k.edgeB.$1), _outOfLayout(e, k.edgeB.$2))),
+    ];
     Path? picked;
     var id = controller.layoutCell(e.id);
     if (id != null) {
@@ -52,8 +63,50 @@ extension StageLayouts on CanvasStageState {
             : place.path.transform(_turnMatrix(e.bounds.center, e.rotation));
       }
     }
-    return LayoutMarks(lines, picked);
+    return LayoutMarks(lines, picked, knobs: knobs);
   }
+
+  /// _cutKnobs is where [line]'s knobs are in [e]'s own frame: the turn
+  /// knob near its end, the gutter knob a quarter along on the gutter's
+  /// edge -- kept off the line, where a thin gutter would hide it -- and
+  /// the gutter's edges a short way either side of it.
+  ({
+    Offset turn,
+    Offset gutter,
+    (Offset, Offset) edgeA,
+    (Offset, Offset) edgeB
+  })? _cutKnobs(LayoutElement e, LayoutCutLine line) {
+    var node = e.root.nodeAt(line.path);
+    if (node == null || node.isLeaf) return null;
+    var along = line.to - line.from;
+    var length = along.distance;
+    if (length < 1e-6) return null;
+    var dir = along / length, normal = Offset(-dir.dy, dir.dx);
+    var half = _cutGutterOf(e, node) / 2;
+    var at = Offset.lerp(line.from, line.to, 0.25)!;
+    var reach = 18 / _scale;
+    return (
+      turn: Offset.lerp(line.from, line.to, 0.88)!,
+      gutter: at + normal * math.max(half, 9 / _scale),
+      edgeA: (
+        at + normal * half - dir * reach,
+        at + normal * half + dir * reach
+      ),
+      edgeB: (
+        at - normal * half - dir * reach,
+        at - normal * half + dir * reach
+      ),
+    );
+  }
+
+  static double _cutGutterOf(LayoutElement e, LayoutNode n) =>
+      n.gutter ?? (n.vertical ? e.gutter : e.rowGutter);
+
+  /// _cutPivot is the point a cut turns about, in its layout's frame: where
+  /// it crosses its box's middle, which its place (at) names.
+  static Offset _cutPivot(LayoutNode n, Rect box) => n.vertical
+      ? Offset(box.left + n.at * box.width, box.center.dy)
+      : Offset(box.center.dx, box.top + n.at * box.height);
 
   static Float64List _turnMatrix(Offset c, double degrees) {
     var a = degrees * math.pi / 180;
@@ -126,6 +179,21 @@ extension StageLayouts on CanvasStageState {
     if (_hitHandle(stage) != null) return false;
     var local = _intoLayout(e, doc);
     var reach = 10 / _scale;
+    // A cut's knobs before its line, as they sit on or beside it.
+    for (var line in layoutCutLines(e, e.bounds)) {
+      var k = _cutKnobs(e, line);
+      if (k == null) continue;
+      for (var (at, mode) in [
+        (k.turn, _DragMode.layoutCutTurn),
+        (k.gutter, _DragMode.layoutCutGutter),
+      ]) {
+        if ((local - at).distance <= 8 / _scale) {
+          _beginLayoutDrag(e, mode);
+          _layoutCut = line;
+          return true;
+        }
+      }
+    }
     for (var line in layoutCutLines(e, e.bounds)) {
       if (_toSegment(local, line.from, line.to) <= reach) {
         _beginLayoutDrag(e, _DragMode.layoutCut);
@@ -164,6 +232,43 @@ extension StageLayouts on CanvasStageState {
         controller.setLayout(
             start.copyWith(
                 root: start.root.replaced(line.path, node.withCut(at: at))),
+            transient: true);
+      case _DragMode.layoutCutTurn || _DragMode.layoutCutGutter:
+        var line = _layoutCut;
+        if (line == null) return;
+        var node = start.root.nodeAt(line.path);
+        if (node == null || node.isLeaf) return;
+        var from = _intoLayout(start, _dragStart);
+        LayoutNode next;
+        if (_mode == _DragMode.layoutCutTurn) {
+          // Turned by as much as the pointer has gone round the pivot.
+          var pivot = _cutPivot(node, line.box);
+          var a = from - pivot, b = local - pivot;
+          var swept =
+              (math.atan2(b.dy, b.dx) - math.atan2(a.dy, a.dx)) * 180 / math.pi;
+          swept = (swept + 540) % 360 - 180;
+          var tilt = node.tilt + swept;
+          tilt = _shiftHeld
+              ? (tilt / 5).round() * 5.0
+              : (tilt.abs() < 0.75 ? 0.0 : (tilt * 10).round() / 10);
+          next = node.withCut(tilt: tilt);
+        } else {
+          // Widened by twice how far the pointer has gone across the cut,
+          // as the gutter grows on both sides of it.
+          var along = line.to - line.from;
+          var length = along.distance;
+          if (length < 1e-6) return;
+          var normal = Offset(-along.dy, along.dx) / length;
+          var by =
+              (local - from).dx * normal.dx + (local - from).dy * normal.dy;
+          var gutter = (_cutGutterOf(start, node) + by * 2).clamp(0.0, 400.0);
+          next = node.withCut(
+              gutter: _shiftHeld
+                  ? (gutter / 10).round() * 10.0
+                  : gutter.roundToDouble());
+        }
+        controller.setLayout(
+            start.copyWith(root: start.root.replaced(line.path, next)),
             transient: true);
       case _DragMode.layoutTrack:
         var line = _layoutTrack;

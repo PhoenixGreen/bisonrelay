@@ -258,6 +258,8 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.pieceSize ||
         _mode == _DragMode.pieceTurn ||
         _mode == _DragMode.layoutCut ||
+        _mode == _DragMode.layoutCutTurn ||
+        _mode == _DragMode.layoutCutGutter ||
         _mode == _DragMode.layoutTrack ||
         _mode == _DragMode.layoutCellMove ||
         _mode == _DragMode.layoutCellSize ||

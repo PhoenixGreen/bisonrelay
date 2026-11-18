@@ -69,6 +69,28 @@ extension StagePainterMarks on StagePainter {
       canvas.drawCircle(Offset.lerp(a, b, 0.5)!, 5 / scale,
           Paint()..color = const Color(0xFF3D7EFF));
     }
+    // A cut's own knobs: a ring turns it, a square on its gutter's edge
+    // widens the gutter.
+    var blue = Paint()..color = const Color(0xFF3D7EFF);
+    var white = Paint()..color = const Color(0xFFFFFFFF);
+    var ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = thin * 1.4
+      ..color = const Color(0xFF3D7EFF);
+    var edge = Paint()
+      ..strokeWidth = thin
+      ..color = const Color(0xAA3D7EFF);
+    for (var k in marks.knobs) {
+      canvas.drawLine(k.edgeA.$1, k.edgeA.$2, edge);
+      canvas.drawLine(k.edgeB.$1, k.edgeB.$2, edge);
+      canvas.drawCircle(k.turn, 5.5 / scale, white);
+      canvas.drawCircle(k.turn, 5.5 / scale, ring);
+      canvas.drawCircle(k.turn, 1.8 / scale, blue);
+      var square =
+          Rect.fromCenter(center: k.gutter, width: 11 / scale, height: 11 / scale);
+      canvas.drawRect(square, white);
+      canvas.drawRect(square.deflate(1.5 / scale), blue);
+    }
     if (marks.picked case var path?) {
       canvas.drawPath(
           path,

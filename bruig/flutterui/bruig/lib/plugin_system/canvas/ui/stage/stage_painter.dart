@@ -94,7 +94,19 @@ List<CanvasElement> chosenOutlines(
 class LayoutMarks {
   final List<(Offset, Offset)> lines;
   final Path? picked;
-  const LayoutMarks(this.lines, this.picked);
+
+  /// knobs is each Panels cut's own: its turn knob, and its gutter knob
+  /// with the gutter's two edges beside it (see stage_layouts.dart).
+  final List<LayoutCutKnobs> knobs;
+  const LayoutMarks(this.lines, this.picked, {this.knobs = const []});
+}
+
+/// LayoutCutKnobs is where one cut's knobs are on the page: [turn] tilts
+/// it, [gutter] widens its gutter, whose edges run [edgeA] and [edgeB].
+class LayoutCutKnobs {
+  final Offset turn, gutter;
+  final (Offset, Offset) edgeA, edgeB;
+  const LayoutCutKnobs(this.turn, this.gutter, this.edgeA, this.edgeB);
 }
 
 /// StagePainter draws the document, page edge, handles and marquee.
