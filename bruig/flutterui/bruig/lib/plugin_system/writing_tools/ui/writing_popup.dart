@@ -183,10 +183,21 @@ class _WritingPopup extends StatelessWidget {
           ),
         Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _actions(context, theme, issue),
+          // One line, always. There are three of these where a document is
+          // open, and wrapped they came out one to a line -- a column of
+          // buttons under every explanation. Short labels fit as they are;
+          // at a larger text size the row is scaled to the popup's width
+          // rather than broken.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              for (var (i, action)
+                  in _actions(context, theme, issue).indexed) ...[
+                if (i > 0) const SizedBox(width: 6),
+                action,
+              ],
+            ]),
           ),
         ),
       ],
@@ -209,21 +220,20 @@ class _WritingPopup extends StatelessWidget {
     }
 
     // Turning a check off, which is one button for writing that belongs to
-    // no document and two for writing that does. Some rules are right for
+    // no document and two for writing that does: "here" is the document
+    // that is open, said in a word because the three have to share a line. Some rules are right for
     // one piece and wrong for the next -- two spaces after a full stop --
     // and "off" that could only mean everywhere made those a setting to be
     // changed back and forth by hand.
     List<Widget> turnOff() => [
           if (prefs.document != null)
-            _action(theme, "Turn off in this document", () {
+            _action(theme, "Off here", () {
               act(() => prefs.disableCheckHere(issue.checkId!,
                   description: issue.ruleMessage));
             }),
-          _action(
-              theme,
-              prefs.document != null
-                  ? "Turn off everywhere"
-                  : "Turn off this check", () {
+          _action(theme,
+              prefs.document != null ? "Off everywhere" : "Turn off this check",
+              () {
             act(() => prefs.disableCheck(issue.checkId!,
                 description: issue.ruleMessage));
           }),
@@ -276,6 +286,9 @@ class _WritingPopup extends StatelessWidget {
         visualDensity: VisualDensity.compact,
         backgroundColor: Colors.transparent,
         side: BorderSide(color: theme.colors.outlineVariant),
+        // Tighter than a chip's own padding, which is most of what three of
+        // them cost in a popup this narrow.
+        labelPadding: const EdgeInsets.symmetric(horizontal: 2),
         label: Text(label,
             style:
                 TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),

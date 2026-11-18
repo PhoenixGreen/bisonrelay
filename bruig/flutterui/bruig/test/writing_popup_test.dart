@@ -215,8 +215,8 @@ void main() {
     ]);
 
     expect(find.text("Turn off this check"), findsNothing);
-    expect(find.text("Turn off everywhere"), findsOneWidget);
-    await tester.tap(find.text("Turn off in this document"));
+    expect(find.text("Off everywhere"), findsOneWidget);
+    await tester.tap(find.text("Off here"));
     await tester.pumpAndSettle();
 
     expect(capability(state).review("the payment"), isEmpty);
@@ -226,6 +226,35 @@ void main() {
     expect(capability(state).review("the payment"), hasLength(1),
         reason: "the next document still has the check");
   });
+
+  // Three ways out where a document is open, and they came out one to a
+  // line: a column of buttons under every explanation. One line, at the
+  // text size the app is usually run at and at the larger ones.
+  for (var scale in [1.0, 1.25, 1.5]) {
+    testWidgets("the ways out of an issue share one line at ${scale}x",
+        (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      var prefs = WritingPreferences()..document = "Drafts/Manuscript";
+      await _open(tester, "the payment", 5, prefs: prefs, rules: [
+        GrammarRule(r"\bpayment\b", "Did you mean \"fee\"?", "fee",
+            "Possible confusion", "Why it asks.", "check"),
+      ]);
+
+      var tops = {
+        for (var label in ["Correct Usage", "Off here", "Off everywhere"])
+          tester.getCenter(find.text(label)).dy.round(),
+      };
+      expect(tops, hasLength(1), reason: "all three on the same line");
+      // And inside the popup, not run off the side of it.
+      var popup = tester.getRect(
+          find.byWidgetPredicate((w) => w is SizedBox && w.width == 320).first);
+      expect(tester.getRect(find.text("Off everywhere")).right,
+          lessThanOrEqualTo(popup.right - 14),
+          reason: "within the popup's own padding");
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   // The second half of an old report: asking a thesaurus about a misspelling
   // can only ever return nothing, so it must not be offered.
