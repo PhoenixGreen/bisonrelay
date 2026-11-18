@@ -943,6 +943,21 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
               allKey: "Border",
               sideKey: "Border",
               part: SidePart.sides),
+          // The border drawn inside the edge, a frame within the frame.
+          if (box.hasBorder)
+            CanvasNumberField(
+              key: ValueKey("${remember}BorderInset"),
+              label: "Inset",
+              value: box.borderInset,
+              min: 0,
+              max: 400,
+              width: 54,
+              onChanged: (v) {
+                begin();
+                onChanged(box.copyWith(borderInset: v));
+              },
+              onCommit: commit,
+            ),
           const CanvasLineBreak(),
           ...cornerFields(
               box.corners, (c) => onChanged(box.withCorners(c)), commit,

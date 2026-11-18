@@ -12,6 +12,8 @@ import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
+    show boxSummary;
 
 // chart_settings.dart is a chart's settings.
 
@@ -423,6 +425,13 @@ List<PanelBit> chartBits(
                 ]),
           // How a number is written, on its own line, not behind the grid's
           // button: a pie rules nothing but writes numbers on its slices.
+        ]),
+    // The card it is drawn on, title, key and all (ChartElement.box).
+    PanelBit(PanelSection.look,
+        summary: chartBoxIsPlain(e.box) ? "No card" : boxSummary(e.box),
+        children: [
+          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+              label: "Card", remember: "chartCard", rule: false),
         ]),
     if (!e.type.isCircular)
       PanelBit(PanelSection.look, summary: "Lines across the chart", children: [

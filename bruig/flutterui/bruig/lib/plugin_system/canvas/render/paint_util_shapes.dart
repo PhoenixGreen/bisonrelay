@@ -30,6 +30,7 @@ void paintBoxFill(ui.Canvas canvas, Rect rect, BoxSpec box,
 void paintBoxBorder(ui.Canvas canvas, Rect rect, BoxSpec box) {
   if (rect.width <= 0 || rect.height <= 0) return;
   if (!box.hasBorder) return;
+  var inset = box.borderInset;
 
   var paint =
       PaintSpec(box.borderColor, gradient: box.borderFade).into(Paint(), rect);
@@ -39,7 +40,9 @@ void paintBoxBorder(ui.Canvas canvas, Rect rect, BoxSpec box) {
     // Inset by half the stroke so the border sits inside the bounds and is
     // not half cut off on a full-bleed element.
     canvas.drawRRect(
-      box.rounded(rect, by: even / 2),
+      // Inset, with the box's own rounding rather than concentric corners,
+      // which a deep inset would square off.
+      box.rounded(inset > 0 ? rect.deflate(inset) : rect, by: even / 2),
       paint
         ..style = PaintingStyle.stroke
         ..strokeWidth = even,
@@ -51,6 +54,7 @@ void paintBoxBorder(ui.Canvas canvas, Rect rect, BoxSpec box) {
   // two widths at a rounded corner have no agreed shape.
   var sides = box.borders;
   paint.style = PaintingStyle.fill;
+  if (inset > 0) rect = rect.deflate(inset);
   if (sides.top > 0) {
     canvas.drawRect(
         Rect.fromLTWH(rect.left, rect.top, rect.width, sides.top), paint);

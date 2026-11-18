@@ -741,7 +741,13 @@ class BoxSpec {
     this.radTR,
     this.radBR,
     this.radBL,
+    this.borderInset = 0,
   });
+
+  /// borderInset draws the border that far inside the box's edge, with the
+  /// box's own rounding: a plaque's rule inside its frame. Uneven sides are
+  /// inset as strips.
+  final double borderInset;
 
   Corners get corners =>
       Corners(all: borderRadius, tl: radTL, tr: radTR, br: radBR, bl: radBL);
@@ -796,7 +802,8 @@ class BoxSpec {
   /// scaledBy sizes corners, padding and border widths by [by].
   BoxSpec scaledBy(double by) => withCorners(corners.scaledBy(by))
       .withRoom(pad.scaledBy(by))
-      .withBorders(borders.scaledBy(by));
+      .withBorders(borders.scaledBy(by))
+      .copyWith(borderInset: borderInset * by);
 
   /// withCorners and withRoom replace one whole set, overrides and all, not
   /// as copyWith, whose nulls keep the old overrides.
@@ -820,7 +827,8 @@ class BoxSpec {
       padL: padL,
       padT: padT,
       padR: padR,
-      padB: padB);
+      padB: padB,
+      borderInset: borderInset);
 
   BoxSpec withRoom(Room room) => BoxSpec(
       fill: fill,
@@ -842,7 +850,8 @@ class BoxSpec {
       padL: room.l,
       padT: room.t,
       padR: room.r,
-      padB: room.b);
+      padB: room.b,
+      borderInset: borderInset);
 
   /// withBorders replaces all four widths, as [withCorners] does.
   BoxSpec withBorders(Room room) => BoxSpec(
@@ -865,7 +874,8 @@ class BoxSpec {
       padL: padL,
       padT: padT,
       padR: padR,
-      padB: padB);
+      padB: padB,
+      borderInset: borderInset);
 
   /// withEvenPad sets all four sides, dropping overrides.
   BoxSpec withEvenPad(double padding) => withRoom(pad.withEven(padding));
@@ -897,6 +907,7 @@ class BoxSpec {
     double? radTR,
     double? radBR,
     double? radBL,
+    double? borderInset,
   }) =>
       BoxSpec(
         fill: fill ?? this.fill,
@@ -919,6 +930,7 @@ class BoxSpec {
         radTR: radTR ?? this.radTR,
         radBR: radBR ?? this.radBR,
         radBL: radBL ?? this.radBL,
+        borderInset: borderInset ?? this.borderInset,
       );
 
   Map<String, dynamic> toJson() => {
@@ -944,6 +956,7 @@ class BoxSpec {
         if (radTR != null) "rTR": radTR,
         if (radBR != null) "rBR": radBR,
         if (radBL != null) "rBL": radBL,
+        if (borderInset != 0) "bi": borderInset,
       };
 
   factory BoxSpec.fromJson(Map<String, dynamic> json) => BoxSpec(
@@ -976,6 +989,7 @@ class BoxSpec {
         radTR: json["rTR"] == null ? null : jsonDouble(json["rTR"], 0),
         radBR: json["rBR"] == null ? null : jsonDouble(json["rBR"], 0),
         radBL: json["rBL"] == null ? null : jsonDouble(json["rBL"], 0),
+        borderInset: jsonDouble(json["bi"], 0).clamp(0, 4000),
       );
 
   @override
@@ -992,9 +1006,10 @@ class BoxSpec {
           other.bwB == bwB &&
           other.borderColor == borderColor &&
           other.corners == corners &&
-          other.pad == pad;
+          other.pad == pad &&
+          other.borderInset == borderInset;
 
   @override
   int get hashCode => Object.hash(fill, fillFade, borderFade, borderWidth,
-      borderColor, corners, pad, borders);
+      borderColor, corners, pad, borders, borderInset);
 }

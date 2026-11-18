@@ -21,10 +21,17 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
+import 'dart:convert' show jsonEncode;
 
 // chart_element.dart is a chart as data and settings, painted from scratch
 // by render/chart_painter.dart on a ui.Canvas like every element, so it
 // exports at any size, animates and turns the same way.
+
+final String _plainBox = jsonEncode(const BoxSpec(padding: 0).toJson());
+
+/// chartBoxIsPlain is whether [box] draws nothing and keeps no room: a chart
+/// as made, with no card behind it.
+bool chartBoxIsPlain(BoxSpec box) => jsonEncode(box.toJson()) == _plainBox;
 
 /// ChartLabel is a title or description: shown or not, and where with
 /// [ChartElement.floatingLabels] (kept when that is off).
@@ -236,6 +243,11 @@ class ChartElement extends CanvasElement {
   /// past its end, the series' or the palette's. See sliceColour.
   final List<Color> sliceColors;
 
+  /// box is the card the chart is drawn on: its fill, border and corners
+  /// round everything, title and key included, and its padding the room
+  /// kept inside it (see chartInner). Clear and unpadded as made.
+  final BoxSpec box;
+
   /// titleSpec, labelSpec and valueSpec are its three type sizes, apart so
   /// a chart shrunk into a corner keeps a readable title.
   final TextSpec titleSpec;
@@ -383,6 +395,7 @@ class ChartElement extends CanvasElement {
     this.axisNumbers,
     this.axisSpec,
     this.axisGap = 0,
+    this.box = const BoxSpec(padding: 0),
     this.titleSpec = const TextSpec(fontSize: 28, weight: 700),
     this.labelSpec = const TextSpec(fontSize: 16, weight: 400),
     this.valueSpec = const TextSpec(fontSize: 14, weight: 600),
@@ -523,6 +536,7 @@ class ChartElement extends CanvasElement {
     bool axisFollowsValues = false,
     TextSpec? axisSpec,
     double? axisGap,
+    BoxSpec? box,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -595,6 +609,7 @@ class ChartElement extends CanvasElement {
           axisFollowsValues: axisFollowsValues,
           axisSpec: axisSpec,
           axisGap: axisGap,
+          box: box,
           titleSpec: titleSpec,
           labelSpec: labelSpec,
           valueSpec: valueSpec,
@@ -669,6 +684,7 @@ class ChartElement extends CanvasElement {
     bool axisFollowsValues = false,
     TextSpec? axisSpec,
     double? axisGap,
+    BoxSpec? box,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -742,6 +758,7 @@ class ChartElement extends CanvasElement {
               axisFollowsValues ? null : (axisNumbers ?? this.axisNumbers),
           axisSpec: axisSpec ?? this.axisSpec,
           axisGap: axisGap ?? this.axisGap,
+          box: box ?? this.box,
           titleSpec: titleSpec ?? this.titleSpec,
           labelSpec: labelSpec ?? this.labelSpec,
           valueSpec: valueSpec ?? this.valueSpec,
@@ -819,6 +836,7 @@ class ChartElement extends CanvasElement {
         if (sliceColors.isNotEmpty)
           "sliceColors": [for (var c in sliceColors) colorToJson(c)],
         "fallColor": colorToJson(fallColor),
+        if (!chartBoxIsPlain(box)) "box": box.toJson(),
         "titleSpec": titleSpec.toJson(),
         "labelSpec": labelSpec.toJson(),
         "valueSpec": valueSpec.toJson(),
@@ -923,6 +941,7 @@ class ChartElement extends CanvasElement {
           : const [],
       fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
       axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),
+      box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec(padding: 0)),
       titleSpec: jsonSpec(json["titleSpec"], TextSpec.fromJson,
           const TextSpec(fontSize: 28, weight: 700)),
       labelSpec: jsonSpec(json["labelSpec"], TextSpec.fromJson,

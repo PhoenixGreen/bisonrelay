@@ -556,6 +556,13 @@ bool leavesByItself(CanvasElement element) => switch (element) {
       _ => true,
     };
 
+/// _chartArea is where a chart in [bounds] is drawn: a little inside them,
+/// so it is not flush with its edges, or all of them for one on a card,
+/// whose padding keeps that room (ChartElement.box).
+Rect _chartArea(ChartElement e, Rect bounds) => chartBoxIsPlain(e.box)
+    ? bounds.deflate(bounds.shortestSide * 0.02)
+    : bounds;
+
 /// paintElement draws one element, with its animation pose applied.
 void paintElement(
   ui.Canvas canvas,
@@ -980,12 +987,12 @@ void paintElement(
             arrived < 1 &&
             document != null) {
           if (morphFrom(e, document) case var from?) {
-            paintMorph(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
-                from, from.bounds.deflate(from.bounds.shortestSide * 0.02), arrived);
+            paintMorph(canvas, _chartArea(e, bounds), e, from,
+                _chartArea(from, from.bounds), arrived);
             break;
           }
         }
-        paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
+        paintChart(canvas, _chartArea(e, bounds), e,
             reveal: arrived,
             close: pose.values[KeyframeChannel.close] ?? 0,
             seriesReveal: chartSeriesReveal(e, frame, frameRate,

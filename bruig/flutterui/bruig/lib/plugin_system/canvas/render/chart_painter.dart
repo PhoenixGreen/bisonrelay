@@ -26,8 +26,18 @@ import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 /// zero the closing preset runs in reverse. [seriesReveal] is reveal per
 /// series offset by ChartSeries.delay, or null; the renderer works it out
 /// (see chartSeriesReveal) because the delay is in seconds.
+/// chartInner is where a chart in [rect] lays out its title, key and plot:
+/// inside its card's padding (ChartElement.box).
+Rect chartInner(ChartElement e, Rect rect) =>
+    chartBoxIsPlain(e.box) ? rect : e.box.inner(rect);
+
 void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     {double reveal = 1, double close = 0, List<double>? seriesReveal}) {
+  // The card behind it all, then everything inside its padding.
+  if (!chartBoxIsPlain(e.box)) {
+    paintBox(canvas, rect, e.box);
+    rect = e.box.inner(rect);
+  }
   // A scatter sized by a third number: its first series drawn, each point
   // as big as the second says (by area); the second is no axis's.
   if (e.type == ChartType.scatter &&
@@ -141,7 +151,7 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
       notePart(ChartPartKind.legend, _legendBlock(e, was, 1));
     }
   } else if (chartParts != null) {
-    for (var MapEntry(:key, :value) in chartLabelPlaces(e, rect).entries) {
+    for (var MapEntry(:key, :value) in _labelPlaces(e, rect).entries) {
       notePart(
           switch (key) {
             ChartLabelPart.title => ChartPartKind.title,
@@ -215,7 +225,10 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
 /// chartLabelPlaces is where a floating chart draws its three pieces of
 /// writing, in the element's own coordinates. The stage hit-tests these, so
 /// they come from the painter's own measurement.
-Map<ChartLabelPart, Rect> chartLabelPlaces(ChartElement e, Rect rect) {
+Map<ChartLabelPart, Rect> chartLabelPlaces(ChartElement e, Rect rect) =>
+    _labelPlaces(e, chartInner(e, rect));
+
+Map<ChartLabelPart, Rect> _labelPlaces(ChartElement e, Rect rect) {
   if (!e.floatingLabels) {
     // With stacked labels only a key dragged off its slot floats to grab.
     if (e.showLegend && e.legend.hasPlace && e.data.series.isNotEmpty) {
@@ -457,7 +470,7 @@ List<(int, Rect)> chartLegendRects(ChartElement e, Rect bounds,
     {double reveal = 1}) {
   if (!e.showLegend || e.data.series.isEmpty) return const [];
 
-  var area = _legendArea(e, bounds);
+  var area = _legendArea(e, chartInner(e, bounds));
   var layout = _measureLegend(e, area, reveal);
   if (layout == null) return const [];
 
@@ -517,7 +530,7 @@ Rect _legendBlock(ChartElement e, Rect area, double reveal) {
 /// for the stage on a key's first drag, so it does not jump.
 Rect chartLegendBlock(ChartElement e, Rect bounds, {double reveal = 1}) {
   if (!e.showLegend || e.data.series.isEmpty) return Rect.zero;
-  return _legendBlock(e, _legendArea(e, bounds), reveal);
+  return _legendBlock(e, _legendArea(e, chartInner(e, bounds)), reveal);
 }
 
 /// _legend draws the key and returns what is left for the chart.
