@@ -32,6 +32,10 @@ import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart'
     show SceneTransition;
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:flutter/foundation.dart'
     show ValueListenable, listEquals, setEquals;
 import 'package:flutter/material.dart';

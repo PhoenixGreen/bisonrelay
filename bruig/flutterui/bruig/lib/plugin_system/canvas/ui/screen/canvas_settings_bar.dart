@@ -625,6 +625,78 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     ]);
   }
 
+  /// _pageValuesGroup is the shown page's own values (CanvasScene.values),
+  /// which a text on it -- usually one on the master canvas -- shows with
+  /// a {value:Name} field: the chapter a running head names, say.
+  Widget _pageValuesGroup(CanvasDocument document) {
+    var at = document.at;
+    var values = document.scene.values.entries.toList();
+    void put(List<MapEntry<String, String>> next, {bool transient = false}) {
+      var now = controller.document;
+      controller.apply(
+          now.withScene(
+              at,
+              now.scene.copyWith(values: {
+                for (var MapEntry(:key, :value) in next) key: value,
+              })),
+          transient: transient);
+    }
+
+    void typed(int i, {String? name, String? value}) {
+      controller.beginInteraction();
+      var list = controller.document.scene.values.entries.toList();
+      if (i >= list.length) return;
+      list[i] = MapEntry(name ?? list[i].key, value ?? list[i].value);
+      put(list, transient: true);
+    }
+
+    return CanvasControlGroup(label: "This page", children: [
+      for (var (i, MapEntry(:key, :value)) in values.indexed) ...[
+        CanvasTextField(
+          key: ValueKey("pageValueName$i"),
+          label: "Name",
+          value: key,
+          width: 90,
+          onChanged: (v) => typed(i, name: v),
+          onCommit: controller.endInteraction,
+        ),
+        CanvasTextField(
+          key: ValueKey("pageValue$i"),
+          label: "Value",
+          value: value,
+          width: 120,
+          onChanged: (v) => typed(i, value: v),
+          onCommit: controller.endInteraction,
+        ),
+        CanvasIconButton(
+          key: ValueKey("pageValueRemove$i"),
+          icon: Icons.close,
+          tooltip: "Remove this value",
+          // The values now, not as built: the panel is not rebuilt while
+          // a name is typed.
+          onPressed: () => put(
+              controller.document.scene.values.entries.toList()..removeAt(i)),
+        ),
+      ],
+      CanvasTextButton(
+        key: const ValueKey("pageValueAdd"),
+        label: "Add value",
+        icon: Icons.add,
+        onPressed: () {
+          var values = controller.document.scene.values.entries.toList();
+          var taken = {for (var v in values) v.key};
+          var name = "Value";
+          for (var n = 2; taken.contains(name); n++) {
+            name = "Value $n";
+          }
+          put([...values, MapEntry(name, "")]);
+        },
+      ),
+      const CanvasHint("A text shows one with {value:Name}, Name being the "
+          "value's name: on the master canvas, every page shows its own."),
+    ]);
+  }
+
   /// _audioGroup is the document's sound as a production: its destination
   /// preset, how it is written, and how loud. Tempo, metre and quantise are
   /// on the timeline's control bar.
@@ -968,6 +1040,13 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             onChanged: (v) => write(document.copyWith(
                 pages: document.pages.copyWith(countCovers: v))),
           ),
+          CanvasToggle(
+            key: const ValueKey("pagesMasterOnCovers"),
+            label: "Master on covers",
+            value: document.pages.masterOnCovers,
+            onChanged: (v) => write(document.copyWith(
+                pages: document.pages.copyWith(masterOnCovers: v))),
+          ),
           // Only where covers are counted, so a cover has a number to print.
           if (document.pages.countCovers)
             CanvasToggle(
@@ -980,12 +1059,17 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           CanvasHint(
               "Facing pages draws the page beside the one you are working "
               "on, so a spread is seen as it is read — every page is still "
-              "one page. Numbering is drawn by a counter element set to show "
-              "the page number: put one on the master canvas and every page "
-              "wears it. Covers are left out of the count unless you say "
-              "otherwise${document.pages.countCovers ? "" : ", and are never "
-                  "paired with another page"}."),
+              "one page. A page number is a text with the Page number field "
+              "in it (or a counter set to show the page number): put one on "
+              "the master canvas and every page wears it. Covers are left "
+              "out of the count unless you say otherwise"
+              "${document.pages.countCovers ? "" : ", and are never "
+                  "paired with another page"}, and show the master's "
+              "backdrop without its elements unless Master on covers is on."),
         ]),
+      // The shown page's own values, which a text's {value:Name} reads.
+      if (document.isPages && !document.editingMaster)
+        _pageValuesGroup(document),
       _audioGroup(document),
       // What changing the size does. On, the size is a resolution: the
       // design is drawn in its own space and scaled on the way out, so 4K is

@@ -5,6 +5,22 @@ part of 'stage_painter.dart';
 // stage_painter.dart.
 
 extension StagePainterMarks on StagePainter {
+  /// _skippedWords is the words an open editor draws itself, which the
+  /// canvas leaves out: a piece's id, textBodyWords for the paragraph, or
+  /// null while the canvas draws them under a see-through field.
+  String? _skippedWords(CanvasDocument document) {
+    var id = editingText;
+    if (id == null) return null;
+    var e = document.elementById(id);
+    if (e is! TextElement) return null;
+    TextItem? item;
+    for (var it in e.items) {
+      if (it.id == editingItem) item = it;
+    }
+    if (!editorDrawsWords(e, item)) return null;
+    return item?.id ?? textBodyWords;
+  }
+
   /// _paintContents is the page being edited as the editor shows it, without
   /// its backdrop unless [part] is all.
   void _paintContents(Canvas canvas, CanvasDocument document, int frame,
@@ -17,10 +33,9 @@ extension StagePainterMarks on StagePainter {
         camera: camera,
         images: images,
         hoveredButton: hoveredButton,
-        // The whole element while its paragraph is typed into; one piece
-        // while a piece is.
-        skipElement: editingItem == null ? editingText : null,
-        skipTextItem: editingItem,
+        // Only words the editor shows itself (see editorDrawsWords): the
+        // box and the other pieces stay, and usually nothing is left out.
+        skipTextItem: _skippedWords(document),
         counterValue: counterValue,
         liveMotion: live ?? liveMotion,
         counterPressed: counterPressed,

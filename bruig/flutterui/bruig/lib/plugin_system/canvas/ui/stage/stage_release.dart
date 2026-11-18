@@ -254,6 +254,9 @@ extension StageRelease on CanvasStageState {
     if (_mode == _DragMode.copies ||
         _mode == _DragMode.copySize ||
         _mode == _DragMode.copyTurn ||
+        _mode == _DragMode.pieceMove ||
+        _mode == _DragMode.pieceSize ||
+        _mode == _DragMode.pieceTurn ||
         _mode == _DragMode.move ||
         _mode == _DragMode.anchor ||
         _mode == _DragMode.resize ||

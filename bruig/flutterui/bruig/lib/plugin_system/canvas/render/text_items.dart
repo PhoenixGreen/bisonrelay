@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -12,6 +14,26 @@ import 'package:flutter/painting.dart';
 // text_items.dart lays out a text element's extra pieces. The painter and
 // the stage both ask it, so a click hits exactly what was drawn (as with
 // chartLegendRects).
+
+/// textBodyWords stands for the element's own words where a piece's id is
+/// asked for: the words an open editor shows itself, which the painter
+/// leaves out (see paintCanvasDocument's skipTextItem).
+const textBodyWords = "\u0000body";
+
+/// textWithFields is [e] with the fields in its words and pieces filled from
+/// the page [doc] shows (text_fields.dart), or [e] itself with none.
+TextElement textWithFields(TextElement e, CanvasDocument doc) {
+  var any = hasFields(e.text) || e.items.any((i) => hasFields(i.text));
+  if (!any) return e;
+  var f = doc.pageFields;
+  return e.copyWith(
+    text: fillFields(e.text, f),
+    items: [
+      for (var i in e.items)
+        hasFields(i.text) ? i.copyWith(text: fillFields(i.text, f)) : i,
+    ],
+  );
+}
 
 /// textItemRects is where each of [e]'s items is drawn, in the element's own
 /// coordinates and order. Items in one slot stack in the order added: down
@@ -60,6 +82,7 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
   double leadOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
   // Sideways, away from the edge the slot holds this piece to.
   double sideOf(int i) => i == 0 ? 0 : e.items[i - 1].side;
+  double downOf(int i) => i == 0 ? 0 : e.items[i - 1].down;
 
   var out = List<Rect>.filled(e.items.length + 1, Rect.zero);
   for (var slot in TextSlot.values) {
@@ -99,7 +122,8 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
         // it reads as left.
         TextAlignSpec.justify => inner.left + side,
       };
-      out[i] = Rect.fromLTWH(left, top, size.width, size.height);
+      // Moved on its own (TextItem.down), the stack keeping its place.
+      out[i] = Rect.fromLTWH(left, top + downOf(i), size.width, size.height);
       top += size.height;
     }
   }
@@ -156,14 +180,15 @@ void paintTextItems(
   LayerPainter? onLayer,
 
   /// skip is the piece with an editor open over it, whose words are being
-  /// drawn by a real text field instead. See CanvasTextEditor.
+  /// drawn by a real text field instead; its box is still drawn. See
+  /// CanvasTextEditor.
   String? skip,
 }) {
   if (e.items.isEmpty) return;
   var rects = textItemRects(e, bounds);
   for (var (i, item) in e.items.indexed) {
     var rect = rects[i];
-    if (rect.isEmpty || item.id == skip || item.hidden) continue;
+    if (rect.isEmpty || item.hidden) continue;
 
     // Its own share of the arrival, where the pieces come in turn: none of
     // it, box and all, before its turn.
@@ -180,6 +205,8 @@ void paintTextItems(
     paintBox(canvas, rect, item.box, images);
     var inner = item.box.inner(rect);
     if (inner.width <= 0 || inner.height <= 0) continue;
+    // Its words are in the editor's field: the box stays, under them.
+    if (item.id == skip) continue;
 
     var icon = item.icon;
     if (icon == null && item.text.isEmpty) continue;

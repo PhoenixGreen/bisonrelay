@@ -118,6 +118,7 @@ part 'stage_framing.dart';
 part 'stage_drag.dart';
 part 'stage_release.dart';
 part 'stage_3d_view.dart';
+part 'stage_text_pieces.dart';
 
 // canvas_stage.dart is the canvas you can touch: the document drawn through
 // the export's scene_renderer.dart, with handles over it and every gesture
@@ -157,6 +158,12 @@ enum _DragMode {
   /// by its own handles. See _applyCopyBox.
   copySize,
   copyTurn,
+
+  /// pieceMove, pieceSize and pieceTurn move, size or turn a text element's
+  /// picture piece by its own box. See stage_text_pieces.dart.
+  pieceMove,
+  pieceSize,
+  pieceTurn,
 
   /// warpMove, warpScale and warpTurn move, size or turn a warp grid's
   /// picked points; warpMarquee picks points with a box.
@@ -513,6 +520,10 @@ class CanvasStageState extends State<CanvasStage>
   /// for its own paragraph. See TextItem.
   String? _editingItem;
 
+  /// _editingClick is where the click that opened the editor landed,
+  /// globally, so the caret goes there. See CanvasTextEditor.clickAt.
+  Offset? _editingClick;
+
   /// _nodeIndex is the selected path's point being dragged, and
   /// _nodeHandleOut which handle, when a handle is. The path stays selected.
   int _nodeIndex = -1;
@@ -721,6 +732,14 @@ class CanvasStageState extends State<CanvasStage>
   /// _copyTurn are its own Size and Turn at the drag's start.
   Offset _copyPivot = Offset.zero;
   double _copySize = 1, _copyTurn = 0;
+
+  /// _pieceStart is the picture piece as it was when its box was pressed,
+  /// which a drag of it measures from. See stage_text_pieces.dart.
+  TextItem? _pieceStart;
+
+  /// _pieceMiddle is that piece's middle on the page at the press: what it
+  /// is sized and turned about.
+  Offset _pieceMiddle = Offset.zero;
 
   // ---- stage_vector_tools.dart --------------------------------------------
 
@@ -999,7 +1018,8 @@ class CanvasStageState extends State<CanvasStage>
         controller.endInteraction();
       case LogicalKeyboardKey.delete:
       case LogicalKeyboardKey.backspace:
-        controller.deleteSelected();
+        // A picked picture piece goes, not the text it is in.
+        if (!_removePiece()) controller.deleteSelected();
       case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter
           when controller.vectorPenShape >= 0:
         controller.finishPenShape();
@@ -1563,9 +1583,20 @@ class CanvasStageState extends State<CanvasStage>
         ? -1
         : element.items.indexWhere((item) => item.id == itemId);
     var item = at < 0 ? null : element.items[at];
+    var shows = editorDrawsWords(element, item);
 
-    var box = _editorRect ??=
-        item == null ? _editorBoxFor(element) : _itemEditorBoxFor(element, at);
+    // Where the words are laid out, worked out again on every keystroke as
+    // the painter does, so the field stays on them -- except text on a line,
+    // whose box is frozen where it opened (the letters move as they come).
+    var bounds = element.movedBoundsAt(controller.frame, controller.document,
+        live: controller.liveMotion);
+    var box = element.curve != null
+        ? (_editorRect ??= _editorBoxFor(element))
+        : item != null
+            ? _wordsBlockFor(element, bounds, item: item, at: at)
+            : bodyIsBlock(element)
+                ? _wordsBlockFor(element, bounds)
+                : bounds;
     var topLeft = _toStage(box.topLeft);
     return CanvasTextEditor(
       key: ValueKey("edit-$id-${item?.id ?? ""}"),
@@ -1573,7 +1604,10 @@ class CanvasStageState extends State<CanvasStage>
       item: item,
       rect: Rect.fromLTWH(
           topLeft.dx, topLeft.dy, box.width * _scale, box.height * _scale),
+      pivot: _toStage(bounds.center),
       scale: _scale,
+      showWords: shows,
+      clickAt: _editingClick,
       onChanged: (text) {
         controller.beginInteraction();
         controller.replaceElement(
@@ -1591,6 +1625,7 @@ class CanvasStageState extends State<CanvasStage>
           setState(() {
             _editingText = null;
             _editingItem = null;
+            _editingClick = null;
             _editorRect = null;
           });
         }
@@ -1598,52 +1633,47 @@ class CanvasStageState extends State<CanvasStage>
     );
   }
 
-  /// _itemEditorBoxFor is where an item's editor opens, with room to type.
-  Rect _itemEditorBoxFor(TextElement element, int at) {
-    var bounds = element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion);
-    var rect = textItemRects(element, bounds)[at];
-    var item = element.items[at];
+  /// _wordsBlockFor is where a block of words is laid out -- piece [item]
+  /// (at [at] in the list), or the element's own words given a slot -- as
+  /// wide as the painter lets them grow: the box's inner width less the
+  /// piece's own padding, held to the edge its slot holds it to.
+  Rect _wordsBlockFor(TextElement element, Rect bounds,
+      {TextItem? item, int at = -1}) {
     var inner = element.box.inner(bounds);
-    if (rect.isEmpty) rect = Rect.fromLTWH(inner.left, inner.top, 0, 0);
-
-    return _grownForTyping(rect, item.slot.across, inner,
-        item.spec.fontSize * item.spec.lineHeight);
-  }
-
-  /// _grownForTyping grows a block for typing from the edge its slot holds,
-  /// so the words stay put.
-  Rect _grownForTyping(
-      Rect rect, TextAlignSpec across, Rect inner, double line) {
-    var width = math.max(rect.width, math.max(line * 6, inner.width * 0.4));
-    width = math.min(width, inner.width);
-    var height = math.max(rect.height, line * 1.4);
-    var left = switch (across) {
-      TextAlignSpec.right => rect.right - width,
-      TextAlignSpec.center => rect.center.dx - width / 2,
-      _ => rect.left,
+    var slot = item?.slot ?? element.slot ?? TextSlot.topLeft;
+    var rect = item != null
+        ? textItemRects(element, bounds)[at]
+        : (textBodyRect(element, bounds) ?? inner);
+    var pad = item?.box.pad.insets ?? EdgeInsets.zero;
+    if (rect == Rect.zero) {
+      // Nothing laid out at all: the slot's corner of the box.
+      rect = Rect.fromLTWH(
+          switch (slot.across) {
+            TextAlignSpec.right => inner.right,
+            TextAlignSpec.center => inner.center.dx,
+            _ => inner.left,
+          },
+          inner.top,
+          0,
+          0);
+    }
+    var words = pad.deflateRect(rect);
+    var spec = item?.spec ?? drawnTextSpec(element, bounds);
+    var room = math.max(1.0, inner.width - pad.left - pad.right);
+    var left = switch (slot.across) {
+      TextAlignSpec.right => words.right - room,
+      TextAlignSpec.center => words.center.dx - room / 2,
+      _ => words.left,
     };
-    return Rect.fromLTWH(left, rect.top, width, height);
+    return Rect.fromLTWH(left, words.top, room,
+        math.max(words.height, spec.fontSize * spec.lineHeight));
   }
 
-  /// _editorBoxFor is where the editor opens: over the words wherever they
-  /// are (text on a line is outside its rectangle), not tight round them,
+  /// _editorBoxFor is where the editor opens over text on a line: over the
+  /// words wherever they are (outside its rectangle), not tight round them,
   /// with a minimum to type in, grown about its centre so the text stays put.
   Rect _editorBoxFor(TextElement element) {
     var box = _visualBounds(element);
-    // Words in a slot are a block, so the editor opens over it.
-    if (bodyIsBlock(element)) {
-      var bounds = element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion);
-      var rect = textBodyRect(element, bounds);
-      if (rect != null) {
-        return _grownForTyping(
-            rect,
-            element.slot!.across,
-            element.box.inner(bounds),
-            element.textSpec.fontSize * element.textSpec.lineHeight);
-      }
-    }
     if (element.curve == null) return box;
 
     var line = element.textSpec.fontSize * element.textSpec.lineHeight;

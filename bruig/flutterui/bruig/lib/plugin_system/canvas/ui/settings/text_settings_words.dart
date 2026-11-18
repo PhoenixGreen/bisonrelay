@@ -26,13 +26,42 @@ Widget textWordsCard(
       label: "Words",
       help: "Where the words come from and how they sit in the box: sized "
           "to fill it, read from a document in the library, or set around "
-          "whatever overlaps it.",
+          "whatever overlaps it. Field adds something each page fills in: "
+          "its number, the number of pages, the words of a text on the page "
+          "with the name you give, or a value set on the page. On the "
+          "master canvas each shows as #.",
       rule: false,
       children: [
         CanvasToggle(
           label: "Fit to box",
           value: e.autoSize,
           onChanged: (v) => now(e.copyWith(autoSize: v)),
+        ),
+        // A field the page fills in (text_fields.dart), put at the end of
+        // the words of the layer picked: its Name typed over on the canvas.
+        CanvasDropdown<TextFieldKind?>(
+          key: const ValueKey("textAddField"),
+          label: "Field",
+          value: null,
+          options: [
+            (null, "Add a field"),
+            for (var k in TextFieldKind.values) (k, k.label),
+          ],
+          onChanged: (kind) {
+            if (kind == null) return;
+            String joined(String words) => words.isEmpty || words.endsWith(" ")
+                ? "$words${kind.written}"
+                : "$words ${kind.written}";
+            var piece = controller.textLayer(e);
+            now(piece == null || piece.isIcon
+                ? e.copyWith(text: joined(e.text))
+                : e.copyWith(items: [
+                    for (var it in e.items)
+                      it.id == piece.id
+                          ? it.copyWith(text: joined(it.text))
+                          : it,
+                  ]));
+          },
         ),
         // Words of this shape's own, for several page shapes: a two-line
         // banner headline is four in a feed, so it needs fewer words. Off,

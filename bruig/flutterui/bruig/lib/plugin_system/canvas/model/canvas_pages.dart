@@ -77,11 +77,17 @@ class PagesSpec {
   /// [countCovers]: a magazine counts its cover as page one unprinted.
   final bool numbersOnCovers;
 
+  /// masterOnCovers draws the master canvas's elements on the covers too.
+  /// Off by default: a cover keeps the master's backdrop, but a running
+  /// head or a page number has no place on it.
+  final bool masterOnCovers;
+
   const PagesSpec({
     this.facing = false,
     this.startAt = 1,
     this.countCovers = false,
     this.numbersOnCovers = false,
+    this.masterOnCovers = false,
   });
 
   PagesSpec copyWith({
@@ -89,23 +95,30 @@ class PagesSpec {
     int? startAt,
     bool? countCovers,
     bool? numbersOnCovers,
+    bool? masterOnCovers,
   }) =>
       PagesSpec(
         facing: facing ?? this.facing,
         startAt: startAt ?? this.startAt,
         countCovers: countCovers ?? this.countCovers,
         numbersOnCovers: numbersOnCovers ?? this.numbersOnCovers,
+        masterOnCovers: masterOnCovers ?? this.masterOnCovers,
       );
 
   /// isDefault is every setting at its default, so nothing need be saved.
   bool get isDefault =>
-      !facing && startAt == 1 && !countCovers && !numbersOnCovers;
+      !facing &&
+      startAt == 1 &&
+      !countCovers &&
+      !numbersOnCovers &&
+      !masterOnCovers;
 
   Map<String, dynamic> toJson() => {
         if (facing) "facing": true,
         if (startAt != 1) "startAt": startAt,
         if (countCovers) "countCovers": true,
         if (numbersOnCovers) "numbersOnCovers": true,
+        if (masterOnCovers) "masterOnCovers": true,
       };
 
   factory PagesSpec.fromJson(Map<String, dynamic> json) => PagesSpec(
@@ -113,6 +126,7 @@ class PagesSpec {
         startAt: jsonInt(json["startAt"], 1),
         countCovers: jsonBool(json["countCovers"], false),
         numbersOnCovers: jsonBool(json["numbersOnCovers"], false),
+        masterOnCovers: jsonBool(json["masterOnCovers"], false),
       );
 }
 

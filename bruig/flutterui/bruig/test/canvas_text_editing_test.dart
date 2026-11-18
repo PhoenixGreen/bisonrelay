@@ -1,0 +1,328 @@
+import 'dart:ui' as ui;
+
+import 'support/canvas_app.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/text_items.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+// canvas_text_editing_test.dart is typing into a text element on the canvas:
+// what opening the editor leaves on the page. Ken found three faults: a
+// heading piece folded onto two lines with an underline under it as soon as
+// it was opened; opening the paragraph hid the element's box and every other
+// piece; and the words opened all selected rather than with a caret where
+// the click was.
+
+const _box = Color(0xFF123456);
+
+/// _card is a header like Learn Flutter's: a filled box, its paragraph at
+/// the bottom, and a title piece whose own box is an underline.
+TextElement _card() => const TextElement(
+      ElementBase(id: "t", x: 100, y: 100, width: 1100, height: 214),
+      text: "A profile card, from everything so far.",
+      textSpec: TextSpec(fontSize: 22, verticalAlign: VerticalAlignSpec.bottom),
+      box: BoxSpec(fill: _box, padding: 34),
+      items: [
+        TextItem(
+          id: "title",
+          text: "Putting It Together",
+          slot: TextSlot.topLeft,
+          gap: 12,
+          box: BoxSpec(
+              borderColor: Color(0xFF4F7DF8), bwB: 4, padding: 0, padB: 10),
+          spec: TextSpec(fontSize: 46, weight: 800, lineHeight: 1.12),
+        ),
+      ],
+    );
+
+void main() {
+  const viewport = Size(1000, 800);
+
+  Future<(CanvasController, CanvasStageState)> pump(
+      WidgetTester tester, TextElement element) async {
+    var controller =
+        CanvasController(const CanvasDocument().addElement(element));
+    addTearDown(controller.dispose);
+    var key = GlobalKey<CanvasStageState>();
+    setTestScreen(tester, viewport);
+    await tester.pumpWidget(canvasApp(SizedBox(
+        width: viewport.width,
+        height: viewport.height,
+        child: CanvasStage(key: key, controller: controller))));
+    await tester.pumpAndSettle();
+    return (controller, key.currentState!);
+  }
+
+  /// doubleClick presses twice at document point [at], as a person opening
+  /// the words does.
+  Future<void> doubleClick(WidgetTester tester, CanvasStageState stage,
+      CanvasController controller, Offset at) async {
+    var scale = stage.pageRect.width / controller.document.size.width;
+    var point = stage.pageRect.topLeft + at * scale;
+    await tester.tapAt(point);
+    await tester.pumpAndSettle();
+    await tester.tapAt(point);
+    await tester.pumpAndSettle();
+  }
+
+  RenderEditable editable(WidgetTester tester) => tester
+      .state<EditableTextState>(find.descendant(
+          of: find.byType(CanvasTextEditor),
+          matching: find.byType(EditableText)))
+      .renderEditable;
+
+  int linesIn(RenderEditable r) {
+    var boxes = r.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: r.plainText.length));
+    return {for (var b in boxes) b.top.round()}.length;
+  }
+
+  testWidgets("a heading piece opens on the line it is drawn on",
+      (tester) async {
+    // The field was exactly as wide as the words, and a TextField keeps room
+    // for its caret out of the width it wraps in: the last word fell onto a
+    // second line.
+    var e = _card();
+    var (controller, stage) = await pump(tester, e);
+    var title = textItemRects(e, e.bounds).single;
+    await doubleClick(tester, stage, controller, title.center);
+
+    expect(find.byType(CanvasTextEditor), findsOneWidget);
+    expect(tester.widget<CanvasTextEditor>(find.byType(CanvasTextEditor)).item,
+        isNotNull,
+        reason: "the click opened the title piece");
+    expect(linesIn(editable(tester)), 1, reason: "not folded onto two lines");
+  });
+
+  testWidgets("the field has no underline or fill of its own", (tester) async {
+    // The app's theme gives every field an underline, drawn here on the page.
+    var e = _card();
+    var (controller, stage) = await pump(tester, e);
+    await doubleClick(
+        tester, stage, controller, textItemRects(e, e.bounds).single.center);
+
+    var decorator = tester.widget<InputDecorator>(find.descendant(
+        of: find.byType(CanvasTextEditor),
+        matching: find.byType(InputDecorator)));
+    var d = decorator.decoration;
+    for (var border in [d.border, d.enabledBorder, d.focusedBorder]) {
+      expect(border == null || border == InputBorder.none, isTrue,
+          reason: "$border");
+    }
+    expect(d.filled, isNot(true));
+  });
+
+  testWidgets("opened words stay drawn by the canvas, the field see-through",
+      (tester) async {
+    // So nothing changes on the page when it opens: same size, same style,
+    // the box and the other pieces where they were. Only the caret shows.
+    var e = _card();
+    var (controller, stage) = await pump(tester, e);
+    var body = e.box.inner(e.bounds);
+    await doubleClick(
+        tester, stage, controller, Offset(body.left + 60, body.bottom - 10));
+
+    var editor = tester.widget<CanvasTextEditor>(find.byType(CanvasTextEditor));
+    expect(editor.item, isNull, reason: "the paragraph was opened");
+    expect(editor.showWords, isFalse);
+    var field = tester.widget<TextField>(find.descendant(
+        of: find.byType(CanvasTextEditor), matching: find.byType(TextField)));
+    expect(field.style!.color!.a, 0, reason: "the field's own words are clear");
+  });
+
+  testWidgets("words opened elsewhere keep their box and the other pieces",
+      (tester) async {
+    // Where the field must show the words itself (here, text set in two
+    // columns), the canvas leaves out those words alone.
+    var e = _card();
+    var recorder = ui.PictureRecorder();
+    var doc = const CanvasDocument().addElement(e);
+    paintCanvasDocument(ui.Canvas(recorder), doc,
+        frame: 0, skipTextItem: textBodyWords);
+    var picture = recorder.endRecording();
+    var image = await tester.runAsync(
+        () => picture.toImage(doc.size.width.round(), doc.size.height.round()));
+    var bytes = await tester
+        .runAsync(() => image!.toByteData(format: ui.ImageByteFormat.rawRgba));
+    Color at(Offset p) {
+      var i = (p.dy.round() * image!.width + p.dx.round()) * 4;
+      return Color.fromARGB(bytes!.getUint8(i + 3), bytes.getUint8(i),
+          bytes.getUint8(i + 1), bytes.getUint8(i + 2));
+    }
+
+    // A corner of the box, clear of every word.
+    expect(at(e.bounds.bottomRight - const Offset(8, 8)), _box,
+        reason: "the box is still drawn");
+    var title = textItemRects(e, e.bounds).single;
+    expect(at(Offset(title.left + 3, title.bottom - 2)), isNot(_box),
+        reason: "the title's underline is still drawn");
+    image!.dispose();
+    picture.dispose();
+  });
+
+  testWidgets("the caret goes where the click was", (tester) async {
+    var e = const TextElement(
+      ElementBase(id: "t", x: 100, y: 100, width: 1200, height: 120),
+      text: "Hello wonderful world",
+      textSpec: TextSpec(
+          fontSize: 40,
+          align: TextAlignSpec.left,
+          verticalAlign: VerticalAlignSpec.top),
+      box: BoxSpec(padding: 0),
+    );
+    var (controller, stage) = await pump(tester, e);
+    // Test fonts draw every letter a square as wide as the type is tall:
+    // between the sixth and seventh letters.
+    await doubleClick(
+        tester, stage, controller, const Offset(100 + 6 * 40, 120));
+    await tester.pump();
+
+    var field = tester.widget<TextField>(find.descendant(
+        of: find.byType(CanvasTextEditor), matching: find.byType(TextField)));
+    var selection = field.controller!.selection;
+    expect(selection.isCollapsed, isTrue, reason: "a caret, nothing selected");
+    expect(selection.baseOffset, inInclusiveRange(5, 7));
+  });
+
+  testWidgets("a new element's Text still opens selected", (tester) async {
+    var e = const TextElement(
+      ElementBase(id: "t", x: 100, y: 100, width: 600, height: 120),
+      text: "Text",
+    );
+    var (controller, stage) = await pump(tester, e);
+    await doubleClick(tester, stage, controller, e.bounds.center);
+    await tester.pump();
+
+    var field = tester.widget<TextField>(find.descendant(
+        of: find.byType(CanvasTextEditor), matching: find.byType(TextField)));
+    var selection = field.controller!.selection;
+    expect(selection.start, 0);
+    expect(selection.end, 4, reason: "typing replaces it");
+  });
+
+  group("a picture in a text", () {
+    // Ken: "selecting an icon hides the icon and shows an empty text editor;
+    // ideally, double clicking on an icon should allow you to remove, move,
+    // rotate and resize the icon by placing an edit box around it."
+    TextElement withPicture() => const TextElement(
+          ElementBase(id: "t", x: 200, y: 200, width: 800, height: 400),
+          text: "Words",
+          box: BoxSpec(padding: 20),
+          items: [
+            TextItem(
+                id: "pic",
+                slot: TextSlot.topRight,
+                icon: TextIcon(assetId: "asset1", size: 100)),
+          ],
+        );
+
+    Rect picture(CanvasController c) {
+      var e = c.document.elementById("t") as TextElement;
+      return textItemRects(e, e.bounds).single;
+    }
+
+    Future<(CanvasController, CanvasStageState)> opened(
+        WidgetTester tester) async {
+      var e = withPicture();
+      var (c, s) = await pump(tester, e);
+      await doubleClick(tester, s, c, picture(c).center);
+      return (c, s);
+    }
+
+    TextItem pic(CanvasController c) =>
+        (c.document.elementById("t") as TextElement).items.single;
+
+    testWidgets("a double-click picks it, with no editor", (tester) async {
+      var (c, s) = await opened(tester);
+      expect(find.byType(CanvasTextEditor), findsNothing);
+      var e = c.document.elementById("t") as TextElement;
+      expect(c.textLayer(e)?.id, "pic");
+      var scale = s.pageRect.width / c.document.size.width;
+      expect(
+          s.handleAt(StageHandle.bottomRight),
+          offsetMoreOrLessEquals(
+              s.pageRect.topLeft + picture(c).bottomRight * scale,
+              epsilon: 1),
+          reason: "the box is round the picture, not the text");
+    });
+
+    testWidgets("dragged inside its box it moves, alone", (tester) async {
+      var (c, s) = await opened(tester);
+      var scale = s.pageRect.width / c.document.size.width;
+      var before = picture(c);
+      await tester.timedDragFrom(s.toStagePoint(before.center),
+          const Offset(-60, 40) * scale, const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(picture(c).center - before.center,
+          offsetMoreOrLessEquals(const Offset(-60, 40), epsilon: 1));
+      expect(c.document.elementById("t")!.bounds, withPicture().bounds,
+          reason: "the text stays where it was");
+    });
+
+    testWidgets("a corner sizes it and the ring turns it", (tester) async {
+      var (c, s) = await opened(tester);
+      var scale = s.pageRect.width / c.document.size.width;
+      // Pulled to twice as far from its middle: twice the size.
+      var corner = s.handleAt(StageHandle.bottomRight);
+      await tester.timedDragFrom(corner, const Offset(50, 50) * scale,
+          const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(pic(c).icon!.size, closeTo(200, 2));
+
+      // From above its middle round to its right: a quarter turn.
+      var mid = s.toStagePoint(picture(c).center);
+      var ring = s.handleAt(StageHandle.rotate);
+      var to = mid + Offset((ring - mid).distance, 0);
+      await tester.timedDragFrom(
+          ring, to - ring, const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(pic(c).icon!.turn, closeTo(90, 1));
+      expect(c.document.elementById("t")!.rotation, 0,
+          reason: "the text itself is not turned");
+    });
+
+    testWidgets("Delete takes the picture out, not the text", (tester) async {
+      var (c, _) = await opened(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pumpAndSettle();
+      var e = c.document.elementById("t") as TextElement?;
+      expect(e, isNotNull);
+      expect(e!.items, isEmpty);
+    });
+
+    testWidgets("a press elsewhere on the text is the text's again",
+        (tester) async {
+      var (c, s) = await opened(tester);
+      var e = c.document.elementById("t") as TextElement;
+      await tester
+          .tapAt(s.toStagePoint(e.bounds.bottomLeft + const Offset(60, -60)));
+      await tester.pumpAndSettle();
+      expect(c.textLayer(c.document.elementById("t") as TextElement), isNull);
+      expect(c.selection, {"t"});
+    });
+
+    test("its move and turn are kept", () {
+      var item = const TextItem(
+          id: "p",
+          side: 900,
+          down: -30,
+          icon: TextIcon(assetId: "a", turn: 45));
+      var back = TextItem.fromJson(item.toJson());
+      expect(back.side, 900, reason: "further than the old 400 cap");
+      expect(back.down, -30);
+      expect(back.icon!.turn, 45);
+    });
+  });
+}

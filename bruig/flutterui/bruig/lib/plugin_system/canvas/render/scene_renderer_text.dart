@@ -11,7 +11,11 @@ void _paintText(
     String? skipItem,
     LayerPainter? onLayer}) {
   _paintTextBody(canvas, bounds, e, doc,
-      pose: pose, frame: frame, images: images, onLayer: onLayer);
+      pose: pose,
+      frame: frame,
+      images: images,
+      onLayer: onLayer,
+      showWords: skipItem != textBodyWords);
   // The extra pieces of writing, over the paragraph in the same box: out
   // here because the body returns from many places. Not on a line (no box).
   if (e.items.isEmpty || _curveFor(e, doc, frame) != null) return;
@@ -29,9 +33,14 @@ void _paintTextBody(
     {Keyframe pose = Keyframe.rest,
     int frame = 0,
     CanvasImageSource? images,
-    LayerPainter? onLayer}) {
+    LayerPainter? onLayer,
+
+    /// showWords false leaves the words out and draws the rest: an editor open
+    /// on them shows them itself. See textBodyWords.
+    bool showWords = true}) {
   // The words with the looks laid on them alone, where there are any.
   void letters(ui.Canvas canvas, Rect box, void Function(ui.Canvas) draw) {
+    if (!showWords) return;
     if (onLayer == null) return draw(canvas);
     onLayer(canvas, box, MotionDevice.bodyLayer, draw);
   }

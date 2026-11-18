@@ -92,6 +92,11 @@ class TextItem {
   /// (rightwards for left or middle slots); negative moves it the other way.
   final double side;
 
+  /// down moves the piece down (up, negative) from where its slot puts it,
+  /// leaving the rest of its slot's stack where it was: a picture dragged
+  /// on the canvas. [side] is the sideways move.
+  final double down;
+
   /// hidden leaves the piece out of the drawing while it keeps its place.
   final bool hidden;
 
@@ -108,6 +113,7 @@ class TextItem {
     this.box = const BoxSpec(padding: 0),
     this.gap = 0,
     this.side = 0,
+    this.down = 0,
     this.hidden = false,
     this.locked = false,
   });
@@ -142,6 +148,7 @@ class TextItem {
     BoxSpec? box,
     double? gap,
     double? side,
+    double? down,
     bool? hidden,
     bool? locked,
   }) =>
@@ -155,6 +162,7 @@ class TextItem {
         box: box ?? this.box,
         gap: gap ?? this.gap,
         side: side ?? this.side,
+        down: down ?? this.down,
         hidden: hidden ?? this.hidden,
         locked: locked ?? this.locked,
       );
@@ -167,6 +175,7 @@ class TextItem {
         box: box.scaledBy(by),
         gap: gap * by,
         side: side * by,
+        down: down * by,
       );
 
   /// says is what the panel calls this item: its name, "Picture", its first
@@ -186,6 +195,7 @@ class TextItem {
         "slot": slot.name,
         if (gap != 0) "gap": gap,
         if (side != 0) "side": side,
+        if (down != 0) "dn": down,
         if (icon != null) "icon": icon!.toJson(),
         if (jsonEncode(box.toJson()) != _plainBox) "box": box.toJson(),
         "spec": spec.toJson(),
@@ -204,6 +214,7 @@ class TextItem {
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)
             : 0,
         side: _side(json["side"]) ?? 0,
+        down: _side(json["dn"]) ?? 0,
         box: json["box"] is Map<String, dynamic>
             ? BoxSpec.fromJson((json["box"] as Map).cast<String, dynamic>())
             : const BoxSpec(padding: 0),
@@ -218,5 +229,7 @@ class TextItem {
       );
 }
 
+/// _side reads a sideways or downward move: as far as a page is wide, as a
+/// picture may be dragged right across its box.
 double? _side(Object? raw) =>
-    raw is num ? raw.toDouble().clamp(-400.0, 400.0) : null;
+    raw is num && raw.isFinite ? raw.toDouble().clamp(-4000.0, 4000.0) : null;

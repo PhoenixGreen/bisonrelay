@@ -205,6 +205,9 @@ extension StagePress on CanvasStageState {
       return;
     }
 
+    // A picture piece's own box first: its handles, or a drag inside it.
+    if (_pressPiece(stage, doc)) return;
+
     // No flow grips or resize handles when the press is on a piece of text
     // drawn outside its box: see _looseTextPiece.
     if (_looseTextPiece(doc) == null) {
@@ -595,9 +598,18 @@ extension StagePress on CanvasStageState {
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
         clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow) {
+      // A picture has no words: it is picked, which gives it its own box
+      // to move, size, turn or delete (stage_text_pieces.dart).
+      var piece = _textItemAt(element, doc);
+      if (piece != null && piece.isIcon) {
+        controller.pickTextLayer(element.id, piece.id);
+        _mode = _DragMode.none;
+        return;
+      }
       setState(() {
         _editingText = element.id;
-        _editingItem = _textItemAt(element, doc)?.id;
+        _editingItem = piece?.id;
+        _editingClick = _pointer?.position;
       });
       // Pick the typed piece in Layers, so its settings show.
       controller.pickTextLayer(element.id, _editingItem);

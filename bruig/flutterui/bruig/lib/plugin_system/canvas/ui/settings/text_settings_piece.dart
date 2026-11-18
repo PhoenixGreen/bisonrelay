@@ -472,6 +472,17 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
         onChanged: (v) => live(icon.copyWith(size: v)),
         onCommit: commit,
       ),
+      // Also turned by its box on the canvas (double-click the picture).
+      CanvasNumberField(
+        key: ValueKey("textItemTurn$at"),
+        label: "Turn",
+        value: icon.turn,
+        min: -180,
+        max: 180,
+        width: 56,
+        onChanged: (v) => live(icon.copyWith(turn: v)),
+        onCommit: commit,
+      ),
       CanvasColorButton(
         label: "Tint",
         color: icon.color ?? e.textSpec.color,

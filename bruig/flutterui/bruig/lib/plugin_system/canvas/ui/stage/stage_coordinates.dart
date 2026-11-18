@@ -290,6 +290,8 @@ extension StageCoordinates on CanvasStageState {
     if (_oneCopy case (var e, var i)?) {
       return e.boundsWith(_copyPose(e, i));
     }
+    // A picture piece picked in a text: its own box (stage_text_pieces.dart).
+    if (_onePiece case (var e, var i)?) return _pieceBounds(e, i);
     if (elements.length == 1) {
       var e = elements.first;
       if (e.base.motion.instances case var set? when set.count > 1) {
@@ -348,6 +350,7 @@ extension StageCoordinates on CanvasStageState {
 
   /// _rotationOfSelection is the lone selection's rotation in radians, or 0.
   double get _rotationOfSelection {
+    if (_onePiece case (var e, var i)?) return _pieceTurn(e, i) * math.pi / 180;
     if (_oneCopy case (var e, var i)?) {
       return (e.rotation + _copyPose(e, i).rotate) * math.pi / 180;
     }
@@ -360,7 +363,7 @@ extension StageCoordinates on CanvasStageState {
   }
 
   /// _skewOfSelection is the lone selection's slant in degrees, or zero.
-  Offset get _skewOfSelection => _chosen.length == 1
+  Offset get _skewOfSelection => _chosen.length == 1 && _onePiece == null
       ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
       : Offset.zero;
 

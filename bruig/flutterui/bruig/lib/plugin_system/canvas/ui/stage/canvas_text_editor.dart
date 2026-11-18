@@ -1,35 +1,82 @@
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 // canvas_text_editor.dart is the text field laid over a text element while it
-// is written: a real TextField placed, transformed and styled like the
-// element, so what is typed looks like what will be drawn. That holds only
-// if the element's own text is not painted meanwhile, the field has no
-// decoration or padding of its own, and the transform matches the stage's:
-// scale, then rotation about the centre.
+// is written: a real TextField placed, transformed and set like the element.
+//
+// Usually the canvas goes on drawing the words, looks and all, and the field
+// over them is see-through: only its caret and selection show, so opening it
+// changes nothing on the page (showWords false). That needs the field to lay
+// the words out exactly as the painter does: the same style (textStyleOf),
+// the same width to wrap in, and room on the right for the caret, which a
+// TextField keeps out of the width it wraps in (caretRoom).
+//
+// Where the painter sets the words some other way -- along a line, in
+// columns, round something in the way -- the field cannot follow, so it
+// shows the words itself and the canvas leaves out just those words, never
+// the box or the other pieces (showWords true).
 
-/// CanvasTextEditor is the field itself. It is given the element's rectangle
-/// in stage pixels and the scale it is drawn at, so a canvas zoomed to 200%
-/// is typed into at 200%.
+/// caretRoom is what a TextField keeps beside its words for the caret: its
+/// width and a pixel's gap (RenderEditable's caret margin). Added to the
+/// field's width, so it wraps where the painter does.
+const double caretRoom = CanvasTextEditor.cursorWidth + 1;
+
+/// editorDrawsWords is whether the field must show [e]'s words (or piece
+/// [item]'s) itself, because the painter sets them in a way a TextField
+/// cannot match. See the top of this file.
+///
+/// Words with a field in them (text_fields.dart) are typed as written, a
+/// "{page}", where the canvas draws them filled in: the field shows them.
+bool editorDrawsWords(TextElement e, TextItem? item) {
+  if (item != null) return hasFields(item.text);
+  return e.curve != null ||
+      !e.columns.isSingle ||
+      e.wrap.on ||
+      e.flowTo.isNotEmpty ||
+      hasFields(e.text);
+}
+
+/// CanvasTextEditor is the field itself. It is given the rectangle the words
+/// are laid out in, in stage pixels, and the scale they are drawn at, so a
+/// canvas zoomed to 200% is typed into at 200%.
 class CanvasTextEditor extends StatefulWidget {
+  static const double cursorWidth = 1.5;
+
   final TextElement element;
 
   /// item is the extra piece being typed into, or null for the element's own
-  /// paragraph. A piece has its own rectangle, so the box's padding is not
-  /// applied: see textItemRects.
+  /// paragraph.
   final TextItem? item;
 
-  /// rect is the element's box on the stage, unrotated.
+  /// rect is where the words are laid out on the stage, unrotated: the
+  /// element's box for a paragraph that fills it (padded here by the box's
+  /// padding), else the words' own block, as wide as they may grow.
   final Rect rect;
+
+  /// pivot is the stage point the element turns about, or null for the
+  /// middle of [rect].
+  final Offset? pivot;
 
   /// scale is document units to stage pixels.
   final double scale;
+
+  /// showWords draws the words in the field, the canvas having left them
+  /// out; otherwise the field is see-through over the canvas's own words.
+  final bool showWords;
+
+  /// clickAt is where the click that opened it landed, globally: the caret
+  /// is put there. Null selects every word, as for a new element's "Text".
+  final Offset? clickAt;
 
   /// onChanged fires on every keystroke, so the size estimate and the layer
   /// list keep up.
@@ -41,6 +88,9 @@ class CanvasTextEditor extends StatefulWidget {
     this.item,
     required this.rect,
     required this.scale,
+    this.pivot,
+    this.showWords = true,
+    this.clickAt,
     required this.onChanged,
     required this.onDone,
     super.key,
@@ -51,20 +101,50 @@ class CanvasTextEditor extends StatefulWidget {
 }
 
 class _CanvasTextEditorState extends State<CanvasTextEditor> {
-  /// The writing tools' controller adds the marks itself; with no provider
-  /// enabled it behaves like a plain controller.
-  late final TextEditingController _text = WritingTextEditingController(
-      text: widget.item?.text ?? widget.element.text);
+  /// The writing tools' controller adds its marks itself; with no provider
+  /// enabled it behaves like a plain controller. It shows the words in the
+  /// element's case, as they are drawn.
+  late final _CasedController _text = _CasedController(
+      text: widget.item?.text ?? widget.element.text,
+      textCase: (widget.item?.spec ?? widget.element.textSpec).textCase);
   final FocusNode _focus = FocusNode();
+  final GlobalKey _field = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    // Fully selected on open, so typing replaces a new element's "Text".
     _focus.requestFocus();
-    _text.selection =
-        TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+    // A new element's "Text" opens selected, so typing replaces it; words
+    // already written open with the caret where the click was.
+    var words = _text.text;
+    var fresh = words.isEmpty || words == "Text";
+    _text.selection = fresh || widget.clickAt == null
+        ? TextSelection(baseOffset: 0, extentOffset: words.length)
+        : TextSelection.collapsed(offset: words.length);
+    if (!fresh && widget.clickAt != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _caretAtClick());
+    }
     _focus.addListener(_onFocus);
+  }
+
+  /// _caretAtClick puts the caret at the letter the opening click was on,
+  /// once the field is laid out.
+  void _caretAtClick() {
+    if (!mounted) return;
+    var at = widget.clickAt;
+    var editable = _findEditable(_field.currentContext?.findRenderObject());
+    if (at == null || editable == null || !editable.attached) return;
+    var position = editable.getPositionForPoint(at);
+    _text.selection = TextSelection.collapsed(
+        offset: position.offset.clamp(0, _text.text.length));
+  }
+
+  static RenderEditable? _findEditable(RenderObject? from) {
+    if (from == null) return null;
+    if (from is RenderEditable) return from;
+    RenderEditable? found;
+    from.visitChildren((child) => found ??= _findEditable(child));
+    return found;
   }
 
   @override
@@ -82,7 +162,7 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
   }
 
   /// _room is the element's padding, which puts the editor where the words
-  /// are drawn.
+  /// are drawn in a paragraph that fills the box.
   EdgeInsets _room(TextElement e, double scale) => EdgeInsets.fromLTRB(
       e.box.padLeft * scale,
       e.box.padTop * scale,
@@ -102,76 +182,151 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
             verticalAlign: VerticalAlignSpec.top,
           );
     var scale = widget.scale;
+    var fills = item == null && !bodyIsBlock(e);
+    var style = textStyleOf(spec, scale: scale);
+    if (!widget.showWords) {
+      // See-through: the canvas draws the words, the field its caret.
+      // A fade is a foreground paint, which a style cannot have beside a
+      // colour.
+      const clear = Color(0x00000000);
+      style = style.foreground != null
+          ? style.copyWith(foreground: Paint()..color = clear)
+          : style.copyWith(color: clear);
+      style =
+          style.copyWith(decoration: TextDecoration.none, shadows: const []);
+    }
+    var rect = widget.rect;
+    var pivot = widget.pivot;
+    var caret = spec.color.withValues(alpha: 1);
 
-    return Positioned(
-      left: widget.rect.left,
-      top: widget.rect.top,
-      width: widget.rect.width,
-      height: widget.rect.height,
-      child: Transform.rotate(
-        angle: e.rotationRadians,
-        child: Padding(
-          padding: item == null ? _room(e, scale) : EdgeInsets.zero,
-          child: Align(
-            alignment: switch (spec.verticalAlign) {
-              VerticalAlignSpec.top => Alignment.topCenter,
-              VerticalAlignSpec.middle => Alignment.center,
-              VerticalAlignSpec.bottom => Alignment.bottomCenter,
-            },
-            child: Shortcuts(
-              shortcuts: const {
-                // Escape finishes; Enter starts a new line in the paragraph.
-                SingleActivator(LogicalKeyboardKey.escape): _FinishIntent(),
-              },
-              child: Actions(
-                actions: {
-                  _FinishIntent: CallbackAction<_FinishIntent>(
-                    onInvoke: (_) {
-                      widget.onDone();
-                      return null;
-                    },
-                  ),
-                },
-                child: TextField(
-                  controller: _text,
-                  focusNode: _focus,
-                  autofocus: true,
-                  maxLines: null,
-                  expands: false,
-                  cursorColor: spec.color,
-                  cursorWidth: 1.5,
-                  textAlign: spec.align.flutter,
-                  style: TextStyle(
-                    fontFamily: spec.fontFamily,
-                    fontSize: spec.fontSize * scale,
-                    fontWeight: spec.fontWeight,
-                    fontStyle:
-                        spec.italic ? FontStyle.italic : FontStyle.normal,
-                    letterSpacing: spec.letterSpacing * scale,
-                    height: spec.lineHeight,
-                    color: spec.color,
-                  ),
-                  decoration: const InputDecoration(
-                    // No border, fill or content padding: the default inset
-                    // would put every character off where it will be drawn.
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  // What an enabled writing capability offers for the text
-                  // under the pointer, else the ordinary menu.
-                  contextMenuBuilder: (context, editableTextState) =>
-                      writingContextMenu(context, editableTextState,
-                          fallbackItems:
-                              editableTextState.contextMenuButtonItems),
-                  onChanged: widget.onChanged,
-                ),
-              ),
-            ),
-          ),
+    Widget field = TextSelectionTheme(
+      data: TextSelectionThemeData(
+          selectionColor: const Color(0xFF3D7EFF).withValues(alpha: 0.32)),
+      child: TextField(
+        key: _field,
+        controller: _text,
+        focusNode: _focus,
+        autofocus: true,
+        maxLines: null,
+        expands: false,
+        cursorColor: caret,
+        cursorWidth: CanvasTextEditor.cursorWidth,
+        textAlign: spec.align.flutter,
+        style: style,
+        // No border, fill or padding of any kind -- the app's theme puts an
+        // underline on every field, which here would be drawn on the page.
+        decoration: const InputDecoration.collapsed(
+          hintText: null,
+          border: InputBorder.none,
+        ).copyWith(
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          filled: false,
+          contentPadding: EdgeInsets.zero,
         ),
+        // What an enabled writing capability offers for the text under the
+        // pointer, else the ordinary menu.
+        contextMenuBuilder: (context, editableTextState) => writingContextMenu(
+            context, editableTextState,
+            fallbackItems: editableTextState.contextMenuButtonItems),
+        onChanged: widget.onChanged,
       ),
     );
+
+    field = Shortcuts(
+      shortcuts: const {
+        // Escape finishes; Enter starts a new line in the paragraph.
+        SingleActivator(LogicalKeyboardKey.escape): _FinishIntent(),
+      },
+      child: Actions(
+        actions: {
+          _FinishIntent: CallbackAction<_FinishIntent>(
+            onInvoke: (_) {
+              widget.onDone();
+              return null;
+            },
+          ),
+        },
+        child: field,
+      ),
+    );
+
+    if (fills) {
+      field = Padding(
+        padding: _room(e, scale),
+        child: Align(
+          alignment: switch (spec.verticalAlign) {
+            VerticalAlignSpec.top => Alignment.topCenter,
+            VerticalAlignSpec.middle => Alignment.center,
+            VerticalAlignSpec.bottom => Alignment.bottomCenter,
+          },
+          child: field,
+        ),
+      );
+    }
+
+    return Positioned(
+      left: rect.left,
+      top: rect.top,
+      // The caret's room on the right: the words wrap where they are drawn.
+      width: rect.width + caretRoom,
+      height: fills ? rect.height : null,
+      child: Transform.rotate(
+        angle: e.rotationRadians,
+        origin: pivot == null ? null : pivot - rect.center,
+        child: field,
+      ),
+    );
+  }
+}
+
+/// _CasedController shows the words in the element's case (TextCase), as
+/// the canvas draws them, so the caret falls between the letters drawn. Not
+/// where the case would change the length (a German ß made SS), where the
+/// caret could not be placed by the letters shown.
+class _CasedController extends WritingTextEditingController {
+  final TextCase textCase;
+
+  _CasedController({super.text, required this.textCase});
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    var span = super.buildTextSpan(
+        context: context, style: style, withComposing: withComposing);
+    if (textCase == TextCase.none) return span;
+    var shown = textCase.apply(text);
+    if (shown.length != text.length) return span;
+    // Cut from the whole cased text, as title case depends on where each
+    // word starts, which a run on its own cannot tell.
+    var at = 0;
+    TextSpan cased(TextSpan s) {
+      String? t;
+      if (s.text case var own?) {
+        t = shown.substring(at, at + own.length);
+        at += own.length;
+      }
+      return TextSpan(
+        text: t,
+        style: s.style,
+        recognizer: s.recognizer,
+        mouseCursor: s.mouseCursor,
+        children: s.children == null
+            ? null
+            : [
+                for (var c in s.children!)
+                  if (c is TextSpan) cased(c) else c,
+              ],
+      );
+    }
+
+    return cased(span);
   }
 }
 

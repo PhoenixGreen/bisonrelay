@@ -191,7 +191,7 @@ extension StageHitTesting on CanvasStageState {
   TextFlowGrips? _flowGrips() {
     if (!controller.showHelpers) return null;
     var e = _selectedText();
-    if (e == null || e.curve != null) return null;
+    if (e == null || e.curve != null || _onePiece != null) return null;
     var bounds = _selectionBounds;
     if (bounds == null) return null;
 
@@ -298,6 +298,8 @@ extension StageHitTesting on CanvasStageState {
   /// what draws them (see textItemRects).
   TextItem? _textItemAt(TextElement e, Offset doc) {
     if (e.items.isEmpty) return null;
+    // Where it is drawn, its fields filled in.
+    e = textWithFields(e, document);
     var bounds = e.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion);
     var rects = textItemRects(e, bounds);

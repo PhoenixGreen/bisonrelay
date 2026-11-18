@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
+import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -253,6 +254,10 @@ class CanvasBackground {
 /// defaultBackgroundStage is the stage a background first becomes.
 const StageElement defaultBackgroundStage =
     StageElement(ElementBase(id: backgroundStageId, name: "3D stage"));
+
+/// _bareMasters are masters with their elements taken off, as a cover shows
+/// them: one each, so a cover's master keeps its identity across frames.
+final _bareMasters = Expando<CanvasScene>("bareMaster");
 
 class CanvasDocument {
   /// title is the library name, not the filename (canvas_storage.dart
@@ -676,7 +681,43 @@ class CanvasDocument {
 
   /// masterScene is the master when switched on and not left off by this
   /// scene, else null.
-  CanvasScene? get masterScene => masterOn && !scene.masterOff ? master : null;
+  CanvasScene? get masterScene {
+    if (!masterOn || scene.masterOff) return null;
+    var m = master;
+    // A cover keeps the master's backdrop but not what is on it (see
+    // PagesSpec.masterOnCovers).
+    if (m != null && isPages && scene.cover.isCover && !pages.masterOnCovers) {
+      return _bareMasters[m] ??= m.copyWith(elements: const []);
+    }
+    return m;
+  }
+
+  /// pageFields is what the fields of a text on the shown canvas are filled
+  /// from (text_fields.dart): its page number and values, the words of the
+  /// texts on it, and on the master, a mark for each.
+  PageFields get pageFields {
+    var count = 0;
+    for (var i = 0; i < allScenes.length; i++) {
+      if (pageNumberAt(i) != null) count++;
+    }
+    var words = scene.elements;
+    return PageFields(
+      page: pageNumberAt(at),
+      pages: count,
+      values: scene.values,
+      master: editingMaster,
+      textOf: (name) {
+        for (var e in words) {
+          if (e is! TextElement) continue;
+          if (e.name == name) return e.text;
+          for (var item in e.items) {
+            if (item.name == name) return item.text;
+          }
+        }
+        return null;
+      },
+    );
+  }
 
   /// drawnBackground is what is behind the shown canvas: the master's while
   /// the master is on, then the scene's own, then the document's.
@@ -1237,6 +1278,7 @@ class CanvasDocument {
       s.background == null &&
       !s.backgroundOff &&
       !s.masterOff &&
+      s.values.isEmpty &&
       s.gameSounds.isEmpty &&
       s.gameSoundsAtEnd.isEmpty &&
       !s.cover.isCover &&

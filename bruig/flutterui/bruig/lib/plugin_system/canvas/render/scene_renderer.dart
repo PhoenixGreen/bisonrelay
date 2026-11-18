@@ -184,7 +184,8 @@ void paintCanvasDocument(
   /// skipElement is a text element being typed into, under its text field.
   String? skipElement,
 
-  /// skipTextItem is one such piece of a text element; the rest is drawn.
+  /// skipTextItem is the words of one piece of a text element (or its own
+  /// words: textBodyWords) shown by an open editor; the rest is drawn.
   String? skipTextItem,
 
   /// backgrounds is the editor's pattern cache; null for an exact export.
@@ -607,6 +608,10 @@ void paintElement(
 }) {
   // A camera frames the picture and is never in it: see cameraFrame.
   if (element is CameraElement) return;
+  // A text's fields, filled by the page it is drawn on (text_fields.dart).
+  if (element is TextElement && document != null) {
+    element = textWithFields(element, document);
+  }
   // Laid over what is under it by its Output's blend: drawn on its own,
   // then combined. Every instance together, as the one element it is.
   if (!blended && element.base.blend != LayerBlend.normal) {

@@ -211,6 +211,16 @@ void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
     }
   }
 
+  // Turned about its middle: the outline and tint turn with it, the
+  // underline below stays level.
+  var turned = icon.turn != 0;
+  if (turned) {
+    canvas.save();
+    canvas.translate(at.center.dx, at.center.dy);
+    canvas.rotate(icon.turn * math.pi / 180);
+    canvas.translate(-at.center.dx, -at.center.dy);
+  }
+
   // The sticker outline: the shape in the outline colour, offset in eight
   // directions behind the icon (its paths are opaque here).
   if (icon.outlineWidth > 0) {
@@ -225,6 +235,7 @@ void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
   }
 
   draw(icon.color);
+  if (turned) canvas.restore();
 
   if (icon.underline != null) {
     _paintPartUnderline(canvas, at, icon.underline!, icon.color ?? spec.color);

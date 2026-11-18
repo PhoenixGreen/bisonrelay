@@ -676,6 +676,9 @@ class SceneCamera {
 
 /// CanvasScene is one canvas in a document: what is on it, how long it runs,
 /// and what happens at the end of it.
+/// maxPageValues is how many values a page may carry (CanvasScene.values).
+const maxPageValues = 100;
+
 class CanvasScene {
   /// id is how a button's action names this scene, so renaming a scene does
   /// not break the button that goes to it.
@@ -708,6 +711,11 @@ class CanvasScene {
   /// or menu without the score and the lives the master shows on every
   /// level.
   final bool masterOff;
+
+  /// values are this page's own values, by name, which a text reads with
+  /// `{value:Name}` (see text_fields.dart): a master's running head that
+  /// says the chapter a page is in.
+  final Map<String, String> values;
 
   /// gameSounds are what each mixer channel does as a game comes to this
   /// scene, by channel key: "stop" stops it, `slot:<clip id>` plays that
@@ -754,6 +762,7 @@ class CanvasScene {
     this.background,
     this.backgroundOff = false,
     this.masterOff = false,
+    this.values = const {},
     this.gameSounds = const {},
     this.gameSoundsAtEnd = const {},
     this.cues,
@@ -788,6 +797,7 @@ class CanvasScene {
     bool clearBackground = false,
     bool? backgroundOff,
     bool? masterOff,
+    Map<String, String>? values,
     Map<String, String>? gameSounds,
     Map<String, String>? gameSoundsAtEnd,
     List<String>? cues,
@@ -808,6 +818,7 @@ class CanvasScene {
         background: clearBackground ? null : (background ?? this.background),
         backgroundOff: backgroundOff ?? this.backgroundOff,
         masterOff: masterOff ?? this.masterOff,
+        values: values ?? this.values,
         gameSounds: gameSounds ?? this.gameSounds,
         gameSoundsAtEnd: gameSoundsAtEnd ?? this.gameSoundsAtEnd,
         cues: cues ?? this.cues,
@@ -827,6 +838,7 @@ class CanvasScene {
         if (background != null) "background": background!.toJson(),
         if (backgroundOff) "backgroundOff": true,
         if (masterOff) "masterOff": true,
+        if (values.isNotEmpty) "values": values,
         if (gameSounds.isNotEmpty) "gameSounds": gameSounds,
         if (gameSoundsAtEnd.isNotEmpty) "gameSoundsEnd": gameSoundsAtEnd,
         if (cues case var c?) "cues": c,
@@ -863,6 +875,12 @@ class CanvasScene {
           : null,
       backgroundOff: jsonBool(json["backgroundOff"], false),
       masterOff: jsonBool(json["masterOff"], false),
+      values: {
+        if (json["values"] case Map raw)
+          for (var MapEntry(:key, :value) in raw.entries.take(maxPageValues))
+            if (key is String && value is String)
+              jsonLabel(key, ""): jsonString(value, ""),
+      },
       gameSounds: {
         if (json["gameSounds"] case Map raw)
           for (var MapEntry(:key, :value) in raw.entries)

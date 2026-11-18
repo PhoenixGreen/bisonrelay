@@ -599,9 +599,14 @@ class TextIcon {
 
   final PartUnderline? underline;
 
+  /// turn is how far the picture is turned about its middle, in degrees
+  /// clockwise; its room in the line or the slot stays square and upright.
+  final double turn;
+
   const TextIcon({
     this.assetId = "",
     this.size = 64,
+    this.turn = 0,
     this.color,
     this.outlineWidth = 0,
     this.outlineColor = const Color(0xFF000000),
@@ -621,10 +626,12 @@ class TextIcon {
     BoxSpec? box,
     PartUnderline? underline,
     bool clearUnderline = false,
+    double? turn,
   }) =>
       TextIcon(
         assetId: assetId ?? this.assetId,
         size: size ?? this.size,
+        turn: turn ?? this.turn,
         color: clearColor ? null : (color ?? this.color),
         outlineWidth: outlineWidth ?? this.outlineWidth,
         outlineColor: outlineColor ?? this.outlineColor,
@@ -635,6 +642,7 @@ class TextIcon {
   Map<String, dynamic> toJson() => {
         "assetId": assetId,
         "size": size,
+        if (turn != 0) "turn": turn,
         if (color != null) "color": colorToJson(color!),
         if (outlineWidth > 0) "ow": outlineWidth,
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
@@ -645,6 +653,7 @@ class TextIcon {
   factory TextIcon.fromJson(Map<String, dynamic> json) => TextIcon(
         assetId: jsonString(json["assetId"], ""),
         size: jsonDouble(json["size"], 64).clamp(1, 4000),
+        turn: jsonDouble(json["turn"], 0).clamp(-360, 360),
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
