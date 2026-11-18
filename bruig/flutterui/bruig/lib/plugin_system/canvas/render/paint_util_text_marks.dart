@@ -39,7 +39,10 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
   // a quarter of it at twice the size.
   var zoom = fill.zoom <= 0 ? 1.0 : fill.zoom;
   var frame = Rect.fromCenter(
-      center: box.center, width: box.width * zoom, height: box.height * zoom);
+      center:
+          box.center + Offset(fill.panX * box.width, fill.panY * box.height),
+      width: box.width * zoom,
+      height: box.height * zoom);
 
   // Locked: the words' movement applied to the fill too, so it arrives with
   // the letters rather than the letters sweeping across it.

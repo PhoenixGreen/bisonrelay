@@ -50,6 +50,36 @@ extension StagePainterMarks on StagePainter {
         previewing: previewing);
   }
 
+  /// _paintLayoutMarks shows a selected Layout's lines that can be dragged,
+  /// and its picked cell outlined.
+  void _paintLayoutMarks(Canvas canvas) {
+    var marks = layoutMarks;
+    if (marks == null) return;
+    canvas.save();
+    canvas.translate(origin.dx, origin.dy);
+    canvas.scale(scale);
+    var thin = 1.5 / scale;
+    for (var (a, b) in marks.lines) {
+      canvas.drawLine(
+          a,
+          b,
+          Paint()
+            ..strokeWidth = thin * 2
+            ..color = const Color(0x553D7EFF));
+      canvas.drawCircle(Offset.lerp(a, b, 0.5)!, 5 / scale,
+          Paint()..color = const Color(0xFF3D7EFF));
+    }
+    if (marks.picked case var path?) {
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = thin * 2
+            ..color = const Color(0xFF3D7EFF));
+    }
+    canvas.restore();
+  }
+
   /// _paintChartLabels outlines a chart's placed labels, dashed so it does
   /// not read as design, with a resize grip on the corner.
   void _paintChartLabels(Canvas canvas) {
@@ -296,6 +326,7 @@ extension StagePainterMarks on StagePainter {
     _paintTouchAreas(canvas);
 
     _paintChartLabels(canvas);
+    _paintLayoutMarks(canvas);
     _paintTableColumns(canvas);
     // A path shows points and handles, not a box: the box round a curve
     // cannot be usefully dragged.

@@ -55,6 +55,9 @@ enum ElementKind {
   codeRun("Run panel"),
   // A task marked against a Code panel's code (code_task_element.dart).
   codeTask("Code task"),
+  // A box divided into cells: comic panels, a grid of cards, free shapes
+  // (layout_element.dart).
+  layout("Layout"),
   // Steps ticked as an instrument's keys are played (play_task_element.dart).
   playTask("Play task");
 
@@ -240,6 +243,13 @@ class ElementBase {
   /// size and what it does in its scene are its own. See cast.dart.
   final String cast;
 
+  /// dock is the Layout cell it is docked in, "layout id:cell id", or empty:
+  /// drawn clipped to the cell, and moved and sized with it as the layout
+  /// changes (layout_element.dart). [dockOut] lets it break out of the
+  /// cell's edge, as a figure does over a comic panel's line.
+  final String dock;
+  final bool dockOut;
+
   /// play is what it does in a played game. See play.dart.
   final PlaySpec play;
 
@@ -277,6 +287,8 @@ class ElementBase {
     this.shared,
     this.cue = "",
     this.cast = "",
+    this.dock = "",
+    this.dockOut = false,
     this.play = const PlaySpec(),
     this.spot,
     this.motion = ElementMotion.none,
@@ -313,6 +325,8 @@ class ElementBase {
     bool clearShared = false,
     String? cue,
     String? cast,
+    String? dock,
+    bool? dockOut,
     PlaySpec? play,
     StageSpot? spot,
     bool clearSpot = false,
@@ -349,6 +363,8 @@ class ElementBase {
         shared: clearShared ? null : (shared ?? this.shared),
         cue: cue ?? this.cue,
         cast: cast ?? this.cast,
+        dock: dock ?? this.dock,
+        dockOut: dockOut ?? this.dockOut,
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -385,6 +401,8 @@ class ElementBase {
           : null,
       cue: _s(json["cue"], ""),
       cast: _s(json["cast"], ""),
+      dock: _cut(_s(json["dock"], ""), maxIdLength * 2 + 1),
+      dockOut: _b(json["dockOut"], false),
       play: PlaySpec.fromJson(json["play"]),
       spot: StageSpot.fromJson(json["spot"]),
       motion: ElementMotion.fromJson(json["motion"]),
@@ -425,6 +443,8 @@ class ElementBase {
         if (shared != null) "shared": shared,
         if (cue.isNotEmpty) "cue": cue,
         if (cast.isNotEmpty) "cast": cast,
+        if (dock.isNotEmpty) "dock": dock,
+        if (dockOut) "dockOut": true,
         if (!play.isNone) "play": play.toJson(),
         if (spot != null) "spot": spot!.toJson(),
         if (!motion.isBlank) "motion": motion.toJson(),
@@ -781,8 +801,12 @@ abstract class CanvasElement {
     StageSpot? spot,
     bool clearSpot = false,
     ElementMotion? motion,
+    String? dock,
+    bool? dockOut,
   }) =>
       rebase(base.copyWith(
+        dock: dock,
+        dockOut: dockOut,
         spot: spot,
         clearSpot: clearSpot,
         motion: motion,

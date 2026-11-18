@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
@@ -1556,6 +1557,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return CodeTaskElement.fromJson(json, base);
     case ElementKind.playTask:
       return PlayTaskElement.fromJson(json, base);
+    case ElementKind.layout:
+      return LayoutElement.fromJson(json, base);
   }
 }
 

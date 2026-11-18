@@ -25,6 +25,8 @@ const List<ElementKind> _addable = [
   ElementKind.playTask,
   ElementKind.video,
   ElementKind.background,
+  // A box of cells: comic panels, cards, framed pictures.
+  ElementKind.layout,
   ElementKind.player,
   // A character to animate and dress (in the Character Studio), and a 3D
   // object, its model then chosen from the library's 3D objects.
@@ -67,6 +69,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.codeRun => Icons.play_circle_outline,
       ElementKind.codeTask => Icons.fact_check_outlined,
       ElementKind.playTask => Icons.piano,
+      ElementKind.layout => Icons.dashboard_outlined,
     };
 
 class CanvasElementsPanel extends StatelessWidget {

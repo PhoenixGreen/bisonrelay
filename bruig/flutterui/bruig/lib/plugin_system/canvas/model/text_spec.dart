@@ -150,6 +150,11 @@ class TextFill {
   /// arrival: letter by letter there is no single movement to lock to.
   final bool locked;
 
+  /// panX and panY move the picture or pattern inside its frame, as a
+  /// share of the frame's width and height: a photo slid in a Layout cell
+  /// to put a face in the middle.
+  final double panX, panY;
+
   const TextFill({
     this.kind = TextFillKind.color,
     this.assetId = "",
@@ -164,6 +169,8 @@ class TextFill {
     this.overlayFade,
     this.opacity = 1,
     this.locked = false,
+    this.panX = 0,
+    this.panY = 0,
   });
 
   /// on is whether anything but plain colour is used and, for a picture,
@@ -186,6 +193,8 @@ class TextFill {
     OverlayBlend? blend,
     GradientSpec? overlayFade,
     double? opacity,
+    double? panX,
+    double? panY,
 
     /// flatOverlay clears [overlayFade], since a null there means "keep".
     bool flatOverlay = false,
@@ -204,6 +213,8 @@ class TextFill {
         blend: blend ?? this.blend,
         overlayFade: flatOverlay ? null : (overlayFade ?? this.overlayFade),
         opacity: opacity ?? this.opacity,
+        panX: panX ?? this.panX,
+        panY: panY ?? this.panY,
       );
 
   Map<String, dynamic> toJson() => {
@@ -220,6 +231,8 @@ class TextFill {
         if (blend != OverlayBlend.none) "blend": blend.name,
         if (overlayFade != null) "overlayFade": overlayFade!.toJson(),
         if (opacity != 1) "opacity": opacity,
+        if (panX != 0) "panX": panX,
+        if (panY != 0) "panY": panY,
       };
 
   factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
@@ -240,6 +253,8 @@ class TextFill {
             ? GradientSpec.fromJson(json["overlayFade"] as Map<String, dynamic>)
             : null,
         opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
+        panX: jsonDouble(json["panX"], 0).clamp(-10.0, 10.0),
+        panY: jsonDouble(json["panY"], 0).clamp(-10.0, 10.0),
       );
 }
 

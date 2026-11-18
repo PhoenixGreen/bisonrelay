@@ -264,6 +264,7 @@ void main() {
           ElementKind.synthTask,
           ElementKind.codeTask,
           ElementKind.playTask,
+          ElementKind.layout,
           ElementKind.stage,
           ElementKind.parallax,
         }.contains(kind))

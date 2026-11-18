@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
@@ -109,6 +110,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.codeRun => Size(wide * 0.3, short * 0.78),
     // A card, a third of the page wide; its height is what it says.
     ElementKind.codeTask => Size(wide * 0.32, short * 0.3),
+    // Most of the page: a layout is usually the page's own.
+    ElementKind.layout => Size(wide * 0.9, short * 0.9),
     // Most of the page's width, under the music; its height is what it says.
     ElementKind.playTask => Size(wide * 0.8, short * 0.2),
   };
@@ -389,6 +392,11 @@ CanvasElement newElement(
             CodeCheck(CodeCheckKind.builds, "It builds and runs")
           ]);
       return card.withBase(height: codeTaskFitHeight(card, card.width));
+
+    // A comic page's three tiers, to be cut and moved; other starts are in
+    // its settings (layout_presets.dart).
+    case ElementKind.layout:
+      return layoutFrom(base.copyWith(name: "Layout"), LayoutPreset.threeTiers);
 
     // Listening to any instrument, with a first step to change.
     case ElementKind.playTask:

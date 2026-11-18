@@ -89,6 +89,14 @@ List<CanvasElement> chosenOutlines(
   ];
 }
 
+/// LayoutMarks is what the stage shows of a selected Layout: its lines
+/// that can be dragged, and its picked cell's outline, in document units.
+class LayoutMarks {
+  final List<(Offset, Offset)> lines;
+  final Path? picked;
+  const LayoutMarks(this.lines, this.picked);
+}
+
 /// StagePainter draws the document, page edge, handles and marquee.
 class StagePainter extends CustomPainter {
   final CanvasDocument document;
@@ -255,6 +263,10 @@ class StagePainter extends CustomPainter {
   /// document units, outlined to show they can be taken hold of.
   final List<Rect> chartLabels;
 
+  /// layoutMarks is the selected Layout's picked cell and the lines that
+  /// can be dragged, in document units (stage_layouts.dart).
+  final LayoutMarks? layoutMarks;
+
   /// tableColumns is where a selected table's column rules are, in document
   /// units, each given a drag grip.
   final List<(double, double, double)> tableColumns;
@@ -339,6 +351,7 @@ class StagePainter extends CustomPainter {
     this.editingVector,
     this.editingLayers,
     required this.chartLabels,
+    this.layoutMarks,
     required this.tableColumns,
     required this.editingText,
     required this.editingItem,

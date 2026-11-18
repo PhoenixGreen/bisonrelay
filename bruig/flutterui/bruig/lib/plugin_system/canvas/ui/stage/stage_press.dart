@@ -207,6 +207,8 @@ extension StagePress on CanvasStageState {
 
     // A picture piece's own box first: its handles, or a drag inside it.
     if (_pressPiece(stage, doc)) return;
+    // A Layout's lines and picked Free cell (stage_layouts.dart).
+    if (_pressLayout(stage, doc)) return;
 
     // No flow grips or resize handles when the press is on a piece of text
     // drawn outside its box: see _looseTextPiece.
@@ -586,6 +588,19 @@ extension StagePress on CanvasStageState {
         _mode = _DragMode.none;
         return;
       }
+    }
+
+    // A second click on a selected Layout picks the cell under it.
+    if (element is LayoutElement &&
+        !_shiftHeld &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id &&
+        _pressedAt != Offset.zero &&
+        clock.now().difference(_lastClickAt) <
+            CanvasStageState._doubleClickWindow) {
+      _doubleClickLayout(element, doc);
+      _mode = _DragMode.none;
+      return;
     }
 
     // A second click on a selected text element opens it for typing; the

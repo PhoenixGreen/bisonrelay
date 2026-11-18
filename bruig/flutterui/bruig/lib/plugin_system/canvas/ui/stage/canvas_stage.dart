@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
@@ -121,6 +124,7 @@ part 'stage_drag.dart';
 part 'stage_release.dart';
 part 'stage_3d_view.dart';
 part 'stage_text_pieces.dart';
+part 'stage_layouts.dart';
 
 // canvas_stage.dart is the canvas you can touch: the document drawn through
 // the export's scene_renderer.dart, with handles over it and every gesture
@@ -166,6 +170,15 @@ enum _DragMode {
   pieceMove,
   pieceSize,
   pieceTurn,
+
+  /// layoutCut and layoutTrack drag a Layout's cut or grid line;
+  /// layoutCellMove, -Size and -Turn a picked Free cell. See
+  /// stage_layouts.dart.
+  layoutCut,
+  layoutTrack,
+  layoutCellMove,
+  layoutCellSize,
+  layoutCellTurn,
 
   /// warpMove, warpScale and warpTurn move, size or turn a warp grid's
   /// picked points; warpMarquee picks points with a box.
@@ -743,6 +756,14 @@ class CanvasStageState extends State<CanvasStage>
   /// is sized and turned about.
   Offset _pieceMiddle = Offset.zero;
 
+  /// _layoutStart is a Layout as it was when one of its lines or cells was
+  /// pressed, and _layoutCut, _layoutTrack and _layoutMiddle what was
+  /// pressed (stage_layouts.dart).
+  LayoutElement? _layoutStart;
+  LayoutCutLine? _layoutCut;
+  LayoutTrackLine? _layoutTrack;
+  Offset _layoutMiddle = Offset.zero;
+
   // ---- stage_vector_tools.dart --------------------------------------------
 
   VectorPart _vectorPart = VectorPart.point;
@@ -1020,8 +1041,11 @@ class CanvasStageState extends State<CanvasStage>
         controller.endInteraction();
       case LogicalKeyboardKey.delete:
       case LogicalKeyboardKey.backspace:
-        // A picked picture piece goes, not the text it is in.
-        if (!_removePiece()) controller.deleteSelected();
+        // A picked picture piece goes, not the text it is in; a Layout's
+        // picked cell, not the layout.
+        if (!_removePiece() && !_removeLayoutCell()) {
+          controller.deleteSelected();
+        }
       case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter
           when controller.vectorPenShape >= 0:
         controller.finishPenShape();
@@ -1339,6 +1363,7 @@ class CanvasStageState extends State<CanvasStage>
                           null => null,
                         },
                         chartLabels: _selectedChartLabels(),
+                        layoutMarks: _layoutMarks(),
                         tableColumns: _selectedTableColumns(),
                         editingText: _editingText,
                         editingItem: _editingItem,

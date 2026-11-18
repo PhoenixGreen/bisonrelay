@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/settings/layout_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -137,6 +138,8 @@ Widget elementPanel(
                 .join(" · "),
             children: [
               position ?? positionGroup(controller, e, write, begin, commit),
+              // Docked in a Layout's cell, where the page has one.
+              if (dockGroup(controller, e) case var dock?) dock,
               ...into(PanelSection.layout),
             ]),
         ...stageSpotSettings(context, controller, e, write, begin, commit),

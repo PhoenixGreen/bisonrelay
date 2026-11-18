@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/render/layout_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
@@ -407,6 +409,12 @@ void _paintScene(
             ? runFrame ?? frame
             : frame;
     var lensed = lens?.on(canvas, element, drawnAt, doc, liveMotion) ?? 0;
+    // Docked in a Layout's cell: drawn through it (ElementBase.dock).
+    var cell = element.base.dock.isEmpty ? null : dockClip(element, elements);
+    if (cell != null) {
+      canvas.save();
+      canvas.clipPath(cell);
+    }
     paintElement(
         canvas,
         element,
@@ -428,6 +436,7 @@ void _paintScene(
         videoShow: videoShow,
         backgrounds: backgrounds,
         hovered: element.id == hoveredButton);
+    if (cell != null) canvas.restore();
     for (var i = 0; i < lensed; i++) {
       canvas.restore();
     }
@@ -1059,6 +1068,9 @@ void paintElement(
             pose,
             () => paintCodeTask(canvas, bounds, e, document,
                 show: codeTaskShowOf?.call(e) ?? const CodeTaskShow()));
+      case LayoutElement e:
+        arriving(canvas, bounds, const ElementAnimation(), pose,
+            () => paintLayout(canvas, bounds, e, images: images));
       case PlayTaskElement e:
         arriving(
             canvas,

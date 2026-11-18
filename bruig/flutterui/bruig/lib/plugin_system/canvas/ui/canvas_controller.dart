@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_sync.dart';
 import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
@@ -264,6 +267,7 @@ part 'controller/codes.dart';
 part 'controller/code_runs.dart';
 part 'controller/code_tasks.dart';
 part 'controller/play_tasks.dart';
+part 'controller/layouts.dart';
 part 'controller/data_views.dart';
 part 'controller/data_sheets.dart';
 
@@ -789,6 +793,8 @@ class CanvasController extends ChangeNotifier {
     // A linked copy changed in what it shares changes its Cast member, and
     // every other copy with it (see cast.dart).
     next = castSynced(_document, next);
+    // What is docked in a Layout's cells goes where they go.
+    next = layoutsSynced(_document, next);
     // Each synth speaker's channel plays the patch its modules make.
     var designing = next;
     next = _synthSeen = synthSynced(next,
@@ -1154,6 +1160,9 @@ class CanvasController extends ChangeNotifier {
 
   /// _playTasks is how far each play task card has got (play_tasks.dart).
   final _playTasks = _PlayTaskState();
+
+  /// _layouts is the cell picked in each Layout (layouts.dart).
+  final _layouts = _LayoutState();
   final Set<String> _codeTaskBusy = {};
 
   /// codeRunHost runs code for Run panels: set by the app (the browser and
