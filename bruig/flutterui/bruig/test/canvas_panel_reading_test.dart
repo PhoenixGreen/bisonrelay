@@ -7,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/export/panel_video.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -106,59 +105,76 @@ void main() {
     });
   });
 
-  group("the book, panel by panel", () {
+  // Ken, 2026-11-18: extra pages for the panels were "very poor and
+  // unusable"; Kindle reads panel by panel from its own markup on the page
+  // (Panel View), and a book should open as two-page spreads on its side.
+  group("the book", () {
     Archive made(List<int> bytes) => ZipDecoder().decodeBytes(bytes);
     String text(Archive a, String name) => utf8
         .decode(a.files.firstWhere((f) => f.name == name).content as List<int>);
+    var book = _book().copyWith(kind: CanvasKind.pages);
 
-    testWidgets("each page followed by its panels, one at a time",
+    testWidgets("one page a page, its panels marked in reading order",
         (tester) async {
-      var book = _book().copyWith(
-          kind: CanvasKind.pages, pages: const PagesSpec(facing: true));
-      var out = await tester.runAsync(
-          () => renderDocument(book, as: DocumentAs.epub, panelPages: true));
+      var out = await tester
+          .runAsync(() => renderDocument(book, as: DocumentAs.epub));
       var a = made(out!.data);
       var pages = [
         for (var f in a.files)
           if (RegExp(r"^OEBPS/page\d+\.xhtml$").hasMatch(f.name)) f.name
       ];
-      // One, its three; Two, its two (one left out); Three alone.
-      expect(pages.length, 3 + 3 + 2);
-      var nav = text(a, "OEBPS/nav.xhtml");
-      expect(nav, contains("One · panel 1 of 3"));
-      expect(nav, contains("Two · panel 2 of 2"));
-      var opf = text(a, "OEBPS/content.opf");
-      expect(opf, isNot(contains("page-spread-left")),
-          reason: "no spreads: a panel page stands alone");
+      expect(pages.length, 3, reason: "no pages added for the panels");
 
-      var plain = await tester
-          .runAsync(() => renderDocument(book, as: DocumentAs.epub));
+      // Page one: three places to double-tap, numbered 1 to 3, each
+      // opening its own view, hidden until then.
+      var one = text(a, "OEBPS/page0.xhtml");
+      for (var n in [1, 2, 3]) {
+        expect(one, contains('"targetId":"p0-$n-mag", "ordinal":$n'));
+        expect(one, contains('id="p0-$n-mag" class="pv-target"'));
+      }
+      expect(one, contains('class="app-amzn-magnify"'));
+      expect(one, contains("display: none"));
+      // Page two reads c then b, a left out: two places, the first over c.
+      var two = text(a, "OEBPS/page1.xhtml");
+      expect(RegExp('class="app-amzn-magnify"').allMatches(two).length, 2);
+      var steps = panelSteps(book).where((s) => s.scene == 1).toList();
+      expect(steps[1].cell, "c");
+      // Three has none.
+      expect(text(a, "OEBPS/page2.xhtml"), isNot(contains("app-amzn")));
+
+      var opf = text(a, "OEBPS/content.opf");
+      expect(opf, contains('<meta name="book-type" content="comic"/>'));
       expect(
-          made(plain!.data)
-              .files
-              .where(
-                  (f) => f.name.endsWith(".xhtml") && f.name.contains("page"))
-              .length,
-          3,
-          reason: "off, as before");
+          opf, contains('<meta name="RegionMagnification" content="true"/>'));
+      expect(opf, contains('<meta name="fixed-layout" content="true"/>'));
+      expect(opf, contains('properties="data-nav"'));
+      var regions = text(a, "OEBPS/regions.xhtml");
+      expect(regions, contains('epub:type="region-based"'));
+      expect(RegExp('epub:type="panel"').allMatches(regions).length, 5);
     });
 
-    testWidgets("a button to a page still goes to that page", (tester) async {
-      var doc = _book();
-      var scenes = [...doc.allScenes];
-      scenes[2] = scenes[2].copyWith(elements: [
-        ButtonElement(
-            const ElementBase(id: "go", x: 100, y: 100, width: 200, height: 80),
-            label: "Back to two",
-            action: const ButtonAction(
-                kind: ButtonActionKind.goToScene, elementId: "p2")),
-      ]);
-      doc = doc.withScenes(scenes, at: 0);
-      var out = await tester.runAsync(() => renderDocument(doc,
-          as: DocumentAs.interactiveEpub, panelPages: true));
+    testWidgets("two pages to a spread on its side, or one at a time",
+        (tester) async {
+      var spread = await tester.runAsync(
+          () => renderDocument(book, as: DocumentAs.epub, spreads: true));
+      var opf = text(made(spread!.data), "OEBPS/content.opf");
+      expect(opf, contains('<meta property="rendition:spread">landscape'));
+      expect(opf, contains('idref="page1" properties="page-spread-left"'));
+      expect(opf, contains('idref="page2" properties="page-spread-right"'));
+
+      var single = await tester.runAsync(
+          () => renderDocument(book, as: DocumentAs.epub, spreads: false));
+      expect(text(made(single!.data), "OEBPS/content.opf"),
+          contains('<meta property="rendition:spread">none'));
+    });
+
+    testWidgets("an interactive book has no places to tap over its buttons",
+        (tester) async {
+      var out = await tester
+          .runAsync(() => renderDocument(book, as: DocumentAs.interactiveEpub));
       var a = made(out!.data);
-      // Page Two is the fifth file: One and its three panels come first.
-      expect(text(a, "OEBPS/page7.xhtml"), contains('href="page4.xhtml"'));
+      expect(text(a, "OEBPS/page0.xhtml"), isNot(contains("app-amzn")));
+      expect(a.files.any((f) => f.name == "OEBPS/regions.xhtml"), isFalse);
     });
   });
 

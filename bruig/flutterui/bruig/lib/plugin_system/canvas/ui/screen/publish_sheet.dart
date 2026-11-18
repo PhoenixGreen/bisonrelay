@@ -148,9 +148,9 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// and Files keep one record per canvas. See CanvasDocument.targets.
   bool _everyShape = false;
 
-  /// _panelPages follows each page of a book with its panels, a page each,
-  /// for reading panel by panel (renderDocument's panelPages).
-  bool _panelPages = false;
+  /// _spreads lays a book of pages out two to a spread when the reader is
+  /// turned on its side (renderDocument's spreads).
+  bool _spreads = true;
 
   /// _panelVideo makes a video of a comic read panel by panel, at
   /// [_panelPace] (renderVideo's panels).
@@ -286,7 +286,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         "paper": _paper.name,
         "orientation": _orientation.name,
         "everyShape": _everyShape,
-        "panelPages": _panelPages,
+        "spreads": _spreads,
         "panelVideo": _panelVideo,
         "panelPace": _panelPace.name,
         "dither": _dither,
@@ -330,7 +330,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     _paper = pick(PdfPaper.values, "paper", _paper);
     _orientation = pick(PdfOrientation.values, "orientation", _orientation);
     _everyShape = flag("everyShape", _everyShape);
-    _panelPages = flag("panelPages", _panelPages);
+    _spreads = flag("spreads", _spreads);
     _panelVideo = flag("panelVideo", _panelVideo);
     _panelPace = pick(PanelPace.values, "panelPace", _panelPace);
     _dither = flag("dither", _dither);
@@ -464,7 +464,7 @@ class _PublishSheetState extends State<_PublishSheet> {
           document,
           as: _documentAs,
           soundKbps: _sound.kbps,
-          panelPages: _panelPages && _documentAs != DocumentAs.pdf,
+          spreads: widget.document.isPages ? _spreads : null,
           scale: _scale,
           images: widget.images,
           paper: _paper,
@@ -1149,24 +1149,24 @@ class _PublishSheetState extends State<_PublishSheet> {
                 [for (var o in PdfOrientation.values) (o, o.label)],
                 (v) => setState(() => _orientation = v)),
           ],
-          if (_documentAs != DocumentAs.pdf && hasPanels(widget.document))
+          if (_documentAs != DocumentAs.pdf && widget.document.isPages)
             CheckboxListTile(
-              key: const ValueKey("publishPanelPages"),
-              value: _panelPages,
+              key: const ValueKey("publishSpreads"),
+              value: _spreads,
               dense: true,
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
-              title:
-                  const Text("Panel by panel", style: TextStyle(fontSize: 12)),
+              title: const Text("Two-page spreads",
+                  style: TextStyle(fontSize: 12)),
               subtitle: Text(
-                  "After each page, a page for each of its panels in their "
-                  "reading order, zoomed in: a reader's page buttons step "
-                  "through them. Pages come one at a time, not in spreads.",
+                  "Turned on its side, the reader shows two pages side by "
+                  "side, as a printed book opens; upright, one."
+                  "${_documentAs == DocumentAs.epub && hasPanels(widget.document) ? " Its panels are marked in their reading order for readers that zoom panel by panel, as a book from the Kindle store does." : ""}",
                   style: TextStyle(
                       fontSize: 10, color: theme.colors.onSurfaceVariant)),
               onChanged: _busy
                   ? null
-                  : (v) => setState(() => _panelPages = v ?? false),
+                  : (v) => setState(() => _spreads = v ?? true),
             ),
           if (_documentAs == DocumentAs.interactiveEpub) ...[
             const SizedBox(height: 10),

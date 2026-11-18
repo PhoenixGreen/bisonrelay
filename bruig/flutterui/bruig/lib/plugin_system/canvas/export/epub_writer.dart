@@ -15,6 +15,15 @@ import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 /// said per page, since it depends on the covers.
 enum EpubSide { left, right, centre }
 
+/// EpubPanel is one of a comic page's panels, in the page picture's pixels
+/// from the top left, listed in reading order: a reader that reads panel by
+/// panel zooms to each in turn (Kindle's Panel View, an EPUB region-based
+/// navigation; see _panelTags and _regions).
+class EpubPanel {
+  final double x, y, width, height;
+  const EpubPanel(this.x, this.y, this.width, this.height);
+}
+
 /// EpubLink is a rectangle on a page that goes somewhere when it is pressed,
 /// in the page picture's pixels from the top left.
 class EpubLink {
@@ -242,7 +251,11 @@ class EpubPage {
     this.stage,
     this.soundtrack,
     this.start,
+    this.panels = const [],
   });
+
+  /// panels are the page's panels as a comic is read, for a plain book.
+  final List<EpubPanel> panels;
 }
 
 /// filmTarget is what a playhead button on a page aims at: the page's
@@ -322,12 +335,14 @@ Uint8List writeEpub({
   }
 
   _add(archive, "OEBPS/nav.xhtml", _nav(pages));
+  var panelled = !interactive && pages.any((p) => p.panels.isNotEmpty);
+  if (panelled) _add(archive, "OEBPS/regions.xhtml", _regions(pages));
   _add(
       archive,
       "OEBPS/content.opf",
       _opf(pages, title, author, id, interactive, facing,
           [...carried.values, ...starts.where((f) => f.href != "cover.png")],
-          cover: cover != null));
+          cover: cover != null, panels: panelled));
 
   var zip = ZipEncoder().encode(archive);
   return Uint8List.fromList(zip);
@@ -424,6 +439,7 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
   var script = interactive && page.scripted
       ? '\n    <script src="media.js"></script>'
       : "";
+  var panels = interactive ? "" : _panelTags(index, page);
   return '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml"
@@ -524,12 +540,12 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
       .layer.switched > .cw, .layer.switched > .clip,
       .layer.switched > .cb, .layer.switched > .ca {
         visibility: hidden !important; }
-    </style>
+${panels.isEmpty ? "" : _panelCss}    </style>
   </head>
   <body>
     <span id="play"></span>
     $face
-    ${framed ? "" : hotspots}$script
+    ${framed ? "" : hotspots}$panels$script
   </body>
 </html>
 ''';
@@ -1688,7 +1704,7 @@ String _nav(List<EpubPage> pages) {
 /// _opf is the package: what is in the book, and in what order.
 String _opf(List<EpubPage> pages, String title, String author, String id,
     bool interactive, bool facing, Iterable<EpubFile> files,
-    {bool cover = false}) {
+    {bool cover = false, bool panels = false}) {
   var coverAt = pages.indexWhere((p) => p.cover);
   var manifest = <String>[
     if (cover)
@@ -1696,6 +1712,9 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
           'properties="cover-image"/>',
     '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" '
         'properties="nav"/>',
+    if (panels)
+      '<item id="regions" href="regions.xhtml" '
+          'media-type="application/xhtml+xml" properties="data-nav"/>',
     for (var (i, page) in pages.indexed) ...[
       '<item id="page$i" href="page$i.xhtml" '
           'media-type="application/xhtml+xml"'
@@ -1735,7 +1754,11 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
 ${author.isEmpty ? "" : "    <dc:creator>${_text(author)}</dc:creator>\n"}    <meta property="dcterms:modified">${when}Z</meta>
     <meta property="rendition:layout">pre-paginated</meta>
     <meta property="rendition:spread">${facing ? "landscape" : "none"}</meta>
-${cover ? '    <meta name="cover" content="cover"/>\n' : coverAt < 0 ? "" : '    <meta name="cover" content="img$coverAt"/>\n'}  </metadata>
+    <meta property="rendition:orientation">auto</meta>
+    <meta name="fixed-layout" content="true"/>
+    <meta name="original-resolution" content="${pages.first.width}x${pages.first.height}"/>
+    <meta name="orientation-lock" content="none"/>
+${panels ? '    <meta name="book-type" content="comic"/>\n    <meta name="RegionMagnification" content="true"/>\n' : ""}${cover ? '    <meta name="cover" content="cover"/>\n' : coverAt < 0 ? "" : '    <meta name="cover" content="img$coverAt"/>\n'}  </metadata>
   <manifest>
     $manifest
   </manifest>
@@ -1746,6 +1769,78 @@ ${cover ? '    <meta name="cover" content="cover"/>\n' : coverAt < 0 ? "" : '   
     <reference type="cover" title="Cover" href="page${math.max(0, coverAt)}.xhtml"/>
   </guide>
 </package>
+''';
+}
+
+/// _panelTags is Kindle's Panel View for [page] (its Region Magnification):
+/// over each panel a place to double-tap, numbered in reading order, and
+/// what it opens -- the page enlarged on that panel, the rest dimmed --
+/// hidden until then. A reader without it shows the page as it is.
+String _panelTags(int index, EpubPage page) {
+  if (page.panels.isEmpty) return "";
+  var w = page.width.toDouble(), h = page.height.toDouble();
+  var taps = StringBuffer(), views = StringBuffer();
+  for (var (n, p) in page.panels.indexed) {
+    if (p.width <= 0 || p.height <= 0) continue;
+    var id = "p$index-${n + 1}";
+    taps.write('\n      <div id="$id" class="pv-tap" style="left:${_px(p.x)};'
+        'top:${_px(p.y)};width:${_px(p.width)};height:${_px(p.height)}">'
+        '<a class="app-amzn-magnify" data-app-amzn-magnify='
+        '\'{"targetId":"$id-mag", "ordinal":${n + 1}}\'></a></div>');
+    // As large as fits, in the middle, the page under it dimmed.
+    var z = math.max(1.0, math.min(w * 0.94 / p.width, h * 0.94 / p.height));
+    var vw = p.width * z, vh = p.height * z;
+    views.write('\n    <div id="$id-mag" class="pv-target">'
+        '<div class="pv-dim"></div>'
+        '<div class="pv-window" style="left:${_px((w - vw) / 2)};'
+        'top:${_px((h - vh) / 2)};width:${_px(vw)};height:${_px(vh)}">'
+        '<img src="page$index.png" alt="" style="left:${_px(-p.x * z)};'
+        'top:${_px(-p.y * z)};width:${_px(w * z)};height:${_px(h * z)}"/>'
+        '</div></div>');
+  }
+  return '''
+
+    <div class="pv">$taps
+    </div>$views''';
+}
+
+/// _panelCss is how _panelTags' places and views sit on the page.
+const String _panelCss = '''
+      .pv { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+      .pv-tap { position: absolute; display: block; }
+      .pv-tap a { display: block; width: 100%; height: 100%; }
+      .pv-target { position: absolute; left: 0; top: 0; width: 100%;
+        height: 100%; display: none; }
+      .pv-dim { position: absolute; left: 0; top: 0; width: 100%;
+        height: 100%; background: #000000; opacity: 0.66; }
+      .pv-window { position: absolute; overflow: hidden; }
+      .pv-window img { position: absolute; display: block; max-width: none; }
+''';
+
+/// _regions is the book's EPUB region-based navigation: every panel, page
+/// by page, in reading order, as a share of its page.
+String _regions(List<EpubPage> pages) {
+  String pc(double v, int of) => (v / of * 100).toStringAsFixed(3);
+  var items = [
+    for (var (i, page) in pages.indexed)
+      for (var p in page.panels)
+        '<li epub:type="panel"><a href="page$i.xhtml#xywh=percent:'
+            '${pc(p.x, page.width)},${pc(p.y, page.height)},'
+            '${pc(p.width, page.width)},${pc(p.height, page.height)}"></a></li>',
+  ];
+  return '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Panels</title></head>
+  <body>
+    <nav epub:type="region-based">
+      <ol>
+        ${items.join("\n        ")}
+      </ol>
+    </nav>
+  </body>
+</html>
 ''';
 }
 
