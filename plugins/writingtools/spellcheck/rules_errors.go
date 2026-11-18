@@ -148,8 +148,14 @@ var errorRules = []GrammarRule{
 		Explanation: "\"Your\" is a possessive, as in \"your wallet\". The phrase means \"you are welcome\", so it needs \"you're\".",
 	},
 	{
-		Pattern:     `\b([cC]ould|[sS]hould|[wW]ould|[mM]ust|[mM]ight)\s+of\b`,
-		Flags:       []string{"we should of gone"},
+		Pattern: `\b([cC]ould|[sS]hould|[wW]ould|[mM]ust|[mM]ight)\s+of\b`,
+		Flags:   []string{"we should of gone"},
+		Leaves:  []string{"it should of course be noted", "the might of the empire"},
+		// "Of course" is its own phrase, and "might" is also a noun.
+		Antipatterns: []string{
+			`\b\w+\s+of\s+course\b`,
+			`\b(?:[tT]he|[fF]ull|[aA]ll|[iI]ts|[tT]heir|[mM]ilitary)\s+might\s+of\b`,
+		},
 		Message:     "Should be \"$1 have\"",
 		Suggest:     "$1 have",
 		Category:    "Confused words",
@@ -181,55 +187,16 @@ var errorRules = []GrammarRule{
 		Explanation: "This is a contraction -- two words shortened into one -- and the apostrophe stands in for the letters that were dropped.",
 	},
 
-	{
-		// The whole word is matched, not just its first letter, so the fix
-		// reads as the word it produces: right-clicking "in" at the start of
-		// a sentence offers "In", where offering the bare "I" looked like a
-		// suggestion to replace the word with the pronoun.
-		//
-		// The tail keeps apostrophes, so "that's" is flagged and corrected
-		// whole. Matching only word characters stopped at the apostrophe and
-		// offered "That" for it, which reads as a proposal to drop the "'s".
-		//
-		// The preceding punctuation is matched in a lookbehind rather than a
-		// capture, so the flagged span starts at the word. Written as a
-		// capture, the span began at the previous sentence's full stop, which
-		// underlined text that was not wrong and -- because a right-click
-		// selects the word under the pointer -- meant clicking the offending
-		// letter often missed the span entirely while clicking the full stop
-		// beside it worked.
-		//
-		// A newline counts as a sentence break in its own right, not only
-		// one preceded by a full stop. A new paragraph is the commonest
-		// place for a missing capital and the lookbehind, which sees exactly
-		// the characters immediately before the letter, saw only the second
-		// of the two newlines between paragraphs and so never fired there.
-		//
-		// $U1 upper-cases the captured letter; a literal template cannot,
-		// since the letter to capitalise is whatever was typed.
-		//
-		// This is the noisiest rule here by some way: plenty of people write
-		// chat entirely in lower case on purpose, and it flags the first word
-		// of every sentence they send. It is included because a missing
-		// capital is a real error and the fix is unambiguous, but it is the
-		// first rule to drop if the underlines become wallpaper.
-		Pattern:     `(?<=^|[.!?]\s|\n)([a-z])([a-z0-9']*)`,
-		Flags:       []string{"the payment cleared. then we left"},
-		Message:     "Sentence should start with a capital",
-		Suggest:     "$U1$2",
-		Category:    "Capitalization",
-		Explanation: "A sentence begins with a capital letter. This applies at the start of a new paragraph as well as after a full stop.",
-	},
-
 	// --- confusions with a decidable answer ---
 	// their/there/they're normally needs to know what a sentence means, which
 	// is why the general case is absent. These are the positions where it
 	// does not: "their" is a possessive, so a pronoun or a verb cannot follow
 	// it, whatever the sentence is about.
 	{
-		Pattern:     `\b[tT]heir\s+(is|are|was|were|will|would|has|have|had)\b`,
+		// "Will" is not in the list: "against their will" is a possession.
+		Pattern:     `\b[tT]heir\s+(is|are|was|were|would|has|have|had)\b`,
 		Flags:       []string{"their is a problem"},
-		Leaves:      []string{"their wallet is empty"},
+		Leaves:      []string{"their wallet is empty", "against their will"},
 		Message:     "Should be \"there $1\"",
 		Suggest:     "there $1",
 		Category:    "Confused words",

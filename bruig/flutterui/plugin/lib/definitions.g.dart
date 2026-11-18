@@ -886,6 +886,63 @@ Map<String, dynamic> _$SpellcheckLanguageToJson(SpellcheckLanguage instance) =>
       'name': instance.name,
     };
 
+TokenRule _$TokenRuleFromJson(Map<String, dynamic> json) => TokenRule(
+      json['id'] as String? ?? '',
+      json['pattern'] as String? ?? '',
+      json['message'] as String? ?? '',
+      (json['suggest'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          [],
+      json['category'] as String? ?? '',
+      json['explanation'] as String? ?? '',
+      json['severity'] as String? ?? '',
+      (json['except'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$TokenRuleToJson(TokenRule instance) => <String, dynamic>{
+      'id': instance.id,
+      'pattern': instance.pattern,
+      'except': instance.except,
+      'message': instance.message,
+      'suggest': instance.suggest,
+      'category': instance.category,
+      'explanation': instance.explanation,
+      'severity': instance.severity,
+    };
+
+GrammarData _$GrammarDataFromJson(Map<String, dynamic> json) => GrammarData(
+      lexicon: json['lexicon'] as String? ?? '',
+      transitions: json['transitions'] as String? ?? '',
+      confusionSets: (json['confusionSets'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      ngrams: json['ngrams'] as String? ?? '',
+      pairWords: json['pairWords'] as String? ?? '',
+      pairBits: json['pairBits'] as String? ?? '',
+      classes: (json['classes'] as Map<String, dynamic>?)?.map(
+            (k, e) => MapEntry(
+                k, (e as List<dynamic>).map((e) => e as String).toList()),
+          ) ??
+          {},
+      rules: (json['rules'] as List<dynamic>?)
+              ?.map((e) => TokenRule.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$GrammarDataToJson(GrammarData instance) =>
+    <String, dynamic>{
+      'lexicon': instance.lexicon,
+      'transitions': instance.transitions,
+      'confusionSets': instance.confusionSets,
+      'ngrams': instance.ngrams,
+      'pairWords': instance.pairWords,
+      'pairBits': instance.pairBits,
+      'classes': instance.classes,
+      'rules': instance.rules,
+    };
+
 SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
     SpellcheckData(
       (json['words'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
@@ -907,6 +964,9 @@ SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
                   (e) => SpellcheckLanguage.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      json['grammar'] == null
+          ? null
+          : GrammarData.fromJson(json['grammar'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
@@ -917,6 +977,7 @@ Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
       'analysisChecks': instance.analysisChecks,
       'language': instance.language,
       'languages': instance.languages,
+      'grammar': instance.grammar,
     };
 
 ThesaurusSense _$ThesaurusSenseFromJson(Map<String, dynamic> json) =>

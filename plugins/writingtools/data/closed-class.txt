@@ -1,0 +1,377 @@
+# The grammar words: what each one can be in a sentence, and how often.
+#
+# Read by tools/mklexicon, which works out the same thing for the rest of the
+# dictionary from WordNet and from counted usage. These are written by hand
+# because there are few of them, they are most of any sentence, and no count
+# of them is as reliable as knowing: a tagger that is unsure whether "the" is
+# a determiner is unsure about everything after it.
+#
+# Format: word TAG:weight[:lemma] ...
+# Weights are percentages and need not be exact -- they say which reading to
+# try first, and a reading given 0 is possible but rare.
+#
+# The tags are the Penn Treebank's, which every book on the subject uses:
+#   DT determiner     PDT predeterminer   CD number        EX "there is"
+#   IN preposition or subordinator        TO "to" before a verb
+#   CC conjunction    MD modal            UH interjection  RP particle
+#   PRP pronoun       PRP$ possessive     WP WDT WP$ WRB the wh- words
+#   NN NNS NNP nouns  JJ JJR JJS adjectives   RB RBR RBS adverbs
+#   VB base verb  VBP am/are  VBZ -s form  VBD past  VBN participle  VBG -ing
+#   POS the possessive 's
+
+# --- articles and determiners ---
+the DT:100
+a DT:100
+an DT:100
+this DT:95 RB:5
+that DT:35 IN:40 WDT:22 RB:3
+these DT:100
+those DT:100
+each DT:100
+every DT:100
+either DT:50 CC:35 RB:15
+neither DT:45 CC:55
+some DT:97 RB:3
+any DT:95 RB:5
+no DT:70 UH:27 RB:3
+all DT:65 PDT:25 RB:10
+both DT:55 CC:30 PDT:15
+another DT:100
+such JJ:60 PDT:40
+what WP:70 WDT:30
+which WDT:100
+whatever WDT:60 WP:40
+whichever WDT:100
+half NN:50 PDT:30 JJ:20
+many JJ:98 NN:2
+much JJ:50 RB:50
+few JJ:98 NN:2
+fewer JJR:100
+fewest JJS:100
+several JJ:100
+more JJR:45 RBR:55
+most JJS:45 RBS:55
+less JJR:45 RBR:55
+least JJS:50 RBS:50
+enough JJ:50 RB:50
+own JJ:92 VB:8
+other JJ:88 NN:12
+others NNS:100
+same JJ:100
+next JJ:75 RB:15 IN:10
+last JJ:75 RB:10 VB:10 NN:5
+
+# --- pronouns ---
+i PRP:100
+me PRP:100
+my PRP$:100
+mine PRP:88 NN:8 VB:4
+myself PRP:100
+you PRP:100
+your PRP$:100
+yours PRP:100
+yourself PRP:100
+yourselves PRP:100
+he PRP:100
+him PRP:100
+his PRP$:100
+himself PRP:100
+she PRP:100
+her PRP$:60 PRP:40
+hers PRP:100
+herself PRP:100
+it PRP:100
+its PRP$:100
+itself PRP:100
+we PRP:100
+us PRP:100
+our PRP$:100
+ours PRP:100
+ourselves PRP:100
+they PRP:100
+them PRP:100
+their PRP$:100
+theirs PRP:100
+themselves PRP:100
+oneself PRP:100
+who WP:100
+whom WP:100
+whose WP$:100
+whoever WP:100
+someone NN:100
+somebody NN:100
+something NN:100
+anyone NN:100
+anybody NN:100
+anything NN:100
+everyone NN:100
+everybody NN:100
+everything NN:100
+nobody NN:100
+nothing NN:100
+none NN:100
+there EX:55 RB:45
+here RB:100
+
+# --- prepositions and subordinators ---
+of IN:100
+in IN:92 RP:5 RB:3
+on IN:90 RP:6 RB:4
+at IN:100
+by IN:97 RB:3
+for IN:98 CC:2
+with IN:100
+from IN:100
+about IN:75 RB:25
+into IN:100
+onto IN:100
+through IN:90 RB:8 JJ:2
+over IN:75 RP:12 RB:13
+under IN:95 RB:5
+between IN:100
+among IN:100
+amongst IN:100
+against IN:100
+during IN:100
+without IN:100
+within IN:100
+across IN:90 RB:10
+behind IN:85 RB:12 NN:3
+beyond IN:95 RB:5
+above IN:80 RB:15 JJ:5
+below IN:75 RB:25
+near IN:55 JJ:25 RB:15 VB:5
+since IN:90 RB:10
+until IN:100
+till IN:95 VB:3 NN:2
+upon IN:100
+toward IN:100
+towards IN:100
+along IN:80 RB:20
+around IN:65 RB:35
+off IN:45 RP:35 RB:15 JJ:5
+out RP:40 IN:30 RB:30
+up RP:45 IN:25 RB:30
+down RP:35 IN:30 RB:30 NN:3 VB:2
+per IN:100
+via IN:100
+despite IN:100
+except IN:95 VB:5
+besides IN:60 RB:40
+beside IN:100
+beneath IN:100
+underneath IN:90 RB:10
+inside IN:55 RB:20 NN:15 JJ:10
+outside IN:50 RB:20 NN:15 JJ:15
+throughout IN:90 RB:10
+unlike IN:95 JJ:5
+like IN:55 VB:40 JJ:3 NN:2
+amid IN:100
+past IN:35 JJ:35 NN:25 RB:5
+as IN:75 RB:25
+than IN:100
+because IN:100
+although IN:100
+though IN:85 RB:15
+while IN:88 NN:12
+whereas IN:100
+whilst IN:100
+if IN:100
+unless IN:100
+whether IN:100
+once RB:60 IN:40
+before IN:80 RB:20
+after IN:92 RB:8
+to TO:62 IN:38
+
+# --- conjunctions ---
+and CC:100
+or CC:100
+but CC:95 IN:3 RB:2
+nor CC:100
+yet RB:70 CC:30
+so RB:55 IN:35 CC:10
+plus CC:60 NN:25 JJ:15
+
+# --- modals ---
+can MD:98 NN:1 VB:1
+could MD:100
+will MD:95 NN:4 VB:1
+would MD:100
+shall MD:100
+should MD:100
+may MD:100
+might MD:95 NN:5
+must MD:98 NN:2
+ought MD:100
+cannot MD:100:can
+can't MD:100:can
+couldn't MD:100:could
+won't MD:100:will
+wouldn't MD:100:would
+shan't MD:100:shall
+shouldn't MD:100:should
+mustn't MD:100:must
+mightn't MD:100:might
+needn't MD:100:need
+'ll MD:100:will
+'d MD:60:would VBD:40:have
+
+# --- be, have, do ---
+be VB:100
+am VBP:100:be
+are VBP:100:be
+is VBZ:100:be
+was VBD:100:be
+were VBD:100:be
+been VBN:100:be
+being VBG:88:be NN:12
+isn't VBZ:100:be
+aren't VBP:100:be
+wasn't VBD:100:be
+weren't VBD:100:be
+ain't VBP:100:be
+'m VBP:100:be
+'re VBP:100:be
+'s POS:55 VBZ:45:be
+have VB:100
+has VBZ:100:have
+had VBD:60:have VBN:40:have
+having VBG:100:have
+haven't VB:100:have
+hasn't VBZ:100:have
+hadn't VBD:100:have
+'ve VB:100:have
+do VB:100
+does VBZ:100:do
+did VBD:100:do
+done VBN:92:do JJ:8
+doing VBG:100:do
+don't VB:100:do
+doesn't VBZ:100:do
+didn't VBD:100:do
+
+gonna VBG:100:go
+wanna VB:100:want
+gotta VB:100:get
+
+# --- nouns that are plural without looking it ---
+people NNS:96 NN:4
+police NNS:100
+cattle NNS:100
+data NN:60 NNS:40
+media NN:50 NNS:50
+
+# --- adverbs that are really grammar ---
+not RB:100
+n't RB:100:not
+never RB:100
+ever RB:100
+always RB:100
+often RB:100
+sometimes RB:100
+seldom RB:100
+rarely RB:100
+usually RB:100
+also RB:100
+very RB:95 JJ:5
+too RB:100
+quite RB:100
+rather RB:100
+really RB:100
+just RB:95 JJ:5
+only RB:78 JJ:22
+even RB:92 JJ:6 VB:2
+still RB:85 JJ:10 NN:3 VB:2
+already RB:100
+again RB:100
+soon RB:100
+now RB:100
+then RB:95 JJ:5
+when WRB:100
+where WRB:100
+why WRB:100
+how WRB:100
+whenever WRB:100
+wherever WRB:100
+however RB:100
+therefore RB:100
+thus RB:100
+hence RB:100
+perhaps RB:100
+maybe RB:100
+almost RB:100
+nearly RB:100
+hardly RB:100
+barely RB:100
+scarcely RB:100
+well RB:80 UH:10 JJ:6 NN:4
+away RB:100
+back RB:60 NN:25 JJ:10 VB:5
+together RB:100
+else RB:100
+instead RB:100
+anyway RB:100
+anymore RB:100
+today NN:55 RB:45
+tomorrow NN:55 RB:45
+yesterday NN:55 RB:45
+tonight NN:55 RB:45
+ago RB:100
+later RB:70 JJ:30
+please UH:60 VB:40
+yes UH:100
+yeah UH:100
+okay UH:60 JJ:35 NN:5
+ok UH:60 JJ:35 NN:5
+oh UH:100
+hi UH:100
+hello UH:100
+hey UH:100
+wow UH:100
+thanks NNS:55 UH:45
+bye UH:100
+sorry JJ:70 UH:30
+
+# --- numbers ---
+zero CD:100
+one CD:62 PRP:25 NN:13
+two CD:100
+three CD:100
+four CD:100
+five CD:100
+six CD:100
+seven CD:100
+eight CD:100
+nine CD:100
+ten CD:100
+eleven CD:100
+twelve CD:100
+thirteen CD:100
+fourteen CD:100
+fifteen CD:100
+sixteen CD:100
+seventeen CD:100
+eighteen CD:100
+nineteen CD:100
+twenty CD:100
+thirty CD:100
+forty CD:100
+fifty CD:100
+sixty CD:100
+seventy CD:100
+eighty CD:100
+ninety CD:100
+hundred CD:100
+thousand CD:100
+million CD:100
+billion CD:100
+trillion CD:100
+dozen CD:100
+hundreds NNS:100
+thousands NNS:100
+millions NNS:100
+billions NNS:100
+first JJ:80 RB:20
+second JJ:70 NN:28 VB:2
+third JJ:85 NN:15

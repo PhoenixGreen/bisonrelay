@@ -90,16 +90,6 @@ var confusionRules = []GrammarRule{
 		Category:    "Confused words",
 		Explanation: explainThenThan,
 	},
-	{
-		// The mirror. A conjunction cannot be followed by a comparison.
-		Pattern:     `\b([aA]nd|[bB]ut|[sS]o|[bB]ack|[sS]ince|[rR]ight|[oO]nly|[wW]ay)\s+than\b`,
-		Flags:       []string{"we synced and than sent it"},
-		Leaves:      []string{"we synced and then sent it"},
-		Message:     "Should be \"$1 then\"",
-		Suggest:     "$1 then",
-		Category:    "Confused words",
-		Explanation: explainThenThan,
-	},
 
 	// --- lose / loose ---
 	{
@@ -135,22 +125,6 @@ var confusionRules = []GrammarRule{
 	},
 
 	// --- affect / effect ---
-	{
-		// A determiner forces a noun.
-		//
-		// The indefinite article is separated out below, because correcting
-		// the word changes which article the sentence needs: "a affect"
-		// becomes "an effect", not "a effect". A rule that carries the
-		// determiner through unchanged hands back a phrase that is still
-		// wrong, and this one did.
-		Pattern:     `\b([tT]he|[tT]his|[tT]hat|[aA]ny|[nN]o|[sS]ide|[nN]et|[lL]ittle|[gG]reat|[wW]hose)\s+affect\b`,
-		Flags:       []string{"it had no affect"},
-		Leaves:      []string{"it had no effect"},
-		Message:     "Should be \"$1 effect\"",
-		Suggest:     "$1 effect",
-		Category:    "Confused words",
-		Explanation: explainAffectEffect,
-	},
 	{
 		// Both "a affect" and "an affect" become "an effect": the vowel is
 		// what decides, and after the correction there is one.
@@ -278,45 +252,6 @@ var confusionRules = []GrammarRule{
 		Suggest:     "$1 your $2",
 		Category:    "Confused words",
 		Explanation: "\"You\" is the pronoun and \"your\" is the possessive. The noun after it is being owned, so this needs \"your\".",
-	},
-
-	// --- to / too ---
-	{
-		// The leading verb or intensifier is matched as well as the adjective
-		// after it, because "to" before an adjective is fine on its own --
-		// "spoke to many people", "went to great lengths".
-		//
-		// The adjectives are listed rather than matched loosely, and the
-		// list is the whole rule. "High" was missing until an example asked
-		// for it, which is about as common as this mistake gets. Words that
-		// are also verbs stay out: "the plan is to close the door" and "the
-		// aim is to narrow the gap" are correct writing that "close" or
-		// "narrow" in this list would flag.
-		Pattern: `\b([iI]s|[aA]re|[wW]as|[wW]ere|[bB]e|[bB]een|[iI]t's|[tT]hat's|[fF]eel|[fF]eels|[fF]elt|` +
-			`[sS]eems|[lL]ooks|[wW]ay|[fF]ar)\s+to\s+(much|many|late|early|big|small|` +
-			`hard|easy|expensive|long|short|slow|fast|good|bad|old|young|` +
-			`heavy|light|loud|quiet|soon|often|high|low|hot|cold|busy|` +
-			`tired|strong|weak|wide|deep|thin|thick|dark|bright|complex|` +
-			`simple|risky|similar|different)\b`,
-		Flags:       []string{"the fee is to high"},
-		Leaves:      []string{"i spoke to many people about it"},
-		Message:     "Should be \"$1 too $2\"",
-		Suggest:     "$1 too $2",
-		Category:    "Confused words",
-		Explanation: explainToToo,
-	},
-	{
-		// "Me to." ending a sentence is always "me too". The antipattern is
-		// the other reading: a "to" with something after it is the
-		// preposition doing its job.
-		Pattern:      `\b([mM]e|[hH]im|[hH]er|[uU]s|[tT]hem)\s+to\b`,
-		Flags:        []string{"send it to me to."},
-		Leaves:       []string{"send it to me to review"},
-		Antipatterns: []string{`\b([mM]e|[hH]im|[hH]er|[uU]s|[tT]hem)\s+to\s+\S`},
-		Message:      "Should be \"$1 too\"",
-		Suggest:      "$1 too",
-		Category:     "Confused words",
-		Explanation:  explainToToo,
 	},
 
 	// --- their / they're ---
@@ -494,49 +429,6 @@ var confusionRules = []GrammarRule{
 		Suggest:     "$1ou're $2",
 		Category:    "Confused words",
 		Explanation: explainYourYoure,
-	},
-	{
-		Pattern:      `\b([tT])heir\s+(` + progressiveVerbs + `)\b`,
-		Antipatterns: []string{`[tT]heir\s+\w+ing\s+(of\b|` + gerundAsSubject + `\b)`},
-		Flags: []string{
-			"Their taking they're children to school",
-			"their coming over later",
-		},
-		Leaves: []string{
-			"they're taking their children to school",
-			"their leaving was sudden",
-			"their taking of the city ended it",
-		},
-		Message:     "Should be \"$1hey're $2\"",
-		Suggest:     "$1hey're $2",
-		Category:    "Confused words",
-		Explanation: explainTheirTheyre,
-	},
-	{
-		// "There going to be late."
-		//
-		// The antipattern is the reading that makes this rule dangerous rather
-		// than merely wrong: "is there going to be a meeting?" is correct,
-		// extremely common, and the existential "there" is doing exactly what
-		// this pattern looks for.
-		Pattern: `\b([tT])here\s+(` + progressiveVerbs + `)\b`,
-		Antipatterns: []string{
-			`\b(is|Is|was|Was|will|Will|would|Would|isn't|wasn't)\s+there\s+\w+ing\b`,
-			`\b(out|over|down|up|back|in)\s+there\s+\w+ing\b`,
-		},
-		Flags: []string{
-			"There going to be late",
-			"there coming over later",
-		},
-		Leaves: []string{
-			"they're going to be late",
-			"is there going to be a meeting?",
-			"the path out there going north is closed",
-		},
-		Message:     "Should be \"$1hey're $2\"",
-		Suggest:     "$1hey're $2",
-		Category:    "Confused words",
-		Explanation: explainThereTheyre,
 	},
 	{
 		// The mirror of the existing whose/who's rule, which listed fourteen
@@ -826,31 +718,6 @@ var confusionRules = []GrammarRule{
 			"\"phase\" is a stage in a process.",
 	},
 
-	// --- quiet / quite ---
-	{
-		// An intensifier forces the adjective: nothing is "very quite".
-		Pattern:  `\b([vV]ery|[sS]o|[rR]eally|[tT]oo|[pP]retty|[bB]e|[kK]ept|[sS]tayed)\s+quite\b`,
-		Flags:    []string{"the room was very quite"},
-		Leaves:   []string{"the room was very quiet", "it is quite large"},
-		Message:  "Should be \"$1 quiet\"",
-		Suggest:  "$1 quiet",
-		Category: "Confused words",
-		Explanation: "\"Quiet\" means without noise. \"Quite\" means fairly " +
-			"or completely, and modifies another word.",
-	},
-	{
-		// The mirror: "quiet" before a determiner or an adjective is the
-		// degree word, which is spelled the other way.
-		Pattern:  `\b[qQ]uiet\s+(a|an|the|good|bad|big|large|small|nice|often|well|right|sure|different|similar|possible|likely|clear|common|rare|hard|easy|expensive|cheap|late|early|long|short|new|old|a\s+lot)\b`,
-		Flags:    []string{"The room is quiet large"},
-		Leaves:   []string{"the room is quite large", "be quiet and listen"},
-		Message:  "Should be \"quite $1\"",
-		Suggest:  "quite $1",
-		Category: "Confused words",
-		Explanation: "\"Quite\" means fairly or completely. \"Quiet\" means " +
-			"without noise.",
-	},
-
 	// --- passed / past ---
 	{
 		// A verb of motion before it makes "past" the preposition, not a verb
@@ -865,17 +732,6 @@ var confusionRules = []GrammarRule{
 		Category: "Confused words",
 		Explanation: "\"Past\" is the preposition -- going by something. " +
 			"\"Passed\" is the past tense of the verb \"to pass\".",
-	},
-	{
-		// The mirror: a subject pronoun needs a verb, and "past" is not one.
-		Pattern:  `\b([iI]|[wW]e|[yY]ou|[tT]hey|[hH]e|[sS]he|[iI]t)\s+past\s+(the|a|an|my|your|his|her|our|their|it|him|them|us|me)\b`,
-		Flags:    []string{"We past the shop on the way"},
-		Leaves:   []string{"we passed the shop on the way", "in the past we did"},
-		Message:  "Should be \"$1 passed $2\"",
-		Suggest:  "$1 passed $2",
-		Category: "Confused words",
-		Explanation: "\"Passed\" is the verb. \"Past\" is a time gone by, or " +
-			"the preposition meaning beyond.",
 	},
 
 	// --- accept / except ---
@@ -917,16 +773,6 @@ var confusionRules = []GrammarRule{
 
 	// --- stationary / stationery ---
 	{
-		Pattern:  `\b([bB]uy|[bB]ought|[oO]rder|[oO]rdered|[sS]ome|[tT]he|[oO]ffice|[sS]chool)\s+stationary\b`,
-		Flags:    []string{"I bought some stationary"},
-		Leaves:   []string{"I bought some stationery", "the car was stationary"},
-		Message:  "Should be \"$1 stationery\"",
-		Suggest:  "$1 stationery",
-		Category: "Confused words",
-		Explanation: "\"Stationery\" is paper and pens. \"Stationary\" means " +
-			"not moving.",
-	},
-	{
 		Pattern:  `\b([wW]as|[wW]ere|[iI]s|[aA]re|[rR]emained|[sS]tayed|[sS]tood|[kK]ept|[hH]eld)\s+stationery\b`,
 		Flags:    []string{"The car was stationery"},
 		Leaves:   []string{"the car was stationary", "I bought some stationery"},
@@ -948,21 +794,6 @@ var confusionRules = []GrammarRule{
 		Category: "Confused words",
 		Explanation: "\"Know\" is the verb -- to be aware of something. " +
 			"\"No\" is the negative.",
-	},
-
-	// --- to / too, the other direction ---
-	{
-		// "I need too go." "Too" is an adverb of degree and cannot introduce a
-		// verb; only the infinitive "to" can.
-		Pattern: `\b[tT]oo\s+(go|be|get|do|make|see|say|have|take|find|know|` +
-			`come|give|work|start|stop|help|use|try|put|keep|leave|call|send|` +
-			`check|ask|talk|think|buy|pay|read|write|play|watch|meet)\b`,
-		Flags:       []string{"so I need too go early"},
-		Leaves:      []string{"so I need to go early", "that is too much"},
-		Message:     "Should be \"to $1\"",
-		Suggest:     "to $1",
-		Category:    "Confused words",
-		Explanation: explainToToo,
 	},
 
 	// --- phrases that are simply not the phrase ---

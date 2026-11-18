@@ -88,17 +88,6 @@ const (
 var homophoneRules = []GrammarRule{
 	// --- hear / here ---
 	{
-		// A modal or auxiliary forces the verb; "here" is not one.
-		Pattern: `\b([cC]an|[cC]an't|[cC]ould|[cC]ouldn't|[dD]id|[dD]idn't|[dD]o|` +
-			`[dD]on't|[wW]ill|[wW]on't|[wW]ould)\s+((?:you|I|we|they|he|she|it)\s+)?here\b`,
-		Flags:       []string{"I can here something outside", "did you here that"},
-		Leaves:      []string{"I can hear something outside", "come over here"},
-		Message:     "Should be \"$1 $2hear\"",
-		Suggest:     "$1 $2hear",
-		Category:    "Confused words",
-		Explanation: explainHearHere,
-	},
-	{
 		// A place word before it forces the place.
 		Pattern:     `\b([oO]ver|[iI]n|[oO]ut|[uU]p|[dD]own|[rR]ight|[fF]rom)\s+hear\b`,
 		Flags:       []string{"come over hear", "it is right hear"},
@@ -158,38 +147,7 @@ var homophoneRules = []GrammarRule{
 		Explanation: "A \"week\" is seven days. \"Weak\" means lacking strength.",
 	},
 
-	// --- meet / meat ---
-	{
-		Pattern:     `\b([lL]et's|[tT]o|[wW]ill|[cC]an|[cC]ould|[sS]hall|[sS]hould|[wW]e'll|[iI]'ll)\s+meat\b`,
-		Flags:       []string{"let's meat after work"},
-		Leaves:      []string{"let's meet after work", "we bought some meat"},
-		Message:     "Should be \"$1 meet\"",
-		Suggest:     "$1 meet",
-		Category:    "Confused words",
-		Explanation: "\"Meet\" means to come together. \"Meat\" is food.",
-	},
-	{
-		Pattern:     `\b([sS]ome|[tT]he|[rR]ed|[rR]aw|[cC]ooked|[fF]rozen|[fF]resh|[mM]inced)\s+meet\b`,
-		Flags:       []string{"we bought some meet"},
-		Leaves:      []string{"we bought some meat", "let's meet later"},
-		Message:     "Should be \"$1 meat\"",
-		Suggest:     "$1 meat",
-		Category:    "Confused words",
-		Explanation: "\"Meat\" is food. \"Meet\" means to come together.",
-	},
-
 	// --- threw / through ---
-	{
-		// A subject pronoun needs a verb, and "through" is a preposition.
-		Pattern: `\b([iI]|[wW]e|[yY]ou|[tT]hey|[hH]e|[sS]he|[wW]ho)\s+through\s+` +
-			`(the|a|an|it|him|her|them|me|us|his|my|your|their|out|away)\b`,
-		Flags:       []string{"he through the ball at me"},
-		Leaves:      []string{"he threw the ball at me", "he went through the door"},
-		Message:     "Should be \"$1 threw $2\"",
-		Suggest:     "$1 threw $2",
-		Category:    "Confused words",
-		Explanation: explainThrewThrough,
-	},
 	{
 		// A verb of motion before it forces the preposition.
 		Pattern: `\b([wW]alked|[rR]an|[wW]ent|[dD]rove|[lL]ooked|[gG]ot|[cC]ame|` +
@@ -283,15 +241,6 @@ var homophoneRules = []GrammarRule{
 		Explanation: "\"Would\" is the conditional verb. \"Wood\" is the " +
 			"material trees are made of.",
 	},
-	{
-		Pattern:     `\b([mM]ade\s+of|[oO]ut\s+of|[fF]rom|[sS]olid|[hH]ard|[sS]oft|[fF]ire|[dD]river)\s+would\b`,
-		Flags:       []string{"a table made of would"},
-		Leaves:      []string{"a table made of wood", "I would build it"},
-		Message:     "Should be \"$1 wood\"",
-		Suggest:     "$1 wood",
-		Category:    "Confused words",
-		Explanation: "\"Wood\" is the material. \"Would\" is the conditional verb.",
-	},
 
 	// --- seam / seem ---
 	{
@@ -337,15 +286,6 @@ var homophoneRules = []GrammarRule{
 	},
 
 	// --- tail / tale ---
-	{
-		Pattern:     `\b([wW]agged|[wW]agging|[wW]ag|[iI]ts|[hH]is|[hH]er|[tT]he\s+dog's|[tT]he\s+cat's|[tT]he\s+fox's|[bB]ushy|[lL]ong)\s+tale\b`,
-		Flags:       []string{"the dog wagged its tale"},
-		Leaves:      []string{"the dog wagged its tail", "she told a tale"},
-		Message:     "Should be \"$1 tail\"",
-		Suggest:     "$1 tail",
-		Category:    "Confused words",
-		Explanation: explainTailTale,
-	},
 	{
 		Pattern:     `\b([tT]old|[tT]elling|[tT]ell|[fF]airy|[tT]all|[cC]autionary|[cC]hildren's)\s+(a\s+|the\s+)?tail\b`,
 		Flags:       []string{"I told a tail", "a fairy tail"},
@@ -420,15 +360,6 @@ var homophoneRules = []GrammarRule{
 	},
 
 	// --- board / bored ---
-	{
-		Pattern:     `\b([wW]as|[wW]ere|[aA]m|[iI]s|[aA]re|[fF]eel|[fF]elt|[gG]ot|[gG]etting|[sS]o|[vV]ery|[rR]eally|[qQ]uite)\s+board\b`,
-		Flags:       []string{"I was board during the meeting"},
-		Leaves:      []string{"I was bored during the meeting", "look at the board"},
-		Message:     "Should be \"$1 bored\"",
-		Suggest:     "$1 bored",
-		Category:    "Confused words",
-		Explanation: explainBoardBored,
-	},
 	{
 		Pattern:     `\b([tT]he|[aA]|[nN]otice|[wW]hite|[bB]lack|[cC]hess|[dD]iving|[sS]urf|[sS]kirting|[kK]ey)\s+bored\b`,
 		Flags:       []string{"stared at the bored"},
@@ -511,26 +442,8 @@ var homophoneRules = []GrammarRule{
 		Category:    "Confused words",
 		Explanation: explainDeviceDevise,
 	},
-	{
-		Pattern:     `\b([tT]o|[wW]ill|[cC]an|[cC]ould|[mM]ust|[sS]hould|[wW]ould|[hH]elp)\s+device\b`,
-		Flags:       []string{"we need to device a new plan"},
-		Leaves:      []string{"we need to devise a new plan", "a clever device"},
-		Message:     "Should be \"$1 devise\"",
-		Suggest:     "$1 devise",
-		Category:    "Confused words",
-		Explanation: explainDeviceDevise,
-	},
 
 	// --- elicit / illicit ---
-	{
-		Pattern:     `\b([tT]o|[wW]ill|[cC]ould|[mM]ight|[wW]ould|[cC]an|[hH]oped\s+to|[tT]rying\s+to|[dD]esigned\s+to)\s+illicit\b`,
-		Flags:       []string{"the question was designed to illicit information"},
-		Leaves:      []string{"the question was designed to elicit information", "an illicit trade"},
-		Message:     "Should be \"$1 elicit\"",
-		Suggest:     "$1 elicit",
-		Category:    "Confused words",
-		Explanation: explainElicitIllicit,
-	},
 	{
 		Pattern:     `\b([aA]n|[tT]he|[sS]ome|[aA]ny|[sS]uspected)\s+elicit\s+(activity|activities|drugs|trade|affair|behaviour|behavior|substances|goods|relationship|dealings)\b`,
 		Flags:       []string{"an elicit activity"},
@@ -562,17 +475,6 @@ var homophoneRules = []GrammarRule{
 	},
 
 	// --- ensure / insure ---
-	{
-		// Only where what follows cannot be insured. "Insure the car" is
-		// correct and is why the object is matched rather than the verb alone.
-		Pattern:     `\b([pP]lease|[tT]o|[mM]ust|[wW]ill|[sS]hould|[wW]ould|[cC]an|[hH]elp)\s+insure\s+(that|everyone|everybody|nothing|no\s+one|nobody|all)\b`,
-		Flags:       []string{"we must insure everyone is safe"},
-		Leaves:      []string{"we must ensure everyone is safe", "we must insure the car"},
-		Message:     "Should be \"$1 ensure $2\"",
-		Suggest:     "$1 ensure $2",
-		Category:    "Confused words",
-		Explanation: explainEnsureInsure,
-	},
 	{
 		Pattern:     `\b([tT]o|[wW]ill|[cC]an|[mM]ust|[sS]hould)\s+ensure\s+(the|your|my|his|her|our|their)\s+(car|house|home|property|vehicle|building|business|belongings|contents|jewellery|jewelry)\b`,
 		Flags:       []string{"remember to ensure the car"},
@@ -644,15 +546,6 @@ var homophoneRules = []GrammarRule{
 	},
 
 	// --- pole / poll ---
-	{
-		Pattern:     `\b([tT]he|[aA]|[fF]lag|[tT]elegraph|[tT]elephone|[lL]amp|[nN]orth|[sS]outh|[wW]ooden|[mM]etal|[tT]ent|[fF]ishing)\s+poll\b`,
-		Flags:       []string{"attached to a flag poll"},
-		Leaves:      []string{"attached to a flag pole", "the latest poll shows"},
-		Message:     "Should be \"$1 pole\"",
-		Suggest:     "$1 pole",
-		Category:    "Confused words",
-		Explanation: explainPolePoll,
-	},
 	{
 		Pattern:     `\b([aA]n?|[tT]he|[oO]pinion|[eE]xit|[nN]ational|[rR]ecent|[lL]atest)\s+pole\s+(of|showed|shows|found|suggests|suggested|said|put)\b`,
 		Flags:       []string{"the latest pole showed a lead"},

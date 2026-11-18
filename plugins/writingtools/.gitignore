@@ -22,5 +22,8 @@ thesaurus.txt
 definitions.txt
 exceptions.txt
 inflections.txt
+lexicon.txt
+usage-ngrams.bin
+usage-pairs.bin
 
 .DS_Store

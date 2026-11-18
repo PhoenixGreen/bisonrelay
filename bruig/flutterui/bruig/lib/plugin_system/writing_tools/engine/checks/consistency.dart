@@ -29,13 +29,21 @@ final Map<String, AnalysisRunner> consistencyChecks = {
 /// of one word.
 void _spellingVariants(AnalysisContext context, AnalysisCheck check) {
   var text = context.text;
-  var lower = text.toLowerCase();
+  // Asked of the document's words, gathered once, rather than by searching
+  // the document for each spelling in turn. There are hundreds of pairs and
+  // nearly none of them is in any given post, and two searches of the whole
+  // text for each had become half of what a keystroke in a long post cost.
+  var words = context.words;
+  String? lower;
+  bool present(String spelling) => _plainWord.hasMatch(spelling)
+      ? words.contains(spelling)
+      // A spelling with a hyphen or a space in it is not one of the
+      // document's words, and is looked for the slow way.
+      : (lower ??= text.toLowerCase()).contains(spelling);
   for (var pair in check.values) {
     var parts = pair.split("|");
     if (parts.length != 2 || parts[0].isEmpty || parts[1].isEmpty) continue;
-    // A cheap reject before building a pattern for each of the forty pairs on
-    // every keystroke.
-    if (!lower.contains(parts[0]) || !lower.contains(parts[1])) continue;
+    if (!present(parts[0]) || !present(parts[1])) continue;
 
     var first = _occurrences(text, parts[0]);
     var second = _occurrences(text, parts[1]);
@@ -59,6 +67,8 @@ void _spellingVariants(AnalysisContext context, AnalysisCheck check) {
     }
   }
 }
+
+final _plainWord = RegExp(r"^[a-z]+$");
 
 /// _occurrences finds whole-word appearances of [word], case-insensitively.
 List<RegExpMatch> _occurrences(String text, String word) =>

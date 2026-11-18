@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // suggester.dart answers "what did they mean to type": given a word the
 // dictionary does not have, the handful of dictionary words that are nearest
 // to it.
@@ -8,13 +10,12 @@
 // A provider supplies the words and their frequency ranking; the ranking
 // mechanism is the app's, and stays the app's.
 
-/// _Candidate is one possible correction, with the two numbers it is ordered
-/// by: how far it is from what was typed, and how common a word it is.
+/// _Candidate is one possible correction and how good a guess it is: lower
+/// is better.
 class _Candidate {
   final String word;
-  final int distance;
-  final int commonRank;
-  const _Candidate(this.word, this.distance, this.commonRank);
+  final double score;
+  const _Candidate(this.word, this.score);
 }
 
 /// Suggester holds a dictionary indexed for near-miss lookup.
@@ -58,20 +59,19 @@ class Suggester {
     }
   }
 
-  /// suggest ranks the dictionary words within [maxDistance] edits of [word]:
-  /// nearest first, and among equally near ones, commonest first.
+  /// suggest returns the dictionary words [word] was most likely meant to
+  /// be, best first.
   ///
-  /// The second half matters as much as the first. A short typo is one edit
-  /// from a dozen words -- "teh" reaches "the", "tech", "meh", "th" and "te"
-  /// alike -- and with distance alone deciding, which of them surfaces is
-  /// arbitrary, so the intended word is as likely to be missing as not.
-  /// Ordering ties by how common a word is puts the one somebody plausibly
-  /// meant at the top. Words the provider ranked at all come before words it
-  /// didn't.
+  /// Two things decide it, and neither is enough alone. How far the word is
+  /// from what was typed -- but a short typo is one edit from a dozen words,
+  /// "teh" from "the", "tea", "ten" and "tech" alike. And how common the
+  /// word is -- but the commonest word within reach is not what was meant if
+  /// a rarer one is a single slip away. So each candidate is scored on both:
+  /// the edits it takes to reach it, weighted by how likely each kind of slip
+  /// is, plus a charge that grows with how rarely the word is written.
   ///
-  /// Only the candidate *set* is narrowed, never the scoring: every word the
-  /// index offers is still measured exactly, so this returns what comparing
-  /// against the entire dictionary would, just without doing it.
+  /// The candidate *set* is still everything within [maxDistance] plain
+  /// edits, found exactly; only the order among them is a judgement.
   List<String> suggest(String word,
       {int maxSuggestions = 5, int maxDistance = 2}) {
     var cached = _cache[word];
@@ -79,8 +79,6 @@ class Suggester {
 
     var wordMask = _letterMask(word);
     var maskLimit = 2 * maxDistance;
-    // Rank beyond any real one, for words the provider left unranked.
-    var unranked = _commonRank.length + 1;
     var scored = <_Candidate>[];
 
     for (var len = word.length - maxDistance;
@@ -89,23 +87,109 @@ class Suggester {
       for (var candidate in _byLength[len] ?? const <String>[]) {
         if (_bitCount(wordMask ^ _masks[candidate]!) > maskLimit) continue;
         var d = _editDistance(word, candidate, maxDistance);
-        if (d <= maxDistance) {
-          scored.add(
-              _Candidate(candidate, d, _commonRank[candidate] ?? unranked));
-        }
+        if (d > maxDistance) continue;
+        scored.add(_Candidate(
+            candidate, _slipCost(word, candidate) + _rarity(candidate)));
       }
     }
 
+    // Two words run together: "thankyou", "infront". One slip -- a missing
+    // space -- and only believed where both halves are everyday words, since
+    // almost any string can be cut into two dictionary entries somewhere.
+    for (var cut = 1; cut < word.length; cut++) {
+      var head = word.substring(0, cut), tail = word.substring(cut);
+      if (head.length == 1 && head != "a" && head != "i") continue;
+      if (tail.length < 2) continue;
+      var headRank = _commonRank[head], tailRank = _commonRank[tail];
+      if (headRank == null || tailRank == null) continue;
+      if (headRank > _everyday || tailRank > _everyday) continue;
+      var rarer = headRank > tailRank ? head : tail;
+      // A little dearer than a single slip: where one wrong letter also
+      // makes a word, that is the likelier story -- "belive" is "believe"
+      // before it is "be live".
+      scored.add(_Candidate("$head $tail", 1.25 + _rarity(rarer)));
+    }
+
     scored.sort((a, b) {
-      var byDistance = a.distance.compareTo(b.distance);
-      if (byDistance != 0) return byDistance;
-      return a.commonRank.compareTo(b.commonRank);
+      var byScore = a.score.compareTo(b.score);
+      return byScore != 0 ? byScore : a.word.compareTo(b.word);
     });
     var out = scored.take(maxSuggestions).map((c) => c.word).toList();
     _cache[word] = out;
     return out;
   }
+
+  /// How far down the provider's ranking a word may be and still count as an
+  /// everyday one, for believing that two of them were run together.
+  static const _everyday = 4000;
+
+  /// What a word's rarity adds to its score: nothing much for the commonest
+  /// words, most of an edit for one the provider did not rank at all. It is
+  /// what lets "the" beat "tea" for "teh" without letting it beat a rare
+  /// word that is plainly the one meant.
+  double _rarity(String candidate) {
+    var rank = _commonRank[candidate] ?? _commonRank.length * 4 + 20000;
+    return 0.22 * math.log(rank + 10) / math.ln10;
+  }
 }
+
+/// How costly the slips are that turn [typed] into [meant], in edits: one
+/// for an ordinary wrong, missing or extra letter, and less for the slips
+/// fingers make most.
+///
+///   - Two letters the wrong way round is the commonest typing error there
+///     is, and counts for six tenths.
+///   - So does a doubled letter left single, or a single one doubled:
+///     "realy", "untill".
+///   - One vowel for another is how a word is misspelled by somebody who
+///     knows how it sounds -- "seperate", "definately" -- and counts for
+///     eight tenths.
+///   - Getting the first letter wrong is rare, and costs three tenths more.
+double _slipCost(String typed, String meant) {
+  var a = typed, b = meant;
+  var n = a.length, m = b.length;
+  // The same recurrence as _editDistance, with a cost on each step.
+  var prevPrev = List<double>.filled(m + 1, 0);
+  var prev = List<double>.generate(m + 1, (j) => j.toDouble());
+  var curr = List<double>.filled(m + 1, 0);
+  for (var i = 1; i <= n; i++) {
+    curr[0] = i.toDouble();
+    var ca = a.codeUnitAt(i - 1);
+    for (var j = 1; j <= m; j++) {
+      var cb = b.codeUnitAt(j - 1);
+      var substitute =
+          ca == cb ? 0.0 : (_isVowel(ca) && _isVowel(cb) ? 0.8 : 1.0);
+      // A letter typed that is not wanted: cheap if it doubles the one
+      // before it.
+      var extra = i > 1 && ca == a.codeUnitAt(i - 2) ? 0.6 : 1.0;
+      // A letter wanted that was not typed: cheap if it would have doubled.
+      var missing = j > 1 && cb == b.codeUnitAt(j - 2) ? 0.6 : 1.0;
+      var v = prev[j - 1] + substitute;
+      if (prev[j] + extra < v) v = prev[j] + extra;
+      if (curr[j - 1] + missing < v) v = curr[j - 1] + missing;
+      if (i > 1 &&
+          j > 1 &&
+          ca == b.codeUnitAt(j - 2) &&
+          a.codeUnitAt(i - 2) == cb &&
+          prevPrev[j - 2] + 0.6 < v) {
+        v = prevPrev[j - 2] + 0.6;
+      }
+      curr[j] = v;
+    }
+    var tmp = prevPrev;
+    prevPrev = prev;
+    prev = curr;
+    curr = tmp;
+  }
+  var cost = prev[m];
+  if (a.isNotEmpty && b.isNotEmpty && a.codeUnitAt(0) != b.codeUnitAt(0)) {
+    cost += 0.3;
+  }
+  return cost;
+}
+
+bool _isVowel(int c) =>
+    c == 0x61 || c == 0x65 || c == 0x69 || c == 0x6f || c == 0x75 || c == 0x79;
 
 /// _letterMask is a 26-bit set of which letters appear in [w], used to reject
 /// candidates before paying for the distance matrix. A single edit changes the

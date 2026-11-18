@@ -1,0 +1,302 @@
+# Words that are written for one another: homophones, near-spellings and the
+# typos that happen to be words.
+#
+# A dictionary cannot help with any of these -- "a reel problem" is spelled
+# perfectly. What separates them is the company each keeps: "real" follows
+# "a" and precedes "problem" thousands of times, and "reel" never does.
+# tools/mkusage counts that company in a large body of edited English, and
+# the app compares the counts for the word that was typed against the counts
+# for the others on its line here.
+#
+# One set per line. A word may be in more than one. Nothing here is a rule:
+# a set that the counts cannot tell apart simply never fires.
+
+# --- the grammar words ---
+their there they're
+your you're
+you your
+its it's
+to too two
+then than
+were where we're
+wear where
+whose who's
+he's his
+lets let's
+no know
+know now
+no not
+them then
+this these
+an and
+as has
+our are
+hour our
+were we're
+want won't
+been being
+
+# --- homophones ---
+accept except
+affect effect
+advice advise
+aid aide
+aisle isle
+allowed aloud
+altar alter
+ascent assent
+bail bale
+ball bawl
+band banned
+bare bear
+base bass
+bazaar bizarre
+beach beech
+berry bury
+berth birth
+billed build
+blew blue
+board bored
+boar bore
+bolder boulder
+born borne
+bough bow
+brake break
+bread bred
+bridal bridle
+buy by bye
+capital capitol
+cell sell
+cent scent sent
+cereal serial
+chord cord
+cite site sight
+coarse course
+colonel kernel
+complement compliment
+council counsel
+cue queue
+currant current
+dear deer
+desert dessert
+dew due
+die dye
+discreet discrete
+doe dough
+draft draught
+dual duel
+elicit illicit
+ensure insure assure
+fair fare
+faint feint
+feat feet
+find fined
+flair flare
+flea flee
+flew flu
+flour flower
+for four fore
+formally formerly
+forth fourth
+foul fowl
+gait gate
+grate great
+groan grown
+guessed guest
+hair hare
+hall haul
+hangar hanger
+heal heel
+hear here
+heard herd
+higher hire
+him hymn
+hoarse horse
+hole whole
+holy wholly
+idle idol
+incite insight
+knead need
+knew new
+knight night
+knot not
+lead led
+lessen lesson
+loan lone
+made maid
+mail male
+main mane
+manner manor
+marshal martial
+meat meet
+medal meddle
+miner minor
+missed mist
+morning mourning
+muscle mussel
+naval navel
+none nun
+oar ore
+one won
+pail pale
+pain pane
+pair pear pare
+passed past
+patience patients
+pause paws
+peace piece
+peak peek pique
+pedal peddle
+peer pier
+plain plane
+plum plumb
+pole poll
+poor pour pore
+pray prey
+presence presents
+principal principle
+profit prophet
+rain reign rein
+raise rays raze
+rap wrap
+read red
+real reel
+residence residents
+right write rite
+ring wring
+road rode rowed
+role roll
+root route
+sail sale
+scene seen
+sea see
+seam seem
+sew sow
+shear sheer
+shone shown
+shore sure
+slay sleigh
+soar sore
+sole soul
+some sum
+son sun
+stair stare
+stake steak
+stationary stationery
+steal steel
+straight strait
+suite sweet
+tail tale
+taught taut
+team teem
+tear tier
+threw through
+thrown throne
+thyme time
+tide tied
+toe tow
+vain vein vane
+vary very
+vial vile
+wail whale
+waist waste
+wait weight
+waive wave
+warn worn
+way weigh
+weak week
+weather whether
+which witch
+whine wine
+wood would
+yoke yolk
+
+# --- near-spellings ---
+access excess
+adapt adopt
+addition edition
+angel angle
+belief believe
+breath breathe
+causal casual
+censor sensor
+choose chose
+cloth clothes
+confidant confident
+conscience conscious
+decent descent dissent
+defuse diffuse
+device devise
+elude allude
+emigrate immigrate
+eminent imminent
+envelop envelope
+fell feel
+fill feel
+human humane
+later latter
+lay lie
+liable libel
+life live
+live leave
+loose lose
+loss lose
+moral morale
+personal personnel
+perspective prospective
+precede proceed
+price prize
+proof prove
+quiet quite quit
+raise rise
+safe save
+set sit
+sever severe
+statue statute stature
+suit suite
+thing think
+though thought through
+tough though
+track tract
+wander wonder
+wary weary
+worse worst
+
+# --- typos that are words ---
+aboard abroad
+alone along
+bellow below
+bought brought
+cold could
+contact contract
+county country
+dairy diary
+dining dinning
+does dose
+except expect
+field filed
+filing filling
+first fist
+form from
+friend fiend
+hoping hopping
+larger lager
+manager manger
+massage message
+planing planning
+public pubic
+quite quit
+rogue rouge
+sacred scared
+scared scarred
+sign sing
+split spilt
+staring starring
+strip stripe
+tapping taping
+three tree
+tired tried
+trail trial
+trough through
+united untied
+word world

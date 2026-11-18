@@ -32,6 +32,15 @@ func concat(groups ...[]GrammarRule) []GrammarRule {
 	return all
 }
 
+// concatTokens is concat for the rules stated over words.
+func concatTokens(groups ...[]TokenRule) []TokenRule {
+	var all []TokenRule
+	for _, group := range groups {
+		all = append(all, group...)
+	}
+	return all
+}
+
 // eitherCaseFirst puts a two-character class in place of the first letter, so
 // a pattern matches the word at the start of a sentence as well as inside one.
 //

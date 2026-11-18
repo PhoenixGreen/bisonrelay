@@ -35,6 +35,16 @@ type GrammarRule struct {
 	// informational only (flagged, but with no proposed replacement).
 	Suggest string `json:"suggest"`
 
+	// Alternatives are further replacements, offered after Suggest and in
+	// this order, for the questions with more than one right answer.
+	//
+	// Named here because this struct is what a provider's reply is decoded
+	// into and what the UI's copy is encoded from: a field it does not name
+	// is dropped in between. This one was, for as long as providers had been
+	// sending it -- the plugin wrote two answers, the UI was ready to show
+	// two, and one arrived.
+	Alternatives []string `json:"alternatives,omitempty"`
+
 	// Antipatterns are patterns that suppress this rule wherever they
 	// match over it: the rule fires, and then does not, because the text
 	// turned out to be one of the readings it is not about.
@@ -61,6 +71,65 @@ type GrammarRule struct {
 	// cliche rules would otherwise put the same alarming mark under correct
 	// writing as a misspelling, and teach people to ignore both.
 	Severity string `json:"severity,omitempty"`
+}
+
+// TokenRule is a writing check stated over words and what they are -- "a
+// singular pronoun followed by a verb in its base form" -- rather than over
+// characters. Like GrammarRule it is supplied verbatim and executed by the
+// UI, which is also where its pattern language is documented.
+type TokenRule struct {
+	// ID names the rule for the user who turns it off, and stays the same
+	// when the pattern is improved.
+	ID      string `json:"id"`
+	Pattern string `json:"pattern"`
+
+	// Except are patterns that suppress the rule where they match over it.
+	Except []string `json:"except,omitempty"`
+
+	Message string `json:"message"`
+
+	// Suggest is every replacement on offer, best first.
+	Suggest []string `json:"suggest,omitempty"`
+
+	Category    string `json:"category,omitempty"`
+	Explanation string `json:"explanation,omitempty"`
+	Severity    string `json:"severity,omitempty"`
+}
+
+// Grammar is the knowledge of a language that lets the UI reason about a
+// sentence rather than its characters: what each word can be, what follows
+// what, which words are written for one another and the company each keeps.
+//
+// All of it is data, and none of it is read here. The large tables are
+// gzipped by the provider and stay gzipped until the UI inflates them, so
+// crossing this process costs their compressed size.
+type Grammar struct {
+	// Lexicon is what each word can be and the forms it takes: text, one
+	// word to a line, gzipped.
+	Lexicon []byte `json:"lexicon,omitempty"`
+
+	// Transitions is how much likelier one part of speech is after another,
+	// one "TAG TAG lift" to a line.
+	Transitions string `json:"transitions,omitempty"`
+
+	// ConfusionSets are the words written for one another, a set to an
+	// entry with spaces between.
+	ConfusionSets []string `json:"confusionSets,omitempty"`
+
+	// Ngrams is the counted contexts of the words in ConfusionSets, in the
+	// provider's binary form, gzipped.
+	Ngrams []byte `json:"ngrams,omitempty"`
+
+	// PairWords is the commonest words, one to a line, and PairBits a bit
+	// for each ordered pair of them that is all but never written side by
+	// side, gzipped.
+	PairWords string `json:"pairWords,omitempty"`
+	PairBits  []byte `json:"pairBits,omitempty"`
+
+	// Classes are named lists of words a rule may refer to.
+	Classes map[string][]string `json:"classes,omitempty"`
+
+	Rules []TokenRule `json:"rules,omitempty"`
 }
 
 // Language is one language a spellcheck-data provider can check against.
@@ -143,6 +212,12 @@ type SpellcheckData struct {
 	// AnalysisChecks are the checks that count rather than match. Older
 	// providers send none.
 	AnalysisChecks []AnalysisCheck `json:"analysisChecks,omitempty"`
+
+	// Grammar is one provider's knowledge of the language, or nil. Not
+	// merged: its tables are counted and built as a whole, and two halves of
+	// two different ones would describe no language at all. The first
+	// provider to send one supplies it.
+	Grammar *Grammar `json:"grammar,omitempty"`
 }
 
 // MergedSpellcheckData gathers get_spellcheck_data for [language] from every
@@ -179,6 +254,9 @@ func MergedSpellcheckData(ctx context.Context, mgr Manager, rt Runtime,
 		merged.CommonWords = append(merged.CommonWords, data.CommonWords...)
 		merged.GrammarRules = append(merged.GrammarRules, data.GrammarRules...)
 		merged.AnalysisChecks = append(merged.AnalysisChecks, data.AnalysisChecks...)
+		if merged.Grammar == nil {
+			merged.Grammar = data.Grammar
+		}
 
 		// The first provider to answer names the language, since its words
 		// are the ones that landed first and set the tone for the merge.

@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:bruig/plugin_system/writing_tools/engine/analysis.dart';
+import 'package:bruig/plugin_system/writing_tools/engine/language/grammar.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/suggester.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/text_segments.dart';
@@ -11,11 +14,11 @@ import 'package:golib_plugin/definitions.dart';
 // its own -- with no provider enabled, review() returns nothing and the
 // composers show no marks at all.
 //
-// The three sources of a finding meet here and nowhere else: the provider's
-// regex rules, the counting checks under checks/, and the dictionary. Each
-// arrives by a completely different route, and this is the one point they have
-// all passed -- which is why the user's own dismissals are applied here rather
-// than inside each producer.
+// The four sources of a finding meet here and nowhere else: the provider's
+// regex rules, its grammar under language/, the counting checks under
+// checks/, and the dictionary. Each arrives by a completely different route,
+// and this is the one point they have all passed -- which is why the user's
+// own dismissals are applied here rather than inside each producer.
 //
 // Nothing in this file touches Flutter beyond TextRange. It is a pure function
 // from text to findings, which is what makes it testable without a widget
@@ -258,8 +261,45 @@ class WritingChecker {
         .map(_CompiledRule.compile)
         .whereType<_CompiledRule>()
         .toList();
+    _indexAnchors();
     _analysis = data.analysisChecks;
+    _language = LanguageEngine.from(data);
   }
+
+  /// The provider's grammar, where it sent one -- see language/grammar.dart.
+  LanguageEngine? _language;
+
+  // Which rules to try on a paragraph, found from the paragraph rather than
+  // by asking every rule in turn.
+  //
+  // An anchored rule can only match text containing its anchor, and testing
+  // that was a substring search per rule -- seven hundred searches of every
+  // paragraph, which had become a third of the cost of checking one. Filed
+  // under the anchor's first three letters, the same question is one pass
+  // over the paragraph: each three-letter run in it names the few rules worth
+  // the search.
+  Map<int, List<int>> _rulesByTrigram = {};
+  List<int> _alwaysRun = [];
+  Uint8List _wanted = Uint8List(0);
+
+  void _indexAnchors() {
+    _rulesByTrigram = {};
+    _alwaysRun = [];
+    _wanted = Uint8List(_rules.length);
+    for (var i = 0; i < _rules.length; i++) {
+      var anchor = _rules[i].anchor;
+      if (anchor == null) {
+        _alwaysRun.add(i);
+        continue;
+      }
+      // requiredLiteral only returns runs of three or more plain letters.
+      var key = _trigram(
+          anchor.codeUnitAt(0), anchor.codeUnitAt(1), anchor.codeUnitAt(2));
+      (_rulesByTrigram[key] ??= []).add(i);
+    }
+  }
+
+  static int _trigram(int a, int b, int c) => (a << 16) | (b << 8) | c;
 
   /// review returns every problem in [text], ordered by position so a list
   /// reads in the same order as the message.
@@ -355,6 +395,17 @@ class WritingChecker {
     issues.addAll(runAnalysisChecks(original, _analysis,
         isIgnoredCheck: (id) => prefs?.isCheckDisabled(id) ?? false));
 
+    // Nothing found in a link, a file name, an embed or a run of code is a
+    // finding about the writing -- see notProse. Dropped here, where every
+    // source of findings has been through, and worked out over the whole
+    // document rather than paragraph by paragraph: a block of code has blank
+    // lines in it, and is still one block.
+    var skipped = notProseSpans(original);
+    if (skipped.isNotEmpty) {
+      issues.removeWhere(
+          (i) => inNotProse(skipped, i.range.start, i.range.end));
+    }
+
     // Dismissed phrases are dropped here rather than inside each producer
     // above, because the grammar rules and the counting checks arrive by
     // completely different routes and this is the one point they have both
@@ -405,10 +456,44 @@ class WritingChecker {
     // between running seven hundred regular expressions over every paragraph
     // and running the handful whose word is actually in it.
     var lower = text.toLowerCase();
-    for (var rule in _rules) {
+    var wanted = _wanted..fillRange(0, _wanted.length, 0);
+    for (var i in _alwaysRun) {
+      wanted[i] = 1;
+    }
+    for (var i = 0; i + 2 < lower.length; i++) {
+      var a = lower.codeUnitAt(i);
+      if (a < 0x61 || a > 0x7a) continue;
+      var found = _rulesByTrigram[
+          _trigram(a, lower.codeUnitAt(i + 1), lower.codeUnitAt(i + 2))];
+      if (found == null) continue;
+      for (var rule in found) {
+        wanted[rule] = 1;
+      }
+    }
+    // In the provider's order, as before: which of two rules reports first
+    // is part of what the provider decided.
+    for (var i = 0; i < _rules.length; i++) {
+      if (wanted[i] == 0) continue;
+      var rule = _rules[i];
       var anchor = rule.anchor;
       if (anchor != null && !lower.contains(anchor)) continue;
       _applyRule(rule, text, original, issues);
+    }
+
+    var language = _language;
+    if (language != null) {
+      try {
+        issues.addAll(language.review(
+            text, original, (id) => prefs?.isCheckDisabled(id) ?? false));
+      } catch (error) {
+        // The same bargain the rules above are given: one that throws costs
+        // its own findings and not the field somebody is typing in. Loud
+        // where it can be fixed, though -- in a debug build this is a bug
+        // report, not a quiet gap.
+        assert(() {
+          throw StateError("grammar checks failed on \"$original\": $error");
+        }());
+      }
     }
 
     _checkSpelling(text, original, issues);
@@ -421,14 +506,17 @@ class WritingChecker {
     if (prefs?.isCheckDisabled(rule.source) ?? false) return;
     try {
       // Where this rule is not to fire, computed once for the whole text
-      // rather than per match.
-      var exceptions = <TextRange>[
-        for (var antipattern in rule.antipatterns)
-          for (var m in antipattern.allMatches(text))
-            TextRange(start: m.start, end: m.end),
-      ];
+      // rather than per match -- and only once the rule has matched at all.
+      // Most rules that run match nothing, and their exceptions were being
+      // searched for regardless.
+      List<TextRange>? exceptions;
 
       for (var m in rule.pattern.allMatches(text)) {
+        exceptions ??= [
+          for (var antipattern in rule.antipatterns)
+            for (var m in antipattern.allMatches(text))
+              TextRange(start: m.start, end: m.end),
+        ];
         // Contained, not merely overlapping. An exception describes a longer
         // reading that the match is part of -- "my self" inside "my
         // self-esteem" -- so a pattern that happens to clip the edge of one is
@@ -498,10 +586,19 @@ class WritingChecker {
         // is lowercased when it is built, so every suggestion comes back
         // lowercase whatever was typed -- which meant correcting a misspelling
         // that opened a sentence quietly removed its capital.
-        suggestions: [
-          for (var suggestion in _suggester.suggest(word.toLowerCase()))
-            matchCase(found, suggestion)
-        ],
+        suggest: () {
+          var lower = word.toLowerCase();
+          var answers = <String>[
+            // A form built by rule for a word that does not follow the
+            // rule is not a slip of the fingers, and no count of edits
+            // leads from "buyed" to "bought". The lexicon does.
+            ...?_language?.regularised(lower),
+          ];
+          for (var suggestion in _suggester.suggest(lower)) {
+            if (!answers.contains(suggestion)) answers.add(suggestion);
+          }
+          return [for (var a in answers.take(5)) matchCase(found, a)];
+        },
         kind: WritingIssueKind.spelling,
         category: "Spelling",
         explanation: "This word is not in the dictionary. It may be a typo, "

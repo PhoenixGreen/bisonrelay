@@ -164,4 +164,88 @@ type Data struct {
 	// AnalysisChecks are the checks that count rather than match -- see
 	// analysis.go.
 	AnalysisChecks []AnalysisCheck `json:"analysisChecks,omitempty"`
+
+	// Grammar is what lets the app reason about a sentence rather than
+	// about its characters -- see Grammar.
+	Grammar *Grammar `json:"grammar,omitempty"`
+}
+
+// TokenRule is one writing check stated over words and what they are, rather
+// than over characters.
+//
+// A GrammarRule can say "he" followed by "go". It cannot say "a singular
+// pronoun followed by any verb in its base form", and spelling that out word
+// by word is how this plugin came to cover a few dozen verbs and miss the
+// rest of the language. These say it directly.
+//
+// The pattern language is documented where it is read, at the top of the
+// app's engine/language/token_rules.dart. In short: one element per word,
+// separated by spaces; `word` or `a|b` for the words themselves, `<VB>` for
+// what a word is here, `<~VB>` for what it can be, `[be]` for any form of a
+// word, `{name}` for one of Grammar.Classes, `( )` around what to underline.
+// Suggest may quote what matched and re-inflect it: `$2:VBZ` is the second
+// element's base word in its -s form.
+type TokenRule struct {
+	// ID names the rule, for the user who turns it off. It has to stay the
+	// same when the pattern is improved, which is why it is not the pattern.
+	ID      string `json:"id"`
+	Pattern string `json:"pattern"`
+
+	// Except are patterns that suppress the rule where they match over what
+	// it would have underlined, exactly as GrammarRule.Antipatterns do.
+	Except []string `json:"except,omitempty"`
+
+	Message string `json:"message"`
+
+	// Suggest is every replacement on offer, best first. A replacement that
+	// asks for a form the word does not have is dropped by the app, and the
+	// rule still marks the text.
+	Suggest []string `json:"suggest,omitempty"`
+
+	Category    string `json:"category,omitempty"`
+	Explanation string `json:"explanation,omitempty"`
+	Severity    string `json:"severity,omitempty"`
+
+	// Flags and Leaves are the rule's own proof, as on GrammarRule. Go cannot
+	// run these patterns, so they are checked by the app's tests, which is
+	// what tools/dumpdata -examples is for.
+	Flags  []string `json:"-"`
+	Leaves []string `json:"-"`
+}
+
+// Grammar is the knowledge of English the app's grammar checks run on. All
+// of it is data: the app owns every mechanism that reads it, as it does for
+// the dictionary and the regular expressions.
+//
+// The large tables are sent as they are stored, gzipped. They are megabytes
+// of text the plugin would otherwise inflate only for the host to carry
+// across and the app to parse, and the app can inflate them itself.
+type Grammar struct {
+	// Lexicon is what each word can be in a sentence, how often, and the
+	// forms a base word takes -- lexicon.txt, gzipped. See tools/mklexicon.
+	Lexicon []byte `json:"lexicon,omitempty"`
+
+	// Transitions is how much likelier one part of speech is after another,
+	// one "TAG TAG lift" to a line -- usage-tags.txt. See tools/mkusage.
+	Transitions string `json:"transitions,omitempty"`
+
+	// ConfusionSets are the words written for one another, a set to a line
+	// with spaces between -- data/confusion-sets.txt without its comments.
+	ConfusionSets []string `json:"confusionSets,omitempty"`
+
+	// Ngrams is the company each confusable word keeps: counted contexts,
+	// hashed -- usage-ngrams.bin, gzipped. See tools/mkusage.
+	Ngrams []byte `json:"ngrams,omitempty"`
+
+	// PairWords and PairBits are the common words and which pairs of them
+	// are never found side by side -- usage-pairs.txt, and usage-pairs.bin
+	// gzipped.
+	PairWords string `json:"pairWords,omitempty"`
+	PairBits  []byte `json:"pairBits,omitempty"`
+
+	// Classes are named lists of words, for a rule's `{name}`.
+	Classes map[string][]string `json:"classes,omitempty"`
+
+	// Rules are the checks stated over words -- see TokenRule.
+	Rules []TokenRule `json:"rules,omitempty"`
 }

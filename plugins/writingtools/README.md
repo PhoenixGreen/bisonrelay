@@ -1,7 +1,8 @@
 # Writing tools plugin
 
 The data half of Bison Relay's writing tools: a 120,000-word English
-dictionary, 787 writing rules, a thesaurus and a dictionary of definitions,
+dictionary, 870 writing rules, a lexicon and usage counts for the grammar
+checks, a thesaurus and a dictionary of definitions,
 compiled to a WebAssembly module the client ships inside itself.
 
 It lives here, in the client's own repository, because it is a built-in --
@@ -39,7 +40,8 @@ not the five words that spells -- so a checker fed the roots alone flags every i
 anyone actually types. `tools/mkwords` expands them ahead of time, which keeps this
 plugin's runtime a set membership test.
 
-**Writing style.** 787 rules: 587 errors, 180 suggestions and 20 checks,
+**Writing style.** 689 rules written as regular expressions: 489 errors, 180
+suggestions and 20 checks,
 covering confusable words, agreement, articles, capitalisation, punctuation,
 redundancy, inclusive language, typography and the commas that depend on what
 the sentence is doing.
@@ -75,7 +77,7 @@ Antipatterns suppress and cannot create: a rule that needs *context* to fire sti
 in its pattern.
 
 Every rule also carries its own **examples** -- text it must catch, and text it must not --
-and `TestRuleExamples` runs all 265 of them. They are attached to the rule rather than kept
+and `TestRuleExamples` runs them. They are attached to the rule rather than kept
 in a list somewhere else, because the failure this plugin actually suffers is not a missing
 rule: it is a rule that was wrong from the day it was written and went unnoticed for weeks.
 Three of those turned up in a single afternoon of real use. Each would have failed here the
@@ -92,10 +94,79 @@ rather than a list of replacement words. Someone who already knows the rule does
 to right-click; someone who does not cannot act on "Should be it's" alone.
 
 Each rule is deliberately conservative, because a false positive costs more than a missed
-error: an underline under correct writing teaches people to ignore the underlines. That
-rules out most of what a word processor offers -- subject/verb agreement, their/there,
-its/it's -- none of which a regex can decide without guessing. A filler-word rule was
-written and then removed when its own test caught it firing on "he said quite clearly".
+error: an underline under correct writing teaches people to ignore the underlines. A
+filler-word rule was written and then removed when its own test caught it firing on "he said
+quite clearly".
+
+For a long time that standard ruled out most of what a word processor offers -- subject/verb
+agreement, their/there, its/it's -- because none of it can be decided by a pattern over
+characters without guessing. It is what the next three sections are for.
+
+**Grammar.** 181 rules stated over words and what they are, rather than over characters:
+agreement ("he go", "the dogs is"), verb forms ("didn't went", "have took", "I going"),
+number and articles ("two dog", "a new shoes", "I am student"), pronoun case ("me and him
+went", "between you and I"), comparison ("more better"), word order and missing words
+("what you are doing?", "she happy"), and the preposition a word takes ("depends of").
+
+    {he}&#clause ( <VB>&<+VB>&!<~VBD>&!<~MD> )      He go to school.
+
+Each is one `TokenRule` in `spellcheck/tokenrules_*.go`. The pattern language -- a word, a
+tag, "can be" a tag, any form of a word, a named list, what to underline -- is documented
+where it is read, at the top of the app's `engine/language/token_rules.dart`. A replacement
+can re-inflect what matched: `$2:VBZ` turns "go" into "goes", and after "didn't" `$3:VB`
+turns "went" back into "go".
+
+They run on a **lexicon** (`lexicon.txt.gz`, built by `tools/mklexicon`): for each of ninety
+thousand words, what it can be in a sentence, how often, and the forms a base word takes.
+
+    went    VBD:100:go
+    works   NNS:55:work VBZ:45:work
+    go      VB:98 JJ:1 NN:1    VBZ=goes VBD=went VBN=gone VBG=going
+
+Which readings a word has comes from WordNet and the inflection list; how often each is
+used comes from counted print (`data/pos-counts.txt`), because WordNet lists "see" the
+bishop's seat beside "see" the verb and gives no hint that one is a curiosity. The grammar
+words are written by hand in `data/closed-class.txt`. Which reading applies in a given
+sentence is chosen by the app from `usage-tags.txt`: how much likelier each part of speech is
+after each other one.
+
+These rules were written against two things at once, and that is the method for adding one.
+`testdata/basic_errors.tsv` is 380 ordinary mistakes with their corrections; the app's
+`writing_benchmark_test.dart` runs the shipped rules over them in the app's engine and fails
+if fewer are caught than before, or if any correction is marked. And
+`test/tools/writing_corpus_scan.dart` runs the same rules over as much edited English as it
+is given and lists what fired: text that has been through an editor is overwhelmingly
+correct, so a rule that marks it often is marking correct writing. The first scan, of three
+hundred thousand sentences, found the older rules marking one sentence in twelve, and 98 of
+them were retired or repaired on the evidence -- among them one that changed "a real
+problem" to "a reel problem".
+
+**Words written for one another.** `data/confusion-sets.txt` lists 282 sets -- real/reel,
+their/there/they're, lose/loose, affect/effect -- and nothing else about them is written
+down. What separates the words in a set is the company each keeps: "real" stands between "a"
+and "problem" thousands of times, and "reel" never does. `tools/mkusage` counts that company
+in five million sentences and keeps the million contexts in which one word of a set is found
+far more than another (`usage-ngrams.bin.gz`). The app compares the counts for the word that
+was typed with the counts for its rivals in the same place, and where the odds are sixty to
+one asks -- an amber check, "Did you mean...?" -- and where both neighbours agree and the
+typed word was never seen there at all, says so as an error.
+
+Measured on a seventeenth of the text kept back from the counting: of every hundred words
+swapped for a rival, 72 are caught; and one sentence of edited English in 270 is asked
+about, roughly half of those for cause. The threshold is `CheckConfusedWord` in
+`spellcheck/analysis.go`, with the numbers either side of it.
+
+Where grammar alone settles a pair there is a rule instead, in
+`spellcheck/tokenrules_confusions.go`: "then" after a comparative, "to" before an
+adjective, "meat" before a person. Those need no counts and are never unsure.
+
+**Words that do not go together.** `usage-pairs.bin.gz` is a bit for each ordered pair of
+the four thousand commonest words that chance would put side by side at least 120 times in
+that text, and that turned up fewer than one time in 150 of that: "the of", "is be", "our
+and", "a what". There are 4,600 of them. A sentence with such a pair in it has usually lost
+a word, gained one, or had two change places, and is asked about. It is the nearest thing
+here to recognising nonsense, and it is only that: it says something is wrong between two
+words and cannot say what the sentence should have been.
 
 **Function words and contractions.** 143 hand-written glosses for the words WordNet structurally cannot hold.
 It is organised as four networks -- nouns, verbs, adjectives, adverbs -- and has nothing at
@@ -317,8 +388,28 @@ go run ./tools/mkwords -locale en-GB > words-en-GB.txt
 go run ./tools/mkthesaurus > thesaurus.txt
 go run ./tools/mkdefs > definitions.txt
 go run ./tools/mkexceptions > exceptions.txt
+go run ./tools/mklexicon > lexicon.txt
 ./build.sh          # recompresses whichever changed, then compiles
 ```
+
+The usage counts need a body of text that is not here and never ships: five corpora of the
+Leipzig Corpora Collection, a million sentences each (named in `data/LICENSE-LEIPZIG`),
+unpacked anywhere. Each is a file of `number<TAB>sentence` lines.
+
+```sh
+go run ./tools/mkusage /path/to/*/*-sentences.txt    # about three minutes
+go run ./tools/mkwords -locale en-US > words-en-US.txt   # again: the ranking is counted
+```
+
+`mkusage` writes `usage-tags.txt`, `usage-ngrams.bin`, `usage-pairs.txt`, `usage-pairs.bin`,
+`usage-countable.txt` and `data/frequency.txt`. It reads `lexicon.txt`, so `mklexicon` runs
+first. It leaves every seventeenth line of each file uncounted, so that the app's
+`test/tools/writing_confusion_eval.dart` can measure the result on text it was not made
+from -- give that tool lines 3, 20, 37... of the same files.
+
+`data/pos-counts.txt` is the one input that is neither hand-written nor regenerated here:
+it was extracted once from the Google Books 1-grams (twelve gigabytes, streamed and not
+kept), and is committed.
 
 Only the compressed `.gz` files are committed -- they are what `main.go` embeds, and
 keeping the plain text alongside them would be the same data twice, free to drift. To read
@@ -340,7 +431,17 @@ Full text: **`data/LICENSE-WORDNET`**.
 The **definitions** are from [WordNet](https://wordnet.princeton.edu) 3.1, Copyright 2011
 Princeton University. Full text: **`data/LICENSE-WORDNET31`**.
 
-All three permit use, modification and redistribution provided the copyright and permission
+The **lexicon**'s counts of how each word is used are extracted from the Google Books Ngram
+Corpus, licensed under Creative Commons Attribution 3.0 Unported. Full text and citation:
+**`data/LICENSE-GOOGLE-BOOKS-NGRAMS`**.
+
+The **usage counts** -- word frequency, the contexts of the confusable words, the pairs
+never found together -- were made over corpora of the Leipzig Corpora Collection. None of
+the text ships. **The collection's terms have not been confirmed**; see
+**`data/LICENSE-LEIPZIG`**, which says what has to be checked before these files are
+redistributed.
+
+The first three permit use, modification and redistribution provided the copyright and permission
 notices travel with them. Those notices ship in this repository and must stay with any
 redistribution of `words.txt`, `thesaurus.txt`, `definitions.txt`, or a `plugin.wasm` built
 from them.
@@ -380,9 +481,14 @@ the client ships it, and cannot be removed -- see the package doc in
   the right word is not a matter of opinion.
 - `spellcheck/rules_style.go` -- the opinions: the wordiness table, the cliche list, the two
   passive-voice rules, and the British/American spelling pairs.
-- `spellcheck/analysis.go` -- the nine declared checks that count rather than
-  match: repetition, sentence length, mixed spellings, unpaired brackets and
-  the date checks.
+- `spellcheck/analysis.go` -- the twelve declared checks the app runs itself:
+  repetition, sentence length, mixed spellings, unpaired brackets, the date
+  checks, and the three that read the usage counts.
+- `spellcheck/tokenrules_*.go` -- the grammar rules, stated over words and what
+  they are; `wordclasses.go` holds the named lists they refer to, and
+  `grammar.go` assembles them with the generated tables into what is sent.
+- `spellcheck/wire_sync_test.go` -- reads the client's and the app's copies of
+  the payload's types as source and fails if either lacks a field this sends.
 - `spellcheck/rules_checks.go` and `spellcheck/rules_commas.go` -- the check
   tier: the confusable pairs and the commas no expression over words can
   settle.
@@ -413,3 +519,13 @@ the client ships it, and cannot be removed -- see the package doc in
   `data/function-words.txt` over the top.
 - `tools/mkexceptions/` -- merges WordNet's four irregular-inflection lists into
   `exceptions.txt`.
+- `tools/mklexicon/` -- builds `lexicon.txt`: what each word can be, how often, and
+  the forms a base word takes.
+- `tools/mkusage/` -- counts a large body of text into the `usage-*` tables and
+  `data/frequency.txt`.
+- `tools/dumpdata/` -- writes the whole payload as JSON, or every rule's examples
+  with `-examples`, for the app's tests to run through the app's engine.
+- `lexicon.txt.gz`, `usage-tags.txt`, `usage-ngrams.bin.gz`, `usage-pairs.txt`,
+  `usage-pairs.bin.gz`, `usage-countable.txt` -- the generated grammar tables. The
+  compressed ones are handed to the app still compressed.
+- `testdata/` -- the mistakes the app's tests measure the checker on.

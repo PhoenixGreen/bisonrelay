@@ -90,15 +90,6 @@ const (
 var homophonePairRules = []GrammarRule{
 	// --- see / sea ---
 	{
-		Pattern:     `\b([cC]an|[cC]an't|[cC]ould|[wW]ill|[wW]ould|[tT]o|[lL]et\s+me|[dD]idn't|[dD]on't|[gG]o\s+and)\s+sea\b`,
-		Flags:       []string{"I can sea it from my window"},
-		Leaves:      []string{"I can see it from my window", "the sea was calm"},
-		Message:     "Should be \"$1 see\"",
-		Suggest:     "$1 see",
-		Category:    "Confused words",
-		Explanation: explainSeeSea,
-	},
-	{
 		Pattern:     `\b([tT]he\s+open|[tT]he\s+deep|[bB]y\s+the|[aA]t|[cC]alm|[rR]ough|[cC]hoppy|[oO]pen)\s+see\b`,
 		Flags:       []string{"we live by the see"},
 		Leaves:      []string{"we live by the sea", "I can see it"},
@@ -108,17 +99,6 @@ var homophonePairRules = []GrammarRule{
 		Explanation: explainSeeSea,
 	},
 
-	// --- where / wear ---
-	{
-		// A question word takes an auxiliary after it; "wear" cannot.
-		Pattern:     `\b[wW]ear\s+(did|do|does|is|are|was|were|can|could|will|would|should|am|have|has)\b`,
-		Flags:       []string{"wear did you put it"},
-		Leaves:      []string{"where did you put it", "what will you wear"},
-		Message:     "Should be \"where $1\"",
-		Suggest:     "where $1",
-		Category:    "Confused words",
-		Explanation: explainWhereWear,
-	},
 	// --- where / were ---
 	//
 	// The pair next door, and it was missing entirely: "Were am I going" went
@@ -149,34 +129,6 @@ var homophonePairRules = []GrammarRule{
 		},
 		Message:     "Should be \"where $1 $2\"",
 		Suggest:     "where $1 $2",
-		Category:    "Confused words",
-		Explanation: explainWhereWere,
-	},
-	{
-		// The other direction. Only the three pronouns that cannot take a
-		// relative "where" after them: "there where the road bends" is
-		// awkward but correct, and "the place where" is the ordinary use.
-		Pattern: `\b([wW]e|[tT]hey|[yY]ou)\s+where\b`,
-		Antipatterns: []string{
-			// The elliptical "where possible", which introduces a clause
-			// rather than standing in for a verb.
-			`\b([wW]e|[tT]hey|[yY]ou)\s+where\s+(possible|necessary|appropriate|applicable|available|needed|required)\b`,
-		},
-		Flags: []string{
-			"we where going to leave",
-			"they where happy with it",
-		},
-		Leaves: []string{
-			"we were going to leave",
-			"we where possible avoid the queue",
-			"the place where they met",
-		},
-		// Names the pair rather than just the fix, because an agreement rule
-		// in rules_agreement.go corrects "we was" with the same words -- and
-		// a reader told "Should be \"we were\"" about "we where" would be
-		// looking for a verb they got wrong rather than a word they confused.
-		Message:     "Should be \"$1 were\", not \"where\"",
-		Suggest:     "$1 were",
 		Category:    "Confused words",
 		Explanation: explainWhereWere,
 	},
@@ -213,17 +165,6 @@ var homophonePairRules = []GrammarRule{
 
 	// --- right / write ---
 	{
-		// "To right a wrong" is the reading this must not touch.
-		Pattern:      `\b([tT]o|[wW]ill|[cC]an|[cC]ould|[pP]lease|[mM]ust|[sS]hould|[wW]ould)\s+right\s+(a|an|the|it|me|to|about|down|back|something)\b`,
-		Antipatterns: []string{`\b([tT]o|[wW]ill|[cC]an|[cC]ould|[mM]ust|[sS]hould|[wW]ould)\s+right\s+a\s+wrong\b`},
-		Flags:        []string{"please right the answer"},
-		Leaves:       []string{"please write the answer", "we must right a wrong"},
-		Message:      "Should be \"$1 write $2\"",
-		Suggest:      "$1 write $2",
-		Category:     "Confused words",
-		Explanation:  explainRightWrite,
-	},
-	{
 		Pattern:     `\b([tT]he|[aA]|[mM]y|[yY]our|[iI]s|[wW]as|[tT]hat's|[iI]t's|[nN]ot|[aA]ll)\s+write\s+(answer|thing|way|time|place|person|choice|decision|direction|one|now|here|then|words?)\b`,
 		Flags:       []string{"the write answer"},
 		Leaves:      []string{"the right answer", "please write it down"},
@@ -241,26 +182,6 @@ var homophonePairRules = []GrammarRule{
 		Suggest:     "rite of passage",
 		Category:    "Confused words",
 		Explanation: "A \"rite\" is a ceremony marking a stage of life. A \"right\" is an entitlement.",
-	},
-
-	// --- buy / by ---
-	{
-		Pattern:     `\b([tT]o|[wW]ill|[cC]an|[cC]ould|[wW]ould|[mM]ust|[sS]hould|[gG]oing\s+to|[nN]eed\s+to|[wW]ant\s+to)\s+by\s+(some|a|an|the|it|them|one|two|more|new|another)\b`,
-		Flags:       []string{"I will by some milk"},
-		Leaves:      []string{"I will buy some milk", "I will be there by six"},
-		Message:     "Should be \"$1 buy $2\"",
-		Suggest:     "$1 buy $2",
-		Category:    "Confused words",
-		Explanation: explainBuyBy,
-	},
-	{
-		Pattern:     `\b[bB]uy\s+(now|then|the\s+way|the\s+time|myself|yourself|himself|herself|accident|mistake|car|train|bus|foot|hand)\b`,
-		Flags:       []string{"buy the way, it arrived"},
-		Leaves:      []string{"by the way, it arrived", "buy the tickets now"},
-		Message:     "Should be \"by $1\"",
-		Suggest:     "by $1",
-		Category:    "Confused words",
-		Explanation: explainBuyBy,
 	},
 
 	// --- be / bee ---
@@ -576,15 +497,6 @@ var homophonePairRules = []GrammarRule{
 
 	// --- principal / principle ---
 	{
-		Pattern:     `\b([tT]he|[aA]|[sS]chool|[cC]ollege|[dD]eputy|[vV]ice|[aA]ssistant)\s+principle\s+(said|explained|announced|met|called|is|was|has|will|of\s+the\s+school)\b`,
-		Flags:       []string{"the school principle explained it"},
-		Leaves:      []string{"the school principal explained it", "a guiding principle"},
-		Message:     "Should be \"$1 principal $2\"",
-		Suggest:     "$1 principal $2",
-		Category:    "Confused words",
-		Explanation: explainPrincipal,
-	},
-	{
 		Pattern:     `\b([bB]asic|[gG]uiding|[fF]undamental|[mM]oral|[cC]ore|[fF]irst|[sS]ame|[gG]eneral|[uU]nderlying)\s+principal\b`,
 		Flags:       []string{"a guiding principal"},
 		Leaves:      []string{"a guiding principle", "the school principal"},
@@ -665,15 +577,6 @@ var homophonePairRules = []GrammarRule{
 
 	// --- coarse / course ---
 	{
-		Pattern:     `\b([tT]he|[aA]|[tT]raining|[gG]olf|[cC]rash|[mM]ain|[fF]irst|[sS]econd|[oO]f]?)\s+coarse\b`,
-		Flags:       []string{"the training coarse is excellent"},
-		Leaves:      []string{"the training course is excellent", "the fabric is coarse"},
-		Message:     "Should be \"$1 course\"",
-		Suggest:     "$1 course",
-		Category:    "Confused words",
-		Explanation: explainCoarseCourse,
-	},
-	{
 		Pattern:     `\b([iI]s|[wW]as|[fF]eels|[fF]elt|[vV]ery|[tT]oo|[qQ]uite|[rR]ather|[sS]o)\s+course\b`,
 		Flags:       []string{"the fabric is course"},
 		Leaves:      []string{"the fabric is coarse", "the training course"},
@@ -730,15 +633,6 @@ var homophonePairRules = []GrammarRule{
 		Leaves:      []string{"the car has dual airbags", "the story describes a duel"},
 		Message:     "Should be \"dual $1\"",
 		Suggest:     "dual $1",
-		Category:    "Confused words",
-		Explanation: explainDualDuel,
-	},
-	{
-		Pattern:     `\b([fF]ought\s+a|[tT]o\s+a|[iI]n\s+a|[pP]istol|[sS]word)\s+dual\b`,
-		Flags:       []string{"they fought a dual"},
-		Leaves:      []string{"they fought a duel", "dual carriageway"},
-		Message:     "Should be \"$1 duel\"",
-		Suggest:     "$1 duel",
 		Category:    "Confused words",
 		Explanation: explainDualDuel,
 	},
@@ -825,15 +719,6 @@ var homophonePairRules = []GrammarRule{
 
 	// --- peak / peek ---
 	{
-		Pattern:     `\b([tT]he|[aA]|[mM]ountain's|[hH]ighest|[rR]eached\s+the|[sS]ummit)\s+peek\b`,
-		Flags:       []string{"we reached the mountain's peek"},
-		Leaves:      []string{"we reached the mountain's peak", "a quick peek"},
-		Message:     "Should be \"$1 peak\"",
-		Suggest:     "$1 peak",
-		Category:    "Confused words",
-		Explanation: explainPeakPeek,
-	},
-	{
 		Pattern:     `\b([aA]|[qQ]uick|[lL]ittle|[cC]heeky|[tT]ake\s+a|[hH]ad\s+a|[tT]ook\s+a)\s+peak\s+(at|below|inside|behind|under|around)\b`,
 		Flags:       []string{"took a quick peak below"},
 		Leaves:      []string{"took a quick peek below", "the mountain's peak"},
@@ -890,15 +775,6 @@ var homophonePairRules = []GrammarRule{
 		Leaves:      []string{"the story is real", "a fishing reel"},
 		Message:     "Should be \"$1 real\"",
 		Suggest:     "$1 real",
-		Category:    "Confused words",
-		Explanation: explainRealReel,
-	},
-	{
-		Pattern:     `\b([aA]|[tT]he|[fF]ishing|[tT]ape|[cC]otton)\s+real\b`,
-		Flags:       []string{"the line is on a fishing real"},
-		Leaves:      []string{"the line is on a fishing reel", "the story is real"},
-		Message:     "Should be \"$1 reel\"",
-		Suggest:     "$1 reel",
 		Category:    "Confused words",
 		Explanation: explainRealReel,
 	},
@@ -1082,15 +958,6 @@ var homophonePairRules = []GrammarRule{
 		Category:    "Confused words",
 		Explanation: explainClawsClause,
 	},
-	{
-		Pattern:     `\b([aA]n?|[tT]he|[iI]mportant|[cC]ontract|[eE]scape|[pP]enalty|[sS]pecific|[aA]dditional|[rR]elevant)\s+claws\b`,
-		Flags:       []string{"the contract contains an important claws"},
-		Leaves:      []string{"the contract contains an important clause", "sharp claws"},
-		Message:     "Should be \"$1 clause\"",
-		Suggest:     "$1 clause",
-		Category:    "Confused words",
-		Explanation: explainClawsClause,
-	},
 
 	// --- earn / urn ---
 	{
@@ -1233,15 +1100,6 @@ var homophonePairRules = []GrammarRule{
 	},
 
 	// --- oar / or / ore ---
-	{
-		Pattern:     `\b([aA]n|[tT]he|[wW]ooden|[bB]roken|[uU]se\s+an|[wW]ith\s+an)\s+ore\b`,
-		Flags:       []string{"would you like to use an ore"},
-		Leaves:      []string{"would you like to use an oar", "search for ore"},
-		Message:     "Should be \"$1 oar\"",
-		Suggest:     "$1 oar",
-		Category:    "Confused words",
-		Explanation: explainOarOre,
-	},
 	{
 		Pattern:     `\b([iI]ron|[gG]old|[cC]opper|[rR]aw|[mM]ineral|[sS]ilver)\s+oar\b`,
 		Flags:       []string{"they mined iron oar"},

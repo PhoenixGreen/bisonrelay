@@ -1145,6 +1145,98 @@ class SpellcheckLanguage {
       _$SpellcheckLanguageFromJson(json);
 }
 
+/// TokenRule is a writing check stated over words and what they are, rather
+/// than over characters -- "a singular pronoun followed by a verb in its
+/// base form". The pattern language is documented where it is read, in the
+/// app's writing_tools/engine/language/token_rules.dart.
+@JsonSerializable()
+class TokenRule {
+  /// Names the rule for the user who turns it off, and stays the same when
+  /// the pattern is improved.
+  @JsonKey(defaultValue: "")
+  final String id;
+  @JsonKey(defaultValue: "")
+  final String pattern;
+
+  /// Patterns that suppress the rule where they match over it.
+  @JsonKey(defaultValue: [])
+  final List<String> except;
+  @JsonKey(defaultValue: "")
+  final String message;
+
+  /// Every replacement on offer, best first.
+  @JsonKey(defaultValue: [])
+  final List<String> suggest;
+  @JsonKey(defaultValue: "")
+  final String category;
+  @JsonKey(defaultValue: "")
+  final String explanation;
+  @JsonKey(defaultValue: "")
+  final String severity;
+
+  TokenRule(this.id, this.pattern, this.message,
+      [this.suggest = const [],
+      this.category = "",
+      this.explanation = "",
+      this.severity = "",
+      this.except = const []]);
+  factory TokenRule.fromJson(Map<String, dynamic> json) =>
+      _$TokenRuleFromJson(json);
+}
+
+/// GrammarData is a provider's knowledge of a language: what each word can
+/// be, what follows what, which words are written for one another and the
+/// company each keeps.
+///
+/// The large tables arrive as the provider stores them -- gzipped, and
+/// base64 because that is how bytes travel in JSON -- and are inflated by
+/// whoever reads them. Held here as the strings they came as.
+@JsonSerializable()
+class GrammarData {
+  /// What each word can be and the forms it takes: text, gzipped, base64.
+  @JsonKey(defaultValue: "")
+  final String lexicon;
+
+  /// How much likelier one part of speech is after another, one
+  /// "TAG TAG lift" to a line.
+  @JsonKey(defaultValue: "")
+  final String transitions;
+
+  /// The words written for one another, a set to an entry.
+  @JsonKey(name: "confusionSets", defaultValue: [])
+  final List<String> confusionSets;
+
+  /// The counted contexts of those words: binary, gzipped, base64.
+  @JsonKey(defaultValue: "")
+  final String ngrams;
+
+  /// The commonest words, one to a line, and a bit for each ordered pair of
+  /// them all but never written side by side: gzipped, base64.
+  @JsonKey(name: "pairWords", defaultValue: "")
+  final String pairWords;
+  @JsonKey(name: "pairBits", defaultValue: "")
+  final String pairBits;
+
+  /// Named lists of words a rule may refer to.
+  @JsonKey(defaultValue: {})
+  final Map<String, List<String>> classes;
+
+  @JsonKey(defaultValue: [])
+  final List<TokenRule> rules;
+
+  GrammarData(
+      {this.lexicon = "",
+      this.transitions = "",
+      this.confusionSets = const [],
+      this.ngrams = "",
+      this.pairWords = "",
+      this.pairBits = "",
+      this.classes = const {},
+      this.rules = const []});
+  factory GrammarData.fromJson(Map<String, dynamic> json) =>
+      _$GrammarDataFromJson(json);
+}
+
 @JsonSerializable()
 class SpellcheckData {
   @JsonKey(defaultValue: [])
@@ -1170,10 +1262,15 @@ class SpellcheckData {
   @JsonKey(defaultValue: [])
   final List<SpellcheckLanguage> languages;
 
+  /// What lets the checker reason about a sentence rather than about its
+  /// characters, or null from a provider that sends none.
+  final GrammarData? grammar;
+
   SpellcheckData(this.words, this.commonWords, this.grammarRules,
       [this.analysisChecks = const [],
       this.language = "",
-      this.languages = const []]);
+      this.languages = const [],
+      this.grammar]);
   factory SpellcheckData.fromJson(Map<String, dynamic> json) =>
       _$SpellcheckDataFromJson(json);
 }

@@ -126,7 +126,18 @@ class WritingIssue {
   /// the dictionary doesn't have.
   final String message;
 
-  final List<String> suggestions;
+  /// The replacements on offer, best first.
+  ///
+  /// Worked out the first time something asks, not when the issue is found.
+  /// For a rule that makes no difference -- its answers are a template
+  /// filled in. For a misspelling it is most of the cost of checking: a
+  /// correction is a search of the whole dictionary, and it was being run
+  /// for every unknown word on every keystroke, half-typed words included,
+  /// to fill a list that is only read when a menu or the sidebar shows it.
+  List<String> get suggestions => _suggestions ??= _suggest!();
+  List<String>? _suggestions;
+  final List<String> Function()? _suggest;
+
   final WritingIssueKind kind;
 
   /// checkId identifies the rule that produced a style issue, so it can be
@@ -156,17 +167,24 @@ class WritingIssue {
   /// Falls back to [message] for an issue with no rule behind it.
   final String ruleMessage;
 
-  const WritingIssue({
+  /// Give [suggestions] where the answers are already known, or [suggest]
+  /// where finding them is work worth putting off -- see [suggestions].
+  WritingIssue({
     required this.range,
     required this.text,
     required this.message,
-    required this.suggestions,
+    List<String>? suggestions,
+    List<String> Function()? suggest,
     required this.kind,
     this.checkId,
     this.category = "",
     this.explanation = "",
     String? ruleMessage,
-  }) : ruleMessage = ruleMessage ?? message;
+  })  : assert(suggestions != null || suggest != null,
+            "an issue needs its suggestions, or a way to find them"),
+        _suggestions = suggestions ?? (suggest == null ? const [] : null),
+        _suggest = suggest,
+        ruleMessage = ruleMessage ?? message;
 
   /// shifted moves the issue [by] characters, for a finding made inside one
   /// piece of a document and reported against the whole of it.
@@ -179,7 +197,10 @@ class WritingIssue {
         range: TextRange(start: range.start + by, end: range.end + by),
         text: text,
         message: message,
-        suggestions: suggestions,
+        // Asked of this issue rather than copied from it, so the answer is
+        // still found once however many places the paragraph appears.
+        suggestions: _suggestions,
+        suggest: () => suggestions,
         kind: kind,
         checkId: checkId,
         category: category,

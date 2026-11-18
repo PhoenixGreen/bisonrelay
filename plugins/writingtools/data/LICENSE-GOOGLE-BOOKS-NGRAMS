@@ -1,0 +1,26 @@
+data/pos-counts.txt is extracted from the Google Books Ngram Corpus, English,
+version 20200217 (1-grams):
+
+    https://storage.googleapis.com/books/ngrams/books/datasetsv3.html
+
+That page states: "This compilation is licensed under a Creative Commons
+Attribution 3.0 Unported License."
+
+    http://creativecommons.org/licenses/by/3.0/
+
+What was taken from it: for each word in this plugin's dictionaries, the
+number of times since 1970 it was printed as a noun, a verb, an adjective, an
+adverb or anything else, and the number of times it was printed in lower case
+and with a capital. Nothing else of the corpus is here. lexicon.txt.gz is
+built from those counts by tools/mklexicon and is covered by the same terms.
+
+The corpus is described in:
+
+    Yuri Lin, Jean-Baptiste Michel, Erez Lieberman Aiden, Jon Orwant, William
+    Brockman and Slav Petrov. Syntactic Annotations for the Google Books Ngram
+    Corpus. Proceedings of the ACL 2012 System Demonstrations.
+    http://aclweb.org/anthology/P12-3029
+
+    Jean-Baptiste Michel et al. Quantitative Analysis of Culture Using
+    Millions of Digitized Books. Science, 2011.
+    http://www.sciencemag.org/content/331/6014/176

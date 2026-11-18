@@ -1,0 +1,177 @@
+package main
+
+// irregularVerbs says which irregular form is the past and which the
+// participle: base, past, participle.
+//
+// WordNet's verb.exc lists "went" and "gone" under "go" and does not say
+// which is which, and the whole use of this lexicon to a grammar rule is the
+// difference -- "have went" is wrong and "have gone" is not. So the verbs
+// where the two differ, or where either is also the base form, are written
+// out. A verb missing from here is assumed to use one form for both, which is
+// true of every regular verb and of most irregular ones.
+//
+// Where a verb has two accepted forms ("learned"/"learnt") both are given,
+// separated by a slash, commonest first.
+const irregularVerbs = `
+arise arose arisen
+awake awoke awoken
+bear bore borne/born
+beat beat beaten
+become became become
+begin began begun
+bend bent bent
+bet bet bet
+bid bid bid
+bind bound bound
+bite bit bitten
+bleed bled bled
+blow blew blown
+break broke broken
+breed bred bred
+bring brought brought
+build built built
+burn burned/burnt burned/burnt
+burst burst burst
+buy bought bought
+cast cast cast
+catch caught caught
+choose chose chosen
+cling clung clung
+come came come
+cost cost cost
+creep crept crept
+cut cut cut
+deal dealt dealt
+dig dug dug
+dive dived/dove dived
+draw drew drawn
+dream dreamed/dreamt dreamed/dreamt
+drink drank drunk
+drive drove driven
+eat ate eaten
+fall fell fallen
+feed fed fed
+feel felt felt
+fight fought fought
+find found found
+fit fitted/fit fitted/fit
+flee fled fled
+fling flung flung
+fly flew flown
+forbid forbade forbidden
+forecast forecast forecast
+forget forgot forgotten
+forgive forgave forgiven
+freeze froze frozen
+get got got/gotten
+give gave given
+go went gone
+grind ground ground
+grow grew grown
+hang hung/hanged hung/hanged
+hear heard heard
+hide hid hidden
+hit hit hit
+hold held held
+hurt hurt hurt
+keep kept kept
+kneel knelt/kneeled knelt/kneeled
+knit knitted/knit knitted/knit
+know knew known
+lay laid laid
+lead led led
+lean leaned/leant leaned/leant
+leap leaped/leapt leaped/leapt
+learn learned/learnt learned/learnt
+leave left left
+lend lent lent
+let let let
+lie lay lain
+light lit/lighted lit/lighted
+lose lost lost
+make made made
+mean meant meant
+meet met met
+mistake mistook mistaken
+overcome overcame overcome
+overtake overtook overtaken
+pay paid paid
+prove proved proved/proven
+put put put
+quit quit quit
+read read read
+ride rode ridden
+ring rang rung
+rise rose risen
+run ran run
+saw sawed sawn/sawed
+say said said
+see saw seen
+seek sought sought
+sell sold sold
+send sent sent
+set set set
+sew sewed sewn/sewed
+shake shook shaken
+shed shed shed
+shine shone/shined shone/shined
+shoot shot shot
+show showed shown/showed
+shrink shrank shrunk
+shut shut shut
+sing sang sung
+sink sank sunk
+sit sat sat
+sleep slept slept
+slide slid slid
+smell smelled/smelt smelled/smelt
+sow sowed sown/sowed
+speak spoke spoken
+speed sped/speeded sped/speeded
+spell spelled/spelt spelled/spelt
+spend spent spent
+spill spilled/spilt spilled/spilt
+spin spun spun
+spit spat/spit spat/spit
+split split split
+spoil spoiled/spoilt spoiled/spoilt
+spread spread spread
+spring sprang sprung
+stand stood stood
+steal stole stolen
+stick stuck stuck
+sting stung stung
+stink stank stunk
+stride strode stridden
+strike struck struck
+strive strove striven
+swear swore sworn
+sweep swept swept
+swell swelled swollen/swelled
+swim swam swum
+swing swung swung
+take took taken
+teach taught taught
+tear tore torn
+tell told told
+think thought thought
+throw threw thrown
+thrust thrust thrust
+tread trod trodden
+undergo underwent undergone
+understand understood understood
+undertake undertook undertaken
+undo undid undone
+upset upset upset
+wake woke woken
+wear wore worn
+weave wove woven
+weep wept wept
+wet wet/wetted wet/wetted
+win won won
+wind wound wound
+withdraw withdrew withdrawn
+withstand withstood withstood
+wring wrung wrung
+write wrote written
+`

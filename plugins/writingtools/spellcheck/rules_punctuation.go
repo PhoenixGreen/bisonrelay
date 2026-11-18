@@ -62,9 +62,14 @@ var punctuationRules = []GrammarRule{
 		//
 		// Digits are deliberately not included: "1,000" is a number, not a
 		// mistake.
-		Pattern:  `,(["(\[])`,
-		Flags:    []string{`he said,"hello"`},
-		Leaves:   []string{"it cost 1,000 today"},
+		// A quote after a comma is only missing its space when it is an
+		// opening one. Closing ones follow commas all day long -- "I get
+		// it," she said -- and that is American punctuation, not a slip.
+		// The two are the same character, so the test is what comes next:
+		// an opening quote has a word against it and a closing one a space.
+		Pattern:  `,(["(\[])(?=\w)`,
+		Flags:    []string{`he said,"hello"`, "this one,(the red one) is mine"},
+		Leaves:   []string{"it cost 1,000 today", `"I get it," she said`},
 		Message:  "Missing space after comma",
 		Suggest:  ", $1",
 		Category: "Spacing",

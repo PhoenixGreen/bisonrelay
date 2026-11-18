@@ -7,11 +7,12 @@ cd "$(dirname "$0")"
 # The datasets are embedded compressed; see main.go. Only the .gz files are
 # committed, so this regenerates them when a fresh .txt has been produced by
 # tools/mkwords or tools/mkthesaurus.
-for name in words-en-US common-en-US words-en-GB common-en-GB \
-            thesaurus definitions exceptions; do
-  if [ -f "$name.txt" ] && [ "$name.txt" -nt "$name.txt.gz" ]; then
-    echo "Recompressing $name.txt"
-    gzip -9 -n -c "$name.txt" > "$name.txt.gz"
+for name in words-en-US.txt common-en-US.txt words-en-GB.txt common-en-GB.txt \
+            thesaurus.txt definitions.txt exceptions.txt lexicon.txt \
+            usage-ngrams.bin usage-pairs.bin; do
+  if [ -f "$name" ] && [ "$name" -nt "$name.gz" ]; then
+    echo "Recompressing $name"
+    gzip -9 -n -c "$name" > "$name.gz"
   fi
 done
 

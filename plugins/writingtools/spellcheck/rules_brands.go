@@ -60,12 +60,20 @@ func buildBrandRules() []GrammarRule {
 		if len(wrong) == 0 {
 			continue
 		}
+		alternatives := strings.Join(wrong, "|")
 		rules = append(rules, GrammarRule{
-			Pattern:     `\b(?:` + strings.Join(wrong, "|") + `)\b`,
-			Message:     "Should be \"" + name + "\"",
-			Suggest:     name,
-			Flags:       []string{"we moved it to " + wrong[0] + " last week"},
-			Leaves:      []string{"we moved it to " + name + " last week"},
+			Pattern: `\b(?:` + alternatives + `)\b`,
+			// In an address the name is spelled the way addresses are:
+			// github.com is not a misspelling of GitHub.
+			Antipatterns: []string{
+				`[\w.-]*[/@.](?:` + alternatives + `)\b`,
+				`\b(?:` + alternatives + `)[./][\w/.-]*`,
+			},
+			Message: "Should be \"" + name + "\"",
+			Suggest: name,
+			Flags:   []string{"we moved it to " + wrong[0] + " last week"},
+			Leaves: []string{"we moved it to " + name + " last week",
+				"see https://" + strings.ToLower(name) + ".com/x"},
 			Category:    "Capitalization",
 			Explanation: explainBrand,
 		})

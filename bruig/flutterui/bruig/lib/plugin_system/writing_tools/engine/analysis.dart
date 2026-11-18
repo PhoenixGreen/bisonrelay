@@ -103,6 +103,16 @@ class AnalysisContext {
   List<TextSegment> get sentences =>
       _sentences ??= splitKeepingOffsets(text, sentenceEnd);
 
+  Set<String>? _words;
+
+  /// Every word in the text, lower-cased: runs of plain letters. For a check
+  /// that asks whether a word is here at all before asking where.
+  Set<String> get words => _words ??= {
+        for (var m in _letters.allMatches(text)) m.group(0)!.toLowerCase(),
+      };
+
+  static final _letters = RegExp(r"[A-Za-z]+");
+
   /// report records one finding, expanding [check]'s message and explanation.
   ///
   /// `$1` is what the check is about -- the repeated word, the spelling that

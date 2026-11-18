@@ -15,6 +15,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -491,15 +492,25 @@ func (m *Manager) builtinPluginDir(id string) string {
 // installBuiltin writes one built-in out, skipping the work when what is
 // already there came from the same build.
 //
-// The stamp is the size of the compressed module and of the manifest, which
-// is enough: the bytes are baked into the binary, so they only change when
-// the binary does, and a rebuild that changed neither length changed nothing
-// a user can see. Hashing 5MB on every launch to be certain of that would
-// cost more than it could ever save.
+// The stamp is the size and checksum of the compressed module and of the
+// manifest. The checksum costs nothing: gzip ends every file with the CRC of
+// what it holds, so it is read off the last eight bytes rather than worked
+// out.
+//
+// Size alone was the stamp once, on the argument that a rebuild changing
+// neither length changed nothing. It is not so. One letter of one rule
+// changed for another very often compresses to exactly the same number of
+// bytes, and then the client went on running the copy it had unpacked before
+// -- a rule edited, rebuilt, and still wrong on screen.
 func (m *Manager) installBuiltin(bp builtin.Plugin) error {
 	dir := m.builtinPluginDir(bp.ID)
 	stampPath := filepath.Join(dir, builtinStampName)
-	stamp := fmt.Sprintf("%d %d\n", len(bp.WasmGz), len(bp.Manifest))
+	var trailer []byte
+	if n := len(bp.WasmGz); n >= 8 {
+		trailer = bp.WasmGz[n-8:]
+	}
+	stamp := fmt.Sprintf("%d %x %d %08x\n", len(bp.WasmGz), trailer,
+		len(bp.Manifest), crc32.ChecksumIEEE(bp.Manifest))
 
 	if have, err := os.ReadFile(stampPath); err == nil && string(have) == stamp {
 		return nil

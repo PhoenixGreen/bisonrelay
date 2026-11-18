@@ -68,54 +68,6 @@ const massNounsInS = `news|business|progress|glass|class|series|species|` +
 
 var agreementRules = []GrammarRule{
 	{
-		// A personal pronoun cannot be anything but the subject, so this
-		// needs no idea what the sentence is about. There is no subjunctive
-		// counterpart to worry about either: "if we was" is still wrong.
-		Pattern:      `\b([Ww]e|[Tt]hey|[Yy]ou)\s+was\b`,
-		Antipatterns: []string{`\b` + afterPreposition + `you\s+was\b`},
-		Flags: []string{
-			"because we was both bored",
-			"They was late again",
-			"you was right about it",
-		},
-		Leaves: []string{
-			"we were both bored",
-			"he was late again",
-			// "You" is an object here, so the verb belongs to "photo".
-			"a photo of you was on the wall",
-		},
-		Message:     "Should be \"$1 were\"",
-		Suggest:     "$1 were",
-		Category:    "Grammar",
-		Explanation: explainAgreement,
-	},
-	{
-		// The mirror, and the one that needs a guard. "Were" after a
-		// singular pronoun is the subjunctive as often as it is a mistake,
-		// and the subjunctive is correct: "if I were you" is not an error to
-		// be fixed.
-		Pattern: `\b([Ii]|[Hh]e|[Ss]he|[Ii]t)\s+were\b`,
-		Antipatterns: []string{
-			subjunctives,
-			`\b` + afterPreposition + `it\s+were\b`,
-		},
-		Flags: []string{"he were already waiting", "I were late"},
-		Leaves: []string{
-			"if I were you I would wait",
-			"I wish it were simpler",
-			"she asked whether it were possible",
-			"as it were, nobody minded",
-			// The sentence the quantifier rule produces. Without the guard
-			// these two rules undo each other's work.
-			"some parts of it were exciting",
-			"a few of it were missing",
-		},
-		Message:     "Should be \"$1 was\"",
-		Suggest:     "$1 was",
-		Category:    "Grammar",
-		Explanation: explainAgreement + " \"Were\" after a singular subject is correct only in the subjunctive -- \"if I were you\".",
-	},
-	{
 		// A quantifier, a plural noun, then a prepositional phrase, then the
 		// verb. The phrase in the middle is the whole difficulty: it puts a
 		// singular noun ("of it") next to the verb, and that is the noun the
@@ -187,42 +139,6 @@ var agreementRules = []GrammarRule{
 		Explanation: explainAgreement,
 	},
 	{
-		// A compound subject: two things joined by "and" are plural however
-		// singular each one is.
-		//
-		// Safe only because the first half is already plural. "Bread and
-		// butter was", "fish and chips was" and "trial and error was" are
-		// all correct -- a fixed pair naming one thing -- and every one of
-		// them has a singular first half. With "cards and licence" there is
-		// no reading where the subject is one thing.
-		Pattern: `\b(\w+s)\s+and\s+((?:\w+\s+)?\w+)\s+was\b`,
-		Antipatterns: []string{
-			// Spans the whole match, not just its first half: an antipattern
-			// suppresses a rule only where it contains it.
-			`\b(` + massNounsInS + `)\s+and\s+(?:\w+\s+)?\w+\s+was\b`,
-			// "And" joining two clauses rather than two subjects. Found by
-			// the corpus on "a series of delays and there was progress",
-			// where "delays" and "there" are not a compound subject at all
-			// -- the second belongs to a sentence of its own.
-			`\b\w+s\s+and\s+(there|it|he|she|they|we|I|you|this|that)\s+was\b`,
-		},
-		Flags: []string{
-			"my bank cards and driving licence was inside it",
-			"the keys and my wallet was missing",
-		},
-		Leaves: []string{
-			"my bank cards and driving licence were inside it",
-			"bread and butter was all we had",
-			"there was a series of delays and there was progress at last",
-			// A singular noun that ends in "s" is not a plural half.
-			"the news and the weather was on",
-		},
-		Message:     "Should be \"$1 and $2 were\"",
-		Suggest:     "$1 and $2 were",
-		Category:    "Grammar",
-		Explanation: explainAgreement + " Two things joined by \"and\" are plural, however singular each one is on its own.",
-	},
-	{
 		// "Loads of" and "lots of" do take mass nouns, so these need the
 		// noun named. The list is common plural count nouns; anything not on
 		// it is left alone rather than guessed at, because "there was lots
@@ -263,18 +179,6 @@ var agreementRules = []GrammarRule{
 		Suggest:     "$1 supposed to",
 		Category:    "Grammar",
 		Explanation: "The past participle is \"supposed\". The \"d\" is easy to lose because it is not heard before the \"t\" of \"to\".",
-	},
-	{
-		// "Use to" for "used to", in the positions where "use" cannot be the
-		// verb. After a pronoun it needs an object -- "we use it to open" --
-		// so "we use to" is the habitual past with its "d" dropped.
-		Pattern:     `\b([Ii]|[Ww]e|[Tt]hey|[Yy]ou|[Hh]e|[Ss]he|[Ii]t)\s+use\s+to\b`,
-		Flags:       []string{"we use to go there every week"},
-		Leaves:      []string{"we used to go there every week", "we use it to open the door"},
-		Message:     "Should be \"$1 used to\"",
-		Suggest:     "$1 used to",
-		Category:    "Grammar",
-		Explanation: "The habitual past is \"used to\". The \"d\" is easy to lose because it is not heard before the \"t\" of \"to\".",
 	},
 	// --- double negatives ---
 	//

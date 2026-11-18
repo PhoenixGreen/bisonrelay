@@ -51,13 +51,28 @@ var vowelSoundedConsonants = eitherCaseAlternation([]string{
 // this first failed.
 const initialisms = `[FHLMNRSX][A-Z0-9]*\b`
 
+// spelledInitialisms are the ones certain to be said letter by letter. The
+// class above cannot tell "an FBI agent" from "a FEMA spokesman" -- one is
+// spelled out and the other is said as a word -- so it is good for excusing
+// "an" and no good for demanding it. Demanding it needs a list.
+const spelledInitialisms = `(?:FBI|MRI|NBA|NFL|NHL|HTML|HTTP|HTTPS|SMS|MP3|MP4|` +
+	`HR|HIV|LCD|LED|MBA|MVP|NGO|RSS|SSD|SUV|XML|SQL|SDK|SSL|SSH|FAQ|MP|` +
+	`MSc|X-ray|SOS|RFC|NFT|LGBT|HDMI|HD|SD|RPC|RPG|FTP|MIT|NYC|LA)\b`
+
 var articleRules = []GrammarRule{
 	{
 		Pattern: `\b([Aa])\s+([AaEeIiOoUu]\w*)`,
 		Flags:   []string{"that is a odd effect"},
-		Leaves:  []string{"a unique offer", "a one-off", "a European utility", "a useful thing"},
+		Leaves: []string{"a unique offer", "a one-off", "a European utility", "a useful thing",
+			"plug in a USB stick", "Grade A and above", "from A to B"},
 		Antipatterns: []string{
 			`\b[Aa]\s+(` + consonantSoundedVowels + `)`,
+			// An initialism that opens with U is said "you": a USB stick, a
+			// UFO, a URL.
+			`\b[Aa]\s+U[A-Z0-9]+\b`,
+			// And a capital A before one of these is the letter, or a grade,
+			// and not the article at all.
+			`\bA\s+(?:and|or|is|was|to|in|on|at|as|of|if|it)\b`,
 		},
 		Message:     "Should be \"$1n $2\"",
 		Suggest:     "$1n $2",
@@ -83,9 +98,9 @@ var articleRules = []GrammarRule{
 	{
 		// "A MBA" for the same reason: the letter is a consonant and its
 		// name opens with a vowel.
-		Pattern:     `\b([Aa])\s+(` + initialisms + `)`,
+		Pattern:     `\b([Aa])\s+(` + spelledInitialisms + `)`,
 		Flags:       []string{"she has a MBA", "a X-ray booked"},
-		Leaves:      []string{"an MBA", "a BBC documentary", "a DVD"},
+		Leaves:      []string{"an MBA", "a BBC documentary", "a DVD", "a FEMA spokesman", "a SIM card"},
 		Message:     "Should be \"$1n $2\"",
 		Suggest:     "$1n $2",
 		Category:    "Grammar",
@@ -94,10 +109,14 @@ var articleRules = []GrammarRule{
 	{
 		Pattern: `\b([Aa])n\s+([B-DF-HJ-NP-TV-Zb-df-hj-np-tv-z]\w*)`,
 		Flags:   []string{"that is an dog"},
-		Leaves:  []string{"an hour of honest work", "an heir to it", "she has an MBA", "an X-ray booked"},
+		Leaves: []string{"an hour of honest work", "an heir to it", "she has an MBA", "an X-ray booked",
+			"an historic win"},
 		Antipatterns: []string{
 			`\b[Aa]n\s+(` + vowelSoundedConsonants + `)`,
 			`\b[Aa]n\s+` + initialisms,
+			// "An historic" is older usage and still in print; it is not an
+			// error for this to correct.
+			`\b[Aa]n\s+[Hh]istoric\w*`,
 		},
 		Message:     "Should be \"$1 $2\"",
 		Suggest:     "$1 $2",

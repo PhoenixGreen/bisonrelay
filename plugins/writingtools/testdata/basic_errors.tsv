@@ -1,0 +1,388 @@
+# Minimal pairs of basic English mistakes: category, the mistake, the fix.
+#
+# The measure of the checker on the errors a person actually makes, rather
+# than on the rules somebody thought to write. Each wrong sentence should be
+# marked; each right one must not be.
+#
+# Read by the app's writing_benchmark_test.dart, which runs the shipped rules
+# through the app's engine.
+agreement	He go to school every day.	He goes to school every day.
+agreement	She walk to work.	She walks to work.
+agreement	They was happy with the result.	They were happy with the result.
+agreement	We was late for the meeting.	We were late for the meeting.
+agreement	You was right about that.	You were right about that.
+agreement	I is tired today.	I am tired today.
+agreement	He don't like coffee.	He doesn't like coffee.
+agreement	She don't know the answer.	She doesn't know the answer.
+agreement	It don't matter anymore.	It doesn't matter anymore.
+agreement	The dogs is barking loudly.	The dogs are barking loudly.
+agreement	The dog are barking loudly.	The dog is barking loudly.
+agreement	My friends lives in London.	My friends live in London.
+agreement	My friend live in London.	My friend lives in London.
+agreement	The children plays in the park.	The children play in the park.
+agreement	There is many reasons for this.	There are many reasons for this.
+agreement	There are a reason for this.	There is a reason for this.
+agreement	He have a new car.	He has a new car.
+agreement	She have two brothers.	She has two brothers.
+agreement	I has a question.	I have a question.
+agreement	They has finished the work.	They have finished the work.
+agreement	We has been waiting for an hour.	We have been waiting for an hour.
+agreement	It have been a long day.	It has been a long day.
+agreement	Everyone are welcome to join.	Everyone is welcome to join.
+agreement	Each of the students have a book.	Each of the students has a book.
+agreement	The people is angry about it.	The people are angry about it.
+agreement	This are my best songs.	These are my best songs.
+agreement	These is the best option.	This is the best option.
+agreement	Does they know about it?	Do they know about it?
+agreement	Do he know about it?	Does he know about it?
+agreement	What do she want?	What does she want?
+agreement	Where does they live?	Where do they live?
+agreement	The price of the tickets are too high.	The price of the tickets is too high.
+agreement	She were at home yesterday.	She was at home yesterday.
+agreement	I were at home yesterday.	I was at home yesterday.
+agreement	He were very kind to me.	He was very kind to me.
+agreement	The car need a new battery.	The car needs a new battery.
+agreement	The network run on thousands of nodes.	The network runs on thousands of nodes.
+agreement	This make me very happy.	This makes me very happy.
+agreement	That sound like a good idea.	That sounds like a good idea.
+agreement	It seem like a good plan.	It seems like a good plan.
+verbform	I have went to the shop.	I have gone to the shop.
+verbform	She has ate all the cake.	She has eaten all the cake.
+verbform	He has wrote a long letter.	He has written a long letter.
+verbform	They have took the money.	They have taken the money.
+verbform	I seen him yesterday.	I saw him yesterday.
+verbform	I done my homework already.	I did my homework already.
+verbform	He didn't went to the party.	He didn't go to the party.
+verbform	She didn't knew the answer.	She didn't know the answer.
+verbform	Did you saw the news?	Did you see the news?
+verbform	Did he went home?	Did he go home?
+verbform	I can goes there tomorrow.	I can go there tomorrow.
+verbform	She can sings very well.	She can sing very well.
+verbform	You should went to the doctor.	You should go to the doctor.
+verbform	He must to finish the report.	He must finish the report.
+verbform	We will going to the beach.	We will go to the beach.
+verbform	I will went there next week.	I will go there next week.
+verbform	She might has forgotten.	She might have forgotten.
+verbform	They could of been there.	They could have been there.
+verbform	I should of known better.	I should have known better.
+verbform	I want to went home.	I want to go home.
+verbform	She likes to dancing.	She likes to dance.
+verbform	He wants to buys a house.	He wants to buy a house.
+verbform	I am agree with you.	I agree with you.
+verbform	She is work at a bank.	She is working at a bank.
+verbform	They are play football now.	They are playing football now.
+verbform	I going to the store.	I am going to the store.
+verbform	He going to be late.	He is going to be late.
+verbform	We been waiting for hours.	We have been waiting for hours.
+verbform	I been there before.	I have been there before.
+verbform	She was went to the market.	She went to the market.
+verbform	He was ran very fast.	He ran very fast.
+verbform	I have saw that film.	I have seen that film.
+verbform	We have did it already.	We have done it already.
+verbform	He has broke the window.	He has broken the window.
+verbform	The window was broke.	The window was broken.
+verbform	The letter was wrote by him.	The letter was written by him.
+verbform	She had forgot her keys.	She had forgotten her keys.
+verbform	I look forward to meet you.	I look forward to meeting you.
+verbform	He enjoys to swim.	He enjoys swimming.
+verbform	Let him goes.	Let him go.
+verbform	She made me to cry.	She made me cry.
+verbform	I buyed a new phone.	I bought a new phone.
+verbform	He goed to the park.	He went to the park.
+verbform	She teached me English.	She taught me English.
+verbform	We catched the bus.	We caught the bus.
+verbform	They runned away.	They ran away.
+verbform	I thinked about it.	I thought about it.
+verbform	Yesterday I go to the cinema.	Yesterday I went to the cinema.
+verbform	Last week she visit her mother.	Last week she visited her mother.
+verbform	I didn't saw anything.	I didn't see anything.
+article	I ate a apple.	I ate an apple.
+article	She is an teacher.	She is a teacher.
+article	He waited for a hour.	He waited for an hour.
+article	It was an useful tool.	It was a useful tool.
+article	She bought a umbrella.	She bought an umbrella.
+article	I have a idea.	I have an idea.
+article	He is a honest man.	He is an honest man.
+article	I saw an dog in the garden.	I saw a dog in the garden.
+article	She is a engineer.	She is an engineer.
+article	I need an new phone.	I need a new phone.
+article	This is a apples.	These are apples.
+article	I have a two cats.	I have two cats.
+article	The my car is red.	My car is red.
+article	I bought a new shoes.	I bought new shoes.
+article	She gave me a advice.	She gave me advice.
+article	He is the my brother.	He is my brother.
+article	I read a the book.	I read the book.
+article	It is a an old story.	It is an old story.
+number	I have two dog.	I have two dogs.
+number	She has three brother.	She has three brothers.
+number	There are many car on the road.	There are many cars on the road.
+number	He has several book.	He has several books.
+number	I bought five apple.	I bought five apples.
+number	One of my friend is a doctor.	One of my friends is a doctor.
+number	These book are mine.	These books are mine.
+number	Those car are fast.	Those cars are fast.
+number	This books are mine.	These books are mine.
+number	I have many informations.	I have a lot of information.
+number	She gave me some advices.	She gave me some advice.
+number	We bought new furnitures.	We bought new furniture.
+number	The childrens are playing.	The children are playing.
+number	There were ten peoples.	There were ten people.
+number	Both womans are tall.	Both women are tall.
+number	I saw three mans.	I saw three men.
+number	He has two childs.	He has two children.
+number	My foots hurt.	My feet hurt.
+number	How much people came?	How many people came?
+number	How many money do you have?	How much money do you have?
+number	There are less people today.	There are fewer people today.
+number	A few minute later he left.	A few minutes later he left.
+number	Every students passed.	Every student passed.
+number	Each players gets a card.	Each player gets a card.
+number	I have much friends.	I have many friends.
+pronoun	Me and him went to the shop.	He and I went to the shop.
+pronoun	Her and me are friends.	She and I are friends.
+pronoun	Him is my brother.	He is my brother.
+pronoun	Me like pizza.	I like pizza.
+pronoun	Them are my friends.	They are my friends.
+pronoun	Us went to the park.	We went to the park.
+pronoun	She gave it to I.	She gave it to me.
+pronoun	Between you and I, it was bad.	Between you and me, it was bad.
+pronoun	He is taller than me am.	He is taller than I am.
+pronoun	This is mines.	This is mine.
+pronoun	That book is her.	That book is hers.
+pronoun	He hurt hisself.	He hurt himself.
+pronoun	They did it theirselves.	They did it themselves.
+pronoun	The dog wagged it's tail.	The dog wagged its tail.
+pronoun	Its a nice day.	It's a nice day.
+pronoun	Your welcome.	You're welcome.
+pronoun	I like you're car.	I like your car.
+pronoun	Their going to the park.	They're going to the park.
+pronoun	They left there bags.	They left their bags.
+pronoun	The book is over their.	The book is over there.
+pronoun	Whose going to the party?	Who's going to the party?
+pronoun	Who's book is this?	Whose book is this?
+pronoun	I don't know who's car that is.	I don't know whose car that is.
+pronoun	Your going to love it.	You're going to love it.
+pronoun	Is this you're phone?	Is this your phone?
+pronoun	There is they're house.	There is their house.
+pronoun	Its been a long time.	It's been a long time.
+pronoun	The company lost it's way.	The company lost its way.
+confusion	Is this a reel problem?	Is this a real problem?
+confusion	The fish pulled on the real.	The fish pulled on the reel.
+confusion	It was a reel pleasure to meet you.	It was a real pleasure to meet you.
+confusion	I can't bare the noise.	I can't bear the noise.
+confusion	I want to loose weight.	I want to lose weight.
+confusion	My shoes are too lose.	My shoes are too loose.
+confusion	He is taller then me.	He is taller than me.
+confusion	We ate dinner and than went home.	We ate dinner and then went home.
+confusion	I want to go to.	I want to go too.
+confusion	It is to late to go.	It is too late to go.
+confusion	I have to dogs.	I have two dogs.
+confusion	The rain will effect the game.	The rain will affect the game.
+confusion	It had a big affect on me.	It had a big effect on me.
+confusion	I except your apology.	I accept your apology.
+confusion	Everyone accept John came.	Everyone except John came.
+confusion	I don't know weather to go.	I don't know whether to go.
+confusion	The whether is nice today.	The weather is nice today.
+confusion	Please be quite in the library.	Please be quiet in the library.
+confusion	It was quiet a good film.	It was quite a good film.
+confusion	Can you give me some advise?	Can you give me some advice?
+confusion	I would advice you to wait.	I would advise you to wait.
+confusion	I need to by some milk.	I need to buy some milk.
+confusion	We walked passed the shop.	We walked past the shop.
+confusion	He past the exam.	He passed the exam.
+confusion	I here a strange noise.	I hear a strange noise.
+confusion	Come over hear.	Come over here.
+confusion	I no the answer.	I know the answer.
+confusion	There are know tickets left.	There are no tickets left.
+confusion	I red the book last week.	I read the book last week.
+confusion	We are aloud to leave early.	We are allowed to leave early.
+confusion	The principle of the school spoke.	The principal of the school spoke.
+confusion	Wait for me their.	Wait for me there.
+confusion	I brake my arm last year.	I broke my arm last year.
+confusion	Take a deep breathe.	Take a deep breath.
+confusion	I can't breath.	I can't breathe.
+confusion	She one the race.	She won the race.
+confusion	I would like a peace of cake.	I would like a piece of cake.
+confusion	We want world piece.	We want world peace.
+confusion	Witch one do you want?	Which one do you want?
+confusion	I am board with this game.	I am bored with this game.
+confusion	Are you shore about that?	Are you sure about that?
+confusion	The plain landed safely.	The plane landed safely.
+confusion	I will meat you at noon.	I will meet you at noon.
+confusion	He through the ball.	He threw the ball.
+confusion	We walked threw the forest.	We walked through the forest.
+confusion	I am not aloud to go.	I am not allowed to go.
+confusion	She has long blonde hare.	She has long blonde hair.
+confusion	I need a brake from work.	I need a break from work.
+confusion	Their is a problem.	There is a problem.
+confusion	Wear are you going?	Where are you going?
+confusion	I don't know were he is.	I don't know where he is.
+confusion	We where at the park.	We were at the park.
+confusion	It's a waist of time.	It's a waste of time.
+confusion	I am to tired to work.	I am too tired to work.
+confusion	Please right your name here.	Please write your name here.
+confusion	You are write about that.	You are right about that.
+confusion	I knew car is expensive.	A new car is expensive.
+confusion	I bought a knew car.	I bought a new car.
+confusion	Our you coming tonight?	Are you coming tonight?
+confusion	This is are house.	This is our house.
+confusion	I'll be their soon.	I'll be there soon.
+confusion	He is to blame for the hole thing.	He is to blame for the whole thing.
+confusion	I ate the hole pizza.	I ate the whole pizza.
+confusion	I could of sworn I saw him.	I could have sworn I saw him.
+confusion	She is better then her sister.	She is better than her sister.
+confusion	I am going to bye a car.	I am going to buy a car.
+confusion	For all intensive purposes it works.	For all intents and purposes it works.
+wordorder	I very like this song.	I like this song very much.
+wordorder	She always is late.	She is always late.
+wordorder	What you are doing?	What are you doing?
+wordorder	Where you are going?	Where are you going?
+wordorder	Why he is angry?	Why is he angry?
+wordorder	I don't know what is his name.	I don't know what his name is.
+wordorder	He speaks very well English.	He speaks English very well.
+wordorder	I like very much pizza.	I like pizza very much.
+wordorder	Can you tell me where is the station?	Can you tell me where the station is?
+wordorder	She gave to me a book.	She gave me a book.
+wordorder	I have a car red.	I have a red car.
+wordorder	How you are?	How are you?
+wordorder	When she will come?	When will she come?
+wordorder	Enough big to fit.	Big enough to fit.
+wordorder	I not like it.	I don't like it.
+wordorder	He not is here.	He is not here.
+wordorder	I no have money.	I have no money.
+wordorder	She no like fish.	She doesn't like fish.
+missing	She happy today.	She is happy today.
+missing	He a doctor.	He is a doctor.
+missing	I going home now.	I am going home now.
+missing	They very tired.	They are very tired.
+missing	I want go home.	I want to go home.
+missing	She needs buy milk.	She needs to buy milk.
+missing	I like listen to music.	I like to listen to music.
+missing	He went to shop.	He went to the shop.
+missing	I am student.	I am a student.
+missing	She is teacher.	She is a teacher.
+missing	It is good idea.	It is a good idea.
+missing	I live in big house.	I live in a big house.
+missing	Where you from?	Where are you from?
+missing	What your name?	What is your name?
+missing	I looking for my keys.	I am looking for my keys.
+missing	We waiting for the bus.	We are waiting for the bus.
+missing	I have been to there.	I have been there.
+missing	He is afraid dogs.	He is afraid of dogs.
+missing	She is good at play piano.	She is good at playing piano.
+missing	Thank you for help me.	Thank you for helping me.
+extra	I am am tired.	I am tired.
+extra	She is is a teacher.	She is a teacher.
+extra	He went to to the shop.	He went to the shop.
+extra	I can to swim.	I can swim.
+extra	She must to go now.	She must go now.
+extra	He is more taller than me.	He is taller than me.
+extra	This is the most best day.	This is the best day.
+extra	It is more better now.	It is better now.
+extra	I don't have no money.	I don't have any money.
+extra	She didn't say nothing.	She didn't say anything.
+extra	I can't hardly wait.	I can hardly wait.
+extra	He doesn't know nothing about it.	He doesn't know anything about it.
+extra	We discussed about the problem.	We discussed the problem.
+extra	She married with a doctor.	She married a doctor.
+extra	I returned back home.	I returned home.
+extra	Please repeat again.	Please repeat.
+extra	He entered into the room.	He entered the room.
+extra	I am going to home.	I am going home.
+extra	The reason is because he was late.	The reason is that he was late.
+extra	Where are you at?	Where are you?
+extra	She is the most tallest girl.	She is the tallest girl.
+extra	Although he was tired, but he kept working.	Although he was tired, he kept working.
+comparison	She is more smart than him.	She is smarter than him.
+comparison	This is gooder than that.	This is better than that.
+comparison	He is the goodest player.	He is the best player.
+comparison	It was the baddest day.	It was the worst day.
+comparison	This is more easy.	This is easier.
+comparison	She is beautifuller than her sister.	She is more beautiful than her sister.
+comparison	He runs more fast than me.	He runs faster than me.
+comparison	I am more happy now.	I am happier now.
+comparison	This is the most cheap one.	This is the cheapest one.
+comparison	He is as tall than me.	He is as tall as me.
+comparison	She is different than her brother.	She is different from her brother.
+comparison	It is more bigger.	It is bigger.
+preposition	I am good in math.	I am good at math.
+preposition	She arrived to the station.	She arrived at the station.
+preposition	He is married with her.	He is married to her.
+preposition	I am interested on music.	I am interested in music.
+preposition	It depends of the weather.	It depends on the weather.
+preposition	I am waiting you.	I am waiting for you.
+preposition	Listen me carefully.	Listen to me carefully.
+preposition	She is afraid from spiders.	She is afraid of spiders.
+preposition	We arrived in Monday.	We arrived on Monday.
+preposition	I was born in 5 May.	I was born on 5 May.
+preposition	He is responsible of the project.	He is responsible for the project.
+preposition	I agree to you.	I agree with you.
+preposition	She is angry on me.	She is angry with me.
+preposition	I am looking forward for it.	I am looking forward to it.
+preposition	According with the report, sales rose.	According to the report, sales rose.
+preposition	He insisted to pay.	He insisted on paying.
+preposition	I am used to get up early.	I am used to getting up early.
+preposition	In the other hand, it is cheap.	On the other hand, it is cheap.
+preposition	She was in the phone.	She was on the phone.
+preposition	I will see you in the weekend.	I will see you at the weekend.
+nonsense	The of went quickly a.	They went quickly.
+nonsense	I the store to went.	I went to the store.
+nonsense	Dog the barked loud the.	The dog barked loudly.
+nonsense	Is very the nice weather today is.	The weather is very nice today.
+nonsense	She and the but went.	She went.
+nonsense	To the and of it.	It is theirs.
+nonsense	He quickly the very ran.	He ran very quickly.
+nonsense	I am the going with to.	I am going too.
+nonsense	Because the when it was.	It was because of that.
+nonsense	The cat a the mat sat on.	The cat sat on the mat.
+nonsense	Went store I milk buy.	I went to the store to buy milk.
+nonsense	Of course the the with a.	Of course.
+nonsense	They is are was happy.	They were happy.
+nonsense	My the car is a red.	My car is red.
+nonsense	Can will you should help me?	Can you help me?
+nonsense	I have a an the dog.	I have a dog.
+nonsense	She very is much tired a.	She is very tired.
+nonsense	We to from the park at.	We came from the park.
+nonsense	It is is not not good.	It is not good.
+nonsense	Yesterday tomorrow I will went.	Tomorrow I will go.
+punctuation	i went to the shop.	I went to the shop.
+punctuation	she said hello.i said goodbye.	She said hello. I said goodbye.
+punctuation	I like apples ,oranges and pears.	I like apples, oranges and pears.
+punctuation	What is your name.	What is your name?
+punctuation	Where are you going.	Where are you going?
+punctuation	I went home , then I slept.	I went home, then I slept.
+punctuation	Its raining again	It's raining again.
+punctuation	He said that he dont care.	He said that he doesn't care.
+punctuation	I cant believe it.	I can't believe it.
+punctuation	She wont be coming.	She won't be coming.
+punctuation	Lets go to the park.	Let's go to the park.
+punctuation	I live in london.	I live in London.
+punctuation	We met on monday.	We met on Monday.
+punctuation	My birthday is in july.	My birthday is in July.
+punctuation	He speaks french and german.	He speaks French and German.
+punctuation	The dog's are barking.	The dogs are barking.
+punctuation	I have two cat's.	I have two cats.
+punctuation	Hello how are you	Hello, how are you?
+punctuation	I like it very much!!	I like it very much!
+punctuation	However I disagree.	However, I disagree.
+spelling	I recieved your mesage yesterday.	I received your message yesterday.
+spelling	It was definately the best.	It was definitely the best.
+spelling	We need to seperate them.	We need to separate them.
+spelling	The goverment made a new law.	The government made a new law.
+spelling	Wich one is yours?	Which one is yours?
+spelling	I beleive you.	I believe you.
+spelling	It occured last night.	It occurred last night.
+spelling	Untill tomorrow then.	Until tomorrow then.
+spelling	She is my freind.	She is my friend.
+spelling	Thats a wierd thing to say.	That's a weird thing to say.
+spelling	I alot of work to do.	I have a lot of work to do.
+spelling	Tommorow is another day.	Tomorrow is another day.
+spelling	It is neccessary to go.	It is necessary to go.
+spelling	He is a profesional.	He is a professional.
+spelling	I am very greatful.	I am very grateful.
+spelling	The resturant was full.	The restaurant was full.
+spelling	That is a good arguement.	That is a good argument.
+spelling	She was embarased.	She was embarrassed.
+spelling	Acomodation is expensive.	Accommodation is expensive.
+spelling	I dont no wat to do.	I don't know what to do.

@@ -65,6 +65,27 @@ const (
 	// CheckApostropheConsistency fires when straight and curly apostrophes
 	// are both used inside words in one message. $1 is the odd one out.
 	CheckApostropheConsistency = "apostrophe-inconsistency"
+
+	// CheckConfusedWord fires on a word that the words around it make
+	// unlikely, where one of the words it is confused with would be likely
+	// -- "a reel problem". $1 is the word as typed, $2 the one it may have
+	// been meant to be. Threshold is how many times likelier the other word
+	// has to be.
+	//
+	// The sets are Grammar.ConfusionSets and the evidence Grammar.Ngrams;
+	// what is declared here is how sure to be and what to say.
+	CheckConfusedWord = "confused-word"
+
+	// CheckConfusedWordCertain is the same finding where the evidence is
+	// overwhelming, and is an error rather than a question. A separate id,
+	// for the reason the two date checks are: the two are not equally
+	// certain, must not be equally loud, and can be turned off apart.
+	CheckConfusedWordCertain = "confused-word-certain"
+
+	// CheckUnusualPair fires on two common words side by side that edited
+	// English all but never puts together -- "the of", "is went". $1 is the
+	// pair. See Grammar.PairBits.
+	CheckUnusualPair = "unusual-word-pair"
 )
 
 // AnalysisCheck is one declared check. It mirrors the spellcheck-data
@@ -163,6 +184,34 @@ var AnalysisChecks = []AnalysisCheck{
 		Message:     "\"$1\" is not a date -- that month has $2 days",
 		Category:    "Consistency",
 		Explanation: "No such day exists in that month. Nothing is offered to replace it because the slip could as easily be the month as the number.",
+	},
+	{
+		// Sixty to one. Measured on the seventeenth of the corpus kept back
+		// from the counting: at this setting the check asks about one
+		// sentence of edited English in 270, about half of those for cause,
+		// and catches 72 in 100 of the words swapped for their rivals. At 25
+		// it asked twice as often for a few more catches; at 150 it asked
+		// half as often and caught ten fewer.
+		ID:          CheckConfusedWord,
+		Threshold:   60,
+		Message:     "Did you mean \"$2\"?",
+		Category:    "Possible confusion",
+		Severity:    SeverityCheck,
+		Explanation: "\"$1\" and \"$2\" are easily written for one another, and next to these words it is \"$2\" that is usually found. If \"$1\" is the word you meant, mark it as correct and it will not be asked again.",
+	},
+	{
+		ID:          CheckConfusedWordCertain,
+		Threshold:   400,
+		Message:     "Should be \"$2\"",
+		Category:    "Confused words",
+		Explanation: "\"$1\" and \"$2\" are easily written for one another. Between these words it is \"$2\" that is written, and \"$1\" almost never.",
+	},
+	{
+		ID:          CheckUnusualPair,
+		Message:     "\"$1\" is an unusual pairing -- is a word missing or out of place?",
+		Category:    "Sentence structure",
+		Severity:    SeverityCheck,
+		Explanation: "These two words are both common and are almost never written side by side. That usually means a word has been left out between them, one has been typed twice or in the wrong place, or one of them is the wrong word.",
 	},
 	{
 		ID:          CheckApostropheConsistency,

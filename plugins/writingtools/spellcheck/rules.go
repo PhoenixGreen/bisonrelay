@@ -32,7 +32,6 @@ var Rules = concat(
 	brandRules,
 	agreementRules,
 	learnerRules,
-	properNounRules,
 	punctuationRules,
 	styleRules,
 	redundancyRules,
@@ -40,4 +39,26 @@ var Rules = concat(
 	typographyRules,
 	checkRules,
 	commaCheckRules,
+)
+
+// TokenRules is every check stated over words and what they are, in the
+// order they are applied.
+//
+// Order matters here in a way it does not above: where two of these would
+// mark the same words the app keeps the first. So the rule with the better
+// answer goes first -- "Yesterday he go" is a matter of tense before it is
+// a matter of agreement.
+var TokenRules = concatTokens(
+	tenseTokenRules,
+	agreementTokenRules,
+	verbFormTokenRules,
+	numberTokenRules,
+	regularisedPluralTokenRules,
+	pronounTokenRules,
+	confusionTokenRules,
+	comparisonTokenRules,
+	structureTokenRules,
+	doubleNegativeTokenRules,
+	prepositionTokenRules,
+	capitalTokenRules,
 )
