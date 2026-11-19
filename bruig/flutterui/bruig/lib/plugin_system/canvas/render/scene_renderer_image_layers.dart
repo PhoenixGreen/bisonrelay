@@ -92,8 +92,10 @@ void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
     return;
   }
   var misses = images.misses;
-  var below = _record((c) =>
-      _paintStack(c, inner, e, stack.sublist(0, at), images, room, arrive));
+  var below = recordedFor(
+      canvas,
+      (c) =>
+          _paintStack(c, inner, e, stack.sublist(0, at), images, room, arrive));
   // What is under it changes frame by frame while layers arrive, so the
   // adjusted picture is not kept then.
   var complete = images.misses == misses && arrive == null;
@@ -274,35 +276,68 @@ void _paintGroups(ui.Canvas canvas, Rect inner, ImageElement e,
           }
         });
       });
-      for (var c in clipped) {
-        canvas.saveLayer(room, _over(c));
-        if (c.kind == LayerKind.adjustment) {
-          // Clipped, an adjustment changes the one layer under it.
-          var misses = images.misses;
-          var base = _record((r) => _paintLayer(r, inner, e, layer, images));
-          _arriving(canvas, arrive, c, room, () {
-            paintAdjusted(canvas, room, c.adjust, base,
+      // Clipped, an adjustment changes the one layer it is clipped to -- as
+      // the layers clipped under the adjustment have left it, effects and
+      // all, so two of them stack as two over a whole picture do. [sofar] is
+      // that: the layer and what is clipped to it up to here, kept only
+      // while an adjustment is still to come.
+      var adjustments =
+          clipped.where((c) => c.kind == LayerKind.adjustment).length;
+      var misses = images.misses;
+      var sofar = adjustments == 0
+          ? null
+          : recordedFor(canvas, (r) {
+              _paintDressed(r, inner, e, layer, images, room);
+              _frameMasked(r, inner, layer);
+            });
+      for (var (n, c) in clipped.indexed) {
+        var under = sofar;
+        // The clipped layer itself, before it is cut and blended down.
+        void itself(ui.Canvas k) {
+          if (c.kind == LayerKind.adjustment) {
+            paintAdjusted(k, room, c.adjust, under!,
                 key: images.misses == misses && arrive == null
                     ? "${e.id}|${c.id}|clip"
                     : null,
-                from: layersFrom(e, [layer]));
-            _frameMasked(canvas, inner, c);
-          });
-          base.dispose();
-        } else {
-          _arriving(canvas, arrive, c, _layerBox(inner, c), () {
-            _paintDressed(canvas, inner, e, c, images, room);
-            _frameMasked(canvas, inner, c);
-          });
+                from: layersFrom(e, [layer, ...clipped.take(n)]));
+          } else {
+            _paintDressed(k, inner, e, c, images, room);
+          }
+          _frameMasked(k, inner, c);
         }
+
         // Cut back to the layer it is clipped to: its own shape, drawn again
         // as a mask over the clipped layer before it is blended down.
-        canvas.saveLayer(room, Paint()..blendMode = BlendMode.dstIn);
-        _paintLayer(canvas, inner, e, layer, images);
-        _frameMasked(canvas, inner, layer);
+        void cut(ui.Canvas k) {
+          k.saveLayer(room, Paint()..blendMode = BlendMode.dstIn);
+          _paintLayer(k, inner, e, layer, images);
+          _frameMasked(k, inner, layer);
+          k.restore();
+        }
+
+        canvas.saveLayer(room, _over(c));
+        _arriving(
+            canvas,
+            arrive,
+            c,
+            c.kind == LayerKind.adjustment ? room : _layerBox(inner, c),
+            () => itself(canvas));
+        cut(canvas);
         canvas.restore();
-        canvas.restore();
+
+        if (c.kind == LayerKind.adjustment) adjustments--;
+        if (adjustments > 0) {
+          sofar = recordedFor(canvas, (r) {
+            r.drawPicture(under!);
+            r.saveLayer(room, _over(c));
+            itself(r);
+            cut(r);
+            r.restore();
+          });
+          under!.dispose();
+        }
       }
+      sofar?.dispose();
       canvas.restore();
     }
     i = j;
@@ -317,7 +352,8 @@ void _paintDressed(ui.Canvas canvas, Rect inner, ImageElement e,
     return;
   }
   var misses = images.misses;
-  var content = _record((r) => _paintLayer(r, inner, e, layer, images));
+  var content =
+      recordedFor(canvas, (r) => _paintLayer(r, inner, e, layer, images));
   paintWithEffects(canvas, room, math.min(inner.width, inner.height) / 1000,
       layer.effects, content,
       key: images.misses == misses ? "${e.id}|${layer.id}|fx" : null,

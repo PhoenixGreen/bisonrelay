@@ -193,11 +193,31 @@ List<Object?> layersFrom(ImageElement e, List<ImageLayer> layers) => [
     ];
 
 /// deviceScaleOf is how many device pixels one unit of [canvas] is drawn
-/// across: what a raster of something drawn on it is made at.
+/// across: what a raster of something drawn on it is made at. A canvas
+/// recording a picture for another (recordedFor) answers for that other,
+/// since its own transform says nothing of where its picture will be drawn.
 double deviceScaleOf(ui.Canvas canvas) {
   var m = canvas.getTransform();
   var sx = math.sqrt(m[0] * m[0] + m[1] * m[1]);
   var sy = math.sqrt(m[4] * m[4] + m[5] * m[5]);
+  if (_recordedAt[canvas] case var outer?) return math.max(sx, sy) * outer;
   var dpr = ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1;
   return math.max(sx, sy) * math.max(1.0, dpr);
+}
+
+/// _recordedAt is, for a canvas made by recordedFor, the device scale of the
+/// canvas its picture is for.
+final Expando<double> _recordedAt = Expando();
+
+/// recordedFor is what [draw] draws, as a picture to be drawn on [on] in
+/// [on]'s own units. Anything [draw] rasterises on the way (a blur, an
+/// adjustment) is made at the size it will be seen at on [on]: recorded
+/// plainly it was made at one device pixel a unit, and went soft under an
+/// adjustment whenever the canvas was zoomed in or exported larger.
+ui.Picture recordedFor(ui.Canvas on, void Function(ui.Canvas) draw) {
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  _recordedAt[canvas] = deviceScaleOf(on);
+  draw(canvas);
+  return recorder.endRecording();
 }

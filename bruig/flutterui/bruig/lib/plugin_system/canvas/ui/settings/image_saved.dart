@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/presets/image_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -80,6 +81,8 @@ class _ImageSavedState extends State<ImageSaved> {
     var controller = widget.controller;
     var e = widget.element;
     var saved = store.presets;
+    // The looks that come with the app first, then the ones kept here.
+    var offered = [...builtInLooks, ...saved];
     var name = _name ?? "Look ${saved.length + 1}";
     var hasLook = e.stack.any((l) => lookKinds.contains(l.kind));
     var images = controller.images;
@@ -90,7 +93,7 @@ class _ImageSavedState extends State<ImageSaved> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (saved.isNotEmpty)
+        if (offered.isNotEmpty)
           CanvasTiles<String>(
             key: const ValueKey("imageLookTiles"),
             label: "Wear a look",
@@ -99,7 +102,7 @@ class _ImageSavedState extends State<ImageSaved> {
             columns: 3,
             previewHeight: 52,
             tiles: [
-              for (var p in saved)
+              for (var p in offered)
                 CanvasTile(p.id, p.name,
                     drawnFrom: (p.id, e.assetId, e.removal, picture != null),
                     paint: (canvas, size) => _paintWearing(
@@ -108,12 +111,12 @@ class _ImageSavedState extends State<ImageSaved> {
             selected: (id) => id == _worn,
             keyOf: (id) => "imageLook-$id",
             onPreview: (id) {
-              var p = saved.where((p) => p.id == id).firstOrNull;
+              var p = offered.where((p) => p.id == id).firstOrNull;
               controller
                   .tryElement(p == null ? null : withLookApplied(e, p.data));
             },
             onPick: (id) {
-              var p = saved.where((p) => p.id == id).firstOrNull;
+              var p = offered.where((p) => p.id == id).firstOrNull;
               if (p == null) return;
               setState(() => _worn = p.id);
               controller.changeImage(withLookApplied(e, p.data));

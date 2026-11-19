@@ -25,6 +25,8 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/presets/image_looks.dart';
+import 'package:bruig/plugin_system/canvas/model/saved_preset.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -256,6 +258,63 @@ void main() {
       }
       await tester.pumpAndSettle();
     }
+
+    test("the looks that come with the app are whole, and never pictures", () {
+      expect(builtInLooks, isNotEmpty);
+      expect(
+          {for (var l in builtInLooks) l.id}, hasLength(builtInLooks.length));
+      for (var look in builtInLooks) {
+        expect(look.id, startsWith(builtInLookPrefix));
+        expect(look.kind, SavedPresetKind.look);
+        var worn = withLookApplied(
+            const ImageElement(ElementBase(id: "p"), assetId: "photo"),
+            look.data);
+        expect(worn.assetId, "photo", reason: look.name);
+        expect(worn.stack.where((l) => l.isBase), hasLength(1));
+        expect(worn.stack.length, greaterThan(1), reason: look.name);
+        for (var l in worn.stack.where((l) => !l.isBase)) {
+          expect(lookKinds, contains(l.kind), reason: look.name);
+          // Over everything under them, so each works on the one before.
+          expect(l.clip, isFalse, reason: look.name);
+        }
+        // Worn twice, it is the same look again, not twice the layers.
+        expect(
+            withLookApplied(worn, look.data).stack.length, worn.stack.length);
+      }
+    });
+
+    testWidgets("with none kept yet, the app's own looks are offered",
+        (tester) async {
+      var root = Directory.systemTemp.createTempSync("looks");
+      addTearDown(() => root.deleteSync(recursive: true));
+      CanvasStorage.rootOverride = root.path;
+      addTearDown(() => CanvasStorage.rootOverride = null);
+      SavedPresetStore.looks.forget();
+
+      var c = await pumpPanel(
+          tester,
+          const ImageElement(
+              ElementBase(id: "g", x: 0, y: 0, width: 100, height: 100),
+              assetId: "red"));
+      await idle(tester);
+      await openSection(tester, "image.picture.colour");
+      expect(SavedPresetStore.looks.presets, isEmpty);
+      await tapKey(tester, "imageLook-${builtInLookPrefix}flat-portrait");
+      var g = c.document.elementById("g")! as ImageElement;
+      expect([
+        for (var l in g.stack)
+          if (l.kind == LayerKind.adjustment) l.adjust.kind
+      ], [
+        AdjustKind.blackWhite,
+        AdjustKind.brightness,
+        AdjustKind.posterise,
+        AdjustKind.gradientMap
+      ]);
+      expect(g.stack.first.effects.single.kind, EffectKind.blur);
+      // One of the app's own is not there to be deleted.
+      expect(find.byKey(const ValueKey("imageLookDelete")), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets("a look is kept, and worn by another picture", (tester) async {
       var root = Directory.systemTemp.createTempSync("looks");

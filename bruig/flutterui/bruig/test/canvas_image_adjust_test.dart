@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
@@ -20,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
+import 'package:bruig/plugin_system/canvas/presets/image_looks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -451,6 +453,109 @@ void main() {
       ]);
       near(await pixel(e, 25, 25), [255, 255, 0], reason: "the blue inverted");
       near(await pixel(e, 75, 75), [255, 0, 0], reason: "the red left alone");
+    });
+
+    test("two clipped to one layer stack, as two over a picture do", () async {
+      var invert = adjusting(const ImageAdjustment(kind: AdjustKind.invert))
+          .copyWith(clip: true);
+      var e = over("red", [
+        ImageLayer.picture("blue", const Rect.fromLTWH(0, 0, 500, 500)),
+        invert,
+        ImageLayer.adjusting(AdjustKind.invert).copyWith(clip: true),
+      ]);
+      near(await pixel(e, 25, 25), [0, 0, 255],
+          reason: "inverted twice, the blue is blue");
+      near(await pixel(e, 75, 75), [255, 0, 0], reason: "the red left alone");
+
+      // And each works on what the one under it made: black and white, then
+      // a threshold, is white or black, where a threshold of the blue alone
+      // and a greying of it alone are neither.
+      var flat = over("red", [
+        ImageLayer.picture("kit", const Rect.fromLTWH(0, 0, 1000, 1000)),
+        ImageLayer.adjusting(AdjustKind.blackWhite).copyWith(clip: true),
+        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
+            .copyWith(clip: true),
+        ImageLayer.adjusting(AdjustKind.threshold).copyWith(clip: true),
+      ]);
+      // The kit's red is dark as a grey and its yellow light: inverted, the
+      // red is the light one, so the threshold makes it white.
+      near(await pixel(flat, 25, 50), [255, 255, 255]);
+      near(await pixel(flat, 75, 50), [0, 0, 0]);
+    });
+
+    test("clipped, it adjusts what is clipped under it as well", () async {
+      var e = over("red", [
+        ImageLayer.picture("blue", const Rect.fromLTWH(0, 0, 500, 500)),
+        ImageLayer.solid(const PaintSpec(Color(0xFF00FF00)))
+            .copyWith(clip: true),
+        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
+            .copyWith(clip: true),
+      ]);
+      near(await pixel(e, 25, 25), [255, 0, 255],
+          reason: "the green laid on the blue, inverted");
+      near(await pixel(e, 75, 75), [255, 0, 0], reason: "the red left alone");
+    });
+
+    test("clipped to a blurred layer, it adjusts the layer as blurred",
+        () async {
+      // Black on the left and white on the right, blurred: the join is a
+      // slope. Inverted without the blur it would be a step again.
+      var edged = _Pictures({
+        "edge": await _picture(
+            8, 8, (x, y) => x < 4 ? [0, 0, 0, 255] : [255, 255, 255, 255]),
+      });
+      var e =
+          ImageElement(_box, assetId: "edge", fit: ImageFit.stretch, layers: [
+        ImageLayer.base.copyWith(effects: [
+          const LayerEffect(kind: EffectKind.blur).withValue("amount", 150)
+        ]),
+        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
+            .copyWith(clip: true),
+      ]);
+      var document = CanvasDocument(
+          size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
+          elements: [e]);
+      var image = await renderFrame(document, images: edged);
+      var raw =
+          await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+      image.dispose();
+      int red(int x) => raw!.getUint8((50 * 100 + x) * 4);
+      expect(red(10), greaterThan(200), reason: "black, inverted");
+      expect(red(90), lessThan(55), reason: "white, inverted");
+      expect(red(44), inInclusiveRange(100, 240),
+          reason: "the slope, not a step: ${red(44)}");
+      expect(red(56), inInclusiveRange(15, 155),
+          reason: "the slope, not a step: ${red(56)}");
+    });
+
+    test("a picture recorded for a canvas is rasterised at that canvas's size",
+        () {
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder)..scale(3);
+      var outer = deviceScaleOf(canvas);
+      late double inner, zoomed;
+      recordedFor(canvas, (r) {
+        inner = deviceScaleOf(r);
+        r.scale(2);
+        zoomed = deviceScaleOf(r);
+      }).dispose();
+      recorder.endRecording().dispose();
+      expect(inner, outer, reason: "one unit of it is one unit of the canvas");
+      expect(zoomed, outer * 2);
+      // Recorded plainly, a canvas knows only its own transform.
+      var plain = ui.PictureRecorder();
+      expect(deviceScaleOf(ui.Canvas(plain)), lessThan(outer));
+      plain.endRecording().dispose();
+    });
+
+    test("worn, the stencil look leaves ink or paper and nothing between",
+        () async {
+      var stencil =
+          builtInLooks.firstWhere((l) => l.id == "${builtInLookPrefix}stencil");
+      var e = withLookApplied(over("kit", const []), stencil.data);
+      // The kit's red is dark as a grey, its yellow light.
+      near(await pixel(e, 25, 50), [0x09, 0x14, 0x40], by: 10);
+      near(await pixel(e, 75, 50), [0xF6, 0xF3, 0xEC], by: 10);
     });
 
     test("two adjustments stack, and a hidden one does nothing", () async {

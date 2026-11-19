@@ -181,9 +181,7 @@ void _throughAdjustments(ui.Canvas canvas, Rect inner, Rect room,
     }
     // What is under it is drawn once and shown twice -- as it is, and
     // adjusted -- or each adjustment would double the drawing beneath it.
-    var recorder = ui.PictureRecorder();
-    through(ui.Canvas(recorder), k - 1);
-    var below = recorder.endRecording();
+    var below = recordedFor(c, (r) => through(r, k - 1));
     c.drawPicture(below);
     c.saveLayer(room, _over(adj));
     paintAdjustedLive(c, room, adj.adjust, (a) => a.drawPicture(below));

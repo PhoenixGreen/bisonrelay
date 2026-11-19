@@ -252,9 +252,7 @@ void paintAdjustedLive(ui.Canvas canvas, Rect room, ImageAdjustment adjust,
       return;
     }
   }
-  var recorder = ui.PictureRecorder();
-  body(ui.Canvas(recorder));
-  var picture = recorder.endRecording();
+  var picture = recordedFor(canvas, body);
   paintAdjusted(canvas, room, adjust, picture);
   picture.dispose();
 }
@@ -313,10 +311,18 @@ ui.ImageFilter? _adjustFilter(
 /// _loose is adjusted pictures with no cache key, held briefly until drawn.
 final List<ui.Image> _loose = [];
 
-/// clearAdjustedRasters lets go of the unkeyed adjusted pictures.
+/// clearAdjustedRasters lets go of the unkeyed adjusted pictures, and of the
+/// strips curves and gradient maps are read from: kept, the last few
+/// outlived the canvas they were made for.
 void clearAdjustedRasters() {
   for (var image in _loose) {
     image.dispose();
   }
   _loose.clear();
+  // The filters first: each holds a strip.
+  _filters.clear();
+  for (var (_, image) in _luts) {
+    image.dispose();
+  }
+  _luts.clear();
 }
