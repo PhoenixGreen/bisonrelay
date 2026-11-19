@@ -34,6 +34,20 @@ class MidiInput extends ChangeNotifier {
   /// chosen device. Set by the open canvas.
   void Function(int key, int velocity)? onNote;
 
+  /// addNoteTap hands [tap] every key too, beside [onNote]: for what reads
+  /// the keyboard while a canvas holds it -- a book in the reader, say.
+  void addNoteTap(void Function(int key, int velocity) tap) => _taps.add(tap);
+  void removeNoteTap(void Function(int key, int velocity) tap) =>
+      _taps.remove(tap);
+  final List<void Function(int key, int velocity)> _taps = [];
+
+  void _note(int key, int velocity) {
+    onNote?.call(key, velocity);
+    for (var tap in [..._taps]) {
+      tap(key, velocity);
+    }
+  }
+
   /// onControl is handed the other controllers (mod wheel, pitch bend,
   /// expression, volume, pan), nought to one.
   void Function(MidiControl control, double value)? onControl;
@@ -61,7 +75,7 @@ class MidiInput extends ChangeNotifier {
   void usePush(PushSurface? surface) {
     _push = surface;
     if (surface == null) return;
-    surface.onNote = (key, velocity) => onNote?.call(key, velocity);
+    surface.onNote = _note;
     surface.onControl = (c, v) => onControl?.call(c, v);
     surface.onPlay = () => onPlay?.call();
     surface.onRecord = () => onRecord?.call();
@@ -142,9 +156,9 @@ class MidiInput extends ChangeNotifier {
     var kind = data[0] & 0xF0;
     var key = data[1] & 0x7F, velocity = data[2] & 0x7F;
     if (kind == 0x90) {
-      onNote?.call(key, velocity);
+      _note(key, velocity);
     } else if (kind == 0x80) {
-      onNote?.call(key, 0);
+      _note(key, 0);
     } else if (kind == 0xB0) {
       onCc?.call(key, velocity / 127);
       if (MidiControl.ofCc(key) case var c?) onControl?.call(c, velocity / 127);

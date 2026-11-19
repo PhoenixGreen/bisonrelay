@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bruig/components/epub_reader/epub_reader_view.dart';
+import 'package:bruig/components/epub_reader/reader_inputs.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/theming_system/model/theme_area.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/uistate.dart';
-import 'package:bruig/plugin_system/canvas/canvas.dart' show CanvasFilePlayer;
+import 'package:bruig/plugin_system/canvas/canvas.dart'
+    show CanvasFilePlayer, MidiInput;
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/screens/manage_content/reading_position.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +22,7 @@ import 'package:video_player/video_player.dart';
 // Decided by extension: the alternative is sniffing the contents, which
 // costs a read of every row in the list to decide whether to offer a
 // button.
-enum FileKind { image, text, markdown, pdf, video, canvas, other }
+enum FileKind { image, text, markdown, pdf, video, canvas, epub, other }
 
 const _imageExts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"};
 const _videoExts = {".mp4", ".mov", ".m4v", ".webm", ".mkv"};
@@ -54,6 +57,8 @@ FileKind fileKindOf(String filePath) {
   if (ext == ".pdf") return FileKind.pdf;
   // A canvas, sent or shared: played, a game as a game (Ken).
   if (ext == ".bcanvas") return FileKind.canvas;
+  // A book: read in Bison Relay's own reader, pages, spreads and all.
+  if (ext == ".epub") return FileKind.epub;
   if (_markdownExts.contains(ext)) return FileKind.markdown;
   if (_textExts.contains(ext)) return FileKind.text;
   return FileKind.other;
@@ -169,6 +174,7 @@ class _FilePreviewState extends State<FilePreview> {
     if (at == null) return null;
     return switch (fileKindOf(widget.filePath)) {
       FileKind.pdf => "Continue from page ${at.round()}",
+      FileKind.epub => "Continue from page ${at.round() + 1}",
       FileKind.video => "Continue from ${_clock(at)}",
       FileKind.text || FileKind.markdown => "Continue where you left off",
       _ => null,
@@ -309,6 +315,15 @@ class _FilePreviewState extends State<FilePreview> {
             file: file, resumeToOffset: resumeTo, onOffset: _recordPosition);
       case FileKind.canvas:
         return CanvasFilePlayer(file: file);
+      case FileKind.epub:
+        // Opened afresh when Continue is pressed, at the page it names.
+        return EpubReaderView(
+          key: ValueKey("${widget.filePath}|$resumeTo"),
+          filePath: widget.filePath,
+          initialPage: resumeTo?.round() ?? 0,
+          onPage: (p) => _recordPosition(p.toDouble()),
+          inputs: const _AppKeyboard(),
+        );
       case FileKind.other:
         return const Center(child: Text("No preview for this file type"));
     }
@@ -891,5 +906,28 @@ class _MarkdownPreviewState extends State<_MarkdownPreview> {
         ),
       ),
     ]);
+  }
+}
+
+/// _AppKeyboard is the app's MIDI keyboard, as a book in the reader asks to
+/// hear it (a piano lesson checking what is played): the one chosen for the
+/// canvas, or the first plugged in when none is.
+class _AppKeyboard implements ReaderInputs {
+  const _AppKeyboard();
+
+  @override
+  Future<VoidCallback?> listenToKeys(void Function(int key) onKey) async {
+    var midi = MidiInput.shared;
+    if (midi.device == null) {
+      await midi.refresh();
+      var first = midi.devices.firstOrNull;
+      if (first == null || !await midi.use(first)) return null;
+    }
+    void tap(int key, int velocity) {
+      if (velocity > 0) onKey(key);
+    }
+
+    midi.addNoteTap(tap);
+    return () => midi.removeNoteTap(tap);
   }
 }

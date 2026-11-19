@@ -21,6 +21,8 @@ export 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart'
 // For main() to call first thing: see its note.
 export 'package:bruig/plugin_system/canvas/media/audio_engine.dart'
     show releaseAudioAfterHotRestart;
+export 'package:bruig/plugin_system/canvas/media/midi_input.dart'
+    show MidiInput;
 
 /// registerCanvas attaches this module to the plugin system, once at startup.
 /// It registers a feature, not a capability: the section appears when a

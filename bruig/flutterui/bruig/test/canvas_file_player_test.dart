@@ -39,6 +39,8 @@ void main() {
   test("a canvas file is one Files can preview", () {
     expect(fileKindOf("/x/Sky Isles.bcanvas"), FileKind.canvas);
     expect(fileKindOf("/x/notes.bin"), FileKind.other);
+    expect(fileKindOf("/x/The History of Decred.epub"), FileKind.epub,
+        reason: "a book, read in Bison Relay's own reader");
   });
 
   group("played in the preview", () {
