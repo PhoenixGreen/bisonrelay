@@ -1,4 +1,5 @@
 import 'package:bruig/components/inputs.dart';
+import 'package:bruig/components/share_settings.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/screens/manage_content/file_filter_bar.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -47,9 +48,12 @@ class SharedContentFile extends StatefulWidget {
   /// onPreview opens the file in the preview beside the list, as Downloads
   /// does -- null where there is nowhere to show it.
   final ValueChanged<String>? onPreview;
+
+  /// onShareChanged reloads the list once the file is shared on new terms.
+  final VoidCallback? onShareChanged;
   const SharedContentFile(
       this.file, this.removeContentCB, this.client, this.onTap,
-      {this.onPreview, super.key});
+      {this.onPreview, this.onShareChanged, super.key});
 
   @override
   State<SharedContentFile> createState() => _SharedContentFileState();
@@ -88,6 +92,25 @@ class _SharedContentFileState extends State<SharedContentFile> {
       await widget.removeContentCB(widget.file.sf.fid, uid);
     } catch (exception) {
       snackbar.error('Unable to unshare content: $exception');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  // Shares the file again on new terms -- who, cost, description. The
+  // client can only do that by withdrawing it and sharing it afresh, from
+  // the copy on disk it was shared from (see share_settings.dart).
+  changeTerms(BuildContext context) async {
+    var snackbar = SnackBarModel.of(context);
+    setState(() => loading = true);
+    try {
+      if (await showChangeShareDialog(context, widget.file)) {
+        snackbar.success("Shared ${widget.file.sf.filename} again");
+        widget.onShareChanged?.call();
+      }
+    } catch (exception) {
+      snackbar.error('Unable to change how it is shared: $exception');
+      widget.onShareChanged?.call();
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -187,6 +210,16 @@ class _SharedContentFileState extends State<SharedContentFile> {
             tooltip: expanded ? "Hide recipients" : "Show recipients",
             onPressed: () => setState(() => expanded = !expanded),
           ),
+        // Only from a copy still on disk: sharing anew needs the file.
+        IconButton(
+          key: ValueKey("shareSettings-${file.sf.fid}"),
+          iconSize: 18,
+          icon: const Icon(Icons.tune),
+          tooltip: canOpen
+              ? "Share settings: who, cost, description"
+              : "Share settings need the file it was shared from",
+          onPressed: loading || !canOpen ? null : () => changeTerms(context),
+        ),
         IconButton(
           iconSize: 18,
           icon: const Icon(Icons.forward_to_inbox),
@@ -282,9 +315,10 @@ class SharedContent extends StatefulWidget {
   /// the screen around this one -- see DownloadsScreen.
   final String? previewing;
   final ValueChanged<String?>? onPreviewing;
+  final VoidCallback? onShareChanged;
   const SharedContent(
       this.client, this.files, this.removeContent, this.fileSelectedCB,
-      {this.previewing, this.onPreviewing, super.key});
+      {this.previewing, this.onPreviewing, this.onShareChanged, super.key});
 
   @override
   State<SharedContent> createState() => _SharedContentState();
@@ -348,7 +382,8 @@ class _SharedContentState extends State<SharedContent> {
                       widget.fileSelectedCB != null
                           ? () => widget.fileSelectedCB!(files[index].sf)
                           : null,
-                      onPreview: widget.onPreviewing));
+                      onPreview: widget.onPreviewing,
+                      onShareChanged: widget.onShareChanged));
             },
           ),
         ),
@@ -703,6 +738,15 @@ class _ManageContentState extends State<ManageContent> {
 
   Future<void> addContent(
       String filename, String uid, double cost, String descr) async {
+    // The client keeps a file's first cost and description while any share
+    // of it remains, and would say nothing of the new ones: said here.
+    var already = await sharedFileNamed(filename);
+    if (already != null &&
+        ((cost * 1e8).round() != already.cost || descr != already.descr)) {
+      throw "${already.sf.filename} is already shared at "
+          "${formatDCR(atomsToDCR(already.cost))}. Change its cost or "
+          "description with Share settings on the Shared page.";
+    }
     await Golib.shareFile(filename, uid, cost, descr);
     await loadSharedContent();
   }
@@ -737,6 +781,7 @@ class _ManageContentState extends State<ManageContent> {
         // they match each other and the rest of the content area.
         builder: (context, client, child) => widget.view == 1
             ? SharedContent(client, files, removeContent, fileSelCB,
+                onShareChanged: loadSharedContent,
                 previewing: widget.previewing,
                 onPreviewing: widget.onPreviewing)
             : AddContentPanel(addContent));

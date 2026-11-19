@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:bruig/components/share_settings.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
@@ -178,13 +179,14 @@ Future<void> unpublishFromLibrary(PublishRecord record) async {
   // the store's own sweep knows whether anything still does.
 }
 
-/// shareInFiles writes the canvas to a file and shares it publicly in
-/// Files. (Sending to one person is [sendToChat].)
+/// shareInFiles writes the canvas to a file and shares it in Files on
+/// [terms]: who can fetch it, its cost and its description, set in the
+/// publish sheet. (Sending it in a message is [sendToChat].)
 Future<PublishRecord?> shareInFiles(
   CanvasExport export,
   String name,
   PublishRecord existing, {
-  String description = "",
+  ShareSettings terms = const ShareSettings(),
 }) async {
   var clean = CanvasStorage.sanitizeName(name);
   if (clean == null) return null;
@@ -198,8 +200,11 @@ Future<PublishRecord?> shareInFiles(
     if (existing.hasShare) await unshareFiles(existing);
 
     await File(file).writeAsBytes(export.data, flush: true);
-    await Golib.shareFile(
-        file, null, 0, description.isEmpty ? clean : description);
+    await shareOnTerms(
+        file,
+        terms.description.isEmpty
+            ? terms.copyWith(description: clean)
+            : terms);
 
     return existing.copyWith(
       sharedPath: file,
@@ -216,12 +221,11 @@ Future<PublishRecord?> shareInFiles(
 Future<void> unshareFiles(PublishRecord record) async {
   if (!record.hasShare) return;
   try {
-    // Found by file name, as the record keeps the path, not the share id.
-    var shared = await Golib.listSharedFiles();
-    for (var entry in shared) {
-      if (entry.sf.filename != path.basename(record.sharedPath)) continue;
-      await Golib.unshareFile(entry.sf.fid, null);
-    }
+    // Found by file name, as the record keeps the path, not the share id;
+    // and every share of it, not only the one with everyone, or a canvas
+    // shared with chosen people stays offered to them.
+    var shared = await sharedFileNamed(record.sharedPath);
+    if (shared != null) await unshareEverywhere(shared);
     var file = File(record.sharedPath);
     if (await file.exists()) await file.delete();
   } catch (exception) {

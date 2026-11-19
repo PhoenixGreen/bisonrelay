@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/components/feed/embed_options.dart';
+import 'package:bruig/components/share_settings.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -254,6 +255,13 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// _record is what this canvas published before: Update and Unpublish.
   PublishRecord _record = const PublishRecord();
 
+  /// _share is the terms it is shared in Files on: set before it is shared,
+  /// and read back from the share itself once it is, so a change made on
+  /// the Shared page is what the sheet shows. _shareLoaded rebuilds the
+  /// fields when those arrive.
+  ShareSettings? _share;
+  int _shareLoaded = 0;
+
   /// _busy disables every control while a render runs.
   bool _busy = false;
   String _progress = "";
@@ -406,7 +414,24 @@ class _PublishSheetState extends State<_PublishSheet> {
     if (!_canRecord) return;
     var record = await PublishRecords.read(widget.folder ?? "", widget.name!);
     if (mounted && record != null) setState(() => _record = record);
+    if (record == null || !record.hasShare) return;
+    try {
+      var shared = await sharedFileNamed(record.sharedPath);
+      if (!mounted || shared == null) return;
+      setState(() {
+        _share = ShareSettings.of(shared);
+        _shareLoaded++;
+      });
+    } catch (exception) {
+      // Not shared after all, or the client is not up: the fields start
+      // from the defaults.
+    }
   }
+
+  /// _shareTerms is what the fields say, the description defaulting to
+  /// the canvas's name.
+  ShareSettings get _shareTerms =>
+      _share ?? ShareSettings(description: _suggestedName);
 
   /// _suggestedName is the saved name, else the title, else a word.
   String get _suggestedName =>
@@ -560,6 +585,10 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// branch re-checks mounted after its await, and finally clears _busy.
   Future<void> _publish() async {
     var snackbar = SnackBarModel.of(context);
+    if (_to == PublishTo.shared && !_shareTerms.reachesAnyone) {
+      snackbar.error("Choose who to share it with.");
+      return;
+    }
     // Remembered as published, so the next canvas opens the sheet the same.
     _prefs?.publish = _settings;
     setState(() {
@@ -634,7 +663,8 @@ class _PublishSheetState extends State<_PublishSheet> {
                   "Embed it from a post or a page with Add Embed.");
 
         case PublishTo.shared:
-          var record = await shareInFiles(export, _suggestedName, _record);
+          var record = await shareInFiles(export, _suggestedName, _record,
+              terms: _shareTerms);
           if (!mounted) return;
           if (record == null) {
             snackbar.error("Unable to share the canvas.");
@@ -817,6 +847,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                     "its own layout: ${widget.document.targets.map(shapeTag).join(", ")}."),
               ],
               if (_to == PublishTo.chat) ..._chatControls(theme),
+              if (_to == PublishTo.shared) ..._shareControls(),
               if (_to == PublishTo.library)
                 const Padding(
                   padding: EdgeInsets.only(top: 4),
@@ -1460,6 +1491,22 @@ class _PublishSheetState extends State<_PublishSheet> {
         (3.0, "Triple"),
       ],
       (v) => setState(() => _scale = v));
+
+  /// _shareControls set who can fetch the shared canvas, its cost and its
+  /// description before it is shared (Ken, 2026-11-19).
+  List<Widget> _shareControls() => [
+        const SizedBox(height: 8),
+        ShareSettingsFields(
+          key: ValueKey("shareFields$_shareLoaded"),
+          initial: _shareTerms,
+          enabled: !_busy,
+          onChanged: (terms) => setState(() => _share = terms),
+        ),
+        if (_record.hasShare) ...[
+          const SizedBox(height: 10),
+          const ShareChangeNote(republishing: true),
+        ],
+      ];
 
   List<Widget> _chatControls(ThemeNotifier theme) {
     var client = context.watch<ClientModel>();

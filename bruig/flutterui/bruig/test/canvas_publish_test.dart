@@ -612,4 +612,37 @@ void main() {
           reason: "one scene is shorter than four of them");
     });
   });
+  // Ken, 2026-11-19: a canvas shared in Files is shared on terms set first
+  // -- who can fetch it, its cost, its description -- not free to everyone.
+  group("sharing in Files", () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    testWidgets("asks who, what it costs and what it is", (tester) async {
+      await open(tester);
+      expect(find.text("Who can fetch it"), findsNothing);
+      await tester.tap(find.text("Share in Files"));
+      await tester.pumpAndSettle();
+      expect(find.text("Who can fetch it"), findsOneWidget);
+      expect(find.text("Cost (DCR)"), findsOneWidget);
+      expect(find.text("Plan"), findsWidgets,
+          reason: "described by its name until told otherwise");
+    });
+
+    testWidgets("and goes nowhere shared with nobody", (tester) async {
+      await open(tester);
+      await tester.tap(find.text("Share in Files"));
+      await tester.pumpAndSettle();
+      var who = find.byKey(const ValueKey("shareWho"));
+      await tester.ensureVisible(who);
+      await tester.tap(who);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Only people I choose").last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Publish"));
+      await tester.pump();
+      expect(find.text("Rendering…"), findsNothing,
+          reason: "refused before a render, not after");
+      expect(find.text("Who can fetch it"), findsOneWidget);
+    });
+  });
 }
