@@ -88,6 +88,9 @@ const List<String> canvasFonts = [
   "Oswald",
   // Comic lettering, for titles: bundled.
   "Bangers",
+  // A serif whose figures all stand on the line, for a magazine page's
+  // headlines and numbers: bundled.
+  "PTSerif",
   "Arial",
   "Helvetica",
   "Georgia",

@@ -136,6 +136,13 @@ class FontFiles {
       // Comic lettering: one face, already leaning, so never leant again.
       case "Bangers":
         return [(("assets/fonts/Bangers-Regular.ttf", null), false)];
+      // Regular and bold, each with its own italic.
+      case "PTSerif":
+        return styled((b, i) => (
+              "assets/fonts/PTSerif-${b ? "Bold" : ""}"
+                  "${i ? "Italic" : (b ? "" : "Regular")}.ttf",
+              null
+            ));
       // Four weights, the nearest taken; no italic.
       case "Oswald":
         var name = switch (weight) {

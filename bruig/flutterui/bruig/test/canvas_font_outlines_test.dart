@@ -99,6 +99,26 @@ void main() {
     }
   });
 
+  // The serif for a magazine page: offered, and each of its four files
+  // found, so a bold italic is never a bold leant over.
+  test("PT Serif is offered, and found in its four styles", () async {
+    expect(canvasFonts, contains("PTSerif"));
+    double widthOfA(FontFace f) => f.advance(f.glyphFor(0x41)) / f.unitsPerEm;
+    FontFace file(String name) =>
+        FontFace.parse(File("assets/fonts/$name").readAsBytesSync())!;
+    for (var (weight, italic, name) in [
+      (400, false, "PTSerif-Regular.ttf"),
+      (400, true, "PTSerif-Italic.ttf"),
+      (700, false, "PTSerif-Bold.ttf"),
+      (700, true, "PTSerif-BoldItalic.ttf"),
+    ]) {
+      var pick = await FontFiles.instance.load("PTSerif", weight, italic);
+      expect(widthOfA(pick!.face), widthOfA(file(name)),
+          reason: "$weight $italic");
+      expect(pick.lean, isFalse, reason: "$weight $italic");
+    }
+  });
+
   for (var (name, path, index) in faces) {
     test("$name: every letter is the shape the font draws", () async {
       var file = File(path);
