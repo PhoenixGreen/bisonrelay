@@ -9,10 +9,10 @@ import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/publish_sheet.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_check.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -75,6 +75,24 @@ void main() {
   // it to Interactive EPUB once.
   group("the last settings", () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    // Ken, 2026-11-19: a book for a store says what that store would say,
+    // and how to check it as Apple does.
+    testWidgets("an EPUB for a store says what it would refuse",
+        (tester) async {
+      useEpubcheckForTest(null);
+      addTearDown(forgetEpubcheckForTest);
+      var prefs = CanvasPreferences()
+        ..publish = {
+          "as": "document",
+          "document": "interactiveEpub",
+          "profile": "apple"
+        };
+      await open(tester, prefs: prefs);
+      expect(find.text("EPUB for Apple Books"), findsOneWidget);
+      expect(find.textContaining("No author"), findsOneWidget);
+      expect(find.textContaining("brew install epubcheck"), findsOneWidget);
+    });
 
     testWidgets("open the sheet as they were left", (tester) async {
       var prefs = CanvasPreferences()

@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_check.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
@@ -188,6 +189,10 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// comes back, so the sheet never offers something and then withdraws it.
   bool _ffmpeg = false;
 
+  /// _epubcheck is whether EPUBCheck was found (epub_check.dart): a book is
+  /// checked by it before it goes anywhere, as Apple checks every book.
+  bool _epubcheck = true;
+
   /// _scenes is how much of a document with several canvases is published,
   /// and _first and _last which ones, counting from one. _last is kept while
   /// a single scene is chosen, so a range comes back as it was.
@@ -269,6 +274,42 @@ class _PublishSheetState extends State<_PublishSheet> {
     ffmpegPath().then((found) {
       if (mounted) setState(() => _ffmpeg = found != null);
     });
+    epubcheckPath().then((found) {
+      if (mounted) setState(() => _epubcheck = found != null);
+    });
+  }
+
+  /// _goOnDespite shows what the check found wrong with the book and asks
+  /// whether to publish it all the same.
+  Future<bool> _goOnDespite(EpubCheckReport report) async {
+    var shown = report.errors.take(8).toList();
+    var more = report.errors.length - shown.length;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(report.byEpubcheck
+                ? "EPUBCheck found problems"
+                : "The book has problems"),
+            content: SingleChildScrollView(
+              child: Text([
+                "A store would refuse it as it is:",
+                for (var e in shown) "• $e",
+                if (more > 0) "…and $more more.",
+              ].join("\n")),
+            ),
+            actions: [
+              TextButton(
+                  key: const ValueKey("epubCheckStop"),
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text("Don't publish")),
+              TextButton(
+                  key: const ValueKey("epubCheckGoOn"),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text("Publish anyway")),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   /// _prefs is where settings are remembered; null on its own, as in a test.
@@ -548,6 +589,16 @@ class _PublishSheetState extends State<_PublishSheet> {
             ? ffmpegHelp
             : "Unable to render the canvas.");
         return;
+      }
+
+      // A book is checked before it goes anywhere: Apple refuses one that
+      // fails EPUBCheck, and our own check catches what it finds first.
+      if (_as == PublishAs.document && _documentAs != DocumentAs.pdf) {
+        setState(() => _progress = "Checking the book…");
+        var report = await checkEpub(export.data);
+        if (!mounted) return;
+        if (!report.passed && !await _goOnDespite(report)) return;
+        if (!mounted) return;
       }
 
       switch (_to) {
@@ -1172,8 +1223,11 @@ class _PublishSheetState extends State<_PublishSheet> {
             ),
           ]),
           if (_documentAs != DocumentAs.pdf)
-            for (var r in storeReadiness(widget.document, _profile,
-                scale: _scale, ffmpeg: _ffmpeg))
+            for (var r in [
+              ...storeReadiness(widget.document, _profile,
+                  scale: _scale, ffmpeg: _ffmpeg),
+              if (!_epubcheck) (problem: false, text: epubcheckHelp),
+            ])
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Row(
