@@ -1095,8 +1095,11 @@ const String _mediaScript = r"""(function () {
     media.react = function (on) { react(on, 0); };
 
     // What the pointer is over, for a reader that does not pass :hover up
-    // to the layer: the press says so itself.
-    all(".layer").forEach(function (l) {
+    // to the layer: the press says so itself. Only a layer with a look
+    // under the pointer (.hovers): hovering hides a layer's pictures for
+    // that look, and a piano or a score, pressed but with no such look,
+    // vanished under the pointer (Ken, 2026-11-19).
+    all(".layer.hovers").forEach(function (l) {
       Array.prototype.slice.call(l.getElementsByClassName("hit")).forEach(function (h) {
         h.addEventListener("mouseenter", function () { l.classList.add("hovering"); });
         h.addEventListener("mouseleave", function () { l.classList.remove("hovering"); });

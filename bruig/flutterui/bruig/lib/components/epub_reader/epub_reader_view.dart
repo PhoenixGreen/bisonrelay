@@ -444,10 +444,7 @@ class EpubReaderViewState extends State<EpubReaderView> {
           allowFileAccessFromFileURLs: true,
           allowUniversalAccessFromFileURLs: true,
           allowingReadAccessTo: WebUri.uri(Uri.directory(b.folder)),
-          // Opaque: a see-through web view on a Mac left only the part of a
-          // page that changed drawn (a key pressed, a button) -- Ken,
-          // 2026-11-19. The shell paints its own background.
-          transparentBackground: false,
+          transparentBackground: true,
           // A book's sound and video play in the page, not full screen.
           allowsInlineMediaPlayback: true,
           supportZoom: false,

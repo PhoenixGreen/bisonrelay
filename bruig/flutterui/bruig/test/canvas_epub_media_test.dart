@@ -205,6 +205,16 @@ void main() {
       // the keyboard through the reader, or its keys never light (Ken,
       // 2026-11-19).
       expect(script, contains("br.midi(function (key, velocity)"));
+      // Only a layer with a look under the pointer is marked hovering:
+      // hovering hides its pictures for that look, and a piano and a score,
+      // pressed but with none, vanished under the mouse (Ken, 2026-11-19;
+      // checked in a browser on the piano book).
+      var marks = script.indexOf('classList.add("hovering")');
+      expect(marks, greaterThan(0));
+      var chosen = script.substring(0, marks);
+      chosen = chosen.substring(chosen.lastIndexOf('all(".'));
+      expect(chosen, startsWith('all(".layer.hovers")'),
+          reason: "what is marked hovering is chosen by its look");
     });
 
     // The canvas draws a video's big play button into the page's picture,
