@@ -2,6 +2,7 @@ import 'package:bruig/models/menus.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/screens/ln_management.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // menu_icons_test.dart covers the two things Settings > Appearance > Menu
@@ -86,6 +87,101 @@ void main() {
   test('a bundled icon is told apart from one the user supplied', () {
     expect(MenuIcon.isAsset("assets/icons/icons-menu-chat.svg"), isTrue);
     expect(MenuIcon.isAsset("images/menuicon_chat.svg"), isFalse);
+  });
+
+  group('an icon set', () {
+    Map<String, Widget?> iconsOf(MainMenuModel menu) =>
+        {for (var e in menu.menus) e.routeName: e.icon};
+
+    test('goes on every area it has an icon for, and is the set in use', () {
+      var menu = MainMenuModel();
+      expect(menu.iconSet, isNull);
+      expect(menu.hasChosenIcons, isFalse);
+
+      menu.applyIconSet(brSketchIcons);
+
+      expect(menu.currentIcons(), brSketchIcons.icons);
+      expect(menu.iconSet, same(brSketchIcons));
+      for (var e in brSketchIcons.icons.entries) {
+        var icon = iconsOf(menu)[e.key];
+        expect(icon, isA<MenuIcon>(), reason: e.key);
+        expect((icon as MenuIcon).iconPath, e.value);
+      }
+    });
+
+    test('has an icon for every area the navigation is built with', () {
+      var areas = mainMenu
+          .where((e) => !e.hiddenFromSideBar)
+          .map((e) => e.routeName)
+          .toSet();
+      expect(brSketchIcons.icons.keys.toSet(), areas,
+          reason: "a new area needs an icon in the set, or it is the one "
+              "entry left looking like the old ones");
+    });
+
+    test('comes off again, leaving each area its own icon', () {
+      var menu = MainMenuModel();
+      var own = iconsOf(menu);
+
+      menu.applyIconSet(brSketchIcons);
+      menu.applyIconSet(null);
+
+      expect(menu.currentIcons(), isEmpty);
+      expect(menu.iconSet, isNull);
+      expect(menu.hasChosenIcons, isFalse);
+      for (var e in own.entries) {
+        expect(iconsOf(menu)[e.key], same(e.value), reason: e.key);
+      }
+    });
+
+    test('replaces an icon chosen before it, even one it has none for', () {
+      var menu = MainMenuModel();
+      menu.setItemIcon(_chat, "assets/icons/icons-menu-stats.svg");
+      // A choice kept for a plugin that is switched off just now.
+      menu.applyThemeMenu(null, null, {
+        _chat: "assets/icons/icons-menu-stats.svg",
+        "/plugin/gone": "assets/icons/icons-menu-news.svg",
+      });
+
+      menu.applyIconSet(brSketchIcons);
+
+      expect(menu.currentIcons(), brSketchIcons.icons);
+    });
+
+    test('is no longer the set in use once one area is changed', () {
+      var menu = MainMenuModel();
+      menu.applyIconSet(brSketchIcons);
+
+      menu.setItemIcon(_chat, "assets/icons/icons-menu-stats.svg");
+      expect(menu.iconSet, isNull);
+      expect(menu.hasChosenIcons, isTrue);
+
+      // And is again once that area is given the set's icon back.
+      menu.setItemIcon(_chat, brSketchIcons.icons[_chat]);
+      expect(menu.iconSet, same(brSketchIcons));
+    });
+
+    test('travels with a theme like any other chosen icons', () {
+      var menu = MainMenuModel();
+      menu.applyIconSet(brSketchIcons);
+      var preset =
+          ThemePreset.seedFromDark().copyWith(menuIcons: menu.currentIcons());
+      var back = ThemePreset.fromJson(preset.toJson());
+
+      var other = MainMenuModel();
+      other.applyThemeMenu(null, null, back.menuIcons);
+      expect(other.iconSet, same(brSketchIcons));
+    });
+
+    test('names the second picture of a two-part icon, and only of one', () {
+      for (var asset in brSketchIcons.all) {
+        expect(menuIconAccent(asset), endsWith("-key.svg"), reason: asset);
+      }
+      for (var asset in bundledMenuIcons) {
+        expect(menuIconAccent(asset), isNull, reason: asset);
+      }
+      expect(menuIconAccent("images/menuicon_chat.svg"), isNull);
+    });
   });
 
   group('headerLabel', () {

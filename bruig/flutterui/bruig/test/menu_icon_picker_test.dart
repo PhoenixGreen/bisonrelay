@@ -20,6 +20,16 @@ Widget _app() => canvasApp(SingleChildScrollView(child: MenuSection()), extra: [
       ChangeNotifierProvider<MainMenuModel>(create: (c) => MainMenuModel())
     ]);
 
+/// _resetButton is the picker's own "Default": the icon-set dropdown behind
+/// the dialog says "Default" too, so the word alone finds two.
+final _resetButton =
+    find.ancestor(of: find.text('Default'), matching: find.byType(TextButton));
+
+/// _setShown is what the icon-set dropdown currently reads.
+String? _setShown(WidgetTester tester) => tester
+    .widget<DropdownButton<String>>(find.byKey(const ValueKey("menuIconSet")))
+    .value;
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -38,7 +48,7 @@ void main() {
     // No exception, and the picker is really up.
     expect(tester.takeException(), isNull);
     expect(find.text('Choose SVG...'), findsOneWidget);
-    expect(find.text('Default'), findsOneWidget);
+    expect(_resetButton, findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
   });
 
@@ -47,10 +57,83 @@ void main() {
     await tester.tap(find.byTooltip('Change icon').first);
     await tester.pumpAndSettle();
 
-    // The grid is the bundled set; the row's own icon is drawn by the same
-    // MenuIcon widget only once it has been changed, so at this point there
-    // is exactly one tile per bundled asset.
-    expect(find.byType(MenuIcon), findsNWidgets(bundledMenuIcons.length));
+    // The grids are the bundled icons and then each set's; the row's own
+    // icon is drawn by the same MenuIcon widget only once it has been
+    // changed, so at this point there is exactly one tile per asset.
+    var offered = [
+      ...bundledMenuIcons,
+      for (var set in menuIconSets) ...set.all,
+    ];
+    expect(find.byType(MenuIcon), findsNWidgets(offered.length));
+    expect(offered.toSet().length, offered.length,
+        reason: "an icon offered twice would show two tiles as chosen");
+  });
+
+  testWidgets('the picker offers each set under its name', (tester) async {
+    await tester.pumpWidget(_app());
+    await tester.tap(find.byTooltip('Change icon').first);
+    await tester.pumpAndSettle();
+
+    var dialog = find.byType(AlertDialog);
+    for (var set in menuIconSets) {
+      expect(find.descendant(of: dialog, matching: find.text(set.name)),
+          findsOneWidget);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('one icon from a set can go on one area', (tester) async {
+    await tester.pumpWidget(_app());
+    var menu = Provider.of<MainMenuModel>(
+        tester.element(find.byType(MenuSection)),
+        listen: false);
+    var route = menu.menus.where((e) => !e.hiddenFromSideBar).first.routeName;
+
+    await tester.tap(find.byTooltip('Change icon').first);
+    await tester.pumpAndSettle();
+    // The last tile of the last set: nothing to do with this area.
+    var stray = brSketchIcons.all.last;
+    await tester.ensureVisible(find.byType(MenuIcon).last);
+    await tester.tap(find.byType(MenuIcon).last);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(menu.iconPathFor(route), stray);
+    // One area out of step with the rest is neither set.
+    expect(menu.iconSet, isNull);
+    expect(_setShown(tester), "Mixed");
+  });
+
+  testWidgets('a set goes on every area from the dropdown, and comes off',
+      (tester) async {
+    await tester.pumpWidget(_app());
+    var menu = Provider.of<MainMenuModel>(
+        tester.element(find.byType(MenuSection)),
+        listen: false);
+    expect(_setShown(tester), "Default");
+
+    await tester.tap(find.byKey(const ValueKey("menuIconSet")));
+    await tester.pumpAndSettle();
+    // "Mixed" is a state, not a choice.
+    expect(find.text("Mixed"), findsNothing);
+    await tester.tap(find.text(brSketchIcons.name).last);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(menu.iconSet, same(brSketchIcons));
+    expect(_setShown(tester), brSketchIcons.name);
+    // Every row whose area the set covers now shows a two-part icon.
+    expect(find.byType(SidebarAccentSvgIcon),
+        findsNWidgets(brSketchIcons.icons.length));
+
+    await tester.tap(find.byKey(const ValueKey("menuIconSet")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Default").last);
+    await tester.pumpAndSettle();
+
+    expect(menu.iconSet, isNull);
+    expect(menu.currentIcons(), isEmpty);
+    expect(find.byType(SidebarAccentSvgIcon), findsNothing);
   });
 
   testWidgets('Default is dead until the icon has actually been changed',
@@ -61,8 +144,7 @@ void main() {
 
     // Nothing to undo yet -- an enabled button that does nothing reads as
     // broken.
-    var reset = tester.widget<TextButton>(find.ancestor(
-        of: find.text('Default'), matching: find.byType(TextButton)));
+    var reset = tester.widget<TextButton>(_resetButton);
     expect(reset.onPressed, isNull);
   });
 
@@ -103,7 +185,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Change icon').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Default'));
+    await tester.tap(_resetButton);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

@@ -276,6 +276,11 @@ class MainMenuModel extends ChangeNotifier {
   // item can have one without the other.
   Map<String, String> _customIcons = {};
 
+  // _ownIcons is each dynamic item's own icon, as it was last registered
+  // with. It is what "Default" goes back to for an item `mainMenu` does not
+  // list, and what a chosen icon is laid over when the item registers again.
+  final Map<String, Widget?> _ownIcons = {};
+
   // currentLabels/currentOrder snapshot the visible menu's current
   // labels/order, for a ThemePreset save to embed (see
   // ThemeNotifier.saveActivePreset).
@@ -356,16 +361,65 @@ class MainMenuModel extends ChangeNotifier {
   /// go back to `mainMenu` for the widget rather than just dropping the
   /// override, since the built-in icon is not recorded anywhere else.
   void setItemIcon(String routeName, String? iconPath) {
+    _chooseIcon(routeName, iconPath);
+    notifyListeners();
+  }
+
+  void _chooseIcon(String routeName, String? iconPath) {
     if (iconPath == null) {
       _customIcons.remove(routeName);
       var builtIn = mainMenu.indexWhere((e) => e.routeName == routeName);
-      _setIcon(routeName, builtIn < 0 ? null : mainMenu[builtIn].icon);
+      _setIcon(routeName,
+          builtIn < 0 ? _ownIcons[routeName] : mainMenu[builtIn].icon);
     } else {
       _customIcons[routeName] = iconPath;
       _setIcon(routeName, MenuIcon(iconPath));
     }
+  }
+
+  /// applyIconSet gives every area the icon [set] has for it, or, with null,
+  /// gives every area its own icon back.
+  ///
+  /// An area the set has no icon for goes back to its own as well, so that
+  /// what is left is the set and nothing from an earlier choice. Live and
+  /// in-memory only, like setItemIcon: saving the theme writes it down.
+  void applyIconSet(MenuIconSet? set) {
+    for (var route in menus.map((e) => e.routeName).toList()) {
+      _chooseIcon(route, set?.icons[route]);
+    }
+    // A choice made for an area that is not in the menu now (a plugin that
+    // is off) would otherwise outlive the set that replaced it.
+    _customIcons.removeWhere((route, _) => set?.icons[route] == null);
     notifyListeners();
   }
+
+  /// iconSet is the set every area is showing, or null when they are not all
+  /// from one: either each has its own icon (see [hasChosenIcons]) or they
+  /// are a mixture.
+  MenuIconSet? get iconSet {
+    var chosen = _chosenInMenu();
+    if (chosen.isEmpty) return null;
+    for (var set in menuIconSets) {
+      var want = {
+        for (var e in set.icons.entries)
+          if (menus.any((m) => m.routeName == e.key)) e.key: e.value,
+      };
+      if (want.length == chosen.length &&
+          want.entries.every((e) => chosen[e.key] == e.value)) {
+        return set;
+      }
+    }
+    return null;
+  }
+
+  /// hasChosenIcons is whether any area in the menu shows an icon other
+  /// than its own.
+  bool get hasChosenIcons => _chosenInMenu().isNotEmpty;
+
+  Map<String, String> _chosenInMenu() => {
+        for (var e in _customIcons.entries)
+          if (menus.any((m) => m.routeName == e.key)) e.key: e.value,
+      };
 
   /// iconPathFor is the chosen icon for a route, or null while it still has
   /// its built-in one.
@@ -438,6 +492,16 @@ class MainMenuModel extends ChangeNotifier {
   // re-appending it, which would silently undo a rename or reorder on
   // every unrelated menu change.
   void registerDynamicItem(MainMenuItem item) {
+    // The item's own icon is remembered, and a chosen one laid over it:
+    // registering used to put the item's own icon straight back, so an icon
+    // picked for a plugin's entry lasted until the next rebuild.
+    _ownIcons[item.routeName] = item.icon;
+    var chosen = _customIcons[item.routeName];
+    if (chosen != null) {
+      item = MainMenuItem(item.label, item.routeName, item.builder,
+          item.titleBuilder, MenuIcon(chosen), item.subMenuInfo,
+          hiddenFromSideBar: item.hiddenFromSideBar);
+    }
     var idx = menus.indexWhere((e) => e.routeName == item.routeName);
     if (idx >= 0) {
       var existing = menus[idx];
@@ -481,6 +545,8 @@ class MainMenuModel extends ChangeNotifier {
     if (a is SidebarIcon && b is SidebarIcon) {
       return a.icon == b.icon && a.alert == b.alert;
     }
+    // By path: a chosen icon is built afresh on every registration.
+    if (a is MenuIcon && b is MenuIcon) return a.iconPath == b.iconPath;
     return a == b;
   }
 
@@ -851,6 +917,63 @@ const List<String> bundledMenuIcons = [
   "assets/icons/icons-menu-settings.svg",
 ];
 
+/// MenuIconSet is a named set of menu icons that can be put on every area at
+/// once, from Settings > Appearance > Menu.
+class MenuIconSet {
+  final String name;
+
+  /// icons is the set's icon for each built-in area, by route.
+  final Map<String, String> icons;
+
+  /// extras are the set's icons that no built-in area takes: offered in the
+  /// chooser beside the others, for whichever item wants one.
+  final List<String> extras;
+  const MenuIconSet(this.name, this.icons, [this.extras = const []]);
+
+  /// all is every icon in the set, the areas' first.
+  List<String> get all => [...icons.values, ...extras];
+}
+
+const _sketch = "assets/icons/sketch";
+
+/// brSketchIcons are the areas drawn as the Canvas and Writing entries are:
+/// a mark in one even stroke, a measured line down its left and along its
+/// bottom, and one part that stays orange. Those two entries have theirs
+/// already, as their own icons, so they are extras here, not areas.
+final brSketchIcons = MenuIconSet("BR Sketch Icons", {
+  ChatsScreen.routeName: "$_sketch/chat.svg",
+  AddressBookScreen.routeName: "$_sketch/contacts.svg",
+  FeedScreen.routeName: "$_sketch/feed.svg",
+  RealtimeChatScreen.routeName: "$_sketch/calls.svg",
+  LNScreen.routeName: "$_sketch/wallet.svg",
+  ViewPageScreen.routeName: "$_sketch/pages.svg",
+  ManageContentScreen.routeName: "$_sketch/files.svg",
+  SettingsScreen.routeName: "$_sketch/settings.svg",
+}, const [
+  "$_sketch/stats.svg",
+  "$_sketch/person.svg",
+  "$_sketch/lightning.svg",
+  "$_sketch/folder.svg",
+  "$_sketch/downloads.svg",
+  "$_sketch/tiles.svg",
+  "assets/icons/icons-menu-writing.svg",
+  "assets/icons/icons-menu-canvas.svg",
+]);
+
+/// menuIconSets are the sets offered, in the order they are listed.
+final List<MenuIconSet> menuIconSets = [brSketchIcons];
+
+/// menuIconAccent is the second picture of a bundled icon drawn in two
+/// parts, the part that stays orange, or null for an icon that is one
+/// picture. It is the same name with "-key" on the end.
+String? menuIconAccent(String iconPath) {
+  var twoPart = iconPath.startsWith("$_sketch/") ||
+      iconPath == "assets/icons/icons-menu-writing.svg" ||
+      iconPath == "assets/icons/icons-menu-canvas.svg";
+  if (!twoPart || !iconPath.endsWith(".svg")) return null;
+  return "${iconPath.substring(0, iconPath.length - 4)}-key.svg";
+}
+
 /// MenuIcon draws a menu icon named by a path rather than by a widget, which
 /// is what lets one be *chosen* -- see ThemePreset.menuIcons.
 ///
@@ -872,6 +995,8 @@ class MenuIcon extends StatelessWidget {
         Theme.of(context).colorScheme.onSurfaceVariant;
     var filter = ColorFilter.mode(color, BlendMode.srcIn);
     if (isAsset(iconPath)) {
+      var accent = menuIconAccent(iconPath);
+      if (accent != null) return SidebarAccentSvgIcon(iconPath, accent);
       return SvgPicture.asset(iconPath, colorFilter: filter);
     }
     var dir = ThemeNotifier.of(context).activePreset?.sourceDir;

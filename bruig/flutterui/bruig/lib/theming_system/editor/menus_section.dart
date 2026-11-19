@@ -103,6 +103,7 @@ class _MenuSectionState extends State<MenuSection> {
 
       return Column(
         children: [
+          _IconSetChoice(mainMenu: mainMenu),
           for (var i = 0; i < items.length; i++)
             ListTile(
               leading: _IconButton(item: items[i], mainMenu: mainMenu),
@@ -137,6 +138,59 @@ class _MenuSectionState extends State<MenuSection> {
         ],
       );
     });
+  }
+}
+
+/// _IconSetChoice puts one set of icons on every area at once.
+///
+/// A dropdown, like the editor's other choices from a fixed list. "Default"
+/// is each area's own icon. "Mixed" is only ever shown, never offered: it is
+/// what the menu is once icons have been picked one at a time, and choosing
+/// it would have nothing to do.
+class _IconSetChoice extends StatelessWidget {
+  final MainMenuModel mainMenu;
+  const _IconSetChoice({required this.mainMenu});
+
+  static const _own = "Default";
+  static const _mixed = "Mixed";
+
+  @override
+  Widget build(BuildContext context) {
+    var set = mainMenu.iconSet;
+    var value = set?.name ?? (mainMenu.hasChosenIcons ? _mixed : _own);
+    return Padding(
+      // The inset a ListTile gives its rows, so the label stands over the
+      // icons it is about.
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(children: [
+        const Flexible(
+            child: Txt("Icon set: ", overflow: TextOverflow.ellipsis)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: DropdownButton<String>(
+            key: const ValueKey("menuIconSet"),
+            value: value,
+            isExpanded: true,
+            items: [
+              for (var name in [
+                _own,
+                for (var s in menuIconSets) s.name,
+                if (value == _mixed) _mixed,
+              ])
+                DropdownMenuItem(
+                    value: name,
+                    child: Text(name, overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (name) {
+              if (name == null || name == value || name == _mixed) return;
+              mainMenu.applyIconSet(name == _own
+                  ? null
+                  : menuIconSets.firstWhere((s) => s.name == name));
+            },
+          ),
+        ),
+      ]),
+    );
   }
 }
 
@@ -236,73 +290,102 @@ class _IconPickerDialog extends StatelessWidget {
     var current = mainMenu.iconPathFor(item.routeName);
     return AlertDialog(
       title: Text("Icon for ${item.label}"),
+      // The sets make the grid tall enough to outgrow a short window.
+      scrollable: true,
       content: SizedBox(
         width: 360,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+        // Stretched, so the grids and the set names under them share a left
+        // edge, and the two buttons really do sit at either end.
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (var asset in bundledMenuIcons)
-                _IconTile(
-                  selected: current == asset,
-                  onTap: () => Navigator.of(context)
-                      .pop(_IconChoice(_IconChoiceKind.bundled, asset)),
-                  child: MenuIcon(asset),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var asset in bundledMenuIcons)
+                    _IconTile(
+                      selected: current == asset,
+                      onTap: () => Navigator.of(context)
+                          .pop(_IconChoice(_IconChoiceKind.bundled, asset)),
+                      child: MenuIcon(asset),
+                    ),
+                  // The user's own icon, when one is set, sits at the end of the
+                  // same row rather than in a section of its own -- it is one
+                  // more of the choices, and showing it is how you can tell
+                  // which one is currently picked.
+                  if (current != null && !MenuIcon.isAsset(current))
+                    _IconTile(
+                      selected: true,
+                      onTap: () => Navigator.of(context).pop(),
+                      child: MenuIcon(current),
+                    ),
+                ],
+              ),
+              // Each set's icons under its name, for an area that wants one of
+              // them without the rest: the dropdown above the list is how a
+              // whole set goes on at once.
+              for (var set in menuIconSets) ...[
+                const SizedBox(height: 16),
+                Txt.S(set.name, color: TextColor.onSurfaceVariant),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var asset in set.all)
+                      _IconTile(
+                        selected: current == asset,
+                        onTap: () => Navigator.of(context)
+                            .pop(_IconChoice(_IconChoiceKind.bundled, asset)),
+                        child: MenuIcon(asset),
+                      ),
+                  ],
                 ),
-              // The user's own icon, when one is set, sits at the end of the
-              // same row rather than in a section of its own -- it is one
-              // more of the choices, and showing it is how you can tell
-              // which one is currently picked.
+              ],
+              const SizedBox(height: 16),
+              // A Wrap rather than a Row with a Spacer: the two buttons sit at
+              // either end while they both fit and drop onto a second line when
+              // they don't. A Row pins them to one line at their full width,
+              // which overflowed as soon as the labels grew -- a larger font
+              // scale is enough to do it.
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context)
+                        .pop(const _IconChoice(_IconChoiceKind.file)),
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text("Choose SVG..."),
+                  ),
+                  // Disabled while the item still has its built-in icon: there is
+                  // nothing to undo, and an enabled button that does nothing reads
+                  // as broken.
+                  TextButton.icon(
+                    onPressed: current == null
+                        ? null
+                        : () => Navigator.of(context)
+                            .pop(const _IconChoice(_IconChoiceKind.reset)),
+                    icon: const Icon(Icons.restart_alt),
+                    label: const Text("Default"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Txt.S(
+                "Your own SVG is drawn in the navigation's own text color -- a "
+                "multi-colored icon will come out one color.",
+                color: TextColor.onSurfaceVariant,
+              ),
+              const SizedBox(height: 4),
               if (current != null && !MenuIcon.isAsset(current))
-                _IconTile(
-                  selected: true,
-                  onTap: () => Navigator.of(context).pop(),
-                  child: MenuIcon(current),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // A Wrap rather than a Row with a Spacer: the two buttons sit at
-          // either end while they both fit and drop onto a second line when
-          // they don't. A Row pins them to one line at their full width,
-          // which overflowed as soon as the labels grew -- a larger font
-          // scale is enough to do it.
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context)
-                    .pop(const _IconChoice(_IconChoiceKind.file)),
-                icon: const Icon(Icons.folder_open),
-                label: const Text("Choose SVG..."),
-              ),
-              // Disabled while the item still has its built-in icon: there is
-              // nothing to undo, and an enabled button that does nothing reads
-              // as broken.
-              TextButton.icon(
-                onPressed: current == null
-                    ? null
-                    : () => Navigator.of(context)
-                        .pop(const _IconChoice(_IconChoiceKind.reset)),
-                icon: const Icon(Icons.restart_alt),
-                label: const Text("Default"),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Txt.S(
-            "SVG only, and drawn in the navigation's own text color -- a "
-            "multi-colored icon will come out one color.",
-            color: TextColor.onSurfaceVariant,
-          ),
-          const SizedBox(height: 4),
-          if (current != null && !MenuIcon.isAsset(current))
-            Txt.S("Copied into this theme, so exporting it takes the icon too.",
-                color: TextColor.onSurfaceVariant),
-        ]),
+                Txt.S(
+                    "Copied into this theme, so exporting it takes the icon too.",
+                    color: TextColor.onSurfaceVariant),
+            ]),
       ),
       actions: [
         TextButton(

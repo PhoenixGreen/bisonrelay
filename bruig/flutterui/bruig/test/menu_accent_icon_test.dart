@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/plugin_test_support.dart';
 
 // menu_accent_icon_test.dart covers the menu icons drawn in two parts, the
-// Canvas entry's and the Writing entry's: that each entry shows its own, that
+// Canvas entry's, the Writing entry's and a set's: that each entry shows its own, that
 // the files ship and draw, that the drawing takes the menu's colour while the
 // accent keeps its orange, and that registering an entry again leaves the
 // menu quiet.
@@ -101,6 +101,93 @@ void main() {
       ]);
     });
   }
+
+  test("every icon of every set ships with the app, both halves", () async {
+    for (var set in menuIconSets) {
+      for (var asset in set.all) {
+        for (var half in [asset, menuIconAccent(asset)!]) {
+          var svg = await rootBundle.loadString(half);
+          expect(svg, contains('viewBox="0 0 24 24"'), reason: half);
+        }
+      }
+    }
+  });
+
+  testWidgets("a set's icon is drawn in two parts wherever it is chosen",
+      (tester) async {
+    const color = Color(0xFFE4E3E6);
+    for (var asset in brSketchIcons.all) {
+      await tester.pumpWidget(_show(MenuIcon(asset), color));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: asset);
+      expect(
+          _filters(tester),
+          const [
+            ColorFilter.mode(color, BlendMode.srcIn),
+            ColorFilter.mode(menuAccentOrange, BlendMode.srcIn),
+          ],
+          reason: asset);
+    }
+    // An ordinary bundled icon is still one picture in one colour.
+    await tester.pumpWidget(_show(MenuIcon(bundledMenuIcons.first), color));
+    await tester.pumpAndSettle();
+    expect(_filters(tester), const [ColorFilter.mode(color, BlendMode.srcIn)]);
+  });
+
+  // Registering used to put a dynamic entry's own icon straight back, so an
+  // icon picked for Writing, Canvas or a plugin's entry lasted until the
+  // next rebuild while the picker went on showing it as chosen.
+  testWidgets("an icon chosen for a dynamic entry stays, and comes off",
+      (tester) async {
+    var menu = MainMenuModel();
+    var prefs = CanvasPreferences()..enabled = true;
+    var nav = CanvasNavModel();
+    nav.update(prefs, menu);
+    await tester.pump();
+    var own = _iconOf(menu, CanvasScreen.routeName);
+
+    var stats = "assets/icons/icons-menu-stats.svg";
+    menu.setItemIcon(CanvasScreen.routeName, stats);
+    nav.update(prefs, menu);
+    await tester.pump();
+    var icon = _iconOf(menu, CanvasScreen.routeName);
+    expect(icon, isA<MenuIcon>());
+    expect((icon as MenuIcon).iconPath, stats);
+
+    // Registered again with it chosen: nothing has changed, so no notice.
+    var notified = 0;
+    menu.addListener(() => notified++);
+    nav.update(prefs, menu);
+    await tester.pump();
+    expect(notified, 0);
+
+    // A theme that carries the choice finds the entry when it registers.
+    menu.applyThemeMenu(null, null, {CanvasScreen.routeName: stats});
+    nav.update(prefs, menu);
+    await tester.pump();
+    expect(_iconOf(menu, CanvasScreen.routeName), isA<MenuIcon>());
+
+    // "Default" has the entry's own icon to go back to at once, without
+    // waiting for the entry to register again.
+    menu.setItemIcon(CanvasScreen.routeName, null);
+    expect(_iconOf(menu, CanvasScreen.routeName), same(own));
+  });
+
+  testWidgets("a set leaves Canvas and Writing as they are", (tester) async {
+    var menu = MainMenuModel();
+    CanvasNavModel().update(CanvasPreferences()..enabled = true, menu);
+    WritingNavModel()
+        .update(FakePlugins({PluginCapability.spellcheckData}), menu);
+    await tester.pump();
+
+    menu.applyIconSet(brSketchIcons);
+
+    // Their own icons are already drawn this way, so the set has nothing to
+    // put on them and is still the set in use with them in the menu.
+    expect(_iconOf(menu, CanvasScreen.routeName), isA<SidebarAccentSvgIcon>());
+    expect(_iconOf(menu, WritingScreen.routeName), isA<SidebarAccentSvgIcon>());
+    expect(menu.iconSet, same(brSketchIcons));
+  });
 
   // The sidebar leaves the icon at its own size; the phone's bar hands it a
   // fixed box. The two pictures must come out the same size either way.
