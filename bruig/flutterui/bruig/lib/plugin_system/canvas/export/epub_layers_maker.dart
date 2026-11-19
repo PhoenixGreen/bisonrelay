@@ -526,6 +526,10 @@ class _LayerMaker {
     return _layerOf(parts, keyboard: keyboard);
   }
 
+  /// _encodedKeys is an instrument's keys as encoded, by what they sound
+  /// like: the same piano on every page is encoded once.
+  static final _encodedKeys = <String, Uint8List>{};
+
   /// keyStep is how far apart each key's sound is in an instrument's file:
   /// a note held a second, and its ring.
   static const keyStep = 1.6;
@@ -550,8 +554,16 @@ class _LayerMaker {
                   ? bank
                   : null);
       var ffmpeg = films?.ffmpeg ?? await ffmpegPath();
-      var stem = "media/keys-${a.id}";
+      // Named by what it sounds like, not by the element: a book whose every
+      // lesson has the same piano carries its keys once (the writer keeps
+      // one file per name), not once a page -- ten copies made a 17 MB
+      // book of a 7 MB one (Ken, 2026-11-19).
+      var sound = sha1.convert(wav).toString().substring(0, 16);
+      var stem = "media/keys-$sound";
       if (ffmpeg == null) return (EpubFile("$stem.wav", wav, "audio/wav"), low);
+      if (_encodedKeys[sound] case var done?) {
+        return (EpubFile("$stem.m4a", done, "audio/mp4"), low);
+      }
       var work = await Directory.systemTemp.createTemp("canvas-keys");
       try {
         var input = path.join(work.path, "keys.wav");
@@ -564,10 +576,12 @@ class _LayerMaker {
         if (run.exitCode != 0) {
           return (EpubFile("$stem.wav", wav, "audio/wav"), low);
         }
-        return (
-          EpubFile("$stem.m4a", await File(output).readAsBytes(), "audio/mp4"),
-          low
-        );
+        var bytes = await File(output).readAsBytes();
+        // Kept for the pages after this one with the same keys, so they
+        // are encoded once; only the last few, as a book has few pianos.
+        if (_encodedKeys.length >= 8) _encodedKeys.remove(_encodedKeys.keys.first);
+        _encodedKeys[sound] = bytes;
+        return (EpubFile("$stem.m4a", bytes, "audio/mp4"), low);
       } finally {
         await work.delete(recursive: true);
       }

@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show settledFrameOf;
@@ -591,8 +592,47 @@ EpubPage _withCover(EpubPage page) => EpubPage(
     );
 
 /// estimateDocumentBytes is roughly how large the file will be: a page's
-/// worth of PNG times the number of pages.
-int estimateDocumentBytes(CanvasDocument document, {double scale = 1}) {
+/// worth of PNG times the number of pages and, for an [interactive] book,
+/// what it carries besides (Ken, 2026-11-19: estimated at 4 MB, made at
+/// 17). That is the pictures of what moves or plays on a page, about a
+/// page's worth again; each page's sound at [soundKbps]; an instrument's
+/// keys, once for every page playing the same one (epub_layers_maker.dart
+/// names the file by what is in it); and the videos it carries,
+/// [mediaBytes], as stored.
+int estimateDocumentBytes(CanvasDocument document,
+    {double scale = 1,
+    bool interactive = false,
+    int soundKbps = 160,
+    int mediaBytes = 0}) {
   var one = estimateStillBytes(document, scale: scale);
-  return one * document.allScenes.length + 4096;
+  var total = one * document.allScenes.length + 4096;
+  if (!interactive) return total;
+  var rate = math.max(1, document.frameRate);
+  var instruments = <String>{};
+  for (var (i, scene) in document.allScenes.indexed) {
+    var frames = document.goToScene(i).frames;
+    var played = scene.elements.where((e) =>
+        e.visible &&
+        (e is AudioElement || e is SheetElement || e is VideoElement));
+    if (frames > 1 || played.isNotEmpty) total += one;
+    if (played.any((e) => e is AudioElement || e is VideoElement)) {
+      total += (frames / rate * soundKbps * 1000 / 8).round();
+    }
+    for (var e in played) {
+      if (e case AudioElement(:var instrument?)) {
+        var p = instrument;
+        if (instruments.add(
+            "${p.sound.name}|${p.bank}|${p.program}|${p.lowKey}|${p.keys}")) {
+          total += (p.keys * _keyStepSeconds * _keyKbps * 1000 / 8).round();
+        }
+      }
+    }
+  }
+  return total + mediaBytes;
 }
+
+/// _keyStepSeconds and _keyKbps are how an instrument's keys are written
+/// for a reader to play (_LayerMaker.keyStep in epub_layers_maker.dart, and
+/// its AAC bitrate).
+const _keyStepSeconds = 1.6;
+const _keyKbps = 96;

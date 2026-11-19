@@ -17,6 +17,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:crypto/crypto.dart' show sha1;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/painting.dart' show Offset, Rect;

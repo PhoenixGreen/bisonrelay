@@ -128,6 +128,41 @@ void main() {
     });
   });
 
+  // Ken, 2026-11-19: a 17 MB piano book, ten of its megabytes the same
+  // piano's sound once a page. The keys are named by what they sound like,
+  // so the same instrument on every page is one file.
+  testWidgets("the same instrument on two pages is one sound in the book",
+      (tester) async {
+    await tester.runAsync(() async {
+      var c = sheet.lesson();
+      c.showSheetKeyboard(sheet.sheetOf(c), true);
+      var doc = c.document;
+      var page = doc.allScenes[0];
+      // Its own elements, as each lesson has its own piano.
+      var again = page.copyWith(id: "again", elements: [
+        for (var e in page.elements) e.withId("${e.id}-again"),
+      ]);
+      var book = doc.withScenes([page, again], at: 0);
+      var export =
+          (await renderDocument(book, as: DocumentAs.interactiveEpub))!;
+      var zip = ZipDecoder().decodeBytes(export.data);
+      var keys = [
+        for (var f in zip.files)
+          if (f.name.startsWith("OEBPS/media/keys-")) f.name
+      ];
+      expect(keys, hasLength(1), reason: "$keys");
+      String sound(int i) => XmlDocument.parse(utf8.decode(zip.files
+              .firstWhere((f) => f.name == "OEBPS/page$i.xhtml")
+              .content))
+          .descendantElements
+          .firstWhere((e) => (e.getAttribute("class") ?? "") == "hit keys")
+          .getAttribute("data-sound")!;
+      expect(sound(0), sound(1), reason: "both pages play the one file");
+      expect(keys.single, "OEBPS/${sound(0)}");
+      c.dispose();
+    });
+  });
+
   testWidgets("written into the book: a surface to play, every key lit",
       (tester) async {
     await tester.runAsync(() async {

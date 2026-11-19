@@ -446,7 +446,11 @@ class _PublishSheetState extends State<_PublishSheet> {
         PublishAs.video => estimateVideoBytes(_document,
             scale: _scale, format: _videoFormat, quality: _videoQuality),
         PublishAs.audio => estimateAudioBytes(_document, _sound),
-        PublishAs.document => estimateDocumentBytes(_document, scale: _scale),
+        PublishAs.document => estimateDocumentBytes(_document,
+            scale: _scale,
+            interactive: _documentAs == DocumentAs.interactiveEpub,
+            soundKbps: _sound.kbps,
+            mediaBytes: _videoBytes),
         // Exact, as an interactive canvas is the document itself; its
         // pictures and media go in at stored size, already compressed.
         PublishAs.interactive => _document.encode().length + _pictureBytes,
@@ -456,8 +460,12 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// bundle: measured once as the sheet opens, as each must be read.
   int _pictureBytes = 0;
 
+  /// _videoBytes is its videos alone, which an interactive book carries
+  /// as they are (its sounds it mixes into each page's).
+  int _videoBytes = 0;
+
   Future<void> _measurePictures() async {
-    var total = 0;
+    var total = 0, videos = 0;
     for (var id in _document.assetIds) {
       total += (await CanvasAssets.load(id))?.length ?? 0;
     }
@@ -468,12 +476,19 @@ class _PublishSheetState extends State<_PublishSheet> {
       // Gone since it was found (removed in another window, say): it adds
       // nothing, rather than leaving the estimate unshown.
       try {
-        total += await File(file).length();
+        var size = await File(file).length();
+        total += size;
+        if (CanvasMedia.kindOf(id) == MediaKind.video) videos += size;
       } on FileSystemException {
         continue;
       }
     }
-    if (mounted) setState(() => _pictureBytes = total);
+    if (mounted) {
+      setState(() {
+        _pictureBytes = total;
+        _videoBytes = videos;
+      });
+    }
   }
 
   /// _tooBigForChat is the one warning before rendering: the one failure

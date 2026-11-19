@@ -249,10 +249,22 @@ class _FilePreviewState extends State<FilePreview> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: cs.outlineVariant),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: _body(context),
-              ),
+              // A book is never clipped: on a Mac the web view is a native
+              // view, and a rounded clip becomes a mask over it, under which
+              // WebKit's separately drawn layers -- a book's piano, its
+              // score -- vanished when hovering or pressing redrew a part
+              // of the page (Ken, 2026-11-19). Inset instead, by enough
+              // that its square corners stay inside the rounded border.
+              child: fileKindOf(widget.filePath) == FileKind.epub
+                  ? Padding(
+                      key: const ValueKey("previewUnclipped"),
+                      padding: const EdgeInsets.all(4),
+                      child: _body(context),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: _body(context),
+                    ),
             ),
           ),
         ),

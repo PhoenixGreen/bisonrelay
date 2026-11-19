@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:bruig/components/epub_reader/epub_book.dart';
 import 'package:bruig/components/epub_reader/epub_reader_view.dart';
 import 'package:bruig/components/epub_reader/reader_shell.dart';
 import 'package:bruig/components/epub_reader/reader_inputs.dart';
+import 'package:bruig/models/uistate.dart';
+import 'package:bruig/screens/manage_content/file_preview.dart';
 import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:bruig/plugin_system/canvas/export/reader_test_book.dart';
@@ -217,6 +218,35 @@ void main() {
             .existsSync(),
         isTrue,
         reason: "the shell beside the pages");
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken, 2026-11-19: the piano and the score vanished when the mouse went
+  // over them. On a Mac the web view is a native view, and the preview's
+  // rounded clip became a mask over it, under which WebKit's separately
+  // drawn layers were lost on a partial redraw. A book is never clipped.
+  testWidgets("a book in Files' preview is not clipped", (tester) async {
+    var out = await tester.runAsync(
+        () => renderDocument(_comic(), as: DocumentAs.epub, spreads: true));
+    var file = File(path.join(tmp.path, "Clip.epub"));
+    await tester.runAsync(() => file.writeAsBytes(out!.data));
+    setTestScreen(tester, const Size(900, 1000));
+    await tester.pumpWidget(canvasApp(FilePreview(
+        filePath: file.path, onClose: () {}, nav: ManageContentNavModel())));
+    for (var i = 0;
+        i < 400 && find.byKey(const ValueKey("epubNoView")).evaluate().isEmpty;
+        i++) {
+      await tester
+          .runAsync(() => Future.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    var view = find.byKey(const ValueKey("epubNoView"));
+    expect(view, findsOneWidget);
+    expect(find.byKey(const ValueKey("previewUnclipped")), findsOneWidget);
+    for (var clip in [ClipRRect, ClipRect, ClipPath, ClipOval]) {
+      expect(find.ancestor(of: view, matching: find.byType(clip)), findsNothing,
+          reason: "no \$clip around the web view");
+    }
     await tester.pumpWidget(const SizedBox());
   });
 
