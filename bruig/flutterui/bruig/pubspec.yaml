@@ -200,6 +200,8 @@ flutter:
     - assets/icons/app_icon.png
     - assets/chat-bg.png
     - assets/images/
+    - assets/icons/icons-menu-canvas.svg
+    - assets/icons/icons-menu-canvas-key.svg
     - assets/icons/icons-menu-chat.svg
     - assets/icons/icons-menu-files.svg
     - assets/icons/icons-menu-lnmng.svg
