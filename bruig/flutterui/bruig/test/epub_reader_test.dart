@@ -285,6 +285,17 @@ void main() {
     midi.removeNoteTap(tap);
     midi.handle(Uint8List.fromList([0x90, 62, 90]));
     expect(book.length, 2, reason: "let go of, it hears no more");
+
+    // A book listening has the keyboard to itself: the canvas's instrument
+    // is not played by the same keys a moment later (Ken, 2026-11-19).
+    void alone(int k, int v) => book.add((k, v));
+    midi.addNoteTap(alone, exclusive: true);
+    midi.handle(Uint8List.fromList([0x90, 64, 80]));
+    expect(canvas, [60, 60, 62], reason: "the canvas hears nothing new");
+    expect(book.last, (64, 80));
+    midi.removeNoteTap(alone);
+    midi.handle(Uint8List.fromList([0x90, 65, 80]));
+    expect(canvas.last, 65, reason: "and has it back once the book is done");
   });
 
   testWidgets("a page asking for the keyboard is given it, once",
@@ -321,7 +332,8 @@ class _Keys implements ReaderInputs {
   var asked = 0;
   var stopped = false;
   @override
-  Future<VoidCallback?> listenToKeys(void Function(int key) onKey) async {
+  Future<VoidCallback?> listenToKeys(
+      void Function(int key, int velocity) onKey) async {
     asked++;
     return () => stopped = true;
   }

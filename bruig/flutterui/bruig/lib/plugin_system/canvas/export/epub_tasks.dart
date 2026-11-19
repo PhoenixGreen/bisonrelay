@@ -77,8 +77,9 @@ String epubTaskTag(EpubTask t, String Function(String) attr) {
 /// epubTaskCss is how a card's layer looks.
 const epubTaskCss = '''
       .task { position: absolute; pointer-events: none; }
-      .task .tick, .task .row, .task .listen, .task .banner {
+      .task .tick, .task .row, .task .pills, .task .banner {
         position: absolute; box-sizing: border-box; }
+      .task .pills { display: flex; gap: 0.4em; pointer-events: none; }
       .task .tick { border-radius: 50%; display: none; }
       .task .tick.on { display: block; }
       .task .tick svg { width: 100%; height: 100%; display: block; }
@@ -86,11 +87,16 @@ const epubTaskCss = '''
         margin: 0; padding: 0; cursor: pointer;
         -webkit-tap-highlight-color: transparent; display: none; }
       .task .row.ticks { display: block; }
-      .task .listen { pointer-events: auto; border: 0; cursor: pointer;
+      .task .listen, .task .again { pointer-events: auto; border: 0;
+        cursor: pointer; font-size: inherit;
         font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
         font-weight: 700; color: #ffffff; border-radius: 999px;
         padding: 0 0.9em; white-space: nowrap;
         -webkit-tap-highlight-color: transparent; }
+      .task .listen .dot { display: inline-block; width: 0.55em;
+        height: 0.55em; border-radius: 50%; margin-right: 0.45em;
+        animation: bisonTaskPulse 1.2s ease-in-out infinite; }
+      @keyframes bisonTaskPulse { 50% { opacity: 0.25; } }
       .task .banner { display: none; font-weight: 700; color: #1e9e6a;
         font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
         border-left: 0.22em solid #1e9e6a; padding-left: 0.68em; }
@@ -120,15 +126,35 @@ const epubTaskScript = r'''
     return null;
   }
 
-  // What the reader lets a book hear, asked once for every card.
+  // What the reader lets a book hear, asked once for every card. One card
+  // listens at a time (active): starting another stops it, and a card
+  // stopped with none listening lets the microphone go.
   var listeners = [];
-  var hearing = null;
+  var hearing = null, asking = null, mic = null, active = null;
   function heard(note) { for (var i = 0; i < listeners.length; i++) listeners[i](note); }
   function startHearing(then) {
     if (hearing) { then(hearing); return; }
+    if (asking) { asking.push(then); return; }
+    asking = [then];
+    found(function (how) {
+      var waiting = asking; asking = null;
+      waiting.forEach(function (w) { w(how); });
+    });
+  }
+  function stopHearing() {
+    listeners = [];
+    if (!mic) return;
+    mic.stream.getTracks().forEach(function (t) { t.stop(); });
+    if (mic.ctx.close) mic.ctx.close();
+    mic = null;
+    hearing = null;
+  }
+  function found(then) {
     var br = window.bisonReader;
     if (br && br.midi) {
-      br.midi(function (n) { heard(n); });
+      br.midi(function (n, velocity) {
+        if (velocity === undefined || velocity > 0) heard(n);
+      });
       hearing = 'keyboard';
       then(hearing);
       return;
@@ -162,7 +188,9 @@ const epubTaskScript = r'''
       c.createMediaStreamSource(stream).connect(an);
       var buf = new Float32Array(an.fftSize);
       var last = -1, since = 0, sent = -1;
+      var mine = mic = { stream: stream, ctx: c };
       (function tick() {
+        if (mic !== mine) return;
         an.getFloatTimeDomainData(buf);
         var note = pitch(buf, c.sampleRate);
         var now = Date.now();
@@ -227,22 +255,40 @@ const epubTaskScript = r'''
     var banner = el('div', 'banner', card);
     if (spec.banner) place(banner, spec.banner);
     banner.textContent = spec.passed;
-    var button = el('button', 'listen', card);
-    button.type = 'button';
+    // Start again and Listen, side by side and ending where the drawn card
+    // keeps its Start again.
+    var pills = el('div', 'pills', card);
     var slot = spec.again || [card.offsetWidth - 200, 0, 200, spec.size * 1.4];
-    button.style.background = spec.accent;
-    button.style.fontSize = (spec.size * 0.72) + 'px';
-    button.style.right = (card.offsetWidth - slot[0] - slot[2]) + 'px';
-    button.style.top = slot[1] + 'px';
-    button.style.height = Math.max(slot[3], spec.size * 1.3) + 'px';
+    pills.style.fontSize = (spec.size * 0.72) + 'px';
+    pills.style.right = (card.offsetWidth - slot[0] - slot[2]) + 'px';
+    pills.style.top = slot[1] + 'px';
+    pills.style.height = Math.max(slot[3], spec.size * 1.3) + 'px';
+    var again = el('button', 'again', pills);
+    again.type = 'button';
+    again.textContent = 'Start again';
+    again.style.background = '#ffffff';
+    again.style.color = spec.accent;
+    again.style.boxShadow = 'inset 0 0 0 0.14em ' + spec.accent;
+    var button = el('button', 'listen', pills);
+    button.type = 'button';
 
+    // idle, asking, keyboard, microphone or none (nothing can be heard,
+    // so each step is tapped).
     var mode = 'idle';
+    var me = { stop: stop };
+    function stop() {
+      mode = 'idle';
+      if (active === me) { active = null; stopHearing(); }
+      show();
+    }
     function show() {
       var any = false, all = true;
       for (var i = 0; i < checks.length; i++) {
         ticks[i].className = 'tick' + (state[i].done ? ' on' : '');
         if (state[i].done) any = true; else all = false;
       }
+      // Every step played: nothing more to listen for.
+      if (all && mode !== 'idle') { stop(); return; }
       card.className = 'task' + (all ? ' all' : '');
       // A step is ticked by hand where it is the student's to tick, where
       // nothing can be heard, or where it is a chord and only a microphone
@@ -253,10 +299,25 @@ const epubTaskScript = r'''
           (mode === 'microphone' && chord);
         rows[i].className = 'row' + (byHand ? ' ticks' : '');
       });
-      button.textContent = any ? 'Start again' :
-        mode === 'idle' ? 'Listen' :
-        mode === 'keyboard' ? 'Listening to the keyboard' :
-        mode === 'microphone' ? 'Listening' : 'Tap each step';
+      again.style.display = any ? '' : 'none';
+      button.style.display = all ? 'none' : '';
+      // Listening, the pill turns white with a beating dot, and a tap on
+      // it stops.
+      var on = mode !== 'idle';
+      button.style.background = on ? '#ffffff' : spec.accent;
+      button.style.color = on ? spec.accent : '#ffffff';
+      button.style.boxShadow = on ? 'inset 0 0 0 0.14em ' + spec.accent : 'none';
+      button.textContent = mode === 'idle' ? 'Listen' :
+        mode === 'asking' ? 'Listen' :
+        mode === 'none' ? 'Tap each step' : 'Stop listening';
+      button.title = mode === 'keyboard' ? 'Listening to the keyboard' :
+        mode === 'microphone' ? 'Listening through the microphone' : '';
+      if (mode === 'keyboard' || mode === 'microphone') {
+        var dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = spec.accent;
+        button.insertBefore(dot, button.firstChild);
+      }
     }
     function save() { store(key, state); show(); }
 
@@ -295,15 +356,23 @@ const epubTaskScript = r'''
       save();
     }
 
+    again.addEventListener('click', function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      state = fresh(); recent = []; save();
+    });
+    // A second tap stops; a tap on another card's Listen stops this one.
     button.addEventListener('click', function (ev) {
       ev.preventDefault(); ev.stopPropagation();
-      if (state.some(function (s) { return s.done; })) {
-        state = fresh(); recent = []; save(); return;
-      }
-      if (mode !== 'idle') return;
+      if (mode !== 'idle') { stop(); return; }
+      if (active) active.stop();
+      active = me;
+      mode = 'asking';
+      show();
       startHearing(function (how) {
+        // Stopped while the reader was asked: let go of what it gave.
+        if (active !== me) { if (!active) stopHearing(); return; }
         mode = how;
-        if (how !== 'none') listeners.push(hear);
+        listeners = how === 'none' ? [] : [hear];
         show();
       });
     });

@@ -1630,8 +1630,17 @@ const String _mediaScript = r"""(function () {
     }, false);
     // A MIDI keyboard, where the reader lets a page have one (Apple Books
     // does not): its notes on the page's first instrument, as hard as
-    // they are played.
-    if (navigator.requestMIDIAccess) {
+    // they are played. Bison Relay's own reader hands one over itself
+    // (window.bisonReader.midi), its web view having no MIDI of its own.
+    var br = window.bisonReader;
+    if (br && br.midi) {
+      br.midi(function (key, velocity) {
+        if (!inRange(boards[0], key)) return;
+        if (velocity === undefined || velocity > 0) {
+          down(boards[0], key, (velocity === undefined ? 90 : velocity) / 127 * 100);
+        } else up(boards[0], key);
+      });
+    } else if (navigator.requestMIDIAccess) {
       try {
         navigator.requestMIDIAccess().then(function (access) {
           var listen = function (input) {

@@ -81,6 +81,11 @@ void main() {
     expect(page, contains('<script src="tasks.js"></script>'));
     expect(text("OEBPS/tasks.js"), contains("bisonReader"));
     expect(text("OEBPS/tasks.js"), contains("requestMIDIAccess"));
+    // Listen is a toggle, one card listens at a time, and a microphone is
+    // let go when none does (Ken, 2026-11-19); checked in a browser.
+    expect(text("OEBPS/tasks.js"), contains("Stop listening"));
+    expect(text("OEBPS/tasks.js"), contains("if (active) active.stop();"));
+    expect(text("OEBPS/tasks.js"), contains("getTracks()"));
     var opf = text("OEBPS/content.opf");
     expect(
         opf, contains('href="tasks.js" media-type="application/javascript"'));

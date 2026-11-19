@@ -52,14 +52,16 @@ const readerBridge = r'''
     if (!host || !host._ask) return;
     window.bisonReader = {
       version: 'Bison Relay reader 1',
+      // onKey(key, velocity): a key pressed, or let go at velocity 0.
       midi: function (onKey) { return host._ask('midi', onKey); }
     };
   } catch (e) { }
 })();
 ''';
 
-/// keyScript hands key [key] to the page that asked for the keyboard.
-String keyScript(int key) => "reader._key($key);";
+/// keyScript hands key [key], pressed at [velocity] (0, let go), to the
+/// pages that asked for the keyboard.
+String keyScript(int key, int velocity) => "reader._key($key,$velocity);";
 
 const readerShell = r'''<!DOCTYPE html>
 <html>
@@ -268,9 +270,9 @@ const readerShell = r'''<!DOCTYPE html>
       tell({ type: kind });
       return true;
     },
-    _key: function (key) {
+    _key: function (key, velocity) {
       var to = asked.midi.slice();
-      for (var i = 0; i < to.length; i++) { try { to[i](key); } catch (e) { } }
+      for (var i = 0; i < to.length; i++) { try { to[i](key, velocity); } catch (e) { } }
       return true;
     },
     // The page frames, for what is laid over them later (panels).

@@ -36,13 +36,24 @@ class MidiInput extends ChangeNotifier {
 
   /// addNoteTap hands [tap] every key too, beside [onNote]: for what reads
   /// the keyboard while a canvas holds it -- a book in the reader, say.
-  void addNoteTap(void Function(int key, int velocity) tap) => _taps.add(tap);
-  void removeNoteTap(void Function(int key, int velocity) tap) =>
-      _taps.remove(tap);
+  /// [exclusive] keeps the keys from [onNote] while the tap is there: a
+  /// book listening has the keyboard to itself.
+  void addNoteTap(void Function(int key, int velocity) tap,
+      {bool exclusive = false}) {
+    _taps.add(tap);
+    if (exclusive) _alone.add(tap);
+  }
+
+  void removeNoteTap(void Function(int key, int velocity) tap) {
+    _taps.remove(tap);
+    _alone.remove(tap);
+  }
+
   final List<void Function(int key, int velocity)> _taps = [];
+  final Set<void Function(int key, int velocity)> _alone = {};
 
   void _note(int key, int velocity) {
-    onNote?.call(key, velocity);
+    if (_alone.isEmpty) onNote?.call(key, velocity);
     for (var tap in [..._taps]) {
       tap(key, velocity);
     }

@@ -293,7 +293,9 @@ const _script = r'''
 
   press('bMidi', function () {
     if (br && br.midi) {
-      br.midi(function (note) { heard(note, 'Bison Relay'); });
+      br.midi(function (note, velocity) {
+        if (velocity === undefined || velocity > 0) heard(note, 'Bison Relay');
+      });
       row('midi', true, 'Through Bison Relay. Play a key.');
       return;
     }

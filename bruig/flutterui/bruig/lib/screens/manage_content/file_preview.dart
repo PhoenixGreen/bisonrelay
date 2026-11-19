@@ -916,18 +916,17 @@ class _AppKeyboard implements ReaderInputs {
   const _AppKeyboard();
 
   @override
-  Future<VoidCallback?> listenToKeys(void Function(int key) onKey) async {
+  Future<VoidCallback?> listenToKeys(
+      void Function(int key, int velocity) onKey) async {
     var midi = MidiInput.shared;
     if (midi.device == null) {
       await midi.refresh();
       var first = midi.devices.firstOrNull;
       if (first == null || !await midi.use(first)) return null;
     }
-    void tap(int key, int velocity) {
-      if (velocity > 0) onKey(key);
-    }
-
-    midi.addNoteTap(tap);
-    return () => midi.removeNoteTap(tap);
+    // The book's alone while it listens: the canvas's instrument is not
+    // played by the same keys a moment later.
+    midi.addNoteTap(onKey, exclusive: true);
+    return () => midi.removeNoteTap(onKey);
   }
 }

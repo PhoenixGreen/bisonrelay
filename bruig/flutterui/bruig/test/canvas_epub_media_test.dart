@@ -201,6 +201,10 @@ void main() {
       expect(script, contains('addEventListener("touchend"'));
       expect(script, contains("e.stopPropagation()"));
       expect(script, contains("e.preventDefault()"));
+      // In Bison Relay's reader there is no Web MIDI: a book's piano hears
+      // the keyboard through the reader, or its keys never light (Ken,
+      // 2026-11-19).
+      expect(script, contains("br.midi(function (key, velocity)"));
     });
 
     // The canvas draws a video's big play button into the page's picture,
