@@ -91,12 +91,9 @@ void main() {
                   find.byType(DropdownButton<PublishAs>))
               .value,
           PublishAs.document);
-      expect(
-          tester
-              .widget<DropdownButton<DocumentAs>>(
-                  find.byType(DropdownButton<DocumentAs>))
-              .value,
-          DocumentAs.interactiveEpub);
+      // Saved before there were stores to choose: an interactive book opens
+      // as the one sold directly, which is the same book.
+      expect(find.text("EPUB for Direct sale"), findsOneWidget);
     });
 
     testWidgets("and without any, it opens on Image", (tester) async {

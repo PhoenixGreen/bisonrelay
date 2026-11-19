@@ -180,7 +180,9 @@ void main() {
           .runAsync(() => renderDocument(book, as: DocumentAs.interactiveEpub));
       var a = made(out!.data);
       expect(text(a, "OEBPS/page0.xhtml"), isNot(contains("app-amzn")));
-      expect(a.files.any((f) => f.name == "OEBPS/regions.xhtml"), isFalse);
+      expect(a.files.any((f) => f.name == "OEBPS/regions.xhtml"), isTrue,
+          reason: "its panels are still listed, for a reader that reads "
+              "them (Bison Relay's)");
     });
   });
 

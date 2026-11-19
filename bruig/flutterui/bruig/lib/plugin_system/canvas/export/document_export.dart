@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -6,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/opaque_png.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart'
+    show ffmpegPath;
 import 'package:bruig/plugin_system/canvas/model/book_details.dart';
 import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -19,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
 import 'package:bruig/plugin_system/canvas/render/panel_reading.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as path;
 
 // document_export.dart publishes a canvas to read: a PDF of the pages, an
 // EPUB that turns them, or an interactive EPUB keeping what can be
@@ -39,6 +43,156 @@ enum DocumentAs {
 
   String get extension => this == pdf ? "pdf" : "epub";
   String get mime => this == pdf ? "application/pdf" : epubMime;
+}
+
+/// StoreProfile is which store an EPUB is made for: what it carries and what
+/// it is held to. Ken, 2026-11-19, step 4 of the ebook plan (see the ebook
+/// platforms report): one export per store rather than one for all.
+enum StoreProfile {
+  kindle(
+      "Kindle",
+      "Amazon's store: the pages as pictures, two to a spread on its side, "
+          "Panel View for comics. Amazon runs no scripts or sound. Pages "
+          "are JPEG where ffmpeg is installed, as Amazon charges for every "
+          "megabyte of a book it sells at 70%",
+      interactive: false),
+  apple(
+      "Apple Books",
+      "Apple's store: everything works -- buttons, sound, video, motion -- "
+          "with pages kept within Apple's 5.6 megapixels",
+      interactive: true,
+      maxPixels: 5600000),
+  kobo(
+      "Kobo",
+      "Kobo's store: everything works in its phone and tablet apps, and the "
+          "pages read as pictures on its e-readers; pages kept within "
+          "Kobo's 3.8 megapixels",
+      interactive: true,
+      maxPixels: 3800000),
+  plain(
+      "Google Play & libraries",
+      "Google Play Books and the library services: the pages as pictures, "
+          "as they run no scripts",
+      interactive: false),
+  direct(
+      "Direct sale",
+      "Sold yourself, read in Bison Relay, Thorium or Apple Books: "
+          "everything on, nothing held back",
+      interactive: true);
+
+  final String label, description;
+  final bool interactive;
+
+  /// maxPixels is the most a page may have, or 0 for no limit.
+  final int maxPixels;
+  const StoreProfile(this.label, this.description,
+      {required this.interactive, this.maxPixels = 0});
+
+  DocumentAs get document =>
+      interactive ? DocumentAs.interactiveEpub : DocumentAs.epub;
+
+  /// jpeg is whether its pages are JPEG rather than PNG.
+  bool get jpeg => this == kindle;
+
+  static StoreProfile fromName(String? name) =>
+      values.firstWhere((p) => p.name == name, orElse: () => direct);
+}
+
+/// scaleFor is [scale] held to [profile]'s page limit for [document].
+double scaleFor(CanvasDocument document, StoreProfile profile, double scale) {
+  if (profile.maxPixels <= 0) return scale;
+  var size = document.size.exportSize;
+  var pixels = size.width * size.height * scale * scale;
+  if (pixels <= profile.maxPixels) return scale;
+  return scale * math.sqrt(profile.maxPixels / pixels) * 0.999;
+}
+
+/// Readiness is one thing a store will say of the book: [problem] is what
+/// it would refuse, else what to know.
+typedef Readiness = ({bool problem, String text});
+
+/// storeReadiness is what [profile]'s store would say of [document] made at
+/// [scale]: what is missing, what is made smaller, and what it costs.
+List<Readiness> storeReadiness(CanvasDocument document, StoreProfile profile,
+    {double scale = 1, bool ffmpeg = true}) {
+  var book = document.pages.book;
+  var out = <Readiness>[];
+  if (book.author.isEmpty) {
+    out.add((problem: true, text: "No author: every store asks for one."));
+  }
+  if (book.description.isEmpty) {
+    out.add((
+      problem: false,
+      text: "No description: the store shows one beside the cover."
+    ));
+  }
+  var edition =
+      profile.interactive ? BookEdition.interactive : BookEdition.ebook;
+  if (book.isbnOf(edition).isEmpty && profile == StoreProfile.apple) {
+    out.add((
+      problem: false,
+      text: "No ISBN for the ${edition.label.toLowerCase()}: Apple takes one "
+          "only with the first upload, never later."
+    ));
+  }
+  if (scaleFor(document, profile, scale) < scale) {
+    var pixels = profile.maxPixels / 1000000;
+    out.add((
+      problem: false,
+      text: "Pages are made a little smaller, to ${profile.label}'s "
+          "$pixels-megapixel limit."
+    ));
+  }
+  switch (profile) {
+    case StoreProfile.kindle:
+      var mb = estimateDocumentBytes(document, scale: scale) /
+          (1024 * 1024) *
+          (ffmpeg ? 0.5 : 1);
+      out.add((
+        problem: false,
+        text: "About ${mb.toStringAsFixed(1)} MB: at the 70% royalty Amazon "
+            "keeps \$${(mb * 0.15).toStringAsFixed(2)} of each US sale for "
+            "delivering it."
+      ));
+      if (!ffmpeg) {
+        out.add((
+          problem: false,
+          text: "Install ffmpeg and the pages are made JPEG, about a "
+              "half the size (the History book: 9.0 MB to 4.6 MB), so Amazon "
+              "keeps less of each sale."
+        ));
+      }
+    case StoreProfile.apple:
+      out.add((
+        problem: false,
+        text: "Apple refuses pages whose words are part of the picture, "
+            "comics excepted: list the book under Comics & Graphic Novels."
+      ));
+    case StoreProfile.kobo || StoreProfile.plain || StoreProfile.direct:
+      break;
+  }
+  return out;
+}
+
+/// _jpegOf is [png] as a JPEG, through ffmpeg; null where it cannot be made.
+/// Its working folder is its own, made and cleared here.
+Future<Uint8List?> _jpegOf(Uint8List png, String ffmpeg) async {
+  var work = await Directory.systemTemp.createTemp("bruig-jpeg");
+  try {
+    var from = path.join(work.path, "page.png");
+    var to = path.join(work.path, "page.jpg");
+    await File(from).writeAsBytes(png);
+    var run = await Process.run(
+        ffmpeg, ["-y", "-loglevel", "error", "-i", from, "-q:v", "3", to]);
+    if (run.exitCode != 0) return null;
+    return await File(to).readAsBytes();
+  } catch (_) {
+    return null;
+  } finally {
+    try {
+      await work.delete(recursive: true);
+    } catch (_) {}
+  }
 }
 
 /// DocumentProgress reports how far the export has got, a page at a time.
@@ -127,7 +281,16 @@ Future<CanvasExport?> renderDocument(
   /// turned on its side, as a printed book opens; null follows the
   /// canvas's own facing pages. Not for a PDF.
   bool? spreads,
+
+  /// profile makes the EPUB for one store (StoreProfile): plain or
+  /// interactive as it needs, its pages within its limit, JPEG for Kindle.
+  StoreProfile? profile,
 }) async {
+  if (profile != null) {
+    as = profile.document;
+    scale = scaleFor(document, profile, scale);
+  }
+  var jpegWith = (profile?.jpeg ?? false) ? await ffmpegPath() : null;
   // The looks' shaders, for the pages and an interactive book's layers.
   await loadExportShaders();
   try {
@@ -155,9 +318,9 @@ Future<CanvasExport?> renderDocument(
 
     var facing = document.isPages && (spreads ?? document.pages.facing);
     // A comic's panels in reading order, for a reader that reads panel by
-    // panel (Kindle's Panel View; see EpubPanel). A plain book only: on an
-    // interactive one the places to tap would sit over its buttons.
-    var panels = as == DocumentAs.epub
+    // panel (Kindle's Panel View, Bison Relay's; see EpubPanel). Listed in
+    // either book; only a plain one has places to tap (epub_writer).
+    var panels = as != DocumentAs.pdf
         ? panelSteps(document).where((p) => !p.whole).toList()
         : const <PanelStep>[];
     var sheets = <PdfPicture>[];
@@ -188,6 +351,10 @@ Future<CanvasExport?> renderDocument(
         }
         var png = await image.toByteData(format: ui.ImageByteFormat.png);
         if (png == null) return null;
+        // A Kindle page as a JPEG, where ffmpeg can make one: Amazon charges
+        // for every megabyte of every sale.
+        var picture = png.buffer.asUint8List();
+        var jpeg = jpegWith == null ? null : await _jpegOf(picture, jpegWith);
         // Design units to the page picture's pixels, for the hotspots.
         var pixels = image.width / document.size.size.width;
         var extra = builder == null
@@ -195,7 +362,8 @@ Future<CanvasExport?> renderDocument(
             : await builder.page(document, i, pixels,
                 width: image.width, height: image.height);
         pages.add(EpubPage(
-          png: png.buffer.asUint8List(),
+          png: jpeg ?? picture,
+          jpeg: jpeg != null,
           width: image.width,
           height: image.height,
           title: document.nameOf(i),
@@ -408,6 +576,7 @@ EpubPage _withCover(EpubPage page) => EpubPage(
       soundtrack: page.soundtrack,
       start: page.start,
       panels: page.panels,
+      jpeg: page.jpeg,
     );
 
 /// estimateDocumentBytes is roughly how large the file will be: a page's

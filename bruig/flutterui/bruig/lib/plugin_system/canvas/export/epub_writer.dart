@@ -253,11 +253,21 @@ class EpubPage {
     this.soundtrack,
     this.start,
     this.panels = const [],
+    this.jpeg = false,
   });
 
   /// panels are the page's panels as a comic is read, for a plain book.
   final List<EpubPanel> panels;
+
+  /// jpeg says [png] holds a JPEG: a Kindle book's pages, smaller, as Amazon
+  /// charges by the megabyte.
+  final bool jpeg;
 }
+
+/// _pageImage is page [index]'s picture file, and _pageMime its type.
+String _pageImage(int index, EpubPage page) =>
+    "page$index.${page.jpeg ? "jpg" : "png"}";
+String _pageMime(EpubPage page) => page.jpeg ? "image/jpeg" : "image/png";
 
 /// filmTarget is what a playhead button on a page aims at: the page's
 /// playhead, named "film" in media.js.
@@ -322,9 +332,10 @@ Uint8List writeEpub({
 
   for (var (i, page) in pages.indexed) {
     _add(archive, "OEBPS/page$i.xhtml", _pageXhtml(i, page, interactive));
-    archive.addFile(ArchiveFile("OEBPS/page$i.png", page.png.length, page.png)
-      // Already deflated inside the PNG.
-      ..compression = CompressionType.none);
+    archive.addFile(
+        ArchiveFile("OEBPS/${_pageImage(i, page)}", page.png.length, page.png)
+          // Already deflated inside the PNG.
+          ..compression = CompressionType.none);
   }
   // The start screens' pictures: see EpubStart.
   var starts = <EpubFile>[
@@ -341,7 +352,9 @@ Uint8List writeEpub({
   }
 
   _add(archive, "OEBPS/nav.xhtml", _nav(pages));
-  var panelled = !interactive && pages.any((p) => p.panels.isNotEmpty);
+  // Every book with panels lists them (our reader reads either); only a
+  // plain one has the places to tap, which would sit over a button.
+  var panelled = pages.any((p) => p.panels.isNotEmpty);
   if (panelled) _add(archive, "OEBPS/regions.xhtml", _regions(pages));
   _add(
       archive,
@@ -427,7 +440,7 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
           stage,
           page,
           box,
-          poster: "page$index.png",
+          poster: _pageImage(index, page),
           start: page.start == null ? null : "start$index",
           inside: framed ? hotspots : "",
           [
@@ -441,7 +454,8 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
               for (var a in page.actions)
                 if (inLayer(a.element)) (a.element!, actionTag(a)),
             ])
-      : '<img class="page" src="page$index.png" alt="${_text(page.title)}"/>';
+      : '<img class="page" src="${_pageImage(index, page)}" '
+          'alt="${_text(page.title)}"/>';
   var script = interactive && page.scripted
       ? '\n    <script src="media.js"></script>'
       : "";
@@ -1756,7 +1770,8 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
       '<item id="page$i" href="page$i.xhtml" '
           'media-type="application/xhtml+xml"'
           '${interactive && page.scripted ? ' properties="scripted"' : ''}/>',
-      '<item id="img$i" href="page$i.png" media-type="image/png"'
+      '<item id="img$i" href="${_pageImage(i, page)}" '
+          'media-type="${_pageMime(page)}"'
           '${i == coverAt && !cover ? ' properties="cover-image"' : ''}/>',
     ],
     // A reader will not open a file the manifest does not list.
@@ -1833,7 +1848,8 @@ String _panelTags(int index, EpubPage page) {
         '<div class="pv-dim"></div>'
         '<div class="pv-window" style="left:${_px((w - vw) / 2)};'
         'top:${_px((h - vh) / 2)};width:${_px(vw)};height:${_px(vh)}">'
-        '<img src="page$index.png" alt="" style="left:${_px(-p.x * z)};'
+        '<img src="${_pageImage(index, page)}" alt="" '
+        'style="left:${_px(-p.x * z)};'
         'top:${_px(-p.y * z)};width:${_px(w * z)};height:${_px(h * z)}"/>'
         '</div></div>');
   }

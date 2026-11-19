@@ -148,7 +148,11 @@ void main() {
       await pick<PublishAs>(tester, "Document");
       expect(find.text("Sound quality"), findsNothing,
           reason: "a PDF has no sound");
-      await pick<DocumentAs>(tester, "Interactive EPUB");
+      // An EPUB for a store that plays sound: Apple Books.
+      await tester.tap(find.text("PDF").last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("EPUB for Apple Books").last);
+      await tester.pumpAndSettle();
       expect(find.text("Sound quality"), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

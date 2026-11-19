@@ -128,6 +128,10 @@ class _PublishSheetState extends State<_PublishSheet> {
 
   /// _documentAs is which sort of document, when Document is being made.
   DocumentAs _documentAs = DocumentAs.pdf;
+
+  /// _profile is the store an EPUB is made for (StoreProfile), which also
+  /// decides whether it is the interactive one.
+  StoreProfile _profile = StoreProfile.direct;
   PublishTo _to = PublishTo.file;
 
   // The still settings, then the animation's, kept side by side so
@@ -281,6 +285,7 @@ class _PublishSheetState extends State<_PublishSheet> {
   Map<String, dynamic> get _settings => {
         "as": _as.name,
         "document": _documentAs.name,
+        "profile": _profile.name,
         "to": _to.name,
         "format": _format.name,
         "quality": _quality,
@@ -326,6 +331,11 @@ class _PublishSheetState extends State<_PublishSheet> {
         saved[key] is num ? saved[key] as num : fallback;
     _as = pick(PublishAs.values, "as", _as);
     _documentAs = pick(DocumentAs.values, "document", _documentAs);
+    // Saved before there were stores to choose: a plain book for the
+    // stores that read pictures, an interactive one sold directly.
+    _profile = pick(StoreProfile.values, "profile",
+        _documentAs == DocumentAs.epub ? StoreProfile.plain : _profile);
+    if (_documentAs != DocumentAs.pdf) _documentAs = _profile.document;
     _to = pick(PublishTo.values, "to", _to);
     _format = pick(EmbedFormat.values, "format", _format);
     _quality = number("quality", _quality).toInt().clamp(1, 100);
@@ -469,6 +479,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         return renderDocument(
           document,
           as: _documentAs,
+          profile: _documentAs == DocumentAs.pdf ? null : _profile,
           soundKbps: _sound.kbps,
           spreads: widget.document.isPages ? _spreads : null,
           scale: _scale,
@@ -1137,17 +1148,53 @@ class _PublishSheetState extends State<_PublishSheet> {
 
       case PublishAs.document:
         return [
+          // A PDF, or an EPUB for one store: each store's book carries what
+          // it runs and is held to its rules (StoreProfile).
           Row(children: [
             Expanded(
-              child: _dropdown<DocumentAs>(
+              child: _dropdown<String>(
                 theme,
                 "Format",
-                _documentAs,
-                [for (var d in DocumentAs.values) (d, d.label)],
-                (v) => setState(() => _documentAs = v),
+                _documentAs == DocumentAs.pdf ? "pdf" : _profile.name,
+                [
+                  ("pdf", DocumentAs.pdf.label),
+                  for (var p in StoreProfile.values) (p.name, "EPUB for ${p.label}"),
+                ],
+                (v) => setState(() {
+                  if (v == "pdf") {
+                    _documentAs = DocumentAs.pdf;
+                  } else {
+                    _profile = StoreProfile.fromName(v);
+                    _documentAs = _profile.document;
+                  }
+                }),
               ),
             ),
           ]),
+          if (_documentAs != DocumentAs.pdf)
+            for (var r in storeReadiness(widget.document, _profile,
+                scale: _scale, ffmpeg: _ffmpeg))
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                          r.problem
+                              ? Icons.error_outline
+                              : Icons.info_outline,
+                          size: 15,
+                          color: r.problem
+                              ? theme.colors.error
+                              : theme.colors.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Expanded(
+                          child: Text(r.text,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colors.onSurfaceVariant))),
+                    ]),
+              ),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
@@ -1204,7 +1251,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 (v) => setState(() => _sound = _sound.copyWith(kbps: v))),
           ],
           const SizedBox(height: 10),
-          Txt.S("${_documentAs.description}. "
+          Txt.S("${_documentAs == DocumentAs.pdf ? _documentAs.description : _profile.description}. "
               "${widget.document.allScenes.length} "
               "page${widget.document.allScenes.length == 1 ? "" : "s"}, "
               "each at the size this canvas is."
