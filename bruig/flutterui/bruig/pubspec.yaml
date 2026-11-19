@@ -209,6 +209,8 @@ flutter:
     - assets/icons/icons-menu-pages.svg
     - assets/icons/icons-menu-settings.svg
     - assets/icons/icons-menu-stats.svg
+    - assets/icons/icons-menu-writing.svg
+    - assets/icons/icons-menu-writing-key.svg
     - assets/br_instant_call.mp3
     # The Speech device's breaths, laughs, sighs and coughs: CC0, see
     # its SOURCES.md.

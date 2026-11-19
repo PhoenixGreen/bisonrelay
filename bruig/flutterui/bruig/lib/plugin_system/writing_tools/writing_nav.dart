@@ -17,6 +17,12 @@ import 'package:flutter/material.dart';
 // is not in the built-in list appears in the navigation, in the route
 // dispatch, and in Settings > Appearance > Menu.
 
+/// writingMenuDrawing and writingMenuKey are the two halves of the Writing
+/// section's own mark: a W with its dimension lines, and the cursor standing
+/// after it, which stays orange.
+const writingMenuDrawing = "assets/icons/icons-menu-writing.svg";
+const writingMenuKey = "assets/icons/icons-menu-writing-key.svg";
+
 /// hasWritingPage is whether the Writing section currently exists.
 ///
 /// Asked of the menu rather than of the plugin manager, so that the one
@@ -78,7 +84,7 @@ class WritingNavModel extends ChangeNotifier {
       WritingScreen.routeName,
       (context) => const WritingScreen(),
       (context) => const WritingScreenTitle(),
-      const SidebarIcon(Icons.edit_note_outlined, false),
+      const SidebarAccentSvgIcon(writingMenuDrawing, writingMenuKey),
       <SubMenuInfo>[],
     ));
   }

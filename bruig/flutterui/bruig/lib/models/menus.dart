@@ -887,6 +887,36 @@ class MenuIcon extends StatelessWidget {
   }
 }
 
+/// menuAccentOrange is Bison Relay's orange: the one colour a two-part menu
+/// icon keeps under every theme.
+const menuAccentOrange = Color(0xFFFF7A1F);
+
+/// SidebarAccentSvgIcon is a menu icon in two pictures on one box: a drawing
+/// in the colour the menu gives an item, selected or not, and over it one
+/// part that keeps [menuAccentOrange]. Two files because an SVG here is
+/// tinted whole.
+class SidebarAccentSvgIcon extends StatelessWidget {
+  final String drawingAsset;
+  final String accentAsset;
+  const SidebarAccentSvgIcon(this.drawingAsset, this.accentAsset, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // The ambient IconTheme is how both nav bars say an item is selected.
+    var color = IconTheme.of(context).color ??
+        Theme.of(context).colorScheme.onSurfaceVariant;
+    // passthrough: the phone's bar gives the icon a fixed box to fill, the
+    // sidebar leaves it at its own 24, and both pictures must do the same.
+    return Stack(fit: StackFit.passthrough, children: [
+      SvgPicture.asset(drawingAsset,
+          colorFilter: ColorFilter.mode(color, BlendMode.srcIn)),
+      SvgPicture.asset(accentAsset,
+          colorFilter:
+              const ColorFilter.mode(menuAccentOrange, BlendMode.srcIn)),
+    ]);
+  }
+}
+
 class SidebarSvgIcon extends StatelessWidget {
   final String assetName;
   const SidebarSvgIcon(this.assetName, {super.key});
