@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/book_details.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -19,6 +20,8 @@ import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
+    show CanvasStateNote;
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -641,6 +644,111 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     ]);
   }
 
+  /// _bookGroup is the book's details (BookDetails): what each EPUB tells a
+  /// store and a reader, and each edition's ISBN. Ken, 2026-11-19: set
+  /// before the first upload, as Apple takes an ISBN with no other.
+  ///
+  /// No CanvasLineBreak in it: this panel lays its groups along a strip
+  /// with no width of its own, where a break is infinitely wide.
+  Widget _bookGroup(CanvasDocument document) {
+    var book = document.pages.book;
+    // The details now, not as built: the panel is not rebuilt while a field
+    // is typed in.
+    void typed(BookDetails Function(BookDetails) change) {
+      controller.beginInteraction();
+      var now = controller.document;
+      controller.apply(
+          now.copyWith(pages: now.pages.copyWith(book: change(now.pages.book))),
+          transient: true);
+    }
+
+    Widget field(String key, String label, String value,
+            BookDetails Function(BookDetails, String) set,
+            {double width = 160, int lines = 1, String hint = ""}) =>
+        CanvasTextField(
+          key: ValueKey("book$key"),
+          label: label,
+          value: value,
+          width: width,
+          maxLines: lines,
+          hint: hint,
+          onChanged: (v) => typed((b) => set(b, v)),
+          onCommit: controller.endInteraction,
+        );
+
+    var problems = [
+      for (var e in BookEdition.values)
+        if (isbnProblem(book.isbnOf(e)) case var p?) "${e.label}: $p",
+    ];
+    var missing = [
+      if (book.author.isEmpty) "an author",
+      if (book.description.isEmpty) "a description",
+    ];
+    // Said where it is seen, not behind the "?": a wrong ISBN uploaded to
+    // Apple cannot be changed. A fixed width, as the panel's strip has none.
+    var notes = [
+      if (problems.isNotEmpty) "${problems.join(". ")}.",
+      if (missing.isNotEmpty) "Stores ask for ${missing.join(" and ")}.",
+    ];
+    return CanvasControlGroup(
+      key: const ValueKey("bookDetails"),
+      label: "Book details",
+      below: notes.isEmpty
+          ? null
+          : SizedBox(
+              width: 380,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                for (var n in notes) CanvasStateNote(n),
+              ]),
+            ),
+      help: "What every EPUB of this book tells a store and a reader: who "
+          "wrote it, what it is about, its series, and the ISBN of each "
+          "edition. The plain and interactive ebooks and the printed book "
+          "are separate editions, each with its own ISBN where it has one. "
+          "Apple Books takes an ISBN only with a book's first upload, never "
+          "later.",
+      children: [
+        field("Subtitle", "Subtitle", book.subtitle,
+            (b, v) => b.copyWith(subtitle: v),
+            width: 220),
+        field("Author", "Author", book.author, (b, v) => b.copyWith(author: v),
+            hint: "Several: commas between"),
+        field("Publisher", "Publisher", book.publisher,
+            (b, v) => b.copyWith(publisher: v)),
+        field("Language", "Language", book.language,
+            (b, v) => b.copyWith(language: v.trim()),
+            width: 70, hint: "en"),
+        field("Published", "Published", book.published,
+            (b, v) => b.copyWith(published: v.trim()),
+            width: 100, hint: "2026-12-01"),
+        field("Description", "Description", book.description,
+            (b, v) => b.copyWith(description: v),
+            width: 380, lines: 4, hint: "The blurb a store shows"),
+        field("Subjects", "Subjects", book.subjects,
+            (b, v) => b.copyWith(subjects: v),
+            width: 220, hint: "Comics, Cryptocurrency, History"),
+        field("Series", "Series", book.series, (b, v) => b.copyWith(series: v)),
+        CanvasNumberField(
+          key: const ValueKey("bookSeriesNumber"),
+          label: "Number",
+          value: book.seriesNumber.toDouble(),
+          min: 0,
+          max: 9999,
+          decimals: 0,
+          width: 58,
+          onChanged: (v) => typed((b) => b.copyWith(seriesNumber: v.round())),
+          onCommit: controller.endInteraction,
+        ),
+        field("Rights", "Rights", book.rights, (b, v) => b.copyWith(rights: v),
+            width: 220, hint: "© 2026 Your name"),
+        for (var e in BookEdition.values)
+          field("Isbn${e.name}", "ISBN, ${e.label.toLowerCase()}",
+              book.isbnOf(e), (b, v) => b.withIsbn(e, v),
+              width: 150, hint: "978-…"),
+      ],
+    );
+  }
+
   /// _pageValuesGroup is the shown page's own values (CanvasScene.values),
   /// which a text on it -- usually one on the master canvas -- shows with
   /// a {value:Name} field: the chapter a running head names, say.
@@ -1083,6 +1191,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                   "paired with another page"}, and show the master's "
               "backdrop without its elements unless Master on covers is on."),
         ]),
+      // What a store and a reader are told about the book.
+      if (document.isPages) _bookGroup(document),
       // The shown page's own values, which a text's {value:Name} reads.
       if (document.isPages && !document.editingMaster)
         _pageValuesGroup(document),

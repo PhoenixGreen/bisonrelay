@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/opaque_png.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
+import 'package:bruig/plugin_system/canvas/model/book_details.dart';
 import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
@@ -236,12 +237,20 @@ Future<CanvasExport?> renderDocument(
     // No cover marked: the first page stands in.
     if (!pages.any((p) => p.cover)) pages[0] = _withCover(pages[0]);
 
+    // Each edition under its own ISBN, where it has one; a book without
+    // keeps the identifier made from its title.
+    var book = document.pages.book;
+    var isbn = isbn13(book.isbnOf(as == DocumentAs.interactiveEpub
+        ? BookEdition.interactive
+        : BookEdition.ebook));
     var bytes = writeEpub(
       pages: pages,
       title: document.title,
+      identifier: isbn == null ? null : "urn:isbn:$isbn",
       interactive: as == DocumentAs.interactiveEpub,
       facing: facing,
       cover: cover,
+      book: book,
     );
     return CanvasExport(bytes, as.mime,
         width: pages.first.width, height: pages.first.height);

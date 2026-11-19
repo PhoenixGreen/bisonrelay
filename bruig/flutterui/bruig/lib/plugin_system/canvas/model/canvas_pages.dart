@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/book_details.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonInt;
 
@@ -82,12 +83,17 @@ class PagesSpec {
   /// head or a page number has no place on it.
   final bool masterOnCovers;
 
+  /// book is what a store and a reader are told about the book: its author,
+  /// description and each edition's ISBN (book_details.dart).
+  final BookDetails book;
+
   const PagesSpec({
     this.facing = false,
     this.startAt = 1,
     this.countCovers = false,
     this.numbersOnCovers = false,
     this.masterOnCovers = false,
+    this.book = const BookDetails(),
   });
 
   PagesSpec copyWith({
@@ -96,6 +102,7 @@ class PagesSpec {
     bool? countCovers,
     bool? numbersOnCovers,
     bool? masterOnCovers,
+    BookDetails? book,
   }) =>
       PagesSpec(
         facing: facing ?? this.facing,
@@ -103,6 +110,7 @@ class PagesSpec {
         countCovers: countCovers ?? this.countCovers,
         numbersOnCovers: numbersOnCovers ?? this.numbersOnCovers,
         masterOnCovers: masterOnCovers ?? this.masterOnCovers,
+        book: book ?? this.book,
       );
 
   /// isDefault is every setting at its default, so nothing need be saved.
@@ -111,7 +119,8 @@ class PagesSpec {
       startAt == 1 &&
       !countCovers &&
       !numbersOnCovers &&
-      !masterOnCovers;
+      !masterOnCovers &&
+      book.isDefault;
 
   Map<String, dynamic> toJson() => {
         if (facing) "facing": true,
@@ -119,6 +128,7 @@ class PagesSpec {
         if (countCovers) "countCovers": true,
         if (numbersOnCovers) "numbersOnCovers": true,
         if (masterOnCovers) "masterOnCovers": true,
+        if (!book.isDefault) "book": book.toJson(),
       };
 
   factory PagesSpec.fromJson(Map<String, dynamic> json) => PagesSpec(
@@ -127,6 +137,7 @@ class PagesSpec {
         countCovers: jsonBool(json["countCovers"], false),
         numbersOnCovers: jsonBool(json["numbersOnCovers"], false),
         masterOnCovers: jsonBool(json["masterOnCovers"], false),
+        book: BookDetails.fromJson(json["book"]),
       );
 }
 

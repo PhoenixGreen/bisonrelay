@@ -94,104 +94,105 @@ import '../test/canvas_polyhaven_test.dart' as t87;
 import '../test/canvas_preset_scaling_test.dart' as t88;
 import '../test/canvas_publish_scenes_test.dart' as t89;
 import '../test/canvas_push_test.dart' as t90;
-import '../test/canvas_received_limits_test.dart' as t91;
-import '../test/canvas_responsive_test.dart' as t92;
-import '../test/canvas_returns_test.dart' as t93;
-import '../test/canvas_row_names_test.dart' as t94;
-import '../test/canvas_saved_presets_test.dart' as t95;
-import '../test/canvas_scenes_test.dart' as t96;
-import '../test/canvas_score_edit_test.dart' as t97;
-import '../test/canvas_segmentation_test.dart' as t98;
-import '../test/canvas_session_keep_test.dart' as t99;
-import '../test/canvas_settled_frame_test.dart' as t100;
-import '../test/canvas_sheet_files_test.dart' as t101;
-import '../test/canvas_sheet_formula_test.dart' as t102;
-import '../test/canvas_sidebar_layout_test.dart' as t103;
-import '../test/canvas_slot_cues_test.dart' as t104;
-import '../test/canvas_sound_tools_test.dart' as t105;
-import '../test/canvas_speech_cues_test.dart' as t106;
-import '../test/canvas_speech_text_test.dart' as t107;
-import '../test/canvas_stage_scene_test.dart' as t108;
-import '../test/canvas_stock_test.dart' as t109;
-import '../test/canvas_storage_test.dart' as t110;
-import '../test/canvas_synth_patch_test.dart' as t111;
-import '../test/canvas_synth_test.dart' as t112;
-import '../test/canvas_table_sort_test.dart' as t113;
-import '../test/canvas_table_turns_redact_test.dart' as t114;
-import '../test/canvas_text_chart_animation_test.dart' as t115;
-import '../test/canvas_text_document_test.dart' as t116;
-import '../test/canvas_text_flow_test.dart' as t117;
-import '../test/canvas_text_pieces_in_turn_test.dart' as t118;
-import '../test/canvas_tile_scene_test.dart' as t119;
-import '../test/canvas_timeline_fit_test.dart' as t120;
-import '../test/canvas_transition_shapes_test.dart' as t121;
-import '../test/canvas_vector_export_test.dart' as t122;
-import '../test/canvas_vector_import_test.dart' as t123;
-import '../test/canvas_video_test.dart' as t124;
-import '../test/canvas_vrm_convert_test.dart' as t125;
-import '../test/canvas_warp_test.dart' as t126;
-import '../test/code_highlight_test.dart' as t127;
-import '../test/composer_rebuild_test.dart' as t128;
-import '../test/composer_resume_test.dart' as t129;
-import '../test/default_theme_matches_palette_test.dart' as t130;
-import '../test/display_path_test.dart' as t131;
-import '../test/element_specs_test.dart' as t132;
-import '../test/embed_options_test.dart' as t133;
-import '../test/embed_store_test.dart' as t134;
-import '../test/file_preview_markdown_test.dart' as t135;
-import '../test/folder_label_test.dart' as t136;
-import '../test/image_header_test.dart' as t137;
-import '../test/library_name_test.dart' as t138;
-import '../test/link_card_domains_test.dart' as t139;
-import '../test/manage_bar_test.dart' as t140;
-import '../test/markdown_line_breaks_test.dart' as t141;
-import '../test/markdown_style_test.dart' as t142;
-import '../test/menu_icons_test.dart' as t143;
-import '../test/nav_items_test.dart' as t144;
-import '../test/notes_storage_test.dart' as t145;
-import '../test/page_documents_test.dart' as t146;
-import '../test/page_image_test.dart' as t147;
-import '../test/page_open_in_writing_test.dart' as t148;
-import '../test/page_partials_test.dart' as t149;
-import '../test/page_publish_embeds_test.dart' as t150;
-import '../test/page_size_test.dart' as t151;
-import '../test/pages_history_test.dart' as t152;
-import '../test/pages_store_load_test.dart' as t153;
-import '../test/pages_store_test.dart' as t154;
-import '../test/paint_spec_test.dart' as t155;
-import '../test/palette_contrast_test.dart' as t156;
-import '../test/pay_button_test.dart' as t157;
-import '../test/picture_name_test.dart' as t158;
-import '../test/plugin_system_layering_test.dart' as t159;
-import '../test/png_fixture_test.dart' as t160;
-import '../test/post_library_test.dart' as t161;
-import '../test/post_reorder_test.dart' as t162;
-import '../test/post_storage_test.dart' as t163;
-import '../test/preview_nav_test.dart' as t164;
-import '../test/product_picture_test.dart' as t165;
-import '../test/purchases_test.dart' as t166;
-import '../test/reading_position_test.dart' as t167;
-import '../test/refusal_text_test.dart' as t168;
-import '../test/reserved_folders_test.dart' as t169;
-import '../test/rtc_create_test.dart' as t170;
-import '../test/spellcheck_suggestions_test.dart' as t171;
-import '../test/store_goods_test.dart' as t172;
-import '../test/thesaurus_test.dart' as t173;
-import '../test/ulysses_guide_test.dart' as t174;
-import '../test/writing_analysis_test.dart' as t175;
-import '../test/writing_anchor_test.dart' as t176;
-import '../test/writing_benchmark_test.dart' as t177;
-import '../test/writing_dates_test.dart' as t178;
-import '../test/writing_document_checks_test.dart' as t179;
-import '../test/writing_ignore_test.dart' as t180;
-import '../test/writing_language_test.dart' as t181;
-import '../test/writing_not_prose_test.dart' as t182;
-import '../test/writing_paragraph_scope_test.dart' as t183;
-import '../test/writing_prefs_test.dart' as t184;
-import '../test/writing_rule_examples_test.dart' as t185;
-import '../test/writing_section_test.dart' as t186;
-import '../test/writing_spelling_quality_test.dart' as t187;
-import '../test/writing_stats_test.dart' as t188;
+import '../test/canvas_reader_test_book_test.dart' as t91;
+import '../test/canvas_received_limits_test.dart' as t92;
+import '../test/canvas_responsive_test.dart' as t93;
+import '../test/canvas_returns_test.dart' as t94;
+import '../test/canvas_row_names_test.dart' as t95;
+import '../test/canvas_saved_presets_test.dart' as t96;
+import '../test/canvas_scenes_test.dart' as t97;
+import '../test/canvas_score_edit_test.dart' as t98;
+import '../test/canvas_segmentation_test.dart' as t99;
+import '../test/canvas_session_keep_test.dart' as t100;
+import '../test/canvas_settled_frame_test.dart' as t101;
+import '../test/canvas_sheet_files_test.dart' as t102;
+import '../test/canvas_sheet_formula_test.dart' as t103;
+import '../test/canvas_sidebar_layout_test.dart' as t104;
+import '../test/canvas_slot_cues_test.dart' as t105;
+import '../test/canvas_sound_tools_test.dart' as t106;
+import '../test/canvas_speech_cues_test.dart' as t107;
+import '../test/canvas_speech_text_test.dart' as t108;
+import '../test/canvas_stage_scene_test.dart' as t109;
+import '../test/canvas_stock_test.dart' as t110;
+import '../test/canvas_storage_test.dart' as t111;
+import '../test/canvas_synth_patch_test.dart' as t112;
+import '../test/canvas_synth_test.dart' as t113;
+import '../test/canvas_table_sort_test.dart' as t114;
+import '../test/canvas_table_turns_redact_test.dart' as t115;
+import '../test/canvas_text_chart_animation_test.dart' as t116;
+import '../test/canvas_text_document_test.dart' as t117;
+import '../test/canvas_text_flow_test.dart' as t118;
+import '../test/canvas_text_pieces_in_turn_test.dart' as t119;
+import '../test/canvas_tile_scene_test.dart' as t120;
+import '../test/canvas_timeline_fit_test.dart' as t121;
+import '../test/canvas_transition_shapes_test.dart' as t122;
+import '../test/canvas_vector_export_test.dart' as t123;
+import '../test/canvas_vector_import_test.dart' as t124;
+import '../test/canvas_video_test.dart' as t125;
+import '../test/canvas_vrm_convert_test.dart' as t126;
+import '../test/canvas_warp_test.dart' as t127;
+import '../test/code_highlight_test.dart' as t128;
+import '../test/composer_rebuild_test.dart' as t129;
+import '../test/composer_resume_test.dart' as t130;
+import '../test/default_theme_matches_palette_test.dart' as t131;
+import '../test/display_path_test.dart' as t132;
+import '../test/element_specs_test.dart' as t133;
+import '../test/embed_options_test.dart' as t134;
+import '../test/embed_store_test.dart' as t135;
+import '../test/file_preview_markdown_test.dart' as t136;
+import '../test/folder_label_test.dart' as t137;
+import '../test/image_header_test.dart' as t138;
+import '../test/library_name_test.dart' as t139;
+import '../test/link_card_domains_test.dart' as t140;
+import '../test/manage_bar_test.dart' as t141;
+import '../test/markdown_line_breaks_test.dart' as t142;
+import '../test/markdown_style_test.dart' as t143;
+import '../test/menu_icons_test.dart' as t144;
+import '../test/nav_items_test.dart' as t145;
+import '../test/notes_storage_test.dart' as t146;
+import '../test/page_documents_test.dart' as t147;
+import '../test/page_image_test.dart' as t148;
+import '../test/page_open_in_writing_test.dart' as t149;
+import '../test/page_partials_test.dart' as t150;
+import '../test/page_publish_embeds_test.dart' as t151;
+import '../test/page_size_test.dart' as t152;
+import '../test/pages_history_test.dart' as t153;
+import '../test/pages_store_load_test.dart' as t154;
+import '../test/pages_store_test.dart' as t155;
+import '../test/paint_spec_test.dart' as t156;
+import '../test/palette_contrast_test.dart' as t157;
+import '../test/pay_button_test.dart' as t158;
+import '../test/picture_name_test.dart' as t159;
+import '../test/plugin_system_layering_test.dart' as t160;
+import '../test/png_fixture_test.dart' as t161;
+import '../test/post_library_test.dart' as t162;
+import '../test/post_reorder_test.dart' as t163;
+import '../test/post_storage_test.dart' as t164;
+import '../test/preview_nav_test.dart' as t165;
+import '../test/product_picture_test.dart' as t166;
+import '../test/purchases_test.dart' as t167;
+import '../test/reading_position_test.dart' as t168;
+import '../test/refusal_text_test.dart' as t169;
+import '../test/reserved_folders_test.dart' as t170;
+import '../test/rtc_create_test.dart' as t171;
+import '../test/spellcheck_suggestions_test.dart' as t172;
+import '../test/store_goods_test.dart' as t173;
+import '../test/thesaurus_test.dart' as t174;
+import '../test/ulysses_guide_test.dart' as t175;
+import '../test/writing_analysis_test.dart' as t176;
+import '../test/writing_anchor_test.dart' as t177;
+import '../test/writing_benchmark_test.dart' as t178;
+import '../test/writing_dates_test.dart' as t179;
+import '../test/writing_document_checks_test.dart' as t180;
+import '../test/writing_ignore_test.dart' as t181;
+import '../test/writing_language_test.dart' as t182;
+import '../test/writing_not_prose_test.dart' as t183;
+import '../test/writing_paragraph_scope_test.dart' as t184;
+import '../test/writing_prefs_test.dart' as t185;
+import '../test/writing_rule_examples_test.dart' as t186;
+import '../test/writing_section_test.dart' as t187;
+import '../test/writing_spelling_quality_test.dart' as t188;
+import '../test/writing_stats_test.dart' as t189;
 
 void main() {
   group('area_gradient_test.dart', () {
@@ -558,396 +559,400 @@ void main() {
     setUpAll(betweenFiles);
     t90.main();
   });
-  group('canvas_received_limits_test.dart', () {
+  group('canvas_reader_test_book_test.dart', () {
     setUpAll(betweenFiles);
     t91.main();
   });
-  group('canvas_responsive_test.dart', () {
+  group('canvas_received_limits_test.dart', () {
     setUpAll(betweenFiles);
     t92.main();
   });
-  group('canvas_returns_test.dart', () {
+  group('canvas_responsive_test.dart', () {
     setUpAll(betweenFiles);
     t93.main();
   });
-  group('canvas_row_names_test.dart', () {
+  group('canvas_returns_test.dart', () {
     setUpAll(betweenFiles);
     t94.main();
   });
-  group('canvas_saved_presets_test.dart', () {
+  group('canvas_row_names_test.dart', () {
     setUpAll(betweenFiles);
     t95.main();
   });
-  group('canvas_scenes_test.dart', () {
+  group('canvas_saved_presets_test.dart', () {
     setUpAll(betweenFiles);
     t96.main();
   });
-  group('canvas_score_edit_test.dart', () {
+  group('canvas_scenes_test.dart', () {
     setUpAll(betweenFiles);
     t97.main();
   });
-  group('canvas_segmentation_test.dart', () {
+  group('canvas_score_edit_test.dart', () {
     setUpAll(betweenFiles);
     t98.main();
   });
-  group('canvas_session_keep_test.dart', () {
+  group('canvas_segmentation_test.dart', () {
     setUpAll(betweenFiles);
     t99.main();
   });
-  group('canvas_settled_frame_test.dart', () {
+  group('canvas_session_keep_test.dart', () {
     setUpAll(betweenFiles);
     t100.main();
   });
-  group('canvas_sheet_files_test.dart', () {
+  group('canvas_settled_frame_test.dart', () {
     setUpAll(betweenFiles);
     t101.main();
   });
-  group('canvas_sheet_formula_test.dart', () {
+  group('canvas_sheet_files_test.dart', () {
     setUpAll(betweenFiles);
     t102.main();
   });
-  group('canvas_sidebar_layout_test.dart', () {
+  group('canvas_sheet_formula_test.dart', () {
     setUpAll(betweenFiles);
     t103.main();
   });
-  group('canvas_slot_cues_test.dart', () {
+  group('canvas_sidebar_layout_test.dart', () {
     setUpAll(betweenFiles);
     t104.main();
   });
-  group('canvas_sound_tools_test.dart', () {
+  group('canvas_slot_cues_test.dart', () {
     setUpAll(betweenFiles);
     t105.main();
   });
-  group('canvas_speech_cues_test.dart', () {
+  group('canvas_sound_tools_test.dart', () {
     setUpAll(betweenFiles);
     t106.main();
   });
-  group('canvas_speech_text_test.dart', () {
+  group('canvas_speech_cues_test.dart', () {
     setUpAll(betweenFiles);
     t107.main();
   });
-  group('canvas_stage_scene_test.dart', () {
+  group('canvas_speech_text_test.dart', () {
     setUpAll(betweenFiles);
     t108.main();
   });
-  group('canvas_stock_test.dart', () {
+  group('canvas_stage_scene_test.dart', () {
     setUpAll(betweenFiles);
     t109.main();
   });
-  group('canvas_storage_test.dart', () {
+  group('canvas_stock_test.dart', () {
     setUpAll(betweenFiles);
     t110.main();
   });
-  group('canvas_synth_patch_test.dart', () {
+  group('canvas_storage_test.dart', () {
     setUpAll(betweenFiles);
     t111.main();
   });
-  group('canvas_synth_test.dart', () {
+  group('canvas_synth_patch_test.dart', () {
     setUpAll(betweenFiles);
     t112.main();
   });
-  group('canvas_table_sort_test.dart', () {
+  group('canvas_synth_test.dart', () {
     setUpAll(betweenFiles);
     t113.main();
   });
-  group('canvas_table_turns_redact_test.dart', () {
+  group('canvas_table_sort_test.dart', () {
     setUpAll(betweenFiles);
     t114.main();
   });
-  group('canvas_text_chart_animation_test.dart', () {
+  group('canvas_table_turns_redact_test.dart', () {
     setUpAll(betweenFiles);
     t115.main();
   });
-  group('canvas_text_document_test.dart', () {
+  group('canvas_text_chart_animation_test.dart', () {
     setUpAll(betweenFiles);
     t116.main();
   });
-  group('canvas_text_flow_test.dart', () {
+  group('canvas_text_document_test.dart', () {
     setUpAll(betweenFiles);
     t117.main();
   });
-  group('canvas_text_pieces_in_turn_test.dart', () {
+  group('canvas_text_flow_test.dart', () {
     setUpAll(betweenFiles);
     t118.main();
   });
-  group('canvas_tile_scene_test.dart', () {
+  group('canvas_text_pieces_in_turn_test.dart', () {
     setUpAll(betweenFiles);
     t119.main();
   });
-  group('canvas_timeline_fit_test.dart', () {
+  group('canvas_tile_scene_test.dart', () {
     setUpAll(betweenFiles);
     t120.main();
   });
-  group('canvas_transition_shapes_test.dart', () {
+  group('canvas_timeline_fit_test.dart', () {
     setUpAll(betweenFiles);
     t121.main();
   });
-  group('canvas_vector_export_test.dart', () {
+  group('canvas_transition_shapes_test.dart', () {
     setUpAll(betweenFiles);
     t122.main();
   });
-  group('canvas_vector_import_test.dart', () {
+  group('canvas_vector_export_test.dart', () {
     setUpAll(betweenFiles);
     t123.main();
   });
-  group('canvas_video_test.dart', () {
+  group('canvas_vector_import_test.dart', () {
     setUpAll(betweenFiles);
     t124.main();
   });
-  group('canvas_vrm_convert_test.dart', () {
+  group('canvas_video_test.dart', () {
     setUpAll(betweenFiles);
     t125.main();
   });
-  group('canvas_warp_test.dart', () {
+  group('canvas_vrm_convert_test.dart', () {
     setUpAll(betweenFiles);
     t126.main();
   });
-  group('code_highlight_test.dart', () {
+  group('canvas_warp_test.dart', () {
     setUpAll(betweenFiles);
     t127.main();
   });
-  group('composer_rebuild_test.dart', () {
+  group('code_highlight_test.dart', () {
     setUpAll(betweenFiles);
     t128.main();
   });
-  group('composer_resume_test.dart', () {
+  group('composer_rebuild_test.dart', () {
     setUpAll(betweenFiles);
     t129.main();
   });
-  group('default_theme_matches_palette_test.dart', () {
+  group('composer_resume_test.dart', () {
     setUpAll(betweenFiles);
     t130.main();
   });
-  group('display_path_test.dart', () {
+  group('default_theme_matches_palette_test.dart', () {
     setUpAll(betweenFiles);
     t131.main();
   });
-  group('element_specs_test.dart', () {
+  group('display_path_test.dart', () {
     setUpAll(betweenFiles);
     t132.main();
   });
-  group('embed_options_test.dart', () {
+  group('element_specs_test.dart', () {
     setUpAll(betweenFiles);
     t133.main();
   });
-  group('embed_store_test.dart', () {
+  group('embed_options_test.dart', () {
     setUpAll(betweenFiles);
     t134.main();
   });
-  group('file_preview_markdown_test.dart', () {
+  group('embed_store_test.dart', () {
     setUpAll(betweenFiles);
     t135.main();
   });
-  group('folder_label_test.dart', () {
+  group('file_preview_markdown_test.dart', () {
     setUpAll(betweenFiles);
     t136.main();
   });
-  group('image_header_test.dart', () {
+  group('folder_label_test.dart', () {
     setUpAll(betweenFiles);
     t137.main();
   });
-  group('library_name_test.dart', () {
+  group('image_header_test.dart', () {
     setUpAll(betweenFiles);
     t138.main();
   });
-  group('link_card_domains_test.dart', () {
+  group('library_name_test.dart', () {
     setUpAll(betweenFiles);
     t139.main();
   });
-  group('manage_bar_test.dart', () {
+  group('link_card_domains_test.dart', () {
     setUpAll(betweenFiles);
     t140.main();
   });
-  group('markdown_line_breaks_test.dart', () {
+  group('manage_bar_test.dart', () {
     setUpAll(betweenFiles);
     t141.main();
   });
-  group('markdown_style_test.dart', () {
+  group('markdown_line_breaks_test.dart', () {
     setUpAll(betweenFiles);
     t142.main();
   });
-  group('menu_icons_test.dart', () {
+  group('markdown_style_test.dart', () {
     setUpAll(betweenFiles);
     t143.main();
   });
-  group('nav_items_test.dart', () {
+  group('menu_icons_test.dart', () {
     setUpAll(betweenFiles);
     t144.main();
   });
-  group('notes_storage_test.dart', () {
+  group('nav_items_test.dart', () {
     setUpAll(betweenFiles);
     t145.main();
   });
-  group('page_documents_test.dart', () {
+  group('notes_storage_test.dart', () {
     setUpAll(betweenFiles);
     t146.main();
   });
-  group('page_image_test.dart', () {
+  group('page_documents_test.dart', () {
     setUpAll(betweenFiles);
     t147.main();
   });
-  group('page_open_in_writing_test.dart', () {
+  group('page_image_test.dart', () {
     setUpAll(betweenFiles);
     t148.main();
   });
-  group('page_partials_test.dart', () {
+  group('page_open_in_writing_test.dart', () {
     setUpAll(betweenFiles);
     t149.main();
   });
-  group('page_publish_embeds_test.dart', () {
+  group('page_partials_test.dart', () {
     setUpAll(betweenFiles);
     t150.main();
   });
-  group('page_size_test.dart', () {
+  group('page_publish_embeds_test.dart', () {
     setUpAll(betweenFiles);
     t151.main();
   });
-  group('pages_history_test.dart', () {
+  group('page_size_test.dart', () {
     setUpAll(betweenFiles);
     t152.main();
   });
-  group('pages_store_load_test.dart', () {
+  group('pages_history_test.dart', () {
     setUpAll(betweenFiles);
     t153.main();
   });
-  group('pages_store_test.dart', () {
+  group('pages_store_load_test.dart', () {
     setUpAll(betweenFiles);
     t154.main();
   });
-  group('paint_spec_test.dart', () {
+  group('pages_store_test.dart', () {
     setUpAll(betweenFiles);
     t155.main();
   });
-  group('palette_contrast_test.dart', () {
+  group('paint_spec_test.dart', () {
     setUpAll(betweenFiles);
     t156.main();
   });
-  group('pay_button_test.dart', () {
+  group('palette_contrast_test.dart', () {
     setUpAll(betweenFiles);
     t157.main();
   });
-  group('picture_name_test.dart', () {
+  group('pay_button_test.dart', () {
     setUpAll(betweenFiles);
     t158.main();
   });
-  group('plugin_system_layering_test.dart', () {
+  group('picture_name_test.dart', () {
     setUpAll(betweenFiles);
     t159.main();
   });
-  group('png_fixture_test.dart', () {
+  group('plugin_system_layering_test.dart', () {
     setUpAll(betweenFiles);
     t160.main();
   });
-  group('post_library_test.dart', () {
+  group('png_fixture_test.dart', () {
     setUpAll(betweenFiles);
     t161.main();
   });
-  group('post_reorder_test.dart', () {
+  group('post_library_test.dart', () {
     setUpAll(betweenFiles);
     t162.main();
   });
-  group('post_storage_test.dart', () {
+  group('post_reorder_test.dart', () {
     setUpAll(betweenFiles);
     t163.main();
   });
-  group('preview_nav_test.dart', () {
+  group('post_storage_test.dart', () {
     setUpAll(betweenFiles);
     t164.main();
   });
-  group('product_picture_test.dart', () {
+  group('preview_nav_test.dart', () {
     setUpAll(betweenFiles);
     t165.main();
   });
-  group('purchases_test.dart', () {
+  group('product_picture_test.dart', () {
     setUpAll(betweenFiles);
     t166.main();
   });
-  group('reading_position_test.dart', () {
+  group('purchases_test.dart', () {
     setUpAll(betweenFiles);
     t167.main();
   });
-  group('refusal_text_test.dart', () {
+  group('reading_position_test.dart', () {
     setUpAll(betweenFiles);
     t168.main();
   });
-  group('reserved_folders_test.dart', () {
+  group('refusal_text_test.dart', () {
     setUpAll(betweenFiles);
     t169.main();
   });
-  group('rtc_create_test.dart', () {
+  group('reserved_folders_test.dart', () {
     setUpAll(betweenFiles);
     t170.main();
   });
-  group('spellcheck_suggestions_test.dart', () {
+  group('rtc_create_test.dart', () {
     setUpAll(betweenFiles);
     t171.main();
   });
-  group('store_goods_test.dart', () {
+  group('spellcheck_suggestions_test.dart', () {
     setUpAll(betweenFiles);
     t172.main();
   });
-  group('thesaurus_test.dart', () {
+  group('store_goods_test.dart', () {
     setUpAll(betweenFiles);
     t173.main();
   });
-  group('ulysses_guide_test.dart', () {
+  group('thesaurus_test.dart', () {
     setUpAll(betweenFiles);
     t174.main();
   });
-  group('writing_analysis_test.dart', () {
+  group('ulysses_guide_test.dart', () {
     setUpAll(betweenFiles);
     t175.main();
   });
-  group('writing_anchor_test.dart', () {
+  group('writing_analysis_test.dart', () {
     setUpAll(betweenFiles);
     t176.main();
   });
-  group('writing_benchmark_test.dart', () {
+  group('writing_anchor_test.dart', () {
     setUpAll(betweenFiles);
     t177.main();
   });
-  group('writing_dates_test.dart', () {
+  group('writing_benchmark_test.dart', () {
     setUpAll(betweenFiles);
     t178.main();
   });
-  group('writing_document_checks_test.dart', () {
+  group('writing_dates_test.dart', () {
     setUpAll(betweenFiles);
     t179.main();
   });
-  group('writing_ignore_test.dart', () {
+  group('writing_document_checks_test.dart', () {
     setUpAll(betweenFiles);
     t180.main();
   });
-  group('writing_language_test.dart', () {
+  group('writing_ignore_test.dart', () {
     setUpAll(betweenFiles);
     t181.main();
   });
-  group('writing_not_prose_test.dart', () {
+  group('writing_language_test.dart', () {
     setUpAll(betweenFiles);
     t182.main();
   });
-  group('writing_paragraph_scope_test.dart', () {
+  group('writing_not_prose_test.dart', () {
     setUpAll(betweenFiles);
     t183.main();
   });
-  group('writing_prefs_test.dart', () {
+  group('writing_paragraph_scope_test.dart', () {
     setUpAll(betweenFiles);
     t184.main();
   });
-  group('writing_rule_examples_test.dart', () {
+  group('writing_prefs_test.dart', () {
     setUpAll(betweenFiles);
     t185.main();
   });
-  group('writing_section_test.dart', () {
+  group('writing_rule_examples_test.dart', () {
     setUpAll(betweenFiles);
     t186.main();
   });
-  group('writing_spelling_quality_test.dart', () {
+  group('writing_section_test.dart', () {
     setUpAll(betweenFiles);
     t187.main();
   });
-  group('writing_stats_test.dart', () {
+  group('writing_spelling_quality_test.dart', () {
     setUpAll(betweenFiles);
     t188.main();
+  });
+  group('writing_stats_test.dart', () {
+    setUpAll(betweenFiles);
+    t189.main();
   });
 }

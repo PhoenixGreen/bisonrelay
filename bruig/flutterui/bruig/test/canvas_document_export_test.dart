@@ -248,7 +248,7 @@ void main() {
           reason: "three leaves, three pages");
 
       var opf = textOf(archive, "OEBPS/content.opf");
-      expect(opf, contains("<dc:title>A little book</dc:title>"));
+      expect(opf, contains('<dc:title id="title">A little book</dc:title>'));
       // The cover stands alone and the two after it face each other, which is
       // the document's own pairing rule and not something a reader can work
       // out.

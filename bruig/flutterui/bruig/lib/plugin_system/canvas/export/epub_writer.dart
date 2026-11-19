@@ -5,6 +5,7 @@ import 'dart:ui' show Rect;
 
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
+import 'package:bruig/plugin_system/canvas/model/book_details.dart';
 
 // epub_writer.dart writes a document of pages as a fixed-layout EPUB, one
 // picture to a page: a canvas is a design, and reflowing it would throw the
@@ -278,6 +279,11 @@ Uint8List writeEpub({
   /// cover is the book's cover picture, an opaque PNG of its own, where there
   /// is one; else the cover page's picture stands in.
   Uint8List? cover,
+
+  /// book is what the package tells a store and a reader: author, subtitle,
+  /// description, series and the rest (book_details.dart). Its authors
+  /// replace [author] where it names any.
+  BookDetails book = const BookDetails(),
 }) {
   if (pages.isEmpty) {
     throw ArgumentError("an EPUB needs at least one page");
@@ -342,7 +348,7 @@ Uint8List writeEpub({
       "OEBPS/content.opf",
       _opf(pages, title, author, id, interactive, facing,
           [...carried.values, ...starts.where((f) => f.href != "cover.png")],
-          cover: cover != null, panels: panelled));
+          cover: cover != null, panels: panelled, book: book));
 
   var zip = ZipEncoder().encode(archive);
   return Uint8List.fromList(zip);
@@ -1704,8 +1710,39 @@ String _nav(List<EpubPage> pages) {
 /// _opf is the package: what is in the book, and in what order.
 String _opf(List<EpubPage> pages, String title, String author, String id,
     bool interactive, bool facing, Iterable<EpubFile> files,
-    {bool cover = false, bool panels = false}) {
+    {bool cover = false,
+    bool panels = false,
+    BookDetails book = const BookDetails()}) {
   var coverAt = pages.indexWhere((p) => p.cover);
+  var authors =
+      book.authors.isNotEmpty ? book.authors : [if (author.isNotEmpty) author];
+  // Who wrote it, what it is about and where it sits in a series: what a
+  // store lists and a reader's library shows.
+  var about = [
+    if (book.subtitle.isNotEmpty) ...[
+      '<dc:title id="subtitle">${_text(book.subtitle)}</dc:title>',
+      '<meta refines="#subtitle" property="title-type">subtitle</meta>',
+    ],
+    for (var (i, a) in authors.indexed) ...[
+      '<dc:creator id="creator$i">${_text(a)}</dc:creator>',
+      '<meta refines="#creator$i" property="role" scheme="marc:relators">aut</meta>',
+    ],
+    if (book.publisher.isNotEmpty)
+      '<dc:publisher>${_text(book.publisher)}</dc:publisher>',
+    if (book.description.isNotEmpty)
+      '<dc:description>${_text(book.description)}</dc:description>',
+    for (var subject in book.subjectList)
+      '<dc:subject>${_text(subject)}</dc:subject>',
+    if (RegExp(r"^\d{4}(-\d{2}(-\d{2})?)?$").hasMatch(book.published))
+      '<dc:date>${book.published}</dc:date>',
+    if (book.rights.isNotEmpty) '<dc:rights>${_text(book.rights)}</dc:rights>',
+    if (book.series.isNotEmpty) ...[
+      '<meta property="belongs-to-collection" id="series">${_text(book.series)}</meta>',
+      '<meta refines="#series" property="collection-type">series</meta>',
+      if (book.seriesNumber > 0)
+        '<meta refines="#series" property="group-position">${book.seriesNumber}</meta>',
+    ],
+  ];
   var manifest = <String>[
     if (cover)
       '<item id="cover" href="cover.png" media-type="image/png" '
@@ -1749,9 +1786,11 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
     prefix="rendition: http://www.idpf.org/vocab/rendition/#">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">${_text(id)}</dc:identifier>
-    <dc:title>${_text(title)}</dc:title>
-    <dc:language>en</dc:language>
-${author.isEmpty ? "" : "    <dc:creator>${_text(author)}</dc:creator>\n"}    <meta property="dcterms:modified">${when}Z</meta>
+    <dc:title id="title">${_text(title)}</dc:title>
+${book.subtitle.isEmpty ? "" : '    <meta refines="#title" property="title-type">main</meta>\n'}    <dc:language>${_text(book.language.isEmpty ? "en" : book.language)}</dc:language>
+${[
+    for (var line in about) "    $line\n"
+  ].join()}    <meta property="dcterms:modified">${when}Z</meta>
     <meta property="rendition:layout">pre-paginated</meta>
     <meta property="rendition:spread">${facing ? "landscape" : "none"}</meta>
     <meta property="rendition:orientation">auto</meta>
