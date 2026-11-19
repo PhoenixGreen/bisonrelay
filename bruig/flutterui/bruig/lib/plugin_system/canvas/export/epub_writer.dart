@@ -5,6 +5,7 @@ import 'dart:ui' show Rect;
 
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_tasks.dart';
 import 'package:bruig/plugin_system/canvas/model/book_details.dart';
 
 // epub_writer.dart writes a document of pages as a fixed-layout EPUB, one
@@ -236,7 +237,11 @@ class EpubPage {
   /// scripted whether it needs media.js at all.
   bool get plays => media.isNotEmpty;
   bool get scripted =>
-      plays || links.isNotEmpty || actions.isNotEmpty || stage != null;
+      plays ||
+      links.isNotEmpty ||
+      actions.isNotEmpty ||
+      stage != null ||
+      tasks.isNotEmpty;
 
   const EpubPage({
     required this.png,
@@ -254,10 +259,15 @@ class EpubPage {
     this.start,
     this.panels = const [],
     this.jpeg = false,
+    this.tasks = const [],
   });
 
   /// panels are the page's panels as a comic is read, for a plain book.
   final List<EpubPanel> panels;
+
+  /// tasks are the play task cards on an interactive page, each ticking its
+  /// steps as they are played (epub_tasks.dart).
+  final List<EpubTask> tasks;
 
   /// jpeg says [png] holds a JPEG: a Kindle book's pages, smaller, as Amazon
   /// charges by the megabyte.
@@ -329,6 +339,8 @@ Uint8List writeEpub({
   if (interactive && pages.any((p) => p.scripted)) {
     _add(archive, "OEBPS/media.js", _mediaScript);
   }
+  var tasked = interactive && pages.any((p) => p.tasks.isNotEmpty);
+  if (tasked) _add(archive, "OEBPS/tasks.js", epubTaskScript);
 
   for (var (i, page) in pages.indexed) {
     _add(archive, "OEBPS/page$i.xhtml", _pageXhtml(i, page, interactive));
@@ -460,6 +472,13 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
       ? '\n    <script src="media.js"></script>'
       : "";
   var panels = interactive ? "" : _panelTags(index, page);
+  // The play task cards' layers, over the cards drawn in the picture.
+  var tasks = interactive && page.tasks.isNotEmpty
+      ? '\n    ${[
+          for (var t in page.tasks) epubTaskTag(t, _attr)
+        ].join("\n    ")}'
+          '\n    <script src="tasks.js"></script>'
+      : "";
   return '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml"
@@ -560,12 +579,12 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
       .layer.switched > .cw, .layer.switched > .clip,
       .layer.switched > .cb, .layer.switched > .ca {
         visibility: hidden !important; }
-${panels.isEmpty ? "" : _panelCss}    </style>
+${panels.isEmpty ? "" : _panelCss}${tasks.isEmpty ? "" : epubTaskCss}    </style>
   </head>
   <body>
     <span id="play"></span>
     $face
-    ${framed ? "" : hotspots}$panels$script
+    ${framed ? "" : hotspots}$panels$script$tasks
   </body>
 </html>
 ''';
@@ -1779,6 +1798,8 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
       '<item id="media$i" href="${_attr(f.href)}" media-type="${f.mime}"/>',
     if (interactive && pages.any((p) => p.scripted))
       '<item id="script" href="media.js" media-type="application/javascript"/>',
+    if (interactive && pages.any((p) => p.tasks.isNotEmpty))
+      '<item id="tasks" href="tasks.js" media-type="application/javascript"/>',
   ].join("\n    ");
 
   // Which side of the spine each page belongs on: see EpubSide.

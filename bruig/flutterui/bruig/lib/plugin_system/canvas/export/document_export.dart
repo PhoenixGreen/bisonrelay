@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/export/epub_media.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_tasks.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/opaque_png.dart';
@@ -387,6 +389,14 @@ Future<CanvasExport?> renderDocument(
           stage: extra.stage,
           soundtrack: extra.soundtrack,
           start: i == 0 ? start : null,
+          // Its play task cards, ticking their steps as they are played.
+          tasks: as == DocumentAs.interactiveEpub
+              ? [
+                  for (var e in scene.elements)
+                    if (e is PlayTaskElement)
+                      if (epubTaskOf(e, pixels) case var t?) t,
+                ]
+              : const [],
         ));
       } finally {
         image?.dispose();
@@ -577,6 +587,7 @@ EpubPage _withCover(EpubPage page) => EpubPage(
       start: page.start,
       panels: page.panels,
       jpeg: page.jpeg,
+      tasks: page.tasks,
     );
 
 /// estimateDocumentBytes is roughly how large the file will be: a page's
