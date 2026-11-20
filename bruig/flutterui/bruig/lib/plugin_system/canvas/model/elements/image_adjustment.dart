@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_cube.dart';
 
 // image_adjustment.dart is what an adjustment layer does to the layers under
 // it, drawn by shaders/adjust.frag (see adjust_painter.dart). Each kind lists
@@ -42,6 +43,16 @@ enum AdjustKind {
     AdjustParam("offset", "Offset", -0.5, 0.5, 0),
     AdjustParam("gamma", "Gamma", 0.1, 4, 1, decimals: 2, percent: false),
   ]),
+  shadowsHighlights("Shadows and highlights", 17, [
+    AdjustParam("shadows", "Shadows", 0, 1, 0.35),
+    AdjustParam("highlights", "Highlights", 0, 1, 0),
+    AdjustParam("radius", "Radius", 1, 200, 30, percent: false),
+  ]),
+  clarity("Clarity and haze", 18, [
+    AdjustParam("clarity", "Clarity", -1, 1, 0.3),
+    AdjustParam("dehaze", "Clear haze", -1, 1, 0),
+    AdjustParam("radius", "Radius", 1, 200, 40, percent: false),
+  ]),
   hueSaturation("Hue and saturation", 3, [
     AdjustParam("hue", "Hue", -180, 180, 0, percent: false),
     AdjustParam("saturation", "Saturation", -1, 1, 0),
@@ -51,9 +62,57 @@ enum AdjustKind {
     AdjustParam("vibrance", "Vibrance", -1, 1, 0),
     AdjustParam("saturation", "Saturation", -1, 1, 0),
   ]),
+  colourMixer("Colour mixer", 16, [
+    AdjustParam("redHue", "Red hue", -1, 1, 0),
+    AdjustParam("redSat", "Red saturation", -1, 1, 0),
+    AdjustParam("redLum", "Red lightness", -1, 1, 0),
+    AdjustParam("orangeHue", "Orange hue", -1, 1, 0),
+    AdjustParam("orangeSat", "Orange saturation", -1, 1, 0),
+    AdjustParam("orangeLum", "Orange lightness", -1, 1, 0),
+    AdjustParam("yellowHue", "Yellow hue", -1, 1, 0),
+    AdjustParam("yellowSat", "Yellow saturation", -1, 1, 0),
+    AdjustParam("yellowLum", "Yellow lightness", -1, 1, 0),
+    AdjustParam("greenHue", "Green hue", -1, 1, 0),
+    AdjustParam("greenSat", "Green saturation", -1, 1, 0),
+    AdjustParam("greenLum", "Green lightness", -1, 1, 0),
+    AdjustParam("aquaHue", "Aqua hue", -1, 1, 0),
+    AdjustParam("aquaSat", "Aqua saturation", -1, 1, 0),
+    AdjustParam("aquaLum", "Aqua lightness", -1, 1, 0),
+    AdjustParam("blueHue", "Blue hue", -1, 1, 0),
+    AdjustParam("blueSat", "Blue saturation", -1, 1, 0),
+    AdjustParam("blueLum", "Blue lightness", -1, 1, 0),
+    AdjustParam("purpleHue", "Purple hue", -1, 1, 0),
+    AdjustParam("purpleSat", "Purple saturation", -1, 1, 0),
+    AdjustParam("purpleLum", "Purple lightness", -1, 1, 0),
+    AdjustParam("magentaHue", "Magenta hue", -1, 1, 0),
+    AdjustParam("magentaSat", "Magenta saturation", -1, 1, 0),
+    AdjustParam("magentaLum", "Magenta lightness", -1, 1, 0),
+  ]),
   temperature("Warmth and tint", 5, [
     AdjustParam("warmth", "Warmth", -1, 1, 0),
     AdjustParam("tint", "Tint", -1, 1, 0),
+  ]),
+  colourBalance("Colour balance", 15, [
+    AdjustParam("shadowsRed", "Shadows: cyan to red", -1, 1, 0),
+    AdjustParam("shadowsGreen", "Shadows: magenta to green", -1, 1, 0),
+    AdjustParam("shadowsBlue", "Shadows: yellow to blue", -1, 1, 0),
+    AdjustParam("midsRed", "Midtones: cyan to red", -1, 1, 0),
+    AdjustParam("midsGreen", "Midtones: magenta to green", -1, 1, 0),
+    AdjustParam("midsBlue", "Midtones: yellow to blue", -1, 1, 0),
+    AdjustParam("highsRed", "Highlights: cyan to red", -1, 1, 0),
+    AdjustParam("highsGreen", "Highlights: magenta to green", -1, 1, 0),
+    AdjustParam("highsBlue", "Highlights: yellow to blue", -1, 1, 0),
+  ]),
+  channelMixer("Channel mixer", 14, [
+    AdjustParam("rr", "Red from Red", -2, 2, 1),
+    AdjustParam("rg", "Red from Green", -2, 2, 0),
+    AdjustParam("rb", "Red from Blue", -2, 2, 0),
+    AdjustParam("gr", "Green from Red", -2, 2, 0),
+    AdjustParam("gg", "Green from Green", -2, 2, 1),
+    AdjustParam("gb", "Green from Blue", -2, 2, 0),
+    AdjustParam("br", "Blue from Red", -2, 2, 0),
+    AdjustParam("bg", "Blue from Green", -2, 2, 0),
+    AdjustParam("bb", "Blue from Blue", -2, 2, 1),
   ]),
   photoFilter("Photo filter", 6, [
     AdjustParam("density", "Density", 0, 1, 0.25),
@@ -76,7 +135,45 @@ enum AdjustKind {
   threshold("Threshold", 12, [
     AdjustParam("level", "Level", 0, 1, 0.5),
   ]),
-  invert("Invert", 13, []);
+  invert("Invert", 13, []),
+  colourTable("Colour table", 27, [
+    AdjustParam("amount", "Strength", 0, 1, 1),
+  ]),
+  sharpen("Sharpen", 19, [
+    AdjustParam("amount", "Amount", 0, 3, 0.8),
+    AdjustParam("radius", "Radius", 0.5, 20, 1.5, decimals: 1, percent: false),
+  ]),
+  highPass("High pass", 20, [
+    AdjustParam("radius", "Radius", 0.5, 100, 3, decimals: 1, percent: false),
+    AdjustParam("strength", "Strength", 0, 4, 1),
+  ]),
+  noise("Noise", 21, [
+    AdjustParam("amount", "Amount", 0, 1, 0.15),
+    AdjustParam("colourful", "Colour", 0, 1, 0),
+    AdjustParam("size", "Size", 0.5, 20, 1, decimals: 1, percent: false),
+  ]),
+  pixelate("Pixelate", 22, [
+    AdjustParam("cell", "Cell", 2, 200, 20, percent: false),
+  ]),
+  findEdges("Find edges", 23, [
+    AdjustParam("strength", "Strength", 0, 4, 1),
+    AdjustParam("width", "Width", 0.5, 20, 1, decimals: 1, percent: false),
+    AdjustParam("colour", "Colour", 0, 1, 1),
+  ]),
+  emboss("Emboss", 24, [
+    AdjustParam("angle", "Angle", 0, 360, 135, percent: false),
+    AdjustParam("height", "Height", 0.5, 20, 2, decimals: 1, percent: false),
+    AdjustParam("amount", "Amount", 0, 4, 1),
+    AdjustParam("colour", "Colour", 0, 1, 0),
+  ]),
+  oilPaint("Oil paint", 25, [
+    AdjustParam("radius", "Brush", 1, 100, 14, percent: false),
+  ]),
+  ripple("Ripple", 26, [
+    AdjustParam("amount", "Amount", 0, 100, 10, percent: false),
+    AdjustParam("wavelength", "Wavelength", 5, 500, 60, percent: false),
+    AdjustParam("angle", "Angle", 0, 360, 0, percent: false),
+  ]);
 
   final String label;
   final int mode;
@@ -87,10 +184,69 @@ enum AdjustKind {
       values.firstWhere((k) => k.name == name,
           orElse: () => AdjustKind.hueSaturation);
 
+  /// neighbours is whether the kind reads the pixels round each one, not
+  /// only the one: such a kind's sizes are thousandths of the frame's
+  /// shorter side, so it looks the same however large it is drawn.
+  bool get neighbours => switch (this) {
+        shadowsHighlights ||
+        clarity ||
+        sharpen ||
+        highPass ||
+        pixelate ||
+        findEdges ||
+        emboss ||
+        oilPaint ||
+        ripple =>
+          true,
+        _ => false,
+      };
+
   /// usesColour is whether the kind is set by a colour as well as numbers:
   /// a photo filter's, the one colour kept, a black and white's tint.
   bool get usesColour =>
       this == photoFilter || this == keepColour || this == blackWhite;
+}
+
+/// MixerBand is one of the colour mixer's colours: its name, and the hue
+/// it sits at, in degrees.
+class MixerBand {
+  final String key;
+  final String label;
+  final double hue;
+  const MixerBand(this.key, this.label, this.hue);
+}
+
+const mixerBands = [
+  MixerBand("red", "Red", 0),
+  MixerBand("orange", "Orange", 30),
+  MixerBand("yellow", "Yellow", 60),
+  MixerBand("green", "Green", 120),
+  MixerBand("aqua", "Aqua", 180),
+  MixerBand("blue", "Blue", 240),
+  MixerBand("purple", "Purple", 270),
+  MixerBand("magenta", "Magenta", 300),
+];
+
+/// mixerAt is what the colour mixer [a] does at hue [hue] (0 to 1): the hue
+/// turned by (degrees), the saturation times, the lightness moved by --
+/// each band's setting, shared with its neighbours between them.
+(double, double, double) mixerAt(ImageAdjustment a, double hue) {
+  var deg = (hue % 1) * 360;
+  var n = mixerBands.length;
+  for (var i = 0; i < n; i++) {
+    var from = mixerBands[i], to = mixerBands[(i + 1) % n];
+    var span = (to.hue - from.hue + 360) % 360;
+    var into = (deg - from.hue + 360) % 360;
+    if (into > span) continue;
+    var t = span == 0 ? 0.0 : into / span;
+    // Eased, so a band's own hue takes its setting whole.
+    t = t * t * (3 - 2 * t);
+    double mix(String suffix) =>
+        a.value("${from.key}$suffix") * (1 - t) +
+        a.value("${to.key}$suffix") * t;
+    return (mix("Hue") * 30, 1 + mix("Sat"), mix("Lum"));
+  }
+  return (0, 1, 0);
 }
 
 /// CurveChannel is which curve: all three channels at once, or one.
@@ -121,6 +277,17 @@ class ImageAdjustment {
   /// across. An absent channel is the straight line.
   final Map<CurveChannel, List<Offset>> curves;
 
+  /// table is a colour table's: one of the app's film tables by name
+  /// (presets/film_tables.dart), or empty for [cube].
+  final String table;
+
+  /// cube is a colour table read in from a file, kept with the adjustment
+  /// so it goes wherever the picture goes.
+  final ColourCube? cube;
+
+  /// tableName is what a table read in called itself.
+  final String tableName;
+
   const ImageAdjustment({
     this.kind = AdjustKind.hueSaturation,
     this.values = const {},
@@ -128,6 +295,9 @@ class ImageAdjustment {
     this.fade = const PaintSpec(Color(0xFF14213D),
         gradient: GradientSpec(to: Color(0xFFF2D06B))),
     this.curves = const {},
+    this.table = "",
+    this.cube,
+    this.tableName = "",
   });
 
   /// value is setting [key] as it is, or as the kind starts it.
@@ -150,6 +320,10 @@ class ImageAdjustment {
     Color? colour,
     PaintSpec? fade,
     Map<CurveChannel, List<Offset>>? curves,
+    String? table,
+    ColourCube? cube,
+    bool clearCube = false,
+    String? tableName,
   }) =>
       ImageAdjustment(
         kind: kind ?? this.kind,
@@ -157,6 +331,9 @@ class ImageAdjustment {
         colour: colour ?? this.colour,
         fade: fade ?? this.fade,
         curves: curves ?? this.curves,
+        table: table ?? this.table,
+        cube: clearCube ? null : cube ?? this.cube,
+        tableName: tableName ?? this.tableName,
       );
 
   /// withValue is this with [key] set to [v], within its kind's range.
@@ -187,6 +364,11 @@ class ImageAdjustment {
                 for (var p in e.value) ...[p.dx, p.dy]
               ]
           },
+        if (kind == AdjustKind.colourTable && table.isNotEmpty) "table": table,
+        if (kind == AdjustKind.colourTable && cube != null)
+          "cube": cube!.toJson(),
+        if (kind == AdjustKind.colourTable && tableName.isNotEmpty)
+          "tableName": tableName,
       };
 
   factory ImageAdjustment.fromJson(Map<String, dynamic> json) {
@@ -226,9 +408,14 @@ class ImageAdjustment {
           ? const ImageAdjustment().fade
           : PaintSpec.fromJson(json["fade"], const Color(0xFF14213D)),
       curves: curves,
+      table: jsonString(json["table"], ""),
+      cube: ColourCube.fromJson(json["cube"]),
+      tableName: _short(jsonString(json["tableName"], "")),
     );
   }
 }
+
+String _short(String s) => s.length <= 80 ? s : s.substring(0, 80);
 
 /// curveAt is [points]'s curve at [x]: Fritsch-Carlson monotone cubic, so
 /// it never overshoots between two points.

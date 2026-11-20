@@ -1,16 +1,13 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:bruig/models/client.dart';
-import 'package:bruig/models/uploads.dart';
+import 'package:bruig/components/send_to_chat.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
 import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
-import 'package:bruig/screens/send_file.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
-import 'package:provider/provider.dart';
 
 // style_sharing.dart is a style passed between people: packed into one
 // .brstyle file and sent the way any file is sent in a chat (the Send File
@@ -25,52 +22,16 @@ void _say(BuildContext context, String text) =>
     ScaffoldMessenger.maybeOf(context)
         ?.showSnackBar(SnackBar(content: Text(text)));
 
-String _fileName(StyleProfile style) {
-  var safe = style.name.replaceAll(RegExp(r'[\\/:*?"<>|]+'), " ").trim();
-  return "${safe.isEmpty ? "style" : safe}$styleFileExtension";
-}
+String _fileName(StyleProfile style) =>
+    safeFileName(style.name, styleFileExtension, fallback: "style");
 
 /// sendStyleToChat asks which chat, then sends [style] there as a file.
 Future<void> sendStyleToChat(
-    BuildContext context, CreativeAi ai, StyleProfile style) async {
-  var client = Provider.of<ClientModel>(context, listen: false);
-  var chats = client.activeChats.sorted.where((c) => !c.isGC).toList();
-  if (chats.isEmpty) {
-    _say(context, "There is nobody to send it to yet.");
-    return;
-  }
-  var chat = await showDialog<ChatModel>(
-    context: context,
-    builder: (context) => SimpleDialog(
-      title: Text("Send ${style.name} to"),
-      children: [
-        SizedBox(
-          width: 360,
-          height: 360,
-          child: ListView(children: [
-            for (var c in chats)
-              ListTile(
-                key: ValueKey("styleSendTo-${c.nick}"),
-                dense: true,
-                title: Text(c.nick),
-                onTap: () => Navigator.pop(context, c),
-              ),
-          ]),
-        ),
-      ],
-    ),
-  );
-  if (chat == null || !context.mounted) return;
-  var bytes = await ai.styles.pack(style);
-  var dir = await Directory.systemTemp.createTemp("brstyle");
-  var file = File(path.join(dir.path, _fileName(style)));
-  await file.writeAsBytes(bytes);
-  if (!context.mounted) return;
-  await showSendFileScreen(context,
-      chat: chat,
-      file: file,
-      uploads: Provider.of<UploadsModel>(context, listen: false));
-}
+        BuildContext context, CreativeAi ai, StyleProfile style) =>
+    sendBytesToChat(context,
+        what: style.name,
+        fileName: _fileName(style),
+        bytes: () => ai.styles.pack(style));
 
 /// saveStyleFile saves [style] as a file wherever the person chooses.
 Future<void> saveStyleFile(

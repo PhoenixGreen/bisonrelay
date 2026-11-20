@@ -108,7 +108,9 @@ void clearEffectRasters() {
   raster.scale(w / room.width, h / room.height);
   raster.translate(-room.left, -room.top);
   raster.drawPicture(content);
-  made = recorder.endRecording().toImageSync(w, h);
+  var picture = recorder.endRecording();
+  made = picture.toImageSync(w, h);
+  picture.dispose();
   if (key != null) {
     RasterCache.instance.putSized(key, [room.size, ...from], made);
   } else {

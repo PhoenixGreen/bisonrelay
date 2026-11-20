@@ -109,6 +109,10 @@ class StockClient {
       return StockPage.failed("Add your ${source.from} key first.");
     }
     if (source == StockSource.polyHaven) return _polyHaven(q);
+    if (source == StockSource.polyHavenPictures) {
+      return _polyHaven(q, type: q.value("t"));
+    }
+    if (source == StockSource.met) return _met(q);
 
     var request = requestFor(q, key: await StockKeys.key(source));
     var text = await _cached(request.cacheKey);
@@ -151,7 +155,7 @@ class StockClient {
     var key = uri.toString();
     var text = await _cached(key);
     if (text == null) {
-      var (status, body) = await getText(uri, _polyHavenHeaders);
+      var (status, body) = await getText(uri, stockAgentHeaders);
       if (status != 200) return null;
       text = body;
       await _remember(key, text);
@@ -163,11 +167,12 @@ class StockClient {
     }
   }
 
-  /// _polyHaven is a page of Poly Haven's models in its search order, or
-  /// most downloaded first for an empty search. See polyHavenPage.
-  Future<StockPage> _polyHaven(StockQuery q) async {
-    var catalogue = await _jsonOf(
-        Uri.https("api.polyhaven.com", "/assets", {"t": "models"}));
+  /// _polyHaven is a page of Poly Haven's models (or [type]: hdris,
+  /// textures) in its search order, or most downloaded first for an empty
+  /// search. See polyHavenPage.
+  Future<StockPage> _polyHaven(StockQuery q, {String type = "models"}) async {
+    var catalogue =
+        await _jsonOf(Uri.https("api.polyhaven.com", "/assets", {"t": type}));
     if (catalogue is! Map<String, dynamic>) {
       return const StockPage.failed("Poly Haven could not be reached.");
     }
@@ -182,7 +187,55 @@ class StockClient {
           if (r is Map && r["slug"] is String) r["slug"] as String
       ];
     }
-    return polyHavenPage(catalogue, slugs, page: q.page);
+    return polyHavenPage(catalogue, slugs, page: q.page, source: q.source);
+  }
+
+  /// polyHavenPicture is where texture [slug]'s colour map is, two thousand
+  /// across, or null.
+  Future<String?> polyHavenPicture(String slug) async {
+    var files = await _jsonOf(Uri.https("api.polyhaven.com", "/files/$slug"));
+    if (files is! Map) return null;
+    for (var map in ["Diffuse", "diffuse", "Color"]) {
+      for (var size in ["2k", "1k", "4k"]) {
+        var url = files[map] is Map &&
+                files[map][size] is Map &&
+                files[map][size]["jpg"] is Map
+            ? files[map][size]["jpg"]["url"]
+            : null;
+        if (url is String) return url;
+      }
+    }
+    return null;
+  }
+
+  /// metOnAPage is how many of The Met's works one page asks after, each
+  /// a request of its own.
+  static const metOnAPage = 24;
+
+  /// _met is a page of The Met's public-domain works: its search answers
+  /// every matching id, and each work is then asked for -- a few at a time,
+  /// and each kept a day as searches are.
+  Future<StockPage> _met(StockQuery q) async {
+    var found = await _jsonOf(requestFor(q, key: "").uri);
+    if (found is! Map) {
+      return const StockPage.failed("The Met could not be reached.");
+    }
+    var ids = [
+      if (found["objectIDs"] case List list)
+        for (var id in list)
+          if (id is int) id
+    ];
+    var from = (q.page - 1) * metOnAPage;
+    var wanted = ids.skip(from).take(metOnAPage).toList();
+    var works = <Object?>[];
+    for (var i = 0; i < wanted.length; i += 6) {
+      works.addAll(await Future.wait([
+        for (var id in wanted.skip(i).take(6))
+          _jsonOf(Uri.https("collectionapi.metmuseum.org",
+              "/public/collection/v1/objects/$id")),
+      ]));
+    }
+    return metPage(works, more: from + metOnAPage < ids.length);
   }
 
   /// fetchPolyHavenModel saves model [slug] to [to] as a .glb of its
@@ -271,7 +324,8 @@ class StockClient {
 
   /// thumbnail is a result's small picture, from the library's server,
   /// kept only in the image cache.
-  ImageProvider thumbnail(String url) => NetworkImage(url);
+  ImageProvider thumbnail(String url) =>
+      NetworkImage(url, headers: stockAgentHeaders);
 
   /// getText is one GET: its status, and its body on 200. Status 0 is no
   /// answer.
@@ -311,7 +365,8 @@ class StockClient {
     var client = canvasHttpClient();
     var partial = File("${to.path}.part");
     try {
-      var response = await canvasGet(client, uri);
+      // Named, as Wikimedia and others ask every program to be.
+      var response = await canvasGet(client, uri, headers: stockAgentHeaders);
       if (response?.statusCode != 200) return false;
       var sink = partial.openWrite();
       var got = 0;
@@ -379,9 +434,17 @@ class StockClient {
       await dir.create(recursive: true);
       await writeWholeText(path.join(dir.path, "${_hash(key)}.json"), text);
       // Old answers cleared while here: a day's are small, a year's not.
+      // Answers written at the same time (The Met's works, a few at once)
+      // come and go as this looks: a half-written one is passed over, and
+      // one gone before it is looked at is no matter.
       await for (var f in dir.list()) {
-        if (f is File && now.difference(await f.lastModified()) >= cacheFor) {
-          await f.delete();
+        if (f is! File || f.path.endsWith(".tmp")) continue;
+        try {
+          if (now.difference(await f.lastModified()) >= cacheFor) {
+            await f.delete();
+          }
+        } on FileSystemException {
+          continue;
         }
       }
     } catch (exception) {

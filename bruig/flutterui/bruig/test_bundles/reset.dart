@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
+import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -23,6 +25,20 @@ void betweenFiles() {
   clearRenderCaches();
   CanvasLibrary.resetForTest();
   CanvasStorage.rootOverride = null;
+  // A read begun under one file's clock never finishes under the next's,
+  // and a later load would wait on it forever: each file reads afresh.
+  ElementPresetStore.instance.forget();
+  for (var store in [
+    SavedPresetStore.scenes,
+    SavedPresetStore.canvases,
+    SavedPresetStore.brushes,
+    SavedPresetStore.pitchViews,
+    SavedPresetStore.looks,
+    SavedPresetStore.paintBrushes,
+    SavedPresetStore.devices,
+  ]) {
+    store.forget();
+  }
   forgetFfmpegForTest();
   SharedPreferences.setMockInitialValues({});
 }

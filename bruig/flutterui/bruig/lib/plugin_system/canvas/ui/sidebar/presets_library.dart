@@ -32,7 +32,7 @@ enum PresetFilter {
   element("Element"),
   football("Football"),
   text("Text"),
-  looks("Looks"),
+  looks("Actions"),
   brushes("Brushes"),
   sound("Sound");
 
@@ -153,7 +153,7 @@ class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
           _TextStyles(controller: controller, query: query),
         ],
         if (shows(PresetFilter.looks)) ...[
-          heading("Looks"),
+          heading("Actions"),
           _Looks(controller: controller, query: query),
         ],
         if (shows(PresetFilter.brushes)) ...[
@@ -301,7 +301,8 @@ class _TextStyles extends StatelessWidget {
       );
 }
 
-/// _Looks are the pictures' saved looks: used, the picture wears it.
+/// _Looks are the pictures' saved actions: used, the steps are added to
+/// the picture.
 class _Looks extends StatelessWidget {
   final CanvasController controller;
   final String query;
@@ -312,14 +313,14 @@ class _Looks extends StatelessWidget {
         store: SavedPresetStore.looks,
         query: query,
         icon: Icons.auto_fix_high_outlined,
-        empty: "A look is kept from a picture's Colour settings.",
+        empty: "An action is kept from a picture's Actions.",
         onUse: (context, p) {
           var e = controller.selected;
           if (e is! ImageElement) {
-            _needs(context, "Pick a picture to wear a look.");
+            _needs(context, "Pick a picture to do an action to.");
             return;
           }
-          controller.changeImage(withLookApplied(e, p.data));
+          controller.changeImage(withLookApplied(e, p.data, replace: false));
         },
       );
 }

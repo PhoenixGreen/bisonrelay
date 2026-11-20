@@ -20,6 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 const picture = "0123456789abcdef.png";
 
 void main() {
+  // The drawn characters are an asset, read through the binding.
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory root;
   late CanvasController canvas;
   late CanvasPreferences canvasPrefs;
@@ -128,6 +130,28 @@ void main() {
     r = await call("canvas_stock_use", {"id": "pixabayPictures:1"});
     expect(r["isError"], isTrue);
     expect("${r["content"]}", contains("Search for it first"));
+  });
+
+  test("Claude draws a character from a drawn style, credited", () async {
+    var styles = json(await call("canvas_drawn_styles")) as List;
+    var peeps = styles.firstWhere((s) => s["style"] == "open-peeps");
+    expect((peeps["parts"] as Map).keys, contains("head"));
+
+    var r = await call("canvas_draw_character", {
+      "style": "open-peeps",
+      "parts": {"accessories": "sunglasses", "wings": "big"},
+      "colours": {"clothing": "#1B4F72"},
+      "seed": 4,
+    });
+    expect(r["isError"], isNot(true), reason: "${r["content"]}");
+    expect("${r["content"]}", contains("no part wings"));
+    expect(canvas.document.elements.single.kind, ElementKind.vector);
+    var drawings = json(await call("canvas_assets", {"kind": "vector"}));
+    expect((drawings as List).single["author"] ?? drawings.single["credit"],
+        isNotNull);
+
+    var none = await call("canvas_draw_character", {"style": "dragons"});
+    expect(none["isError"], isTrue);
   });
 
   test("Claude draws a picture as SVG, kept in the library", () async {

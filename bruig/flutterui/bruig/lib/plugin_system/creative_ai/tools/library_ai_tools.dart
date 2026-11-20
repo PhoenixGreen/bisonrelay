@@ -177,6 +177,50 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
       required: ["id"],
     ),
     tool(
+      "canvas_drawn_styles",
+      "Drawn character styles",
+      "The styles people can be drawn in, made on this computer from CC0 "
+          "drawings: Open Peeps (Pablo Stanley), Notionists (Zoish), Lorelei "
+          "(Lisa Wischofsky), Pixel Art. Each with its parts (and their "
+          "choices) and colours (and their palettes).",
+      {},
+      (args) async => McpResult.json(await CanvasAutomation.drawnStyles(),
+          summary: "Listed the drawn character styles"),
+    ),
+    tool(
+      "canvas_draw_character",
+      "Draw a character",
+      "Draws a character in a style from canvas_drawn_styles and puts it on "
+          "the scene as a drawing, kept in the person's library. Parts and "
+          "colours not given are picked as the style would (seed makes the "
+          "same pick again); a part given as null is left out where the "
+          "style allows. Colours are six-digit hex.",
+      {
+        "style": {"type": "string"},
+        "parts": {"type": "object"},
+        "colours": {"type": "object"},
+        "seed": {"type": "integer"},
+        "name": {"type": "string"},
+      },
+      (args) => changing((a) async {
+        var (id, problem) = await a.drawCharacter("${args["style"]}",
+            parts: args["parts"] is Map
+                ? Map<String, Object?>.from(args["parts"] as Map)
+                : const {},
+            colours: args["colours"] is Map
+                ? Map<String, Object?>.from(args["colours"] as Map)
+                : const {},
+            seed: args["seed"] is int ? args["seed"] as int : null,
+            name: "${args["name"] ?? ""}");
+        if (id == null) return McpResult.error(problem ?? "Not drawn.");
+        return McpResult.text(
+            "Drawn: element $id.${problem == null ? "" : " Left as picked: "
+                "$problem."}",
+            summary: "Drew a ${args["style"]} character");
+      }),
+      required: ["style"],
+    ),
+    tool(
       "canvas_draw_svg",
       "Draw a picture",
       "Draws a picture as SVG: an illustration, icon, emblem, pattern, map "

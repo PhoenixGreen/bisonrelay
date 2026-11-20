@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
@@ -13,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart' show BoxSpec;
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
 export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
@@ -631,71 +633,233 @@ ImageElement withLayersTogether(ImageElement e) => e.withLayers([
         l.copyWith(cue: VectorCue.together, cueGap: 0, clearCueLength: true)
     ]);
 
-// Looks
+// Looks and actions
 
 /// lookKinds are a look's layer kinds: what is done to a picture.
 const lookKinds = {LayerKind.adjustment, LayerKind.texture, LayerKind.fill};
 
-/// lookData is [e]'s look for other pictures: its [lookKinds] layers,
-/// each under or over the base, and the base's blend, opacity, effects.
-Map<String, dynamic> lookData(ImageElement e) {
+/// isPictureCopy is whether [l] is a copy of [e]'s own picture laid over or
+/// under it -- what an action keeps as "a copy of the picture", since a
+/// glow, a double exposure or a split of the colours is drawn from one.
+bool isPictureCopy(ImageElement e, ImageLayer l) =>
+    l.kind == LayerKind.picture && e.hasImage && l.look?.assetId == e.assetId;
+
+/// inLook is whether layer [l] of [e] is part of its look: what a look or
+/// an action keeps and what wearing another takes off.
+bool inLook(ImageElement e, ImageLayer l) =>
+    lookKinds.contains(l.kind) || isPictureCopy(e, l);
+
+/// pictureCopy is a layer drawing [e]'s own picture over the frame, as the
+/// base draws it -- its crop, cut-out and colours -- moved by [shift]:
+/// across and down by fractions of the base's place, then sized by the
+/// last two.
+ImageLayer pictureCopy(ImageElement e,
+    {List<double> shift = const [0, 0, 1, 1]}) {
+  var base = e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
+  var at = base.place;
+  var place = Rect.fromLTWH(at.left + shift[0] * at.width,
+      at.top + shift[1] * at.height, at.width * shift[2], at.height * shift[3]);
+  var look = e.copyWith(
+    layers: const [],
+    animation: const ElementAnimation(),
+    outline: const ImageOutline(),
+    clearFrame: true,
+    box: const BoxSpec(padding: 0),
+  );
+  return ImageLayer(
+    id: newElementId(),
+    kind: LayerKind.picture,
+    name: "Copy of the picture",
+    flipX: base.flipX,
+    flipY: base.flipY,
+    // Its own base, as a placed picture's: never the element's id, which
+    // names the element's drawings in the caches.
+    look: look.rebase(ElementBase(
+        id: "",
+        x: place.left,
+        y: place.top,
+        width: place.width,
+        height: place.height,
+        lockAspect: true)) as ImageElement,
+  );
+}
+
+/// _copyKeys are a copy's own picture settings an action keeps: how it is
+/// coloured, never which picture.
+const _copyKeys = {"filter", "sat", "bri", "tint", "overlay", "blend"};
+
+/// lookData is [e]'s look for other pictures: its [inLook] layers, each
+/// under or over the base, and the base's blend, opacity, effects. [only]
+/// keeps just the layers with those ids (the base's settings count as the
+/// base's id); null keeps them all.
+Map<String, dynamic> lookData(ImageElement e, {Set<String>? only}) {
   var stack = e.stack;
   var baseAt = stack.indexWhere((l) => l.isBase);
   var base = stack[baseAt];
+  var withBase = only == null || only.contains(base.id);
+  var at = base.place;
   return {
     "base": {
-      if (base.blend != LayerBlend.normal) "blend": base.blend.name,
-      if (base.opacity != 1) "op": base.opacity,
-      if (base.effects.isNotEmpty)
+      if (withBase && base.blend != LayerBlend.normal) "blend": base.blend.name,
+      if (withBase && base.opacity != 1) "op": base.opacity,
+      if (withBase && base.effects.isNotEmpty)
         "fx": [for (var f in base.effects) f.toJson()],
     },
     "layers": [
       for (var (i, l) in stack.indexed)
-        if (lookKinds.contains(l.kind)) {...l.toJson(), "under": i < baseAt}
+        if (inLook(e, l) && (only == null || only.contains(l.id)))
+          if (isPictureCopy(e, l))
+            {
+              ...{
+                for (var entry in l.toJson().entries)
+                  if (entry.key != "look" && entry.key != "id")
+                    entry.key: entry.value
+              },
+              "copy": {
+                for (var entry in l.look!.props().entries)
+                  if (_copyKeys.contains(entry.key)) entry.key: entry.value
+              },
+              "shift": [
+                if (at.width == 0 || at.height == 0) ...[
+                  0,
+                  0,
+                  1,
+                  1
+                ] else ...[
+                  (l.place.left - at.left) / at.width,
+                  (l.place.top - at.top) / at.height,
+                  l.place.width / at.width,
+                  l.place.height / at.height,
+                ]
+              ],
+              "under": i < baseAt,
+            }
+          else
+            {...l.toJson(), "under": i < baseAt}
     ],
   };
 }
 
-/// withLookApplied is [e] wearing the look [data] (see lookData) in place
-/// of its own: pictures and paint kept, [lookKinds] layers swapped.
-ImageElement withLookApplied(ImageElement e, Map<String, dynamic> data) {
-  var kept = [
-    for (var l in e.stack)
-      if (!lookKinds.contains(l.kind)) l
-  ];
+/// lookLayers are the layers [data] (see lookData) puts on [e], fresh,
+/// under the base and over it.
+(List<ImageLayer>, List<ImageLayer>) lookLayers(
+    ImageElement e, Map<String, dynamic> data) {
   var under = <ImageLayer>[], over = <ImageLayer>[];
   if (data["layers"] case List raw) {
-    for (var item in raw) {
+    // Each layer is drawn again for every one over it: a received action
+    // is kept to as many as a person would make.
+    for (var item in raw.take(48)) {
       if (item is! Map<String, dynamic>) continue;
-      var layer = ImageLayer.fromJson(item);
-      if (layer == null || !lookKinds.contains(layer.kind)) continue;
+      ImageLayer? layer;
+      if (item["copy"] is Map) {
+        if (!e.hasImage) continue;
+        layer = _copyFrom(e, item);
+      } else {
+        layer = ImageLayer.fromJson(item);
+        if (layer != null && !lookKinds.contains(layer.kind)) layer = null;
+      }
+      if (layer == null) continue;
       // Fresh ids: a look worn by two pictures is two sets of layers.
       layer = layer.copyWith(id: newElementId());
       (item["under"] == true ? under : over).add(layer);
     }
   }
+  return (under, over);
+}
+
+/// _copyFrom is the copy of [e]'s picture an action's [item] describes.
+ImageLayer _copyFrom(ImageElement e, Map<String, dynamic> item) {
+  var shift = switch (item["shift"]) {
+    [num x, num y, num w, num h] when w > 0 && h > 0 => [
+        x.toDouble().clamp(-4.0, 4.0),
+        y.toDouble().clamp(-4.0, 4.0),
+        w.toDouble().clamp(0.05, 8.0),
+        h.toDouble().clamp(0.05, 8.0),
+      ],
+    _ => const [0.0, 0.0, 1.0, 1.0],
+  };
+  var copy = pictureCopy(e, shift: shift);
+  // Its layer settings read as a colour layer's, which has the same ones.
+  var settings =
+      ImageLayer.fromJson({...item, "k": LayerKind.fill.name}) ?? copy;
+  var colours = item["copy"] as Map;
+  var look = copy.look!;
+  var plain = ImageElement.fromJson(
+      {for (var e in colours.entries) "${e.key}": e.value}, look.base);
+  look = look.copyWith(
+    filter: plain.filter,
+    saturation: plain.saturation,
+    brightness: plain.brightness,
+    tint: plain.tint,
+    overlay: plain.overlay,
+    blend: plain.blend,
+  );
+  return ImageLayer(
+    id: copy.id,
+    kind: LayerKind.picture,
+    name: settings.name.isEmpty ? copy.name : settings.name,
+    visible: settings.visible,
+    opacity: settings.opacity,
+    blend: settings.blend,
+    clip: settings.clip,
+    flipX: item.containsKey("flipX") ? settings.flipX : copy.flipX,
+    flipY: item.containsKey("fy") ? settings.flipY : copy.flipY,
+    effects: settings.effects,
+    look: look,
+  );
+}
+
+/// withLookApplied is [e] wearing the look [data] (see lookData). Replacing,
+/// it takes the place of [e]'s own: pictures and paint kept, [inLook]
+/// layers swapped, the base's settings as the look has them. Not replacing,
+/// the look is added to what is there, as an action is: its layers over
+/// (and under) those already there, its effects after the base's own.
+ImageElement withLookApplied(ImageElement e, Map<String, dynamic> data,
+    {bool replace = true}) {
+  var kept = [
+    for (var l in e.stack)
+      if (!replace || !inLook(e, l)) l
+  ];
+  var (under, over) = lookLayers(e, data);
   var base = data["base"] is Map<String, dynamic>
       ? data["base"] as Map<String, dynamic>
       : const <String, dynamic>{};
+  var effects = [
+    if (base["fx"] case List fx)
+      for (var f in fx.take(16))
+        if (f is Map<String, dynamic>) LayerEffect.fromJson(f)
+  ];
   var stack = <ImageLayer>[];
   for (var l in kept) {
     if (l.isBase) {
       stack.addAll(under);
-      stack.add(l.copyWith(
-        blend: LayerBlend.fromName(jsonStr(base["blend"])),
-        opacity: jsonDouble(base["op"], 1),
-        effects: [
-          if (base["fx"] case List fx)
-            for (var f in fx)
-              if (f is Map<String, dynamic>) LayerEffect.fromJson(f)
-        ],
-      ));
+      stack.add(replace
+          ? l.copyWith(
+              blend: LayerBlend.fromName(jsonStr(base["blend"])),
+              opacity: jsonDouble(base["op"], 1),
+              effects: effects,
+            )
+          : l.copyWith(
+              blend: base["blend"] == null
+                  ? null
+                  : LayerBlend.fromName(jsonStr(base["blend"])),
+              opacity: base["op"] == null ? null : jsonDouble(base["op"], 1),
+              effects: [...l.effects, ...effects].take(16).toList(),
+            ));
     } else {
       stack.add(l);
     }
   }
   stack.addAll(over);
   return e.withLayers(stack);
+}
+
+/// lookSteps is how many steps [data] (see lookData) takes: its layers and
+/// the base's effects.
+int lookSteps(Map<String, dynamic> data) {
+  var n = data["layers"] is List ? (data["layers"] as List).length : 0;
+  if (data["base"] case {"fx": List fx}) n += fx.length;
+  return n;
 }
 
 /// _maskInPlace is a [ImageLayer.framed] layer with its mask's marks

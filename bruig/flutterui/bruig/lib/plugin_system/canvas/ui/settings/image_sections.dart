@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/image_layer_settings.dart
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/paint_brushes.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/image_actions.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_saved.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
@@ -77,6 +78,7 @@ List<Widget> imagePanel(
             ] else
               s.blend(),
             if (picked.kind != LayerKind.adjustment) s.effects(),
+            s.actions(),
           ]),
           PanelBit(PanelSection.layout, children: [s.frame()]),
         ]),
@@ -645,7 +647,7 @@ class _Sections {
             crop: false,
             filter: false,
             outline: false),
-        // Looks and designs kept to reuse: a look is a colour grade.
+        // Designs kept to reuse; actions have their own section.
         ImageSaved(controller: controller, element: e),
       ],
     );
@@ -702,6 +704,23 @@ class _Sections {
     );
   }
 
+  // ---- Actions ----------------------------------------------------------
+
+  /// actions are steps done to the picture in one go: see ImageActions.
+  Widget actions() {
+    var steps = e.stack.where((l) => inLook(e, l)).length;
+    return CanvasSection(
+      key: const ValueKey("imageSection-actions"),
+      icon: Icons.auto_fix_high_outlined,
+      title: "Actions",
+      summary: steps == 0
+          ? "Steps done to the picture in one go"
+          : "$steps step${steps == 1 ? "" : "s"} on this picture",
+      remember: "image.actions",
+      children: [ImageActions(controller: controller, element: e)],
+    );
+  }
+
   // ---- A layer's own kind -----------------------------------------------
 
   Widget own() => switch (picked.kind) {
@@ -713,8 +732,20 @@ class _Sections {
 
   Widget _adjustment() {
     var adjust = picked.adjust;
+    // High pass shows its detail on grey, so it starts in Overlay, where
+    // that sharpens; leaving it, an Overlay it brought goes with it.
+    LayerBlend? blendFor(AdjustKind k, LayerBlend was) =>
+        k == AdjustKind.highPass && was == LayerBlend.normal
+            ? LayerBlend.overlay
+            : adjust.kind == AdjustKind.highPass &&
+                    k != AdjustKind.highPass &&
+                    was == LayerBlend.overlay
+                ? LayerBlend.normal
+                : null;
     ImageElement withKind(AdjustKind k) => e.withLayer(
-        picked.id, (l) => l.copyWith(adjust: adjust.copyWith(kind: k)));
+        picked.id,
+        (l) => l.copyWith(
+            adjust: adjust.copyWith(kind: k), blend: blendFor(k, l.blend)));
     return CanvasSection(
       key: const ValueKey("imageSection-adjustment"),
       icon: Icons.tune,
@@ -751,8 +782,6 @@ class _Sections {
         ),
         ...adjustmentSettings(controller, e, picked, write, begin, commit,
             kindPicker: false),
-        // The kept grades, beside the grading: see ImageSaved.
-        ImageSaved(controller: controller, element: e),
       ],
     );
   }
@@ -801,7 +830,6 @@ class _Sections {
         ),
         ...textureSettings(controller, e, picked, write, begin, commit,
             kindPicker: false),
-        ImageSaved(controller: controller, element: e),
       ],
     );
   }
@@ -853,7 +881,6 @@ class _Sections {
         initiallyOpen: true,
         children: [
           ...fillLayerSettings(e, picked, write, begin, commit),
-          ImageSaved(controller: controller, element: e),
         ],
       );
 
@@ -1025,6 +1052,20 @@ IconData _adjustIcon(AdjustKind k) => switch (k) {
       AdjustKind.posterise => Icons.layers_outlined,
       AdjustKind.threshold => Icons.filter_b_and_w,
       AdjustKind.invert => Icons.invert_colors,
+      AdjustKind.colourMixer => Icons.color_lens_outlined,
+      AdjustKind.colourBalance => Icons.balance,
+      AdjustKind.channelMixer => Icons.tune,
+      AdjustKind.shadowsHighlights => Icons.wb_shade_outlined,
+      AdjustKind.clarity => Icons.deblur,
+      AdjustKind.colourTable => Icons.movie_filter_outlined,
+      AdjustKind.sharpen => Icons.details,
+      AdjustKind.highPass => Icons.filter_tilt_shift,
+      AdjustKind.noise => Icons.grain,
+      AdjustKind.pixelate => Icons.grid_on,
+      AdjustKind.findEdges => Icons.border_style,
+      AdjustKind.emboss => Icons.texture,
+      AdjustKind.oilPaint => Icons.brush_outlined,
+      AdjustKind.ripple => Icons.waves,
     };
 
 /// paintFilterPreview is the picture through [filter], or with no picture

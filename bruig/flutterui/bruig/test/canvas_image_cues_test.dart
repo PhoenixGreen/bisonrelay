@@ -259,7 +259,8 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    test("the looks that come with the app are whole, and never pictures", () {
+    test("the actions that come with the app are whole, and never pictures",
+        () {
       expect(builtInLooks, isNotEmpty);
       expect(
           {for (var l in builtInLooks) l.id}, hasLength(builtInLooks.length));
@@ -272,10 +273,16 @@ void main() {
         expect(worn.assetId, "photo", reason: look.name);
         expect(worn.stack.where((l) => l.isBase), hasLength(1));
         expect(worn.stack.length, greaterThan(1), reason: look.name);
-        for (var l in worn.stack.where((l) => !l.isBase)) {
-          expect(lookKinds, contains(l.kind), reason: look.name);
-          // Over everything under them, so each works on the one before.
-          expect(l.clip, isFalse, reason: look.name);
+        var stack = worn.stack;
+        for (var (i, l) in stack.indexed) {
+          if (l.isBase) continue;
+          expect(inLook(worn, l), isTrue, reason: look.name);
+          // Over everything under them, so each works on the one before --
+          // unless clipped to a copy of the picture, to work on it alone.
+          if (l.clip) {
+            var under = stack.sublist(0, i).lastWhere((u) => !u.clip);
+            expect(isPictureCopy(worn, under), isTrue, reason: look.name);
+          }
         }
         // Worn twice, it is the same look again, not twice the layers.
         expect(
@@ -297,9 +304,9 @@ void main() {
               ElementBase(id: "g", x: 0, y: 0, width: 100, height: 100),
               assetId: "red"));
       await idle(tester);
-      await openSection(tester, "image.picture.colour");
+      await openSection(tester, "image.actions");
       expect(SavedPresetStore.looks.presets, isEmpty);
-      await tapKey(tester, "imageLook-${builtInLookPrefix}flat-portrait");
+      await tapKey(tester, "imageAction-${builtInLookPrefix}flat-portrait");
       var g = c.document.elementById("g")! as ImageElement;
       expect([
         for (var l in g.stack)
@@ -312,7 +319,7 @@ void main() {
       ]);
       expect(g.stack.first.effects.single.kind, EffectKind.blur);
       // One of the app's own is not there to be deleted.
-      expect(find.byKey(const ValueKey("imageLookDelete")), findsNothing);
+      expect(find.byKey(const ValueKey("imageActionDelete")), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -333,9 +340,10 @@ void main() {
                 ImageLayer.adjusting(AdjustKind.keepColour),
               ]));
       await idle(tester);
-      // Kept in Colour, with the picture's other saved things.
-      await openSection(tester, "image.picture.colour");
-      await tapKey(tester, "imageLookSave");
+      // Kept from Actions, every step chosen.
+      await openSection(tester, "image.actions");
+      await tapKey(tester, "imageActionSave");
+      await tapKey(tester, "imageActionSaveConfirm");
       await pumpUntil(tester, () => SavedPresetStore.looks.presets.length == 1);
       await tester.pumpAndSettle();
       expect(SavedPresetStore.looks.presets, hasLength(1));
@@ -345,10 +353,10 @@ void main() {
           ElementBase(id: "t", x: 0, y: 0, width: 100, height: 100),
           assetId: "photo"));
       await tester.pumpAndSettle();
-      await openSection(tester, "image.picture.colour");
-      // Worn by clicking its tile, a picture of this picture wearing it.
+      await openSection(tester, "image.actions");
+      // Done by clicking its tile, a picture of this picture wearing it.
       await tapKey(
-          tester, "imageLook-${SavedPresetStore.looks.presets.single.id}");
+          tester, "imageAction-${SavedPresetStore.looks.presets.single.id}");
       var t = c.document.elementById("t")! as ImageElement;
       expect(t.stack.last.adjust.kind, AdjustKind.keepColour);
       expect(t.assetId, "photo");

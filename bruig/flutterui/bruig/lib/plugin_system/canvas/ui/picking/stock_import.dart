@@ -46,7 +46,13 @@ Future<LibraryAsset?> fetchStockItem(
       addAudio: (file) async => context.mounted
           ? (await addCanvasAudio(context, controller, file))?.assetId
           : null);
-  if (problem != null) snacks.error(problem);
+  if (problem != null) {
+    // NASA's rules, with the picture kept, are said plainly, not as a
+    // failure.
+    asset != null && item.source == StockSource.nasa
+        ? snacks.success(problem)
+        : snacks.error(problem);
+  }
   return asset;
 }
 
@@ -96,7 +102,7 @@ Future<(LibraryAsset?, String?)> importStockItem(
             maxBytes: MediaKind.model.maxBytes,
             allowFetching: allowFetching,
             proxied: proxied)
-        : await StockClient.instance.download(item.media, file,
+        : await StockClient.instance.download(await _mediaOf(item), file,
             maxBytes: switch (item.kind) {
               AssetKind.picture => maxAssetBytes,
               AssetKind.vector => MediaKind.vector.maxBytes,
@@ -155,6 +161,8 @@ Future<(LibraryAsset?, String?)> importStockItem(
         license: item.license,
         origin: item.page,
         from: item.source.from);
+    // NASA's pictures come with NASA's rules, said each time one is used.
+    if (item.source == StockSource.nasa) warning ??= nasaRule;
     for (var a in await CanvasLibrary.list(kind: item.kind)) {
       if (a.id == id) return (a, warning);
     }
@@ -167,3 +175,17 @@ Future<(LibraryAsset?, String?)> importStockItem(
     } catch (_) {}
   }
 }
+
+/// _mediaOf is where [item]'s file is: as it says, or for a Poly Haven
+/// texture, its colour map, found now.
+Future<String> _mediaOf(StockItem item) async {
+  const texture = "polyhaven-texture:";
+  if (!item.media.startsWith(texture)) return item.media;
+  return await StockClient.instance
+          .polyHavenPicture(item.media.substring(texture.length)) ??
+      "";
+}
+
+/// nasaRule is NASA's media guidelines, as they bear on a picture used here.
+const nasaRule = "From NASA: credit NASA, and never suggest NASA endorses "
+    "anything -- cryptocurrency included -- or use it as an NFT.";

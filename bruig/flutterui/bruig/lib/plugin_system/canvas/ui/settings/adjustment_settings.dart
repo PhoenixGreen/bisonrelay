@@ -1,8 +1,14 @@
 import 'dart:math' as math;
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_cube.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
+import 'package:bruig/plugin_system/canvas/presets/film_tables.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -83,20 +89,22 @@ List<Widget> adjustmentSettings(
           ),
         if (kindPicker) const CanvasLineBreak(),
         for (var p in adjust.kind.params)
-          CanvasStepper(
-            key: ValueKey("adjust-${p.key}"),
-            label: p.label,
-            min: p.percent ? p.min * 100 : p.min,
-            max: p.percent ? p.max * 100 : p.max,
-            decimals: p.decimals,
-            step: adjustStep(p),
-            suffix: p.percent ? "%" : "",
-            defaultValue: p.percent ? p.initial * 100 : p.initial,
-            value: p.percent ? adjust.value(p.key) * 100 : adjust.value(p.key),
-            onChanged: (v) =>
-                live(adjust.withValue(p.key, p.percent ? v / 100 : v)),
-            onCommit: commit,
-          ),
+          if (_groupsOf(adjust.kind).isEmpty)
+            CanvasStepper(
+              key: ValueKey("adjust-${p.key}"),
+              label: p.label,
+              min: p.percent ? p.min * 100 : p.min,
+              max: p.percent ? p.max * 100 : p.max,
+              decimals: p.decimals,
+              step: adjustStep(p),
+              suffix: p.percent ? "%" : "",
+              defaultValue: p.percent ? p.initial * 100 : p.initial,
+              value:
+                  p.percent ? adjust.value(p.key) * 100 : adjust.value(p.key),
+              onChanged: (v) =>
+                  live(adjust.withValue(p.key, p.percent ? v / 100 : v)),
+              onCommit: commit,
+            ),
         if (adjust.kind == AdjustKind.hueSaturation)
           CanvasToggle(
             key: const ValueKey("adjustColourise"),
@@ -138,12 +146,40 @@ List<Widget> adjustmentSettings(
                     ? adjust.fade.copyWith(plain: true)
                     : adjust.fade.copyWith(gradient: g))),
           ),
+        if (adjust.kind == AdjustKind.highPass)
+          const CanvasHint("Only the detail, on grey. In Overlay or Soft "
+              "light it sharpens what is under it; it starts in Overlay."),
+        if (adjust.kind.neighbours)
+          const CanvasHint("Sizes are thousandths of the picture's shorter "
+              "side, so it looks the same at any size."),
+        if (adjust.kind == AdjustKind.colourBalance)
+          CanvasToggle(
+            key: const ValueKey("adjustBalanceKeepLight"),
+            label: "Keep brightness",
+            value: (adjust.values["keepLight"] ?? 1) > 0.5,
+            onChanged: (v) => now(adjust
+                .copyWith(values: {...adjust.values, "keepLight": v ? 1 : 0})),
+          ),
         if (adjust.kind == AdjustKind.keepColour)
           const CanvasHint("Pick the colour to keep -- a kit, a sign -- and "
               "everything else loses its colour. Range is how close a colour "
               "has to be to count."),
       ],
     ),
+    if (_groupsOf(adjust.kind).isNotEmpty)
+      _GroupedSettings(
+        key: ValueKey("adjustGroups-${adjust.kind.name}"),
+        adjust: adjust,
+        live: live,
+        now: now,
+        commit: commit,
+      ),
+    if (adjust.kind == AdjustKind.colourTable)
+      ColourTableSettings(
+        key: const ValueKey("adjustTable"),
+        adjust: adjust,
+        now: now,
+      ),
     if (adjust.kind == AdjustKind.levels)
       LevelsHistogram(
         key: const ValueKey("adjustLevels"),
@@ -656,4 +692,213 @@ class _HistogramPainter extends CustomPainter {
       old.black != black ||
       old.mid != mid ||
       old.white != white;
+}
+
+/// _groupsOf are the settings of a kind with many, shown a group at a time:
+/// each group's key starts its settings' keys.
+List<(String, String)> _groupsOf(AdjustKind k) => switch (k) {
+      AdjustKind.colourMixer => [for (var b in mixerBands) (b.key, b.label)],
+      AdjustKind.colourBalance => const [
+          ("shadows", "Shadows"),
+          ("mids", "Midtones"),
+          ("highs", "Highlights"),
+        ],
+      AdjustKind.channelMixer => const [
+          ("r", "Red"),
+          ("g", "Green"),
+          ("b", "Blue"),
+        ],
+      _ => const [],
+    };
+
+/// _withinGroup is [label] without the group's name it starts with, which
+/// the picker above already says: "Red hue" is "Hue" under Red.
+String _withinGroup(String label, String group) {
+  if (!label.startsWith(group)) return label;
+  var rest = label.substring(group.length).replaceFirst(RegExp(r"^:?\s*"), "");
+  return rest.isEmpty ? label : rest[0].toUpperCase() + rest.substring(1);
+}
+
+/// _shownGroup is the group last shown for each kind, for the run.
+final Map<AdjustKind, String> _shownGroup = {};
+
+/// _GroupedSettings is a many-setting kind's settings, a group at a time:
+/// the colour mixer's eight colours, colour balance's three tones, the
+/// channel mixer's three channels out.
+class _GroupedSettings extends StatefulWidget {
+  final ImageAdjustment adjust;
+  final ValueChanged<ImageAdjustment> live;
+  final ValueChanged<ImageAdjustment> now;
+  final VoidCallback commit;
+  const _GroupedSettings(
+      {required this.adjust,
+      required this.live,
+      required this.now,
+      required this.commit,
+      super.key});
+
+  @override
+  State<_GroupedSettings> createState() => _GroupedSettingsState();
+}
+
+class _GroupedSettingsState extends State<_GroupedSettings> {
+  @override
+  Widget build(BuildContext context) {
+    var adjust = widget.adjust;
+    var kind = adjust.kind;
+    var groups = _groupsOf(kind);
+    var group = _shownGroup[kind] ?? groups.first.$1;
+    var groupLabel = groups.firstWhere((g) => g.$1 == group).$2;
+    bool moved(String g) => kind.params
+        .any((p) => p.key.startsWith(g) && adjust.values.containsKey(p.key));
+    return CanvasControlGroup(
+      label: switch (kind) {
+        AdjustKind.colourMixer => "Colour",
+        AdjustKind.colourBalance => "Tones",
+        _ => "Channel out",
+      },
+      rule: false,
+      children: [
+        CanvasSegmented<String>(
+          key: const ValueKey("adjustGroup-picker"),
+          options: [
+            // A dot after a group that has been moved.
+            for (var (key, label) in groups)
+              (key, moved(key) ? "$label ·" : label)
+          ],
+          value: group,
+          keyOf: (g) => "adjustGroup-$g",
+          onChanged: (g) => setState(() => _shownGroup[kind] = g),
+        ),
+        const CanvasLineBreak(),
+        for (var p in kind.params)
+          // Every key in a group starts with the group's key: the channel
+          // mixer's red channel out is "rr", "rg" and "rb".
+          if (p.key.startsWith(group))
+            CanvasStepper(
+              key: ValueKey("adjust-${p.key}"),
+              label: _withinGroup(p.label, groupLabel),
+              min: p.percent ? p.min * 100 : p.min,
+              max: p.percent ? p.max * 100 : p.max,
+              decimals: p.decimals,
+              step: adjustStep(p),
+              suffix: p.percent ? "%" : "",
+              defaultValue: p.percent ? p.initial * 100 : p.initial,
+              value:
+                  p.percent ? adjust.value(p.key) * 100 : adjust.value(p.key),
+              onChanged: (v) =>
+                  widget.live(adjust.withValue(p.key, p.percent ? v / 100 : v)),
+              onCommit: widget.commit,
+            ),
+      ],
+    );
+  }
+}
+
+/// ColourTableSettings picks a colour table: one of the app's film tables,
+/// or one read in from a .cube file or a HaldCLUT picture.
+class ColourTableSettings extends StatelessWidget {
+  final ImageAdjustment adjust;
+  final ValueChanged<ImageAdjustment> now;
+  const ColourTableSettings(
+      {required this.adjust, required this.now, super.key});
+
+  static const _own = "own";
+
+  @override
+  Widget build(BuildContext context) {
+    var picked = adjust.cube != null ? _own : adjust.table;
+    return CanvasControlGroup(
+      label: "Table",
+      rule: false,
+      children: [
+        CanvasDropdown<String>(
+          key: const ValueKey("adjustTablePick"),
+          label: "Look",
+          value: picked,
+          width: 220,
+          options: [
+            ("", "None"),
+            if (adjust.cube != null)
+              (_own, adjust.tableName.isEmpty ? "Read in" : adjust.tableName),
+            for (var t in filmTables) (t.id, t.name),
+          ],
+          onChanged: (id) {
+            if (id == _own) return;
+            now(adjust.copyWith(table: id, clearCube: true, tableName: ""));
+          },
+        ),
+        CanvasTextButton(
+          key: const ValueKey("adjustTableLoad"),
+          label: "Load a .cube or HaldCLUT",
+          icon: Icons.file_open_outlined,
+          onPressed: () async {
+            var read = await pickColourTable(context);
+            if (read == null) return;
+            now(adjust.copyWith(
+                table: "", cube: read.cube, tableName: read.title));
+          },
+        ),
+        const CanvasHint("Read-in tables are kept in the picture, so it "
+            "looks the same wherever it goes."),
+        // Said where it shows, not behind the "?": the film tables' licence
+        // asks for their makers to be named.
+        Text(filmTablesCredit,
+            key: const ValueKey("adjustTableCredit"),
+            style: TextStyle(
+                fontSize: 11,
+                color: ThemeNotifier.of(context).colors.onSurfaceVariant)),
+      ],
+    );
+  }
+}
+
+/// pickColourTable asks for a .cube file or a HaldCLUT picture and reads
+/// it, saying why when it cannot.
+Future<CubeFile?> pickColourTable(BuildContext context) async {
+  void say(String text) => ScaffoldMessenger.maybeOf(context)
+      ?.showSnackBar(SnackBar(content: Text(text)));
+  try {
+    var picked = await FilePicker.platform.pickFiles(
+        dialogTitle: "Load a colour table",
+        type: FileType.custom,
+        allowedExtensions: const ["cube", "png"]);
+    var path = picked?.files.firstOrNull?.path;
+    if (path == null) return null;
+    var (read, problem) = await readColourTableFile(path);
+    if (read == null && context.mounted) say(problem ?? "Could not read it.");
+    return read;
+  } catch (e) {
+    if (context.mounted) say("Could not read it: $e");
+    return null;
+  }
+}
+
+/// readColourTableFile is the table in the file at [path]: a .cube file,
+/// or a HaldCLUT picture.
+Future<(CubeFile?, String?)> readColourTableFile(String path) async {
+  var file = File(path);
+  if (await file.length() > maxCubeFileBytes) {
+    return (null, "That is too large to be a colour table.");
+  }
+  var name = p.basenameWithoutExtension(path);
+  if (path.toLowerCase().endsWith(".png")) {
+    var bytes = await file.readAsBytes();
+    var codec = await ui.instantiateImageCodec(bytes);
+    var frame = await codec.getNextFrame();
+    codec.dispose();
+    var image = frame.image;
+    var data =
+        await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var (w, h) = (image.width, image.height);
+    image.dispose();
+    if (data == null) return (null, "Could not read that picture.");
+    var (cube, problem) = haldCube(data.buffer.asUint8List(), w, h);
+    return (cube == null ? null : CubeFile(name, cube), problem);
+  }
+  var (read, problem) = parseCubeFile(await file.readAsString());
+  if (read != null && read.title.isEmpty) {
+    read = CubeFile(name, read.cube);
+  }
+  return (read, problem);
 }

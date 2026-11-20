@@ -84,10 +84,31 @@ The saved format:
   Stock needs the person's key for each library and Canvas's fetching
   switch on; if either is missing, say what to turn on rather than working
   round it. Mention the credit of anything used from stock.
+- For people, canvas_drawn_styles and canvas_draw_character make
+  characters from CC0 drawn styles (Open Peeps, Notionists, Lorelei, Pixel
+  Art), part by part and colour by colour, on this computer. Stock also has
+  backgrounds and landscapes: Wikimedia Commons, Pexels, The Met's
+  paintings, NASA (whose rules forbid suggesting NASA endorses anything,
+  cryptocurrency included), ambientCG textures, and Poly Haven skies.
 - When no picture exists for what is wanted, draw one: canvas_draw_svg
   takes an SVG you write (illustrations, icons, emblems, patterns, maps,
   diagrams) and puts it on the canvas as a drawing. Keep it clean and in
   the canvas's colours, and render to check it.
+- Pictures (image elements) are edited as a photo editor's actions edit
+  them, in layers the person can change afterwards. image_actions lists
+  ready-made ones (film, faded film, teal and orange, HDR, glow, glitch,
+  VHS, comic, pencil sketch, watercolour, pop art...) and the person's own;
+  image_do_action does one. For a look of your own, read image_reference
+  and write image_add_steps: adjustments (colour balance, colour mixer,
+  curves, film colour tables, shadows and highlights, clarity, sharpen,
+  find edges, oil paint, pixelate...), textures (grain, paper, vignette,
+  light leak, halftone, scan lines), colour layers, and copies of the
+  picture with their own blend and effects -- a blurred copy screened over
+  glows; an adjustment with clip: true changes only the copy under it.
+  Render, look, adjust. When a look should be kept for other pictures,
+  image_save_action keeps it as an action. To match a style in a picture
+  the person shows you, read what it does -- its contrast, colours in the
+  shadows and highlights, grain, softness -- and build it from steps.
 - Style profiles keep a look to make new work in: canvas_styles lists them,
   canvas_style_get reads one (its guide, and measured facts: exact colours
   as integers, type sizes, samples to copy). When the person names a style,

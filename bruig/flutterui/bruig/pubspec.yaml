@@ -218,6 +218,11 @@ flutter:
     - assets/canvas/cues/
     # The ready-made 3D cast's pictures, for the Characters list.
     - assets/canvas/character_cast/
+    # Film colour tables for a picture's Colour table adjustment: CC BY-SA
+    # 4.0, see its SOURCES.md.
+    - assets/canvas/luts/film_tables.bin.gz
+    # The drawn characters' parts: CC0 designs, see its SOURCES.md.
+    - assets/canvas/characters/drawn_styles.json.gz
     # What a Run panel runs Go with (Yaegi as WebAssembly, and Go's
     # wasm_exec.js): see assets/code/NOTICE.md.
     - assets/code/

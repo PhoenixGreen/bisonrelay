@@ -378,7 +378,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("looks and designs are kept in Colour, not Frame",
+    testWidgets("designs are kept in Colour, actions in their own section",
         (tester) async {
       await pumpPanel(tester);
       await openSection(tester, "image.frame");
@@ -389,12 +389,11 @@ void main() {
       expect(inFrame("elementPresets"), findsNothing);
       await openSection(tester, "image.picture.colour");
       expect(find.byKey(const ValueKey("imageSaved")), findsOneWidget);
-      expect(find.byKey(const ValueKey("imageLookSave")), findsOneWidget);
-      await tapKey(tester, "imageSavedDesigns");
       expect(find.byKey(const ValueKey("elementPresets")), findsOneWidget);
-      expect(find.byKey(const ValueKey("imageLookSave")), findsNothing);
-      await tapKey(tester, "imageSavedLooks");
-      expect(find.byKey(const ValueKey("imageLookSave")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageActionSave")), findsNothing);
+      await openSection(tester, "image.actions");
+      expect(find.byKey(const ValueKey("imageActionSave")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageActionImport")), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

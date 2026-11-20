@@ -11,6 +11,15 @@ import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/model/image_action_file.dart';
+import 'package:bruig/plugin_system/canvas/model/image_steps.dart';
+import 'package:bruig/plugin_system/canvas/model/image_steps.dart'
+    as image_steps show imageReference;
+import 'package:bruig/plugin_system/canvas/model/drawn_characters.dart';
+import 'package:bruig/plugin_system/canvas/presets/drawn_styles.dart';
+import 'package:bruig/plugin_system/canvas/presets/image_looks.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
@@ -423,6 +432,187 @@ class CanvasAutomation {
     if (!place) return (id, null, null);
     var (element, problem) = await useAsset(id);
     return (id, element, problem);
+  }
+
+  // ------------------------------------------------------------------------
+  // Drawn characters
+  // ------------------------------------------------------------------------
+
+  /// drawnStyles are the styles characters are drawn in: each one's parts
+  /// with their choices (and whether one may be left out), and colours with
+  /// their palettes.
+  static Future<List<Map<String, Object?>>> drawnStyles() async => [
+        for (var s in (await DrawnStyles.load()).values)
+          {
+            "style": s.id,
+            "title": s.title,
+            "by": s.creator,
+            "licence": s.licence,
+            "parts": {
+              for (var g in s.groups)
+                g: {
+                  "choices": s.choices(g),
+                  if (s.optional(g)) "mayBeNone": true,
+                }
+            },
+            "colours": {
+              for (var c in s.colours)
+                if (s.palette(c).isNotEmpty) c: s.palette(c)
+            },
+          }
+      ];
+
+  /// drawCharacter draws a character in [style] -- [seed]'s, or a fresh
+  /// one's, with [parts] and [colours] as given (a part null for none) --
+  /// keeps it with the drawings, and puts it on the scene being edited.
+  /// Returns (element id, problem): a problem with an id is a part or
+  /// colour left as it was.
+  Future<(String?, String?)> drawCharacter(String style,
+      {Map<String, Object?> parts = const {},
+      Map<String, Object?> colours = const {},
+      int? seed,
+      String name = ""}) async {
+    var s = (await DrawnStyles.load())[style];
+    if (s == null) return (null, "There is no style $style.");
+    var character =
+        randomCharacter(s, math.Random(seed ?? DateTime.now().microsecond));
+    var left = <String>[];
+    for (var e in parts.entries) {
+      if (!s.groups.contains(e.key)) {
+        left.add("no part ${e.key}");
+      } else if (e.value == null && s.optional(e.key)) {
+        character = character.withPart(e.key, null);
+      } else if (s.choices(e.key).contains(e.value)) {
+        character = character.withPart(e.key, "${e.value}");
+      } else {
+        left.add("${e.key} has no ${e.value}");
+      }
+    }
+    for (var e in colours.entries) {
+      var hex = "${e.value}".replaceFirst("#", "").toLowerCase();
+      if (!s.colours.contains(e.key)) {
+        left.add("no colour ${e.key}");
+      } else if (RegExp(r"^[0-9a-f]{6}$").hasMatch(hex) ||
+          hex == "transparent") {
+        character = character.withColour(e.key, hex);
+      } else {
+        left.add("${e.value} is not a colour");
+      }
+    }
+    var id = await keepDrawnCharacter(s, character, name);
+    if (id == null) return (null, "The character could not be kept.");
+    var (element, problem) = await useAsset(id);
+    var said = [if (problem != null) problem, ...left].join("; ");
+    return (element, said.isEmpty ? null : said);
+  }
+
+  // ------------------------------------------------------------------------
+  // Pictures' actions
+  // ------------------------------------------------------------------------
+
+  /// imageActions are the actions a picture can be given: the app's and
+  /// the person's, each with its steps.
+  static Future<List<Map<String, Object?>>> imageActions() async {
+    await SavedPresetStore.looks.load();
+    return [
+      for (var p in [...builtInLooks, ...SavedPresetStore.looks.presets])
+        {
+          "id": p.id,
+          "name": p.name,
+          if (p.id.startsWith(builtInLookPrefix)) "builtIn": true,
+          "steps": lookStepNames(p.data),
+        }
+    ];
+  }
+
+  /// imageReference is every step an action can hold (see image_steps.dart).
+  static Map<String, Object?> imageReference() => image_steps.imageReference();
+
+  /// _picture is image element [id], brought to its scene, or why not.
+  (ImageElement?, String?) _picture(String id) {
+    var at = sceneOf(id);
+    if (at < 0) return (null, "There is no element $id.");
+    if (at != _doc.at) controller.goToScene(at);
+    var e = _doc.elementById(id);
+    if (e is! ImageElement) return (null, "Element $id is not a picture.");
+    return (e, null);
+  }
+
+  /// imageLayers are picture [id]'s layers, top first: each one's id, kind,
+  /// and name as a step, and whether an action would keep it.
+  Map<String, Object?>? imageLayers(String id) {
+    var e = _doc.allScenes
+        .expand((s) => s.elements)
+        .where((x) => x.id == id)
+        .firstOrNull;
+    if (e is! ImageElement) return null;
+    return {
+      "picture": e.assetId,
+      "layers": [
+        for (var l in e.stack.reversed)
+          {
+            "id": l.id,
+            "kind": l.kind.name,
+            "step": l.isBase ? "the picture" : stepLabel(e, l),
+            if (inLook(e, l)) "inAction": true,
+            if (l.blend != LayerBlend.normal) "blend": l.blend.name,
+            if (l.opacity != 1) "opacity": l.opacity,
+            if (l.clip) "clip": true,
+            if (l.effects.isNotEmpty)
+              "effects": [for (var f in l.effects) f.kind.name],
+          }
+      ],
+    };
+  }
+
+  /// doImageAction does action [action] (as imageActions lists it) to
+  /// picture [id]: added to what it has, or [replace]ing its look.
+  Future<String?> doImageAction(String id, String action,
+      {bool replace = false}) async {
+    await SavedPresetStore.looks.load();
+    var p = [...builtInLooks, ...SavedPresetStore.looks.presets]
+        .where((p) => p.id == action || p.name == action)
+        .firstOrNull;
+    if (p == null) return "There is no action $action.";
+    var (e, problem) = _picture(id);
+    if (e == null) return problem;
+    controller.replaceElement(withLookApplied(e, p.data, replace: replace));
+    return null;
+  }
+
+  /// addImageSteps does [steps] (see imageStepsFrom) to picture [id], added
+  /// to what it has or [replace]ing its look. Returns how many steps were
+  /// made and what could not be, or why nothing was.
+  (int, List<String>, String?) addImageSteps(String id, Object? steps,
+      {bool replace = false}) {
+    var read = imageStepsFrom(steps);
+    if (read.count == 0) {
+      return (0, read.problems, "None of the steps could be made.");
+    }
+    var (e, problem) = _picture(id);
+    if (e == null) return (0, read.problems, problem);
+    controller.replaceElement(withLookApplied(e, read.data, replace: replace));
+    return (read.count, read.problems, null);
+  }
+
+  /// saveImageAction keeps picture [id]'s look as the action [name]: the
+  /// layers [layers] names, or every one an action keeps.
+  Future<(String?, String?)> saveImageAction(String id, String name,
+      {List<String>? layers}) async {
+    var e = _doc.allScenes
+        .expand((s) => s.elements)
+        .where((x) => x.id == id)
+        .firstOrNull;
+    if (e is! ImageElement) return (null, "Element $id is not a picture.");
+    var data = lookData(e, only: layers?.toSet());
+    if (lookSteps(data) == 0) return (null, "That picture has no steps yet.");
+    var store = SavedPresetStore.looks;
+    await store.load();
+    for (var p in store.presets.where((p) => p.name == name.trim()).toList()) {
+      await store.remove(p);
+    }
+    var kept = await store.save(name, data);
+    return kept == null ? (null, "Could not save it.") : (kept.id, null);
   }
 
   // ------------------------------------------------------------------------

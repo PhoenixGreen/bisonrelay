@@ -16,6 +16,8 @@ import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/character_browser.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/kaykit_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/kenney_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/stock_import.dart';
 import 'package:bruig/storage_manager.dart';
@@ -35,8 +37,13 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 
 const _sourceKey = "canvasStock.source";
 
-/// _kenneyKey is what the library is saved as when it is Kenney's sprites.
+/// _kenneyKey is what the library is saved as when it is Kenney's sprites;
+/// _charactersKey the drawn characters made here, _kayKitKey KayKit's 3D
+/// characters to download. None is searched.
 const _kenneyKey = "kenney";
+const _charactersKey = "characters";
+const _kayKitKey = "kaykit";
+const _browsers = {_kenneyKey, _charactersKey, _kayKitKey};
 const _filtersKey = "canvasStock.filters";
 
 /// _previewMaxBytes bounds a preview. Jamendo's is the whole track as a
@@ -57,9 +64,10 @@ class StockPanel extends StatefulWidget {
 class _StockPanelState extends State<StockPanel> {
   StockSource _source = StockSource.pixabayPictures;
 
-  /// _kenney is whether Kenney's free sprites are shown in place of a
-  /// library to search (see kenney_browser.dart).
-  bool _kenney = false;
+  /// _browser is what is shown in place of a library to search, if
+  /// anything: Kenney's free sprites (kenney_browser.dart), characters drawn
+  /// here (character_browser.dart), or KayKit's to download (kaykit_packs).
+  String? _browser;
   final Map<StockSource, Map<String, String>> _filters = {};
   final TextEditingController _search = TextEditingController();
   final TextEditingController _key = TextEditingController();
@@ -122,8 +130,8 @@ class _StockPanelState extends State<StockPanel> {
   Future<void> _restore() async {
     var proxied = await networkIsProxied();
     var saved = await StorageManager.readString(_sourceKey);
-    var kenney = saved == _kenneyKey;
-    var source = StockSource.fromName(kenney ? null : saved);
+    var browser = _browsers.contains(saved) ? saved : null;
+    var source = StockSource.fromName(browser != null ? null : saved);
     try {
       var saved = jsonDecode(await StorageManager.readString(_filtersKey));
       if (saved is Map) {
@@ -143,7 +151,7 @@ class _StockPanelState extends State<StockPanel> {
       _proxied = proxied;
       _source = source;
       _hasKey = hasKey;
-      _kenney = kenney;
+      _browser = browser;
     });
   }
 
@@ -154,7 +162,7 @@ class _StockPanelState extends State<StockPanel> {
       }));
 
   Future<void> _choose(StockSource source) async {
-    if (_kenney) setState(() => _kenney = false);
+    if (_browser != null) setState(() => _browser = null);
     if (source == _source) {
       unawaited(StorageManager.saveString(_sourceKey, source.name));
       return;
@@ -347,28 +355,36 @@ class _StockPanelState extends State<StockPanel> {
     var library = CanvasDropdown<String>(
       key: const ValueKey("stockSource"),
       label: "Library",
-      value: _kenney ? _kenneyKey : _source.name,
+      value: _browser ?? _source.name,
       width: 160,
       options: [
         for (var s in StockSource.values) (s.name, s.label),
         (_kenneyKey, "Kenney's sprites"),
+        (_charactersKey, "Drawn characters"),
+        (_kayKitKey, "KayKit 3D characters"),
       ],
       onChanged: (v) {
-        if (v == _kenneyKey) {
+        if (_browsers.contains(v)) {
           _previewer.stop();
-          StorageManager.saveString(_sourceKey, _kenneyKey);
-          setState(() => _kenney = true);
+          StorageManager.saveString(_sourceKey, v);
+          setState(() => _browser = v);
         } else {
           _choose(StockSource.fromName(v));
         }
       },
     );
-    if (_kenney) {
-      return ListView(padding: const EdgeInsets.fromLTRB(8, 6, 8, 8), children: [
-        CanvasWrap(children: [library]),
-        const SizedBox(height: 6),
-        KenneyBrowser(controller: widget.controller),
-      ]);
+    if (_browser case var browser?) {
+      return ListView(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          children: [
+            CanvasWrap(children: [library]),
+            const SizedBox(height: 6),
+            switch (browser) {
+              _charactersKey => CharacterBrowser(controller: widget.controller),
+              _kayKitKey => KayKitBrowser(controller: widget.controller),
+              _ => KenneyBrowser(controller: widget.controller),
+            },
+          ]);
     }
 
     return ListView(

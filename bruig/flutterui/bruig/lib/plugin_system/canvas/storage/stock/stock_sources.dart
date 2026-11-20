@@ -63,6 +63,66 @@ enum StockSource {
     keyHost: "",
     keyPage: "https://iconify.design/",
     from: "Iconify",
+  ),
+
+  /// wikimedia is Wikimedia Commons: photographs, paintings, drawings and
+  /// old illustrations, each under its own free licence, read with it.
+  wikimedia(
+    label: "Wikimedia Commons",
+    kind: AssetKind.picture,
+    keyHost: "",
+    keyPage: "https://commons.wikimedia.org/",
+    from: "Wikimedia Commons",
+  ),
+
+  /// pexels is Pexels' photographs: landscapes, skies, people; free to use,
+  /// with the person's own key.
+  pexels(
+    label: "Pexels photos",
+    kind: AssetKind.picture,
+    keyHost: "api.pexels.com",
+    keyPage: "https://www.pexels.com/api/",
+    from: "Pexels",
+  ),
+
+  /// met is the Metropolitan Museum of Art's public-domain works: paintings
+  /// of landscapes, figures and creatures (CC0), no key.
+  met(
+    label: "The Met (paintings)",
+    kind: AssetKind.picture,
+    keyHost: "",
+    keyPage: "https://metmuseum.github.io/",
+    from: "The Met",
+  ),
+
+  /// nasa is NASA's image library: space, the Earth and the sky. Public
+  /// domain, but NASA's own rules come with it (see terms).
+  nasa(
+    label: "NASA images",
+    kind: AssetKind.picture,
+    keyHost: "",
+    keyPage: "https://images.nasa.gov/",
+    from: "NASA",
+  ),
+
+  /// ambientCG is ambientCG's materials: wood, stone, fabric, ground and
+  /// the like, flat and seamless, CC0, no key.
+  ambientCG(
+    label: "ambientCG textures",
+    kind: AssetKind.picture,
+    keyHost: "",
+    keyPage: "https://ambientcg.com/",
+    from: "ambientCG",
+  ),
+
+  /// polyHavenPictures is Poly Haven's skies (its HDRIs, as flat panoramas)
+  /// and textures, CC0, no key (see polyHavenPage).
+  polyHavenPictures(
+    label: "Poly Haven skies and textures",
+    kind: AssetKind.picture,
+    keyHost: "",
+    keyPage: "https://polyhaven.com/",
+    from: "Poly Haven",
   );
 
   final String label;
@@ -92,13 +152,25 @@ enum StockSource {
   /// with a key and a secret.
   bool get needsSecret => this == nounProject;
 
-  /// needsKey is whether a search needs a key; Poly Haven and Iconify are
-  /// open.
-  bool get needsKey => this != polyHaven && this != iconify;
+  /// needsKey is whether a search needs a key of the person's own; the
+  /// rest are open.
+  bool get needsKey => switch (this) {
+        pixabayPictures ||
+        pixabayVideos ||
+        nounProject ||
+        freesound ||
+        jamendo ||
+        pexels =>
+          true,
+        _ => false,
+      };
 
   /// needsText is whether a search must name something; the others show
   /// what is popular for an empty search.
-  bool get needsText => this == nounProject || this == iconify;
+  bool get needsText => switch (this) {
+        nounProject || iconify || wikimedia || met || nasa => true,
+        _ => false,
+      };
 
   /// terms is the line under the results: their source, which Pixabay asks
   /// to be shown with its results, and what using one asks.
@@ -117,6 +189,22 @@ enum StockSource {
             "any use, no credit needed -- though it is appreciated.",
         iconify => "From Iconify's open-source icon sets. Each icon keeps "
             "its set's licence; CC BY asks for a credit.",
+        wikimedia => "From Wikimedia Commons. Each file keeps its own free "
+            "licence and author; CC BY and BY-SA ask for a credit, kept with "
+            "it.",
+        // Pexels asks for a prominent link back to it with its results.
+        pexels => "Photos provided by Pexels (pexels.com). Free to use; "
+            "crediting the photographer is appreciated.",
+        met => "From The Metropolitan Museum of Art's Open Access works: "
+            "public domain (CC0), free for any use.",
+        // NASA's own media guidelines, which matter for an app like this.
+        nasa => "From NASA. Generally public domain; credit NASA. NASA's "
+            "rules: never suggest NASA endorses anything -- cryptocurrency "
+            "included -- and no use as NFTs.",
+        ambientCG => "From ambientCG. Its textures are CC0: free for any "
+            "use, no credit needed.",
+        polyHavenPictures => "Powered by Poly Haven. Its skies and textures "
+            "are CC0: free for any use, no credit needed.",
       };
 
   static StockSource fromName(String? name) =>
@@ -258,6 +346,46 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
           ]),
         ],
       StockSource.polyHaven => const [],
+      StockSource.wikimedia => const [
+          StockFilter("filetype", "Type", [
+            ("bitmap", "Photos and pictures"),
+            ("drawing", "Drawings"),
+          ]),
+          StockFilter("licence", "Licence", [
+            ("free", "No credit needed"),
+            ("", "Any free licence"),
+          ]),
+        ],
+      StockSource.pexels => const [
+          StockFilter("orientation", "Shape", [
+            _any,
+            ("landscape", "Landscape"),
+            ("portrait", "Portrait"),
+            ("square", "Square"),
+          ]),
+          StockFilter("color", "Colour", [
+            _any,
+            ("red", "Red"),
+            ("orange", "Orange"),
+            ("yellow", "Yellow"),
+            ("green", "Green"),
+            ("turquoise", "Turquoise"),
+            ("blue", "Blue"),
+            ("violet", "Violet"),
+            ("pink", "Pink"),
+            ("brown", "Brown"),
+            ("black", "Black"),
+            ("gray", "Grey"),
+            ("white", "White"),
+          ]),
+        ],
+      StockSource.met || StockSource.nasa || StockSource.ambientCG => const [],
+      StockSource.polyHavenPictures => const [
+          StockFilter("t", "Type", [
+            ("hdris", "Skies"),
+            ("textures", "Textures"),
+          ]),
+        ],
       StockSource.iconify => const [
           // One colour first: those take a fill, as the canvas's shapes do;
           // the rest keep their set's colours.
@@ -433,6 +561,68 @@ StockRequest requestFor(StockQuery q, {required String key}) {
       return StockRequest(Uri.https("api.polyhaven.com", "/search", {
         "q": text,
         "t": "models",
+      }));
+    case StockSource.wikimedia:
+      return StockRequest(
+          Uri.https("commons.wikimedia.org", "/w/api.php", {
+            "action": "query",
+            "format": "json",
+            "generator": "search",
+            "gsrsearch": "$text filetype:${q.value("filetype")}",
+            "gsrnamespace": "6",
+            "gsrlimit": "$stockPageSize",
+            "gsroffset": "${(q.page - 1) * stockPageSize}",
+            "prop": "imageinfo",
+            "iiprop": "url|size|mime|extmetadata",
+            "iiurlwidth": "1600",
+            "iiextmetadatafilter":
+                "LicenseShortName|LicenseUrl|Artist|ObjectName|AttributionRequired",
+          }),
+          headers: stockAgentHeaders);
+    case StockSource.pexels:
+      return StockRequest(
+          Uri.https(
+              "api.pexels.com", text.isEmpty ? "/v1/curated" : "/v1/search", {
+            if (text.isNotEmpty) "query": text,
+            if (text.isNotEmpty) ...chosen(["orientation", "color"]),
+            "per_page": "$stockPageSize",
+            "page": "${q.page}",
+          }),
+          headers: {"Authorization": key});
+    // The Met's search answers ids only; each work is asked for in turn
+    // (see StockClient._met).
+    case StockSource.met:
+      return StockRequest(
+          Uri.https(
+              "collectionapi.metmuseum.org", "/public/collection/v1.1/search", {
+            "q": text,
+            "hasImages": "true",
+          }),
+          headers: stockAgentHeaders);
+    case StockSource.nasa:
+      return StockRequest(
+          Uri.https("images-api.nasa.gov", "/search", {
+            "q": text,
+            "media_type": "image",
+            "page": "${q.page}",
+            "page_size": "$stockPageSize",
+          }),
+          headers: stockAgentHeaders);
+    case StockSource.ambientCG:
+      return StockRequest(
+          Uri.https("ambientcg.com", "/api/v3/assets", {
+            if (text.isNotEmpty) "q": text,
+            "type": "material",
+            "sort": "popular",
+            "limit": "$stockPageSize",
+            "offset": "${(q.page - 1) * stockPageSize}",
+          }),
+          headers: stockAgentHeaders);
+    // Its catalogue, in the order its search gives (see StockClient).
+    case StockSource.polyHavenPictures:
+      return StockRequest(Uri.https("api.polyhaven.com", "/search", {
+        "q": text,
+        "t": q.value("t"),
       }));
     case StockSource.iconify:
       return StockRequest(Uri.https("api.iconify.design", "/search", {
@@ -740,8 +930,98 @@ StockPage parseStock(StockQuery q, Object? json) {
         ));
       }
       return StockPage(items, more: results.length >= stockPageSize);
-    case StockSource.polyHaven:
+    case StockSource.polyHaven || StockSource.polyHavenPictures:
       throw StateError("Poly Haven pages are made by polyHavenPage");
+    case StockSource.met:
+      throw StateError("The Met's pages are made by metPage");
+    case StockSource.wikimedia:
+      return _wikimedia(q, json);
+    case StockSource.pexels:
+      var photos = _at<List>(json, ["photos"]) ?? const [];
+      var items = [
+        for (var h in photos)
+          StockItem(
+            source: source,
+            id: _s(h, ["id"]),
+            title: _s(h, ["alt"]).isEmpty
+                ? "Pexels ${_s(h, ["id"])}"
+                : _capital(_s(h, ["alt"])),
+            author: _s(h, ["photographer"]),
+            license: "Pexels License",
+            licenseUrl: "https://www.pexels.com/license/",
+            page: _s(h, ["url"]),
+            thumb: _s(h, ["src", "medium"]),
+            // Two thousand across at most: the original can be a
+            // camera's whole frame, far more than a canvas shows.
+            media: [
+              _s(h, ["src", "large2x"]),
+              _s(h, ["src", "original"])
+            ].firstWhere((u) => u.isNotEmpty, orElse: () => ""),
+            width: _i(h, ["width"]),
+            height: _i(h, ["height"]),
+          ),
+      ].where((i) => i.media.isNotEmpty).toList();
+      return StockPage(items, more: _s(json, ["next_page"]).isNotEmpty);
+    case StockSource.nasa:
+      var found = _at<List>(json, ["collection", "items"]) ?? const [];
+      var items = <StockItem>[];
+      for (var h in found) {
+        var id = _s(h, ["data", 0, "nasa_id"]);
+        var links = _at<List>(h, ["links"]) ?? const [];
+        String link(String name) =>
+            [
+              for (var l in links)
+                if (_s(l, ["href"]).contains("~$name.")) _s(l, ["href"])
+            ].firstOrNull ??
+            "";
+        var media = [link("large"), link("medium"), link("orig")]
+            .firstWhere((u) => u.isNotEmpty, orElse: () => "");
+        if (id.isEmpty || media.isEmpty) continue;
+        var by = [
+          _s(h, ["data", 0, "photographer"]),
+          _s(h, ["data", 0, "secondary_creator"]),
+          _s(h, ["data", 0, "center"]),
+        ].where((x) => x.isNotEmpty).firstOrNull;
+        items.add(StockItem(
+          source: source,
+          id: id,
+          title: _s(h, ["data", 0, "title"]),
+          author: by == null ? "NASA" : "NASA, $by",
+          license: "Public domain (NASA)",
+          licenseUrl:
+              "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+          page: "https://images.nasa.gov/details/$id",
+          thumb: link("thumb").isEmpty ? link("small") : link("thumb"),
+          media: media,
+        ));
+      }
+      var links = _at<List>(json, ["collection", "links"]) ?? const [];
+      return StockPage(items, more: links.any((l) => _s(l, ["rel"]) == "next"));
+    case StockSource.ambientCG:
+      var assets = _at<List>(json, ["assets"]) ?? const [];
+      var items = [
+        for (var h in assets)
+          if (_s(h, ["id"]) case var id when RegExp(r"^\w+$").hasMatch(id))
+            StockItem(
+              source: source,
+              id: id,
+              title: _spaced(id),
+              author: "ambientCG",
+              license: "CC0",
+              licenseUrl: "https://docs.ambientcg.com/license/",
+              page: "https://ambientcg.com/view?id=$id",
+              thumb: "https://acg-media.struffelproductions.com/file/"
+                  "ambientCG-Web/media/thumbnail/256-JPG-FFFFFF/$id.jpg",
+              // Its flat colour map, two thousand square: a texture as a
+              // picture.
+              media: "https://f003.backblazeb2.com/file/ambientCG-Web/media/"
+                  "surface-preview/$id/${id}_SQ_Color.jpg",
+              width: 2048,
+              height: 2048,
+            ),
+      ];
+      return StockPage(items,
+          more: _at<Object>(json, ["nextPageHttp"]) is String);
     case StockSource.iconify:
       var icons = _at<List>(json, ["icons"]) ?? const [];
       var sets = _at<Map>(json, ["collections"]) ?? const {};
@@ -785,7 +1065,7 @@ StockPage parseStock(StockQuery q, Object? json) {
 /// polyHavenPage is page [page] of the models [slugs] name, in order, from
 /// [catalogue]; with no slugs, the most downloaded first.
 StockPage polyHavenPage(Map<String, dynamic> catalogue, List<String>? slugs,
-    {int page = 1}) {
+    {int page = 1, StockSource source = StockSource.polyHaven}) {
   var order = slugs ??
       ([...catalogue.keys]..sort((a, b) => _i(catalogue[b], ["download_count"])
           .compareTo(_i(catalogue[a], ["download_count"]))));
@@ -798,7 +1078,7 @@ StockPage polyHavenPage(Map<String, dynamic> catalogue, List<String>? slugs,
   return StockPage([
     for (var slug in shown)
       StockItem(
-        source: StockSource.polyHaven,
+        source: source,
         id: slug,
         title: _s(catalogue[slug], ["name"]).isEmpty
             ? slug
@@ -810,7 +1090,124 @@ StockPage polyHavenPage(Map<String, dynamic> catalogue, List<String>? slugs,
         licenseUrl: "https://polyhaven.com/license",
         page: "https://polyhaven.com/a/$slug",
         thumb: _s(catalogue[slug], ["thumbnail_url"]),
-        media: "polyhaven:$slug",
+        media: source == StockSource.polyHaven
+            ? "polyhaven:$slug"
+            // A sky as its flat panorama; a texture as its colour map,
+            // found when used (see StockClient.polyHavenPicture).
+            : _at<num>(catalogue[slug], ["type"]) == 0
+                ? "https://cdn.polyhaven.com/asset_img/primary/$slug.png"
+                    "?width=2048"
+                : "polyhaven-texture:$slug",
       ),
   ], more: from + stockPageSize < known.length);
 }
+
+/// stockAgent names the app to the libraries that ask every program to say
+/// what it is (Wikimedia, NASA, The Met): the project, never the person.
+const stockAgent = "BisonRelay-Canvas/1.0 (https://bisonrelay.org)";
+const stockAgentHeaders = {"User-Agent": stockAgent};
+
+/// _spaced is "WoodFloor051" as "Wood floor 051".
+String _spaced(String id) => _capital(id
+    .replaceAllMapped(RegExp(r"(?<=[a-z])(?=[A-Z0-9])"), (_) => " ")
+    .toLowerCase());
+
+/// _plainText is a Commons description's HTML as its words.
+String _plainText(String html) => html
+    .replaceAll(RegExp(r"<[^>]*>"), "")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#039;", "'")
+    .replaceAll(RegExp(r"\s+"), " ")
+    .trim();
+
+/// _untracked is [url] without the campaign tags Commons adds to its links.
+String _untracked(String url) {
+  var u = Uri.tryParse(url);
+  if (u == null || !u.hasQuery) return url;
+  var q = {
+    for (var e in u.queryParameters.entries)
+      if (!e.key.startsWith("utm_")) e.key: e.value
+  };
+  // Uri.replace keeps the query it is given null for: cut it off instead.
+  if (q.isEmpty) return url.substring(0, url.indexOf("?"));
+  return u.replace(queryParameters: q).toString();
+}
+
+/// _sized is a Commons thumbnail address at [width] across.
+String _sized(String thumb, int width) =>
+    thumb.replaceFirst(RegExp(r"/\d+px-"), "/${width}px-");
+
+/// _creditFreeLicence is whether a Commons licence asks for no credit.
+bool _creditFreeLicence(String name) {
+  var n = name.toLowerCase();
+  return n.startsWith("cc0") ||
+      n.startsWith("public domain") ||
+      n.startsWith("pd") ||
+      n.contains("no restrictions");
+}
+
+StockPage _wikimedia(StockQuery q, Object? json) {
+  var pages = _at<Map>(json, ["query", "pages"]) ?? const {};
+  var free = q.value("licence") == "free";
+  var sorted = [...pages.values]
+    ..sort((a, b) => _i(a, ["index"]).compareTo(_i(b, ["index"])));
+  var items = <StockItem>[];
+  for (var h in sorted) {
+    var info = _at<Map>(h, ["imageinfo", 0]);
+    if (info == null) continue;
+    var meta = _at<Map>(info, ["extmetadata"]) ?? const {};
+    String m(String key) => _plainText(_s(meta, [key, "value"]));
+    var licence = m("LicenseShortName");
+    // Only a file whose licence is read: nothing taken on trust.
+    if (licence.isEmpty || (free && !_creditFreeLicence(licence))) continue;
+    var thumb = _untracked(_s(info, ["thumburl"]));
+    var media = thumb.isNotEmpty ? thumb : _untracked(_s(info, ["url"]));
+    if (media.isEmpty) continue;
+    var title = m("ObjectName");
+    if (title.isEmpty) {
+      title = _s(h, ["title"])
+          .replaceFirst("File:", "")
+          .replaceFirst(RegExp(r"\.\w+$"), "");
+    }
+    items.add(StockItem(
+      source: q.source,
+      id: _s(h, ["pageid"]),
+      title: title.length > 80 ? "${title.substring(0, 79)}…" : title,
+      author: m("Artist"),
+      license: licence,
+      licenseUrl: _s(meta, ["LicenseUrl", "value"]),
+      page: _untracked(_s(info, ["descriptionurl"])),
+      thumb: thumb.isEmpty ? media : _sized(thumb, 330),
+      media: media,
+      width: _i(info, ["thumbwidth"]),
+      height: _i(info, ["thumbheight"]),
+    ));
+  }
+  return StockPage(items, more: _at<Object>(json, ["continue"]) != null);
+}
+
+/// metPage is a page of The Met's works from [objects], each a work's own
+/// answer (v1/objects/id), keeping only those in the public domain with a
+/// picture.
+StockPage metPage(List<Object?> objects, {required bool more}) => StockPage([
+      for (var h in objects)
+        if (_at<bool>(h, ["isPublicDomain"]) == true &&
+            _s(h, ["primaryImageSmall"]).isNotEmpty)
+          StockItem(
+            source: StockSource.met,
+            id: _s(h, ["objectID"]),
+            title: [
+              _s(h, ["title"]),
+              _s(h, ["objectDate"])
+            ].where((x) => x.isNotEmpty).join(", "),
+            author: _s(h, ["artistDisplayName"]),
+            license: "CC0",
+            licenseUrl: "https://www.metmuseum.org/policies/image-resources",
+            page: _s(h, ["objectURL"]),
+            thumb: _s(h, ["primaryImageSmall"]),
+            // The web-sized picture, a thousand or so across: the original
+            // is a scan that can run to a hundred megabytes.
+            media: _s(h, ["primaryImageSmall"]),
+          ),
+    ], more: more);

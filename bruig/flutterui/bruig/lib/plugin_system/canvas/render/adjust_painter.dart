@@ -2,7 +2,9 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_cube.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
+import 'package:bruig/plugin_system/canvas/presets/film_tables.dart';
 import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -26,6 +28,8 @@ class AdjustShader {
     if (_program != null || _unloadable) return;
     try {
       _program = await ui.FragmentProgram.fromAsset("shaders/adjust.frag");
+      // The film tables with it, so one signal says both have come.
+      await FilmTables.load();
       ready.value = true;
     } catch (exception) {
       _unloadable = true;
@@ -41,6 +45,10 @@ final List<(ImageAdjustment, ui.Image)> _luts = [];
 const int _lutsKept = 6;
 
 ui.Image _lutOf(ImageAdjustment adjust) {
+  if (adjust.kind == AdjustKind.colourTable) {
+    var cube = tableOf(adjust);
+    if (cube != null) return _cubeImage(cube);
+  }
   for (var (a, image) in _luts) {
     if (identical(a, adjust)) return image;
   }
@@ -59,6 +67,15 @@ ui.Image _lutOf(ImageAdjustment adjust) {
             red: channel(CurveChannel.red),
             green: channel(CurveChannel.green),
             blue: channel(CurveChannel.blue));
+      case AdjustKind.colourMixer:
+        // Read at the hue: the turn, the saturation's times and the
+        // lightness's move, each about a half.
+        var (turn, times, lift) = mixerAt(adjust, x);
+        return Color.from(
+            alpha: 1,
+            red: (0.5 + turn / 120).clamp(0.0, 1.0),
+            green: (times / 2).clamp(0.0, 1.0),
+            blue: (0.5 + lift / 2).clamp(0.0, 1.0));
       case AdjustKind.gradientMap:
         var fade = adjust.fade;
         if (!fade.fades) return fade.color;
@@ -137,9 +154,111 @@ List<double> _uniforms(ImageAdjustment a) {
       return [v("levels"), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     case AdjustKind.threshold:
       return [v("level"), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    case AdjustKind.curves || AdjustKind.gradientMap || AdjustKind.invert:
+    case AdjustKind.channelMixer:
+      return [
+        v("rr"), v("rg"), v("rb"), 0, //
+        v("gr"), v("gg"), v("gb"), 0, //
+        v("br"), v("bg"), v("bb"), 0,
+      ];
+    case AdjustKind.colourBalance:
+      return [
+        v("shadowsRed"), v("shadowsGreen"), v("shadowsBlue"),
+        a.values["keepLight"] ?? 1, //
+        v("midsRed"), v("midsGreen"), v("midsBlue"), 0, //
+        v("highsRed"), v("highsGreen"), v("highsBlue"), 0,
+      ];
+    case AdjustKind.shadowsHighlights:
+      return [
+        v("shadows"), v("highlights"), v("radius") / 1000, 0, //
+        0, 0, 0, 0, 0, 0, 0, 0,
+      ];
+    case AdjustKind.clarity:
+      return [
+        v("clarity"), v("dehaze"), v("radius") / 1000, 0, //
+        0, 0, 0, 0, 0, 0, 0, 0,
+      ];
+    case AdjustKind.sharpen:
+      return [v("amount"), v("radius") / 1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    case AdjustKind.highPass:
+      return [v("radius") / 1000, v("strength"), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    case AdjustKind.noise:
+      return [
+        v("amount"), v("colourful"), v("size") / 1000, 0, //
+        0, 0, 0, 0, 0, 0, 0, 0,
+      ];
+    case AdjustKind.pixelate:
+      return [v("cell") / 1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    case AdjustKind.findEdges:
+      return [
+        v("strength"), v("width") / 1000, v("colour"), 0, //
+        0, 0, 0, 0, 0, 0, 0, 0,
+      ];
+    case AdjustKind.emboss:
+      return [
+        v("angle") * math.pi / 180, v("height") / 1000, v("amount"),
+        v("colour"), //
+        0, 0, 0, 0, 0, 0, 0, 0,
+      ];
+    case AdjustKind.oilPaint:
+      return [v("radius") / 1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    case AdjustKind.ripple:
+      return [
+        v("amount") / 1000, v("wavelength") / 1000,
+        v("angle") * math.pi / 180, 0, //
+        0, 0, 0, 0, 0, 0, 0, 0,
+      ];
+    case AdjustKind.colourTable:
+      var cube = tableOf(a);
+      // With no table yet, or none read, nothing is done.
+      return [
+        cube == null ? 0 : v("amount"), (cube?.n ?? 2).toDouble(), 0, 0, //
+        0, 0, 0, 0, 0, 0, 0, 0,
+      ];
+    case AdjustKind.curves ||
+          AdjustKind.gradientMap ||
+          AdjustKind.colourMixer ||
+          AdjustKind.invert:
       return List.filled(12, 0);
   }
+}
+
+/// tableOf is the colour table [a] reads: its own, or one of the app's.
+ColourCube? tableOf(ImageAdjustment a) =>
+    a.cube ?? (a.table.isEmpty ? null : FilmTables.of(a.table));
+
+/// _cubes are colour tables drawn as pictures for the shader: n² across
+/// (red along each of n blocks, blue block by block) and n down (green).
+final List<(ColourCube, ui.Image)> _cubes = [];
+
+ui.Image _cubeImage(ColourCube cube) {
+  for (var (c, image) in _cubes) {
+    if (identical(c, cube)) return image;
+  }
+  CanvasPerf.count("cube");
+  var n = cube.n;
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  var paint = Paint();
+  var i = 0;
+  for (var b = 0; b < n; b++) {
+    for (var g = 0; g < n; g++) {
+      for (var r = 0; r < n; r++) {
+        paint.color = Color.fromARGB(
+            255, cube.rgb[i], cube.rgb[i + 1], cube.rgb[i + 2]);
+        i += 3;
+        canvas.drawRect(
+            Rect.fromLTWH((r + b * n).toDouble(), g.toDouble(), 1, 1), paint);
+      }
+    }
+  }
+  var picture = recorder.endRecording();
+  var image = picture.toImageSync(n * n, n);
+  picture.dispose();
+  _cubes.add((cube, image));
+  while (_cubes.length > _lutsKept) {
+    _cubes.removeAt(0).$2.dispose();
+  }
+  return image;
 }
 
 /// paintAdjusted draws [below] -- a picture of what is under the adjustment,
@@ -325,4 +444,8 @@ void clearAdjustedRasters() {
     image.dispose();
   }
   _luts.clear();
+  for (var (_, image) in _cubes) {
+    image.dispose();
+  }
+  _cubes.clear();
 }

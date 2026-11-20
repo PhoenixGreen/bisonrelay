@@ -3,7 +3,10 @@
 // code outside this directory imports this file and nothing beneath it. It
 // is app code behind a switch (canvas_preferences.dart), not a plugin
 // capability. ARCHITECTURE.md covers its layers, storage, security, tests.
+import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/plugin_system/canvas/canvas_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/image_action_file.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/image_actions.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 
 export 'package:bruig/plugin_system/canvas/canvas_nav.dart';
@@ -38,4 +41,10 @@ void registerCanvas() {
     "canvas",
     (context, inPluginPanel) => const CanvasSettingsSection(),
   );
+  // An image action sent by a friend opens into a picture's Actions.
+  FileOpeners.register("canvas", (context, file) {
+    if (!file.toLowerCase().endsWith(imageActionExtension)) return false;
+    importImageActionFile(context, file);
+    return true;
+  });
 }
