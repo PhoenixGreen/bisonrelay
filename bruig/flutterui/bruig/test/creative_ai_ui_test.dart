@@ -39,6 +39,8 @@ class _Rig {
     library: () => library,
     serve: false,
     locateClaude: (_) async => null,
+    // No disk in a widget test: the Styles panel says it could not read.
+    stylesRoot: () async => throw "no disk here",
   );
 
   _Rig() {

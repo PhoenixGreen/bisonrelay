@@ -44,11 +44,18 @@ The saved format:
 - Text: "text" holds the words; "textSpec" holds font, size, weight, lh (line
   height), align (left/center/right), valign (top/middle/bottom), color.
   "autoSize": true grows the box to its words.
-- An element's arrival is "animation": {"preset": ...} with presets none,
-  fadeIn, fadeUp, blurIn, slideLeft, slideRight, slideUp, slideDown, scaleIn,
-  pop, punch, drop, wipe, split, snap, spinIn, spinBack, flipIn, shake,
-  mosaic, glitch, assemble, shatter; plus length, ease, exit settings
-  (describe a kind to see them all).
+- An element's arrival (and exit) has a different key by kind. A text
+  element's is "animation": {"preset": ...}, with presets including fadeIn,
+  fadeUp, blurIn, slideUp, slideDown, slideLeft, slideRight, scaleIn, pop,
+  punch, wipe, wipeLines, split, maskUp, letters, letterRise, words, cascade,
+  scatter, scramble, slam, snap, shake, bounce, whip, rotateIn, spinLetters,
+  flipIn, flipLetters, stretchIn, underline, highlight, strokeOn, mosaic,
+  glitch, assemble, shatter, echo... and trail... kinds. Every other kind's
+  is "anim": {"preset": ...}, with none, fadeIn, fadeUp, blurIn, slideLeft,
+  slideRight, slideUp, slideDown, scaleIn, pop, punch, drop, wipe, split,
+  snap, spinIn, spinBack, flipIn, shake, mosaic, glitch, assemble, shatter.
+  Both take "length" (frames), "ease", "exit" (a preset to leave by) and
+  more: describe the kind to see them.
 - Keyframes are in "track": {"keys": [...]}, each {"f": frame, "dx", "dy"
   (offset from where it rests), "s" (scale, 1 = as is), "r" (degrees added),
   "o" (opacity 0..1), "e" (easing to the next key: linear, easeIn, easeOut,
@@ -69,6 +76,14 @@ The saved format:
   scenes of the session view are its "session". Use canvas_update with
   target "document" for these, after canvas_get target "document" with the
   path you need.
+- Style profiles keep a look to make new work in: canvas_styles lists them,
+  canvas_style_get reads one (its guide, and measured facts: exact colours
+  as integers, type sizes, samples to copy). When the person names a style,
+  or the request says one is in use, read it first and follow its guide; use
+  its facts' exact values rather than near ones. canvas_style_save keeps the
+  open canvas as a style: look at it (canvas_render) first, then write the
+  guide -- what each colour and size of type is for, layout, motion, what to
+  avoid -- so it can be followed without the canvas.
 - canvas_measure_audio gives the mix's loudness (LUFS) and true peak, since
   you cannot hear it; aim near -14 LUFS with peaks below -1 dBTP for music
   and video unless asked otherwise.
@@ -170,3 +185,24 @@ ${before.isEmpty ? "" : "Text just before the passage (for context, do not rewri
 <passage>
 $passage
 </passage>""";
+
+/// saveStylePrompt asks Claude to study the open canvas and keep its style
+/// as [name].
+String saveStylePrompt(String name, String description) => """
+Study this canvas and save its style as a profile named "$name"${description.isEmpty ? "" : " (for: $description)"}. Render its scenes (a few
+frames of any that move) and read its main elements, then call
+canvas_style_save with that name${description.isEmpty ? ", a one-line description" : " and description"},
+and a guide in Markdown covering: the mood and what the style suits; the
+palette, each colour's role (background, text, accent...) with its hex; each
+size of type, its font and weight and when to use it; layout and spacing
+(margins, alignment, how much goes on a scene); how things arrive and move,
+and how long scenes run; the sound, if any; and a short list of do's and
+don'ts. Do not change the canvas. Reply with one or two sentences.""";
+
+/// restylePrompt asks Claude to bring the open canvas into a style.
+String restylePrompt(String style) => """
+Restyle this canvas in the style "$style": read it with canvas_style_get,
+then change the colours, type, backgrounds and motion of the elements on
+every scene to follow its guide and facts, keeping the words, pictures and
+what the layout says. Render each scene to check it, then say briefly what
+you changed.""";

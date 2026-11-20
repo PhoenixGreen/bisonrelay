@@ -2,12 +2,16 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:path/path.dart' as path;
+
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart'
     as exporting;
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 
@@ -87,6 +91,11 @@ class CanvasAutomation {
 
   static num _round(double v) =>
       v == v.roundToDouble() ? v.round() : (v * 100).round() / 100;
+
+  /// presetsDir is the canvas library's presets folder, where a feature may
+  /// keep presets of its own in a folder of its own.
+  static Future<String> presetsDir() async =>
+      path.join(await CanvasStorage.libraryDir(), presetsFolderName);
 
   /// kinds are the elements that can be added, by name.
   static List<Map<String, String>> kinds() => [

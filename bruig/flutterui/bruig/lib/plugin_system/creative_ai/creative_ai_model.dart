@@ -6,9 +6,11 @@ import 'package:bruig/plugin_system/creative_ai/claude/claude_code.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
 import 'package:bruig/plugin_system/creative_ai/mcp/mcp_server.dart';
 import 'package:bruig/plugin_system/creative_ai/session/ai_chat.dart';
+import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/session/writing_suggestions.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/canvas_ai_tools.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/guide.dart';
+import 'package:bruig/plugin_system/creative_ai/tools/style_ai_tools.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/writing_ai_tools.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter/foundation.dart';
@@ -49,9 +51,11 @@ class CreativeAi extends ChangeNotifier {
   late final WritingSuggestions suggestions = WritingSuggestions(this);
   late final AiChat canvasChat = AiChat(this, AiArea.canvas);
   late final AiChat writingChat = AiChat(this, AiArea.writing);
+  late final StyleLibrary styles = StyleLibrary(stylesRoot);
   late final McpServer server;
   late final List<McpTool> tools = [
     ...canvasAiTools(this),
+    ...styleAiTools(this),
     ...writingAiTools(this),
   ];
 
@@ -61,6 +65,9 @@ class CreativeAi extends ChangeNotifier {
   final bool serve;
   final Future<String?> Function(String chosen) locateClaude;
 
+  /// stylesRoot is the folder style profiles are kept under (a test's own).
+  final Future<String> Function() stylesRoot;
+
   CreativeAi({
     required this.prefs,
     required this.canvas,
@@ -69,6 +76,7 @@ class CreativeAi extends ChangeNotifier {
     required this.library,
     this.serve = true,
     this.locateClaude = ClaudeCode.locate,
+    this.stylesRoot = CanvasAutomation.presetsDir,
   }) {
     server = McpServer(
       tools: () => tools,
@@ -299,6 +307,7 @@ class CreativeAi extends ChangeNotifier {
     canvasChat.dispose();
     writingChat.dispose();
     suggestions.dispose();
+    styles.dispose();
     activity.dispose();
     super.dispose();
   }

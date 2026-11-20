@@ -22,12 +22,16 @@ class AiChatView extends StatefulWidget {
 
   final String hint;
 
+  /// header sits above the conversation (the style in use, say).
+  final Widget? header;
+
   const AiChatView({
     required this.ai,
     required this.chat,
     this.examples = const [],
     this.context,
     this.hint = "Ask Claude…",
+    this.header,
     super.key,
   });
 
@@ -96,6 +100,7 @@ class _AiChatViewState extends State<AiChatView> {
     var colors = theme.colors;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _bar(colors),
+      if (widget.header case var header?) header,
       Expanded(
         child: chat.entries.isEmpty
             ? _empty(colors)

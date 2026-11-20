@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
 import 'package:bruig/plugin_system/creative_ai/session/ai_chat.dart';
+import 'package:bruig/plugin_system/creative_ai/tools/guide.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,6 +61,61 @@ void main() {
     expect(ai.activity.calls.map((c) => c.caller.source),
         contains("Canvas sidebar"));
     expect(ai.hasCheckpoint, isTrue);
+  },
+      skip: live ? false : "Set CREATIVE_AI_LIVE=1 to run against Claude Code",
+      timeout: const Timeout(Duration(minutes: 4)));
+
+  test("Claude studies a canvas and saves its style with a guide", () async {
+    HttpOverrides.global = null;
+    SharedPreferences.setMockInitialValues({});
+    var dir = await Directory.systemTemp.createTemp("styles");
+    addTearDown(() => dir.delete(recursive: true));
+    var prefs = CreativeAiPreferences();
+    await prefs.load();
+    prefs.port = 47925;
+    prefs.chatModel = ClaudeModel.haiku;
+    var canvasPrefs = CanvasPreferences()..enabled = true;
+    var canvas = CanvasController(emptyCanvas());
+    var a = CanvasAutomation(canvas);
+    a.addElementJson(Map<String, dynamic>.from(a.newElementJson("text")!)
+      ..addAll({
+        "text": "QUARTERLY REPORT",
+        "textSpec": {
+          "font": "PT Serif",
+          "size": 72,
+          "weight": 700,
+          "color": 0xFFE8590C
+        },
+      }));
+    var ai = CreativeAi(
+      prefs: prefs,
+      canvas: () => canvas,
+      canvasPrefs: () => canvasPrefs,
+      composer: () => ComposerSidebarController(),
+      library: () => PostLibraryModel(),
+      stylesRoot: () async => dir.path,
+    );
+    addTearDown(ai.dispose);
+    prefs.enabled = true;
+    for (var i = 0; i < 50 && !ai.server.running; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    await ai.canvasChat.send(saveStylePrompt("Orange Report", ""));
+    for (var e in ai.canvasChat.entries) {
+      // ignore: avoid_print
+      print("${e.role.name}: ${e.text}");
+    }
+    var style = await ai.styles.byName("Orange Report");
+    expect(style, isNotNull);
+    // ignore: avoid_print
+    print("GUIDE:\n${style!.guide}");
+    expect(style.guide.length, greaterThan(200));
+    expect(
+        style.guide,
+        isNot(startsWith("# Orange Report\n\nA Bison Relay "
+            "canvas style, measured")),
+        reason: "Claude wrote it, not the facts");
+    expect(style.colours, contains(0xFFE8590C));
   },
       skip: live ? false : "Set CREATIVE_AI_LIVE=1 to run against Claude Code",
       timeout: const Timeout(Duration(minutes: 4)));
