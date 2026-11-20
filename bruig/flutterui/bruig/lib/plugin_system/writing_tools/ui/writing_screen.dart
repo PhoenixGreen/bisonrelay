@@ -5,6 +5,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
+import 'package:bruig/plugin_system/writing_tools/composer_sidebar_extras.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_sidebar.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/composer.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/composer_sidebar_shell.dart';
@@ -68,15 +69,28 @@ class _WritingScreenState extends State<WritingScreen> {
           client, contentAreaFrame(ThemeNotifier.of(context), content));
     }
 
-    var sidebar = ComposerSidebarShell(
-      controller: composer,
-      // In ComposerPanel's own order, so the row cannot drift from the enum
-      // it is built out of.
-      panels: ComposerPanel.values,
-      child: switch (composer.panel) {
-        ComposerPanel.writing => WritingSidebar(controller: composer.editor),
-        ComposerPanel.posts => PostSidebar(controller: composer.editor),
-        ComposerPanel.formatting => FormattingSidebar(controller: composer),
+    var sidebar = ListenableBuilder(
+      listenable: ComposerSidebarExtras.changes,
+      builder: (context, _) {
+        // A feature's panel, while it is chosen and still there: asked here,
+        // so one switched off while shown gives way to ours at once.
+        var extra = ComposerSidebarExtras.byId(composer.extra);
+        return ComposerSidebarShell(
+          controller: composer,
+          // In ComposerPanel's own order, so the row cannot drift from the
+          // enum it is built out of.
+          panels: ComposerPanel.values,
+          child: extra != null
+              ? extra.build(context, composer)
+              : switch (composer.panel) {
+                  ComposerPanel.writing =>
+                    WritingSidebar(controller: composer.editor),
+                  ComposerPanel.posts =>
+                    PostSidebar(controller: composer.editor),
+                  ComposerPanel.formatting =>
+                    FormattingSidebar(controller: composer),
+                },
+        );
       },
     );
 
@@ -93,7 +107,10 @@ class _WritingScreenState extends State<WritingScreen> {
           // a page within them that this had to watch as well; they are a
           // column of panels now, and the column keeps its own arrangement
           // and rebuilds itself.
-          sidebarRevision: composer.panel,
+          sidebarRevision: (
+            composer.panel,
+            ComposerSidebarExtras.byId(composer.extra)?.id
+          ),
           content: content,
         ));
   }

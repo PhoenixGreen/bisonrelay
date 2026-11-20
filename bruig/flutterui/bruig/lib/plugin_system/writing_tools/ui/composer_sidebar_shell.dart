@@ -1,5 +1,6 @@
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
+import 'package:bruig/plugin_system/writing_tools/composer_sidebar_extras.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -93,7 +94,11 @@ class ComposerSidebarShell extends StatelessWidget {
     // not there.
     var inDrawer = CollapsedSidebarScope.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _nav(theme, inDrawer),
+      // Follows other features' panels coming and going on its own, not
+      // only when the page around it happens to be rebuilt.
+      ListenableBuilder(
+          listenable: ComposerSidebarExtras.changes,
+          builder: (context, _) => _nav(theme, inDrawer)),
       const Divider(height: 1),
       Expanded(child: child),
     ]);
@@ -117,6 +122,17 @@ class ComposerSidebarShell extends StatelessWidget {
           // aiming slightly wide missed entirely and clicking "took a few
           // tries".
           for (var panel in panels) Expanded(child: _icon(theme, panel)),
+          // A feature's own panels, after ours (composer_sidebar_extras.dart).
+          for (var extra in ComposerSidebarExtras.shown)
+            Expanded(
+              child: _button(
+                theme,
+                icon: extra.icon,
+                tooltip: extra.label,
+                selected: controller.extra == extra.id,
+                onTap: () => controller.showExtra(extra.id),
+              ),
+            ),
           if (!inDrawer) ...[
             Container(
               width: 1,
@@ -156,7 +172,7 @@ class ComposerSidebarShell extends StatelessWidget {
         theme,
         icon: panel.icon,
         tooltip: panel.label,
-        selected: panel == controller.panel,
+        selected: panel == controller.panel && controller.extra == null,
         onTap: () => controller.show(panel),
       );
 

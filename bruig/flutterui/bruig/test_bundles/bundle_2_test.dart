@@ -2,93 +2,93 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'reset.dart';
-import '../test/canvas_background_foundation_test.dart' as t0;
-import '../test/canvas_edge_cleaning_test.dart' as t1;
-import '../test/canvas_editor_elements_test.dart' as t2;
-import '../test/canvas_element_sound_test.dart' as t3;
-import '../test/canvas_game_strike_test.dart' as t4;
-import '../test/canvas_keys_strip_test.dart' as t5;
-import '../test/canvas_mark_fade_test.dart' as t6;
-import '../test/canvas_music_score_test.dart' as t7;
-import '../test/canvas_responsive_bar_test.dart' as t8;
-import '../test/canvas_stage3d_test.dart' as t9;
-import '../test/canvas_storage_test.dart' as t10;
-import '../test/canvas_text_fade_test.dart' as t11;
-import '../test/canvas_text_fields_test.dart' as t12;
-import '../test/canvas_text_wrap_test.dart' as t13;
-import '../test/canvas_tile_terrain_test.dart' as t14;
-import '../test/canvas_vector_import_test.dart' as t15;
+import '../test/app_frame_test.dart' as t0;
+import '../test/canvas_arrival_cut_test.dart' as t1;
+import '../test/canvas_background_metal_test.dart' as t2;
+import '../test/canvas_chart_bounds_test.dart' as t3;
+import '../test/canvas_chart_estimates_test.dart' as t4;
+import '../test/canvas_chart_gaps_test.dart' as t5;
+import '../test/canvas_document_estimate_test.dart' as t6;
+import '../test/canvas_editor_elements_test.dart' as t7;
+import '../test/canvas_instrument_test.dart' as t8;
+import '../test/canvas_keys_strip_test.dart' as t9;
+import '../test/canvas_received_limits_test.dart' as t10;
+import '../test/canvas_saved_presets_test.dart' as t11;
+import '../test/canvas_sidebar_test.dart' as t12;
+import '../test/canvas_text_columns_test.dart' as t13;
+import '../test/canvas_text_test.dart' as t14;
+import '../test/canvas_tiles_fold_narrow_test.dart' as t15;
 import '../test/canvas_video_test.dart' as t16;
-import '../test/canvas_warp_test.dart' as t17;
-import '../test/caret_keys_test.dart' as t18;
-import '../test/plugin_settings_test.dart' as t19;
-import '../test/rtc_theming_test.dart' as t20;
-import '../test/writing_document_checks_test.dart' as t21;
-import '../test/writing_sidebar_test.dart' as t22;
-import '../test/writing_spelling_quality_test.dart' as t23;
+import '../test/color_picker_gradient_test.dart' as t17;
+import '../test/creative_ai_ui_test.dart' as t18;
+import '../test/epub_reader_test.dart' as t19;
+import '../test/markdown_panel_test.dart' as t20;
+import '../test/notes_storage_test.dart' as t21;
+import '../test/plugin_system_layering_test.dart' as t22;
+import '../test/writing_document_checks_test.dart' as t23;
 
 void main() {
-  group('canvas_background_foundation_test.dart', () {
+  group('app_frame_test.dart', () {
     setUpAll(betweenFiles);
     t0.main();
   });
-  group('canvas_edge_cleaning_test.dart', () {
+  group('canvas_arrival_cut_test.dart', () {
     setUpAll(betweenFiles);
     t1.main();
   });
-  group('canvas_editor_elements_test.dart', () {
+  group('canvas_background_metal_test.dart', () {
     setUpAll(betweenFiles);
     t2.main();
   });
-  group('canvas_element_sound_test.dart', () {
+  group('canvas_chart_bounds_test.dart', () {
     setUpAll(betweenFiles);
     t3.main();
   });
-  group('canvas_game_strike_test.dart', () {
+  group('canvas_chart_estimates_test.dart', () {
     setUpAll(betweenFiles);
     t4.main();
   });
-  group('canvas_keys_strip_test.dart', () {
+  group('canvas_chart_gaps_test.dart', () {
     setUpAll(betweenFiles);
     t5.main();
   });
-  group('canvas_mark_fade_test.dart', () {
+  group('canvas_document_estimate_test.dart', () {
     setUpAll(betweenFiles);
     t6.main();
   });
-  group('canvas_music_score_test.dart', () {
+  group('canvas_editor_elements_test.dart', () {
     setUpAll(betweenFiles);
     t7.main();
   });
-  group('canvas_responsive_bar_test.dart', () {
+  group('canvas_instrument_test.dart', () {
     setUpAll(betweenFiles);
     t8.main();
   });
-  group('canvas_stage3d_test.dart', () {
+  group('canvas_keys_strip_test.dart', () {
     setUpAll(betweenFiles);
     t9.main();
   });
-  group('canvas_storage_test.dart', () {
+  group('canvas_received_limits_test.dart', () {
     setUpAll(betweenFiles);
     t10.main();
   });
-  group('canvas_text_fade_test.dart', () {
+  group('canvas_saved_presets_test.dart', () {
     setUpAll(betweenFiles);
     t11.main();
   });
-  group('canvas_text_fields_test.dart', () {
+  group('canvas_sidebar_test.dart', () {
     setUpAll(betweenFiles);
     t12.main();
   });
-  group('canvas_text_wrap_test.dart', () {
+  group('canvas_text_columns_test.dart', () {
     setUpAll(betweenFiles);
     t13.main();
   });
-  group('canvas_tile_terrain_test.dart', () {
+  group('canvas_text_test.dart', () {
     setUpAll(betweenFiles);
     t14.main();
   });
-  group('canvas_vector_import_test.dart', () {
+  group('canvas_tiles_fold_narrow_test.dart', () {
     setUpAll(betweenFiles);
     t15.main();
   });
@@ -96,31 +96,31 @@ void main() {
     setUpAll(betweenFiles);
     t16.main();
   });
-  group('canvas_warp_test.dart', () {
+  group('color_picker_gradient_test.dart', () {
     setUpAll(betweenFiles);
     t17.main();
   });
-  group('caret_keys_test.dart', () {
+  group('creative_ai_ui_test.dart', () {
     setUpAll(betweenFiles);
     t18.main();
   });
-  group('plugin_settings_test.dart', () {
+  group('epub_reader_test.dart', () {
     setUpAll(betweenFiles);
     t19.main();
   });
-  group('rtc_theming_test.dart', () {
+  group('markdown_panel_test.dart', () {
     setUpAll(betweenFiles);
     t20.main();
   });
-  group('writing_document_checks_test.dart', () {
+  group('notes_storage_test.dart', () {
     setUpAll(betweenFiles);
     t21.main();
   });
-  group('writing_sidebar_test.dart', () {
+  group('plugin_system_layering_test.dart', () {
     setUpAll(betweenFiles);
     t22.main();
   });
-  group('writing_spelling_quality_test.dart', () {
+  group('writing_document_checks_test.dart', () {
     setUpAll(betweenFiles);
     t23.main();
   });

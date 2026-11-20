@@ -14,6 +14,7 @@ import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/plugin_system/link_previews/link_previews.dart';
 import 'package:bruig/plugin_system/canvas/canvas.dart';
+import 'package:bruig/plugin_system/creative_ai/creative_ai.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/models/realtimechat.dart';
@@ -206,6 +207,13 @@ Future<void> runMainApp(Config cfg) async {
   final canvasPrefs = CanvasPreferences();
   await canvasPrefs.load();
 
+  // Creative AI adds a sidebar to Canvas, a panel and menu entries to
+  // Writing, and a section to Settings > Plugins, through the hooks those
+  // offer; read first, since its switches decide whether any of that shows.
+  final creativeAiPrefs = CreativeAiPreferences();
+  await creativeAiPrefs.load();
+  registerCreativeAi(creativeAiPrefs);
+
   runApp(MultiProvider(
     providers: [
       ChangeNotifierProvider.value(value: client),
@@ -331,6 +339,20 @@ Future<void> runMainApp(Config cfg) async {
         lazy: false,
         create: (c) => CanvasNavModel(),
         update: (c, prefs, mainMenu, nav) => nav!..update(prefs, mainMenu),
+      ),
+      ChangeNotifierProvider.value(value: creativeAiPrefs),
+      // Creative AI while the app runs: eager, because while it is on its
+      // server is what other apps connect to. It reaches the canvas and the
+      // Writing page only when a tool asks, so it builds neither.
+      ChangeNotifierProvider<CreativeAi>(
+        lazy: false,
+        create: (c) => CreativeAi(
+          prefs: creativeAiPrefs,
+          canvas: () => c.read<CanvasController>(),
+          canvasPrefs: () => c.read<CanvasPreferences>(),
+          composer: () => c.read<ComposerSidebarController>(),
+          library: () => c.read<PostLibraryModel>(),
+        ),
       ),
       ChangeNotifierProvider.value(value: rtc),
       ChangeNotifierProvider.value(value: rtc.active),

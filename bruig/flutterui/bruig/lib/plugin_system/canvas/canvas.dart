@@ -23,6 +23,12 @@ export 'package:bruig/plugin_system/canvas/media/audio_engine.dart'
     show releaseAudioAfterHotRestart;
 export 'package:bruig/plugin_system/canvas/media/midi_input.dart'
     show MidiInput;
+// For a feature outside Canvas to add a sidebar of its own, and to read and
+// change the open canvas as JSON (an assistant, a script): see each file.
+export 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
+export 'package:bruig/plugin_system/canvas/ui/automation/canvas_automation.dart';
+export 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
+    show CanvasDocument;
 
 /// registerCanvas attaches this module to the plugin system, once at startup.
 /// It registers a feature, not a capability: the section appears when a

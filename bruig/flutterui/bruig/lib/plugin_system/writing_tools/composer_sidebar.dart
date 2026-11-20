@@ -56,6 +56,10 @@ class ComposerSidebarController extends ChangeNotifier {
   /// panel they had set up any more than switching pages does.
   ComposerPanel _panel = ComposerPanel.posts;
 
+  /// _extra is a feature's panel (composer_sidebar_extras.dart) shown in
+  /// place of [_panel], by its id; null while one of ours is.
+  String? _extra;
+
   bool _minimized = false;
 
   /// preview renders the markdown in the composer as it is typed instead of
@@ -182,8 +186,20 @@ class ComposerSidebarController extends ChangeNotifier {
   /// show puts [panel] in the slot, and un-minimizes if it was hidden --
   /// asking for a panel is asking to see it.
   void show(ComposerPanel panel) {
-    if (panel == _panel && !_minimized) return;
+    if (panel == _panel && !_minimized && _extra == null) return;
     _panel = panel;
+    _extra = null;
+    _minimized = false;
+    notifyListeners();
+  }
+
+  /// extra is the id of the feature's panel shown, or null.
+  String? get extra => _extra;
+
+  /// showExtra puts a feature's panel [id] in the slot, as [show] does ours.
+  void showExtra(String id) {
+    if (_extra == id && !_minimized) return;
+    _extra = id;
     _minimized = false;
     notifyListeners();
   }

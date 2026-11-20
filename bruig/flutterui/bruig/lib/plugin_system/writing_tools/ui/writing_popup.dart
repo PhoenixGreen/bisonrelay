@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/writing_tools/composer_sidebar_extras.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/writing_issue.dart';
 import 'package:bruig/plugin_system/writing_tools/spellcheck_capability.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/writing_actions.dart';
@@ -45,18 +46,24 @@ Widget writingContextMenu(
   EditableTextState editableTextState, {
   required List<ContextMenuButtonItem> fallbackItems,
 }) {
+  // What other features offer for the text (composer_sidebar_extras.dart),
+  // first, so they are not lost past the end of a long menu.
+  var items = [
+    ...ComposerSidebarExtras.menuItems(context, editableTextState),
+    ...fallbackItems,
+  ];
   var issues = issuesAtSelection(context, editableTextState);
   if (issues.isNotEmpty) {
     return _WritingPopup(
       editableTextState: editableTextState,
       issues: issues,
-      otherItems: fallbackItems,
+      otherItems: items,
     );
   }
   return AdaptiveTextSelectionToolbar.buttonItems(
     anchors: editableTextState.contextMenuAnchors,
     buttonItems: [
-      ...fallbackItems,
+      ...items,
       // Whatever an enabled plugin capability adds; empty when none does,
       // which is why nothing here names one.
       ...thesaurusContextMenuItems(context, editableTextState),

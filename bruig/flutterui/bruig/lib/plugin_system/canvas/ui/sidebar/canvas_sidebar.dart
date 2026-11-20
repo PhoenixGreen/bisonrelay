@@ -3,6 +3,7 @@ import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'package:flutter/material.dart';
 // (sidebar_layout.dart), and the chosen one's panels in a panel stack, with
 // the height toggle, menu and hide arrow. A panel's heading dropped on an
 // icon moves it there; hidden panels return in customise_sidebars.dart.
+// After the sidebars come any a feature has added (sidebar_extras.dart).
 
 /// canvasNavHeight matches the composer's, so the pages' sidebars line up.
 const double canvasNavHeight = 36;
@@ -74,15 +76,23 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
   SidebarSet get _current =>
       _shown.where((s) => s.id == layout.current).firstOrNull ?? _shown.first;
 
+  /// _extra is the feature's sidebar shown instead of one of ours, if the
+  /// current one is that and it is still there.
+  CanvasSidebarExtra? get _extra => CanvasSidebarExtras.byId(layout.current);
+
   void _set(SidebarLayout next) => widget.onLayout(next);
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: sidebarListenable(controller),
+        listenable: Listenable.merge(
+            [sidebarListenable(controller), CanvasSidebarExtras.changes]),
         builder: (context, _) {
           var theme = ThemeNotifier.of(context);
+          var extra = _extra;
+          var extras = CanvasSidebarExtras.shown;
           var current = _current;
-          _seen.add(current.id);
+          var currentId = extra?.id ?? current.id;
+          _seen.add(currentId);
           var shown = _shown;
           // Squeezed to a sliver (the Chain filling the window, a panel
           // dragged over it), it shows nothing rather than spilling.
@@ -91,7 +101,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
             return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _header(context, theme, shown, current),
+                  _header(context, theme, shown, extras, currentId),
                   const Divider(height: 1),
                   Expanded(
                     child: RepaintBoundary(
@@ -100,12 +110,22 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
                           if (_seen.contains(s.id))
                             Offstage(
                               key: ValueKey("sidebar-${s.id}"),
-                              offstage: s.id != current.id,
+                              offstage: s.id != currentId,
                               // Nothing hidden may animate: an offstage
                               // spinner would go on scheduling frames.
                               child: TickerMode(
-                                enabled: s.id == current.id,
-                                child: _column(context, s, s.id == current.id),
+                                enabled: s.id == currentId,
+                                child: _column(context, s, s.id == currentId),
+                              ),
+                            ),
+                        for (var x in extras)
+                          if (_seen.contains(x.id))
+                            Offstage(
+                              key: ValueKey("sidebar-${x.id}"),
+                              offstage: x.id != currentId,
+                              child: TickerMode(
+                                enabled: x.id == currentId,
+                                child: x.build(context, controller),
                               ),
                             ),
                       ]),
@@ -117,7 +137,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
       );
 
   Widget _header(BuildContext context, ThemeNotifier theme,
-      List<SidebarSet> shown, SidebarSet current) {
+      List<SidebarSet> shown, List<CanvasSidebarExtra> extras, String current) {
     var inDrawer = CollapsedSidebarScope.of(context);
     var colors = theme.colors;
     return Padding(
@@ -127,7 +147,8 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: [
-              for (var s in shown) _icon(theme, s, s.id == current.id),
+              for (var s in shown) _icon(theme, s, s.id == current),
+              for (var x in extras) _extraIcon(theme, x, x.id == current),
             ]),
           ),
         ),
@@ -198,6 +219,34 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
       ),
     );
     return face;
+  }
+
+  /// _extraIcon is a feature's sidebar's icon: pressed, it is shown. Nothing
+  /// is dropped on it, since its column holds no panels of ours.
+  Widget _extraIcon(ThemeNotifier theme, CanvasSidebarExtra x, bool selected) {
+    var colors = theme.colors;
+    return Tooltip(
+      message: x.name,
+      child: InkWell(
+        key: ValueKey("sidebarTab-${x.id}"),
+        onTap: () => _set(layout.copyWith(current: x.id)),
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          width: 36,
+          height: canvasNavHeight,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            color: selected ? colors.secondaryContainer : null,
+          ),
+          child: Icon(x.icon,
+              size: 17,
+              color: selected
+                  ? colors.onSecondaryContainer
+                  : colors.onSurfaceVariant),
+        ),
+      ),
+    );
   }
 
   /// _modeToggle switches between full height and over the panels under the

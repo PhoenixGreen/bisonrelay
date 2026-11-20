@@ -33,6 +33,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/publish_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/customise_sidebars.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -334,7 +335,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (chose &&
         _designUsed &&
         _sidebars.current != _holding("settings") &&
-        _sidebars.current != "game") {
+        _sidebars.current != "game" &&
+        // A feature's own sidebar (an assistant picking what it works on)
+        // keeps the column: see sidebar_extras.dart.
+        !CanvasSidebarExtras.isExtra(_sidebars.current)) {
       _showPanel("settings");
     }
   }

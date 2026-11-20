@@ -45,6 +45,7 @@ import 'package:flutter/material.dart';
 //   thesaurus_capability.dart   answers one word at a time
 //
 //   composer_sidebar.dart  which panel has the slot beside the editor
+//   composer_sidebar_extras.dart  panels and menu entries other features add
 //   writing_nav.dart       the Writing destination, while the plugin is on
 //
 //   post_library/      the saved posts: folders and documents on disk
@@ -78,6 +79,7 @@ import 'package:flutter/material.dart';
 // while reading rather than the writing you do to publish -- which is a
 // writing tool if anything is. See notes/notes.dart.
 export 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
+export 'package:bruig/plugin_system/writing_tools/composer_sidebar_extras.dart';
 export 'package:bruig/plugin_system/writing_tools/notes/notes.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/stats.dart';

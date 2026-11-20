@@ -11,7 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 // machinery imports none of them.
 //
 // Between the features the rule is weaker but still a rule: canvas may import
-// writing_tools and nothing may import canvas. Canvas publishes into the post
+// writing_tools, creative_ai may import both, and nothing imports creative_ai
+// or (but creative_ai) canvas. Canvas publishes into the post
 // library -- which is where documents on disk live, and is no plugin's -- so
 // that one edge is real and is allowed. The reverse would mean the writing
 // tools could not be read without knowing what a keyframe is, and would make
@@ -23,12 +24,17 @@ import 'package:flutter_test/flutter_test.dart';
 // wavy underline is, which was the whole reason for the split.
 
 const _root = "lib/plugin_system";
-const _features = ["writing_tools", "link_previews", "canvas"];
+const _features = ["writing_tools", "link_previews", "canvas", "creative_ai"];
 
-/// _canvasDependents are the features canvas is allowed to reach into. See the
-/// note above: the edge runs one way, into the post library, and nothing runs
-/// back.
-const _canvasMayImport = ["writing_tools"];
+/// _mayImport is which features each feature may reach into; a feature not
+/// listed may reach into none. canvas reaches into the post library (see the
+/// note above). creative_ai sits on top of the two it works in, adding itself
+/// through the hooks they offer, and nothing reaches into it -- so turning it
+/// off, or taking it out, leaves them as they were.
+const _mayImport = {
+  "canvas": ["writing_tools"],
+  "creative_ai": ["canvas", "writing_tools"],
+};
 
 List<File> _dartFilesIn(String dir) => Directory(dir)
     .listSync(recursive: true)
@@ -64,37 +70,30 @@ void main() {
             "implementation:\n${offenders.join("\n")}");
   });
 
-  test("only canvas reaches across, and only one way", () {
+  test("features reach across only where allowed, and one way", () {
     var offenders = <String>[];
     for (var file in _dartFilesIn(_root)) {
-      var inCanvas = file.path.contains("$_root/canvas/");
-      var inOtherFeature = _features
-          .where((f) => f != "canvas")
-          .any((f) => file.path.contains("$_root/$f/"));
-      if (!inCanvas && !inOtherFeature) continue;
-
+      var owner =
+          _features.where((f) => file.path.contains("$_root/$f/")).firstOrNull;
+      if (owner == null) continue;
+      var allowed = {owner, ...?_mayImport[owner]};
       for (var line in file.readAsStringSync().split("\n")) {
         var trimmed = line.trimLeft();
         if (!trimmed.startsWith("import ") && !trimmed.startsWith("export ")) {
           continue;
         }
-        if (inCanvas) {
-          for (var feature in _features) {
-            if (feature == "canvas" || _canvasMayImport.contains(feature)) {
-              continue;
-            }
-            if (line.contains("plugin_system/$feature/")) {
-              offenders.add("${file.path}: ${line.trim()}");
-            }
+        for (var feature in _features) {
+          if (allowed.contains(feature)) continue;
+          if (line.contains("plugin_system/$feature/")) {
+            offenders.add("${file.path}: ${line.trim()}");
           }
-        } else if (line.contains("plugin_system/canvas/")) {
-          offenders.add("${file.path}: ${line.trim()}");
         }
       }
     }
     expect(offenders, isEmpty,
-        reason: "canvas may import writing_tools; nothing may import "
-            "canvas:\n${offenders.join("\n")}");
+        reason: "canvas may import writing_tools; creative_ai may import "
+            "canvas and writing_tools; nothing else crosses:\n"
+            "${offenders.join("\n")}");
   });
 
   test("the machinery is still there to be read", () {
