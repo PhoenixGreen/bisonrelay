@@ -1,9 +1,12 @@
+import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/plugin_system/canvas/canvas.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/guide.dart';
 import 'package:bruig/plugin_system/creative_ai/ui/canvas_ai_sidebar.dart';
+import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/ui/creative_ai_settings.dart';
+import 'package:bruig/plugin_system/creative_ai/ui/style_sharing.dart';
 import 'package:bruig/plugin_system/creative_ai/ui/writing_ai_panel.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
@@ -72,6 +75,21 @@ void registerCreativeAi(CreativeAiPreferences prefs) {
   ));
 
   ComposerSidebarExtras.registerMenu(creativeAiId, _menuItems);
+
+  // A style sent by a friend, opened from Downloads or Files, is kept (after
+  // a look) rather than handed to the computer, which knows no such file.
+  FileOpeners.register(creativeAiId, (context, file) {
+    if (!file.toLowerCase().endsWith(styleFileExtension)) return false;
+    CreativeAi ai;
+    try {
+      ai = Provider.of<CreativeAi>(context, listen: false);
+    } catch (_) {
+      return false;
+    }
+    if (!ai.prefs.enabled) return false;
+    importStyleFile(context, ai, file);
+    return true;
+  });
 }
 
 /// _flag is [read] kept up to date as [prefs] changes.

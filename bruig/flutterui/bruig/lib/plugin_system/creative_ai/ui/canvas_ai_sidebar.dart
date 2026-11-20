@@ -1,6 +1,7 @@
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/canvas.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
+import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/ui/chat_view.dart';
 import 'package:bruig/plugin_system/creative_ai/ui/styles_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -52,20 +53,20 @@ class CanvasAiSidebar extends StatelessWidget {
                 examples: examples,
                 context: () => _context(controller, ai),
                 hint: "Ask Claude to change this canvas…",
-                header: _StyleInUse(ai: ai),
+                header: StyleInUseChip(ai: ai, kind: StyleKind.canvas),
               ),
             ),
             StackPanel(
               id: "styles",
               label: "Styles",
               icon: Icons.style_outlined,
-              trailing: ai.styles.styles.isEmpty
+              trailing: ai.styles.of(StyleKind.canvas).isEmpty
                   ? null
-                  : "${ai.styles.styles.length}",
+                  : "${ai.styles.of(StyleKind.canvas).length}",
               hint: "Looks kept from canvases, to make new work in: each a "
                   "guide Claude follows and the colours, type and motion "
                   "measured from the canvas it came from.",
-              body: StylesPanel(ai: ai),
+              body: StylesPanel(ai: ai, kind: StyleKind.canvas),
             ),
             StackPanel(
               id: "activity",
@@ -90,10 +91,9 @@ class CanvasAiSidebar extends StatelessWidget {
       for (var id in c.selection)
         if (d.elementById(id) case var e?) "${e.name} ($id)"
     ];
-    var style = ai.styles.active;
     return "[The person is on scene ${d.at} at frame ${c.frame}"
         "${picked.isEmpty ? ", with nothing selected" : ", with ${picked.join(", ")} selected"}.]"
-        "${style == null ? "" : "\n[Work in the style \"${style.name}\" (canvas_style_get \"${style.slug}\"): read it first if you have not in this conversation, and follow it.]"}";
+        "${styleContext(ai, StyleKind.canvas)}";
   }
 }
 
@@ -133,34 +133,4 @@ class AiChangesBar extends StatelessWidget {
       ]),
     );
   }
-}
-
-/// _StyleInUse says which style the conversation works in, with a way to
-/// stop.
-class _StyleInUse extends StatelessWidget {
-  final CreativeAi ai;
-  const _StyleInUse({required this.ai});
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: ai.styles,
-        builder: (context, _) {
-          var style = ai.styles.active;
-          if (style == null) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(10, 2, 10, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: InputChip(
-                key: const ValueKey("styleInUse"),
-                avatar: const Icon(Icons.style_outlined, size: 16),
-                label: Text("Style: ${style.name}",
-                    style: const TextStyle(fontSize: 12)),
-                onDeleted: () => ai.styles.active = null,
-                deleteButtonTooltipMessage: "Stop using this style",
-              ),
-            ),
-          );
-        },
-      );
 }

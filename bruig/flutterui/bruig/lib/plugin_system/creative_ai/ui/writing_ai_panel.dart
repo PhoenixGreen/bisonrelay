@@ -4,7 +4,9 @@ import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
 import 'package:bruig/plugin_system/creative_ai/engine/word_diff.dart';
 import 'package:bruig/plugin_system/creative_ai/session/writing_suggestions.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/guide.dart';
+import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/ui/chat_view.dart';
+import 'package:bruig/plugin_system/creative_ai/ui/styles_panel.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -34,7 +36,7 @@ class WritingAiPanel extends StatelessWidget {
     var ai = context.watch<CreativeAi>();
     return ListenableBuilder(
         // The Suggestions heading counts what is waiting.
-        listenable: Listenable.merge([ai.suggestions, ai.library()]),
+        listenable: Listenable.merge([ai.suggestions, ai.library(), ai.styles]),
         builder: (context, _) => _stack(ai));
   }
 
@@ -80,9 +82,23 @@ class WritingAiPanel extends StatelessWidget {
             ai: ai,
             chat: ai.writingChat,
             examples: examples,
-            context: () => _context(composer),
+            context: () =>
+                _context(composer) + styleContext(ai, StyleKind.writing),
+            header: StyleInUseChip(ai: ai, kind: StyleKind.writing),
             hint: "Ask Claude about this document…",
           ),
+        ),
+        StackPanel(
+          id: "styles",
+          label: "Styles",
+          icon: Icons.style_outlined,
+          startsOpen: false,
+          trailing: ai.styles.of(StyleKind.writing).isEmpty
+              ? null
+              : "${ai.styles.of(StyleKind.writing).length}",
+          hint: "Voices kept from documents, to write in: the one in use "
+              "steers quick edits and the conversation.",
+          body: StylesPanel(ai: ai, kind: StyleKind.writing),
         ),
         StackPanel(
           id: "activity",
@@ -139,7 +155,7 @@ class _QuickEditsState extends State<_QuickEdits> {
   Widget build(BuildContext context) {
     var colors = ThemeNotifier.of(context).colors;
     return ListenableBuilder(
-      listenable: Listenable.merge([s, widget.ai.prefs]),
+      listenable: Listenable.merge([s, widget.ai.prefs, widget.ai.styles]),
       builder: (context, _) {
         var busy = s.busy;
         return ListView(
@@ -174,11 +190,14 @@ class _QuickEditsState extends State<_QuickEdits> {
               ),
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (var a in RewriteAction.values)
-                ActionChip(
-                  key: ValueKey("aiRewrite-${a.name}"),
-                  label: Text(a.label, style: const TextStyle(fontSize: 12)),
-                  onPressed: busy != null ? null : () => s.rewrite(action: a),
-                ),
+                // In my style only while a writing style is in use.
+                if (a != RewriteAction.inStyle ||
+                    widget.ai.styles.activeOf(StyleKind.writing) != null)
+                  ActionChip(
+                    key: ValueKey("aiRewrite-${a.name}"),
+                    label: Text(a.label, style: const TextStyle(fontSize: 12)),
+                    onPressed: busy != null ? null : () => s.rewrite(action: a),
+                  ),
             ]),
             const SizedBox(height: 8),
             Row(children: [

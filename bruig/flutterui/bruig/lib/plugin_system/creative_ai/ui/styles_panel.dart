@@ -1,19 +1,24 @@
 import 'dart:io';
 
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
+import 'package:bruig/plugin_system/creative_ai/session/ai_chat.dart';
 import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/guide.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/style_ai_tools.dart';
+import 'package:bruig/plugin_system/creative_ai/ui/style_sharing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// styles_panel.dart is the Styles panel of Creative AI's Canvas sidebar: keep
-// the open canvas's style as a profile, and use one -- in the conversation,
-// to restyle the canvas, or in Claude Code anywhere as a skill.
+// styles_panel.dart is the Styles panel of Creative AI's sidebars: keep the
+// open canvas's look, or the open document's voice, as a style, and use one
+// -- in the conversation, to restyle what is open, or in Claude Code anywhere
+// as a skill. One panel for both kinds; what differs is said by [kind].
 
 class StylesPanel extends StatefulWidget {
   final CreativeAi ai;
-  const StylesPanel({required this.ai, super.key});
+  final StyleKind kind;
+  const StylesPanel(
+      {required this.ai, this.kind = StyleKind.canvas, super.key});
 
   @override
   State<StylesPanel> createState() => _StylesPanelState();
@@ -21,6 +26,8 @@ class StylesPanel extends StatefulWidget {
 
 class _StylesPanelState extends State<StylesPanel> {
   StyleLibrary get styles => widget.ai.styles;
+  bool get _canvas => widget.kind == StyleKind.canvas;
+  AiChat get _chat => _canvas ? widget.ai.canvasChat : widget.ai.writingChat;
 
   @override
   void initState() {
@@ -34,20 +41,28 @@ class _StylesPanelState extends State<StylesPanel> {
   Future<void> _save() async {
     var answer = await showDialog<(String, String, bool)>(
       context: context,
-      builder: (context) =>
-          _SaveStyleDialog(name: widget.ai.canvas().document.title),
+      builder: (context) => _SaveStyleDialog(
+          name: _canvas
+              ? widget.ai.canvas().document.title
+              : widget.ai.library().openName ?? "",
+          what: _canvas ? "canvas" : "document"),
     );
     if (answer == null) return;
     var (named, desc, withClaude) = answer;
     if (withClaude) {
-      widget.ai.canvasChat.send(saveStylePrompt(named, desc));
-      _say("Claude is studying the canvas: the style appears here when it "
-          "is saved.");
+      _chat.send(_canvas
+          ? saveStylePrompt(named, desc)
+          : saveWritingStylePrompt(named, desc));
+      _say("Claude is studying the ${_canvas ? "canvas" : "document"}: the "
+          "style appears here when it is saved.");
       return;
     }
     try {
-      await saveCanvasStyle(widget.ai, name: named, description: desc);
-      _say("Saved the style $named.");
+      var saved = _canvas
+          ? await saveCanvasStyle(widget.ai, name: named, description: desc)
+          : await saveWritingStyle(widget.ai, name: named, description: desc);
+      _say(
+          saved == null ? "Open a document first." : "Saved the style $named.");
     } catch (e) {
       _say("Could not save the style: $e");
     }
@@ -96,22 +111,30 @@ class _StylesPanelState extends State<StylesPanel> {
   Widget build(BuildContext context) {
     var colors = ThemeNotifier.of(context).colors;
     return ListenableBuilder(
-      listenable: Listenable.merge([styles, widget.ai.canvasChat]),
+      listenable: Listenable.merge([styles, _chat]),
       builder: (context, _) {
-        var list = styles.styles;
-        var busy = widget.ai.canvasChat.running;
+        var list = styles.of(widget.kind);
+        var busy = _chat.running;
+        var active = styles.activeOf(widget.kind);
         return ListView(
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              FilledButton.tonalIcon(
                 key: const ValueKey("stylesSave"),
                 onPressed: busy ? null : _save,
                 icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                label: const Text("Save this canvas as a style"),
+                label: Text(_canvas
+                    ? "Save this canvas as a style"
+                    : "Save this document's voice as a style"),
               ),
-            ),
+              TextButton.icon(
+                key: const ValueKey("stylesImport"),
+                onPressed: () => pickStyleFile(context, widget.ai),
+                icon: const Icon(Icons.file_open_outlined, size: 18),
+                label: const Text("Import…"),
+              ),
+            ]),
             const SizedBox(height: 8),
             // Words rather than a spinner: nothing here animates forever.
             if (!styles.loaded)
@@ -123,9 +146,14 @@ class _StylesPanelState extends State<StylesPanel> {
                   style: TextStyle(fontSize: 12.5, color: colors.error))
             else if (list.isEmpty)
               Text(
-                "No styles yet. Save a canvas whose look you like, then make "
-                "new work in it: ask in the conversation with the style in "
-                "use, or restyle another canvas with it.",
+                _canvas
+                    ? "No styles yet. Save a canvas whose look you like, then "
+                        "make new work in it: ask in the conversation with "
+                        "the style in use, or restyle another canvas with it."
+                    : "No writing styles yet. Save a document whose voice you "
+                        "like, then write in it: quick edits and the "
+                        "conversation follow the style in use, and In my "
+                        "style rewrites a passage in it.",
                 style:
                     TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant),
               ),
@@ -133,13 +161,16 @@ class _StylesPanelState extends State<StylesPanel> {
               _StyleCard(
                 key: ValueKey("style-${s.slug}"),
                 style: s,
-                active: styles.active?.slug == s.slug,
+                active: active?.slug == s.slug,
                 busy: busy,
                 onUse: () =>
-                    styles.active = styles.active?.slug == s.slug ? null : s,
-                onRestyle: () =>
-                    widget.ai.canvasChat.send(restylePrompt(s.name)),
+                    styles.use(widget.kind, active?.slug == s.slug ? null : s),
+                onRestyle: () => _chat.send(_canvas
+                    ? restylePrompt(s.name)
+                    : rewriteInStylePrompt(s.name)),
                 onEdit: () => _editGuide(s),
+                onSend: () => sendStyleToChat(context, widget.ai, s),
+                onSaveFile: () => saveStyleFile(context, widget.ai, s),
                 onSkills: () => _toSkills(s),
                 onDelete: () => _delete(s),
               ),
@@ -157,6 +188,8 @@ class _StyleCard extends StatelessWidget {
   final VoidCallback onUse;
   final VoidCallback onRestyle;
   final VoidCallback onEdit;
+  final VoidCallback onSend;
+  final VoidCallback onSaveFile;
   final VoidCallback onSkills;
   final VoidCallback onDelete;
 
@@ -167,6 +200,8 @@ class _StyleCard extends StatelessWidget {
     required this.onUse,
     required this.onRestyle,
     required this.onEdit,
+    required this.onSend,
+    required this.onSaveFile,
     required this.onSkills,
     required this.onDelete,
     super.key,
@@ -207,6 +242,12 @@ class _StyleCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 13.5, fontWeight: FontWeight.w600)),
+              if (style.receivedFrom.isNotEmpty)
+                Text("From ${style.receivedFrom}",
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontStyle: FontStyle.italic,
+                        color: colors.onSurfaceVariant)),
               if (style.description.isNotEmpty)
                 Text(style.description,
                     maxLines: 2,
@@ -226,6 +267,15 @@ class _StyleCard extends StatelessWidget {
                     ),
                   ),
               ]),
+              if (style.summary.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(style.summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11.5, color: colors.onSurfaceVariant)),
+                ),
               if (style.fonts.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 3),
@@ -246,6 +296,10 @@ class _StyleCard extends StatelessWidget {
               PopupMenuItem(
                   value: "edit", height: 32, child: Text("Edit the guide…")),
               PopupMenuItem(
+                  value: "send", height: 32, child: Text("Send to a chat…")),
+              PopupMenuItem(
+                  value: "file", height: 32, child: Text("Save as a file…")),
+              PopupMenuItem(
                   value: "skills",
                   height: 32,
                   child: Text("Add to Claude Code's skills")),
@@ -254,6 +308,8 @@ class _StyleCard extends StatelessWidget {
             ],
             onSelected: (v) => switch (v) {
               "edit" => onEdit(),
+              "send" => onSend(),
+              "file" => onSaveFile(),
               "skills" => onSkills(),
               _ => onDelete(),
             },
@@ -273,7 +329,9 @@ class _StyleCard extends StatelessWidget {
           TextButton(
             key: ValueKey("styleRestyle-${style.slug}"),
             onPressed: busy ? null : onRestyle,
-            child: const Text("Restyle this canvas"),
+            child: Text(style.kind == StyleKind.canvas
+                ? "Restyle this canvas"
+                : "Rewrite the document in it"),
           ),
         ]),
       ]),
@@ -286,7 +344,10 @@ class _StyleCard extends StatelessWidget {
 /// closing.
 class _SaveStyleDialog extends StatefulWidget {
   final String name;
-  const _SaveStyleDialog({required this.name});
+
+  /// what is studied: "canvas" or "document".
+  final String what;
+  const _SaveStyleDialog({required this.name, required this.what});
 
   @override
   State<_SaveStyleDialog> createState() => _SaveStyleDialogState();
@@ -334,7 +395,8 @@ class _SaveStyleDialogState extends State<_SaveStyleDialog> {
               contentPadding: EdgeInsets.zero,
               value: _withClaude,
               onChanged: (v) => setState(() => _withClaude = v ?? true),
-              title: const Text("Have Claude study it and write the guide"),
+              title: Text("Have Claude study the ${widget.what} and write "
+                  "the guide"),
               subtitle: const Text("Off: the guide lists what was measured, "
                   "for you to add to."),
             ),
@@ -411,4 +473,44 @@ class _GuideDialogState extends State<_GuideDialog> {
               child: const Text("Save")),
         ],
       );
+}
+
+/// StyleInUseChip says which style a sidebar's work is done in, with a way
+/// to stop.
+class StyleInUseChip extends StatelessWidget {
+  final CreativeAi ai;
+  final StyleKind kind;
+  const StyleInUseChip({required this.ai, required this.kind, super.key});
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: ai.styles,
+        builder: (context, _) {
+          var style = ai.styles.activeOf(kind);
+          if (style == null) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(10, 2, 10, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: InputChip(
+                key: const ValueKey("styleInUse"),
+                avatar: const Icon(Icons.style_outlined, size: 16),
+                label: Text("Style: ${style.name}",
+                    style: const TextStyle(fontSize: 12)),
+                onDeleted: () => ai.styles.use(kind, null),
+                deleteButtonTooltipMessage: "Stop using this style",
+              ),
+            ),
+          );
+        },
+      );
+}
+
+/// styleContext is the line put before a request while a style is in use.
+String styleContext(CreativeAi ai, StyleKind kind) {
+  var style = ai.styles.activeOf(kind);
+  if (style == null) return "";
+  var get = kind == StyleKind.canvas ? "canvas_style_get" : "writing_style_get";
+  return "\n[Work in the style \"${style.name}\" ($get \"${style.slug}\"): "
+      "read it first if you have not in this conversation, and follow it.]";
 }

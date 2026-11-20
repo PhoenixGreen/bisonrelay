@@ -10,6 +10,15 @@ import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
+import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/stock_import.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -341,6 +350,195 @@ class CanvasAutomation {
           "element's clip > mix > speech.";
     }
     return controller.speakLines(key);
+  }
+
+  // ------------------------------------------------------------------------
+  // The library: pictures, videos, sounds, drawings and 3D models
+  // ------------------------------------------------------------------------
+
+  static Map<String, Object?> _asset(LibraryAsset a) => {
+        "id": a.id,
+        "kind": a.kind.name,
+        "name": a.name,
+        if (a.width > 0) "width": a.width,
+        if (a.height > 0) "height": a.height,
+        if (a.length > 0) "seconds": (a.length * 100).round() / 100,
+        if (a.author.isNotEmpty) "author": a.author,
+        if (a.license.isNotEmpty) "license": a.license,
+        if (a.from.isNotEmpty) "from": a.from,
+      };
+
+  /// assets are the library's files, of [kind] (picture, video, audio,
+  /// vector, model) if given, matching [query] in their names if given.
+  static Future<List<Map<String, Object?>>> assets(
+      {String? kind, String query = ""}) async {
+    var k = AssetKind.values.where((x) => x.name == kind).firstOrNull;
+    var q = query.trim().toLowerCase();
+    return [
+      for (var a in await CanvasLibrary.list(kind: k))
+        if (q.isEmpty || a.name.toLowerCase().contains(q)) _asset(a)
+    ];
+  }
+
+  /// useAsset puts library file [id] on the scene being edited, as the
+  /// Assets panel does when one is clicked (a MIDI file becomes a MIDI
+  /// channel). Returns the new element's id, or an error.
+  Future<(String?, String?)> useAsset(String id) async {
+    var asset =
+        (await CanvasLibrary.list()).where((a) => a.id == id).firstOrNull;
+    if (asset == null) return (null, "There is no file $id in the library.");
+    if (isMidiId(asset.id)) {
+      await controller.addMidiChannelFrom(asset.source);
+      return (null, null);
+    }
+    var element = elementForAsset(asset, _doc);
+    controller.addElement(element, select: false);
+    return (element.id, null);
+  }
+
+  // ------------------------------------------------------------------------
+  // Presets
+  // ------------------------------------------------------------------------
+
+  /// presets are what can be started from: elements (built in and saved),
+  /// saved scenes, and canvases (built in and saved), matching [query].
+  static Future<List<Map<String, Object?>>> presets({String query = ""}) async {
+    await ElementPresetStore.instance.load();
+    await SavedPresetStore.scenes.load();
+    await SavedPresetStore.canvases.load();
+    var q = query.trim().toLowerCase();
+    bool shows(String name) => q.isEmpty || name.toLowerCase().contains(q);
+    return [
+      for (var p in ElementPresetStore.instance.presets)
+        if (shows(p.name))
+          {
+            "id": "element:${p.id}",
+            "name": p.name,
+            "kind": p.kind.name,
+            if (p.builtIn) "builtIn": true,
+          },
+      for (var p in SavedPresetStore.scenes.presets)
+        if (shows(p.name)) {"id": "scene:${p.id}", "name": p.name},
+      for (var p in builtinPresets)
+        if (shows(p.label))
+          {
+            "id": "canvas:${p.id}",
+            "name": p.label,
+            "about": p.description,
+            "builtIn": true,
+          },
+      for (var p in SavedPresetStore.canvases.presets)
+        if (shows(p.name)) {"id": "canvas:${p.id}", "name": p.name},
+    ];
+  }
+
+  /// usePreset adds preset [id] (as [presets] names it) to the open canvas:
+  /// an element on the scene being edited, or a scene's or a canvas's
+  /// scenes after it. Returns what was added, or an error.
+  Future<(String?, String?)> usePreset(String id) async {
+    var page = _doc.size.size;
+    var colon = id.indexOf(":");
+    var kind = colon < 0 ? "" : id.substring(0, colon);
+    var key = colon < 0 ? id : id.substring(colon + 1);
+    switch (kind) {
+      case "element":
+        await ElementPresetStore.instance.load();
+        var p = ElementPresetStore.instance.presets
+            .where((x) => x.id == key)
+            .firstOrNull;
+        if (p == null) break;
+        var e = p.buildFor(page);
+        controller.addElement(e, select: false);
+        return ("element ${e.id}", null);
+      case "scene" || "canvas":
+        var store = kind == "scene"
+            ? SavedPresetStore.scenes
+            : SavedPresetStore.canvases;
+        await store.load();
+        var saved = store.presets.where((x) => x.id == key).firstOrNull;
+        List<CanvasScene>? scenes = saved?.buildScenes(on: page);
+        if (scenes == null && kind == "canvas") {
+          var builtIn = builtinPresets.where((x) => x.id == key).firstOrNull;
+          scenes = builtIn?.build().allScenes;
+        }
+        if (scenes == null || scenes.isEmpty) break;
+        controller.addScenes(scenes);
+        return ("${scenes.length} scene${scenes.length == 1 ? "" : "s"}", null);
+    }
+    return (null, "There is no preset $id: list them first.");
+  }
+
+  // ------------------------------------------------------------------------
+  // Stock libraries
+  // ------------------------------------------------------------------------
+
+  /// _found are stock results by "source:id", from the last searches, so
+  /// one can be used by its id.
+  static final Map<String, StockItem> _found = {};
+
+  /// stockSources are the stock libraries, and whether a key is given for
+  /// each (one is needed; they are added in Canvas's Stock panel).
+  static Future<List<Map<String, Object?>>> stockSources() async => [
+        for (var s in StockSource.values)
+          {
+            "source": s.name,
+            "label": s.label,
+            "kind": s.kind.name,
+            "ready": await StockKeys.has(s),
+          }
+      ];
+
+  /// stockSearch searches stock library [source] for [text]. Refused while
+  /// [allowFetching] is off (Canvas's own setting) or behind a proxy.
+  static Future<Map<String, Object?>> stockSearch(String source, String text,
+      {int page = 1, required bool allowFetching}) async {
+    var s = StockSource.values.where((x) => x.name == source).firstOrNull;
+    if (s == null) return {"problem": "There is no stock library $source."};
+    var result = await StockClient.instance.search(
+        StockQuery(s, text: text, page: page),
+        allowFetching: allowFetching,
+        proxied: await networkIsProxied());
+    if (result.problem != null) return {"problem": result.problem};
+    for (var i in result.items) {
+      _found["${s.name}:${i.id}"] = i;
+    }
+    return {
+      "results": [
+        for (var i in result.items)
+          {
+            "id": "${s.name}:${i.id}",
+            "title": i.title,
+            if (i.author.isNotEmpty) "author": i.author,
+            if (i.license.isNotEmpty) "license": i.license,
+            if (i.width > 0) "width": i.width,
+            if (i.height > 0) "height": i.height,
+            if (i.length > 0) "seconds": i.length,
+            if (i.thumb.isNotEmpty) "thumb": i.thumb,
+          }
+      ],
+      "more": result.more,
+    };
+  }
+
+  /// stockUse fetches result [id] (from a search) into the library, with
+  /// its author and licence, and puts it on the canvas when [place].
+  /// Returns the library file, or an error.
+  Future<(Map<String, Object?>?, String?)> stockUse(String id,
+      {bool place = true, required bool allowFetching}) async {
+    var item = _found[id];
+    if (item == null) {
+      return (null, "Search for it first: $id is not among the results.");
+    }
+    var (asset, problem) = await importStockItem(item,
+        allowFetching: allowFetching, proxied: await networkIsProxied());
+    if (asset == null) return (null, problem ?? "It could not be added.");
+    var out = _asset(asset);
+    if (place) {
+      var (element, why) = await useAsset(asset.id);
+      if (why != null) return (out, why);
+      if (element != null) out["element"] = element;
+    }
+    return (out, null);
   }
 
   // ------------------------------------------------------------------------

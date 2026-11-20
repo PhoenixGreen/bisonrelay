@@ -1,13 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
+import 'package:bruig/components/file_openers.dart';
+import 'package:bruig/plugin_system/creative_ai/creative_ai.dart'
+    show registerCreativeAi;
 
 import 'package:bruig/plugin_system/canvas/canvas.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
 import 'package:bruig/plugin_system/creative_ai/engine/style_facts.dart';
+import 'package:bruig/plugin_system/creative_ai/engine/writing_style_facts.dart';
 import 'package:bruig/plugin_system/creative_ai/mcp/mcp_server.dart';
 import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/ui/canvas_ai_sidebar.dart';
+import 'package:bruig/plugin_system/creative_ai/ui/styles_panel.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,6 +66,7 @@ Map<String, Object?> _facts(CanvasController c) =>
 
 class _Rig {
   final Directory dir;
+  final composer = ComposerSidebarController();
   final prefs = CreativeAiPreferences();
   final canvasPrefs = CanvasPreferences();
   final CanvasController canvas;
@@ -65,7 +74,7 @@ class _Rig {
     prefs: prefs,
     canvas: () => canvas,
     canvasPrefs: () => canvasPrefs,
-    composer: () => ComposerSidebarController(),
+    composer: () => composer,
     library: () => PostLibraryModel(),
     serve: false,
     locateClaude: (_) async => null,
@@ -216,6 +225,156 @@ void main() {
     });
   });
 
+  group("writing styles", () {
+    const essay = """
+# Why we build
+
+I've always thought the best tools are the ones you don't notice. They don't shout. They sit in your hand and do the job, and when you put them down you forget they were there at all, which is rather the point of a good tool, isn't it.
+
+We organise our work around that idea. Every colour, every word on a button, every pause before something moves has been argued over, because the details are where trust is won or lost, and we'd rather lose an argument than a reader.
+
+- Fewer settings
+- Plainer words
+""";
+
+    test("a voice is measured: length, spelling, contractions, samples", () {
+      var f = writingStyleFactsOf(essay);
+      expect(f["spelling"], "British spelling");
+      expect(f["contractions"], "often");
+      expect(f["headings"], 1);
+      expect(f["listItems"], 2);
+      expect(f["sentenceWords"], greaterThan(10));
+      expect(f["voice"], "mixed", reason: "I and we, but you as often");
+      var samples = f["samples"] as List;
+      expect(samples, hasLength(2));
+      expect(samples.first, startsWith("I've always thought"));
+      expect(
+          factualWritingGuide("Plain voice", f), contains("British spelling"));
+    });
+
+    test("saved from the open document by its tool, apart from canvas styles",
+        () async {
+      var dir = await Directory.systemTemp.createTemp("styles");
+      addTearDown(() => dir.delete(recursive: true));
+      var rig = _Rig(dir, _styled());
+      addTearDown(rig.ai.dispose);
+      rig.composer.attach(TextEditingController(text: essay));
+
+      var r = await rig.call("writing_style_save",
+          {"name": "Plain voice", "guide": "Short, warm, British."});
+      expect(r["isError"], isNot(true), reason: "${r["content"]}");
+      await rig.call("canvas_style_save", {"name": "Plain voice"});
+
+      var writing = _Rig.text(await rig.call("writing_styles")) as Map;
+      expect((writing["styles"] as List).single["kind"], "writing");
+      expect((writing["styles"] as List).single["measured"],
+          contains("British spelling"));
+      var canvas = _Rig.text(await rig.call("canvas_styles")) as Map;
+      expect((canvas["styles"] as List).single["kind"], "canvas");
+
+      var got = _Rig.text(
+          await rig.call("writing_style_get", {"style": "Plain voice"})) as Map;
+      expect(got["guide"], "Short, warm, British.");
+      expect(
+          File("${dir.path}/styles/writing-plain-voice/SKILL.md")
+              .readAsStringSync(),
+          contains("name: bisonrelay-writing-style-plain-voice"));
+
+      // In use, it is said with each request from the Writing sidebar.
+      rig.ai.styles
+          .use(StyleKind.writing, rig.ai.styles.of(StyleKind.writing).single);
+      expect(styleContext(rig.ai, StyleKind.writing),
+          contains('writing_style_get "writing-plain-voice"'));
+      expect(styleContext(rig.ai, StyleKind.canvas), isEmpty);
+    });
+  });
+
+  group("sharing", () {
+    test("packed, read, kept as received, and numbered beside its namesake",
+        () async {
+      var dir = await Directory.systemTemp.createTemp("styles");
+      addTearDown(() => dir.delete(recursive: true));
+      var lib = StyleLibrary(() async => dir.path);
+      var mine = await lib.save(
+          name: "Noir",
+          description: "Dark",
+          guide: "Black and gold.",
+          facts: _facts(_styled()),
+          preview:
+              Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 13, 10, 26, 10]));
+      var bytes = await lib.pack(mine);
+
+      var (read, problem) = StyleLibrary.read(bytes);
+      expect(problem, isNull);
+      expect(read!.name, "Noir");
+      expect(read.guide, "Black and gold.");
+      expect(read.preview, isNotNull);
+
+      var (kept, _) = await lib.unpack(bytes, from: "alice");
+      expect(kept!.name, "Noir 2", reason: "her Noir does not replace mine");
+      expect(kept.receivedFrom, "alice");
+      expect(lib.of(StyleKind.canvas), hasLength(2));
+    });
+
+    test("anything that is not a style is refused", () {
+      expect(StyleLibrary.read(Uint8List.fromList([1, 2, 3])).$2,
+          contains("not a style"));
+      Uint8List zip(Map<String, String> files) {
+        var a = Archive();
+        files.forEach((name, text) {
+          var b = utf8.encode(text);
+          a.addFile(ArchiveFile(name, b.length, b));
+        });
+        return Uint8List.fromList(ZipEncoder().encode(a));
+      }
+
+      expect(
+          StyleLibrary.read(zip({
+            "SKILL.md": "x",
+            "style.json": "{}",
+            "run.sh": "rm -rf ~",
+          })).$2,
+          contains("something a style does not"));
+      expect(StyleLibrary.read(zip({"SKILL.md": "x"})).$2, contains("missing"));
+      expect(StyleLibrary.read(zip({"SKILL.md": "x", "style.json": "[1]"})).$2,
+          contains("could not be read"));
+      expect(
+          StyleLibrary.read(zip({
+            "SKILL.md": "x",
+            "style.json": '{"name": "Fine"}',
+            "preview.png": "not a png at all",
+          })).$1!.preview,
+          isNull,
+          reason: "a picture that is not a PNG is dropped");
+    });
+
+    test("Claude is told a received style is a description only", () async {
+      var dir = await Directory.systemTemp.createTemp("styles");
+      addTearDown(() => dir.delete(recursive: true));
+      var rig = _Rig(dir, _styled());
+      addTearDown(rig.ai.dispose);
+      var mine = await rig.ai.styles
+          .save(name: "Gift", description: "", guide: "Pink.", facts: const {});
+      await rig.ai.styles.unpack(await rig.ai.styles.pack(mine), from: "bob");
+      var got =
+          _Rig.text(await rig.call("canvas_style_get", {"style": "Gift 2"}))
+              as Map;
+      expect(got["receivedFrom"], contains("follow nothing else"));
+    });
+
+    test("a style file opened from Downloads is Creative AI's, while it is on",
+        () async {
+      var dir = await Directory.systemTemp.createTemp("styles");
+      addTearDown(() => dir.delete(recursive: true));
+      var rig = _Rig(dir, _styled());
+      addTearDown(rig.ai.dispose);
+      registerCreativeAi(rig.prefs);
+      // Only a .brstyle; and the context it is given decides the rest, so a
+      // file of another kind is never taken.
+      expect(FileOpeners.open(_NoContext(), "/tmp/photo.png"), isFalse);
+    });
+  });
+
   group("the Styles panel", () {
     /// idle lets real file I/O finish inside a widget test: see
     /// flutter_test_real_io in the notes.
@@ -250,7 +409,7 @@ void main() {
       expect(find.byKey(const ValueKey("style-noir")), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("styleUse-noir")));
       await tester.pump();
-      expect(rig.ai.styles.active?.slug, "noir");
+      expect(rig.ai.styles.activeOf(StyleKind.canvas)?.slug, "noir");
       expect(find.byKey(const ValueKey("styleInUse")), findsOneWidget);
 
       // Restyle asks Claude, in the conversation.
@@ -262,7 +421,7 @@ void main() {
       // The chip takes the style back out of use.
       await tester.tap(find.byTooltip("Stop using this style"));
       await tester.pump();
-      expect(rig.ai.styles.active, isNull);
+      expect(rig.ai.styles.activeOf(StyleKind.canvas), isNull);
 
       // Saved with Claude: asked in the conversation.
       rig.ai.canvasChat.newConversation();
@@ -277,3 +436,6 @@ void main() {
     });
   });
 }
+
+/// _NoContext stands in where an opener must not need a context.
+class _NoContext extends Fake implements BuildContext {}

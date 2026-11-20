@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/creative_ai/claude/claude_code.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
+import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/guide.dart';
 import 'package:flutter/material.dart';
 
@@ -268,6 +269,12 @@ class WritingSuggestions extends ChangeNotifier {
       _notify();
       return;
     }
+    var style = ai.styles.activeOf(StyleKind.writing);
+    if (action == RewriteAction.inStyle && style == null) {
+      _error = "Choose a writing style to use first, in Styles.";
+      _notify();
+      return;
+    }
     var (start, end) = range;
     var text = editor.text;
     var passage = text.substring(start, end);
@@ -286,7 +293,10 @@ class WritingSuggestions extends ChangeNotifier {
                 text.substring((start - 1200).clamp(0, start).toInt(), start),
             after: text.substring(
                 end, (end + 600).clamp(end, text.length).toInt())),
-        system: rewriteSystemPrompt,
+        // In the writing style in use, if there is one.
+        system: style == null
+            ? rewriteSystemPrompt
+            : rewriteSystemPrompt + styleSystemNote(style.name, style.guide),
         model: ai.prefs.editModel.alias,
       );
       if (!answer.ok) {

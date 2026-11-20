@@ -37,14 +37,41 @@ Future<LibraryAsset?> fetchStockItem(
     BuildContext context, CanvasController controller, StockItem item) async {
   var snacks = SnackBarModel.of(context);
   var allowFetching = context.read<CanvasPreferences>().allowFetching;
-  void report(String message) => snacks.error(message);
+  var (asset, problem) = await importStockItem(item,
+      allowFetching: allowFetching,
+      proxied: await networkIsProxied(),
+      addVideo: (file) async => context.mounted
+          ? (await addCanvasVideo(context, file))?.assetId
+          : null,
+      addAudio: (file) async => context.mounted
+          ? (await addCanvasAudio(context, controller, file))?.assetId
+          : null);
+  if (problem != null) snacks.error(problem);
+  return asset;
+}
 
-  var proxied = await networkIsProxied();
+/// importStockItem fetches [item] into the library: the asset, or why not.
+/// A video or a sound is added through [addVideo] or [addAudio], which ask
+/// on screen and say why themselves if they cannot (the problem is then
+/// null); without them, those kinds are refused. Needs no BuildContext, so
+/// an assistant can use it too.
+Future<(LibraryAsset?, String?)> importStockItem(
+  StockItem item, {
+  required bool allowFetching,
+  required bool proxied,
+  Future<String?> Function(String file)? addVideo,
+  Future<String?> Function(String file)? addAudio,
+}) async {
   var refused =
       StockClient.refusal(allowFetching: allowFetching, proxied: proxied);
-  if (refused != null) {
-    report(refused);
-    return null;
+  if (refused != null) return (null, refused);
+  if ((item.kind == AssetKind.video && addVideo == null) ||
+      (item.kind == AssetKind.audio && addAudio == null)) {
+    return (
+      null,
+      "A ${item.kind == AssetKind.video ? "video" : "sound"} from stock is "
+          "added from the Stock panel."
+    );
   }
 
   var name = fileNameFor(item.title);
@@ -80,11 +107,14 @@ Future<LibraryAsset?> fetchStockItem(
             allowFetching: allowFetching,
             proxied: proxied);
     if (!got) {
-      report("${item.title} could not be fetched from ${item.source.from}.");
-      return null;
+      return (
+        null,
+        "${item.title} could not be fetched from ${item.source.from}."
+      );
     }
 
     String? id;
+    String? warning;
     switch (item.kind) {
       case AssetKind.picture || AssetKind.vector:
         var bytes = await file.readAsBytes();
@@ -95,31 +125,29 @@ Future<LibraryAsset?> fetchStockItem(
             .contains("<svg")) {
           id = await CanvasMedia.saveVector(bytes);
           if (id == null) {
-            report("${item.title} is too large a drawing for a canvas.");
-            return null;
+            return (null, "${item.title} is too large a drawing for a canvas.");
           }
           await CanvasLibrary.addVector(id, item.title);
           break;
         }
         id = await CanvasAssets.save(bytes);
         if (id == null) {
-          report("${item.title} is not a picture the canvas can keep.");
-          return null;
+          return (null, "${item.title} is not a picture the canvas can keep.");
         }
         await CanvasLibrary.addPicture(id, item.title, bytes);
       case AssetKind.video:
-        if (!context.mounted) return null;
-        id = (await addCanvasVideo(context, file.path))?.assetId;
+        id = await addVideo!(file.path);
       case AssetKind.audio:
-        if (!context.mounted) return null;
-        id = (await addCanvasAudio(context, controller, file.path))?.assetId;
+        id = await addAudio!(file.path);
       case AssetKind.model:
         var added = await addCanvasModel(file.path, item.title);
-        if (added.problem case var problem?) report(problem);
+        // Said even when the model was added: then it is a warning.
+        warning = added.problem;
+        if (added.id == null) return (null, warning);
         id = added.id;
     }
     // The video and audio imports have said why already.
-    if (id == null) return null;
+    if (id == null) return (null, warning);
 
     await CanvasLibrary.rename(id, item.title);
     await CanvasLibrary.credit(id,
@@ -128,12 +156,11 @@ Future<LibraryAsset?> fetchStockItem(
         origin: item.page,
         from: item.source.from);
     for (var a in await CanvasLibrary.list(kind: item.kind)) {
-      if (a.id == id) return a;
+      if (a.id == id) return (a, warning);
     }
-    return null;
+    return (null, warning);
   } catch (exception) {
-    report("Unable to add ${item.title}: $exception");
-    return null;
+    return (null, "Unable to add ${item.title}: $exception");
   } finally {
     try {
       await scratch?.delete(recursive: true);

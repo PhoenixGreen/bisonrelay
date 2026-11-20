@@ -1,3 +1,4 @@
+import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/screens/manage_content/file_preview.dart';
 import 'package:bruig/screens/manage_content/file_filter_bar.dart';
@@ -110,6 +111,8 @@ class _FileDownloadWState extends State<_FileDownloadW> {
   }
 
   void openFile() {
+    // A kind a feature opens itself (components/file_openers.dart).
+    if (FileOpeners.open(context, fd.diskPath)) return;
     // A canvas is opened in Canvas: nothing else can open one.
     if (fileKindOf(fd.diskPath) == FileKind.canvas) {
       openCanvasFile(context, fd.diskPath);

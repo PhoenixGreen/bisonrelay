@@ -1,3 +1,4 @@
+import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/components/inputs.dart';
 import 'package:bruig/components/share_settings.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
@@ -245,9 +246,13 @@ class _SharedContentFileState extends State<SharedContentFile> {
           // A canvas is opened in Canvas: nothing else can open one.
           onPressed: !canOpen
               ? null
-              : fileKindOf(diskPath) == FileKind.canvas
-                  ? () => openCanvasFile(context, diskPath)
-                  : () => OpenFilex.open(diskPath),
+              // A kind a feature opens itself (components/file_openers).
+              : () {
+                  if (FileOpeners.open(context, diskPath)) return;
+                  fileKindOf(diskPath) == FileKind.canvas
+                      ? openCanvasFile(context, diskPath)
+                      : OpenFilex.open(diskPath);
+                },
           child: Text("Open",
               style: TextStyle(
                   color: canOpen ? null : Theme.of(context).disabledColor)),

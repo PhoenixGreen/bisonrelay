@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/creative_ai/session/style_library.dart';
 import 'package:bruig/plugin_system/creative_ai/session/writing_suggestions.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/canvas_ai_tools.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/guide.dart';
+import 'package:bruig/plugin_system/creative_ai/tools/library_ai_tools.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/style_ai_tools.dart';
 import 'package:bruig/plugin_system/creative_ai/tools/writing_ai_tools.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
@@ -55,6 +56,7 @@ class CreativeAi extends ChangeNotifier {
   late final McpServer server;
   late final List<McpTool> tools = [
     ...canvasAiTools(this),
+    ...libraryAiTools(this),
     ...styleAiTools(this),
     ...writingAiTools(this),
   ];
