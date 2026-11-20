@@ -129,4 +129,24 @@ void main() {
     expect(r["isError"], isTrue);
     expect("${r["content"]}", contains("Search for it first"));
   });
+
+  test("Claude draws a picture as SVG, kept in the library", () async {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<circle cx="50" cy="50" r="40" fill="#E8590C"/></svg>';
+    var r = await call("canvas_draw_svg", {"name": "Sun", "svg": svg});
+    expect(r["isError"], isNot(true), reason: "${r["content"]}");
+    expect(canvas.document.elements.single.kind, ElementKind.vector);
+    var drawings =
+        json(await call("canvas_assets", {"kind": "vector"})) as List;
+    expect(drawings.single["name"], "Sun");
+
+    for (var bad in [
+      "not a drawing",
+      '<svg><script>alert(1)</script></svg>',
+      '<svg><image href="https://example.com/x.png"/></svg>',
+    ]) {
+      var refused = await call("canvas_draw_svg", {"name": "x", "svg": bad});
+      expect(refused["isError"], isTrue, reason: bad);
+    }
+  });
 }

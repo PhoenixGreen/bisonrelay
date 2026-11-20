@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -394,6 +395,34 @@ class CanvasAutomation {
     var element = elementForAsset(asset, _doc);
     controller.addElement(element, select: false);
     return (element.id, null);
+  }
+
+  /// addSvg keeps [svg] in the library as a drawing called [name] and,
+  /// when [place], puts it on the scene being edited as a Vector element.
+  /// Refused if it is not an SVG, is too large, or carries a script or
+  /// outside content. Returns (library id, element id), or an error.
+  Future<(String?, String?, String?)> addSvg(String name, String svg,
+      {bool place = true}) async {
+    var text = svg.trim();
+    var lower = text.toLowerCase();
+    if (!lower.contains("<svg")) return (null, null, "That is not an SVG.");
+    if (lower.contains("<script") ||
+        lower.contains("<foreignobject") ||
+        RegExp(r"""(href|src)\s*=\s*["']\s*(https?:|file:|//)""")
+            .hasMatch(lower)) {
+      return (
+        null,
+        null,
+        "An SVG drawn for a canvas has no scripts, embedded pages or links "
+            "to outside files: draw everything in it."
+      );
+    }
+    var id = await CanvasMedia.saveVector(utf8.encode(text));
+    if (id == null) return (null, null, "That drawing is too large.");
+    await CanvasLibrary.addVector(id, name.trim().isEmpty ? "Drawing" : name);
+    if (!place) return (id, null, null);
+    var (element, problem) = await useAsset(id);
+    return (id, element, problem);
   }
 
   // ------------------------------------------------------------------------

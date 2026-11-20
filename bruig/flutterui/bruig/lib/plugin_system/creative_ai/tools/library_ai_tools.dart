@@ -176,5 +176,33 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
       }),
       required: ["id"],
     ),
+    tool(
+      "canvas_draw_svg",
+      "Draw a picture",
+      "Draws a picture as SVG: an illustration, icon, emblem, pattern, map "
+          "or diagram that nothing in the library or stock fits. Give one "
+          "self-contained SVG with a viewBox, drawn wholly in shapes, paths, "
+          "gradients and text (no scripts, embedded pages or links to "
+          "outside files). It is kept in the person's library as a drawing "
+          "and, unless place is false, put on the scene being edited: then "
+          "place and size it with canvas_update, and render to check it.",
+      {
+        "name": {"type": "string"},
+        "svg": {"type": "string"},
+        "place": {"type": "boolean"},
+      },
+      (args) async => changing((a) async {
+        var (id, element, problem) = await a.addSvg(
+            "${args["name"] ?? ""}", "${args["svg"] ?? ""}",
+            place: args["place"] != false);
+        if (id == null) return McpResult.error(problem!);
+        return McpResult.json({
+          "library": id,
+          if (element != null) "element": element,
+          if (problem != null) "warning": problem,
+        }, summary: "Drew ${args["name"] ?? "a picture"}");
+      }),
+      required: ["name", "svg"],
+    ),
   ];
 }

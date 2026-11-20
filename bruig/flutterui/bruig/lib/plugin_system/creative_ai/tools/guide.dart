@@ -84,6 +84,10 @@ The saved format:
   Stock needs the person's key for each library and Canvas's fetching
   switch on; if either is missing, say what to turn on rather than working
   round it. Mention the credit of anything used from stock.
+- When no picture exists for what is wanted, draw one: canvas_draw_svg
+  takes an SVG you write (illustrations, icons, emblems, patterns, maps,
+  diagrams) and puts it on the canvas as a drawing. Keep it clean and in
+  the canvas's colours, and render to check it.
 - Style profiles keep a look to make new work in: canvas_styles lists them,
   canvas_style_get reads one (its guide, and measured facts: exact colours
   as integers, type sizes, samples to copy). When the person names a style,

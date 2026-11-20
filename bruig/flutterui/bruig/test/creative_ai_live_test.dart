@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/canvas.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
@@ -116,6 +117,43 @@ void main() {
             "canvas style, measured")),
         reason: "Claude wrote it, not the facts");
     expect(style.colours, contains(0xFFE8590C));
+  },
+      skip: live ? false : "Set CREATIVE_AI_LIVE=1 to run against Claude Code",
+      timeout: const Timeout(Duration(minutes: 4)));
+
+  test("Claude draws a picture with SVG", () async {
+    HttpOverrides.global = null;
+    SharedPreferences.setMockInitialValues({});
+    var root = await Directory.systemTemp.createTemp("live_draw");
+    addTearDown(() => root.delete(recursive: true));
+    CanvasStorage.rootOverride = root.path;
+    addTearDown(() => CanvasStorage.rootOverride = null);
+    var prefs = CreativeAiPreferences();
+    await prefs.load();
+    prefs.port = 47935;
+    prefs.chatModel = ClaudeModel.haiku;
+    var canvasPrefs = CanvasPreferences()..enabled = true;
+    var canvas = CanvasController(emptyCanvas());
+    var ai = CreativeAi(
+      prefs: prefs,
+      canvas: () => canvas,
+      canvasPrefs: () => canvasPrefs,
+      composer: () => ComposerSidebarController(),
+      library: () => PostLibraryModel(),
+    );
+    addTearDown(ai.dispose);
+    prefs.enabled = true;
+    for (var i = 0; i < 50 && !ai.server.running; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    await ai.canvasChat.send("Draw a bison's head as a simple flat icon and "
+        "put it in the top right corner, about 200 pixels across.");
+    for (var e in ai.canvasChat.entries) {
+      // ignore: avoid_print
+      print("${e.role.name}: ${e.text}");
+    }
+    expect(
+        canvas.document.elements.map((e) => e.kind.name), contains("vector"));
   },
       skip: live ? false : "Set CREATIVE_AI_LIVE=1 to run against Claude Code",
       timeout: const Timeout(Duration(minutes: 4)));
