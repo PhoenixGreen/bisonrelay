@@ -37,12 +37,9 @@ enum DockPanel {
 /// it (with nothing there, main takes the whole width), and [above] over
 /// them both.
 enum DockPlace {
-  main("Main"),
-  left("Left, beside Main"),
-  above("Above");
-
-  final String label;
-  const DockPlace(this.label);
+  main,
+  left,
+  above;
 
   static DockPlace? fromName(Object? name) =>
       values.where((p) => p.name == name).firstOrNull;

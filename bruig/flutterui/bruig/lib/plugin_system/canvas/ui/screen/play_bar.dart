@@ -1,20 +1,21 @@
 import 'dart:math' as math;
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/transport.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/dock_switcher.dart';
 import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
-import 'package:bruig/plugin_system/canvas/ui/timeline/marker_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/dock_switcher.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/play_bar_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/transport_controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/marker_panel.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 // play_bar.dart is the play bar along the panels under the canvas: the
 // panels' switcher on the left (dock_switcher.dart); in the middle the
@@ -59,18 +60,12 @@ KeyEventResult? transportKey(CanvasController controller, KeyEvent event) {
 class CanvasPlayBar extends StatefulWidget {
   final CanvasController controller;
 
-  /// switcher opens the panels: the dock's (DockSwitcherBar) unless given.
-  final Widget? switcher;
-
   /// onCustomiseSidebars opens the sidebars' settings from the bar's
   /// settings; with none, there is no such line.
   final VoidCallback? onCustomiseSidebars;
 
   const CanvasPlayBar(
-      {required this.controller,
-      this.switcher,
-      this.onCustomiseSidebars,
-      super.key});
+      {required this.controller, this.onCustomiseSidebars, super.key});
 
   @override
   State<CanvasPlayBar> createState() => _CanvasPlayBarState();
@@ -674,10 +669,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           var room = box.maxWidth;
           WidgetsBinding.instance.addPostFrameCallback((_) => _measure(room));
           var switcher =
-              widget.switcher ?? DockSwitcherBar(controller: controller);
-          if (switcher is DockSwitcherBar && switcher.compact != compact) {
-            switcher = switcher.copyWith(compact: compact);
-          }
+              DockSwitcherBar(controller: controller, compact: compact);
           return Row(children: [
             // The panels, on the left; scrolled rather than overflowing.
             Expanded(

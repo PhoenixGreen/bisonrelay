@@ -1,22 +1,24 @@
 import 'dart:ui' as ui;
 
-import 'support/canvas_app.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
-import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/procedural_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/canvas_app.dart';
 
 // canvas_scenes_panel_test.dart is the list of canvases in the sidebar.
 //
@@ -485,10 +487,7 @@ void main() {
     Future<void> pumpBar() => tester.pumpWidget(canvasApp(CanvasSettingsBar(
         controller: controller,
         onPublish: () {},
-        canvasSettingsOpen: false,
-        onToggleCanvasSettings: () {},
-        guidesOpen: false,
-        onToggleGuides: () {},
+        onLine: (_) {},
         timelineOpen: false,
         onToggleTimeline: () {})));
 
@@ -526,10 +525,7 @@ void main() {
     await tester.pumpWidget(canvasApp(CanvasSettingsBar(
         controller: controller,
         onPublish: () {},
-        canvasSettingsOpen: false,
-        onToggleCanvasSettings: () {},
-        guidesOpen: false,
-        onToggleGuides: () {},
+        onLine: (_) {},
         timelineOpen: false,
         onToggleTimeline: () {})));
     await tester.pumpAndSettle();

@@ -1,13 +1,14 @@
 import 'dart:convert';
 
+import 'package:flutter/painting.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
-import 'package:flutter/painting.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_preferences_test.dart holds what CanvasPreferences keeps on a
 // person's machine: the key each value is stored under and the form it is
@@ -45,7 +46,6 @@ void main() {
     expect(prefs.dockLeft, 0);
     expect(prefs.panels, isEmpty);
     expect(prefs.timeline, isFalse);
-    expect(prefs.timelineHeight, 0);
     expect(prefs.cuesShown, isTrue);
     expect(prefs.mixerBands, isEmpty);
     expect(prefs.mixerLook, "");
@@ -77,7 +77,6 @@ void main() {
       "canvasDockLeft": "140.0",
       "canvasPanels": jsonEncode({"mixer": true}),
       "canvasTimeline": true,
-      "canvasTimelineHeight": "212.5",
       "canvasCuesShown": false,
       "canvasMixerBands": "shown,minimised,hidden",
       "canvasMixerLook": "wide",
@@ -103,7 +102,6 @@ void main() {
     expect(prefs.dockLeft, 140);
     expect(prefs.panels, {"mixer": true});
     expect(prefs.timeline, isTrue);
-    expect(prefs.timelineHeight, 212.5);
     expect(prefs.cuesShown, isFalse);
     expect(prefs.mixerBands, ["shown", "minimised", "hidden"]);
     expect(prefs.mixerLook, "wide");
@@ -183,7 +181,7 @@ void main() {
       "canvasPanels": "[1, 2]",
       "canvasViews": "7",
       "canvasStudioColours": "\"red\"",
-      "canvasTimelineHeight": "tall",
+      "canvasDockLower": "tall",
       "canvasStudioLook": "neon",
     });
     expect(prefs.sidebars.current, "files");
@@ -191,7 +189,7 @@ void main() {
     expect(prefs.panels, isEmpty);
     expect(prefs.canvasView("a/b"), isNull);
     expect(prefs.studioOverrides, isEmpty);
-    expect(prefs.timelineHeight, 0);
+    expect(prefs.dockLower, 0);
     expect(prefs.studioLook, StudioLook.studio);
   });
 

@@ -32,9 +32,9 @@ final List<String> sidebarPanelIds = [
 /// requiredPanels can move but not be hidden.
 const requiredPanels = {"files", "settings"};
 
-/// filesPanels live in the Files sidebar only, and gamePanels in Game's.
-const filesPanels = {"files", "presets"};
-const gamePanels = {"game"};
+/// _filesPanels live in the Files sidebar only, and _gamePanels in Game's.
+const _filesPanels = {"files", "presets"};
+const _gamePanels = {"game"};
 
 /// sidebarIconNames are the icons a sidebar can wear (see sidebarIcon).
 const sidebarIconNames = [
@@ -68,8 +68,6 @@ class SidebarSet {
         "name": name,
         "icon": icon,
         "panels": panels,
-        if (fixed) "fixed": true,
-        if (gameOnly) "game": true,
       };
 }
 
@@ -175,8 +173,8 @@ class SidebarLayout {
   /// canGoIn is whether [panel] may be in [sidebar]: Files' panels in Files
   /// only, the game's in Game only, and everything else anywhere else.
   static bool canGoIn(String panel, SidebarSet sidebar) {
-    if (filesPanels.contains(panel)) return sidebar.id == "files";
-    if (gamePanels.contains(panel)) return sidebar.id == "game";
+    if (_filesPanels.contains(panel)) return sidebar.id == "files";
+    if (_gamePanels.contains(panel)) return sidebar.id == "game";
     return !sidebar.fixed;
   }
 

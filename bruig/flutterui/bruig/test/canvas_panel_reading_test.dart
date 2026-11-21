@@ -2,30 +2,32 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
-import 'package:bruig/plugin_system/canvas/export/document_export.dart';
-import 'package:bruig/plugin_system/canvas/export/panel_video.dart';
-import 'package:bruig/plugin_system/canvas/export/video_export.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
-import 'package:bruig/plugin_system/canvas/render/image_store.dart';
-import 'package:bruig/plugin_system/canvas/render/panel_reading.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
-import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart'
-    show parseProbe;
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
-import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
+
+import 'package:bruig/plugin_system/canvas/export/document_export.dart';
+import 'package:bruig/plugin_system/canvas/export/panel_video.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart'
+    show parseProbe;
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/render/panel_reading.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
+
 import 'support/canvas_app.dart';
 
 // canvas_panel_reading_test.dart is Panel mode (panel_reading.dart,
@@ -396,10 +398,7 @@ printf '\\x00\\x00\\x00\\x18ftypisom' > "\$out"
       await tester.pumpWidget(canvasApp(CanvasSettingsBar(
         controller: c,
         onPublish: () {},
-        canvasSettingsOpen: false,
-        onToggleCanvasSettings: () {},
-        guidesOpen: false,
-        onToggleGuides: () {},
+        onLine: (_) {},
         timelineOpen: true,
         onToggleTimeline: () {},
       )));

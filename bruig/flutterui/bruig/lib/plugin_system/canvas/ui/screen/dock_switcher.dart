@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/transport_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 // dock_switcher.dart is what opens the panels under the canvas, at the play
 // bar's end, as chosen (DockLayout.switcher): a button per panel, the
@@ -21,9 +22,6 @@ class DockSwitcherBar extends StatelessWidget {
 
   const DockSwitcherBar(
       {required this.controller, this.compact = false, super.key});
-
-  DockSwitcherBar copyWith({bool? compact}) => DockSwitcherBar(
-      key: key, controller: controller, compact: compact ?? this.compact);
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +39,7 @@ class DockSwitcherBar extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w500)),
           )
       else if (dock.showLayouts)
-        DockLayoutsButton(controller: controller, compact: compact),
+        _LayoutsButton(controller: controller, compact: compact),
       if (dock.switcher == DockSwitcher.buttons)
         for (var panel in DockPanel.values)
           DockPanelButton(
@@ -107,7 +105,7 @@ class _DockPanelButtonState extends State<DockPanelButton> {
         DockPlaceGlyph(places: dock.places, place: place),
         const SizedBox(width: 6),
         if (widget.compact)
-          Icon(dockPanelIcon(panel), size: 16)
+          Icon(_panelIcon(panel), size: 16)
         else
           Text(panel.label,
               style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -196,9 +194,9 @@ class _DockPanelButtonState extends State<DockPanelButton> {
   }
 }
 
-/// dockPanelIcon is [panel]'s icon: on its button when the bar is short of
+/// _panelIcon is [panel]'s icon: on its button when the bar is short of
 /// room, and wherever else it is named small.
-IconData dockPanelIcon(DockPanel panel) => switch (panel) {
+IconData _panelIcon(DockPanel panel) => switch (panel) {
       DockPanel.timeline => Icons.view_timeline_outlined,
       DockPanel.slots => Icons.grid_view_outlined,
       DockPanel.mixer => Icons.tune,
@@ -349,15 +347,14 @@ class _GlyphPainter extends CustomPainter {
       old.places != places || old.place != place || old.color != color;
 }
 
-/// DockLayoutsButton is the layouts as a dropdown: the one chosen named on
+/// _LayoutsButton is the layouts as a dropdown: the one chosen named on
 /// it while nothing has changed since.
-class DockLayoutsButton extends StatelessWidget {
+class _LayoutsButton extends StatelessWidget {
   final CanvasController controller;
 
   final bool compact;
 
-  const DockLayoutsButton(
-      {required this.controller, this.compact = false, super.key});
+  const _LayoutsButton({required this.controller, required this.compact});
 
   @override
   Widget build(BuildContext context) {

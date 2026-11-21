@@ -1,31 +1,34 @@
-import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'support/canvas_app.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'dart:math' as math;
-import 'package:bruig/storage_manager.dart';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/components/panel_stack.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
-import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'support/canvas_panel_helpers.dart';
-import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
+import 'package:bruig/storage_manager.dart';
+
+import 'support/canvas_app.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_editor_band_test.dart is the editor round the canvas: the settings
 // band and its lines, the canvas settings, framing, the grid and guides, what
@@ -57,10 +60,8 @@ void main() {
         CanvasSettingsBar(
           controller: controller,
           onPublish: () => published++,
-          canvasSettingsOpen: open,
-          onToggleCanvasSettings: toggle ?? () {},
-          guidesOpen: false,
-          onToggleGuides: () {},
+          line: open ? BandLine.settings : null,
+          onLine: (_) => toggle?.call(),
           timelineOpen: true,
           onToggleTimeline: () {},
           onShowSidebar: showSidebar,
@@ -121,10 +122,7 @@ void main() {
       Widget bar() => CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
             canvasShown: shown,
@@ -151,10 +149,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: false,
             onToggleTimeline: () {},
           ));
@@ -871,10 +866,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -897,10 +889,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -925,10 +914,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1030,10 +1016,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1059,10 +1042,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1274,10 +1254,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1312,10 +1289,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1343,10 +1317,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1399,10 +1370,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1439,10 +1407,7 @@ void main() {
           CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: true,
             onToggleTimeline: () {},
           ));
@@ -1490,10 +1455,7 @@ void main() {
           builder: (context, setState) => CanvasSettingsBar(
             controller: controller,
             onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-            guidesOpen: false,
-            onToggleGuides: () {},
+            onLine: (_) {},
             timelineOpen: open,
             onToggleTimeline: () => setState(() => open = !open),
           ),

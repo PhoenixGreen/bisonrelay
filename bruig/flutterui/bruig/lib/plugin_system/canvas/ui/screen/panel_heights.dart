@@ -45,10 +45,8 @@ List<double> resizePanel(List<double> heights, List<double> least, int index,
 }
 
 /// fitPanels is [heights] fitted to [room] (a shorter window, a panel
-/// opened): the top ones give way first, each to its [least], and then the
-/// [collapsible] one (the timeline) shuts to [collapsed], its bar alone.
-List<double> fitPanels(List<double> heights, List<double> least, double room,
-    {int? collapsible, double collapsed = 0}) {
+/// opened): the top ones give way first, each to its [least].
+List<double> fitPanels(List<double> heights, List<double> least, double room) {
   var out = [...heights];
   var over = out.fold(0.0, (a, b) => a + b) - room;
   for (var j = 0; j < out.length && over > 1e-9; j++) {
@@ -56,6 +54,5 @@ List<double> fitPanels(List<double> heights, List<double> least, double room,
     out[j] -= take;
     over -= take;
   }
-  if (collapsible != null && over > 0.5) out[collapsible] = collapsed;
   return out;
 }

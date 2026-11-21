@@ -1,48 +1,15 @@
-import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
-import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/panel_heights.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// The panels under the canvas -- the mixer, the effects, the timeline --
-// sized as one stack under the settings bar. A timeline sized tall in a big
-// window, the window then made short, once overflowed the page; and, Ken
-// found, a panel made taller pushed the ones over it past the top of the
-// screen. Neither can happen now: the stack fits, and once it fills the
-// room the top stays pinned under the bar.
+import 'package:bruig/plugin_system/canvas/ui/screen/panel_heights.dart';
+
+// The panels under the canvas are sized as one stack under the settings
+// bar (panel_heights.dart). Fitted to a shorter window, the top ones give
+// way first, each to its least. Resized, a panel made taller takes the free
+// room and then the room of those over it, never pushing them past the top:
+// once the stack fills the room the top stays pinned under the bar.
 
 void main() {
   group("fitted to the window", () {
-    const top = 48.0;
-    // The timeline alone keeps some of the canvas in view.
-    double alone(double page, double set) =>
-        fitPanels([set], [timelineHeight], page - top - canvasLeast,
-            collapsible: 0, collapsed: timelineCollapsedHeight)[0];
-
-    test("as set, where there is room", () {
-      expect(alone(1000, 300), 300);
-    });
-
-    test("as much as fits round the canvas, where its least does", () {
-      var page = top + canvasLeast + timelineHeight + 40;
-      expect(alone(page, 500), timelineHeight + 40);
-    });
-
-    test("only the play bar, where not even its least fits", () {
-      expect(alone(top + canvasLeast + 20, 500), timelineCollapsedHeight);
-    });
-
-    test("shut to its bar, it stays its bar", () {
-      expect(
-          fitPanels([timelineCollapsedHeight], [timelineCollapsedHeight], 1000,
-              collapsible: 0, collapsed: timelineCollapsedHeight)[0],
-          timelineCollapsedHeight);
-    });
-
-    test("the overflow reported: a 587 point page", () {
-      expect(top + canvasLeast + alone(586.7, 586.7 * 0.6),
-          lessThanOrEqualTo(586.7));
-    });
-
     test("the top panels give way first", () {
       // Mixer, effects, timeline in 700: the mixer to its least, then the
       // effects.

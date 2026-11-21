@@ -1,6 +1,10 @@
 import 'dart:math' as math;
 
-import 'support/canvas_app.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -18,10 +22,8 @@ import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_gizmo.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_nav_controls.dart';
-import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_test/flutter_test.dart';
+
+import 'support/canvas_app.dart';
 
 // The controls for a scene showing a 3D stage: the bar's 3D tools, Snap and
 // the page lock; the stage camera's pan, framing and reset; the gizmo on an
@@ -59,10 +61,7 @@ Widget bar(CanvasController c, {VoidCallback? onGuides}) => host(Column(
         CanvasSettingsBar(
           controller: c,
           onPublish: () {},
-          canvasSettingsOpen: false,
-          onToggleCanvasSettings: () {},
-          guidesOpen: false,
-          onToggleGuides: onGuides ?? () {},
+          onLine: (_) => onGuides?.call(),
           timelineOpen: false,
           onToggleTimeline: () {},
         ),

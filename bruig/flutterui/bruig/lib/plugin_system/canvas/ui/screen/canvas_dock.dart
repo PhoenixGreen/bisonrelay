@@ -1,20 +1,21 @@
 import 'dart:math' as math;
 
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
-import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion/chain_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/dock_switcher.dart';
-import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
-    show dragPointers;
-import 'package:bruig/plugin_system/canvas/ui/screen/panel_heights.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/play_bar.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
+    show dragPointers;
+import 'package:bruig/plugin_system/canvas/ui/motion/chain_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/dock_switcher.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/panel_heights.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/play_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 // canvas_dock.dart is everything under the canvas: the play bar, and the
 // panels in their places (dock_layout.dart) -- above, then main with left
@@ -22,12 +23,12 @@ import 'package:provider/provider.dart';
 // Places keep their dragged heights, shortened to fit the window without
 // pushing the settings bar off the page (panel_heights.dart).
 
-/// dockLowerDefault, dockAboveDefault and dockLeftDefault are the places'
+/// _lowerDefault, _aboveDefault and _leftDefault are the places'
 /// sizes before any is dragged.
-const double dockLowerDefault = 280,
-    dockAboveDefault = 220,
-    dockLeftDefault = 420,
-    dockLeftLeast = 220;
+const double _lowerDefault = 280,
+    _aboveDefault = 220,
+    _leftDefault = 420,
+    _leftLeast = 220;
 
 /// dockBarHeight is the play bar as drawn in the dock, with its padding and
 /// top line.
@@ -55,19 +56,26 @@ class CanvasDock extends StatefulWidget {
   });
 
   @override
-  State<CanvasDock> createState() => CanvasDockState();
+  State<CanvasDock> createState() => _CanvasDockState();
 }
 
-enum _Row { above, lower }
+/// _Band is a strip across the dock: the Above place, or the Main and Left
+/// places side by side under it. Each is as tall as it was dragged.
+enum _Band { above, lower }
 
-class CanvasDockState extends State<CanvasDock> {
+/// _Sized is a band that takes room: the height it was [set] to, the
+/// [least] it can be drawn at, and whether it is [fixed] (a line of tabs
+/// with nothing open, or the mixer minimised on a band of its own).
+typedef _Sized = ({_Band band, double set, double least, bool fixed});
+
+class _CanvasDockState extends State<CanvasDock> {
   CanvasController get controller => widget.controller;
   late final CanvasPreferences _prefs =
       Provider.of<CanvasPreferences>(context, listen: false);
 
-  double _lower = dockLowerDefault;
-  double _above = dockAboveDefault;
-  double _left = dockLeftDefault;
+  double _lower = _lowerDefault;
+  double _above = _aboveDefault;
+  double _left = _leftDefault;
 
   /// _pull is how far the mixer's edge has been dragged past where it stops
   /// (down at its least, up at its smallest), so a drag must mean it before
@@ -94,7 +102,7 @@ class CanvasDockState extends State<CanvasDock> {
       controller.dock.placesShown.contains(place) &&
       (controller.dockShownIn(place) != null || (_tabs && _homed(place)));
 
-  List<DockPlace> _placesIn(_Row row) => row == _Row.above
+  List<DockPlace> _placesIn(_Band band) => band == _Band.above
       ? const [DockPlace.above]
       : const [DockPlace.left, DockPlace.main];
 
@@ -109,76 +117,76 @@ class CanvasDockState extends State<CanvasDock> {
         DockPanel.chain => effectsMinHeight,
       };
 
-  List<DockPanel> _open(_Row row) => [
-        for (var place in _placesIn(row))
+  List<DockPanel> _open(_Band band) => [
+        for (var place in _placesIn(band))
           if (controller.dockShownIn(place) case var p?) p
       ];
 
-  /// _rows are the bands that take room, top to bottom, each as it was set,
-  /// its least, and whether it is fixed: a row of tabs with nothing open, or
-  /// the mixer minimised on a band of its own.
-  List<(_Row, double, double, bool)> _rows() => [
-        for (var row in _Row.values)
-          if (_placesIn(row).any(_shows)) _measure(row),
+  /// _bands are the bands that take room, top to bottom.
+  List<_Sized> _bands() => [
+        for (var band in _Band.values)
+          if (_placesIn(band).any(_shows)) _measure(band),
       ];
 
-  (_Row, double, double, bool) _measure(_Row row) {
+  _Sized _measure(_Band band) {
     var tabs = _tabs ? DockPlaceTabs.height : 0.0;
-    var open = _open(row);
-    if (open.isEmpty) return (row, tabs, tabs, true);
+    var open = _open(band);
+    if (open.isEmpty) {
+      return (band: band, set: tabs, least: tabs, fixed: true);
+    }
     var mixerAlone = open.length == 1 && open.single == DockPanel.mixer;
     var minimised = controller.mixerMinimised || controller.mixerSmallest;
     if (mixerAlone && minimised) {
       var h = _mixerLeast() + tabs;
-      return (row, h, h, true);
+      return (band: band, set: h, least: h, fixed: true);
     }
     var least = open.map(_panelLeast).reduce(math.max) + tabs;
-    var set = row == _Row.above ? _above : _lower;
-    return (row, math.max(set, least), least, false);
+    var set = band == _Band.above ? _above : _lower;
+    return (band: band, set: math.max(set, least), least: least, fixed: false);
   }
 
-  /// _shown is each row's height on screen: as set where they fit, else the
+  /// _shown is each band's height on screen: as set where they fit, else the
   /// top ones shortened first, each to its least, keeping what was set for a
-  /// taller window. With the canvas away, the top row that can grow takes
+  /// taller window. With the canvas away, the top band that can grow takes
   /// the rest.
-  Map<_Row, double> _shown(List<(_Row, double, double, bool)> rows) {
-    var out = fitPanels(
-        [for (var r in rows) r.$2], [for (var r in rows) r.$3], widget.room);
+  Map<_Band, double> _shown(List<_Sized> bands) {
+    var out = fitPanels([for (var r in bands) r.set],
+        [for (var r in bands) r.least], widget.room);
     if (widget.fill) {
       var total = out.fold(0.0, (a, b) => a + b);
-      var f = rows.indexWhere((r) => !r.$4);
+      var f = bands.indexWhere((r) => !r.fixed);
       if (f >= 0 && total < widget.room) out[f] += widget.room - total;
     }
-    return {for (var (k, r) in rows.indexed) r.$1: math.max(0.0, out[k])};
+    return {for (var (k, r) in bands.indexed) r.band: math.max(0.0, out[k])};
   }
 
-  /// _resize drags [row]'s top edge to make it [h] tall: taking free room,
-  /// then the row over it's, never past the settings bar.
-  void _resize(_Row row, double h) => setState(() {
-        var open = _open(row);
+  /// _resize drags [band]'s top edge to make it [h] tall: taking free room,
+  /// then the room of the band over it, never past the settings bar.
+  void _resize(_Band band, double h) => setState(() {
+        var open = _open(band);
         if (open.length == 1 &&
             open.single == DockPanel.mixer &&
-            !_mixerPulled(row, h)) {
+            !_mixerPulled(band, h)) {
           return;
         }
-        var rows = _rows();
-        var i = rows.indexWhere((r) => r.$1 == row);
+        var bands = _bands();
+        var i = bands.indexWhere((r) => r.band == band);
         if (i < 0) return;
-        var shown = _shown(rows);
+        var shown = _shown(bands);
         var out = resizePanel(
-          [for (var r in rows) shown[r.$1]!],
-          [for (var r in rows) r.$3],
+          [for (var r in bands) shown[r.band]!],
+          [for (var r in bands) r.least],
           i,
           h,
           widget.room,
           fixed: {
-            for (var (k, r) in rows.indexed)
-              if (r.$4) k
+            for (var (k, r) in bands.indexed)
+              if (r.fixed) k
           },
         );
-        for (var (k, r) in rows.indexed) {
-          if (r.$4 || (widget.fill && k == 0)) continue;
-          if (r.$1 == _Row.above) {
+        for (var (k, r) in bands.indexed) {
+          if (r.fixed || (widget.fill && k == 0)) continue;
+          if (r.band == _Band.above) {
             _above = out[k];
             _prefs.dockAbove = out[k];
           } else {
@@ -189,10 +197,10 @@ class CanvasDockState extends State<CanvasDock> {
       });
 
   /// _mixerPulled steps the mixer's size as its edge is dragged to [h] on
-  /// [row], a band of its own: down past its least to its smallest and back
+  /// [band], a band of its own: down past its least to its smallest and back
   /// up; minimised, up to its least. Returns whether the drag goes on to
   /// size it.
-  bool _mixerPulled(_Row row, double h) {
+  bool _mixerPulled(_Band band, double h) {
     var tabs = _tabs ? DockPlaceTabs.height : 0.0;
     var least = mixerLeastHeight(controller, bare: false) * _textScale + tabs;
     if (controller.mixerSmallest) {
@@ -216,7 +224,7 @@ class CanvasDockState extends State<CanvasDock> {
       if (h <= least + 2) return false;
       controller.mixerSize = MixerSize.full;
       // The band the mixer is on, which need not be the lower one.
-      if (row == _Row.above) {
+      if (band == _Band.above) {
         _above = least;
       } else {
         _lower = least;
@@ -233,18 +241,19 @@ class CanvasDockState extends State<CanvasDock> {
         listenable: controller.chrome,
         builder: (context, _) {
           var theme = ThemeNotifier.of(context);
-          var rows = _rows();
-          var shown = _shown(rows);
+          var bands = _bands();
+          var shown = _shown(bands);
           var bar = _bar(theme);
           return Column(mainAxisSize: MainAxisSize.min, children: [
             if (!controller.barBelow) bar,
-            for (var r in rows)
+            for (var r in bands)
               SizedBox(
-                key: ValueKey("dockRow-${r.$1.name}"),
-                height: shown[r.$1],
-                child: r.$1 == _Row.above
-                    ? _place(theme, DockPlace.above, shown[r.$1]!, _Row.above)
-                    : _lowerRow(theme, shown[r.$1]!),
+                key: ValueKey("dockRow-${r.band.name}"),
+                height: shown[r.band],
+                child: r.band == _Band.above
+                    ? _place(
+                        theme, DockPlace.above, shown[r.band]!, _Band.above)
+                    : _lowerRow(theme, shown[r.band]!),
               ),
             if (controller.barBelow) bar,
           ]);
@@ -262,7 +271,6 @@ class CanvasDockState extends State<CanvasDock> {
         child: RepaintBoundary(
           child: CanvasPlayBar(
             controller: controller,
-            switcher: DockSwitcherBar(controller: controller),
             onCustomiseSidebars: widget.onCustomiseSidebars,
           ),
         ),
@@ -289,7 +297,7 @@ class CanvasDockState extends State<CanvasDock> {
         Expanded(
           child: LayoutBuilder(
             builder: (context, box) =>
-                _panel(DockPanel.timeline, box.maxHeight, _Row.lower),
+                _panel(DockPanel.timeline, box.maxHeight, _Band.lower),
           ),
         ),
       ]);
@@ -297,19 +305,19 @@ class CanvasDockState extends State<CanvasDock> {
     if (left && main) {
       return LayoutBuilder(builder: (context, box) {
         var width = _left
-            .clamp(dockLeftLeast, math.max(dockLeftLeast, box.maxWidth - 320))
+            .clamp(_leftLeast, math.max(_leftLeast, box.maxWidth - 320))
             .toDouble();
         return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SizedBox(
               width: width,
-              child: _place(theme, DockPlace.left, height, _Row.lower)),
+              child: _place(theme, DockPlace.left, height, _Band.lower)),
           _widthGrip(theme, box.maxWidth),
-          Expanded(child: _place(theme, DockPlace.main, height, _Row.lower)),
+          Expanded(child: _place(theme, DockPlace.main, height, _Band.lower)),
         ]);
       });
     }
     return _place(
-        theme, left ? DockPlace.left : DockPlace.main, height, _Row.lower);
+        theme, left ? DockPlace.left : DockPlace.main, height, _Band.lower);
   }
 
   /// _widthGrip is the line between left and main, dragged to resize left.
@@ -321,7 +329,7 @@ class CanvasDockState extends State<CanvasDock> {
           behavior: HitTestBehavior.opaque,
           onHorizontalDragUpdate: (d) => setState(() {
             _left = (_left + d.delta.dx)
-                .clamp(dockLeftLeast, math.max(dockLeftLeast, room - 320))
+                .clamp(_leftLeast, math.max(_leftLeast, room - 320))
                 .toDouble();
           }),
           onHorizontalDragEnd: (_) => _prefs.dockLeft = _left,
@@ -335,7 +343,8 @@ class CanvasDockState extends State<CanvasDock> {
       );
 
   /// _place is [place]: its tabs and switcher over the panel open in it.
-  Widget _place(ThemeNotifier theme, DockPlace place, double height, _Row row) {
+  Widget _place(
+      ThemeNotifier theme, DockPlace place, double height, _Band band) {
     var panel = controller.dockShownIn(place);
     var tabs = _tabs ? DockPlaceTabs.height : 0.0;
     return Column(key: ValueKey("dockPlace-${place.name}"), children: [
@@ -344,16 +353,16 @@ class CanvasDockState extends State<CanvasDock> {
         Expanded(
           child: LayoutBuilder(
             builder: (context, box) => _panel(panel,
-                math.max(0.0, math.min(box.maxHeight, height - tabs)), row),
+                math.max(0.0, math.min(box.maxHeight, height - tabs)), band),
           ),
         ),
     ]);
   }
 
-  /// _panel is [panel] drawn [height] tall, its top edge resizing [row].
-  Widget _panel(DockPanel panel, double height, _Row row) {
+  /// _panel is [panel] drawn [height] tall, its top edge resizing [band].
+  Widget _panel(DockPanel panel, double height, _Band band) {
     void resize(double h) =>
-        _resize(row, h + (_tabs ? DockPlaceTabs.height : 0));
+        _resize(band, h + (_tabs ? DockPlaceTabs.height : 0));
     return RepaintBoundary(
       key: ValueKey("dockPanel-${panel.name}"),
       child: switch (panel) {

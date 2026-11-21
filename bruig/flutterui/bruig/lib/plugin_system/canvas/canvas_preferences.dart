@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/storage_manager.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
 
 /// _Saved is one value kept in the app's preferences: its key, what it is
 /// until something is saved, and how it is stored.
@@ -146,7 +147,6 @@ class CanvasPreferences extends ChangeNotifier {
       "canvasPanels", const {},
       fromJson: _jsonMap, toJson: (v) => v);
   final _timeline = _SavedBool("canvasTimeline", false);
-  final _timelineHeight = _SavedText.size("canvasTimelineHeight");
   final _cuesShown = _SavedBool("canvasCuesShown", true);
   final _mixerBands = _SavedText<List<String>>("canvasMixerBands", const [],
       read: (t) => t.split(","), write: (v) => v.join(","), byText: true);
@@ -189,7 +189,6 @@ class CanvasPreferences extends ChangeNotifier {
     _dockLeft,
     _panels,
     _timeline,
-    _timelineHeight,
     _cuesShown,
     _mixerBands,
     _mixerLook,
@@ -377,12 +376,6 @@ class CanvasPreferences extends ChangeNotifier {
   /// showing. Off to begin with, then as it was left.
   bool get timeline => _timeline.value;
   set timeline(bool value) => _change(_timeline, value, notify: true);
-
-  /// timelineHeight is the timeline's dragged height, or nought for its
-  /// least.
-  double get timelineHeight => _timelineHeight.value;
-  set timelineHeight(double value) =>
-      _change(_timelineHeight, value, soon: true);
 
   /// cuesShown is whether the cues are marked on the timeline's ruler.
   bool get cuesShown => _cuesShown.value;

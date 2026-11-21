@@ -1,13 +1,12 @@
-import 'package:bruig/plugin_system/canvas/ui/code/code_studio.dart';
-import 'package:bruig/plugin_system/canvas/ui/data/data_studio.dart';
-import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
-import 'package:bruig/plugin_system/canvas/ui/drawing/image_tool_hint.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/vector_tool_hint.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderProxyBox;
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
@@ -15,34 +14,37 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/model/web_link.dart';
+import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
+import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/text_documents.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/canvas_dock.dart';
-import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
+import 'package:bruig/plugin_system/canvas/ui/character/character_studio_3d.dart';
+import 'package:bruig/plugin_system/canvas/ui/code/code_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/data/data_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_tool_hint.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/text_documents.dart';
+import 'package:bruig/plugin_system/canvas/ui/score/score_studio.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_dock.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/publish_sheet.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/customise_sidebars.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
-import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderProxyBox;
-import 'package:provider/provider.dart';
-import 'package:bruig/plugin_system/canvas/ui/character/character_studio_3d.dart';
-import 'package:bruig/plugin_system/canvas/ui/score/score_studio.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 // canvas_screen.dart is the Canvas section: a sidebar, the canvas, a settings
 // band above it and a timeline below, present only while the Canvas feature
@@ -118,12 +120,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// _aboveAllowed: the sidebar sits above the panels only beside a canvas.
   bool get _aboveAllowed => _shown && !_audioKind;
 
-  /// _canvasSettingsOpen is whether the canvas settings line is out.
-  bool _canvasSettingsOpen = false;
-
-  /// _guidesOpen is whether the grid and guides line is out; the two lines
-  /// share a place, so only one opens at a time.
-  bool _guidesOpen = false;
+  /// _line is the line open under the band, if one is.
+  BandLine? _line;
 
   /// _timelineOpen is whether the transport and strip under the canvas show:
   /// off at first, then as left (CanvasPreferences.timeline).
@@ -490,11 +488,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// from nothing.
   void _openCanvasSettings() {
     if (!mounted) return;
-    setState(() {
-      _canvasSettingsOpen = true;
-      // The two lines open in the same place.
-      _guidesOpen = false;
-    });
+    setState(() => _line = BandLine.settings);
   }
 
   /// _openPreset starts a new canvas from a preset, handed in already built
@@ -781,16 +775,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       CanvasSettingsBar(
                         controller: _controller,
                         onPublish: _publish,
-                        canvasSettingsOpen: _canvasSettingsOpen,
-                        onToggleCanvasSettings: () => setState(() {
-                          _canvasSettingsOpen = !_canvasSettingsOpen;
-                          if (_canvasSettingsOpen) _guidesOpen = false;
-                        }),
-                        guidesOpen: _guidesOpen,
-                        onToggleGuides: () => setState(() {
-                          _guidesOpen = !_guidesOpen;
-                          if (_guidesOpen) _canvasSettingsOpen = false;
-                        }),
+                        line: _line,
+                        onLine: (line) => setState(() => _line = line),
                         canvasShown: _shown,
                         onToggleCanvas: _noCanvas
                             ? null
@@ -814,14 +800,17 @@ class _CanvasScreenState extends State<CanvasScreen> {
                                     setState(() => _audioSidebarShown = true)
                                 : () => _setSidebars(_sidebars.shownAgain),
                       ),
-                      ...canvasSecondLine(
-                        settings: _canvasSettingsOpen
-                            ? CanvasSettingsPanel(controller: _controller)
-                            : null,
-                        guides: _guidesOpen
-                            ? CanvasGuidesPanel(controller: _controller)
-                            : null,
-                      ),
+                      // Under the band, not over the canvas: it pushes
+                      // the design down and does not cover its top.
+                      ...switch (_line) {
+                        BandLine.settings => [
+                            CanvasSettingsPanel(controller: _controller)
+                          ],
+                        BandLine.guides => [
+                            CanvasGuidesPanel(controller: _controller)
+                          ],
+                        null => const <Widget>[],
+                      },
                     ]))),
             LayoutId(
               id: _PageLayout.middle,
@@ -939,15 +928,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
 /// canvasLeast is the least of the canvas kept in view when the window is
 /// short: the timeline gives way rather than pushing it out.
 const double canvasLeast = 120;
-
-/// canvasSecondLine is the strip under the band: canvas settings, or grid
-/// and guides. Above the canvas, not over it, so it pushes the design down
-/// rather than covering its top. A list so a test can see where it sits.
-List<Widget> canvasSecondLine({Widget? settings, Widget? guides}) => [
-      if (settings != null) settings,
-      // Never both; if one gets through, the settings win.
-      if (settings == null && guides != null) guides,
-    ];
 
 /// _PageLayout lays out [top] (the settings band) and [bottom] (the dock)
 /// at their heights, and [middle] (the canvas) in what is left, never less
