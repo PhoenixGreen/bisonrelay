@@ -1,16 +1,24 @@
+import 'package:flutter/material.dart';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
+import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
+    show presetsFor;
 import 'package:bruig/plugin_system/canvas/render/camera_aim.dart'
     show aimChoices;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show cameraFraming, cameraLookAt, poseAimAt;
+    show cameraFraming, cameraLookAt, isStageScene, poseAimAt;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
-import 'package:flutter/material.dart';
 
 // camera_settings.dart is a 2D Camera's framing and lens: zoom, roll,
 // focus, depth of field, parallax, vignette, motion blur. Focus, blur and
@@ -350,4 +358,135 @@ List<Widget> cameraLensGroups(
           ]),
         ]),
   ];
+}
+
+/// cameraSettings is a Camera's own sections: looking through it, where it
+/// stands (on a 3D stage) or how close and turned it is (on the page), and
+/// the moves that can be put on the timeline.
+///
+/// A camera is its frame, moved by its clips: here is only the way to see
+/// what it sees while the scene stands still.
+List<Widget> cameraSettings(
+  BuildContext context,
+  CanvasController controller,
+  CameraElement e,
+  void Function(CanvasElement) write,
+  VoidCallback begin,
+  VoidCallback commit,
+) =>
+    [
+      section(e, "camera",
+          icon: Icons.videocam_outlined,
+          title: "Camera",
+          summary: controller.cameraView
+              ? "Looking through it"
+              : "Its frame is what is shown",
+          children: [
+            CanvasControlGroup(
+                label: "Camera",
+                help: "What plays and what is exported is this frame, "
+                    "filled out to the page. Draw it in or move it, or "
+                    "give it clips: push in, follow, pull back, shake.",
+                children: [
+                  CanvasToggle(
+                    key: const ValueKey("cameraLook"),
+                    label: "Look through it",
+                    value: controller.cameraView,
+                    onChanged: (v) => controller.cameraView = v,
+                  ),
+                ]),
+            // On a 3D stage it stands in the scene: where, and its
+            // lens. Its clips move it from here.
+            if (isStageScene(controller.document))
+              _camera3dGroup(controller, e, write, begin, commit)
+            else
+              // On the page: how close and turned, and its lens.
+              ...cameraLensGroups(controller, e, write, begin, commit),
+          ]),
+      // A move put on the timeline at the playhead and opened to be
+      // shaped: the quickest way to a push in.
+      section(e, "cameraMoves",
+          icon: Icons.movie_filter_outlined,
+          title: "Moves",
+          summary: "${e.base.motion.placed.length} on the timeline",
+          children: [
+            Wrap(spacing: 4, runSpacing: 4, children: [
+              for (var p in presetsFor(MotionKind.camera))
+                ActionChip(
+                  key: ValueKey("cameraMove-${p.name}"),
+                  visualDensity: VisualDensity.compact,
+                  label: Text(p.name, style: const TextStyle(fontSize: 11.5)),
+                  onPressed: () {
+                    var target = controller.document.elements
+                        .where((x) => x.id != e.id && x is! CameraElement)
+                        .map((x) => x.id)
+                        .lastOrNull;
+                    controller.beginInteraction();
+                    var clip = controller.newClip(e.id,
+                        preset: p, target: p.aims ? target ?? "" : "");
+                    var placed = controller.placeClip(e.id, clip,
+                        seconds: controller.secondsAt(controller.frame));
+                    controller.endInteraction();
+                    controller.pickMotion(e.id, clip, placement: placed);
+                    controller.animationOpen = true;
+                  },
+                ),
+            ]),
+          ]),
+    ];
+
+/// _camera3dGroup is where a Camera stands on a 3D stage, and its lens.
+Widget _camera3dGroup(
+    CanvasController controller,
+    CameraElement e,
+    void Function(CanvasElement) write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  var doc = controller.document;
+  var view = e.view ??
+      (doc.drawnBackground.isStage
+              ? doc.drawnBackground.stageOn(doc.size.rect)
+              : doc.elements
+                  .whereType<BackgroundElement>()
+                  .where((b) => b.isStage)
+                  .first
+                  .staged)
+          .ownCameraAt(0);
+  Widget field(String key, String label, double value, double min, double max,
+          StageCamera Function(double v) set,
+          {String suffix = "", int decimals = 1}) =>
+      CanvasNumberField(
+        key: ValueKey("camera3d-$key"),
+        label: label,
+        value: value,
+        min: min,
+        max: max,
+        decimals: decimals,
+        suffix: suffix,
+        width: 70,
+        onChanged: (v) {
+          begin();
+          write(e.withView(set(v)));
+        },
+        onCommit: commit,
+      );
+  return CanvasControlGroup(
+      key: const ValueKey("camera3d"),
+      label: "In 3D",
+      help: "Where it stands on the stage. Its clips turn it round what it "
+          "looks at, bring it closer, and aim it at whoever it is on.",
+      children: [
+        field("lens", "Lens", view.lens, 12, 200, (v) => view.copyWith(lens: v),
+            suffix: " mm", decimals: 0),
+        field("distance", "Distance", view.distance, StageCamera.minDistance,
+            StageCamera.maxDistance, (v) => view.copyWith(distance: v),
+            suffix: " m"),
+        field("height", "Height", view.ty, -10, 30, (v) => view.copyWith(ty: v),
+            suffix: " m"),
+        field("turn", "Turn", view.yaw, -360, 360, (v) => view.copyWith(yaw: v),
+            suffix: "°", decimals: 0),
+        field(
+            "tilt", "Tilt", view.pitch, -10, 89, (v) => view.copyWith(pitch: v),
+            suffix: "°", decimals: 0),
+      ]);
 }

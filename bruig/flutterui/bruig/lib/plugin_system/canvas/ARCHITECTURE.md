@@ -115,6 +115,41 @@ module, each chart type): read back as written, a wrong type at any key
 never throws, a 2 MB string or 400,000-entry list at any key comes back
 bounded. A new kind, or a new sort of one, belongs in those samples.
 
+### Adding an element kind
+
+Eight places, in this order. Four are asked for by the compiler (a `switch`
+with no default); the rest are not, and are marked.
+
+1. **Its name**: a value of `ElementKind` (`model/canvas_element.dart`).
+   The name is saved, so it is never changed afterwards.
+2. **Its class**: `model/elements/<kind>_element.dart`, a `CanvasElement`
+   with `kind`, `rebase`, `props` (its own fields as saved), `fromJson` and
+   `copyWith`. If it keeps pictures or media, it lists them in `assetIds`
+   and `mediaIds`, or the stores' tidy-up deletes them. *Not asked for.*
+3. **Reading it**: a case in `elementFromJson`
+   (`model/element_reading.dart`).
+4. **Making one**: its starting size in `defaultSizeFor` and a new one in
+   `newElement` (`ui/element_factory.dart`).
+5. **Drawing it**: a painter in `render/`, and a case in `paintElement`
+   (`render/scene_renderer.dart`). *Not asked for: without the case it is
+   simply not drawn.*
+6. **Its settings**: a case in `elementSettings`
+   (`ui/element_settings.dart`) and its panel in
+   `ui/settings/<kind>_settings.dart`, built from the panel kit
+   (`ui/settings/README.md`).
+7. **Its icon**, in `iconForKind`, and, to offer it on the Add panel, its
+   place in `_addable` (`ui/sidebar/elements_panel.dart`). *The second is
+   not asked for.*
+8. **Tests.** `elementSamples` (`test/support/element_samples.dart`) makes
+   one of every kind through the factory, so the round trip, the hostile
+   reading and the panel sweep cover it without being told. Add tests for
+   what is its own.
+
+As it needs them: what a press on it does while playing
+(`ui/stage/stage_press.dart`), the colours it offers the Chain
+(`model/design_device.dart`), and anything it keeps while the canvas is open
+(a part of the controller, forgotten in `_forgetDocument`).
+
 ### Motion
 
 An element moves by **motion clips** (`MotionClip`, `model/motion.dart`).

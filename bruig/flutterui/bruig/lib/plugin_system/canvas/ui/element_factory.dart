@@ -1,52 +1,52 @@
-import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
-import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
-import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
-import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
-import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
-import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
-import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
-import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
-import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 
 // element_factory.dart makes a new element of each kind, in one place for
 // both the Elements panel's tap and its drag, so the two never differ. Each
@@ -400,10 +400,10 @@ CanvasElement newElement(
 
     // Listening to any instrument, with a first step to change.
     case ElementKind.playTask:
-      var task = PlayTaskElement(base.copyWith(name: "Play task"),
-          checks: const [
-            PlayCheck(PlayCheckKind.keys, "Play Middle C", steps: "C4"),
-          ]);
+      var task =
+          PlayTaskElement(base.copyWith(name: "Play task"), checks: const [
+        PlayCheck(PlayCheckKind.keys, "Play Middle C", steps: "C4"),
+      ]);
       return task.withBase(height: playTaskFitHeight(task, task.width));
 
     case ElementKind.codeRun:
@@ -458,10 +458,10 @@ CanvasElement newElement(
     case ElementKind.character3d:
       // On the stage where there is one, each new one a step along from the
       // last rather than on top of it.
-      var stage = stagesIn(document.elements,
-              backdrop: document.drawnBackground)
-          .firstOrNull
-          ?.$1;
+      var stage =
+          stagesIn(document.elements, backdrop: document.drawnBackground)
+              .firstOrNull
+              ?.$1;
       var already = stage == null
           ? 0
           : document.elements.where((e) => e.base.spot?.stage == stage).length;
@@ -540,7 +540,6 @@ List<SynthModuleElement> synthRack(CanvasDocument document,
       }(),
   ];
 }
-
 
 /// codeFontFor is code's size on a new Code panel in [document]: about 17
 /// on a 1080p page.
