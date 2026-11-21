@@ -42,18 +42,6 @@ void main() {
       expect(dock.placeOf(DockPanel.chain), DockPlace.main);
     });
 
-    test("the Effects and Animation panels of before are the Chain", () {
-      expect(DockPanel.fromName("effects"), DockPanel.chain);
-      expect(DockPanel.fromName("animation"), DockPanel.chain);
-      expect(DockPanel.fromName("chain"), DockPanel.chain);
-      var saved = DockLayout.fromJson(jsonDecode(jsonEncode(const DockLayout()
-              .withHome(DockPanel.chain, DockPlace.left)
-              .toJson())
-          .replaceAll('"chain"', '"animation"')));
-      expect(saved.homeOf(DockPanel.chain), DockPlace.left,
-          reason: "a layout saved with the old name keeps its place");
-    });
-
     test("one place puts everything in main; above needs three", () {
       var dock = const DockLayout().withHome(DockPanel.chain, DockPlace.above);
       expect(dock.placeOf(DockPanel.chain), DockPlace.main,

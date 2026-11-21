@@ -80,18 +80,40 @@ void main() {
     expect(DockState.fromJson(shut.toJson(), layout).chain, ChainView.motion);
   });
 
-  test("what an earlier build kept is read: no view named", () {
-    var state = DockState.fromJson(
-        {"mixer": "smallest", "rows": false, "animation": true}, layout);
-    expect(state.open, {DockPanel.mixer, DockPanel.chain});
-    expect(state.mixer, MixerSize.smallest);
-    expect(state.chain, ChainView.motion);
-    // Nothing kept: as it starts.
+  test("its panels are kept by their own names", () {
+    var state = const DockState()
+        .opened(DockPanel.chain, layout)
+        .withMixer(MixerSize.smallest, layout);
+    expect(state.toJson(), {
+      "open": [for (var panel in state.open) panel.name]..sort(_panelOrder),
+      "mixer": "smallest",
+      "chain": "sound",
+    });
+  });
+
+  test("what is missing or not understood is as the dock starts", () {
     expect(DockState.fromJson(const {}, layout), const DockState());
+    var state = DockState.fromJson({
+      "open": ["mixer", "a panel of another build"],
+      "mixer": "enormous",
+      "chain": 4,
+    }, layout);
+    expect(state.open, {DockPanel.mixer});
+    expect(state.mixer, MixerSize.full);
+    expect(state.chain, ChainView.sound);
+  });
+
+  test("a mixer kept shut is full size when next opened", () {
+    var state =
+        DockState.fromJson({"open": <String>[], "mixer": "smallest"}, layout);
+    expect(state.open, isEmpty);
+    expect(state.mixer, MixerSize.full);
   });
 
   test("two panels kept open in one place are put right", () {
-    var state = DockState.fromJson({"rows": true, "effects": true}, layout);
+    var state = DockState.fromJson({
+      "open": ["timeline", "chain"]
+    }, layout);
     expect(state.open, {DockPanel.timeline});
   });
 
@@ -102,3 +124,8 @@ void main() {
     expect(layout.toJson()["homes"], isEmpty);
   });
 }
+
+/// _panelOrder sorts panels' names into the panels' own order.
+int _panelOrder(String a, String b) =>
+    DockPanel.values.indexWhere((p) => p.name == a) -
+    DockPanel.values.indexWhere((p) => p.name == b);

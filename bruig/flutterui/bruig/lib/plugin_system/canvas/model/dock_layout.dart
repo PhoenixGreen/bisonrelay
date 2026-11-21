@@ -25,12 +25,9 @@ enum DockPanel {
   final DockPlace home;
   const DockPanel(this.label, this.key, this.home);
 
-  /// fromName reads a panel saved by name. The Effects and Animation names
-  /// both read as the Chain, which has those two views.
+  /// fromName reads a panel saved by name.
   static DockPanel? fromName(Object? name) =>
-      name == "effects" || name == "animation"
-          ? chain
-          : values.where((p) => p.name == name).firstOrNull;
+      values.where((p) => p.name == name).firstOrNull;
 }
 
 /// DockPlace is where a panel opens: [main] along the bottom, [left] beside
@@ -129,11 +126,7 @@ class DockArrangement {
               panel: place,
       },
       one: DockPanel.fromName(json["one"]),
-      // An Animation panel saved by that name shows the Chain on its motion.
-      chainMotion: json["chainMotion"] == true ||
-          (json["shown"] is Map &&
-              (json["shown"] as Map).containsValue("animation")) ||
-          json["one"] == "animation",
+      chainMotion: json["chainMotion"] == true,
     );
   }
 }
@@ -373,61 +366,37 @@ class DockState {
           mixer: mixer ?? this.mixer,
           chain: chain ?? this.chain);
 
-  /// toJson is how it is kept between visits. The keys are older than this
-  /// class: "rows" is the Timeline, "effects" and "animation" the Chain on
-  /// its sound and on its motion.
+  /// toJson is how it is kept between visits: the open panels by name, the
+  /// mixer's size and the Chain's view.
   Map<String, dynamic> toJson() => {
-        "mixer": !isOpen(DockPanel.mixer)
-            ? "hidden"
-            : switch (mixer) {
-                MixerSize.full => "shown",
-                MixerSize.minimised => "minimised",
-                MixerSize.smallest => "smallest",
-              },
-        "rows": isOpen(DockPanel.timeline),
-        "slots": isOpen(DockPanel.slots),
-        "effects": showsSound,
-        "animation": showsMotion,
+        "open": [
+          for (var panel in DockPanel.values)
+            if (isOpen(panel)) panel.name
+        ],
+        "mixer": mixer.name,
         "chain": chain.name,
       };
 
-  /// fromJson reads what [toJson] wrote over [start] (what is open before
-  /// anything was kept), then leaves one panel to a place in [layout].
+  /// fromJson reads what [toJson] wrote, taking from [start] (how the dock
+  /// is before anything was kept) whatever is missing or not understood,
+  /// then leaves one panel to a place in [layout].
   static DockState fromJson(Map<String, dynamic> json, DockLayout layout,
       {DockState start = const DockState()}) {
-    var open = {...start.open};
-    void set(DockPanel panel, Object? shown) {
-      if (shown == true) open.add(panel);
-      if (shown == false) open.remove(panel);
-    }
-
-    var size = switch (json["mixer"]) {
-      "shown" => MixerSize.full,
-      "minimised" => MixerSize.minimised,
-      "smallest" => MixerSize.smallest,
-      _ => null,
+    var open = switch (json["open"]) {
+      List names => {
+          for (var name in names)
+            if (DockPanel.fromName(name) case var panel?) panel
+        },
+      _ => start.open,
     };
-    if (size != null) open.add(DockPanel.mixer);
-    if (json["mixer"] == "hidden") open.remove(DockPanel.mixer);
-    set(DockPanel.timeline, json["rows"]);
-    set(DockPanel.slots, json["slots"]);
-    // One written before the view was kept says it by which was open.
-    var view =
-        ChainView.values.where((v) => v.name == json["chain"]).firstOrNull ??
-            (json["animation"] == true && json["effects"] != true
-                ? ChainView.motion
-                : start.chain);
-    if (json["effects"] == true || json["animation"] == true) {
-      open.add(DockPanel.chain);
-    } else if (json["effects"] == false && json["animation"] == false) {
-      open.remove(DockPanel.chain);
-    }
+    T? named<T extends Enum>(List<T> values, Object? name) =>
+        values.where((v) => v.name == name).firstOrNull;
     return DockState(
             open: Set.unmodifiable(open),
             mixer: open.contains(DockPanel.mixer)
-                ? (size ?? start.mixer)
+                ? named(MixerSize.values, json["mixer"]) ?? start.mixer
                 : MixerSize.full,
-            chain: view)
+            chain: named(ChainView.values, json["chain"]) ?? start.chain)
         .settled(layout);
   }
 
