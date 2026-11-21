@@ -1036,7 +1036,8 @@ class CanvasDocument {
 
   /// toJson writes a document of one plain scene with no master with its
   /// elements, frames and actions at the top level; a scene list appears
-  /// only when one scene cannot say something.
+  /// only when one scene cannot say something, and then nothing of a scene
+  /// is written at the top level.
   Map<String, dynamic> toJson() {
     var one = scenes.length <= 1 && master == null && _plain(scene);
     var own = one ? scene.toJson() : const <String, dynamic>{};
@@ -1047,11 +1048,11 @@ class CanvasDocument {
       "background": background.toJson(),
       if (!guides.isDefault) "guides": guides.toJson(),
       if (estimate.toJson().isNotEmpty) "estimate": estimate.toJson(),
-      "frames": frames,
       "frameRate": frameRate,
-      if (actions.isNotEmpty)
-        "actions": actions.map((a) => a.toJson()).toList(),
-      "elements": [for (var e in elements) e.toJson()],
+      // The one scene's own, which a scene list carries otherwise.
+      if (one)
+        for (var key in _atTopKeys)
+          if (key != "id" && own.containsKey(key)) key: own[key],
       if (targets.isNotEmpty) "targets": targets,
       if (cues.isNotEmpty) "cues": [for (var c in cues) c.toJson()],
       if (words.isNotEmpty) "words": [for (var w in words) w.toJson()],

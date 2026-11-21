@@ -102,7 +102,7 @@ Three things about the saved form that are easy to get wrong:
   back. So changing a default changes every canvas already saved with it.
 - **A document of one scene is saved without a scene list.** Its elements,
   length and actions go at the top level and its name, hold and transition
-  under `"scene"`. Which settings that form can carry is worked out from
+  under `"scene"`. With a scene list, nothing of a scene is at the top. Which settings that form can carry is worked out from
   what the scene writes (`CanvasDocument._plain`), so a setting added to
   `CanvasScene` makes a scene list by itself; `test/canvas_document_test.dart`
   holds every scene setting to coming back.
