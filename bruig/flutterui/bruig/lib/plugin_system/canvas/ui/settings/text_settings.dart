@@ -501,7 +501,7 @@ List<Widget> _bodySections(
             ],
           ),
         ]),
-    ...stageSpotSettings(context, controller, e, write, begin, commit),
+    ...stageSpotSettings(controller, e, write, begin, commit),
     section(e, "motion",
         glyph: SectionGlyph.motion,
         icon: Icons.animation,
@@ -559,7 +559,7 @@ List<Widget> _bodySections(
               key: const ValueKey("textPresets"),
               label: "Presets",
               rule: false,
-              children: [presetsSection(context, controller, e)]),
+              children: [presetsSection(controller, e)]),
           textStyleCard(controller, e),
         ]),
   ];

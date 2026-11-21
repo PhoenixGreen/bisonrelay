@@ -313,9 +313,9 @@ class LookParamView {
   double stored(double shown) => shown / times;
 }
 
-/// lookParamView is how [p], a setting of look [kind], reads, as its Chain
-/// knob does (DeviceParam.reading).
-LookParamView lookParamView(MotionDeviceKind kind, DeviceParam p) {
+/// lookParamView is how [p], a setting of a look, reads, as its Chain knob
+/// does (DeviceParam.reading).
+LookParamView lookParamView(DeviceParam p) {
   if (p.unit == "") return LookParamView(p.label, 100, "%", 0);
   return switch (p.unit) {
     "px" => LookParamView(p.label, 1, " px", p.max <= 40 ? 1 : 0),
@@ -345,6 +345,17 @@ bool lookTakesColour(MotionDeviceKind kind) =>
     kind == MotionDeviceKind.shadow ||
     kind == MotionDeviceKind.glow;
 
+/// _offeredLooks are the kinds of look that can be added.
+const List<MotionDeviceKind> _offeredLooks = [
+  MotionDeviceKind.outline,
+  MotionDeviceKind.shadow,
+  MotionDeviceKind.glow,
+  MotionDeviceKind.blur,
+  MotionDeviceKind.colour,
+  MotionDeviceKind.wear,
+  MotionDeviceKind.edges,
+];
+
 /// LooksGroup is [element]'s looks on [layer] as rows, the Chain's own, and
 /// the looks it could add; a row opens to show the rest.
 class LooksGroup extends StatefulWidget {
@@ -355,23 +366,11 @@ class LooksGroup extends StatefulWidget {
   final String layer;
   final String title;
 
-  /// offered are the kinds that can be added here.
-  final List<MotionDeviceKind> offered;
-
   const LooksGroup({
     required this.controller,
     required this.element,
     required this.title,
     this.layer = "",
-    this.offered = const [
-      MotionDeviceKind.outline,
-      MotionDeviceKind.shadow,
-      MotionDeviceKind.glow,
-      MotionDeviceKind.blur,
-      MotionDeviceKind.colour,
-      MotionDeviceKind.wear,
-      MotionDeviceKind.edges,
-    ],
     super.key,
   });
 
@@ -392,11 +391,11 @@ class _LooksGroupState extends State<LooksGroup> {
 
   List<MotionDevice> get _all => c.motionDevicesOf(id);
 
-  void _put(MotionDevice next, {bool transient = false}) {
+  void _put(MotionDevice next) {
     c.beginInteraction();
     c.setMotionDevices(id, [for (var d in _all) d.id == next.id ? next : d],
         transient: true);
-    if (!transient) c.endInteraction();
+    c.endInteraction();
   }
 
   void _add(MotionDeviceKind kind) {
@@ -430,7 +429,7 @@ class _LooksGroupState extends State<LooksGroup> {
       c.setDeviceSetting(id, d.id, p.id, stored, transient: true);
 
   Widget _number(MotionDevice d, DeviceParam p) {
-    var view = lookParamView(d.kind, p);
+    var view = lookParamView(p);
     return CanvasNumberField(
       key: ValueKey("look-${d.id}-${p.id}"),
       label: d.keyed(p.id) ? "${view.label} (keyed)" : view.label,
@@ -451,7 +450,7 @@ class _LooksGroupState extends State<LooksGroup> {
           if (d.keyed(p.id))
             CanvasReadout(
               key: ValueKey("lookKeys-${d.id}-${p.id}"),
-              label: "${lookParamView(d.kind, p).label} animated",
+              label: "${lookParamView(p).label} animated",
               value: "${d.keys[p.id]!.length} keys, "
                   "${d.keys[p.id]!.first.t.toStringAsFixed(1)}"
                   "–${d.keys[p.id]!.last.t.toStringAsFixed(1)} s",
@@ -463,7 +462,7 @@ class _LooksGroupState extends State<LooksGroup> {
     var key = "$id:${d.id}";
     var open = _open.contains(key);
     var main = d.kind.param(lookMain(d.kind));
-    var view = lookParamView(d.kind, main);
+    var view = lookParamView(main);
     var rest = [
       for (var p in d.kind.params)
         if (p.id != main.id) p
@@ -618,7 +617,7 @@ class _LooksGroupState extends State<LooksGroup> {
     ];
     var have = {for (var d in mine) d.kind};
     var addable = [
-      for (var k in widget.offered)
+      for (var k in _offeredLooks)
         if (!have.contains(k)) k
     ];
     return CanvasControlGroup(
@@ -723,9 +722,8 @@ class MotionSummary extends StatelessWidget {
       for (var p in d.kind.params) {
         if (!d.keyed(p.id)) continue;
         var ks = d.keys[p.id]!;
-        var label = d.side == MotionDeviceSide.look
-            ? lookParamView(d.kind, p).label
-            : p.label;
+        var label =
+            d.side == MotionDeviceSide.look ? lookParamView(p).label : p.label;
         var on = d.layer.isEmpty ? "" : " on ${_layerSaid(e, d.layer)}";
         lines.add(_MotionLine(
           key: ValueKey("motionLine-keys-${d.id}-${p.id}"),

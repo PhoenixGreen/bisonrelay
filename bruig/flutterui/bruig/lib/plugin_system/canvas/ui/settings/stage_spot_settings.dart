@@ -13,7 +13,6 @@ import 'package:flutter/material.dart';
 /// stageSpotSettings is [e]'s place on a stage as a section: nothing where
 /// it cannot stand on one or there is no stage.
 List<Widget> stageSpotSettings(
-  BuildContext context,
   CanvasController controller,
   CanvasElement e,
   void Function(CanvasElement) write,

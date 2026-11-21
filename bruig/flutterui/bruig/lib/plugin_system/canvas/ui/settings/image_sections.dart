@@ -681,7 +681,6 @@ class _Sections {
       },
       children: [
         EffectTiles(
-          controller: controller,
           element: e,
           layer: picked,
           write: write,
@@ -791,7 +790,7 @@ class _Sections {
     ImageElement withKind(TextureKind k) {
       var next = texture.copyWith(kind: k, plainColours: true);
       // A new kind brings its usual blend unless the blend was chosen by
-      // hand (see textureSettings).
+      // hand, told by its not being the old kind's.
       var blend = picked.blend == LayerBlend.fromName(texture.kind.blend)
           ? LayerBlend.fromName(k.blend)
           : picked.blend;
@@ -828,8 +827,7 @@ class _Sections {
               controller.tryElement(k == null ? null : withKind(k)),
           onPick: (k) => _now(withKind(k)),
         ),
-        ...textureSettings(controller, e, picked, write, begin, commit,
-            kindPicker: false),
+        ...textureSettings(e, picked, write, begin, commit),
       ],
     );
   }

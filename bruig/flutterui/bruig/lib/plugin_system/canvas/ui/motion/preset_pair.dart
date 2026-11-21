@@ -81,7 +81,6 @@ List<Widget> studioPresetPair<T>({
   required PresetPair<T> pair,
   required ValueChanged<T> onChanged,
   String familyLabel = "Preset",
-  String kindLabel = "Kind",
   String noneLabel = "None",
   double width = 150,
 }) =>
@@ -100,7 +99,7 @@ List<Widget> studioPresetPair<T>({
       if (pair.family.isNotEmpty)
         StudioDrop<T>(
           key: ValueKey(key),
-          label: kindLabel,
+          label: "Kind",
           value: pair.value,
           width: width,
           options: [for (var o in pair.kinds) (o.value, o.label)],
@@ -114,8 +113,6 @@ List<Widget> canvasPresetPair<T>({
   required PresetPair<T> pair,
   required ValueChanged<T> onChanged,
   String familyLabel = "Preset",
-  String kindLabel = "Kind",
-  String noneLabel = "None",
 }) =>
     [
       CanvasDropdown<String>(
@@ -124,14 +121,14 @@ List<Widget> canvasPresetPair<T>({
         value: pair.family,
         width: 80,
         options: [
-          ("", noneLabel),
+          ("", "None"),
           for (var f in pair.families) (f, f),
         ],
         onChanged: (f) => onChanged(pair.inFamily(f)),
       ),
       CanvasDropdown<T>(
         key: ValueKey(key),
-        label: kindLabel,
+        label: "Kind",
         value: pair.value,
         width: 80,
         enabled: pair.family.isNotEmpty,

@@ -398,7 +398,7 @@ class MotionClipsCard extends StatelessWidget {
             ("", c.edited ? "Its own keys" : "None"),
             for (var p in presets) ("p:${p.name}", p.name),
             if (ownKind)
-              for (var (name, label) in styled.presets(leaving: leaving))
+              for (var (name, label) in styled.presets())
                 ("own:$name", "Its own: $label"),
           ],
           onChanged: (v) {

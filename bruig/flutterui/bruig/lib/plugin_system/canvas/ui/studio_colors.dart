@@ -13,25 +13,45 @@ import 'package:provider/provider.dart';
 
 /// StudioRole is one colour of the studio palette.
 enum StudioRole {
-  panel("Panel", "Behind the strips and devices"),
-  strip("Strip", "Each channel, each device"),
-  raised("Raised", "Headers, unlit buttons"),
-  inset("Inset", "Boxes, meter slots"),
-  edge("Edge", "Outlines"),
-  text("Text", "Names and values"),
-  muted("Muted text", "Labels"),
-  on("On", "Switched on, sends, the fader's line"),
-  solo("Solo", "Solo"),
-  arm("Arm", "Armed to record"),
-  meterLow("Meter", "A meter's safe band"),
-  meterMid("Meter, hot", "Near the top"),
-  meterHigh("Meter, clip", "Over the top"),
-  display("Display", "EQ, compressor and reverb screens"),
-  displayLine("Display line", "The curve on a screen");
+  /// panel is the ground behind the strips and devices.
+  panel("Panel"),
+
+  /// strip is each channel and each device.
+  strip("Strip"),
+
+  /// raised is headers and unlit buttons.
+  raised("Raised"),
+
+  /// inset is boxes and meter slots.
+  inset("Inset"),
+
+  /// edge is outlines.
+  edge("Edge"),
+
+  /// text is names and values, and muted is their labels.
+  text("Text"),
+  muted("Muted text"),
+
+  /// on is whatever is switched on, a send, and the fader's line.
+  on("On"),
+  solo("Solo"),
+
+  /// arm is a channel armed to record.
+  arm("Arm"),
+
+  /// meterLow is a meter's safe band, meterMid near its top and meterHigh
+  /// over it.
+  meterLow("Meter"),
+  meterMid("Meter, hot"),
+  meterHigh("Meter, clip"),
+
+  /// display is the EQ, compressor and reverb screens, and displayLine the
+  /// curve drawn on one.
+  display("Display"),
+  displayLine("Display line");
 
   final String label;
-  final String use;
-  const StudioRole(this.label, this.use);
+  const StudioRole(this.label);
 }
 
 /// StudioLook is where the palette comes from.

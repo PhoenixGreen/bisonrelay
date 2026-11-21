@@ -120,20 +120,6 @@ const double cardLabelGap = 6;
 /// cardGap is the room between controls, and between lines, in a card.
 const double cardGap = 12;
 
-/// CanvasNoHover marks a part of the window with no hover text: the element
-/// settings panel, where a tooltip shown while scrolling is left lying over
-/// other sections. A "?" explains a control there instead. Tooltips with
-/// timings of their own ask this.
-class CanvasNoHover extends InheritedWidget {
-  const CanvasNoHover({required super.child, super.key});
-
-  static bool on(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<CanvasNoHover>() != null;
-
-  @override
-  bool updateShouldNotify(CanvasNoHover old) => false;
-}
-
 /// CanvasDense is the settings panel's compact measure: lower controls,
 /// closer together, and each group's name in small capitals over its
 /// controls rather than a card within the section's card.

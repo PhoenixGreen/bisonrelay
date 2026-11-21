@@ -1,4 +1,3 @@
-import 'package:bruig/plugin_system/canvas/ui/controls.dart' show CanvasNoHover;
 import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
 import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
@@ -36,9 +35,7 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) =>
         // Not shown here, so not built: a control's hover text is only its
         // name for a screen reader (CanvasTip).
         child: TooltipVisibility(
-            visible: false,
-            child: CanvasNoHover(
-                child: _elementSettingsBody(context, controller))));
+            visible: false, child: _elementSettingsBody(context, controller)));
 
 Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
   var selected = controller.selected;
@@ -156,8 +153,7 @@ Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
             summary: "Backgrounds to start from",
             remember: "canvasBackground.presets",
             children: [
-              backgroundPresetsSection(context, controller, showing.spec,
-                  onUse: (spec) {
+              backgroundPresetsSection(controller, showing.spec, onUse: (spec) {
                 controller.beginInteraction();
                 controller.setBackground(showing.copyWith(spec: spec));
                 controller.endInteraction();

@@ -16,5 +16,5 @@ class ImageSaved extends StatelessWidget {
   @override
   Widget build(BuildContext context) => KeyedSubtree(
       key: const ValueKey("imageSaved"),
-      child: presetsSection(context, controller, element));
+      child: presetsSection(controller, element));
 }

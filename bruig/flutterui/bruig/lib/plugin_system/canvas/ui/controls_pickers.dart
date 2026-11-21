@@ -12,9 +12,6 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   final T value;
   final List<(T, String)> options;
   final double width;
-  /// stepped puts an arrow either side to step through the options, as in a
-  /// card, wherever it is (a floating bar, say).
-  final bool stepped;
 
   final ValueChanged<T> onChanged;
 
@@ -65,7 +62,6 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     this.tight = false,
     this.enabled = true,
     this.grow = true,
-    this.stepped = false,
     this.marked = const {},
     this.onRemove,
     this.removeTip,
@@ -202,11 +198,11 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var card = stepped ||
+    var card =
         CanvasCards.on(context) && !CanvasControlScope.isInline(context);
     // In a dense panel a plain select: its words and one chevron, not an
     // arrow either side taking their room.
-    var plain = card && !stepped && CanvasDense.on(context);
+    var plain = card && CanvasDense.on(context);
     // A bare DropdownButton, not a DropdownButtonFormField, which keeps its
     // own copy of the value: here the value changes from outside (another
     // element selected, an undo) all the time.

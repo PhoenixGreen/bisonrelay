@@ -111,13 +111,12 @@ String? _menuChosen;
 class _MenuItem {
   final String remember;
   final String title;
-  final IconData icon;
   final bool changed;
   final String help;
   final bool resets;
   final Widget? action;
   final _CanvasSectionState? state;
-  const _MenuItem(this.remember, this.title, this.icon, this.changed,
+  const _MenuItem(this.remember, this.title, this.changed,
       {this.help = "", this.resets = false, this.action, this.state});
 
   /// Equal whatever its [action], a new widget each build.
@@ -126,13 +125,12 @@ class _MenuItem {
       other is _MenuItem &&
       other.remember == remember &&
       other.title == title &&
-      other.icon == icon &&
       other.changed == changed &&
       other.help == help &&
       other.resets == resets;
 
   @override
-  int get hashCode => Object.hash(remember, title, icon, changed, help, resets);
+  int get hashCode => Object.hash(remember, title, changed, help, resets);
 }
 
 /// _MenuScope tells the sections under a menu which is chosen. [owner] null
@@ -216,7 +214,7 @@ class _CanvasSectionsState extends State<CanvasSections> {
         if (e is StatefulElement && e.state is _CanvasSectionState) {
           var state = e.state as _CanvasSectionState;
           var w = state.widget;
-          found.add(_MenuItem(w.remember, w.title, w.icon, w.changes > 0,
+          found.add(_MenuItem(w.remember, w.title, w.changes > 0,
               help: state._help,
               resets: w.onReset != null,
               action: w.action,
@@ -573,8 +571,7 @@ class _CanvasSectionState extends State<CanvasSection> {
     if (forced) {
       var owner = _MenuScope.of(context)?.owner;
       if (owner != null) {
-        var item = _MenuItem(
-            widget.remember, widget.title, widget.icon, widget.changes > 0);
+        var item = _MenuItem(widget.remember, widget.title, widget.changes > 0);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (owner.mounted) owner._choose(item);
         });

@@ -1,199 +1,186 @@
-# How an element's settings are laid out
+# How an element's settings panel is built
 
-Every element's settings are built from the same small set of controls in
-`controls.dart`, and they are meant to read as one panel rather than as nine
-panels by different hands. This is what that means in practice. A new
-element follows it from the start.
+Every element's settings are one panel in the same frame, built from the
+same controls, so that they read as one hand's work. This says what the
+frame is, how an element puts its settings into it, and what it gets
+without asking. `ARCHITECTURE.md` (two folders up) says where a new kind's
+panel is wired in.
 
-## The shape of a group
+## The frame
 
-The unit is a **line of controls with a button on the end of it**:
+`elementPanel` (`element_panel.dart`) is the frame. Top to bottom:
+
+| Part | What is in it | Who puts it there |
+|---|---|---|
+| Quick strip | the two or three things changed most (a shape's kind and colour) | the element, as `quick:` |
+| **Content** | what the element is: its words, its data, its points | the element |
+| **Look** | how it is drawn; then its looks (outline, shadow, glow) | the element; the frame adds the looks |
+| **Layout** | where it is and how big | the frame (`positionGroup`); the element may add |
+| On a stage | where it stands, when the scene has a 3D stage | the frame |
+| **Motion** | how it arrives, loops and leaves; its cue | the frame; the element may add |
+| **More** | presets, and what is set once | the frame; the element may add |
+
+A section with nothing in it is left out. Each section's heading carries a
+one-line summary of how it is set, so the panel can be read shut.
+
+## Writing a panel
+
+An element says what goes in which section with a list of `PanelBit`s, and
+hands them to `elementPanel`:
 
 ```dart
-CanvasMoreGroup(
-  label: "Grid",
-  remember: "chartGridMore",
-  tooltip: "How finely it is ruled, and what colour",
-  row: [ /* what anybody changes */ ],
-  more: [ /* what is set once and left */ ],
-)
+Widget shapePanel(BuildContext context, CanvasController controller,
+        ShapeElement e, SettingsWrite write, VoidCallback begin,
+        VoidCallback commit) =>
+    elementPanel(context, controller, e, write, begin, commit,
+        quick: CanvasQuickStrip(children: [/* a panelRow */]),
+        bits: [
+          PanelBit(PanelSection.content,
+              summary: e.shape.label,
+              children: [
+                CanvasControlGroup(
+                    label: "Corners",
+                    help: "How round the corners are.",
+                    children: [
+                      panelRow([
+                        cell(CanvasNumberField(/* ... */)),
+                        cell(CanvasToggle(/* ... */), flex: 2),
+                      ]),
+                    ]),
+              ]),
+          PanelBit(PanelSection.look, summary: "Blue", children: [/* ... */]),
+        ]);
 ```
 
-The row holds what the reader came for; the button holds the rest. A panel
-where everything is equally visible is a panel where nothing is.
+- A **`PanelBit`** names its section, gives a few words for that section's
+  heading, and holds groups.
+- A **`CanvasControlGroup`** is one subject. Inside a section it is drawn as
+  a card: its name, a "?" holding its `help`, and its controls. Give every
+  group a `help`.
+- A **`panelRow`** lays controls across a line; each `cell` takes a share
+  (`flex`) or a fixed `width`, and says the least it can be drawn at
+  (`min`). Too narrow for all of them, the row stacks.
 
-What goes on the row:
+`shape_settings.dart` is a complete panel of ordinary size to copy from.
 
-- what changes how the element reads at a glance — its colour, its weight, the
-  one control that decides its shape;
-- anything that can be keyframed, because the diamond beside it is the only
-  thing saying that it can be.
+Seven kinds still hand the frame whole sections of their own (a team, a 3D
+character, a sprite, a tile map, a camera, a 3D object, a background). Those
+are placed by name through `_placed` in `ui/element_settings.dart`. New
+panels use `PanelBit`s. Text and pictures build the same frame by hand
+(`text_settings.dart`, `image_sections.dart`) because theirs carry more.
 
-What goes behind the button: ends, caps, dashes, padding, gaps, second
-colours, and the toggles somebody sets once a document.
+## Changing the element
 
-`remember` is required in practice — the settings panel is rebuilt on every
-change to the element, and without it an area shuts itself the moment anybody
-uses what is inside it. Name it after the element and the group, not after the
-label alone, so a chart's Grid and a table's Grid do not share one answer.
+Every panel is handed three things:
 
-An opened area is drawn on a ground of its own automatically -- a tinted
-rectangle under the row, so what the button revealed can be told from what was
-always there. Do not draw one by hand, and do not put a rule at the foot of
-it: that is what this replaced.
+- **`write(next)`** replaces the element with `next`, live, as a drag or a
+  typed number goes. It opens the undo step itself.
+- **`commit()`** closes the step. Every control with an `onChanged` that
+  calls `write` has an `onCommit` that calls `commit`.
+- **`begin()`** opens a step without changing anything. It is needed only
+  before a call on the controller that is not `write`. Called before
+  `write` it does nothing, and much of the code does call it there.
 
-## Sections, groups and rules
+A choice made in one press (a dropdown, a tile, a switch) is all three at
+once: `begin(); write(next); commit();`. Panels name that `now`.
 
-Three levels, and only three:
+## The controls
 
-| | |
-|---|---|
-| `boxed(context, CanvasExpander(...))` | a section that holds a panel of its own — a data grid, a list of columns, the animation controls. It has a border because what is inside it is not a row of controls. |
-| `CanvasControlGroup` / `CanvasMoreGroup` | a captioned run of controls. The ordinary case. |
-| `rule: false` | this group and the one under it are one subject. **This is the usual case.** Most elements are one run of lines answering one question — what is this path, what is this button, what does this picture look like — and a rule between each pair turns it into five answers. The rule under the position row stays, because where an element sits really is a different subject from what it is. |
+All from `ui/controls.dart`, which says what each is for.
 
-A group whose name is already said by the panel header takes
-`hideCaption: true` — "Line" under a header reading "Line settings" is the
-word twice. A control that is the only one under its caption usually wants the
-caption on the control instead, or a placeholder inside it: `X label` inside
-an empty field says more than `X label` above a full one.
+- **A number**: `CanvasNumberField`. In a card it is drawn as a stepper, an
+  arrow either side of a number that is dragged sideways or double-clicked
+  to type. `CanvasStepper` directly, where the number needs a step of its
+  own and a value to go back to.
+- **One of several**: `CanvasDropdown` for a list; `CanvasSegmented` for two
+  to four short choices side by side; `CanvasTiles` where the choice can be
+  shown (a shape, a filter, a blend), each tile a small drawing of itself.
+- **On or off**: `CanvasToggle`, a line with a switch at its end.
+- **A colour**: `CanvasColorButton`.
+- **Four numbers that are usually one** (a border's sides, a box's corners):
+  `CanvasSidesField`, through `roomFields` and `cornerFields`: one stepper
+  and a link that splits it.
+- **A section's tools**: `CanvasToolTiles`, with the settings of the one in
+  hand under them.
+- **Something to do**: `CanvasTextButton` for an action said in words;
+  `CanvasAddChip` for adding one of several things.
+- **A word of explanation**: a group's `help`. A loose `CanvasHint` among a
+  group's children joins it under the "?".
 
-Do not box a group. The border is for a section holding a panel, and a rule
-round a single row reads as a section somebody left open.
+## What comes without asking
+
+Do not build any of this again for an element:
+
+- **Place and size**: `positionGroup` (`settings_shared.dart`), in Layout.
+- **Looks**: `LooksGroup` (`panel_parts.dart`), in Look, from the model's
+  own list of each look's settings.
+- **On a stage**: `stageSpotSettings`.
+- **Motion**: `MotionSummary`, the Arrival and Leaving pickers, and the cue
+  card. How a clip moves is set in the Chain, not here.
+- **Presets**: `presetsSection`, in More.
+- **Type**: `type_parts.dart` (`TypeEdit`, `typeFont`, `typeSize`...),
+  wherever words are drawn.
+- **A box** (fill, border, corners, padding): `boxGroup`; **a fill** of a
+  picture or a pattern: `fillBits`.
+
+## What a panel remembers
+
+Which sections are open is remembered per kind of element, on disk:
+`section(e, "look", ...)` is kept as `shape.look`, so a shape's Look and a
+chart's Look do not share an answer. A section of your own gets a name of
+its own in the same way (`image.picture.mask`, not `mask`).
+
+## Standing still during a drag
+
+While something is dragged, the panel does not rebuild every section at
+every step: a section keeps what it last built unless the pointer went down
+in it (`PanelHold`, `panel_kit_hold.dart`). For a drag on the canvas, the
+sections that show where the element is stay live: Layout, On a stage, and
+any section inside them. When the pointer lifts, the whole panel is built
+from the element as it now is. A section of your own that shows the
+element's place needs `followsStage`.
 
 ## Spacing
 
-Five numbers, in `controls.dart`, and everything reads from them:
+Do not write a pixel gap into a panel. The gaps are named in
+`ui/controls.dart`:
 
 | | | |
 |---|---|---|
 | `canvasControlGap` | 5 | between two controls on a line |
-| `canvasCaptionedGap` | 8 | after a control with a caption over it, so neighbouring captions do not touch |
+| `canvasCaptionedGap` | 8 | after a control with a caption over it |
 | `canvasRowGap` | 8 | between one line of a group and the next |
 | `canvasCaptionGap` | 7 | under a group's name |
 | `canvasGroupGap` | 24 | under every group |
 
-A rule between two groups sits in the middle of a doubled group gap — the same
-above as below, which is the one people notice.
+In a card the controls are a size up (`cardControlHeight`) and further apart
+(`cardGap`). Older panels still carry literal gaps; new code does not add
+to them.
 
-The group gap is three times the row gap, and it has to be: most panels have no
-rules left in them, so the gap is the only thing saying where one group ends.
+## Outside a section
 
-Never write a pixel gap into an element's settings. The reason these are
-constants is that they were not: captions sat seven pixels over their controls
-in one group and fourteen in another, and rules had twelve pixels above and
-sixteen below, none of it far enough out to notice on its own and all of it
-together a panel that read as assembled.
+A group that is not in a section (several elements picked at once, the
+settings band over the canvas, a dialog) is drawn flat: a caption over a
+line of controls.
 
-## Width
+- `CanvasMoreGroup(row:, more:)` is a line with a button on the end of it:
+  the row holds what anybody changes, the button what is set once. In a
+  card it shows both, since the section is the fold.
+- `rule: false` joins a group to the one under it as one subject. It does
+  nothing in a card.
+- Controls say the width they will not go below, and grow into what room
+  the line has; `grow: false` opts out. The extra is shared so that a line
+  of four and a line of two under it come out in the same columns.
+- `CanvasLineBreak` ends a line on purpose.
 
-Controls declare the width they will not go below, not the width they will be.
-`CanvasTextField`, `CanvasNumberField` and `CanvasDropdown` grow into whatever
-room the line has left; `grow: false` opts out.
+## Testing a panel
 
-The extra is shared as a per-control amount rather than by making everything
-the same width, and the amount is the smallest any line of the group can
-afford. So a line of four fields and a line of two below it come out in the
-same columns — which is why Angle sits under X — and a title field beside a
-number field stays the wider of the two. Give two controls that should line up
-the same minimum width.
-
-Settings fill their row. A line started on purpose — the first, or one after a
-`CanvasLineBreak` or a control as wide as the line (a switch row in a card) —
-with one growable control on it takes the whole line and is left out of the
-sharing: a dropdown alone on its line held to what a line of four could afford
-cut its own name to "Noth…" beside empty space. A line that only exists
-because the one above it ran out of room still shares, where that line has
-columns to keep, so a wrapped row of numbers stays in columns.
-
-In a card a dropdown is never narrower than its longest name between its
-arrows, so a line too short for it wraps instead of cutting the name. Text
-fields grow like the rest; do not give one `grow: false` to keep a row on one
-line — a field too narrow for what is typed in it is the same fault.
-
-`CanvasLineBreak` ends a line deliberately. It costs one row gap, not two.
-
-`CanvasWrap` puts a row gap between its lines by default. Do not pass
-`runSpacing: 0` to a wrap holding captioned controls: each line's captions
-end up on the underline of the line above.
-
-## Order
-
-Down the panel, in the order the work happens. For the chart that is: where
-the numbers come from, the numbers, what each series is, how it is measured,
-what is written on it, and last how it arrives. For anything else, ask what
-somebody does first and put that first. Animation goes last everywhere,
-because it is a handful of choices made once.
-
-## What comes for free
-
-Do not re-implement any of this per element:
-
-- **Position** — `positionGroup` is the same six numbers for a picture as for
-  a pitch.
-- **Presets** — `presetsSection` is one uncaptioned row: the list, a save
-  button, and rename and remove for a design of the reader's own.
-- **Type and box** — `typeGroups` and `boxGroup` wherever words are drawn.
-- **Animation** — none here: how an element arrives, loops and leaves is the
-  Chain's Motion view; its timing is the Chain's Timing card.
-- **Keyframe easing** — `keyframeEasingGroup`.
-
-## Testing a layout
-
-Model tests do not see a dead control or a row that wraps. `canvas_control_wrap_test.dart`
-is the pattern: pump the real panel at a known width and measure. Check that a
-test bites by reverting the change it covers — a layout test that passes
-either way is worse than none, because it reads as cover.
-
-## Sectioned panels
-
-Every element's panel is sections now -- a picture's first, then the rest
-and the canvas's own background (2026-10-18). The earlier parts of this file
-describe the flat layout, which is still what a group outside a section --
-several elements picked, a dialog -- is drawn as.
-
-Every panel has the same frame, from `element_sections.dart`:
-**Position** first (`positionSection`), the element's own sections, then
-**Presets** (`presetsPanelSection`) last. Its motion is set in the Chain, not
-here. Each section is remembered per kind of element
--- `shape.fill`, not `fill` -- through `section(e, name, ...)`. An expander
-that was a subject of its own becomes a section with `expanderSection`; one
-left inside a section draws itself as a card that folds, and `boxed` adds no
-border there. A `CanvasMoreGroup` in a card shows everything, row and more:
-the section is the fold. A loose `CanvasHint` among a section's own children
-goes to the "?" on its heading row, and `CanvasSection.action` puts a button
-there. A grid with buttons over its columns -- a table's cells, a squad --
-keeps the ordinary size inside a card with `CanvasCards.none`.
-
-`ProceduralSettings(sections: true)` lays a background out as Pattern
-layers, Pattern, Colour and amount, Movement, Effects and Lights.
-
-The parts:
-
-- `CanvasSection` for each subject -- an icon, a title, and a one-line
-  `summary` of how it is set, so the panel reads shut. `changes` puts a dot
-  on it and `onReset` a reset beside its chevron; `forceOpen` opens it when
-  a tool it holds is picked from the keyboard. Remember it per kind of thing
-  edited: `image.picture.mask`, not `mask`.
-- Inside a section everything is in **cards** (`CanvasCards`): each
-  `CanvasControlGroup` is drawn as one, its name and a "?" over its
-  controls. Give the group a `help` -- the "?" holds it, and any
-  `CanvasHint` among its children joins it there rather than floating in
-  the row. The controls are a size up (`cardControlHeight`) and further
-  apart (`cardGap`), a `CanvasToggle` is a line with a switch at its end,
-  and every `CanvasNumberField` is drawn as a `CanvasStepper` -- an arrow
-  either side of a number dragged sideways or double-clicked to type. None
-  of this changes a panel that is not in sections.
-- `CanvasSidesField` for four numbers that are usually one -- a border's
-  sides, a box's corners, its padding: one stepper and a link that splits
-  it into one each. `roomFields` and `cornerFields` build it; there is no
-  separate line of sides behind a More button any more.
-- `CanvasTiles` for a choice that can be shown -- a filter, a blend, a
-  texture, a shape, an animation's kind -- clicked, never tried on a hover
-  in a card (a hover try made the panel treat the hovered tile as chosen);
-  `CanvasToolTiles` for a section's tools, with the one in hand's settings
-  under them; `CanvasSegmented` for two to four short choices side by side;
-  `CanvasTextButton` for an action said in words.
-
-Tests open a section with `openSection` and type into a stepper with
-`typeNumber` / `typeInto`, in `test/canvas_panel_helpers.dart`.
+- `test/canvas_panel_sweep_test.dart` lays out every kind's panel, from the
+  samples in `test/support/element_samples.dart`, at several widths and text
+  sizes. A new kind is covered without being told.
+- `test/support/canvas_panel_helpers.dart` has `openSection`, `typeNumber`
+  and `typeInto` for tests of a panel's own.
+- A model test does not see a dead control or a row that wraps. Pump the
+  real panel at a known width and measure
+  (`test/canvas_control_wrap_test.dart` is the pattern), and check that the
+  test fails when the change it covers is taken out.

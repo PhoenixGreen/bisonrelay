@@ -14,10 +14,6 @@ class CanvasControlGroup extends StatelessWidget {
   /// says it (the panel's header naming the element).
   final bool hideCaption;
 
-  /// captionGap is the room under the caption: more for a sentence, or it
-  /// runs into the first control's caption.
-  final double captionGap;
-
   /// rule is the line under the group, dropped where the next group is a
   /// continuation rather than a new subject.
   final bool rule;
@@ -42,7 +38,6 @@ class CanvasControlGroup extends StatelessWidget {
     required this.label,
     required this.children,
     this.hideCaption = false,
-    this.captionGap = canvasCaptionGap,
     this.rule = true,
     this.below,
     this.onRename,
@@ -228,7 +223,8 @@ class CanvasControlGroup extends StatelessWidget {
         children: [
           if (!hideCaption || hint != null)
             Padding(
-                padding: EdgeInsets.only(bottom: captionGap, left: 1),
+                padding:
+                    const EdgeInsets.only(bottom: canvasCaptionGap, left: 1),
                 child: Row(children: [
                   Expanded(
                     child: Align(
@@ -514,9 +510,7 @@ class _RenamableCaptionState extends State<_RenamableCaption> {
           onDoubleTap: _start,
           child: CanvasTip(
             message: "Double-click to rename",
-            waitDuration: CanvasNoHover.on(context)
-                ? const Duration(days: 1)
-                : const Duration(milliseconds: 700),
+            waitDuration: const Duration(milliseconds: 700),
             child: Text(widget.label.toUpperCase(), style: widget.style),
           ),
         ),
@@ -809,19 +803,10 @@ class CanvasFoldingGroup extends StatefulWidget {
 
   final String remember;
 
-  /// startShut is whether an untouched group starts shut.
-  final bool startShut;
-
-  final bool rule;
-  final Widget? below;
-
   const CanvasFoldingGroup({
     required this.label,
     required this.children,
     required this.remember,
-    this.startShut = false,
-    this.rule = true,
-    this.below,
     super.key,
   });
 
@@ -830,8 +815,7 @@ class CanvasFoldingGroup extends StatefulWidget {
 }
 
 class _CanvasFoldingGroupState extends State<CanvasFoldingGroup> {
-  late bool _shut =
-      !(_rememberedSections[widget.remember] ?? !widget.startShut);
+  late bool _shut = !(_rememberedSections[widget.remember] ?? true);
 
   @override
   void initState() {
@@ -851,8 +835,6 @@ class _CanvasFoldingGroupState extends State<CanvasFoldingGroup> {
   @override
   Widget build(BuildContext context) => CanvasControlGroup(
         label: widget.label,
-        rule: widget.rule,
-        below: widget.below,
         folded: _shut,
         onFold: _toggle,
         children: widget.children,

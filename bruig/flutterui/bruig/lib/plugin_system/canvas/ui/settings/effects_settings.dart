@@ -2,7 +2,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -38,27 +37,11 @@ List<Widget> _fields(
     ];
 
 /// textureSettings is the picked texture layer's settings.
-List<Widget> textureSettings(
-    CanvasController controller,
-    ImageElement e,
-    ImageLayer layer,
-    SettingsWrite write,
-    VoidCallback begin,
-    VoidCallback commit,
-    {bool kindPicker = true}) {
+List<Widget> textureSettings(ImageElement e, ImageLayer layer,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var texture = layer.texture;
-  ImageLayer changed(TextureSpec next) {
-    // A new kind brings its usual blend unless the blend was chosen by
-    // hand, told by its not being the old kind's.
-    var blend = next.kind != texture.kind &&
-            layer.blend == LayerBlend.fromName(texture.kind.blend)
-        ? LayerBlend.fromName(next.kind.blend)
-        : layer.blend;
-    return layer.copyWith(texture: next, blend: blend);
-  }
-
   ImageElement with_(TextureSpec next) =>
-      e.withLayer(layer.id, (_) => changed(next));
+      e.withLayer(layer.id, (_) => layer.copyWith(texture: next));
   void now(TextureSpec next) {
     begin();
     write(with_(next));
@@ -69,22 +52,9 @@ List<Widget> textureSettings(
     CanvasControlGroup(
       key: const ValueKey("textureGroup"),
       label: "Texture",
-      hideCaption: !kindPicker,
+      hideCaption: true,
       rule: false,
       children: [
-        if (kindPicker)
-          CanvasDropdown<TextureKind>(
-            key: const ValueKey("textureKind"),
-            label: "Draws",
-            value: texture.kind,
-            width: 170,
-            options: [for (var k in TextureKind.values) (k, k.label)],
-            onPreview: (k) => controller.tryElement(k == null
-                ? null
-                : with_(texture.copyWith(kind: k, plainColours: true))),
-            onChanged: (k) =>
-                now(texture.copyWith(kind: k, plainColours: true)),
-          ),
         CanvasIconButton(
           key: const ValueKey("textureSeed"),
           icon: Icons.shuffle,
@@ -92,16 +62,6 @@ List<Widget> textureSettings(
           onPressed: () => now(
               texture.copyWith(seed: (texture.seed * 7919 + 13) % 100000 + 1)),
         ),
-        if (kindPicker)
-          CanvasIconButton(
-            key: const ValueKey("textureReset"),
-            icon: Icons.restore,
-            tooltip: "Back to where it starts",
-            onPressed: texture.values.isEmpty
-                ? null
-                : () => now(texture.copyWith(values: const {})),
-          ),
-        if (kindPicker) const CanvasLineBreak(),
         ..._fields("texture", texture.kind.params, texture.value, (k, v) {
           begin();
           write(with_(texture.withValue(k, v)));
@@ -125,17 +85,11 @@ List<Widget> textureSettings(
   ];
 }
 
-/// effectsGroups is the picked layer's effects: one to add, and each one on
-/// it with its settings.
-List<Widget> effectsGroups(
-    CanvasController controller,
-    ImageElement e,
-    ImageLayer layer,
-    SettingsWrite write,
-    VoidCallback begin,
-    VoidCallback commit,
-    {bool adder = true,
-    Set<EffectKind>? shown}) {
+/// effectsGroups is the settings of each of the picked layer's effects
+/// that is in [shown].
+List<Widget> effectsGroups(ImageElement e, ImageLayer layer,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit,
+    {required Set<EffectKind> shown}) {
   var effects = layer.effects;
   ImageElement with_(List<LayerEffect> next) =>
       e.withLayer(layer.id, (l) => l.copyWith(effects: next));
@@ -148,34 +102,8 @@ List<Widget> effectsGroups(
   List<LayerEffect> replaced(int i, LayerEffect f) => [...effects]..[i] = f;
 
   return [
-    if (adder)
-      CanvasControlGroup(
-        key: const ValueKey("effectsGroup"),
-        label: "Effects",
-        rule: false,
-        children: [
-          CanvasDropdown<EffectKind?>(
-            key: const ValueKey("effectAdd"),
-            label: "Add an effect",
-            value: null,
-            width: 170,
-            options: [
-              (null, effects.isEmpty ? "None yet" : "${effects.length} on"),
-              for (var k in EffectKind.values)
-                if (!effects.any((f) => f.kind == k)) (k, k.label)
-            ],
-            // Each previewed on the canvas as the pointer passes.
-            onPreview: (k) => controller.tryElement(
-                k == null ? null : with_([...effects, LayerEffect(kind: k)])),
-            onChanged: (k) {
-              if (k == null) return;
-              now([...effects, LayerEffect(kind: k)]);
-            },
-          ),
-        ],
-      ),
     for (var (i, f) in effects.indexed)
-      if (shown == null || shown.contains(f.kind))
+      if (shown.contains(f.kind))
         CanvasControlGroup(
           key: ValueKey("effect-${f.kind.name}"),
           label: f.kind.label,
@@ -225,7 +153,6 @@ void forgetEffectsForTest() => _openEffects.clear();
 /// opens one; later presses open and shut it, and only its switch turns it
 /// off. A tick marks one on; a lit tile is open.
 class EffectTiles extends StatefulWidget {
-  final CanvasController controller;
   final ImageElement element;
   final ImageLayer layer;
   final SettingsWrite write;
@@ -234,8 +161,7 @@ class EffectTiles extends StatefulWidget {
   final List<CanvasTile<EffectKind>> tiles;
 
   const EffectTiles(
-      {required this.controller,
-      required this.element,
+      {required this.element,
       required this.layer,
       required this.write,
       required this.begin,
@@ -289,9 +215,9 @@ class _EffectTilesState extends State<EffectTiles> {
           keyOf: (k) => "effectTile-${k.name}",
           onPick: _press,
         ),
-        ...effectsGroups(widget.controller, widget.element, widget.layer,
-            widget.write, widget.begin, widget.commit,
-            adder: false, shown: open),
+        ...effectsGroups(widget.element, widget.layer, widget.write,
+            widget.begin, widget.commit,
+            shown: open),
       ],
     );
   }

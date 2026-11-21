@@ -115,9 +115,8 @@ String typeSummary(TextSpec t) =>
     "${t.fontFamily} · ${shortNumber(t.fontSize)}";
 
 /// expanderAsSection is expanderSection for a panel part that is not an
-/// element's (the canvas's background), remembered under [prefix].
-Widget expanderAsSection(IconData icon, Widget expander,
-    {String? summary, List<Widget> extra = const [], String prefix = ""}) {
+/// element's (the canvas's background).
+Widget expanderAsSection(IconData icon, Widget expander) {
   var x = expander as CanvasExpander;
   var name = x.remember ?? x.label;
   return CanvasSection(
@@ -126,11 +125,11 @@ Widget expanderAsSection(IconData icon, Widget expander,
       key: x.key ?? ValueKey("elementSection-$name"),
       icon: icon,
       title: x.label,
-      summary: summary ?? x.trailing ?? "",
-      remember: "$prefix$name",
+      summary: x.trailing ?? "",
+      remember: name,
       initiallyOpen: x.initiallyOpen,
       action: x.action,
-      children: [...x.children, ...extra]);
+      children: x.children);
 }
 
 /// edgeMaskSection is [mask], [e]'s box edges softened and faded: for a

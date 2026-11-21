@@ -756,7 +756,7 @@ class CanvasGridCellState extends State<CanvasGridCell> {
         // sits high beside the dropdown in a series row.
         textAlignVertical:
             widget.multiline ? TextAlignVertical.top : TextAlignVertical.center,
-        decoration: canvasFieldDecoration(ThemeNotifier.of(context),
+        decoration: canvasFieldDecoration(
             hint: widget.hint, fontSize: widget.dense ? 11 : 12),
         onChanged: widget.onChanged,
       );

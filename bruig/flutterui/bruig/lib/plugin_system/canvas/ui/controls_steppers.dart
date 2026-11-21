@@ -457,7 +457,6 @@ class CanvasSidesField extends StatefulWidget {
   final List<String> partKeys;
 
   final double max;
-  final double step;
 
   /// onChanged sets one of the four, or all with a null side.
   final void Function(int? side, double value) onChanged;
@@ -472,7 +471,6 @@ class CanvasSidesField extends StatefulWidget {
     required this.onChanged,
     this.onCommit,
     this.max = 400,
-    this.step = 1,
     super.key,
   });
 
@@ -505,7 +503,7 @@ class _CanvasSidesFieldState extends State<CanvasSidesField> {
         value: side == null ? widget.values.first : widget.values[side],
         min: 0,
         max: widget.max,
-        step: widget.step,
+        step: 1,
         dragStep: 1,
         fill: true,
         onChanged: (v) => widget.onChanged(side, v),

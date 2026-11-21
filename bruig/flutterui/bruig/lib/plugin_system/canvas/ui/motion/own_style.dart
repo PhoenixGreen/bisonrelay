@@ -62,8 +62,8 @@ class OwnStyle {
   CanvasElement _withChart(ChartAnimation a) =>
       (element as ChartElement).copyWith(animation: a);
 
-  /// presets are the ways it can arrive (or, [leaving], leave), by name.
-  List<(String, String)> presets({bool leaving = false}) => switch (kind) {
+  /// presets are the ways it can arrive or leave, by name.
+  List<(String, String)> presets() => switch (kind) {
         OwnStyleKind.element => [
             for (var p in ElementAnimationPreset.values)
               if (p != ElementAnimationPreset.none) (p.name, p.label)
@@ -339,7 +339,7 @@ extension OwnTabs on CanvasController {
               for (var p in LoopPreset.values)
                 if (p != LoopPreset.none) (p.name, p.label)
             ]
-          : OwnStyle(e).presets(leaving: kind == MotionKind.leave);
+          : OwnStyle(e).presets();
 
   /// showPhase sets the whole Chain's filter to [ph] (null for all of it).
   /// An arrival, loop or leaving also turns the Motion clips card, and its

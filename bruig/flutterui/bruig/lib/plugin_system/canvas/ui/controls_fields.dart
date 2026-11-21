@@ -205,7 +205,7 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r"^-?[0-9]*\.?[0-9]*")),
             ],
-            decoration: canvasFieldDecoration(theme).copyWith(
+            decoration: canvasFieldDecoration().copyWith(
               suffixText: widget.suffix.isEmpty ? null : widget.suffix,
               suffixStyle: const TextStyle(fontSize: 10),
             ),
@@ -239,8 +239,7 @@ double _scrubbed(double from, double travelled, double step,
 /// canvasFieldDecoration is what every field on this panel is drawn with.
 /// The vertical padding sets the field's height: without it the field sits
 /// short at the top of its row.
-InputDecoration canvasFieldDecoration(
-  ThemeNotifier theme, {
+InputDecoration canvasFieldDecoration({
   String hint = "",
   double fontSize = 12,
 }) =>
@@ -352,9 +351,7 @@ class _CanvasTextFieldState extends State<CanvasTextField> {
                     focusNode: _focus,
                     maxLines: widget.maxLines,
                     style: const TextStyle(fontSize: 12),
-                    decoration: canvasFieldDecoration(
-                        ThemeNotifier.of(context),
-                        hint: widget.hint),
+                    decoration: canvasFieldDecoration(hint: widget.hint),
                     onChanged: widget.onChanged,
                   ),
                 ),

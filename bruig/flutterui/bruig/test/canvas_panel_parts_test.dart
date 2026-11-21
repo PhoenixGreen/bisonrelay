@@ -52,7 +52,7 @@ MotionDevice deviceOf(CanvasController c, MotionDeviceKind kind) => c.document
 void main() {
   group("a look's setting reads the same in the panel and the Chain", () {
     LookParamView view(MotionDeviceKind k, String p) =>
-        lookParamView(k, k.param(p));
+        lookParamView(k.param(p));
 
     test("a share as a percentage", () {
       var strength = view(MotionDeviceKind.glow, "strength");
@@ -80,7 +80,7 @@ void main() {
       for (var kind in MotionDeviceKind.on(MotionDeviceSide.look)) {
         for (var p in kind.params) {
           if (p.isChoice) continue;
-          var v = lookParamView(kind, p);
+          var v = lookParamView(p);
           var knob = p.reading(p.initial).replaceAll("×", "").trim();
           var panel = v.shown(p.initial).toStringAsFixed(v.decimals);
           expect(knob, contains(panel.replaceAll(RegExp(r"\.0+$"), "")),

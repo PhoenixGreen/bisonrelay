@@ -364,8 +364,7 @@ List<Widget> _animationBits(
     // A destruction is an exit, said here as in a shape's panel: people look
     // for one in the arrival list.
     if (a.cuts)
-      ...effectBits(a.effect, a.scatters,
-          (next) => now(a.copyWith(effect: next)), done, done,
+      ...effectBits(a.effect, a.scatters, done,
           live: (next) => live(a.copyWith(effect: next))),
     // Draw the outline invents nothing: a stroke where the type has one, the
     // words where not, or the preset looks broken on unoutlined type.

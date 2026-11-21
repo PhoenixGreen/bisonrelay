@@ -373,35 +373,21 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
       ),
       if (item.box.fill.a > 0) ...[
         // The corner and room fields every box gets (see cornerFields): two
-        // even numbers beside the colour, the four corners and sides under.
+        // numbers beside the colour, each split into four by its link.
         ...cornerFields(
             item.box.corners,
             (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
             commit,
             label: "Round",
-            prefix: "textItem$at",
-            part: SidePart.all),
+            prefix: "textItem$at"),
         ...roomFields(
             item.box.pad,
             (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
             commit,
             label: "Inside",
-            prefix: "textItem$at",
-            part: SidePart.all),
+            prefix: "textItem$at"),
         const CanvasLineBreak(),
-        ...cornerFields(
-            item.box.corners,
-            (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
-            commit,
-            prefix: "textItem$at",
-            part: SidePart.sides),
         const CanvasLineBreak(),
-        ...roomFields(
-            item.box.pad,
-            (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
-            commit,
-            prefix: "textItem$at",
-            part: SidePart.sides),
       ],
     ],
   ];

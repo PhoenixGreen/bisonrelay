@@ -28,16 +28,11 @@ enum PanelSection { content, look, layout, motion, more }
 
 /// PanelBit is what an element puts in one of its panel's sections: its
 /// groups, and a word on them for the heading.
-class PanelBit extends StatelessWidget {
+class PanelBit {
   final PanelSection into;
   final String summary;
   final List<Widget> children;
-  const PanelBit(this.into, {this.summary = "", required this.children})
-      : super(key: null);
-
-  @override
-  Widget build(BuildContext context) =>
-      Column(mainAxisSize: MainAxisSize.min, children: children);
+  const PanelBit(this.into, {this.summary = "", required this.children});
 }
 
 /// sectionContents is an older panel section's contents, laid straight
@@ -143,7 +138,7 @@ Widget elementPanel(
               if (dockGroup(controller, e) case var dock?) dock,
               ...into(PanelSection.layout),
             ]),
-        ...stageSpotSettings(context, controller, e, write, begin, commit),
+        ...stageSpotSettings(controller, e, write, begin, commit),
         section(e, "motion",
             glyph: SectionGlyph.motion,
             icon: Icons.animation,
@@ -208,8 +203,7 @@ Widget elementPanel(
                                 leaving ? e.animation.exit : e.animation.preset,
                             options: [
                               (ChartAnimationPreset.none, "None"),
-                              for (var (name, label)
-                                  in OwnStyle(e).presets(leaving: leaving))
+                              for (var (name, label) in OwnStyle(e).presets())
                                 (
                                   ChartAnimationPreset.values.byName(name),
                                   label
@@ -237,7 +231,7 @@ Widget elementPanel(
                   key: ValueKey("${kind}Presets"),
                   label: "Presets",
                   rule: false,
-                  children: [presetsSection(context, controller, e)]),
+                  children: [presetsSection(controller, e)]),
             ]),
       ],
     ),

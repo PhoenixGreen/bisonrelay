@@ -16,18 +16,13 @@ import 'package:flutter/material.dart';
 // and leaves no link back, so later preset changes leave it alone.
 
 /// presetsSection lists the presets that make this kind of element.
-Widget presetsSection(
-  BuildContext context,
-  CanvasController controller,
-  CanvasElement element, {
-  void Function(CanvasElement made)? onUse,
-}) =>
-    _PresetsSection(controller: controller, element: element, onUse: onUse);
+Widget presetsSection(CanvasController controller, CanvasElement element) =>
+    _PresetsSection(controller: controller, element: element);
 
 /// backgroundPresetsSection is the canvas background's presets, shared with
 /// Background elements; using one changes only the pattern.
 Widget backgroundPresetsSection(
-        BuildContext context, CanvasController controller, ProceduralSpec spec,
+        CanvasController controller, ProceduralSpec spec,
         {required void Function(ProceduralSpec) onUse}) =>
     _PresetsSection(
       controller: controller,
