@@ -35,6 +35,10 @@ class MetronomeElement extends CanvasElement {
     this.accent = const Color(0xFFE2622B),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MetronomeElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.metronome;
 
@@ -67,8 +71,8 @@ class MetronomeElement extends CanvasElement {
               .toDouble(),
           beats: (json["beats"] is num ? (json["beats"] as num).toInt() : 4)
               .clamp(1, 12),
-          body: colorFromJson(json["body"], const Color(0xFF7A4526)),
-          accent: colorFromJson(json["accent"], const Color(0xFFE2622B)));
+          body: colorFromJson(json["body"], _defaults.body),
+          accent: colorFromJson(json["accent"], _defaults.accent));
 }
 
 /// tempoWord is how [bpm] is marked on music: Largo to Presto.

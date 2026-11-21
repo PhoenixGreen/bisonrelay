@@ -136,6 +136,10 @@ class LineElement extends CanvasElement {
     this.animation = const ElementAnimation(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = LineElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.line;
 
@@ -229,11 +233,11 @@ class LineElement extends CanvasElement {
         if (fade != null) "fade": fade!.toJson(),
         "sw": strokeWidth,
         "strokeCap": cap.name,
-        if (startEnd != LineEnd.none) "startEnd": startEnd.name,
-        if (endEnd != LineEnd.none) "endEnd": endEnd.name,
-        if (endSize != 1) "endSize": endSize,
+        if (startEnd != _defaults.startEnd) "startEnd": startEnd.name,
+        if (endEnd != _defaults.endEnd) "endEnd": endEnd.name,
+        if (endSize != _defaults.endSize) "endSize": endSize,
         if (dash > 0) "dash": dash,
-        if (curvature != 0) "curve": curvature,
+        if (curvature != _defaults.curvature) "curve": curvature,
         if (flipped) "flipped": true,
         if (animation.any) "anim": animation.toJson(),
       };
@@ -245,14 +249,14 @@ class LineElement extends CanvasElement {
               ? GradientSpec.fromJson(
                   (json["fade"] as Map).cast<String, dynamic>())
               : null,
-          strokeWidth: jsonDouble(json["sw"], 4),
+          strokeWidth: jsonDouble(json["sw"], _defaults.strokeWidth),
           cap: LineStrokeCap.fromName(jsonStr(json["strokeCap"])),
           startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
           endEnd: LineEnd.fromName(jsonStr(json["endEnd"])),
-          endSize: jsonDouble(json["endSize"], 1),
-          dash: jsonDouble(json["dash"], 0).clamp(0.0, 400.0),
-          curvature: jsonDouble(json["curve"], 0),
+          endSize: jsonDouble(json["endSize"], _defaults.endSize),
+          dash: jsonDouble(json["dash"], _defaults.dash).clamp(0.0, 400.0),
+          curvature: jsonDouble(json["curve"], _defaults.curvature),
           flipped: jsonBool(json["flipped"], false),
-          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-              const ElementAnimation()));
+          animation: jsonSpec(
+              json["anim"], ElementAnimation.fromJson, _defaults.animation));
 }

@@ -94,6 +94,10 @@ class SourceColumn {
     this.date = "",
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SourceColumn();
+
   SourceColumn copyWith({
     String? header,
     String? path,
@@ -125,22 +129,22 @@ class SourceColumn {
         if (spread > 0) "spread": spread,
         if (divider.isNotEmpty) "div": divider,
         if (template.isNotEmpty) "tpl": template,
-        if (divide != 1) "div10": divide,
+        if (divide != _defaults.divide) "div10": divide,
         if (date.isNotEmpty) "date": date,
       };
 
   factory SourceColumn.fromJson(Map<String, dynamic> json) => SourceColumn(
-        header: jsonString(json["h"], ""),
-        path: jsonString(json["p"], ""),
+        header: jsonString(json["h"], _defaults.header),
+        path: jsonString(json["p"], _defaults.path),
         picture: jsonBool(json["pic"], false),
         keep: jsonBool(json["keep"], false),
         // A form guide's games: a handful. A received canvas's million would
         // be filled in one at a time.
-        spread: jsonInt(json["spread"], 0).clamp(0, 50),
-        divider: jsonString(json["div"], ""),
-        template: jsonString(json["tpl"], ""),
-        divide: jsonDouble(json["div10"], 1),
-        date: jsonString(json["date"], ""),
+        spread: jsonInt(json["spread"], _defaults.spread).clamp(0, 50),
+        divider: jsonString(json["div"], _defaults.divider),
+        template: jsonString(json["tpl"], _defaults.template),
+        divide: jsonDouble(json["div10"], _defaults.divide),
+        date: jsonString(json["date"], _defaults.date),
       );
 }
 
@@ -191,6 +195,10 @@ class DataSource {
     this.fetchedAt,
     this.fromRows = false,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = DataSource();
 
   bool get on => kind != DataKind.typed && where.isNotEmpty;
 
@@ -256,7 +264,7 @@ class DataSource {
         if (rowsPath.isNotEmpty) "rows": rowsPath,
         if (columns.isNotEmpty) "cols": [for (var c in columns) c.toJson()],
         if (matchColumn >= 0) "match": matchColumn,
-        if (shape != DataShape.records) "shape": shape.name,
+        if (shape != _defaults.shape) "shape": shape.name,
         if (preset.isNotEmpty) "preset": preset,
         if (fetchedAt != null) "at": fetchedAt!.toIso8601String(),
         if (fromRows) "fromRows": true,
@@ -265,16 +273,16 @@ class DataSource {
   factory DataSource.fromJson(Map<String, dynamic> json) => DataSource(
         kind: DataKind.values.firstWhere((k) => k.name == json["kind"],
             orElse: () => DataKind.typed),
-        where: jsonString(json["where"], ""),
-        rowsPath: jsonString(json["rows"], ""),
+        where: jsonString(json["where"], _defaults.where),
+        rowsPath: jsonString(json["rows"], _defaults.rowsPath),
         columns: [
           if (json["cols"] case List raw)
             for (var c in raw)
               if (c is Map<String, dynamic>) SourceColumn.fromJson(c),
         ],
-        matchColumn: jsonInt(json["match"], -1),
+        matchColumn: jsonInt(json["match"], _defaults.matchColumn),
         shape: DataShape.fromName(jsonString(json["shape"], "")),
-        preset: jsonString(json["preset"], ""),
+        preset: jsonString(json["preset"], _defaults.preset),
         fetchedAt: DateTime.tryParse(jsonString(json["at"], "")),
         fromRows: jsonBool(json["fromRows"], false),
       );
@@ -495,6 +503,10 @@ class TableLink {
     this.valueColumns = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TableLink();
+
   bool get on => tableId.isNotEmpty && valueColumns.isNotEmpty;
 
   TableLink copyWith({
@@ -515,8 +527,8 @@ class TableLink {
       };
 
   factory TableLink.fromJson(Map<String, dynamic> json) => TableLink(
-        tableId: jsonString(json["id"], ""),
-        categoryColumn: jsonInt(json["cat"], 0),
+        tableId: jsonString(json["id"], _defaults.tableId),
+        categoryColumn: jsonInt(json["cat"], _defaults.categoryColumn),
         valueColumns: [
           if (json["vals"] case List raw)
             for (var v in raw)

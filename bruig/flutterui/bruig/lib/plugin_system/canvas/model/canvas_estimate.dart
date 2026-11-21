@@ -36,18 +36,22 @@ class CanvasEstimate {
 
   const CanvasEstimate({this.format = EstimateAs.png, this.quality = 85});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CanvasEstimate();
+
   CanvasEstimate copyWith({EstimateAs? format, int? quality}) => CanvasEstimate(
         format: format ?? this.format,
         quality: quality ?? this.quality,
       );
 
   Map<String, dynamic> toJson() => {
-        if (format != EstimateAs.png) "as": format.name,
-        if (quality != 85) "q": quality,
+        if (format != _defaults.format) "as": format.name,
+        if (quality != _defaults.quality) "q": quality,
       };
 
   factory CanvasEstimate.fromJson(Map<String, dynamic> json) => CanvasEstimate(
         format: EstimateAs.fromName(jsonStr(json["as"])),
-        quality: jsonInt(json["q"], 85).clamp(1, 100),
+        quality: jsonInt(json["q"], _defaults.quality).clamp(1, 100),
       );
 }

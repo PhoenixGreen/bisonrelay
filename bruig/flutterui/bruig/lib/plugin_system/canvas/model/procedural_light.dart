@@ -50,6 +50,10 @@ class LightSpec {
     this.reach = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = LightSpec();
+
   LightSpec copyWith({
     bool? on,
     Color? color,
@@ -87,14 +91,15 @@ class LightSpec {
 
   factory LightSpec.fromJson(Map<String, dynamic> json) => LightSpec(
         on: jsonBool(json["on"], false),
-        color: colorFromJson(json["color"], const Color(0xFFFFF2D0)),
-        brightness: jsonDouble(json["brightness"], 0.8).clamp(0.0, 2.0),
-        size: jsonDouble(json["size"], 0.45).clamp(0.01, 3.0),
-        falloff: jsonDouble(json["falloff"], 0.35).clamp(0.0, 1.0),
-        x: jsonDouble(json["x"], 0.5).clamp(-1.0, 2.0),
-        y: jsonDouble(json["y"], 0.3).clamp(-1.0, 2.0),
-        direction: jsonDouble(json["direction"], 180),
-        reach: jsonDouble(json["reach"], 0).clamp(0.0, 1.0),
+        color: colorFromJson(json["color"], _defaults.color),
+        brightness: jsonDouble(json["brightness"], _defaults.brightness)
+            .clamp(0.0, 2.0),
+        size: jsonDouble(json["size"], _defaults.size).clamp(0.01, 3.0),
+        falloff: jsonDouble(json["falloff"], _defaults.falloff).clamp(0.0, 1.0),
+        x: jsonDouble(json["x"], _defaults.x).clamp(-1.0, 2.0),
+        y: jsonDouble(json["y"], _defaults.y).clamp(-1.0, 2.0),
+        direction: jsonDouble(json["direction"], _defaults.direction),
+        reach: jsonDouble(json["reach"], _defaults.reach).clamp(0.0, 1.0),
       );
 }
 
@@ -122,6 +127,10 @@ class MetalSpec {
     this.shine = 0.55,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MetalSpec();
+
   MetalSpec copyWith({
     double? roughness,
     double? rust,
@@ -143,9 +152,10 @@ class MetalSpec {
       };
 
   factory MetalSpec.fromJson(Map<String, dynamic> json) => MetalSpec(
-        roughness: jsonDouble(json["roughness"], 0.45).clamp(0.0, 1.0),
-        rust: jsonDouble(json["rust"], 0).clamp(0.0, 1.0),
-        damage: jsonDouble(json["damage"], 0.15).clamp(0.0, 1.0),
-        shine: jsonDouble(json["shine"], 0.55).clamp(0.0, 1.0),
+        roughness:
+            jsonDouble(json["roughness"], _defaults.roughness).clamp(0.0, 1.0),
+        rust: jsonDouble(json["rust"], _defaults.rust).clamp(0.0, 1.0),
+        damage: jsonDouble(json["damage"], _defaults.damage).clamp(0.0, 1.0),
+        shine: jsonDouble(json["shine"], _defaults.shine).clamp(0.0, 1.0),
       );
 }

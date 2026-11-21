@@ -65,6 +65,10 @@ class ChartNumbers {
     this.after = "",
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartNumbers();
+
   ChartNumbers copyWith(
           {NumberStyle? style,
           int? decimals,
@@ -120,8 +124,8 @@ class ChartNumbers {
   }
 
   Map<String, dynamic> toJson() => {
-        if (style != NumberStyle.automatic) "style": style.name,
-        if (decimals != 1) "decimals": decimals,
+        if (style != _defaults.style) "style": style.name,
+        if (decimals != _defaults.decimals) "decimals": decimals,
         if (!separators) "plain": true,
         if (before.isNotEmpty) "pre": before,
         if (after.isNotEmpty) "post": after,
@@ -129,10 +133,10 @@ class ChartNumbers {
 
   factory ChartNumbers.fromJson(Map<String, dynamic> json) => ChartNumbers(
         style: NumberStyle.fromName(jsonStr(json["style"])),
-        decimals: jsonInt(json["decimals"], 1).clamp(0, 6),
+        decimals: jsonInt(json["decimals"], _defaults.decimals).clamp(0, 6),
         separators: !jsonBool(json["plain"], false),
-        before: jsonString(json["pre"], ""),
-        after: jsonString(json["post"], ""),
+        before: jsonString(json["pre"], _defaults.before),
+        after: jsonString(json["post"], _defaults.after),
       );
 }
 

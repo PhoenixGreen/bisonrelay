@@ -68,6 +68,10 @@ class PartHighlight {
     this.radius = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PartHighlight();
+
   /// evenPad is the padding all four sides share, or null where they differ.
   double? get evenPad =>
       padLeft == padTop && padTop == padRight && padRight == padBottom
@@ -104,20 +108,20 @@ class PartHighlight {
         "t": padTop,
         "r": padRight,
         "b": padBottom,
-        if (radius != 0) "radius": radius,
+        if (radius != _defaults.radius) "radius": radius,
       };
 
   factory PartHighlight.fromJson(Map<String, dynamic> json) => PartHighlight(
-        color: colorFromJson(json["color"], const Color(0x66FFD54F)),
+        color: colorFromJson(json["color"], _defaults.color),
         fade: json["fade"] is Map
             ? GradientSpec.fromJson(
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
-        padLeft: jsonDouble(json["l"], 4),
-        padTop: jsonDouble(json["t"], 2),
-        padRight: jsonDouble(json["r"], 4),
-        padBottom: jsonDouble(json["b"], 2),
-        radius: jsonDouble(json["radius"], 0),
+        padLeft: jsonDouble(json["l"], _defaults.padLeft),
+        padTop: jsonDouble(json["t"], _defaults.padTop),
+        padRight: jsonDouble(json["r"], _defaults.padRight),
+        padBottom: jsonDouble(json["b"], _defaults.padBottom),
+        radius: jsonDouble(json["radius"], _defaults.radius),
       );
 }
 
@@ -144,6 +148,10 @@ class PartUnderline {
     this.away = 2,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PartUnderline();
+
   PartUnderline copyWith({
     Color? color,
     GradientSpec? fade,
@@ -165,7 +173,7 @@ class PartUnderline {
         if (color != null) "color": colorToJson(color!),
         if (fade != null) "fade": fade!.toJson(),
         "width": width,
-        if (style != PartLineStyle.solid) "style": style.name,
+        if (style != _defaults.style) "style": style.name,
         "away": away,
       };
 
@@ -177,9 +185,9 @@ class PartUnderline {
             ? GradientSpec.fromJson(
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
-        width: jsonDouble(json["width"], 3).clamp(0.1, 80),
+        width: jsonDouble(json["width"], _defaults.width).clamp(0.1, 80),
         style: PartLineStyle.fromName(jsonStr(json["style"])),
-        away: jsonDouble(json["away"], 2),
+        away: jsonDouble(json["away"], _defaults.away),
       );
 }
 
@@ -220,6 +228,10 @@ class TextPartAnimation {
     this.markOffset = 0,
     this.markLength = 0,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextPartAnimation();
 
   bool get on => preset != TextAnimationPreset.none;
 
@@ -272,25 +284,25 @@ class TextPartAnimation {
 
   Map<String, dynamic> toJson() => {
         if (on) "preset": preset.name,
-        if (offset != 0) "offset": offset,
-        if (length != 0) "length": length,
-        if (gap != 0.35) "gap": gap,
+        if (offset != _defaults.offset) "offset": offset,
+        if (length != _defaults.length) "length": length,
+        if (gap != _defaults.gap) "gap": gap,
         if (scale > 0) "scale": scale,
         if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
         if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
-        if (ease != ChartEase.easeOut) "ease": ease.name,
+        if (ease != _defaults.ease) "ease": ease.name,
         if (marks) "marks": true,
-        if (markOffset != 0) "markOffset": markOffset,
-        if (markLength != 0) "markLength": markLength,
+        if (markOffset != _defaults.markOffset) "markOffset": markOffset,
+        if (markLength != _defaults.markLength) "markLength": markLength,
       };
 
   factory TextPartAnimation.fromJson(Map<String, dynamic> json) =>
       TextPartAnimation(
         preset: TextAnimationPreset.fromName(jsonStr(json["preset"])),
-        offset: jsonInt(json["offset"], 0),
-        length: jsonInt(json["length"], 0).clamp(0, 100000),
-        gap: jsonDouble(json["gap"], 0.35).clamp(0.0, 4.0),
-        scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
+        offset: jsonInt(json["offset"], _defaults.offset),
+        length: jsonInt(json["length"], _defaults.length).clamp(0, 100000),
+        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0.0, 4.0),
+        scale: jsonDouble(json["scale"], _defaults.scale).clamp(0.0, 8.0),
         echo: json["echo"] is Map<String, dynamic>
             ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
             : const TextEchoSpec(),
@@ -299,8 +311,9 @@ class TextPartAnimation {
             : const TextDrawSpec(),
         ease: ChartEase.fromName(jsonStr(json["ease"])),
         marks: jsonBool(json["marks"], false),
-        markOffset: jsonInt(json["markOffset"], 0),
-        markLength: jsonInt(json["markLength"], 0).clamp(0, 100000),
+        markOffset: jsonInt(json["markOffset"], _defaults.markOffset),
+        markLength:
+            jsonInt(json["markLength"], _defaults.markLength).clamp(0, 100000),
       );
 }
 
@@ -435,6 +448,10 @@ class TextPart {
     this.animation = const TextPartAnimation(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextPart();
+
   bool get toTheEnd => to <= 0;
 
   String get says {
@@ -482,7 +499,7 @@ class TextPart {
       );
 
   Map<String, dynamic> toJson() => {
-        if (unit != TextUnit.words) "unit": unit.name,
+        if (unit != _defaults.unit) "unit": unit.name,
         "from": from,
         if (to > 0) "to": to,
         if (color != null) "color": colorToJson(color!),
@@ -500,8 +517,8 @@ class TextPart {
 
   factory TextPart.fromJson(Map<String, dynamic> json) => TextPart(
         unit: TextUnit.fromName(jsonStr(json["unit"])),
-        from: jsonInt(json["from"], 1).clamp(1, 100000),
-        to: jsonInt(json["to"], 0).clamp(0, 100000),
+        from: jsonInt(json["from"], _defaults.from).clamp(1, 100000),
+        to: jsonInt(json["to"], _defaults.to).clamp(0, 100000),
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
@@ -614,6 +631,10 @@ class TextIcon {
     this.underline,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextIcon();
+
   bool get on => assetId.isNotEmpty;
 
   TextIcon copyWith({
@@ -642,7 +663,7 @@ class TextIcon {
   Map<String, dynamic> toJson() => {
         "assetId": assetId,
         "size": size,
-        if (turn != 0) "turn": turn,
+        if (turn != _defaults.turn) "turn": turn,
         if (color != null) "color": colorToJson(color!),
         if (outlineWidth > 0) "ow": outlineWidth,
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
@@ -651,14 +672,15 @@ class TextIcon {
       };
 
   factory TextIcon.fromJson(Map<String, dynamic> json) => TextIcon(
-        assetId: jsonString(json["assetId"], ""),
-        size: jsonDouble(json["size"], 64).clamp(1, 4000),
-        turn: jsonDouble(json["turn"], 0).clamp(-360, 360),
+        assetId: jsonString(json["assetId"], _defaults.assetId),
+        size: jsonDouble(json["size"], _defaults.size).clamp(1, 4000),
+        turn: jsonDouble(json["turn"], _defaults.turn).clamp(-360, 360),
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
-        outlineWidth: jsonDouble(json["ow"], 0).clamp(0, 200),
-        outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
+        outlineWidth:
+            jsonDouble(json["ow"], _defaults.outlineWidth).clamp(0, 200),
+        outlineColor: colorFromJson(json["oc"], _defaults.outlineColor),
         box: json["box"] is Map<String, dynamic>
             ? BoxSpec.fromJson(json["box"] as Map<String, dynamic>)
             : const BoxSpec(padding: 0),

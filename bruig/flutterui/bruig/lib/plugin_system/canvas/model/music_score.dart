@@ -259,6 +259,10 @@ class ScoreEvent {
       this.sizes = const {},
       this.offsets = const {}});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ScoreEvent("", 0);
+
   bool get isRest => pitches.isEmpty && !slash;
 
   /// sizeOf is how big marking [kind] is drawn, 1 its own size.
@@ -324,13 +328,13 @@ class ScoreEvent {
   Map<String, dynamic> toJson() => {
         "id": id,
         "v": value,
-        if (dots != 0) "dots": dots,
+        if (dots != _defaults.dots) "dots": dots,
         if (tuplet case var t?) "tup": t.toJson(),
         if (pitches.isNotEmpty) "p": [for (var p in pitches) p.name],
         if (slash) "slash": true,
         if (strum case var s?) "strum": s.name,
         if (tie) "tie": true,
-        if (voice != 0) "voice": voice,
+        if (voice != _defaults.voice) "voice": voice,
         if (chord case var c?) "ch": c,
         if (dyn case var d?) "dyn": d.name,
         if (articulations.isNotEmpty)
@@ -590,6 +594,10 @@ class BarInfo {
       this.offsets = const {},
       this.width = 1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = BarInfo();
+
   BarInfo copyWith({
     String? mark,
     bool? repeatStart,
@@ -634,7 +642,7 @@ class BarInfo {
         if (repeatStart) "rs": true,
         if (repeatEnd > 0) "re": repeatEnd,
         if (endings.isNotEmpty) "end": endings,
-        if (jump != Jump.none) "jump": jump.name,
+        if (jump != _defaults.jump) "jump": jump.name,
         if (segno) "segno": true,
         if (coda) "coda": true,
         if (toCoda) "toCoda": true,
@@ -643,8 +651,8 @@ class BarInfo {
         if (key case var k?) "key": k,
         if (tempo case var t?) "tempo": t,
         if (tempoText.isNotEmpty) "tempoText": tempoText,
-        if (breakAfter != BarBreak.none) "break": breakAfter.name,
-        if (width != 1) "w": width,
+        if (breakAfter != _defaults.breakAfter) "break": breakAfter.name,
+        if (width != _defaults.width) "w": width,
         if (offsets.isNotEmpty) "off": _offsetsToJson(offsets),
       };
 
@@ -772,6 +780,10 @@ class MusicScore {
       this.spanners = const [],
       this.verses = 1,
       this.offsets = const {}});
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MusicScore("");
 
   factory MusicScore.blank(String id,
       {String title = "Untitled score",
@@ -1122,12 +1134,12 @@ class MusicScore {
         "tempo": tempo,
         if (tempoText.isNotEmpty) "tempoText": tempoText,
         "time": [beats, beatUnit],
-        if (fifths != 0) "fifths": fifths,
+        if (fifths != _defaults.fifths) "fifths": fifths,
         "bars": [for (var b in bars) b.toJson()],
         "parts": [for (var p in parts) p.toJson()],
         if (spanners.isNotEmpty)
           "spanners": [for (var s in spanners) s.toJson()],
-        if (verses != 1) "verses": verses,
+        if (verses != _defaults.verses) "verses": verses,
         if (offsets.isNotEmpty) "off": _offsetsToJson(offsets),
       };
 

@@ -74,6 +74,10 @@ class SurroundPan {
 
   const SurroundPan({this.angle = 0, this.width = 60, this.centre = 1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SurroundPan();
+
   bool get isDefault => angle == 0 && width == 60 && centre == 1;
 
   SurroundPan copyWith({double? angle, double? width, double? centre}) =>
@@ -83,13 +87,13 @@ class SurroundPan {
           centre: (centre ?? this.centre).clamp(0.0, 1.0));
 
   Map<String, dynamic> toJson() =>
-      {"angle": angle, "width": width, if (centre != 1) "centre": centre};
+      {"angle": angle, "width": width, if (centre != _defaults.centre) "centre": centre};
 
   factory SurroundPan.fromJson(Map<String, dynamic> json) => const SurroundPan()
       .copyWith(
-          angle: jsonDouble(json["angle"], 0),
-          width: jsonDouble(json["width"], 60),
-          centre: jsonDouble(json["centre"], 1));
+          angle: jsonDouble(json["angle"], _defaults.angle),
+          width: jsonDouble(json["width"], _defaults.width),
+          centre: jsonDouble(json["centre"], _defaults.centre));
 
   @override
   bool operator ==(Object other) =>
@@ -283,6 +287,10 @@ class SoundPlacement {
     this.rolloff = 1,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SoundPlacement();
+
   bool get isOff => by == PlaceBy.off;
 
   SoundPlacement copyWith({
@@ -310,27 +318,27 @@ class SoundPlacement {
 
   Map<String, dynamic> toJson() => {
         "by": by.name,
-        if (arc != 60) "arc": arc,
+        if (arc != _defaults.arc) "arc": arc,
         if (stage.isNotEmpty) "stage": stage,
-        if (x != 0) "x": x,
-        if (y != 1.2) "y": y,
-        if (z != 3) "z": z,
+        if (x != _defaults.x) "x": x,
+        if (y != _defaults.y) "y": y,
+        if (z != _defaults.z) "z": z,
         if (follow.isNotEmpty) "follow": follow,
-        if (near != 0) "near": near,
-        if (rolloff != 1) "rolloff": rolloff,
+        if (near != _defaults.near) "near": near,
+        if (rolloff != _defaults.rolloff) "rolloff": rolloff,
       };
 
   factory SoundPlacement.fromJson(Map<String, dynamic> json) =>
       const SoundPlacement().copyWith(
         by: PlaceBy.fromName(jsonStr(json["by"])),
-        arc: jsonDouble(json["arc"], 60),
-        stage: jsonString(json["stage"], ""),
-        x: jsonDouble(json["x"], 0),
-        y: jsonDouble(json["y"], 1.2),
-        z: jsonDouble(json["z"], 3),
-        follow: jsonString(json["follow"], ""),
-        near: jsonDouble(json["near"], 0),
-        rolloff: jsonDouble(json["rolloff"], 1),
+        arc: jsonDouble(json["arc"], _defaults.arc),
+        stage: jsonString(json["stage"], _defaults.stage),
+        x: jsonDouble(json["x"], _defaults.x),
+        y: jsonDouble(json["y"], _defaults.y),
+        z: jsonDouble(json["z"], _defaults.z),
+        follow: jsonString(json["follow"], _defaults.follow),
+        near: jsonDouble(json["near"], _defaults.near),
+        rolloff: jsonDouble(json["rolloff"], _defaults.rolloff),
       );
 }
 

@@ -414,6 +414,10 @@ class SessionClip {
     this.automation = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SessionClip(id: "");
+
   /// loopEnd is where its loop ends, in beats, at [beatsPerBar].
   double loopEnd(int beatsPerBar) => loopStart + bars * beatsPerBar;
 
@@ -523,37 +527,37 @@ class SessionClip {
   Map<String, dynamic> toJson() => {
         "id": id,
         if (name.isNotEmpty) "name": name,
-        if (color != 0) "color": color,
+        if (color != _defaults.color) "color": color,
         if (midi) "midi": true,
         if (sound case var s?) "sound": s.toJson(),
         if (notes.isNotEmpty) "notes": [for (var n in notes) n.toJson()],
         if (controls.isNotEmpty) "controls": controlsToJson(controls),
         "bars": bars,
         if (!loop) "loop": false,
-        if (launch != LaunchMode.trigger) "launch": launch.name,
+        if (launch != _defaults.launch) "launch": launch.name,
         if (rendered.isNotEmpty) "rendered": rendered,
-        if (start != 0) "start": start,
-        if (loopStart != 0) "loopStart": loopStart,
-        if (gain != 0) "gain": gain,
+        if (start != _defaults.start) "start": start,
+        if (loopStart != _defaults.loopStart) "loopStart": loopStart,
+        if (gain != _defaults.gain) "gain": gain,
         if (reversedOf case var r?) "reversedOf": r.toJson(),
         if (quantise case var q?) "quantise": q.name,
         if (legato) "legato": true,
         if (fade) "fade": true,
         if (fadeIn > 0) "fadeIn": fadeIn,
         if (fadeOut > 0) "fadeOut": fadeOut,
-        if (fadeCurve != FadeCurve.smooth) "fadeCurve": fadeCurve.name,
-        if (velocity != 0) "velocity": velocity,
-        if (follow != FollowAction.none) "follow": follow.name,
+        if (fadeCurve != _defaults.fadeCurve) "fadeCurve": fadeCurve.name,
+        if (velocity != _defaults.velocity) "velocity": velocity,
+        if (follow != _defaults.follow) "follow": follow.name,
         if (followBars case var f?) "followBars": f,
         if (warp) "warp": true,
-        if (warpMode != WarpMode.complex) "warpMode": warpMode.name,
-        if (bpm != 0) "bpm": bpm,
+        if (warpMode != _defaults.warpMode) "warpMode": warpMode.name,
+        if (bpm != _defaults.bpm) "bpm": bpm,
         if (markers.isNotEmpty)
           "markers": [
             for (var m in markers) [m.seconds, m.beat]
           ],
-        if (pitch != 0) "pitch": pitch,
-        if (cents != 0) "cents": cents,
+        if (pitch != _defaults.pitch) "pitch": pitch,
+        if (cents != _defaults.cents) "cents": cents,
         if (warped case var w?) "warped": w.toJson(),
         if (warpedFor.isNotEmpty) "warpedFor": warpedFor,
         if (envelopes.values.any((e) => e.isNotEmpty))
@@ -575,8 +579,8 @@ class SessionClip {
     var sound = json["sound"];
     return SessionClip(
       id: id,
-      name: jsonString(json["name"], ""),
-      color: jsonInt(json["color"], 0),
+      name: jsonString(json["name"], _defaults.name),
+      color: jsonInt(json["color"], _defaults.color),
       midi: jsonBool(json["midi"], false),
       sound: sound is Map<String, dynamic> ? MediaSource.fromJson(sound) : null,
       notes: [
@@ -585,16 +589,17 @@ class SessionClip {
             if (MidiNote.fromJson(n) case var note?) note,
       ],
       controls: controlsFromJson(json["controls"]),
-      bars: math.max(0.25, jsonDouble(json["bars"], 1)),
+      bars: math.max(0.25, jsonDouble(json["bars"], _defaults.bars)),
       loop: jsonBool(json["loop"], true),
       launch: LaunchMode.values
               .where((m) => m.name == json["launch"])
               .firstOrNull ??
           LaunchMode.trigger,
-      rendered: jsonString(json["rendered"], ""),
-      start: math.max(0, jsonDouble(json["start"], 0)),
-      loopStart: math.max(0, jsonDouble(json["loopStart"], 0)),
-      gain: jsonDouble(json["gain"], 0).clamp(-70.0, 24.0),
+      rendered: jsonString(json["rendered"], _defaults.rendered),
+      start: math.max(0, jsonDouble(json["start"], _defaults.start)),
+      loopStart:
+          math.max(0, jsonDouble(json["loopStart"], _defaults.loopStart)),
+      gain: jsonDouble(json["gain"], _defaults.gain).clamp(-70.0, 24.0),
       reversedOf: json["reversedOf"] is Map<String, dynamic>
           ? MediaSource.fromJson(json["reversedOf"])
           : null,
@@ -602,10 +607,11 @@ class SessionClip {
           Quantise.values.where((q) => q.name == json["quantise"]).firstOrNull,
       legato: jsonBool(json["legato"], false),
       fade: jsonBool(json["fade"], false),
-      fadeIn: jsonDouble(json["fadeIn"], 0).clamp(0.0, 60.0),
-      fadeOut: jsonDouble(json["fadeOut"], 0).clamp(0.0, 60.0),
+      fadeIn: jsonDouble(json["fadeIn"], _defaults.fadeIn).clamp(0.0, 60.0),
+      fadeOut: jsonDouble(json["fadeOut"], _defaults.fadeOut).clamp(0.0, 60.0),
       fadeCurve: FadeCurve.fromName(jsonStr(json["fadeCurve"])),
-      velocity: jsonDouble(json["velocity"], 0).clamp(0.0, 1.0),
+      velocity:
+          jsonDouble(json["velocity"], _defaults.velocity).clamp(0.0, 1.0),
       follow: FollowAction.values
               .where((f) => f.name == json["follow"])
               .firstOrNull ??
@@ -618,19 +624,19 @@ class SessionClip {
               .where((m) => m.name == json["warpMode"])
               .firstOrNull ??
           WarpMode.complex,
-      bpm: jsonDouble(json["bpm"], 0).clamp(0.0, 999.0),
+      bpm: jsonDouble(json["bpm"], _defaults.bpm).clamp(0.0, 999.0),
       markers: [
         if (json["markers"] case List list)
           for (var m in list)
             if (m case [num s, num b])
               (seconds: s.toDouble(), beat: b.toDouble()),
       ],
-      pitch: jsonInt(json["pitch"], 0).clamp(-48, 48),
-      cents: jsonInt(json["cents"], 0).clamp(-50, 50),
+      pitch: jsonInt(json["pitch"], _defaults.pitch).clamp(-48, 48),
+      cents: jsonInt(json["cents"], _defaults.cents).clamp(-50, 50),
       warped: json["warped"] is Map<String, dynamic>
           ? MediaSource.fromJson(json["warped"])
           : null,
-      warpedFor: jsonString(json["warpedFor"], ""),
+      warpedFor: jsonString(json["warpedFor"], _defaults.warpedFor),
       automation: [
         if (json["automation"] case List list)
           for (var raw in list)

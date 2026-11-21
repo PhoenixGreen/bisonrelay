@@ -136,6 +136,10 @@ class TableCellStyle {
     this.minHeight = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TableCellStyle();
+
   bool get allSides => !sides.contains(false);
 
   bool get paintsBox =>
@@ -215,53 +219,54 @@ class TableCellStyle {
   Map<String, dynamic> toJson() => {
         if (background.a > 0) "bg": colorToJson(background),
         if (textColor.a > 0) "fg": colorToJson(textColor),
-        if (fontScale != 1) "scale": fontScale,
-        if (weight != 0) "weight": weight,
-        if (letterSpacing != 0) "ls": letterSpacing,
-        if (letterWidth != 0) "lw": letterWidth,
+        if (fontScale != _defaults.fontScale) "scale": fontScale,
+        if (weight != _defaults.weight) "weight": weight,
+        if (letterSpacing != _defaults.letterSpacing) "ls": letterSpacing,
+        if (letterWidth != _defaults.letterWidth) "lw": letterWidth,
         if (align != null) "align": align!.name,
         if (verticalAlign != null) "valign": verticalAlign!.name,
         if (borderColor.a > 0) "bc": colorToJson(borderColor),
-        if (borderWidth != 0) "bw": borderWidth,
+        if (borderWidth != _defaults.borderWidth) "bw": borderWidth,
         if (!allSides) "sides": sides,
-        if (radius != 4) "r": radius,
-        if (inset != 6) "inset": inset,
+        if (radius != _defaults.radius) "r": radius,
+        if (inset != _defaults.inset) "inset": inset,
         if (!hug) "fill": true,
         if (redact) "redact": true,
-        if (textPad != 0) "pad": textPad,
-        if (minWidth != 0) "minw": minWidth,
-        if (minHeight != 0) "minh": minHeight,
-        if (nudgeX != 0) "nx": nudgeX,
-        if (nudgeY != 0) "ny": nudgeY,
+        if (textPad != _defaults.textPad) "pad": textPad,
+        if (minWidth != _defaults.minWidth) "minw": minWidth,
+        if (minHeight != _defaults.minHeight) "minh": minHeight,
+        if (nudgeX != _defaults.nudgeX) "nx": nudgeX,
+        if (nudgeY != _defaults.nudgeY) "ny": nudgeY,
       };
 
   factory TableCellStyle.fromJson(Map<String, dynamic> json) => TableCellStyle(
-        background: colorFromJson(json["bg"], const Color(0x00000000)),
-        textColor: colorFromJson(json["fg"], const Color(0x00000000)),
-        fontScale: jsonDouble(json["scale"], 1).clamp(0.2, 6.0),
-        weight: jsonInt(json["weight"], 0),
-        letterSpacing: jsonDouble(json["ls"], 0),
-        letterWidth: jsonDouble(json["lw"], 0),
+        background: colorFromJson(json["bg"], _defaults.background),
+        textColor: colorFromJson(json["fg"], _defaults.textColor),
+        fontScale:
+            jsonDouble(json["scale"], _defaults.fontScale).clamp(0.2, 6.0),
+        weight: jsonInt(json["weight"], _defaults.weight),
+        letterSpacing: jsonDouble(json["ls"], _defaults.letterSpacing),
+        letterWidth: jsonDouble(json["lw"], _defaults.letterWidth),
         align: json["align"] is String
             ? TextAlignSpec.fromName(jsonStr(json["align"]))
             : null,
         verticalAlign: json["valign"] is String
             ? VerticalAlignSpec.fromName(jsonStr(json["valign"]))
             : null,
-        borderColor: colorFromJson(json["bc"], const Color(0x00000000)),
-        borderWidth: jsonDouble(json["bw"], 0),
+        borderColor: colorFromJson(json["bc"], _defaults.borderColor),
+        borderWidth: jsonDouble(json["bw"], _defaults.borderWidth),
         sides: json["sides"] is List && (json["sides"] as List).length == 4
             ? [for (var v in json["sides"] as List) v == true]
             : const [true, true, true, true],
-        radius: jsonDouble(json["r"], 4),
-        inset: jsonDouble(json["inset"], 6),
+        radius: jsonDouble(json["r"], _defaults.radius),
+        inset: jsonDouble(json["inset"], _defaults.inset),
         hug: !jsonBool(json["fill"], false),
         redact: jsonBool(json["redact"], false),
-        textPad: jsonDouble(json["pad"], 0),
-        minWidth: jsonDouble(json["minw"], 0),
-        minHeight: jsonDouble(json["minh"], 0),
-        nudgeX: jsonDouble(json["nx"], 0),
-        nudgeY: jsonDouble(json["ny"], 0),
+        textPad: jsonDouble(json["pad"], _defaults.textPad),
+        minWidth: jsonDouble(json["minw"], _defaults.minWidth),
+        minHeight: jsonDouble(json["minh"], _defaults.minHeight),
+        nudgeX: jsonDouble(json["nx"], _defaults.nudgeX),
+        nudgeY: jsonDouble(json["ny"], _defaults.nudgeY),
       );
 }
 
@@ -405,6 +410,10 @@ class TableRule {
     this.keyColumn = "",
     this.when,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TableRule();
 
   /// banded is a rule with no text: one box round all it picks out rather
   /// than a chip round each match.
@@ -551,7 +560,7 @@ class TableRule {
         if (column.isNotEmpty) "col": column,
         if (rows.isNotEmpty) "rows": rows,
         if (match.isNotEmpty) "match": match,
-        if (how != TableMatch.cell) "how": how.name,
+        if (how != _defaults.how) "how": how.name,
         "style": style.toJson(),
         if (name.isNotEmpty) "name": name,
         if (off) "off": true,
@@ -561,20 +570,20 @@ class TableRule {
       };
 
   factory TableRule.fromJson(Map<String, dynamic> json) => TableRule(
-        column: jsonString(json["col"], ""),
-        rows: jsonString(json["rows"], ""),
-        match: jsonString(json["match"], ""),
+        column: jsonString(json["col"], _defaults.column),
+        rows: jsonString(json["rows"], _defaults.rows),
+        match: jsonString(json["match"], _defaults.match),
         how: TableMatch.fromName(jsonStr(json["how"])),
-        style: jsonSpec(
-            json["style"], TableCellStyle.fromJson, const TableCellStyle()),
-        name: jsonString(json["name"], ""),
+        style:
+            jsonSpec(json["style"], TableCellStyle.fromJson, _defaults.style),
+        name: jsonString(json["name"], _defaults.name),
         off: json["off"] == true,
         keys: [
           if (json["keys"] is List)
             for (var k in json["keys"] as List)
               if (k is String) k
         ],
-        keyColumn: jsonString(json["keyCol"], ""),
+        keyColumn: jsonString(json["keyCol"], _defaults.keyColumn),
         when: TableWhen.fromJson(json["when"]),
       );
 }
@@ -762,6 +771,10 @@ class TableElement extends CanvasElement {
     this.sheet,
     this.sheetLooks = const [],
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TableElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.table;
@@ -1129,7 +1142,7 @@ class TableElement extends CanvasElement {
         if (padBottom != null) "padBottom": padBottom,
         if (padLeft != null) "padLeft": padLeft,
         "cr": cornerRadius,
-        if (pictureScale != 1) "picScale": pictureScale,
+        if (pictureScale != _defaults.pictureScale) "picScale": pictureScale,
         if (columnWidths.isNotEmpty) "cols": columnWidths,
         "headerRatio": headerHeightRatio,
         if (rules.isNotEmpty) "rules": [for (var rule in rules) rule.toJson()],
@@ -1137,7 +1150,7 @@ class TableElement extends CanvasElement {
         if (source.on) "source": source.toJson(),
         if (hiddenHeaders.isNotEmpty) "hiddenHeaders": hiddenHeaders,
         if (animation.any) "anim": animation.toJson(),
-        if (turn != TableTurn.together) "turn": turn.name,
+        if (turn != _defaults.turn) "turn": turn.name,
         if (style.isNotEmpty) "style": style,
         if (columnKinds.isNotEmpty)
           "columnKinds": {
@@ -1164,18 +1177,12 @@ class TableElement extends CanvasElement {
         headerRow: jsonBool(json["headerRow"], true),
         headerColumn: jsonBool(json["headerCol"], false),
         showOutline: !jsonBool(json["noOutline"], false),
-        cellSpec: jsonSpec(
-            json["cellSpec"],
-            TextSpec.fromJson,
-            const TextSpec(
-                fontSize: 18, weight: 400, align: TextAlignSpec.left)),
+        cellSpec:
+            jsonSpec(json["cellSpec"], TextSpec.fromJson, _defaults.cellSpec),
         headerSpec: jsonSpec(
-            json["headerSpec"],
-            TextSpec.fromJson,
-            const TextSpec(
-                fontSize: 18, weight: 700, align: TextAlignSpec.left)),
-        headerFill: colorFromJson(json["headerFill"], const Color(0xFF1D2733)),
-        cellFill: colorFromJson(json["cellFill"], const Color(0x00000000)),
+            json["headerSpec"], TextSpec.fromJson, _defaults.headerSpec),
+        headerFill: colorFromJson(json["headerFill"], _defaults.headerFill),
+        cellFill: colorFromJson(json["cellFill"], _defaults.cellFill),
         headerFade: json["headerFade"] is Map
             ? GradientSpec.fromJson(
                 (json["headerFade"] as Map).cast<String, dynamic>())
@@ -1185,11 +1192,11 @@ class TableElement extends CanvasElement {
                 (json["cellFade"] as Map).cast<String, dynamic>())
             : null,
         zebra: jsonBool(json["zebra"], true),
-        zebraFill: colorFromJson(json["zebraFill"], const Color(0x0DFFFFFF)),
+        zebraFill: colorFromJson(json["zebraFill"], _defaults.zebraFill),
         grid: TableGrid.fromName(jsonStr(json["grid"])),
-        gridWidth: jsonDouble(json["gridWidth"], 1),
-        gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
-        cellPadding: jsonDouble(json["pad"], 10),
+        gridWidth: jsonDouble(json["gridWidth"], _defaults.gridWidth),
+        gridColor: colorFromJson(json["gridColor"], _defaults.gridColor),
+        cellPadding: jsonDouble(json["pad"], _defaults.cellPadding),
         padTop:
             json["padTop"] is num ? (json["padTop"] as num).toDouble() : null,
         padRight: json["padRight"] is num
@@ -1200,27 +1207,28 @@ class TableElement extends CanvasElement {
             : null,
         padLeft:
             json["padLeft"] is num ? (json["padLeft"] as num).toDouble() : null,
-        cornerRadius: jsonDouble(json["cr"], 6),
-        pictureScale: jsonDouble(json["picScale"], 1).clamp(0.05, 1.0),
+        cornerRadius: jsonDouble(json["cr"], _defaults.cornerRadius),
+        pictureScale: jsonDouble(json["picScale"], _defaults.pictureScale)
+            .clamp(0.05, 1.0),
         columnWidths: cols is List
             ? [for (var c in cols) c is num ? c.toDouble() : 1.0]
             : const [],
-        headerHeightRatio: jsonDouble(json["headerRatio"], 1.15),
+        headerHeightRatio:
+            jsonDouble(json["headerRatio"], _defaults.headerHeightRatio),
         rules: [
           if (json["rules"] case List raw)
             for (var rule in raw)
               if (rule is Map<String, dynamic>) TableRule.fromJson(rule),
         ],
-        sort: jsonSpec(json["sort"], TableSort.fromJson, const TableSort()),
-        source:
-            jsonSpec(json["source"], DataSource.fromJson, const DataSource()),
+        sort: jsonSpec(json["sort"], TableSort.fromJson, _defaults.sort),
+        source: jsonSpec(json["source"], DataSource.fromJson, _defaults.source),
         hiddenHeaders: [
           if (json["hiddenHeaders"] case List raw)
             for (var c in raw)
               if (c is num) c.toInt(),
         ],
         animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
+            json["anim"], ElementAnimation.fromJson, _defaults.animation),
         turn: TableTurn.fromName(jsonStr(json["turn"])),
         style: jsonStr(json["style"]) ?? "",
         columnKinds: {
@@ -1232,7 +1240,7 @@ class TableElement extends CanvasElement {
         groupRows: json["groupRows"] == true,
         cards: json["cards"] == true,
         picked: json["picked"] is int ? json["picked"] as int : -1,
-        ribbon: jsonString(json["ribbon"], ""),
+        ribbon: jsonString(json["ribbon"], _defaults.ribbon),
         sheet: SheetLink.fromJson(json["sheet"]));
   }
 

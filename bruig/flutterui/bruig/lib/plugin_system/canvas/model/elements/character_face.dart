@@ -64,6 +64,10 @@ class FaceMix {
       this.gazeY = 0,
       this.tilt = 0});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = FaceMix();
+
   double unit(String u) => w[u] ?? 0;
 
   FaceMix withUnit(String u, double v) =>
@@ -103,10 +107,10 @@ class FaceMix {
 
   Map<String, dynamic> toJson() => {
         if (w.isNotEmpty) "w": w,
-        if (blush != 0) "blush": blush,
-        if (gazeX != 0) "gazeX": gazeX,
-        if (gazeY != 0) "gazeY": gazeY,
-        if (tilt != 0) "tilt": tilt,
+        if (blush != _defaults.blush) "blush": blush,
+        if (gazeX != _defaults.gazeX) "gazeX": gazeX,
+        if (gazeY != _defaults.gazeY) "gazeY": gazeY,
+        if (tilt != _defaults.tilt) "tilt": tilt,
       };
 
   static FaceMix fromJson(Object? json) {
@@ -223,6 +227,10 @@ class CharacterFace {
     this.glances = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CharacterFace();
+
   /// expressions are every expression it can wear: built in and kept.
   Map<String, FaceMix> get expressions => {...faceExpressions, ...kept};
 
@@ -247,8 +255,8 @@ class CharacterFace {
   bool get changed => expressions[name] != mix;
 
   Map<String, dynamic> toJson() => {
-        if (name != "Neutral") "name": name,
-        if (mix != const FaceMix()) "mix": mix.toJson(),
+        if (name != _defaults.name) "name": name,
+        if (mix != _defaults.mix) "mix": mix.toJson(),
         if (kept.isNotEmpty)
           "kept": {for (final e in kept.entries) e.key: e.value.toJson()},
         if (!blinks) "blinks": false,
@@ -259,7 +267,7 @@ class CharacterFace {
     if (json is! Map) return const CharacterFace();
     final kept = json["kept"];
     return CharacterFace(
-      name: jsonString(json["name"], "Neutral"),
+      name: jsonString(json["name"], _defaults.name),
       mix: FaceMix.fromJson(json["mix"]),
       kept: {
         if (kept is Map)

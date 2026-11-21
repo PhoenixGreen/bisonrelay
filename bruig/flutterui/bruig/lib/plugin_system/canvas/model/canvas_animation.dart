@@ -203,6 +203,10 @@ class Keyframe {
     this.values = const {},
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = Keyframe(frame: 0);
+
   /// ease is [t] eased to the next key: by [curve] where set, else [easing].
   double ease(double t) => easing == KeyframeEasing.custom && curve != null
       ? curve!.apply(t)
@@ -277,12 +281,12 @@ class Keyframe {
 
   Map<String, dynamic> toJson() => {
         "f": frame,
-        if (dx != 0) "dx": dx,
-        if (dy != 0) "dy": dy,
-        if (scale != 1) "s": scale,
-        if (rotate != 0) "r": rotate,
-        if (opacity != 1) "o": opacity,
-        if (easing != KeyframeEasing.linear) "e": easing.name,
+        if (dx != _defaults.dx) "dx": dx,
+        if (dy != _defaults.dy) "dy": dy,
+        if (scale != _defaults.scale) "s": scale,
+        if (rotate != _defaults.rotate) "r": rotate,
+        if (opacity != _defaults.opacity) "o": opacity,
+        if (easing != _defaults.easing) "e": easing.name,
         if (easing == KeyframeEasing.custom && curve != null)
           "c": curve!.toJson(),
         if (values.isNotEmpty) "v": values,

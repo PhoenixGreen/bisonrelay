@@ -367,6 +367,10 @@ class CodeElement extends CanvasElement {
     this.start,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CodeElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.code;
 
@@ -694,7 +698,7 @@ class CodeElement extends CanvasElement {
         if (CodeFile.fromJson(f) case var file?) file
     ];
     return CodeElement(b,
-        title: jsonString(json["title"], "project"),
+        title: jsonString(json["title"], _defaults.title),
         project: CodeKind.values.asNameMap()[json["projectKind"]] ??
             CodeKind.of(files),
         files: files,
@@ -707,7 +711,8 @@ class CodeElement extends CanvasElement {
         columns: shares(json["columns"], layout.evenColumns),
         rows: shares(json["rows"], layout.evenRows),
         theme: CodeTheme.values.asNameMap()[json["theme"]] ?? CodeTheme.night,
-        fontSize: jsonDouble(json["fontSize"], 16).clamp(4.0, 1000.0),
+        fontSize:
+            jsonDouble(json["fontSize"], _defaults.fontSize).clamp(4.0, 1000.0),
         showFiles: jsonBool(json["showFiles"], true),
         links: jsonBool(json["links"], true),
         lineNumbers: jsonBool(json["lineNumbers"], true),

@@ -25,6 +25,10 @@ class Object3dElement extends CanvasElement {
       this.tilt = 12,
       this.zoom = 1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = Object3dElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.object3d;
 
@@ -57,16 +61,16 @@ class Object3dElement extends CanvasElement {
           "anims": [
             for (var (name, length) in animations) [name, length]
           ],
-        if (turn != 25) "turn": turn,
-        if (tilt != 12) "tilt": tilt,
-        if (zoom != 1) "zoom": zoom,
+        if (turn != _defaults.turn) "turn": turn,
+        if (tilt != _defaults.tilt) "tilt": tilt,
+        if (zoom != _defaults.zoom) "zoom": zoom,
       };
 
   static Object3dElement fromJson(Map<String, dynamic> json, ElementBase base) {
     double n(String key, double or) =>
         json[key] is num ? (json[key] as num).toDouble() : or;
     return Object3dElement(base,
-        assetId: jsonString(json["asset"], ""),
+        assetId: jsonString(json["asset"], _defaults.assetId),
         animations: [
           if (json["anims"] case List anims)
             for (var a in anims)

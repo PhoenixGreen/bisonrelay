@@ -587,6 +587,10 @@ class SplitBranch {
   final bool mute;
   const SplitBranch({this.devices = const [], this.gainDb = 0, this.mute = false});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SplitBranch();
+
   SplitBranch copyWith({List<MixDevice>? devices, double? gainDb, bool? mute}) =>
       SplitBranch(
           devices: devices ?? this.devices,
@@ -595,7 +599,7 @@ class SplitBranch {
 
   Map<String, dynamic> toJson() => {
         if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
-        if (gainDb != 0) "gain": gainDb,
+        if (gainDb != _defaults.gainDb) "gain": gainDb,
         if (mute) "mute": true,
       };
 
@@ -610,7 +614,7 @@ class SplitBranch {
                 when device.kind != DeviceKind.split)
               device,
       ]),
-      gainDb: jsonDouble(json["gain"], 0).clamp(-60.0, 12.0),
+      gainDb: jsonDouble(json["gain"], _defaults.gainDb).clamp(-60.0, 12.0),
       mute: jsonBool(json["mute"], false),
     );
   }
@@ -663,6 +667,10 @@ class ReturnChannel {
       this.mix = const ChannelMix(),
       this.pre = false});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ReturnChannel("");
+
   ReturnChannel copyWith(
           {String? name,
           List<MixDevice>? devices,
@@ -688,7 +696,7 @@ class ReturnChannel {
     var id = json["id"];
     if (id is! String || id.isEmpty) return null;
     return ReturnChannel(id,
-        name: jsonString(json["name"], ""),
+        name: jsonString(json["name"], _defaults.name),
         devices: withDeviceIds([
           if (json["devices"] case List list)
             for (var d in list.take(maxChainDevices))

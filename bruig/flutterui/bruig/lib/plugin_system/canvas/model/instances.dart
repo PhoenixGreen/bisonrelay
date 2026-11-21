@@ -82,6 +82,10 @@ class ElementInstance {
   const ElementInstance(this.id,
       {this.dx = 0, this.dy = 0, this.start = 0, this.own = const {}});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ElementInstance("");
+
   ElementInstance copyWith(
           {double? dx, double? dy, double? start, Map<String, double>? own}) =>
       ElementInstance(id,
@@ -99,9 +103,9 @@ class ElementInstance {
 
   Map<String, dynamic> toJson() => {
         "id": id,
-        if (dx != 0) "dx": dx,
-        if (dy != 0) "dy": dy,
-        if (start != 0) "start": start,
+        if (dx != _defaults.dx) "dx": dx,
+        if (dy != _defaults.dy) "dy": dy,
+        if (start != _defaults.start) "start": start,
         if (own.isNotEmpty) "own": own,
       };
 
@@ -110,9 +114,9 @@ class ElementInstance {
     var id = jsonStr(json["id"]);
     if (id == null || id.isEmpty) return null;
     return ElementInstance(id,
-        dx: jsonDouble(json["dx"], 0),
-        dy: jsonDouble(json["dy"], 0),
-        start: jsonDouble(json["start"], 0).clamp(0.0, 3600.0),
+        dx: jsonDouble(json["dx"], _defaults.dx),
+        dy: jsonDouble(json["dy"], _defaults.dy),
+        start: jsonDouble(json["start"], _defaults.start).clamp(0.0, 3600.0),
         own: {
           if (json["own"] case Map raw)
             for (var e in raw.entries)
@@ -155,6 +159,10 @@ class InstanceSet {
       this.vary = const {},
       this.seed = 1,
       this.each = false});
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = InstanceSet();
 
   int get count => items.length;
 
@@ -341,7 +349,7 @@ class InstanceSet {
             for (var e in vary.entries)
               e.key.name: {"how": e.value.how.name, "amount": e.value.amount},
           },
-        if (seed != 1) "seed": seed,
+        if (seed != _defaults.seed) "seed": seed,
         if (each) "each": true,
       };
 

@@ -300,6 +300,10 @@ class ImageAdjustment {
     this.tableName = "",
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ImageAdjustment();
+
   /// value is setting [key] as it is, or as the kind starts it.
   double value(String key) {
     var given = values[key];
@@ -403,14 +407,14 @@ class ImageAdjustment {
     return ImageAdjustment(
       kind: AdjustKind.fromName(jsonStr(json["k"])),
       values: values,
-      colour: colorFromJson(json["c"], const Color(0xFFF2B33D)),
+      colour: colorFromJson(json["c"], _defaults.colour),
       fade: json["fade"] == null
           ? const ImageAdjustment().fade
           : PaintSpec.fromJson(json["fade"], const Color(0xFF14213D)),
       curves: curves,
-      table: jsonString(json["table"], ""),
+      table: jsonString(json["table"], _defaults.table),
       cube: ColourCube.fromJson(json["cube"]),
-      tableName: _short(jsonString(json["tableName"], "")),
+      tableName: _short(jsonString(json["tableName"], _defaults.tableName)),
     );
   }
 }

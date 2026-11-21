@@ -77,6 +77,10 @@ class MotionClip3d {
     this.dir = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MotionClip3d(kind: "", start: 0);
+
   double get end => start + length;
 
   /// weightAt is how much plays at [t]: faded over its first and last 0.3 s,
@@ -115,10 +119,10 @@ class MotionClip3d {
         "kind": kind,
         "start": start,
         "length": length,
-        if (speed != 1) "speed": speed,
-        if (strength != 1) "strength": strength,
+        if (speed != _defaults.speed) "speed": speed,
+        if (strength != _defaults.strength) "strength": strength,
         if (mirror) "mirror": true,
-        if (dir != 0) "dir": dir,
+        if (dir != _defaults.dir) "dir": dir,
       };
 
   static MotionClip3d? fromJson(Object? j) {
@@ -163,6 +167,10 @@ class PoseKey {
       this.tilt = 0,
       this.feeling = "Neutral"});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PoseKey(t: 0);
+
   PoseKey copyWith(
           {double? t,
           String? stance,
@@ -179,8 +187,8 @@ class PoseKey {
   Map<String, dynamic> toJson() => {
         "t": t,
         "stance": stance,
-        if (lean != 0) "lean": lean,
-        if (tilt != 0) "tilt": tilt,
+        if (lean != _defaults.lean) "lean": lean,
+        if (tilt != _defaults.tilt) "tilt": tilt,
         "feeling": feeling,
       };
 
@@ -267,6 +275,10 @@ class CharacterPerformance {
     this.speaksFor = "",
     this.startsAt = 0,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CharacterPerformance();
 
   /// copyWith is this with what is given changed; [stance] and [feeling]
   /// may be given as null, for as designed.
@@ -375,28 +387,28 @@ class CharacterPerformance {
   bool get isEmpty => this == const CharacterPerformance();
 
   Map<String, dynamic> toJson() => {
-        if (wearing != "As designed") "wearing": wearing,
+        if (wearing != _defaults.wearing) "wearing": wearing,
         if (stance != null) "stance": stance,
-        if (lean != 0) "lean": lean,
-        if (tilt != 0) "tilt": tilt,
+        if (lean != _defaults.lean) "lean": lean,
+        if (tilt != _defaults.tilt) "tilt": tilt,
         if (keys.isNotEmpty) "keys": [for (final k in keys) k.toJson()],
         if (clips.isNotEmpty) "clips": [for (final c in clips) c.toJson()],
         if (feeling != null) "feeling": feeling,
-        if (mixTo != "Happy") "mixTo": mixTo,
-        if (mixAmount != 0) "mixAmount": mixAmount,
-        if (mouth != "rest") "mouth": mouth,
+        if (mixTo != _defaults.mixTo) "mixTo": mixTo,
+        if (mixAmount != _defaults.mixAmount) "mixAmount": mixAmount,
+        if (mouth != _defaults.mouth) "mouth": mouth,
         if (!blink) "blink": false,
         if (!breathe) "breathe": false,
         if (!glance) "glance": false,
-        if (shadow != "Soft") "shadow": shadow,
+        if (shadow != _defaults.shadow) "shadow": shadow,
         if (line.isNotEmpty) "line": line,
-        if (lineAt != 0) "lineAt": lineAt,
+        if (lineAt != _defaults.lineAt) "lineAt": lineAt,
         if (mouths.isNotEmpty)
           "mouths": [
             for (final m in mouths) [m.t, m.shape.name]
           ],
         if (speaksFor.isNotEmpty) "speaksFor": speaksFor,
-        if (startsAt != 0) "startsAt": startsAt,
+        if (startsAt != _defaults.startsAt) "startsAt": startsAt,
       };
 
   static CharacterPerformance fromJson(Object? j, {String? feeling}) {

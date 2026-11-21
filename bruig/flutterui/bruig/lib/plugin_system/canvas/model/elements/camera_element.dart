@@ -56,6 +56,10 @@ class CameraElement extends CanvasElement {
       this.aimAt = "",
       this.aimFill = 0.6});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CameraElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.camera;
 
@@ -103,16 +107,17 @@ class CameraElement extends CanvasElement {
   Map<String, dynamic> props() => {
         if (view case var v?)
           "view": [v.yaw, v.pitch, v.distance, v.lens, v.tx, v.ty, v.tz],
-        if (focus != 0) "focus": focus,
+        if (focus != _defaults.focus) "focus": focus,
         if (focusOn.isNotEmpty) "focusOn": focusOn,
-        if (blur != 0) "blur": blur,
-        if (parallax != 0) "parallax": parallax,
-        if (vignette != 0) "vignette": vignette,
-        if (vignetteSoft != 0.5) "vignetteSoft": vignetteSoft,
-        if (motionBlur != 0) "motionBlur": motionBlur,
+        if (blur != _defaults.blur) "blur": blur,
+        if (parallax != _defaults.parallax) "parallax": parallax,
+        if (vignette != _defaults.vignette) "vignette": vignette,
+        if (vignetteSoft != _defaults.vignetteSoft)
+          "vignetteSoft": vignetteSoft,
+        if (motionBlur != _defaults.motionBlur) "motionBlur": motionBlur,
         if (aim.isNotEmpty) "aim": aim,
         if (aimAt.isNotEmpty) "aimAt": aimAt,
-        if (aimFill != 0.6) "aimFill": aimFill,
+        if (aimFill != _defaults.aimFill) "aimFill": aimFill,
       };
 
   static CameraElement fromJson(Map<String, dynamic> json, ElementBase base) {
@@ -130,16 +135,16 @@ class CameraElement extends CanvasElement {
           tz: n[6]);
     }
     return CameraElement(base, view: view).copyWith(
-      focus: jsonDouble(json["focus"], 0),
-      focusOn: jsonString(json["focusOn"], ""),
-      blur: jsonDouble(json["blur"], 0),
-      parallax: jsonDouble(json["parallax"], 0),
-      vignette: jsonDouble(json["vignette"], 0),
-      vignetteSoft: jsonDouble(json["vignetteSoft"], 0.5),
-      motionBlur: jsonDouble(json["motionBlur"], 0),
-      aim: jsonString(json["aim"], ""),
-      aimAt: jsonString(json["aimAt"], ""),
-      aimFill: jsonDouble(json["aimFill"], 0.6),
+      focus: jsonDouble(json["focus"], _defaults.focus),
+      focusOn: jsonString(json["focusOn"], _defaults.focusOn),
+      blur: jsonDouble(json["blur"], _defaults.blur),
+      parallax: jsonDouble(json["parallax"], _defaults.parallax),
+      vignette: jsonDouble(json["vignette"], _defaults.vignette),
+      vignetteSoft: jsonDouble(json["vignetteSoft"], _defaults.vignetteSoft),
+      motionBlur: jsonDouble(json["motionBlur"], _defaults.motionBlur),
+      aim: jsonString(json["aim"], _defaults.aim),
+      aimAt: jsonString(json["aimAt"], _defaults.aimAt),
+      aimFill: jsonDouble(json["aimFill"], _defaults.aimFill),
     );
   }
 }

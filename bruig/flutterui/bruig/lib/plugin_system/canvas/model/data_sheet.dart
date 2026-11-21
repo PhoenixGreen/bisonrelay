@@ -406,6 +406,10 @@ class DataSheet {
       this.made,
       this.folder = ""});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = DataSheet(id: "");
+
   static const int defaultGridRows = 40, defaultGridColumns = 26;
 
   /// shownRows and shownColumns are how many the grid has: its own size, or
@@ -520,8 +524,8 @@ class DataSheet {
         if (source.kind != DataKind.typed) "source": source.toJson(),
         if (spotlight.isNotEmpty) "spotlight": spotlight,
         if (spotlight.isNotEmpty) "spotlightColour": spotlightColour.toARGB32(),
-        if (gridRows != defaultGridRows) "gridRows": gridRows,
-        if (gridColumns != defaultGridColumns) "gridColumns": gridColumns,
+        if (gridRows != _defaults.gridRows) "gridRows": gridRows,
+        if (gridColumns != _defaults.gridColumns) "gridColumns": gridColumns,
         if (made != null) "made": made!.toJson(),
         if (folder.isNotEmpty) "folder": folder,
       };

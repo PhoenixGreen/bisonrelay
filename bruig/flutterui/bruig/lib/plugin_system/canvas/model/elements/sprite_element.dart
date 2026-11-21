@@ -32,6 +32,10 @@ class SpriteAction {
   const SpriteAction(this.name,
       {this.frames = const {}, this.fps = 8, this.loop = true});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SpriteAction("");
+
   /// framesFor is the frames played facing [f], and whether drawn flipped. A
   /// side with none of its own is the other side mirrored; left with neither
   /// side is the front mirrored, since a pack's figure walks right in its
@@ -87,7 +91,7 @@ class SpriteAction {
     }
     return SpriteAction(name,
         frames: frames,
-        fps: jsonDouble(json["fps"], 8).clamp(0.5, 60.0),
+        fps: jsonDouble(json["fps"], _defaults.fps).clamp(0.5, 60.0),
         loop: jsonBool(json["loop"], true));
   }
 }
@@ -181,6 +185,10 @@ class SpriteElement extends CanvasElement {
     this.built,
     this.drawn,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SpriteElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.sprite;
@@ -406,8 +414,8 @@ class SpriteElement extends CanvasElement {
         "sheetH": sheetH,
         "cols": columns,
         "rows": rows,
-        if (margin != 0) "margin": margin,
-        if (spacing != 0) "spacing": spacing,
+        if (margin != _defaults.margin) "margin": margin,
+        if (spacing != _defaults.spacing) "spacing": spacing,
         if (rects.isNotEmpty)
           "rects": [
             for (var r in rects) [r.left, r.top, r.width, r.height]
@@ -420,7 +428,7 @@ class SpriteElement extends CanvasElement {
           ],
         if (!pixelArt) "pixelArt": false,
         if (!mirrorSides) "mirrorSides": false,
-        if (facing != SpriteFacing.front) "facing": facing.name,
+        if (facing != _defaults.facing) "facing": facing.name,
         if (directions) "directions": true,
         if (faceTravel) "faceTravel": true,
         if (drawnLeft) "drawnLeft": true,
@@ -440,12 +448,12 @@ class SpriteElement extends CanvasElement {
       b,
       sheet: jsonStr(json["sheet"]) ?? "",
       sheetName: jsonStr(json["sheetName"]) ?? "",
-      sheetW: jsonDouble(json["sheetW"], 1).round().clamp(1, 1 << 15),
-      sheetH: jsonDouble(json["sheetH"], 1).round().clamp(1, 1 << 15),
-      columns: jsonDouble(json["cols"], 1).round().clamp(1, 512),
-      rows: jsonDouble(json["rows"], 1).round().clamp(1, 512),
-      margin: jsonDouble(json["margin"], 0),
-      spacing: jsonDouble(json["spacing"], 0),
+      sheetW: jsonDouble(json["sheetW"], _defaults.sheetW.toDouble()).round().clamp(1, 1 << 15),
+      sheetH: jsonDouble(json["sheetH"], _defaults.sheetH.toDouble()).round().clamp(1, 1 << 15),
+      columns: jsonDouble(json["cols"], _defaults.columns.toDouble()).round().clamp(1, 512),
+      rows: jsonDouble(json["rows"], _defaults.rows.toDouble()).round().clamp(1, 512),
+      margin: jsonDouble(json["margin"], _defaults.margin),
+      spacing: jsonDouble(json["spacing"], _defaults.spacing),
       rects: [
         if (json["rects"] case List raw)
           for (var r in raw)

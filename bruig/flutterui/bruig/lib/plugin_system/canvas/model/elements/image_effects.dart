@@ -214,6 +214,10 @@ class TextureSpec {
   })  : _colour = colour,
         _second = second;
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextureSpec();
+
   Color get colour => _colour ?? kind.startColour;
   Color get second => _second ?? kind.startSecond;
 
@@ -254,7 +258,7 @@ class TextureSpec {
         if (values.isNotEmpty) "v": values,
         if (_colour != null) "c": colorToJson(_colour),
         if (_second != null) "c2": colorToJson(_second),
-        if (seed != 1) "seed": seed,
+        if (seed != _defaults.seed) "seed": seed,
       };
 
   factory TextureSpec.fromJson(Map<String, dynamic> json) => TextureSpec(
@@ -262,6 +266,6 @@ class TextureSpec {
         values: _numbers(json["v"]),
         colour: json["c"] == null ? null : colorFromJson(json["c"]),
         second: json["c2"] == null ? null : colorFromJson(json["c2"]),
-        seed: jsonDouble(json["seed"], 1).round(),
+        seed: jsonDouble(json["seed"], _defaults.seed.toDouble()).round(),
       );
 }

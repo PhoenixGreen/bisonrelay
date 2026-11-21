@@ -113,6 +113,10 @@ class ChartInterval {
     this.how = IntervalPick.nearest,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartInterval();
+
   bool get on => unit != IntervalUnit.none;
 
   ChartInterval copyWith({
@@ -216,19 +220,19 @@ class ChartInterval {
 
   Map<String, dynamic> toJson() => {
         "unit": unit.name,
-        if (every != 1) "every": every,
-        if (month != 1) "month": month,
-        if (day != 1) "day": day,
-        if (weekday != DateTime.monday) "weekday": weekday,
-        if (how != IntervalPick.nearest) "how": how.name,
+        if (every != _defaults.every) "every": every,
+        if (month != _defaults.month) "month": month,
+        if (day != _defaults.day) "day": day,
+        if (weekday != _defaults.weekday) "weekday": weekday,
+        if (how != _defaults.how) "how": how.name,
       };
 
   factory ChartInterval.fromJson(Map<String, dynamic> json) => ChartInterval(
         unit: IntervalUnit.fromName(jsonStr(json["unit"])),
-        every: jsonInt(json["every"], 1).clamp(1, 99),
-        month: jsonInt(json["month"], 1).clamp(1, 12),
-        day: jsonInt(json["day"], 1).clamp(1, 31),
-        weekday: jsonInt(json["weekday"], DateTime.monday).clamp(1, 7),
+        every: jsonInt(json["every"], _defaults.every).clamp(1, 99),
+        month: jsonInt(json["month"], _defaults.month).clamp(1, 12),
+        day: jsonInt(json["day"], _defaults.day).clamp(1, 31),
+        weekday: jsonInt(json["weekday"], _defaults.weekday).clamp(1, 7),
         how: IntervalPick.fromName(jsonStr(json["how"])),
       );
 }

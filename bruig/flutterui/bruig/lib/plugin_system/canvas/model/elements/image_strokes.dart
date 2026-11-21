@@ -86,6 +86,10 @@ class BrushTip {
     this.tiltSize = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = BrushTip();
+
   BrushTip copyWith({
     double? roundness,
     double? angle,
@@ -132,16 +136,17 @@ class BrushTip {
       scatter, grain, pressureSize, pressureOpacity, pressureCurve, tiltSize);
 
   Map<String, dynamic> toJson() => {
-        if (roundness != 1) "round": roundness,
-        if (angle != 0) "angle": angle,
+        if (roundness != _defaults.roundness) "round": roundness,
+        if (angle != _defaults.angle) "angle": angle,
         if (followTilt) "followTilt": true,
-        if (spacing != 0.2) "spacing": spacing,
-        if (scatter != 0) "scatter": scatter,
-        if (grain != 0) "grain": grain,
-        if (pressureSize != 0.75) "pSize": pressureSize,
-        if (pressureOpacity != 0) "pOpacity": pressureOpacity,
-        if (pressureCurve != 1) "pCurve": pressureCurve,
-        if (tiltSize != 0) "tiltSize": tiltSize,
+        if (spacing != _defaults.spacing) "spacing": spacing,
+        if (scatter != _defaults.scatter) "scatter": scatter,
+        if (grain != _defaults.grain) "grain": grain,
+        if (pressureSize != _defaults.pressureSize) "pSize": pressureSize,
+        if (pressureOpacity != _defaults.pressureOpacity)
+          "pOpacity": pressureOpacity,
+        if (pressureCurve != _defaults.pressureCurve) "pCurve": pressureCurve,
+        if (tiltSize != _defaults.tiltSize) "tiltSize": tiltSize,
       };
 
   factory BrushTip.fromJson(Object? raw) {

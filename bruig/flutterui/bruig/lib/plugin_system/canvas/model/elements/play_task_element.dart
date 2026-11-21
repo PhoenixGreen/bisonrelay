@@ -220,6 +220,10 @@ class PlayTaskElement extends CanvasElement {
     this.accent = const Color(0xFFE39B2D),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PlayTaskElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.playTask;
 
@@ -283,15 +287,15 @@ class PlayTaskElement extends CanvasElement {
         v is Map<String, dynamic> ? v : null;
     return PlayTaskElement(b,
         title: jsonLabel(json["title"], plain.title),
-        text: jsonString(json["text"], ""),
+        text: jsonString(json["text"], _defaults.text),
         checks: [
           for (var c in (json["checks"] is List ? json["checks"] as List : [])
               .take(maxChecks))
             if (PlayCheck.fromJson(c) case var check?) check
         ],
         passed: jsonLabel(json["passed"], plain.passed),
-        instrument: jsonId(json["instrument"], ""),
-        sheet: jsonId(json["sheet"], ""),
+        instrument: jsonId(json["instrument"], _defaults.instrument),
+        sheet: jsonId(json["sheet"], _defaults.sheet),
         box: map(json["box"]) == null
             ? plain.box
             : BoxSpec.fromJson(map(json["box"])!),

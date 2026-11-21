@@ -104,6 +104,10 @@ class SpeechBubbleSpec {
     this.curl = 0.5,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SpeechBubbleSpec();
+
   SpeechBubbleSpec copyWith({
     BubbleBody? body,
     BubbleTail? tail,
@@ -134,10 +138,12 @@ class SpeechBubbleSpec {
       SpeechBubbleSpec(
         body: BubbleBody.fromName(jsonStr(json["body"])),
         tail: BubbleTail.fromName(jsonStr(json["tail"])),
-        tailAngle: jsonDouble(json["angle"], 115),
-        tailLength: jsonDouble(json["length"], 0.45).clamp(0.0, 2.0),
-        tailWidth: jsonDouble(json["width"], 0.32).clamp(0.02, 2.0),
-        curl: jsonDouble(json["curl"], 0.5),
+        tailAngle: jsonDouble(json["angle"], _defaults.tailAngle),
+        tailLength:
+            jsonDouble(json["length"], _defaults.tailLength).clamp(0.0, 2.0),
+        tailWidth:
+            jsonDouble(json["width"], _defaults.tailWidth).clamp(0.02, 2.0),
+        curl: jsonDouble(json["curl"], _defaults.curl),
       );
 }
 
@@ -215,6 +221,10 @@ class ShapeElement extends CanvasElement {
     this.painted = const TextFill(),
     this.animation = const ElementAnimation(),
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ShapeElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.shape;
@@ -350,7 +360,7 @@ class ShapeElement extends CanvasElement {
   factory ShapeElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       ShapeElement(b,
           shape: ShapeKind.fromName(jsonStr(json["shape"])),
-          fill: colorFromJson(json["fill"], const Color(0xFF3D7EFF)),
+          fill: colorFromJson(json["fill"], _defaults.fill),
           painted: json["painted"] is Map
               ? TextFill.fromJson((json["painted"] as Map).cast<String,
                   dynamic>())
@@ -371,26 +381,26 @@ class ShapeElement extends CanvasElement {
                           (json["strokeFade"] as Map).cast<String, dynamic>())
                   : null,
           strokeColor: colorFromJson(json["sc"]),
-          strokeWidth: jsonDouble(json["sw"], 0),
-          cornerRadius: jsonDouble(json["cr"], 0),
+          strokeWidth: jsonDouble(json["sw"], _defaults.strokeWidth),
+          cornerRadius: jsonDouble(json["cr"], _defaults.cornerRadius),
           radTL: json["rTL"] == null ? null : jsonDouble(json["rTL"], 0),
           radTR: json["rTR"] == null ? null : jsonDouble(json["rTR"], 0),
           radBR: json["rBR"] == null ? null : jsonDouble(json["rBR"], 0),
           radBL: json["rBL"] == null ? null : jsonDouble(json["rBL"], 0),
-          padding: jsonDouble(json["pad"], 0),
+          padding: jsonDouble(json["pad"], _defaults.padding),
           padL: json["padL"] == null ? null : jsonDouble(json["padL"], 0),
           padT: json["padT"] == null ? null : jsonDouble(json["padT"], 0),
           padR: json["padR"] == null ? null : jsonDouble(json["padR"], 0),
           padB: json["padB"] == null ? null : jsonDouble(json["padB"], 0),
-          points: jsonInt(json["points"], 5),
-          innerRatio: jsonDouble(json["inner"], 0.42),
-          text: jsonString(json["text"], ""),
-          textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
-              const TextSpec(fontSize: 24, weight: 700)),
-          bubble: jsonSpec(json["bubble"], SpeechBubbleSpec.fromJson,
-              const SpeechBubbleSpec()),
-          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-              const ElementAnimation()));
+          points: jsonInt(json["points"], _defaults.points),
+          innerRatio: jsonDouble(json["inner"], _defaults.innerRatio),
+          text: jsonString(json["text"], _defaults.text),
+          textSpec:
+              jsonSpec(json["textSpec"], TextSpec.fromJson, _defaults.textSpec),
+          bubble: jsonSpec(
+              json["bubble"], SpeechBubbleSpec.fromJson, _defaults.bubble),
+          animation: jsonSpec(
+              json["anim"], ElementAnimation.fromJson, _defaults.animation));
 }
 
 /// strokeToSee is the width for a shape stroked for the first time: enough

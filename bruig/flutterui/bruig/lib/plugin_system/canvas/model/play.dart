@@ -109,6 +109,10 @@ class PlaySpec {
     this.struck = const GameEffect(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PlaySpec();
+
   /// isNone is whether it does nothing in a game: not played, pressed or hit.
   bool get isNone => as == PlayAs.none && pressedBy.isEmpty && hits == 0;
 
@@ -160,13 +164,13 @@ class PlaySpec {
 
   Map<String, dynamic> toJson() => {
         "as": as.name,
-        if (speed != 320) "speed": speed,
-        if (jump != 180) "jump": jump,
-        if (gravity != 2200) "gravity": gravity,
+        if (speed != _defaults.speed) "speed": speed,
+        if (jump != _defaults.jump) "jump": jump,
+        if (gravity != _defaults.gravity) "gravity": gravity,
         if (!follow) "follow": false,
-        if (zoom != 1) "zoom": zoom,
-        if (zoomOut != 0) "zoomOut": zoomOut,
-        if (player != 1) "player": player,
+        if (zoom != _defaults.zoom) "zoom": zoom,
+        if (zoomOut != _defaults.zoomOut) "zoomOut": zoomOut,
+        if (player != _defaults.player) "player": player,
         if (as.touched) "touched": touched.toJson(),
         if (sound.isNotEmpty) "sound": sound,
         if (stays) "stays": true,
@@ -174,7 +178,7 @@ class PlaySpec {
         if (touchWhole) "touchWhole": true,
         if (pressedBy.isNotEmpty) ...{
           "pressedBy": pressedBy,
-          if (reach != 0) "reach": reach,
+          if (reach != _defaults.reach) "reach": reach,
           "press": press.toJson(),
           if (pressSound.isNotEmpty) "pressSound": pressSound,
         },
@@ -190,28 +194,28 @@ class PlaySpec {
     if (json is! Map) return const PlaySpec();
     return const PlaySpec().copyWith(
       as: PlayAs.fromName(jsonStr(json["as"])),
-      speed: jsonDouble(json["speed"], 320),
-      jump: jsonDouble(json["jump"], 180),
-      gravity: jsonDouble(json["gravity"], 2200),
+      speed: jsonDouble(json["speed"], _defaults.speed),
+      jump: jsonDouble(json["jump"], _defaults.jump),
+      gravity: jsonDouble(json["gravity"], _defaults.gravity),
       follow: json["follow"] != false,
-      zoom: jsonDouble(json["zoom"], 1),
-      zoomOut: jsonDouble(json["zoomOut"], 0),
+      zoom: jsonDouble(json["zoom"], _defaults.zoom),
+      zoomOut: jsonDouble(json["zoomOut"], _defaults.zoomOut),
       player: json["player"] is num ? (json["player"] as num).toInt() : 1,
       touched: GameEffect.fromJson(json["touched"]),
-      sound: jsonString(json["sound"], ""),
+      sound: jsonString(json["sound"], _defaults.sound),
       stays: json["stays"] == true,
       sendsBack: json["sendsBack"] != false,
       touchWhole: json["touchWhole"] == true,
       pressSound:
           json["pressSound"] is String ? json["pressSound"] as String : "",
-      pressedBy: jsonString(json["pressedBy"], ""),
-      reach: jsonDouble(json["reach"], 0),
+      pressedBy: jsonString(json["pressedBy"], _defaults.pressedBy),
+      reach: jsonDouble(json["reach"], _defaults.reach),
       press: json["press"] is Map<String, dynamic>
           ? ButtonAction.fromJson(json["press"] as Map<String, dynamic>)
           : null,
       hits: json["hits"] is num ? (json["hits"] as num).toInt() : 0,
       defeated: GameEffect.fromJson(json["defeated"]),
-      hitSound: jsonString(json["hitSound"], ""),
+      hitSound: jsonString(json["hitSound"], _defaults.hitSound),
       struck: GameEffect.fromJson(json["struck"]),
     );
   }
@@ -370,6 +374,10 @@ class GameEffect {
       this.element = "",
       this.sound = ""});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = GameEffect();
+
   GameEffect copyWith(
           {GameDoes? does,
           String? count,
@@ -388,7 +396,7 @@ class GameEffect {
   Map<String, dynamic> toJson() => {
         "does": does.name,
         if (count.isNotEmpty) "count": count,
-        if (amount != 1) "amount": amount,
+        if (amount != _defaults.amount) "amount": amount,
         if (scene.isNotEmpty) "scene": scene,
         if (element.isNotEmpty) "element": element,
         if (sound.isNotEmpty) "sound": sound,
@@ -398,13 +406,13 @@ class GameEffect {
     if (json is! Map) return const GameEffect();
     return GameEffect(
         does: GameDoes.fromName(jsonStr(json["does"])),
-        count: jsonString(json["count"], ""),
+        count: jsonString(json["count"], _defaults.count),
         amount: json["amount"] is num
             ? (json["amount"] as num).toInt().clamp(1, 1000000)
             : 1,
-        scene: jsonString(json["scene"], ""),
-        element: jsonString(json["element"], ""),
-        sound: jsonString(json["sound"], ""));
+        scene: jsonString(json["scene"], _defaults.scene),
+        element: jsonString(json["element"], _defaults.element),
+        sound: jsonString(json["sound"], _defaults.sound));
   }
 
   @override
@@ -434,6 +442,10 @@ class GameCount {
   const GameCount(this.id, this.name,
       {this.start = 0, this.reach, this.then = const GameEffect()});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = GameCount("", "");
+
   GameCount copyWith(
           {String? name,
           int? start,
@@ -448,7 +460,7 @@ class GameCount {
   Map<String, dynamic> toJson() => {
         "id": id,
         "name": name,
-        if (start != 0) "start": start,
+        if (start != _defaults.start) "start": start,
         if (reach case var r?) "reach": r,
         if (then.does != GameDoes.nothing) "then": then.toJson(),
       };

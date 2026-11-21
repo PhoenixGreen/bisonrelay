@@ -65,6 +65,10 @@ class BookDetails {
     this.isbns = const {},
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = BookDetails();
+
   /// isbnOf is [edition]'s ISBN as written, or empty.
   String isbnOf(BookEdition edition) => isbns[edition.name] ?? "";
 
@@ -129,10 +133,11 @@ class BookDetails {
         if (author.isNotEmpty) "author": author,
         if (publisher.isNotEmpty) "publisher": publisher,
         if (description.isNotEmpty) "description": description,
-        if (language != "en") "language": language,
+        if (language != _defaults.language) "language": language,
         if (subjects.isNotEmpty) "subjects": subjects,
         if (series.isNotEmpty) "series": series,
-        if (seriesNumber != 0) "seriesNumber": seriesNumber,
+        if (seriesNumber != _defaults.seriesNumber)
+          "seriesNumber": seriesNumber,
         if (published.isNotEmpty) "published": published,
         if (rights.isNotEmpty) "rights": rights,
         if (isbns.isNotEmpty) "isbns": isbns,
@@ -157,7 +162,8 @@ class BookDetails {
       language: language.isEmpty ? "en" : language,
       subjects: text("subjects", 1000),
       series: text("series", 300),
-      seriesNumber: jsonInt(json["seriesNumber"], 0).clamp(0, 9999),
+      seriesNumber:
+          jsonInt(json["seriesNumber"], _defaults.seriesNumber).clamp(0, 9999),
       published: text("published", 10),
       rights: text("rights", 500),
       isbns: raw is Map

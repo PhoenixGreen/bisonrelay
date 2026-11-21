@@ -195,6 +195,10 @@ class ElementAnimation {
     this.exitStrength = 1,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ElementAnimation();
+
   bool get on => preset != ElementAnimationPreset.none;
   bool get closes => exit != ElementAnimationPreset.none;
 
@@ -323,29 +327,32 @@ class ElementAnimation {
         if (length > 0) "length": length,
         if (loop.on) "loop": loop.toJson(),
         if (direction != null) "direction": direction!.name,
-        if (strength != 1) "strength": strength,
+        if (strength != _defaults.strength) "strength": strength,
         if (exitDirection != null) "exitDirection": exitDirection!.name,
-        if (exitStrength != 1) "exitStrength": exitStrength,
+        if (exitStrength != _defaults.exitStrength)
+          "exitStrength": exitStrength,
       };
 
   factory ElementAnimation.fromJson(Map<String, dynamic> json) =>
       ElementAnimation(
         preset: ElementAnimationPreset.fromName(jsonStr(json["preset"])),
         exit: ElementAnimationPreset.fromName(jsonStr(json["exit"])),
-        scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
+        scale: jsonDouble(json["scale"], _defaults.scale).clamp(0.0, 8.0),
         effect: json["effect"] is Map<String, dynamic>
             ? EffectSpec.fromJson(json["effect"] as Map<String, dynamic>)
             : const EffectSpec(),
         ease: ChartEase.fromName(jsonStr(json["ease"])),
-        length: jsonInt(json["length"], 0).clamp(0, 100000),
+        length: jsonInt(json["length"], _defaults.length).clamp(0, 100000),
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
             : const ElementLoop(),
         direction: AnimationDirection.fromName(jsonStr(json["direction"])),
-        strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
+        strength:
+            jsonDouble(json["strength"], _defaults.strength).clamp(0.0, 10.0),
         exitDirection:
             AnimationDirection.fromName(jsonStr(json["exitDirection"])),
-        exitStrength: jsonDouble(json["exitStrength"], 1).clamp(0.0, 10.0),
+        exitStrength: jsonDouble(json["exitStrength"], _defaults.exitStrength)
+            .clamp(0.0, 10.0),
       );
 
   @override

@@ -50,6 +50,10 @@ class StageSpot {
       this.facing = 0,
       this.stand = SpotStand.upright});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = StageSpot("");
+
   StageSpot copyWith(
           {String? stage,
           double? x,
@@ -89,12 +93,12 @@ class StageSpot {
 
   Map<String, dynamic> toJson() => {
         "stage": stage,
-        if (x != 0) "x": x,
-        if (z != 0) "z": z,
-        if (lift != 0) "lift": lift,
-        if (height != 1.6) "height": height,
-        if (facing != 0) "facing": facing,
-        if (stand != SpotStand.upright) "stand": stand.name,
+        if (x != _defaults.x) "x": x,
+        if (z != _defaults.z) "z": z,
+        if (lift != _defaults.lift) "lift": lift,
+        if (height != _defaults.height) "height": height,
+        if (facing != _defaults.facing) "facing": facing,
+        if (stand != _defaults.stand) "stand": stand.name,
       };
 
   static StageSpot? fromJson(Object? json) {

@@ -177,6 +177,10 @@ class EffectSpec {
     this.seed = 1,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = EffectSpec();
+
   EffectSpec copyWith({
     int? pieces,
     double? scatter,
@@ -195,17 +199,17 @@ class EffectSpec {
   Map<String, dynamic> toJson() => {
         "pieces": pieces,
         "scatter": scatter,
-        if (spin != 0) "spin": spin,
+        if (spin != _defaults.spin) "spin": spin,
         "stagger": stagger,
-        if (seed != 1) "seed": seed,
+        if (seed != _defaults.seed) "seed": seed,
       };
 
   factory EffectSpec.fromJson(Map<String, dynamic> json) => EffectSpec(
-        pieces: jsonInt(json["pieces"], 10).clamp(1, 64),
-        scatter: jsonDouble(json["scatter"], 0.35).clamp(0, 8),
-        spin: jsonDouble(json["spin"], 0).clamp(-8, 8),
-        stagger: jsonDouble(json["stagger"], 0.5).clamp(0, 1),
-        seed: jsonInt(json["seed"], 1),
+        pieces: jsonInt(json["pieces"], _defaults.pieces).clamp(1, 64),
+        scatter: jsonDouble(json["scatter"], _defaults.scatter).clamp(0, 8),
+        spin: jsonDouble(json["spin"], _defaults.spin).clamp(-8, 8),
+        stagger: jsonDouble(json["stagger"], _defaults.stagger).clamp(0, 1),
+        seed: jsonInt(json["seed"], _defaults.seed),
       );
 
   @override
@@ -498,6 +502,10 @@ class TextDrawSpec {
     this.radius = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextDrawSpec();
+
   /// evenPad is the padding all four sides share, or null where they differ.
   double? get evenPad =>
       padLeft == padTop && padTop == padRight && padRight == padBottom
@@ -535,12 +543,12 @@ class TextDrawSpec {
 
   Map<String, dynamic> toJson() => {
         if (color != null) "color": colorToJson(color!),
-        if (start != TextDrawStart.showText) "start": start.name,
-        if (padLeft != 0) "l": padLeft,
-        if (padTop != 0) "t": padTop,
-        if (padRight != 0) "r": padRight,
-        if (padBottom != 0) "b": padBottom,
-        if (radius != 0) "radius": radius,
+        if (start != _defaults.start) "start": start.name,
+        if (padLeft != _defaults.padLeft) "l": padLeft,
+        if (padTop != _defaults.padTop) "t": padTop,
+        if (padRight != _defaults.padRight) "r": padRight,
+        if (padBottom != _defaults.padBottom) "b": padBottom,
+        if (radius != _defaults.radius) "radius": radius,
       };
 
   factory TextDrawSpec.fromJson(Map<String, dynamic> json) => TextDrawSpec(
@@ -548,11 +556,11 @@ class TextDrawSpec {
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
         start: TextDrawStart.fromName(jsonStr(json["start"])),
-        padLeft: jsonDouble(json["l"], 0),
-        padTop: jsonDouble(json["t"], 0),
-        padRight: jsonDouble(json["r"], 0),
-        padBottom: jsonDouble(json["b"], 0),
-        radius: jsonDouble(json["radius"], 0),
+        padLeft: jsonDouble(json["l"], _defaults.padLeft),
+        padTop: jsonDouble(json["t"], _defaults.padTop),
+        padRight: jsonDouble(json["r"], _defaults.padRight),
+        padBottom: jsonDouble(json["b"], _defaults.padBottom),
+        radius: jsonDouble(json["radius"], _defaults.radius),
       );
 }
 
@@ -586,6 +594,10 @@ class TextEchoSpec {
     this.resolve = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextEchoSpec();
+
   TextEchoSpec copyWith({
     int? copies,
     double? spacing,
@@ -602,18 +614,18 @@ class TextEchoSpec {
       );
 
   Map<String, dynamic> toJson() => {
-        if (copies != 4) "copies": copies,
-        if (spacing != 1) "spacing": spacing,
-        if (fade != 0.55) "fade": fade,
-        if (shrink != 1) "shrink": shrink,
+        if (copies != _defaults.copies) "copies": copies,
+        if (spacing != _defaults.spacing) "spacing": spacing,
+        if (fade != _defaults.fade) "fade": fade,
+        if (shrink != _defaults.shrink) "shrink": shrink,
         if (resolve) "resolve": true,
       };
 
   factory TextEchoSpec.fromJson(Map<String, dynamic> json) => TextEchoSpec(
-        copies: jsonInt(json["copies"], 4).clamp(1, 24),
-        spacing: jsonDouble(json["spacing"], 1).clamp(0.05, 8),
-        fade: jsonDouble(json["fade"], 0.55).clamp(0.05, 1),
-        shrink: jsonDouble(json["shrink"], 1).clamp(0.2, 1),
+        copies: jsonInt(json["copies"], _defaults.copies).clamp(1, 24),
+        spacing: jsonDouble(json["spacing"], _defaults.spacing).clamp(0.05, 8),
+        fade: jsonDouble(json["fade"], _defaults.fade).clamp(0.05, 1),
+        shrink: jsonDouble(json["shrink"], _defaults.shrink).clamp(0.2, 1),
         resolve: jsonBool(json["resolve"], false),
       );
 }
@@ -693,6 +705,10 @@ class TextAnimation {
     this.piecesInTurn = false,
     this.piecesGap = 0.5,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextAnimation();
 
   bool get on => preset != TextAnimationPreset.none;
 
@@ -859,9 +875,10 @@ class TextAnimation {
         "ease": ease.name,
         if (length > 0) "length": length,
         if (direction != null) "direction": direction!.name,
-        if (strength != 1) "strength": strength,
+        if (strength != _defaults.strength) "strength": strength,
         if (exitDirection != null) "exitDirection": exitDirection!.name,
-        if (exitStrength != 1) "exitStrength": exitStrength,
+        if (exitStrength != _defaults.exitStrength)
+          "exitStrength": exitStrength,
         if (loop.on) "loop": loop.toJson(),
         if (piecesInTurn) "piecesInTurn": true,
         if (piecesInTurn) "piecesGap": piecesGap,
@@ -871,8 +888,8 @@ class TextAnimation {
         preset: TextAnimationPreset.fromName(jsonStr(json["preset"])),
         exit: TextAnimationPreset.fromName(jsonStr(json["exit"])),
         exitInOrder: jsonBool(json["exitOrder"], false),
-        gap: jsonDouble(json["gap"], 0.35).clamp(0.0, 4.0),
-        scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
+        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0.0, 4.0),
+        scale: jsonDouble(json["scale"], _defaults.scale).clamp(0.0, 8.0),
         draw: json["draw"] is Map<String, dynamic>
             ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
             : const TextDrawSpec(),
@@ -883,16 +900,19 @@ class TextAnimation {
             ? EffectSpec.fromJson(json["effect"] as Map<String, dynamic>)
             : const EffectSpec(),
         ease: ChartEase.fromName(jsonStr(json["ease"])),
-        length: jsonInt(json["length"], 0).clamp(0, 100000),
+        length: jsonInt(json["length"], _defaults.length).clamp(0, 100000),
         direction: AnimationDirection.fromName(jsonStr(json["direction"])),
-        strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
+        strength:
+            jsonDouble(json["strength"], _defaults.strength).clamp(0.0, 10.0),
         exitDirection:
             AnimationDirection.fromName(jsonStr(json["exitDirection"])),
-        exitStrength: jsonDouble(json["exitStrength"], 1).clamp(0.0, 10.0),
+        exitStrength: jsonDouble(json["exitStrength"], _defaults.exitStrength)
+            .clamp(0.0, 10.0),
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
             : const ElementLoop(),
         piecesInTurn: jsonBool(json["piecesInTurn"], false),
-        piecesGap: jsonDouble(json["piecesGap"], 0.5).clamp(0.0, 1.0),
+        piecesGap:
+            jsonDouble(json["piecesGap"], _defaults.piecesGap).clamp(0.0, 1.0),
       );
 }

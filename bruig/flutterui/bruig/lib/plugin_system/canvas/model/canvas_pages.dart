@@ -96,6 +96,10 @@ class PagesSpec {
     this.book = const BookDetails(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PagesSpec();
+
   PagesSpec copyWith({
     bool? facing,
     int? startAt,
@@ -124,7 +128,7 @@ class PagesSpec {
 
   Map<String, dynamic> toJson() => {
         if (facing) "facing": true,
-        if (startAt != 1) "startAt": startAt,
+        if (startAt != _defaults.startAt) "startAt": startAt,
         if (countCovers) "countCovers": true,
         if (numbersOnCovers) "numbersOnCovers": true,
         if (masterOnCovers) "masterOnCovers": true,
@@ -133,7 +137,7 @@ class PagesSpec {
 
   factory PagesSpec.fromJson(Map<String, dynamic> json) => PagesSpec(
         facing: jsonBool(json["facing"], false),
-        startAt: jsonInt(json["startAt"], 1),
+        startAt: jsonInt(json["startAt"], _defaults.startAt),
         countCovers: jsonBool(json["countCovers"], false),
         numbersOnCovers: jsonBool(json["numbersOnCovers"], false),
         masterOnCovers: jsonBool(json["masterOnCovers"], false),

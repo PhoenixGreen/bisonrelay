@@ -81,6 +81,10 @@ class MediaSource {
     this.clip,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MediaSource(assetId: "");
+
   /// endOr is where playing stops, given the file's real length.
   double endOr(double fileLength) {
     var stop = end > 0 ? end : fileLength;
@@ -142,16 +146,17 @@ class MediaSource {
     var end = math.max(0.0, jsonDouble(json["end"], 0));
     return MediaSource(
       assetId: jsonString(json["asset"], ""),
-      name: jsonString(json["name"], ""),
+      name: jsonString(json["name"], _defaults.name),
       start: start,
       // An end before the start would play nothing: taken as "to the end".
       end: end > start ? end : 0,
-      length: jsonDouble(json["length"], 0).clamp(0.0, 6 * 3600.0),
-      posterId: jsonString(json["poster"], ""),
-      soundId: jsonString(json["sound"], ""),
-      width: jsonInt(json["w"], 0),
-      height: jsonInt(json["h"], 0),
-      fps: math.max(0.0, jsonDouble(json["fps"], 0)),
+      length:
+          jsonDouble(json["length"], _defaults.length).clamp(0.0, 6 * 3600.0),
+      posterId: jsonString(json["poster"], _defaults.posterId),
+      soundId: jsonString(json["sound"], _defaults.soundId),
+      width: jsonInt(json["w"], _defaults.width),
+      height: jsonInt(json["h"], _defaults.height),
+      fps: math.max(0.0, jsonDouble(json["fps"], _defaults.fps)),
       pitch: PitchEdit.fromJson(json["pitch"]),
       clip: SessionClip.fromJson(json["clip"]),
     );
@@ -225,6 +230,10 @@ class MediaClip {
     this.channel = "",
     this.channelName = "",
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MediaClip();
 
   bool get isEmpty => playlist.every((s) => s.assetId.isEmpty);
 
@@ -330,16 +339,16 @@ class MediaClip {
   Map<String, dynamic> toJson() => {
         if (playlist.isNotEmpty)
           "playlist": [for (var s in playlist) s.toJson()],
-        if (volume != 0.8) "volume": volume,
+        if (volume != _defaults.volume) "volume": volume,
         if (muted) "muted": true,
         if (fadeIn > 0) "fadeIn": fadeIn,
         if (fadeOut > 0) "fadeOut": fadeOut,
-        if (speed != 1) "speed": speed,
-        if (loop != MediaLoop.none) "loop": loop.name,
+        if (speed != _defaults.speed) "speed": speed,
+        if (loop != _defaults.loop) "loop": loop.name,
         if (autoplay) "autoplay": true,
         if (!acrossPages) "stopsAtJoin": true,
         if (timed) "timed": true,
-        if (at != 0) "at": at,
+        if (at != _defaults.at) "at": at,
         if (!mix.isDefault) "mix": mix.toJson(),
         if (channel.isNotEmpty) "channel": channel,
         if (channelName.isNotEmpty) "channelName": channelName,
@@ -356,18 +365,19 @@ class MediaClip {
             ]
           : const [],
       // Up to twice (+6 dB) for a sound on the timeline.
-      volume: jsonDouble(json["volume"], 0.8).clamp(0.0, 2.0),
+      volume: jsonDouble(json["volume"], _defaults.volume).clamp(0.0, 2.0),
       muted: jsonBool(json["muted"], false),
-      fadeIn: math.max(0.0, jsonDouble(json["fadeIn"], 0)),
-      fadeOut: math.max(0.0, jsonDouble(json["fadeOut"], 0)),
-      speed: jsonDouble(json["speed"], 1).clamp(0.1, 4.0).toDouble(),
+      fadeIn: math.max(0.0, jsonDouble(json["fadeIn"], _defaults.fadeIn)),
+      fadeOut: math.max(0.0, jsonDouble(json["fadeOut"], _defaults.fadeOut)),
+      speed:
+          jsonDouble(json["speed"], _defaults.speed).clamp(0.1, 4.0).toDouble(),
       loop: MediaLoop.fromName(jsonStr(json["loop"])),
       autoplay: jsonBool(json["autoplay"], false),
       acrossPages: !jsonBool(json["stopsAtJoin"], false),
       timed: jsonBool(json["timed"], false),
-      at: math.max(0, jsonInt(json["at"], 0)),
-      mix: jsonSpec(json["mix"], ChannelMix.fromJson, const ChannelMix()),
-      channel: jsonString(json["channel"], ""),
+      at: math.max(0, jsonInt(json["at"], _defaults.at)),
+      mix: jsonSpec(json["mix"], ChannelMix.fromJson, _defaults.mix),
+      channel: jsonString(json["channel"], _defaults.channel),
       channelName:
           json["channelName"] is String ? json["channelName"] as String : "",
       place: json["place"] is Map<String, dynamic>

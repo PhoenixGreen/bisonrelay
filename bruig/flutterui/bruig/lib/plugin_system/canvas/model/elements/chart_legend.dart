@@ -59,6 +59,10 @@ class ChartLegend {
     this.y = double.nan,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartLegend();
+
   /// hasPlace is whether it has been dragged somewhere of its own.
   bool get hasPlace => !x.isNaN && !y.isNaN;
 
@@ -96,10 +100,10 @@ class ChartLegend {
   Map<String, dynamic> toJson() => {
         "at": placement.name,
         if (vertical) "vertical": true,
-        if (scale != 1) "scale": scale,
-        if (spacing != 1) "spacing": spacing,
+        if (scale != _defaults.scale) "scale": scale,
+        if (spacing != _defaults.spacing) "spacing": spacing,
         if (values) "values": true,
-        if (separator != ": ") "sep": separator,
+        if (separator != _defaults.separator) "sep": separator,
         if (hasPlace) "x": x,
         if (hasPlace) "y": y,
       };
@@ -107,11 +111,11 @@ class ChartLegend {
   factory ChartLegend.fromJson(Map<String, dynamic> json) => ChartLegend(
         placement: LegendPlacement.fromName(jsonStr(json["at"])),
         vertical: jsonBool(json["vertical"], false),
-        scale: jsonDouble(json["scale"], 1).clamp(0.3, 4.0),
-        spacing: jsonDouble(json["spacing"], 1).clamp(0.0, 6.0),
+        scale: jsonDouble(json["scale"], _defaults.scale).clamp(0.3, 4.0),
+        spacing: jsonDouble(json["spacing"], _defaults.spacing).clamp(0.0, 6.0),
         values: jsonBool(json["values"], false),
-        separator: jsonString(json["sep"], ": "),
-        x: jsonDouble(json["x"], double.nan),
-        y: jsonDouble(json["y"], double.nan),
+        separator: jsonString(json["sep"], _defaults.separator),
+        x: jsonDouble(json["x"], _defaults.x),
+        y: jsonDouble(json["y"], _defaults.y),
       );
 }

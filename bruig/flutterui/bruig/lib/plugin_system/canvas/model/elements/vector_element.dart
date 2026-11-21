@@ -705,6 +705,10 @@ class VectorElement extends CanvasElement {
     this.animation = const ElementAnimation(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = VectorElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.vector;
 
@@ -822,13 +826,13 @@ class VectorElement extends CanvasElement {
   @override
   Map<String, dynamic> props() => {
         if (assetId.isNotEmpty) "asset": assetId,
-        if (viewBox != Rect.zero)
+        if (viewBox != _defaults.viewBox)
           "vb": [viewBox.left, viewBox.top, viewBox.width, viewBox.height],
         if (shapes != null) "shapes": [for (var s in shapes!) s.toJson()],
-        if (fit != VectorFit.contain) "fit": fit.name,
-        if (handleColor != defaultHandleColor)
+        if (fit != _defaults.fit) "fit": fit.name,
+        if (handleColor != _defaults.handleColor)
           "handle": colorToJson(handleColor),
-        if (handleSize != 8) "handleSize": handleSize,
+        if (handleSize != _defaults.handleSize) "handleSize": handleSize,
         if (tint != null) "tint": colorToJson(tint!),
         if (!crop.isWhole) "crop": crop.toJson(),
         if (animation.any) "anim": animation.toJson(),
@@ -838,7 +842,7 @@ class VectorElement extends CanvasElement {
     var vb = json["vb"];
     var raw = json["shapes"];
     return VectorElement(b,
-        assetId: jsonString(json["asset"], ""),
+        assetId: jsonString(json["asset"], _defaults.assetId),
         viewBox: vb is List && vb.length == 4 && vb.every((v) => v is num)
             ? Rect.fromLTWH(
                 (vb[0] as num).toDouble(),
@@ -853,12 +857,12 @@ class VectorElement extends CanvasElement {
               ]
             : null,
         fit: VectorFit.fromName(jsonStr(json["fit"])),
-        handleColor: colorFromJson(json["handle"], defaultHandleColor),
-        handleSize: jsonDouble(json["handleSize"], 8),
+        handleColor: colorFromJson(json["handle"], _defaults.handleColor),
+        handleSize: jsonDouble(json["handleSize"], _defaults.handleSize),
         tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
-        crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
+        crop: jsonSpec(json["crop"], ImageCrop.fromJson, _defaults.crop),
         animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
+            json["anim"], ElementAnimation.fromJson, _defaults.animation));
   }
 }
 
@@ -956,6 +960,10 @@ class VectorText {
     this.signature = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = VectorText();
+
   VectorText copyWith({
     String? text,
     String? family,
@@ -986,12 +994,12 @@ class VectorText {
   Map<String, dynamic> toJson() => {
         "t": text,
         "font": family,
-        if (weight != 400) "weight": weight,
+        if (weight != _defaults.weight) "weight": weight,
         if (italic) "italic": true,
         "size": size,
-        if (spacing != 0) "spacing": spacing,
-        if (leading != 1) "leading": leading,
-        if (align != VectorTextAlign.left) "align": align.name,
+        if (spacing != _defaults.spacing) "spacing": spacing,
+        if (leading != _defaults.leading) "leading": leading,
+        if (align != _defaults.align) "align": align.name,
         "at": [origin.dx, origin.dy],
         "from": [fromFirst.dx, fromFirst.dy],
         "sig": signature,
@@ -1002,13 +1010,13 @@ class VectorText {
         ? Offset(jsonDouble(v[0], 0), jsonDouble(v[1], 0))
         : Offset.zero;
     return VectorText(
-      text: jsonString(json["t"], ""),
-      family: jsonLabel(json["font"], "Inter"),
+      text: jsonString(json["t"], _defaults.text),
+      family: jsonLabel(json["font"], _defaults.family),
       weight: json["weight"] is int ? json["weight"] as int : 400,
       italic: json["italic"] == true,
-      size: jsonDouble(json["size"], 48),
-      spacing: jsonDouble(json["spacing"], 0),
-      leading: jsonDouble(json["leading"], 1),
+      size: jsonDouble(json["size"], _defaults.size),
+      spacing: jsonDouble(json["spacing"], _defaults.spacing),
+      leading: jsonDouble(json["leading"], _defaults.leading),
       align: VectorTextAlign.values
               .where((a) => a.name == json["align"])
               .firstOrNull ??

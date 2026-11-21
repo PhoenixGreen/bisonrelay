@@ -53,6 +53,10 @@ class EqBand {
   const EqBand(this.freq,
       {this.gainDb = 0, this.q = 0.707, this.on = true, this.slope = 12});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = EqBand(0);
+
   EqBand copyWith(
           {double? freq, double? gainDb, double? q, bool? on, int? slope}) =>
       EqBand(freq ?? this.freq,
@@ -66,12 +70,12 @@ class EqBand {
         "g": gainDb,
         "q": q,
         if (!on) "on": false,
-        if (slope != 12) "s": slope,
+        if (slope != _defaults.slope) "s": slope,
       };
 
   static EqBand fromJson(dynamic json, EqBand fallback) => json is Map
       ? EqBand(jsonDouble(json["f"], fallback.freq).clamp(20.0, 20000.0),
-          gainDb: jsonDouble(json["g"], 0).clamp(-12.0, 12.0),
+          gainDb: jsonDouble(json["g"], _defaults.gainDb).clamp(-12.0, 12.0),
           q: jsonDouble(json["q"], fallback.q).clamp(0.1, 10.0),
           // Written only when off, so a band present without it is on.
           on: jsonBool(json["on"], true),
@@ -113,6 +117,10 @@ class Eq {
     this.gainDb = 0,
     this.stereo = 0,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = Eq();
 
   EqBand band(EqSlot slot) => switch (slot) {
         EqSlot.lowCut => lowCut,
@@ -174,8 +182,8 @@ class Eq {
   Map<String, dynamic> toJson() => {
         if (on) "on": true,
         for (var slot in EqSlot.values) slot.name: band(slot).toJson(),
-        if (gainDb != 0) "gain": gainDb,
-        if (stereo != 0) "stereo": stereo,
+        if (gainDb != _defaults.gainDb) "gain": gainDb,
+        if (stereo != _defaults.stereo) "stereo": stereo,
       };
 
   factory Eq.fromJson(Map<String, dynamic> json) {
@@ -190,8 +198,8 @@ class Eq {
       presence: read(EqSlot.presence),
       high: read(EqSlot.high),
       highCut: read(EqSlot.highCut),
-      gainDb: jsonDouble(json["gain"], 0).clamp(-12.0, 12.0),
-      stereo: jsonInt(json["stereo"], 0).clamp(0, 2),
+      gainDb: jsonDouble(json["gain"], _defaults.gainDb).clamp(-12.0, 12.0),
+      stereo: jsonInt(json["stereo"], _defaults.stereo).clamp(0, 2),
     );
   }
 
@@ -293,6 +301,10 @@ class Dynamics {
     this.stereo = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = Dynamics();
+
   /// stereo is what it works on: see Eq.stereo.
   final int stereo;
 
@@ -333,25 +345,29 @@ class Dynamics {
         "attack": attackMs,
         "release": releaseMs,
         "makeup": makeupDb,
-        if (kneeDb != 6) "knee": kneeDb,
-        if (mix != 1) "mix": mix,
-        if (autoGain != AutoGain.off) "autoGain": autoGain.name,
+        if (kneeDb != _defaults.kneeDb) "knee": kneeDb,
+        if (mix != _defaults.mix) "mix": mix,
+        if (autoGain != _defaults.autoGain) "autoGain": autoGain.name,
         if (source.isNotEmpty) "source": source,
-        if (stereo != 0) "stereo": stereo,
+        if (stereo != _defaults.stereo) "stereo": stereo,
       };
 
   factory Dynamics.fromJson(Map<String, dynamic> json) => Dynamics(
         on: jsonBool(json["on"], false),
-        threshold: jsonDouble(json["threshold"], -18).clamp(-60.0, 0.0),
-        ratio: jsonDouble(json["ratio"], 3).clamp(1.0, 10.0),
-        attackMs: jsonDouble(json["attack"], 10).clamp(0.1, 100.0),
-        releaseMs: jsonDouble(json["release"], 150).clamp(10.0, 1000.0),
-        makeupDb: jsonDouble(json["makeup"], 0).clamp(0.0, 24.0),
-        kneeDb: jsonDouble(json["knee"], 6).clamp(0.0, 18.0),
-        mix: jsonDouble(json["mix"], 1).clamp(0.0, 1.0),
+        threshold: jsonDouble(json["threshold"], _defaults.threshold)
+            .clamp(-60.0, 0.0),
+        ratio: jsonDouble(json["ratio"], _defaults.ratio).clamp(1.0, 10.0),
+        attackMs:
+            jsonDouble(json["attack"], _defaults.attackMs).clamp(0.1, 100.0),
+        releaseMs: jsonDouble(json["release"], _defaults.releaseMs)
+            .clamp(10.0, 1000.0),
+        makeupDb:
+            jsonDouble(json["makeup"], _defaults.makeupDb).clamp(0.0, 24.0),
+        kneeDb: jsonDouble(json["knee"], _defaults.kneeDb).clamp(0.0, 18.0),
+        mix: jsonDouble(json["mix"], _defaults.mix).clamp(0.0, 1.0),
         autoGain: AutoGain.fromName(jsonStr(json["autoGain"])),
         source: jsonStr(json["source"]) ?? "",
-        stereo: jsonInt(json["stereo"], 0).clamp(0, 2),
+        stereo: jsonInt(json["stereo"], _defaults.stereo).clamp(0, 2),
       );
 
   /// reducedDb is [input] dB after threshold, ratio and knee, before makeup.
@@ -426,6 +442,10 @@ class Ducking {
     this.curve = DuckCurve.smooth,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = Ducking();
+
   Ducking copyWith({
     bool? on,
     double? depthDb,
@@ -445,18 +465,19 @@ class Ducking {
 
   Map<String, dynamic> toJson() => {
         "on": on,
-        if (depthDb != -10) "depth": depthDb,
+        if (depthDb != _defaults.depthDb) "depth": depthDb,
         "attack": attack,
         "release": release,
         if (except.isNotEmpty) "except": except,
-        if (curve != DuckCurve.smooth) "curve": curve.name,
+        if (curve != _defaults.curve) "curve": curve.name,
       };
 
   factory Ducking.fromJson(Map<String, dynamic> json) => Ducking(
         on: jsonBool(json["on"], false),
-        depthDb: jsonDouble(json["depth"], -10).clamp(-40.0, -1.0),
-        attack: jsonDouble(json["attack"], 0.3).clamp(0.0, 2.0),
-        release: jsonDouble(json["release"], 0.8).clamp(0.0, 4.0),
+        depthDb:
+            jsonDouble(json["depth"], _defaults.depthDb).clamp(-40.0, -1.0),
+        attack: jsonDouble(json["attack"], _defaults.attack).clamp(0.0, 2.0),
+        release: jsonDouble(json["release"], _defaults.release).clamp(0.0, 4.0),
         curve: DuckCurve.fromName(jsonStr(json["curve"])),
         except: [
           if (json["except"] is List)
@@ -556,6 +577,10 @@ class ChannelMix {
     this.compFirst = false,
     this.order = const [],
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChannelMix();
 
   bool get isDefault =>
       gainDb == 0 &&
@@ -683,8 +708,8 @@ class ChannelMix {
       );
 
   Map<String, dynamic> toJson() => {
-        if (gainDb != 0) "gain": gainDb,
-        if (balance != 0) "balance": balance,
+        if (gainDb != _defaults.gainDb) "gain": gainDb,
+        if (balance != _defaults.balance) "balance": balance,
         if (mute) "mute": true,
         if (eq.on) "eq": eq.toJson(),
         if (comp.on) "comp": comp.toJson(),
@@ -738,19 +763,20 @@ class ChannelMix {
               if (e.key is String && e.value is num)
                 e.key as String: (e.value as num).toDouble().clamp(-90.0, 6.0),
         },
-        gainDb: jsonDouble(json["gain"], 0).clamp(-90.0, 12.0),
-        balance: jsonDouble(json["balance"], 0).clamp(-1.0, 1.0),
+        gainDb: jsonDouble(json["gain"], _defaults.gainDb).clamp(-90.0, 12.0),
+        balance:
+            jsonDouble(json["balance"], _defaults.balance).clamp(-1.0, 1.0),
         mute: jsonBool(json["mute"], false),
-        eq: jsonSpec(json["eq"], Eq.fromJson, const Eq()),
-        comp: jsonSpec(json["comp"], Dynamics.fromJson, const Dynamics()),
-        duck: jsonSpec(json["duck"], Ducking.fromJson, const Ducking()),
+        eq: jsonSpec(json["eq"], Eq.fromJson, _defaults.eq),
+        comp: jsonSpec(json["comp"], Dynamics.fromJson, _defaults.comp),
+        duck: jsonSpec(json["duck"], Ducking.fromJson, _defaults.duck),
         compFirst: jsonBool(json["compFirst"], false),
         order: [
           if (json["order"] case List list)
             for (var o in list.take(maxChainDevices + 2))
               if (o is String) o,
         ],
-        output: jsonString(json["output"], ""),
+        output: jsonString(json["output"], _defaults.output),
       );
 }
 
@@ -883,6 +909,10 @@ class MasterMix {
     this.order = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MasterMix();
+
   bool get isDefault =>
       gainDb == 0 &&
       !eq.on &&
@@ -927,14 +957,16 @@ class MasterMix {
       );
 
   Map<String, dynamic> toJson() => {
-        if (gainDb != 0) "gain": gainDb,
+        if (gainDb != _defaults.gainDb) "gain": gainDb,
         if (eq.on) "eq": eq.toJson(),
         if (comp.on) "comp": comp.toJson(),
         if (!limiter) "noLimiter": true,
-        if (ceilingDb != -1) "ceiling": ceilingDb,
-        if (limiterAheadMs != 5) "limitAhead": limiterAheadMs,
-        if (limiterReleaseMs != 50) "limitRelease": limiterReleaseMs,
-        if (target != -16) "target": target,
+        if (ceilingDb != _defaults.ceilingDb) "ceiling": ceilingDb,
+        if (limiterAheadMs != _defaults.limiterAheadMs)
+          "limitAhead": limiterAheadMs,
+        if (limiterReleaseMs != _defaults.limiterReleaseMs)
+          "limitRelease": limiterReleaseMs,
+        if (target != _defaults.target) "target": target,
         if (normalise) "normalise": true,
         if (compFirst) "compFirst": true,
         if (order.isNotEmpty) "order": order,
@@ -947,19 +979,18 @@ class MasterMix {
             for (var raw in list)
               if (MixDevice.fromJson(raw) case var d?) d,
         ]),
-        gainDb: jsonDouble(json["gain"], 0).clamp(-90.0, 12.0),
-        eq: jsonSpec(json["eq"], Eq.fromJson, const Eq()),
-        comp: jsonSpec(
-            json["comp"],
-            Dynamics.fromJson,
-            const Dynamics(
-                threshold: -12, ratio: 2, attackMs: 30, releaseMs: 200)),
+        gainDb: jsonDouble(json["gain"], _defaults.gainDb).clamp(-90.0, 12.0),
+        eq: jsonSpec(json["eq"], Eq.fromJson, _defaults.eq),
+        comp: jsonSpec(json["comp"], Dynamics.fromJson, _defaults.comp),
         limiter: !jsonBool(json["noLimiter"], false),
-        ceilingDb: jsonDouble(json["ceiling"], -1).clamp(-12.0, 0.0),
-        limiterAheadMs: jsonDouble(json["limitAhead"], 5).clamp(0.5, 20.0),
+        ceilingDb:
+            jsonDouble(json["ceiling"], _defaults.ceilingDb).clamp(-12.0, 0.0),
+        limiterAheadMs: jsonDouble(json["limitAhead"], _defaults.limiterAheadMs)
+            .clamp(0.5, 20.0),
         limiterReleaseMs:
-            jsonDouble(json["limitRelease"], 50).clamp(5.0, 1000.0),
-        target: jsonDouble(json["target"], -16).clamp(-36.0, -6.0),
+            jsonDouble(json["limitRelease"], _defaults.limiterReleaseMs)
+                .clamp(5.0, 1000.0),
+        target: jsonDouble(json["target"], _defaults.target).clamp(-36.0, -6.0),
         normalise: jsonBool(json["normalise"], false),
         compFirst: jsonBool(json["compFirst"], false),
         order: [

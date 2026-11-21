@@ -20,6 +20,10 @@ class ModTarget {
 
   const ModTarget(this.device, this.param, [this.depth = 0.5, this.from = 0]);
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ModTarget("", "");
+
   ModTarget withDepth(double depth) => ModTarget(device, param, depth, from);
 
   ModTarget withFrom(int from) => ModTarget(device, param, depth, from);
@@ -28,7 +32,7 @@ class ModTarget {
         "device": device,
         "param": param,
         "depth": depth,
-        if (from != 0) "from": from,
+        if (from != _defaults.from) "from": from,
       };
 
   static ModTarget? fromJson(Object? json) {

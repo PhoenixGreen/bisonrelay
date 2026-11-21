@@ -208,6 +208,10 @@ class LayoutCell {
     this.shape = LayoutCellShape.rectangle,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = LayoutCell(id: "");
+
   LayoutCell copyWith({
     String? id,
     String? name,
@@ -244,16 +248,16 @@ class LayoutCell {
         "id": id,
         if (name.isNotEmpty) "name": name,
         if (style != null) "style": style!.toJson(),
-        if (col != 0) "col": col,
-        if (row != 0) "row": row,
-        if (colSpan != 1) "cs": colSpan,
-        if (rowSpan != 1) "rs": rowSpan,
+        if (col != _defaults.col) "col": col,
+        if (row != _defaults.row) "row": row,
+        if (colSpan != _defaults.colSpan) "cs": colSpan,
+        if (rowSpan != _defaults.rowSpan) "rs": rowSpan,
         "x": x,
         "y": y,
         "w": width,
         "h": height,
-        if (turn != 0) "turn": turn,
-        if (shape != LayoutCellShape.rectangle) "shape": shape.name,
+        if (turn != _defaults.turn) "turn": turn,
+        if (shape != _defaults.shape) "shape": shape.name,
       };
 
   factory LayoutCell.fromJson(Map<String, dynamic> j) => LayoutCell(
@@ -324,6 +328,10 @@ class LayoutElement extends CanvasElement {
     this.order = const [],
     this.unread = const [],
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = LayoutElement(ElementBase(id: ""));
 
   /// maxTracks and maxCells bound what a received file can ask for.
   static const maxTracks = 24, maxCells = 200;
@@ -493,14 +501,14 @@ class LayoutElement extends CanvasElement {
 
   @override
   Map<String, dynamic> props() => {
-        if (mode != LayoutMode.panels) "mode": mode.name,
+        if (mode != _defaults.mode) "mode": mode.name,
         "root": root.toJson(),
         "columns": columns,
         "rows": rows,
         "cells": [for (var c in cells) c.toJson()],
         "gutter": gutter,
         "rowGutter": rowGutter,
-        if (margin != 0) "margin": margin,
+        if (margin != _defaults.margin) "margin": margin,
         if (gutterColor.a > 0) "gutterColor": colorToJson(gutterColor),
         "cellStyle": cellStyle.toJson(),
         if (order.isNotEmpty) "order": order,
@@ -540,11 +548,11 @@ class LayoutElement extends CanvasElement {
                   if (c is Map<String, dynamic>) LayoutCell.fromJson(c)
               ]
             : const [],
-        gutter: jsonDouble(json["gutter"], 24).clamp(0.0, 2000.0),
-        rowGutter: jsonDouble(json["rowGutter"], 24).clamp(0.0, 2000.0),
-        margin: jsonDouble(json["margin"], 0).clamp(0.0, 2000.0),
-        gutterColor:
-            colorFromJson(json["gutterColor"], const Color(0x00000000)),
+        gutter: jsonDouble(json["gutter"], _defaults.gutter).clamp(0.0, 2000.0),
+        rowGutter: jsonDouble(json["rowGutter"], _defaults.rowGutter)
+            .clamp(0.0, 2000.0),
+        margin: jsonDouble(json["margin"], _defaults.margin).clamp(0.0, 2000.0),
+        gutterColor: colorFromJson(json["gutterColor"], _defaults.gutterColor),
         cellStyle:
             jsonSpec(json["cellStyle"], BoxSpec.fromJson, plain.cellStyle));
   }

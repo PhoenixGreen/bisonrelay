@@ -38,6 +38,10 @@ class BackgroundElement extends CanvasElement {
     this.parallax,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = BackgroundElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.background;
 
@@ -107,7 +111,7 @@ class BackgroundElement extends CanvasElement {
         "spec": spec.toJson(),
         if (cornerRadius > 0) "cr": cornerRadius,
         if (mask.on) "mask": mask.toJson(),
-        if (backdrop != BackdropKind.flat) "backdrop": backdrop.name,
+        if (backdrop != _defaults.backdrop) "backdrop": backdrop.name,
         if (stage != null) "stage": stage!.props(),
         if (parallax != null) "parallax": parallax!.props(),
       };
@@ -116,9 +120,9 @@ class BackgroundElement extends CanvasElement {
           Map<String, dynamic> json, ElementBase b) =>
       BackgroundElement(b,
           spec: jsonSpec(
-              json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
-          cornerRadius: jsonDouble(json["cr"], 0),
-          mask: jsonSpec(json["mask"], EdgeMask.fromJson, const EdgeMask()),
+              json["spec"], ProceduralSpec.fromJson, _defaults.spec),
+          cornerRadius: jsonDouble(json["cr"], _defaults.cornerRadius),
+          mask: jsonSpec(json["mask"], EdgeMask.fromJson, _defaults.mask),
           backdrop: BackdropKind.fromName(jsonStr(json["backdrop"])),
           stage: json["stage"] is Map<String, dynamic>
               ? StageElement.fromJson(json["stage"] as Map<String, dynamic>,

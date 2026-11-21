@@ -89,6 +89,10 @@ class TileSource {
     this.terrains = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TileSource(sheet: "", sheetW: 0, sheetH: 0, tileW: 0, tileH: 0);
+
   /// shownAt is what tile [index] shows at [seconds]: itself, or its
   /// animation's frame.
   int shownAt(int index, double seconds) {
@@ -148,8 +152,8 @@ class TileSource {
         "h": sheetH,
         "tw": tileW,
         "th": tileH,
-        if (margin != 0) "margin": margin,
-        if (spacing != 0) "spacing": spacing,
+        if (margin != _defaults.margin) "margin": margin,
+        if (spacing != _defaults.spacing) "spacing": spacing,
         if (animations.isNotEmpty)
           "animations": {for (var e in animations.entries) "${e.key}": e.value.toJson()},
         if (terrains.isNotEmpty) "terrains": [for (var t in terrains) t.toJson()],
@@ -465,6 +469,10 @@ class TileLayer {
     this.solid = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TileLayer();
+
   /// extent is its cells' first and last column and row, or null with none.
   (int, int, int, int)? get extent {
     if (cells.isEmpty) return null;
@@ -525,11 +533,11 @@ class TileLayer {
         if (figures.isNotEmpty) "figures": figures,
         if (!visible) "hidden": true,
         if (locked) "locked": true,
-        if (opacity != 1) "opacity": opacity,
+        if (opacity != _defaults.opacity) "opacity": opacity,
         if (tint != null) "tint": colorToJson(tint!),
-        if (parallax != 1) "parallax": parallax,
-        if (repeat != TileRepeat.none) "repeat": repeat.name,
-        if (drift != Offset.zero) "drift": [drift.dx, drift.dy],
+        if (parallax != _defaults.parallax) "parallax": parallax,
+        if (repeat != _defaults.repeat) "repeat": repeat.name,
+        if (drift != _defaults.drift) "drift": [drift.dx, drift.dy],
         if (solid) "solid": true,
       };
 
@@ -560,9 +568,9 @@ class TileLayer {
       ],
       visible: !jsonBool(json["hidden"], false),
       locked: jsonBool(json["locked"], false),
-      opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
+      opacity: jsonDouble(json["opacity"], _defaults.opacity).clamp(0.0, 1.0),
       tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
-      parallax: jsonDouble(json["parallax"], 1).clamp(0.0, 4.0),
+      parallax: jsonDouble(json["parallax"], _defaults.parallax).clamp(0.0, 4.0),
       repeat: TileRepeat.values.where((r) => r.name == json["repeat"]).firstOrNull ?? TileRepeat.none,
       drift: switch (json["drift"]) {
         [num x, num y] => Offset(x.toDouble(), y.toDouble()),
@@ -609,6 +617,10 @@ class TileMapElement extends CanvasElement {
     this.light,
     this.lightTo,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TileMapElement(ElementBase(id: ""));
 
   Color? lightAt(double t) {
     var from = light;
@@ -764,7 +776,7 @@ class TileMapElement extends CanvasElement {
             if (TileSource.fromJson(s) case var source?) source,
       ],
       layers: layers.isEmpty ? const [TileLayer(name: "Ground")] : layers,
-      cell: jsonDouble(json["cell"], 32).clamp(2.0, 512.0),
+      cell: jsonDouble(json["cell"], _defaults.cell).clamp(2.0, 512.0),
       pixelArt: jsonBool(json["pixelArt"], true),
       patterns: [
         if (json["patterns"] case List raw)

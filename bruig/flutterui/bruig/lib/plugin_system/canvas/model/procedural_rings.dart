@@ -83,17 +83,21 @@ class RingPick {
 
   const RingPick({this.asset = "", this.weight = 1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = RingPick();
+
   RingPick copyWith({String? asset, double? weight}) =>
       RingPick(asset: asset ?? this.asset, weight: weight ?? this.weight);
 
   Map<String, dynamic> toJson() => {
         "asset": asset,
-        if (weight != 1) "weight": weight,
+        if (weight != _defaults.weight) "weight": weight,
       };
 
   factory RingPick.fromJson(Map<String, dynamic> json) => RingPick(
-        asset: jsonString(json["asset"], ""),
-        weight: jsonDouble(json["weight"], 1).clamp(0, 100),
+        asset: jsonString(json["asset"], _defaults.asset),
+        weight: jsonDouble(json["weight"], _defaults.weight).clamp(0, 100),
       );
 }
 
@@ -182,6 +186,10 @@ class RingIcon {
     this.firstRunOnly = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = RingIcon();
+
   RingIcon copyWith({
     String? asset,
     int? ring,
@@ -241,7 +249,7 @@ class RingIcon {
         "size": size,
         if (tinted) "tinted": true,
         if (tinted) "tint": colorToJson(tint),
-        if (turn != 0) "turn": turn,
+        if (turn != _defaults.turn) "turn": turn,
         if (!driftWhen.none) "driftWhen": driftWhen.toJson(),
         if (!driftWhere.none) "driftWhere": driftWhere.toJson(),
         if (!driftSize.none) "driftSize": driftSize.toJson(),
@@ -250,7 +258,7 @@ class RingIcon {
         // and those numbers read as a share would hide the icon.
         if (!driftFade.resting(1)) "fadeShare": driftFade.toJson(),
         if (also.isNotEmpty) "also": [for (var pick in also) pick.toJson()],
-        if (weight != 1) "weight": weight,
+        if (weight != _defaults.weight) "weight": weight,
         if (opacity != null) "opacity": opacity,
         if (smallest != null) "smallest": smallest,
         if (largest != null) "largest": largest,
@@ -260,14 +268,14 @@ class RingIcon {
       };
 
   factory RingIcon.fromJson(Map<String, dynamic> json) => RingIcon(
-        asset: jsonString(json["asset"], ""),
-        ring: jsonInt(json["ring"], 1).clamp(0, 200),
+        asset: jsonString(json["asset"], _defaults.asset),
+        ring: jsonInt(json["ring"], _defaults.ring).clamp(0, 200),
         place: RingIconPlace.fromName(jsonStr(json["place"])),
-        count: jsonInt(json["count"], 6).clamp(1, 60),
-        size: jsonDouble(json["size"], 0.5).clamp(0.01, 4),
+        count: jsonInt(json["count"], _defaults.count).clamp(1, 60),
+        size: jsonDouble(json["size"], _defaults.size).clamp(0.01, 4),
         tinted: jsonBool(json["tinted"], false),
-        tint: colorFromJson(json["tint"], const Color(0xFFFFFFFF)),
-        turn: jsonDouble(json["turn"], 0),
+        tint: colorFromJson(json["tint"], _defaults.tint),
+        turn: jsonDouble(json["turn"], _defaults.turn),
         driftWhen: RingDrift.fromJson(json["driftWhen"]),
         driftWhere: RingDrift.fromJson(json["driftWhere"]),
         driftSize: RingDrift.fromJson(json["driftSize"]),
@@ -277,7 +285,7 @@ class RingIcon {
           for (var pick in (json["also"] as List?) ?? [])
             if (pick is Map<String, dynamic>) RingPick.fromJson(pick),
         ],
-        weight: jsonDouble(json["weight"], 1).clamp(0, 100),
+        weight: jsonDouble(json["weight"], _defaults.weight).clamp(0, 100),
         opacity: json["opacity"] == null
             ? null
             : jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
@@ -376,6 +384,10 @@ class RingSpec {
     this.icons = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = RingSpec();
+
   RingSpec copyWith({
     int? count,
     double? width,
@@ -460,42 +472,50 @@ class RingSpec {
         "cy": centreY,
         if (inward) "inward": true,
         "spacing": spacing,
-        if (spacingJitter != 0) "spacingJitter": spacingJitter,
-        if (widthJitter != 0) "widthJitter": widthJitter,
-        if (colorJitter != 0) "colorJitter": colorJitter,
+        if (spacingJitter != _defaults.spacingJitter)
+          "spacingJitter": spacingJitter,
+        if (widthJitter != _defaults.widthJitter) "widthJitter": widthJitter,
+        if (colorJitter != _defaults.colorJitter) "colorJitter": colorJitter,
         "accentEvery": accentEvery,
         if (!buildUp) "buildUp": false,
         "fadeIn": fadeIn,
         "fadeOut": fadeOut,
         "edge": edge.name,
-        if (noise != 0) "noise": noise,
-        if (glitch != 0) "glitch": glitch,
-        if (distortion != 0) "distortion": distortion,
-        if (grunge != 0) "grunge": grunge,
+        if (noise != _defaults.noise) "noise": noise,
+        if (glitch != _defaults.glitch) "glitch": glitch,
+        if (distortion != _defaults.distortion) "distortion": distortion,
+        if (grunge != _defaults.grunge) "grunge": grunge,
         if (icons.isNotEmpty) "icons": [for (var icon in icons) icon.toJson()],
       };
 
   factory RingSpec.fromJson(Map<String, dynamic> json) => RingSpec(
-        count: jsonInt(json["count"], 12).clamp(1, 200),
-        width: jsonDouble(json["width"], 0.004).clamp(0.0005, 0.2),
-        from: jsonDouble(json["from"], 0.05).clamp(0.0, 2.0),
-        to: jsonDouble(json["to"], 1).clamp(0.0, 2.0),
-        centreX: jsonDouble(json["cx"], 0.5),
-        centreY: jsonDouble(json["cy"], 0.5),
+        count: jsonInt(json["count"], _defaults.count).clamp(1, 200),
+        width: jsonDouble(json["width"], _defaults.width).clamp(0.0005, 0.2),
+        from: jsonDouble(json["from"], _defaults.from).clamp(0.0, 2.0),
+        to: jsonDouble(json["to"], _defaults.to).clamp(0.0, 2.0),
+        centreX: jsonDouble(json["cx"], _defaults.centreX),
+        centreY: jsonDouble(json["cy"], _defaults.centreY),
         inward: jsonBool(json["inward"], false),
-        spacing: jsonDouble(json["spacing"], 0.5).clamp(0.05, 0.95),
-        spacingJitter: jsonDouble(json["spacingJitter"], 0).clamp(0.0, 1.0),
-        widthJitter: jsonDouble(json["widthJitter"], 0).clamp(0.0, 1.0),
-        colorJitter: jsonDouble(json["colorJitter"], 0).clamp(0.0, 1.0),
-        accentEvery: jsonInt(json["accentEvery"], 5).clamp(0, 50),
+        spacing:
+            jsonDouble(json["spacing"], _defaults.spacing).clamp(0.05, 0.95),
+        spacingJitter:
+            jsonDouble(json["spacingJitter"], _defaults.spacingJitter)
+                .clamp(0.0, 1.0),
+        widthJitter: jsonDouble(json["widthJitter"], _defaults.widthJitter)
+            .clamp(0.0, 1.0),
+        colorJitter: jsonDouble(json["colorJitter"], _defaults.colorJitter)
+            .clamp(0.0, 1.0),
+        accentEvery:
+            jsonInt(json["accentEvery"], _defaults.accentEvery).clamp(0, 50),
         buildUp: jsonBool(json["buildUp"], true),
-        fadeIn: jsonDouble(json["fadeIn"], 0.35).clamp(0.0, 1.0),
-        fadeOut: jsonDouble(json["fadeOut"], 0.35).clamp(0.0, 1.0),
+        fadeIn: jsonDouble(json["fadeIn"], _defaults.fadeIn).clamp(0.0, 1.0),
+        fadeOut: jsonDouble(json["fadeOut"], _defaults.fadeOut).clamp(0.0, 1.0),
         edge: RingEdge.fromName(jsonStr(json["edge"])),
-        noise: jsonDouble(json["noise"], 0).clamp(0.0, 1.0),
-        glitch: jsonDouble(json["glitch"], 0).clamp(0.0, 1.0),
-        distortion: jsonDouble(json["distortion"], 0).clamp(0.0, 1.0),
-        grunge: jsonDouble(json["grunge"], 0).clamp(0.0, 1.0),
+        noise: jsonDouble(json["noise"], _defaults.noise).clamp(0.0, 1.0),
+        glitch: jsonDouble(json["glitch"], _defaults.glitch).clamp(0.0, 1.0),
+        distortion: jsonDouble(json["distortion"], _defaults.distortion)
+            .clamp(0.0, 1.0),
+        grunge: jsonDouble(json["grunge"], _defaults.grunge).clamp(0.0, 1.0),
         icons: [
           for (var one in (json["icons"] as List?) ?? const [])
             if (one is Map) RingIcon.fromJson(one.cast<String, dynamic>()),

@@ -41,13 +41,17 @@ class CodeLog {
   final String text;
   const CodeLog(this.text, {this.kind = CodeLogKind.log});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CodeLog("");
+
   /// capped is this, its text cut to [maxCodeLogLength].
   CodeLog get capped => text.length <= maxCodeLogLength
       ? this
       : CodeLog("${text.substring(0, maxCodeLogLength)}…", kind: kind);
 
   Map<String, dynamic> toJson() =>
-      {"text": text, if (kind != CodeLogKind.log) "kind": kind.name};
+      {"text": text, if (kind != _defaults.kind) "kind": kind.name};
 
   static CodeLog? fromJson(dynamic j) => j is Map<String, dynamic>
       ? CodeLog(jsonString(j["text"], ""),
@@ -146,6 +150,10 @@ class CodeRunElement extends CanvasElement {
     this.result,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CodeRunElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.codeRun;
 
@@ -211,15 +219,17 @@ class CodeRunElement extends CanvasElement {
 
   factory CodeRunElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       CodeRunElement(b,
-          code: jsonString(json["code"], ""),
-          entry: jsonString(json["entry"], ""),
+          code: jsonString(json["code"], _defaults.code),
+          entry: jsonString(json["entry"], _defaults.entry),
           when:
               CodeRunWhen.values.asNameMap()[json["when"]] ?? CodeRunWhen.typed,
           shows: CodeRunShows.values.asNameMap()[json["shows"]] ??
               CodeRunShows.both,
-          split: jsonDouble(json["split"], 0.55).clamp(0.15, 0.85),
-          outputSize: jsonDouble(json["outputSize"], 15).clamp(4.0, 1000.0),
+          split: jsonDouble(json["split"], _defaults.split).clamp(0.15, 0.85),
+          outputSize: jsonDouble(json["outputSize"], _defaults.outputSize)
+              .clamp(4.0, 1000.0),
           dartpad: jsonBool(json["dartpad"], false),
-          appWidth: jsonDouble(json["appWidth"], 0).clamp(0.0, 4000.0),
+          appWidth: jsonDouble(json["appWidth"], _defaults.appWidth)
+              .clamp(0.0, 4000.0),
           result: CodeRunResult.fromJson(json["result"]));
 }

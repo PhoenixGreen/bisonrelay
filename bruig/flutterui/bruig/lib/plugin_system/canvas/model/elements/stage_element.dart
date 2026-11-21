@@ -39,6 +39,10 @@ class StageCamera {
       this.ty = 0,
       this.tz = 0});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = StageCamera();
+
   static const double minDistance = 1.5;
   static const double maxDistance = 40;
 
@@ -89,9 +93,9 @@ class StageCamera {
         "pitch": pitch,
         "distance": distance,
         "lens": lens,
-        if (tx != 0) "tx": tx,
-        if (ty != 0) "ty": ty,
-        if (tz != 0) "tz": tz,
+        if (tx != _defaults.tx) "tx": tx,
+        if (ty != _defaults.ty) "ty": ty,
+        if (tz != _defaults.tz) "tz": tz,
       };
 
   factory StageCamera.fromJson(Object? json) {
@@ -102,9 +106,9 @@ class StageCamera {
         pitch: jsonDouble(json["pitch"], d.pitch),
         distance: jsonDouble(json["distance"], d.distance),
         lens: jsonDouble(json["lens"], d.lens),
-        tx: jsonDouble(json["tx"], 0),
-        ty: jsonDouble(json["ty"], 0),
-        tz: jsonDouble(json["tz"], 0));
+        tx: jsonDouble(json["tx"], _defaults.tx),
+        ty: jsonDouble(json["ty"], _defaults.ty),
+        tz: jsonDouble(json["tz"], _defaults.tz));
   }
 }
 

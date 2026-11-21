@@ -74,6 +74,10 @@ class ButtonAction {
     this.url = "",
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ButtonAction();
+
   ButtonAction copyWith({
     ButtonActionKind? kind,
     int? frame,
@@ -96,9 +100,9 @@ class ButtonAction {
 
   factory ButtonAction.fromJson(Map<String, dynamic> json) => ButtonAction(
         kind: ButtonActionKind.fromName(jsonStr(json["kind"])),
-        frame: jsonInt(json["frame"], 0),
-        elementId: jsonString(json["element"], ""),
-        url: jsonString(json["url"], ""),
+        frame: jsonInt(json["frame"], _defaults.frame),
+        elementId: jsonString(json["element"], _defaults.elementId),
+        url: jsonString(json["url"], _defaults.url),
       );
 }
 
@@ -129,6 +133,10 @@ class ButtonElement extends CanvasElement {
     this.action = const ButtonAction(),
     this.animation = const ElementAnimation(),
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ButtonElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.button;
@@ -179,19 +187,15 @@ class ButtonElement extends CanvasElement {
 
   factory ButtonElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       ButtonElement(b,
-          label: jsonString(json["label"], "Button"),
-          textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
-              const TextSpec(fontSize: 20, weight: 600)),
-          box: jsonSpec(
-              json["box"],
-              BoxSpec.fromJson,
-              const BoxSpec(
-                  fill: Color(0xFF3D7EFF), borderRadius: 8, padding: 12)),
-          hoverFill: colorFromJson(json["hoverFill"], const Color(0x00000000)),
+          label: jsonString(json["label"], _defaults.label),
+          textSpec:
+              jsonSpec(json["textSpec"], TextSpec.fromJson, _defaults.textSpec),
+          box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),
+          hoverFill: colorFromJson(json["hoverFill"], _defaults.hoverFill),
           hoverTextColor:
-              colorFromJson(json["hoverText"], const Color(0x00000000)),
-          action: jsonSpec(
-              json["action"], ButtonAction.fromJson, const ButtonAction()),
-          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-              const ElementAnimation()));
+              colorFromJson(json["hoverText"], _defaults.hoverTextColor),
+          action:
+              jsonSpec(json["action"], ButtonAction.fromJson, _defaults.action),
+          animation: jsonSpec(
+              json["anim"], ElementAnimation.fromJson, _defaults.animation));
 }

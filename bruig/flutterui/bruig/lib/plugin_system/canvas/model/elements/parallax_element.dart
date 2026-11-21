@@ -23,6 +23,10 @@ class ParallaxCamera {
 
   const ParallaxCamera({this.x = 0, this.y = 0, this.zoom = 1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ParallaxCamera();
+
   ParallaxCamera copyWith({double? x, double? y, double? zoom}) =>
       ParallaxCamera(
           x: x ?? this.x,
@@ -49,9 +53,9 @@ class ParallaxCamera {
   factory ParallaxCamera.fromJson(Object? json) {
     if (json is! Map) return const ParallaxCamera();
     return const ParallaxCamera().copyWith(
-        x: jsonDouble(json["x"], 0),
-        y: jsonDouble(json["y"], 0),
-        zoom: jsonDouble(json["zoom"], 1));
+        x: jsonDouble(json["x"], _defaults.x),
+        y: jsonDouble(json["y"], _defaults.y),
+        zoom: jsonDouble(json["zoom"], _defaults.zoom));
   }
 }
 
@@ -171,6 +175,10 @@ class ParallaxLayer {
     this.visible = true,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ParallaxLayer();
+
   String get title => name.isNotEmpty ? name : kind.label;
 
   ParallaxLayer copyWith({
@@ -236,13 +244,13 @@ class ParallaxLayer {
       "scrollY": scrollY,
       if (repeatX != d.repeatX) "repeatX": repeatX,
       if (repeatY != d.repeatY) "repeatY": repeatY,
-      if (autoX != 0) "autoX": autoX,
-      if (autoY != 0) "autoY": autoY,
+      if (autoX != _defaults.autoX) "autoX": autoX,
+      if (autoY != _defaults.autoY) "autoY": autoY,
       if (!loopDrift) "freeDrift": true,
-      if (offset != Offset.zero) "offset": [offset.dx, offset.dy],
-      if (size != 1) "size": size,
+      if (offset != _defaults.offset) "offset": [offset.dx, offset.dy],
+      if (size != _defaults.size) "size": size,
       "anchor": anchor.name,
-      if (opacity != 1) "opacity": opacity,
+      if (opacity != _defaults.opacity) "opacity": opacity,
       if (!visible) "visible": false,
     };
   }
@@ -252,30 +260,29 @@ class ParallaxLayer {
     const d = ParallaxLayer();
     var off = json["offset"];
     return d.copyWith(
-      name: jsonString(json["name"], ""),
+      name: jsonString(json["name"], _defaults.name),
       kind: SceneryKind.fromName(jsonStr(json["kind"])),
       color: colorFromJson(json["color"], d.color),
       color2: colorFromJson(json["color2"], d.color2),
       height: jsonDouble(json["height"], d.height),
       amount: jsonDouble(json["amount"], d.amount),
       seed: jsonInt(json["seed"], d.seed),
-      assetId: jsonString(json["asset"], ""),
-      spec: jsonSpec(
-          json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
+      assetId: jsonString(json["asset"], _defaults.assetId),
+      spec: jsonSpec(json["spec"], ProceduralSpec.fromJson, _defaults.spec),
       scrollX: jsonDouble(json["scrollX"], d.scrollX),
       scrollY: jsonDouble(json["scrollY"], d.scrollY),
       repeatX: jsonBool(json["repeatX"], d.repeatX),
       repeatY: jsonBool(json["repeatY"], d.repeatY),
-      autoX: jsonDouble(json["autoX"], 0),
-      autoY: jsonDouble(json["autoY"], 0),
+      autoX: jsonDouble(json["autoX"], _defaults.autoX),
+      autoY: jsonDouble(json["autoY"], _defaults.autoY),
       loopDrift: json["freeDrift"] != true,
       offset: off is List && off.length == 2 && off[0] is num && off[1] is num
           ? Offset((off[0] as num).toDouble(), (off[1] as num).toDouble())
           : Offset.zero,
       // As copyWith holds it: a tiny received size is thousands of tiles.
-      size: jsonDouble(json["size"], 1).clamp(0.1, 8).toDouble(),
+      size: jsonDouble(json["size"], _defaults.size).clamp(0.1, 8).toDouble(),
       anchor: LayerAnchor.fromName(jsonStr(json["anchor"])),
-      opacity: jsonDouble(json["opacity"], 1),
+      opacity: jsonDouble(json["opacity"], _defaults.opacity),
       visible: jsonBool(json["visible"], true),
     );
   }

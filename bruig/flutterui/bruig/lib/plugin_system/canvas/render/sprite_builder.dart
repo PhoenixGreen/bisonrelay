@@ -351,13 +351,17 @@ class ModularTuning {
   final double motion;
   const ModularTuning({this.frames, this.fps, this.motion = 1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ModularTuning();
+
   ModularTuning copyWith({int? frames, double? fps, double? motion}) =>
       ModularTuning(frames: frames ?? this.frames, fps: fps ?? this.fps, motion: motion ?? this.motion);
 
   Map<String, dynamic> toJson() => {
         if (frames != null) "frames": frames,
         if (fps != null) "fps": fps,
-        if (motion != 1) "motion": motion,
+        if (motion != _defaults.motion) "motion": motion,
       };
 
   static ModularTuning fromJson(dynamic j) => j is Map

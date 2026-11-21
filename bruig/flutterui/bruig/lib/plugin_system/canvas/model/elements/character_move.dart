@@ -155,6 +155,10 @@ class CharacterMove {
     this.offsets = const {},
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CharacterMove();
+
   double bodyOf(String k) => body[k] ?? 0;
   double walkOf(String k) => walk[k] ?? moveWalkDefaults[k] ?? 0.5;
   double physicsOf(String k) => physics[k] ?? movePhysicsDefaults[k] ?? 1;
@@ -207,14 +211,14 @@ class CharacterMove {
       : copyWith(footR: {...footR, k: v}..removeWhere((_, x) => x == 0));
 
   Map<String, dynamic> toJson() => {
-        if (stance != "Relaxed") "stance": stance,
-        if (handL != "relaxed") "handL": handL,
-        if (handR != "relaxed") "handR": handR,
+        if (stance != _defaults.stance) "stance": stance,
+        if (handL != _defaults.handL) "handL": handL,
+        if (handR != _defaults.handR) "handR": handR,
         if (body.isNotEmpty) "body": body,
         if (footL.isNotEmpty) "footL": footL,
         if (footR.isNotEmpty) "footR": footR,
-        if (motion != "Idle") "motion": motion,
-        if (speed != 1) "speed": speed,
+        if (motion != _defaults.motion) "motion": motion,
+        if (speed != _defaults.speed) "speed": speed,
         if (walk.isNotEmpty) "walk": walk,
         if (physics.isNotEmpty) "physics": physics,
         if (offsets.isNotEmpty) "offsets": offsets,

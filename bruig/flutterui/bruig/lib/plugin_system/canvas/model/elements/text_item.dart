@@ -118,6 +118,10 @@ class TextItem {
     this.locked = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextItem(id: "");
+
   bool get isIcon => icon != null;
 
   /// freshIcon is a new picture piece awaiting a picture.
@@ -193,9 +197,9 @@ class TextItem {
         if (text.isNotEmpty) "t": text,
         if (name.isNotEmpty) "name": name,
         "slot": slot.name,
-        if (gap != 0) "gap": gap,
-        if (side != 0) "side": side,
-        if (down != 0) "dn": down,
+        if (gap != _defaults.gap) "gap": gap,
+        if (side != _defaults.side) "side": side,
+        if (down != _defaults.down) "dn": down,
         if (icon != null) "icon": icon!.toJson(),
         if (jsonEncode(box.toJson()) != _plainBox) "box": box.toJson(),
         "spec": spec.toJson(),
@@ -207,8 +211,8 @@ class TextItem {
         id: json["id"] is String && (json["id"] as String).isNotEmpty
             ? json["id"] as String
             : newElementId(),
-        text: jsonString(json["t"], ""),
-        name: jsonString(json["name"], ""),
+        text: jsonString(json["t"], _defaults.text),
+        name: jsonString(json["name"], _defaults.name),
         slot: TextSlot.fromName(jsonStr(json["slot"])),
         gap: json["gap"] is num
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)

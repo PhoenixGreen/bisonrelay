@@ -15,6 +15,10 @@ class TimelineCue {
 
   const TimelineCue({required this.id, this.name = "", required this.frame});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TimelineCue(id: "", frame: 0);
+
   TimelineCue copyWith({String? name, int? frame}) =>
       TimelineCue(id: id, name: name ?? this.name, frame: frame ?? this.frame);
 
@@ -30,7 +34,7 @@ class TimelineCue {
     if (id.isEmpty) return null;
     return TimelineCue(
         id: id,
-        name: jsonString(json["name"], ""),
+        name: jsonString(json["name"], _defaults.name),
         frame: math.max(0, jsonInt(json["frame"], 0)));
   }
 }
@@ -51,6 +55,10 @@ class SpokenWord {
       required this.end,
       this.from = ""});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SpokenWord(text: "", frame: 0, end: 0);
+
   Map<String, dynamic> toJson() => {
         "t": text,
         "f": frame,
@@ -67,7 +75,7 @@ class SpokenWord {
         text: text,
         frame: frame,
         end: math.max(frame, jsonInt(json["e"], frame)),
-        from: jsonString(json["of"], ""));
+        from: jsonString(json["of"], _defaults.from));
   }
 }
 

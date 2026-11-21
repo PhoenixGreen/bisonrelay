@@ -51,6 +51,10 @@ class CanvasBackground {
     this.parallax,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CanvasBackground();
+
   bool get isStage => backdrop == BackdropKind.stage;
   bool get isParallax => backdrop == BackdropKind.parallax;
 
@@ -132,7 +136,7 @@ class CanvasBackground {
         if (video != null) "video": video!.toJson(),
         if (sound != null) "sound": sound!.toJson(),
         if (drawing != null) "drawing": drawing!.toJson(),
-        if (backdrop != BackdropKind.flat) "backdrop": backdrop.name,
+        if (backdrop != _defaults.backdrop) "backdrop": backdrop.name,
         if (stage != null) "stage": stage!.toJson(),
         if (parallax != null) "parallax": parallax!.toJson(),
       };
@@ -145,8 +149,7 @@ class CanvasBackground {
     }
 
     return CanvasBackground(
-      spec: jsonSpec(
-          json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
+      spec: jsonSpec(json["spec"], ProceduralSpec.fromJson, _defaults.spec),
       picture: element<ImageElement>(json["picture"]),
       video: element<VideoElement>(json["video"]),
       sound: element<AudioElement>(json["sound"]),

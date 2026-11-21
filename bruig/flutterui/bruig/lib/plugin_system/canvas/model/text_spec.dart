@@ -176,6 +176,10 @@ class TextFill {
     this.panY = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextFill();
+
   /// on is whether anything but plain colour is used and, for a picture,
   /// one has been chosen.
   bool get on =>
@@ -221,43 +225,45 @@ class TextFill {
       );
 
   Map<String, dynamic> toJson() => {
-        if (kind != TextFillKind.color) "kind": kind.name,
+        if (kind != _defaults.kind) "kind": kind.name,
         if (assetId.isNotEmpty) "assetId": assetId,
         if (kind == TextFillKind.pattern) "pattern": pattern.toJson(),
-        if (zoom != 1) "zoom": zoom,
+        if (zoom != _defaults.zoom) "zoom": zoom,
         if (tile) "tile": true,
         if (locked) "locked": true,
-        if (filter != ImageFilterPreset.none) "filter": filter.name,
-        if (saturation != 1) "sat": saturation,
-        if (brightness != 1) "bri": brightness,
-        if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
-        if (blend != OverlayBlend.none) "blend": blend.name,
+        if (filter != _defaults.filter) "filter": filter.name,
+        if (saturation != _defaults.saturation) "sat": saturation,
+        if (brightness != _defaults.brightness) "bri": brightness,
+        if (blend != _defaults.blend) "overlay": colorToJson(overlay),
+        if (blend != _defaults.blend) "blend": blend.name,
         if (overlayFade != null) "overlayFade": overlayFade!.toJson(),
-        if (opacity != 1) "opacity": opacity,
-        if (panX != 0) "panX": panX,
-        if (panY != 0) "panY": panY,
+        if (opacity != _defaults.opacity) "opacity": opacity,
+        if (panX != _defaults.panX) "panX": panX,
+        if (panY != _defaults.panY) "panY": panY,
       };
 
   factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
         kind: TextFillKind.fromName(jsonStr(json["kind"])),
-        assetId: jsonString(json["assetId"], ""),
+        assetId: jsonString(json["assetId"], _defaults.assetId),
         pattern: json["pattern"] is Map<String, dynamic>
             ? ProceduralSpec.fromJson(json["pattern"] as Map<String, dynamic>)
             : const ProceduralSpec(),
-        zoom: jsonDouble(json["zoom"], 1).clamp(0.05, 20),
+        zoom: jsonDouble(json["zoom"], _defaults.zoom).clamp(0.05, 20),
         tile: jsonBool(json["tile"], false),
         locked: jsonBool(json["locked"], false),
         filter: ImageFilterPreset.fromName(jsonStr(json["filter"])),
-        saturation: jsonDouble(json["sat"], 1).clamp(0.0, 3.0),
-        brightness: jsonDouble(json["bri"], 1).clamp(0.0, 3.0),
-        overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
+        saturation:
+            jsonDouble(json["sat"], _defaults.saturation).clamp(0.0, 3.0),
+        brightness:
+            jsonDouble(json["bri"], _defaults.brightness).clamp(0.0, 3.0),
+        overlay: colorFromJson(json["overlay"], _defaults.overlay),
         blend: OverlayBlend.fromName(jsonStr(json["blend"])),
         overlayFade: json["overlayFade"] is Map<String, dynamic>
             ? GradientSpec.fromJson(json["overlayFade"] as Map<String, dynamic>)
             : null,
-        opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
-        panX: jsonDouble(json["panX"], 0).clamp(-10.0, 10.0),
-        panY: jsonDouble(json["panY"], 0).clamp(-10.0, 10.0),
+        opacity: jsonDouble(json["opacity"], _defaults.opacity).clamp(0.0, 1.0),
+        panX: jsonDouble(json["panX"], _defaults.panX).clamp(-10.0, 10.0),
+        panY: jsonDouble(json["panY"], _defaults.panY).clamp(-10.0, 10.0),
       );
 }
 
@@ -334,6 +340,10 @@ class TextSpec {
     this.glowBlur = 0,
     this.glowColor = const Color(0xFFFFFFFF),
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextSpec();
 
   /// shadowOffset is [shadowDistance] away, opposite the light (screen y
   /// runs down, so compass up is -y).
@@ -417,11 +427,11 @@ class TextSpec {
         "weight": weight,
         if (italic) "italic": true,
         if (underline) "underline": true,
-        if (letterSpacing != 0) "ls": letterSpacing,
+        if (letterSpacing != _defaults.letterSpacing) "ls": letterSpacing,
         "lh": lineHeight,
         "align": align.name,
         "valign": verticalAlign.name,
-        if (textCase != TextCase.none) "case": textCase.name,
+        if (textCase != _defaults.textCase) "case": textCase.name,
         "color": colorToJson(color),
         if (fade != null) "fade": fade!.toJson(),
         if (fill.toJson().isNotEmpty) "fill": fill.toJson(),
@@ -437,13 +447,14 @@ class TextSpec {
       };
 
   factory TextSpec.fromJson(Map<String, dynamic> json) => TextSpec(
-        fontFamily: jsonLabel(json["font"], "Inter"),
-        fontSize: jsonDouble(json["size"], 48).clamp(1.0, 4000.0),
-        weight: jsonInt(json["weight"], 600),
+        fontFamily: jsonLabel(json["font"], _defaults.fontFamily),
+        fontSize:
+            jsonDouble(json["size"], _defaults.fontSize).clamp(1.0, 4000.0),
+        weight: jsonInt(json["weight"], _defaults.weight),
         italic: jsonBool(json["italic"], false),
         underline: jsonBool(json["underline"], false),
-        letterSpacing: jsonDouble(json["ls"], 0),
-        lineHeight: jsonDouble(json["lh"], 1.2),
+        letterSpacing: jsonDouble(json["ls"], _defaults.letterSpacing),
+        lineHeight: jsonDouble(json["lh"], _defaults.lineHeight),
         align: TextAlignSpec.fromName(jsonStr(json["align"])),
         verticalAlign: VerticalAlignSpec.fromName(jsonStr(json["valign"])),
         textCase: TextCase.fromName(jsonStr(json["case"])),
@@ -455,14 +466,14 @@ class TextSpec {
         fill: json["fill"] is Map<String, dynamic>
             ? TextFill.fromJson(json["fill"] as Map<String, dynamic>)
             : const TextFill(),
-        outlineWidth: jsonDouble(json["ow"], 0),
-        outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
-        shadowBlur: jsonDouble(json["sb"], 0),
-        shadowColor: colorFromJson(json["sc"], const Color(0x80000000)),
-        shadowAngle: jsonDouble(json["sa"], 315),
-        shadowDistance: jsonDouble(json["sd"], 0),
-        glowBlur: jsonDouble(json["gb"], 0),
-        glowColor: colorFromJson(json["gc"], const Color(0xFFFFFFFF)),
+        outlineWidth: jsonDouble(json["ow"], _defaults.outlineWidth),
+        outlineColor: colorFromJson(json["oc"], _defaults.outlineColor),
+        shadowBlur: jsonDouble(json["sb"], _defaults.shadowBlur),
+        shadowColor: colorFromJson(json["sc"], _defaults.shadowColor),
+        shadowAngle: jsonDouble(json["sa"], _defaults.shadowAngle),
+        shadowDistance: jsonDouble(json["sd"], _defaults.shadowDistance),
+        glowBlur: jsonDouble(json["gb"], _defaults.glowBlur),
+        glowColor: colorFromJson(json["gc"], _defaults.glowColor),
       );
 
   /// Equality lets paint_util's layout cache reuse a laid-out line. It does
@@ -539,6 +550,10 @@ class Corners {
 
   const Corners({this.all = 0, this.tl, this.tr, this.br, this.bl});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = Corners();
+
   double get topLeft => tl ?? all;
   double get topRight => tr ?? all;
   double get bottomRight => br ?? all;
@@ -602,7 +617,7 @@ class Corners {
       );
 
   Map<String, dynamic> toJson() => {
-        if (all != 0) "r": all,
+        if (all != _defaults.all) "r": all,
         if (tl != null) "tl": tl,
         if (tr != null) "tr": tr,
         if (br != null) "br": br,
@@ -610,7 +625,7 @@ class Corners {
       };
 
   factory Corners.fromJson(Map<String, dynamic> json) => Corners(
-        all: jsonDouble(json["r"], 0),
+        all: jsonDouble(json["r"], _defaults.all),
         tl: json["tl"] == null ? null : jsonDouble(json["tl"], 0),
         tr: json["tr"] == null ? null : jsonDouble(json["tr"], 0),
         br: json["br"] == null ? null : jsonDouble(json["br"], 0),
@@ -640,6 +655,10 @@ class Room {
   final double? b;
 
   const Room({this.all = 0, this.l, this.t, this.r, this.b});
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = Room();
 
   double get left => l ?? all;
   double get top => t ?? all;
@@ -681,7 +700,7 @@ class Room {
       };
 
   factory Room.fromJson(Map<String, dynamic> json) => Room(
-        all: jsonDouble(json["all"], 0),
+        all: jsonDouble(json["all"], _defaults.all),
         l: json["l"] == null ? null : jsonDouble(json["l"], 0),
         t: json["t"] == null ? null : jsonDouble(json["t"], 0),
         r: json["r"] == null ? null : jsonDouble(json["r"], 0),
@@ -761,6 +780,10 @@ class BoxSpec {
     this.radBL,
     this.borderInset = 0,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = BoxSpec();
 
   /// borderInset draws the border that far inside the box's edge, with the
   /// box's own rounding: a plaque's rule inside its frame. Uneven sides are
@@ -974,11 +997,11 @@ class BoxSpec {
         if (radTR != null) "rTR": radTR,
         if (radBR != null) "rBR": radBR,
         if (radBL != null) "rBL": radBL,
-        if (borderInset != 0) "bi": borderInset,
+        if (borderInset != _defaults.borderInset) "bi": borderInset,
       };
 
   factory BoxSpec.fromJson(Map<String, dynamic> json) => BoxSpec(
-        fill: colorFromJson(json["fill"], const Color(0x00000000)),
+        fill: colorFromJson(json["fill"], _defaults.fill),
         painted: json["painted"] is Map
             ? TextFill.fromJson(
                 (json["painted"] as Map).cast<String, dynamic>())
@@ -991,14 +1014,14 @@ class BoxSpec {
             ? GradientSpec.fromJson(
                 (json["borderFade"] as Map).cast<String, dynamic>())
             : null,
-        borderWidth: jsonDouble(json["bw"], 0),
+        borderWidth: jsonDouble(json["bw"], _defaults.borderWidth),
         bwL: json["bwL"] == null ? null : jsonDouble(json["bwL"], 0),
         bwT: json["bwT"] == null ? null : jsonDouble(json["bwT"], 0),
         bwR: json["bwR"] == null ? null : jsonDouble(json["bwR"], 0),
         bwB: json["bwB"] == null ? null : jsonDouble(json["bwB"], 0),
         borderColor: colorFromJson(json["bc"]),
-        borderRadius: jsonDouble(json["br"], 0),
-        padding: jsonDouble(json["pad"], 8),
+        borderRadius: jsonDouble(json["br"], _defaults.borderRadius),
+        padding: jsonDouble(json["pad"], _defaults.padding),
         padL: json["padL"] == null ? null : jsonDouble(json["padL"], 0),
         padT: json["padT"] == null ? null : jsonDouble(json["padT"], 0),
         padR: json["padR"] == null ? null : jsonDouble(json["padR"], 0),
@@ -1007,7 +1030,8 @@ class BoxSpec {
         radTR: json["rTR"] == null ? null : jsonDouble(json["rTR"], 0),
         radBR: json["rBR"] == null ? null : jsonDouble(json["rBR"], 0),
         radBL: json["rBL"] == null ? null : jsonDouble(json["rBL"], 0),
-        borderInset: jsonDouble(json["bi"], 0).clamp(0, 4000),
+        borderInset:
+            jsonDouble(json["bi"], _defaults.borderInset).clamp(0, 4000),
       );
 
   @override

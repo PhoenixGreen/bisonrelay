@@ -397,6 +397,10 @@ class MotionClip {
     this.sound = "",
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MotionClip(id: "");
+
   factory MotionClip.ofKind(String id, MotionKind kind,
           {String name = "",
           String preset = "",
@@ -485,10 +489,10 @@ class MotionClip {
         if (preset.isNotEmpty) "preset": preset,
         if (edited) "edited": true,
         "length": length,
-        if (speed != 1) "speed": speed,
+        if (speed != _defaults.speed) "speed": speed,
         if (loop) "loop": true,
         if (replace) "replace": true,
-        if (layer != 0) "layer": layer,
+        if (layer != _defaults.layer) "layer": layer,
         if (before != kind.before) "before": before.name,
         if (after != kind.after) "after": after.name,
         if (absolute) "absolute": true,
@@ -497,9 +501,9 @@ class MotionClip {
             for (var MapEntry(:key, :value) in keys.entries)
               if (value.isNotEmpty) key.name: [for (var k in value) k.toJson()],
           },
-        if (launch != ClipLaunch.trigger) "launch": launch.name,
+        if (launch != _defaults.launch) "launch": launch.name,
         if (quantise != null) "quantise": quantise,
-        if (then != ClipThen.nothing) "then": then.name,
+        if (then != _defaults.then) "then": then.name,
         if (thenClip.isNotEmpty) "thenClip": thenClip,
         if (triggers.isNotEmpty)
           "triggers": [for (var t in triggers) t.toJson()],
@@ -524,12 +528,12 @@ class MotionClip {
     }
     return MotionClip(
       id: json["id"] as String,
-      name: jsonString(json["name"], ""),
+      name: jsonString(json["name"], _defaults.name),
       kind: kind,
-      preset: jsonString(json["preset"], ""),
+      preset: jsonString(json["preset"], _defaults.preset),
       edited: jsonBool(json["edited"], false),
-      length: jsonDouble(json["length"], 1).clamp(0.02, 3600.0),
-      speed: jsonDouble(json["speed"], 1).clamp(0.05, 20.0),
+      length: jsonDouble(json["length"], _defaults.length).clamp(0.02, 3600.0),
+      speed: jsonDouble(json["speed"], _defaults.speed).clamp(0.05, 20.0),
       loop: jsonBool(json["loop"], false),
       replace: jsonBool(json["replace"], false),
       layer: jsonInt(json["layer"], kind == MotionKind.sound ? soundLayer : 0)
@@ -541,7 +545,7 @@ class MotionClip {
       launch: ClipLaunch.fromName(json["launch"]),
       quantise: jsonStr(json["quantise"]),
       then: ClipThen.fromName(json["then"]),
-      thenClip: jsonString(json["thenClip"], ""),
+      thenClip: jsonString(json["thenClip"], _defaults.thenClip),
       triggers: [
         if (json["triggers"] case List raw)
           for (var t in raw)
@@ -550,7 +554,7 @@ class MotionClip {
       inside: json["inside"] is Map
           ? Map<String, dynamic>.from(json["inside"] as Map)
           : const {},
-      sound: jsonString(json["sound"], ""),
+      sound: jsonString(json["sound"], _defaults.sound),
     );
   }
 }
@@ -619,6 +623,10 @@ class ClipPlacement {
     this.endPin,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ClipPlacement(id: "", clip: "");
+
   ClipPlacement copyWith({
     String? id,
     int? layer,
@@ -646,10 +654,10 @@ class ClipPlacement {
   Map<String, dynamic> toJson() => {
         "id": id,
         "clip": clip,
-        if (layer != 0) "layer": layer,
-        if (start != 0) "start": start,
+        if (layer != _defaults.layer) "layer": layer,
+        if (start != _defaults.start) "start": start,
         if (length != null) "length": length,
-        if (from != 0) "from": from,
+        if (from != _defaults.from) "from": from,
         if (to != null) "to": to,
         if (startPin != null) "startPin": startPin!.toJson(),
         if (endPin != null) "endPin": endPin!.toJson(),
@@ -663,16 +671,16 @@ class ClipPlacement {
     return ClipPlacement(
       id: json["id"] as String,
       clip: json["clip"] as String,
-      layer: jsonInt(json["layer"], 0).clamp(0, soundLayer),
-      start: math0(jsonDouble(json["start"], 0)),
+      layer: jsonInt(json["layer"], _defaults.layer).clamp(0, soundLayer),
+      start: math0(jsonDouble(json["start"], _defaults.start)),
       length: json["length"] is num
           ? (json["length"] as num).toDouble().clamp(0.02, 3600.0)
           : null,
-      from: jsonDouble(json["from"], 0).clamp(0.0, 3600.0),
+      from: jsonDouble(json["from"], _defaults.from).clamp(0.0, 3600.0),
       to: json["to"] is num ? (json["to"] as num).toDouble() : null,
       startPin: ClipPin.fromJson(json["startPin"]),
       endPin: ClipPin.fromJson(json["endPin"]),
-      link: jsonString(json["link"], ""),
+      link: jsonString(json["link"], _defaults.link),
     );
   }
 }
@@ -788,6 +796,10 @@ class ElementMotion {
     this.kept = false,
     this.drawSize = 1,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ElementMotion();
 
   static const ElementMotion none = ElementMotion();
 
@@ -1023,16 +1035,16 @@ class ElementMotion {
         if (slots.isNotEmpty) "slots": slots,
         if (placed.isNotEmpty) "placed": [for (var p in placed) p.toJson()],
         if (weights.any((w) => w != 1)) "weights": weights,
-        if (pins != 0) "pins": pins,
+        if (pins != _defaults.pins) "pins": pins,
         if (links.isNotEmpty) "links": links,
-        if (fade != 0) "fade": fade,
-        if (amount != 1) "amount": amount,
+        if (fade != _defaults.fade) "fade": fade,
+        if (amount != _defaults.amount) "amount": amount,
         if (off) "off": true,
         if (output.isNotEmpty) "output": output,
         if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
         if (instances != null) "instances": instances!.toJson(),
         if (kept) "kept": true,
-        if (drawSize != 1) "drawSize": drawSize,
+        if (drawSize != _defaults.drawSize) "drawSize": drawSize,
       };
 
   static ElementMotion fromJson(Object? json) {
@@ -1074,10 +1086,10 @@ class ElementMotion {
             }.toList()
             ..sort())
           : const [],
-      fade: jsonDouble(json["fade"], 0).clamp(0.0, 1.0),
-      amount: jsonDouble(json["amount"], 1).clamp(0.0, 1.0),
+      fade: jsonDouble(json["fade"], _defaults.fade).clamp(0.0, 1.0),
+      amount: jsonDouble(json["amount"], _defaults.amount).clamp(0.0, 1.0),
       off: json["off"] == true,
-      output: jsonString(json["output"], ""),
+      output: jsonString(json["output"], _defaults.output),
       devices: withMotionDeviceIds([
         if (json["devices"] case List raw)
           for (var d in raw)
@@ -1089,7 +1101,8 @@ class ElementMotion {
       ]),
       instances: InstanceSet.fromJson(json["instances"]),
       kept: json["kept"] == true,
-      drawSize: jsonDouble(json["drawSize"], 1).clamp(0.05, 8.0),
+      drawSize:
+          jsonDouble(json["drawSize"], _defaults.drawSize).clamp(0.05, 8.0),
     );
   }
 }

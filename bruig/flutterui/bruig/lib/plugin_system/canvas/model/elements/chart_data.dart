@@ -82,6 +82,10 @@ class ChartBackdrop {
     this.grow = ChartBackdropGrow.centre,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartBackdrop();
+
   ChartBackdrop copyWith({
     bool? on,
     double? height,
@@ -121,8 +125,8 @@ class ChartBackdrop {
       on: json["on"] == true,
       height: num_("height", 1, 0, maxBackdropHeight),
       width: num_("width", 1, 0.1, 4),
-      fill: colorFromJson(json["fill"], const Color(0x33FFFFFF)),
-      border: colorFromJson(json["border"], const Color(0x00000000)),
+      fill: colorFromJson(json["fill"], _defaults.fill),
+      border: colorFromJson(json["border"], _defaults.border),
       radius: num_("radius", 0, 0, 200),
       borderWidth: num_("borderWidth", 0, 0, 40),
       grow: ChartBackdropGrow.fromName(jsonStr(json["grow"])),

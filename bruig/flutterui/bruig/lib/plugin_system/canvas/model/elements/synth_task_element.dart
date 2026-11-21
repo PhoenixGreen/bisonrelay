@@ -124,6 +124,10 @@ class SynthTaskElement extends CanvasElement {
     this.checks = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SynthTaskElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.synthTask;
 
@@ -163,7 +167,7 @@ class SynthTaskElement extends CanvasElement {
           title: jsonLabel(json["title"], ""),
           text: jsonString(json["text"], ""),
           target: SynthPatch.fromJson(json["target"]),
-          speaker: jsonString(json["speaker"], ""),
+          speaker: jsonString(json["speaker"], _defaults.speaker),
           checks: [
             if (json["checks"] case List l)
               for (var c in l)

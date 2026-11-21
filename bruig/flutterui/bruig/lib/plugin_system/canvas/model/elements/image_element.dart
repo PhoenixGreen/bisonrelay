@@ -172,6 +172,10 @@ class BackgroundRemoval {
     this.invert = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = BackgroundRemoval();
+
   /// active is whether anything is taken out, by a method or the brush.
   bool get active => mode != RemovalMode.none || strokes.isNotEmpty;
 
@@ -233,11 +237,11 @@ class BackgroundRemoval {
       BackgroundRemoval(
         mode: RemovalMode.fromName(jsonStr(json["mode"])),
         keyColor: colorFromJson(json["key"]),
-        tolerance: jsonDouble(json["tol"], 0.12).clamp(0.0, 1.0),
-        softness: jsonDouble(json["soft"], 0.04).clamp(0.0, 1.0),
-        threshold: jsonDouble(json["thr"], 0.85).clamp(0.0, 1.0),
+        tolerance: jsonDouble(json["tol"], _defaults.tolerance).clamp(0.0, 1.0),
+        softness: jsonDouble(json["soft"], _defaults.softness).clamp(0.0, 1.0),
+        threshold: jsonDouble(json["thr"], _defaults.threshold).clamp(0.0, 1.0),
         invert: jsonBool(json["invert"], false),
-        edge: jsonDouble(json["edge"], 0.09),
+        edge: jsonDouble(json["edge"], _defaults.edge),
         strokes: [
           if (json["strokes"] case List raw)
             for (var stroke in raw)
@@ -334,6 +338,10 @@ class ImageOutline {
     this.feather = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ImageOutline();
+
   /// on is whether it draws anything; a width of zero is the off switch.
   bool get on => width > 0 && color.a > 0;
 
@@ -359,9 +367,9 @@ class ImageOutline {
 
   factory ImageOutline.fromJson(Map<String, dynamic> json) => ImageOutline(
         color: colorFromJson(json["c"]),
-        width: jsonDouble(json["w"], 0).clamp(0.0, 400.0),
+        width: jsonDouble(json["w"], _defaults.width).clamp(0.0, 400.0),
         style: OutlineStyle.fromName(jsonStr(json["s"])),
-        feather: jsonDouble(json["f"], 0).clamp(0.0, 1.0),
+        feather: jsonDouble(json["f"], _defaults.feather).clamp(0.0, 1.0),
       );
 }
 
@@ -379,6 +387,10 @@ class ImageCrop {
     this.right = 1,
     this.bottom = 1,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ImageCrop();
 
   bool get isWhole => left == 0 && top == 0 && right == 1 && bottom == 1;
 
@@ -402,10 +414,10 @@ class ImageCrop {
       {"l": left, "t": top, "r": right, "b": bottom};
 
   factory ImageCrop.fromJson(Map<String, dynamic> json) => ImageCrop(
-        left: jsonDouble(json["l"], 0).clamp(0.0, 0.99),
-        top: jsonDouble(json["t"], 0).clamp(0.0, 0.99),
-        right: jsonDouble(json["r"], 1).clamp(0.01, 1.0),
-        bottom: jsonDouble(json["b"], 1).clamp(0.01, 1.0),
+        left: jsonDouble(json["l"], _defaults.left).clamp(0.0, 0.99),
+        top: jsonDouble(json["t"], _defaults.top).clamp(0.0, 0.99),
+        right: jsonDouble(json["r"], _defaults.right).clamp(0.01, 1.0),
+        bottom: jsonDouble(json["b"], _defaults.bottom).clamp(0.01, 1.0),
       );
 }
 
@@ -425,6 +437,10 @@ class ImageFraming {
 
   const ImageFraming({this.x = 0.5, this.y = 0.5, this.zoom = 1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ImageFraming();
+
   bool get isDefault => x == 0.5 && y == 0.5 && zoom == 1;
 
   ImageFraming copyWith({double? x, double? y, double? zoom}) => ImageFraming(
@@ -436,9 +452,9 @@ class ImageFraming {
   Map<String, dynamic> toJson() => {"x": x, "y": y, "zoom": zoom};
 
   factory ImageFraming.fromJson(Map<String, dynamic> json) => ImageFraming(
-        x: jsonDouble(json["x"], 0.5).clamp(0.0, 1.0),
-        y: jsonDouble(json["y"], 0.5).clamp(0.0, 1.0),
-        zoom: jsonDouble(json["zoom"], 1).clamp(1.0, 8.0),
+        x: jsonDouble(json["x"], _defaults.x).clamp(0.0, 1.0),
+        y: jsonDouble(json["y"], _defaults.y).clamp(0.0, 1.0),
+        zoom: jsonDouble(json["zoom"], _defaults.zoom).clamp(1.0, 8.0),
       );
 }
 
@@ -549,6 +565,10 @@ class ImageElement extends CanvasElement {
     this.scaleContent = false,
     this.clip = false,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ImageElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.image;
@@ -739,17 +759,17 @@ class ImageElement extends CanvasElement {
         "box": box.toJson(),
         if (removal.active) "removal": removal.toJson(),
         if (tint.a > 0) "tint": colorToJson(tint),
-        if (saturation != 1) "sat": saturation,
-        if (brightness != 1) "bri": brightness,
+        if (saturation != _defaults.saturation) "sat": saturation,
+        if (brightness != _defaults.brightness) "bri": brightness,
         if (!crop.isWhole) "crop": crop.toJson(),
         if (!framing.isDefault) "framing": framing.toJson(),
         if (warp.active || warp.cols != 4 || warp.rows != 4)
           "warp": warp.toJson(),
         if (frame != null) "frame": frame!.name,
-        if (filter != ImageFilterPreset.none) "filter": filter.name,
+        if (filter != _defaults.filter) "filter": filter.name,
         if (outline.on) "outline": outline.toJson(),
-        if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
-        if (blend != OverlayBlend.none) "blend": blend.name,
+        if (blend != _defaults.blend) "overlay": colorToJson(overlay),
+        if (blend != _defaults.blend) "blend": blend.name,
         if (animation.any) "anim": animation.toJson(),
         // Only when layered, so a plain picture saves without layers.
         if (layered) "layers": [for (var l in stack) l.toJson()],
@@ -761,36 +781,35 @@ class ImageElement extends CanvasElement {
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       ImageElement(b,
-          assetId: jsonString(json["asset"], ""),
+          assetId: jsonString(json["asset"], _defaults.assetId),
           fit: ImageFit.fromName(jsonStr(json["fit"])),
-          box: jsonSpec(
-              json["box"], BoxSpec.fromJson, const BoxSpec(padding: 0)),
-          removal: jsonSpec(json["removal"], BackgroundRemoval.fromJson,
-              const BackgroundRemoval()),
-          tint: colorFromJson(json["tint"], const Color(0x00000000)),
-          saturation: jsonDouble(json["sat"], 1),
-          brightness: jsonDouble(json["bri"], 1),
-          crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
+          box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),
+          removal: jsonSpec(
+              json["removal"], BackgroundRemoval.fromJson, _defaults.removal),
+          tint: colorFromJson(json["tint"], _defaults.tint),
+          saturation: jsonDouble(json["sat"], _defaults.saturation),
+          brightness: jsonDouble(json["bri"], _defaults.brightness),
+          crop: jsonSpec(json["crop"], ImageCrop.fromJson, _defaults.crop),
           framing: jsonSpec(
-              json["framing"], ImageFraming.fromJson, const ImageFraming()),
-          warp: jsonSpec(json["warp"], ImageWarp.fromJson, const ImageWarp()),
+              json["framing"], ImageFraming.fromJson, _defaults.framing),
+          warp: jsonSpec(json["warp"], ImageWarp.fromJson, _defaults.warp),
           frame: json["frame"] is String
               ? ShapeKind.fromName(jsonStr(json["frame"]))
               : null,
           filter: ImageFilterPreset.fromName(jsonStr(json["filter"])),
           outline: jsonSpec(
-              json["outline"], ImageOutline.fromJson, const ImageOutline()),
-          overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
+              json["outline"], ImageOutline.fromJson, _defaults.outline),
+          overlay: colorFromJson(json["overlay"], _defaults.overlay),
           blend: OverlayBlend.fromName(jsonStr(json["blend"])),
-          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-              const ElementAnimation()),
+          animation: jsonSpec(
+              json["anim"], ElementAnimation.fromJson, _defaults.animation),
           layers: [
             if (json["layers"] case List raw)
               for (var l in raw)
                 if (l is Map<String, dynamic>)
                   if (ImageLayer.fromJson(l) case var layer?) layer,
           ],
-          mask: jsonSpec(json["mask"], ImageMask.fromJson, const ImageMask()),
+          mask: jsonSpec(json["mask"], ImageMask.fromJson, _defaults.mask),
           retouch: strokesFromJson(json["retouch"]),
           scaleContent: jsonBool(json["scaleContent"], false),
           clip: json.containsKey("clip")

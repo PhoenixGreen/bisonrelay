@@ -99,6 +99,10 @@ class EffectsSpec {
     this.brightness = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = EffectsSpec();
+
   /// masks is whether anything decides where the pattern shows.
   bool get masks => focus > 0 || (clear != ClearArea.none && clearAmount > 0);
 
@@ -191,26 +195,38 @@ class EffectsSpec {
   }
 
   factory EffectsSpec.fromJson(Map<String, dynamic> json) => EffectsSpec(
-        opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
-        grain: jsonDouble(json["grain"], 0).clamp(0.0, 1.0),
-        grainSize: jsonDouble(json["grainSize"], 1.5).clamp(0.3, 12.0),
+        opacity: jsonDouble(json["opacity"], _defaults.opacity).clamp(0.0, 1.0),
+        grain: jsonDouble(json["grain"], _defaults.grain).clamp(0.0, 1.0),
+        grainSize:
+            jsonDouble(json["grainSize"], _defaults.grainSize).clamp(0.3, 12.0),
         grainMoves: jsonBool(json["grainMoves"], true),
-        glow: jsonDouble(json["glow"], 0).clamp(0.0, 2.0),
-        glowSize: jsonDouble(json["glowSize"], 0.4).clamp(0.0, 1.0),
-        blur: jsonDouble(json["blur"], 0).clamp(0.0, 1.0),
-        scanlines: jsonDouble(json["scanlines"], 0).clamp(0.0, 1.0),
-        scanlineSize: jsonDouble(json["scanlineSize"], 4).clamp(1.0, 40.0),
-        focus: jsonDouble(json["focus"], 0).clamp(0.0, 1.0),
-        focusX: jsonDouble(json["focusX"], 0.5),
-        focusY: jsonDouble(json["focusY"], 0.5),
-        focusSize: jsonDouble(json["focusSize"], 0.3).clamp(0.0, 2.0),
+        glow: jsonDouble(json["glow"], _defaults.glow).clamp(0.0, 2.0),
+        glowSize:
+            jsonDouble(json["glowSize"], _defaults.glowSize).clamp(0.0, 1.0),
+        blur: jsonDouble(json["blur"], _defaults.blur).clamp(0.0, 1.0),
+        scanlines:
+            jsonDouble(json["scanlines"], _defaults.scanlines).clamp(0.0, 1.0),
+        scanlineSize: jsonDouble(json["scanlineSize"], _defaults.scanlineSize)
+            .clamp(1.0, 40.0),
+        focus: jsonDouble(json["focus"], _defaults.focus).clamp(0.0, 1.0),
+        focusX: jsonDouble(json["focusX"], _defaults.focusX),
+        focusY: jsonDouble(json["focusY"], _defaults.focusY),
+        focusSize:
+            jsonDouble(json["focusSize"], _defaults.focusSize).clamp(0.0, 2.0),
         clear: ClearArea.fromName(jsonStr(json["clear"])),
-        clearSize: jsonDouble(json["clearSize"], 0.4).clamp(0.0, 1.0),
-        clearSoftness: jsonDouble(json["clearSoftness"], 0.5).clamp(0.0, 1.0),
-        clearAmount: jsonDouble(json["clearAmount"], 1).clamp(0.0, 1.0),
-        hue: jsonDouble(json["hue"], 0).clamp(-180.0, 180.0),
-        saturation: jsonDouble(json["saturation"], 0).clamp(-1.0, 1.0),
-        contrast: jsonDouble(json["contrast"], 0).clamp(-1.0, 1.0),
-        brightness: jsonDouble(json["brightness"], 0).clamp(-1.0, 1.0),
+        clearSize:
+            jsonDouble(json["clearSize"], _defaults.clearSize).clamp(0.0, 1.0),
+        clearSoftness:
+            jsonDouble(json["clearSoftness"], _defaults.clearSoftness)
+                .clamp(0.0, 1.0),
+        clearAmount: jsonDouble(json["clearAmount"], _defaults.clearAmount)
+            .clamp(0.0, 1.0),
+        hue: jsonDouble(json["hue"], _defaults.hue).clamp(-180.0, 180.0),
+        saturation: jsonDouble(json["saturation"], _defaults.saturation)
+            .clamp(-1.0, 1.0),
+        contrast:
+            jsonDouble(json["contrast"], _defaults.contrast).clamp(-1.0, 1.0),
+        brightness: jsonDouble(json["brightness"], _defaults.brightness)
+            .clamp(-1.0, 1.0),
       );
 }

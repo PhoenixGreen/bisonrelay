@@ -38,6 +38,10 @@ class TextWrap {
 
   const TextWrap({this.on = false, this.gap = 12, this.side = WrapSide.both});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextWrap();
+
   TextWrap copyWith({bool? on, double? gap, WrapSide? side}) => TextWrap(
         on: on ?? this.on,
         gap: gap ?? this.gap,
@@ -46,13 +50,13 @@ class TextWrap {
 
   Map<String, dynamic> toJson() => {
         if (on) "on": true,
-        if (gap != 12) "gap": gap,
-        if (side != WrapSide.both) "side": side.name,
+        if (gap != _defaults.gap) "gap": gap,
+        if (side != _defaults.side) "side": side.name,
       };
 
   factory TextWrap.fromJson(Map<String, dynamic> json) => TextWrap(
         on: jsonBool(json["on"], false),
-        gap: jsonDouble(json["gap"], 12).clamp(0, 400),
+        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0, 400),
         side: WrapSide.fromName(jsonStr(json["side"])),
       );
 }
@@ -95,6 +99,10 @@ class TextColumns {
     this.ruleColor = const Color(0x66FFFFFF),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextColumns();
+
   bool get isSingle => count <= 1;
 
   /// says is whether this has anything to record beyond the default.
@@ -127,19 +135,20 @@ class TextColumns {
         "count": count,
         "noBlankStart": noBlankStart,
         "gap": gap,
-        if (ruleStyle != ColumnRuleStyle.none) "ruleStyle": ruleStyle.name,
-        if (ruleStyle != ColumnRuleStyle.none) "ruleWidth": ruleWidth,
-        if (ruleStyle != ColumnRuleStyle.none)
+        if (ruleStyle != _defaults.ruleStyle) "ruleStyle": ruleStyle.name,
+        if (ruleStyle != _defaults.ruleStyle) "ruleWidth": ruleWidth,
+        if (ruleStyle != _defaults.ruleStyle)
           "ruleColor": colorToJson(ruleColor),
       };
 
   factory TextColumns.fromJson(Map<String, dynamic> json) => TextColumns(
         noBlankStart: jsonBool(json["noBlankStart"], true),
-        count: jsonInt(json["count"], 1).clamp(1, 12),
-        gap: jsonDouble(json["gap"], 24).clamp(0.0, 400.0),
+        count: jsonInt(json["count"], _defaults.count).clamp(1, 12),
+        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0.0, 400.0),
         ruleStyle: ColumnRuleStyle.fromName(jsonString(json["ruleStyle"], "")),
-        ruleWidth: jsonDouble(json["ruleWidth"], 1).clamp(0.0, 40.0),
-        ruleColor: colorFromJson(json["ruleColor"], const Color(0x66FFFFFF)),
+        ruleWidth:
+            jsonDouble(json["ruleWidth"], _defaults.ruleWidth).clamp(0.0, 40.0),
+        ruleColor: colorFromJson(json["ruleColor"], _defaults.ruleColor),
       );
 }
 
@@ -177,6 +186,10 @@ class TextOnCurve {
     this.mask = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextOnCurve(elementId: "");
+
   TextOnCurve copyWith({
     String? elementId,
     double? offset,
@@ -196,18 +209,18 @@ class TextOnCurve {
 
   Map<String, dynamic> toJson() => {
         "id": elementId,
-        if (offset != 0) "offset": offset,
+        if (offset != _defaults.offset) "offset": offset,
         if (away) "away": true,
-        if (spacing != 0) "spacing": spacing,
+        if (spacing != _defaults.spacing) "spacing": spacing,
         if (hideHost) "hideHost": true,
         if (mask) "mask": true,
       };
 
   factory TextOnCurve.fromJson(Map<String, dynamic> json) => TextOnCurve(
         elementId: jsonString(json["id"], ""),
-        offset: jsonDouble(json["offset"], 0),
+        offset: jsonDouble(json["offset"], _defaults.offset),
         away: jsonBool(json["away"], false),
-        spacing: jsonDouble(json["spacing"], 0),
+        spacing: jsonDouble(json["spacing"], _defaults.spacing),
         hideHost: jsonBool(json["hideHost"], false),
         mask: jsonBool(json["mask"], false),
       );
@@ -285,6 +298,10 @@ class TextElement extends CanvasElement {
     this.style = "",
     this.curve,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.text;
@@ -420,19 +437,22 @@ class TextElement extends CanvasElement {
         if (curve != null) "curve": curve!.toJson(),
       };
 
-  factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
+  factory TextElement.fromJson(Map<String, dynamic> json,
+          ElementBase b) =>
       TextElement(b,
-          text: jsonString(json["text"], "Text"),
-          textSpec: jsonSpec(
-              json["textSpec"], TextSpec.fromJson, const TextSpec()),
-          box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec()),
+          text: jsonString(json["text"], _defaults.text),
+          textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
+              _defaults.textSpec),
+          box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),
           autoSize: jsonBool(json["autoSize"], false),
-          animation: jsonSpec(json["animation"], TextAnimation.fromJson,
-              const TextAnimation()),
-          slot: json[
-                  "slot"] is String
-              ? TextSlot.fromName(jsonStr(json["slot"]))
-              : null,
+          animation:
+              jsonSpec(json["animation"], TextAnimation.fromJson,
+                  _defaults.animation),
+          slot:
+              json[
+                      "slot"] is String
+                  ? TextSlot.fromName(jsonStr(json["slot"]))
+                  : null,
           items: [
             if (json["items"] case List raw)
               for (var i in raw)
@@ -466,15 +486,15 @@ class TextElement extends CanvasElement {
               for (var p in raw)
                 if (p is Map<String, dynamic>) TextPart.fromJson(p),
           ],
-          flowTo: jsonString(json["flowTo"], ""),
-          style: jsonString(json["style"], ""),
+          flowTo: jsonString(json["flowTo"], _defaults.flowTo),
+          style: jsonString(json["style"], _defaults.style),
           wrap:
               json["wrap"]
                       is Map<String, dynamic>
                   ? TextWrap.fromJson(json["wrap"] as Map<String, dynamic>)
                   : const TextWrap(),
           columns: jsonSpec(
-              json["columns"], TextColumns.fromJson, const TextColumns()),
+              json["columns"], TextColumns.fromJson, _defaults.columns),
           curve: json["curve"] is Map<String, dynamic>
               ? TextOnCurve.fromJson(json["curve"] as Map<String, dynamic>)
               : null);

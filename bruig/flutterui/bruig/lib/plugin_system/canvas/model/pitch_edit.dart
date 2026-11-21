@@ -70,6 +70,10 @@ class PitchNote {
       this.fadeIn = 0,
       this.fadeOut = 0});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PitchNote(0, 0, 0);
+
   double get heardStart => startAt ?? start;
 
   double get heardEnd => endAt ?? end;
@@ -188,20 +192,20 @@ class PitchNote {
         "s": _r(start),
         "e": _r(end),
         "p": _r(sung),
-        if (shift != 0) "shift": _r(shift),
-        if (straighten != 0) "straighten": _r(straighten),
-        if (wobble != 1) "wobble": _r(wobble),
+        if (shift != _defaults.shift) "shift": _r(shift),
+        if (straighten != _defaults.straighten) "straighten": _r(straighten),
+        if (wobble != _defaults.wobble) "wobble": _r(wobble),
         // Written only where it differs from wobble: a file without
         // it reads its vibrato as its wobble.
         if (vibrato != wobble) "vibrato": _r(vibrato),
-        if (gainDb != 0) "gain": _r(gainDb),
-        if (retuneMs != 0) "retune": _r(retuneMs),
-        if (formant != 0) "formant": _r(formant),
-        if (slideMs != 0) "slide": _r(slideMs),
+        if (gainDb != _defaults.gainDb) "gain": _r(gainDb),
+        if (retuneMs != _defaults.retuneMs) "retune": _r(retuneMs),
+        if (formant != _defaults.formant) "formant": _r(formant),
+        if (slideMs != _defaults.slideMs) "slide": _r(slideMs),
         if (startAt case var at?) "at": _r(at),
         if (endAt case var to?) "to": _r(to),
-        if (fadeIn != 0) "fi": _r(fadeIn),
-        if (fadeOut != 0) "fo": _r(fadeOut),
+        if (fadeIn != _defaults.fadeIn) "fi": _r(fadeIn),
+        if (fadeOut != _defaults.fadeOut) "fo": _r(fadeOut),
         if (curve.isNotEmpty)
           "curve": [
             for (var (t, m) in curve) [_r(t), _r(m)]
@@ -216,18 +220,18 @@ class PitchNote {
     if (s < 0 || e <= s) return null;
     var wobble = jsonDouble(json["wobble"], 1);
     return PitchNote(s, e, jsonDouble(json["p"], 60)).copyWith(
-        shift: jsonDouble(json["shift"], 0),
-        straighten: jsonDouble(json["straighten"], 0),
+        shift: jsonDouble(json["shift"], _defaults.shift),
+        straighten: jsonDouble(json["straighten"], _defaults.straighten),
         wobble: wobble,
         vibrato: jsonDouble(json["vibrato"], wobble),
-        gainDb: jsonDouble(json["gain"], 0),
-        retuneMs: jsonDouble(json["retune"], 0),
-        formant: jsonDouble(json["formant"], 0),
-        slideMs: jsonDouble(json["slide"], 0),
+        gainDb: jsonDouble(json["gain"], _defaults.gainDb),
+        retuneMs: jsonDouble(json["retune"], _defaults.retuneMs),
+        formant: jsonDouble(json["formant"], _defaults.formant),
+        slideMs: jsonDouble(json["slide"], _defaults.slideMs),
         startAt: json["at"] is num ? (json["at"] as num).toDouble() : null,
         endAt: json["to"] is num ? (json["to"] as num).toDouble() : null,
-        fadeIn: jsonDouble(json["fi"], 0),
-        fadeOut: jsonDouble(json["fo"], 0),
+        fadeIn: jsonDouble(json["fi"], _defaults.fadeIn),
+        fadeOut: jsonDouble(json["fo"], _defaults.fadeOut),
         curve: [
           if (json["curve"] case List points)
             for (var p in points)

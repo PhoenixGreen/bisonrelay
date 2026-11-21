@@ -270,6 +270,10 @@ class ProceduralSpec {
     this.layers = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ProceduralSpec();
+
   /// p is the style's own setting [id], or the style's default for it.
   double p(String id) {
     var set = params[id];
@@ -384,8 +388,8 @@ class ProceduralSpec {
         "scale": scale,
         "intensity": intensity,
         "variation": variation,
-        if (rotation != 0) "rotation": rotation,
-        if (glyphs != defaultGlyphs) "glyphs": glyphs,
+        if (rotation != _defaults.rotation) "rotation": rotation,
+        if (glyphs != _defaults.glyphs) "glyphs": glyphs,
         if (animated) "animated": true,
         if (animated) "speed": speed,
         if (animated && inRuns) "passFrames": passFrames,

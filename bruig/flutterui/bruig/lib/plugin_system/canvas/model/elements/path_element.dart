@@ -41,6 +41,10 @@ class PathNode {
     this.frame = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PathNode(x: 0, y: 0);
+
   Offset get point => Offset(x, y);
   Offset get inHandle => Offset(x + inDx, y + inDy);
   Offset get outHandle => Offset(x + outDx, y + outDy);
@@ -76,21 +80,21 @@ class PathNode {
   Map<String, dynamic> toJson() => {
         "x": x,
         "y": y,
-        if (inDx != 0) "ix": inDx,
-        if (inDy != 0) "iy": inDy,
-        if (outDx != 0) "ox": outDx,
-        if (outDy != 0) "oy": outDy,
+        if (inDx != _defaults.inDx) "ix": inDx,
+        if (inDy != _defaults.inDy) "iy": inDy,
+        if (outDx != _defaults.outDx) "ox": outDx,
+        if (outDy != _defaults.outDy) "oy": outDy,
         "f": frame,
       };
 
   factory PathNode.fromJson(Map<String, dynamic> json) => PathNode(
         x: jsonDouble(json["x"], 0),
         y: jsonDouble(json["y"], 0),
-        inDx: jsonDouble(json["ix"], 0),
-        inDy: jsonDouble(json["iy"], 0),
-        outDx: jsonDouble(json["ox"], 0),
-        outDy: jsonDouble(json["oy"], 0),
-        frame: jsonInt(json["f"], 0),
+        inDx: jsonDouble(json["ix"], _defaults.inDx),
+        inDy: jsonDouble(json["iy"], _defaults.inDy),
+        outDx: jsonDouble(json["ox"], _defaults.outDx),
+        outDy: jsonDouble(json["oy"], _defaults.outDy),
+        frame: jsonInt(json["f"], _defaults.frame),
       );
 }
 
@@ -162,6 +166,10 @@ class PathElement extends CanvasElement {
     this.follow,
     this.animation = const ElementAnimation(),
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PathElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.path;
@@ -456,9 +464,9 @@ class PathElement extends CanvasElement {
         if (fade != null) "fade": fade!.toJson(),
         "sw": strokeWidth,
         "strokeCap": cap.name,
-        if (startEnd != LineEnd.none) "startEnd": startEnd.name,
-        if (endEnd != LineEnd.arrow) "endEnd": endEnd.name,
-        if (endSize != 1) "endSize": endSize,
+        if (startEnd != _defaults.startEnd) "startEnd": startEnd.name,
+        if (endEnd != _defaults.endEnd) "endEnd": endEnd.name,
+        if (endSize != _defaults.endSize) "endSize": endSize,
         if (dash > 0) "dash": dash,
         if (closed) "closed": true,
         if (guide) "guide": true,
@@ -475,30 +483,30 @@ class PathElement extends CanvasElement {
             for (var n in raw)
               if (n is Map<String, dynamic>) PathNode.fromJson(n),
         ],
-        color: colorFromJson(json["color"], const Color(0xFFFFD166)),
+        color: colorFromJson(json["color"], _defaults.color),
         fade: json["fade"] is Map
             ? GradientSpec.fromJson(
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
-        strokeWidth: jsonDouble(json["sw"], 3),
+        strokeWidth: jsonDouble(json["sw"], _defaults.strokeWidth),
         cap: json["strokeCap"] is String
             ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
             : LineStrokeCap.round,
         startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
-        endSize: jsonDouble(json["endSize"], 1),
+        endSize: jsonDouble(json["endSize"], _defaults.endSize),
         // The writer leaves the end out when it is the arrow a path starts
         // with, so no "endEnd" is an arrow.
         endEnd: json.containsKey("endEnd")
             ? LineEnd.fromName(jsonStr(json["endEnd"]))
             : LineEnd.arrow,
-        dash: jsonDouble(json["dash"], 0).clamp(0.0, 200.0),
+        dash: jsonDouble(json["dash"], _defaults.dash).clamp(0.0, 200.0),
         closed: jsonBool(json["closed"], false),
         guide: jsonBool(json["guide"], false),
         follow: followJson is Map<String, dynamic>
             ? PathFollow.fromJson(followJson)
             : null,
         animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
+            json["anim"], ElementAnimation.fromJson, _defaults.animation));
   }
 
   /// defaultNodes is the curve a freshly added path starts as: a shallow arc

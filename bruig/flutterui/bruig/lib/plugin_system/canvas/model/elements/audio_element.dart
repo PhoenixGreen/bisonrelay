@@ -99,6 +99,10 @@ class AudioElement extends CanvasElement {
     this.animation = const ElementAnimation(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = AudioElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.audio;
 
@@ -162,13 +166,13 @@ class AudioElement extends CanvasElement {
   @override
   Map<String, dynamic> props() => {
         "clip": clip.toJson(),
-        if (glyph != AudioGlyph.speaker) "glyph": glyph.name,
+        if (glyph != _defaults.glyph) "glyph": glyph.name,
         if (picture.isNotEmpty) "picture": picture,
         if (pausedPicture.isNotEmpty) "pausedPicture": pausedPicture,
         if (mutedPicture.isNotEmpty) "mutedPicture": mutedPicture,
         "iconColor": colorToJson(iconColor),
         "accent": colorToJson(accent),
-        if (leftAccent != defaultLeftAccent)
+        if (leftAccent != _defaults.leftAccent)
           "leftAccent": colorToJson(leftAccent),
         "box": box.toJson(),
         "controls": [for (var c in controls) c.name],
@@ -182,19 +186,18 @@ class AudioElement extends CanvasElement {
         instrument: json["instrument"] is Map<String, dynamic>
             ? InstrumentPart.fromJson(json["instrument"] as Map<String, dynamic>)
             : null,
-        clip: jsonSpec(json["clip"], MediaClip.fromJson, const MediaClip()),
+        clip: jsonSpec(json["clip"], MediaClip.fromJson, _defaults.clip),
         glyph: AudioGlyph.fromName(jsonStr(json["glyph"])),
-        picture: jsonString(json["picture"], ""),
-        pausedPicture: jsonString(json["pausedPicture"], ""),
-        mutedPicture: jsonString(json["mutedPicture"], ""),
-        iconColor: colorFromJson(json["iconColor"], const Color(0xFFFFFFFF)),
-        accent: colorFromJson(json["accent"], const Color(0xFF3D7EFF)),
-        leftAccent: colorFromJson(json["leftAccent"], defaultLeftAccent),
+        picture: jsonString(json["picture"], _defaults.picture),
+        pausedPicture: jsonString(json["pausedPicture"], _defaults.pausedPicture),
+        mutedPicture: jsonString(json["mutedPicture"], _defaults.mutedPicture),
+        iconColor: colorFromJson(json["iconColor"], _defaults.iconColor),
+        accent: colorFromJson(json["accent"], _defaults.accent),
+        leftAccent: colorFromJson(json["leftAccent"], _defaults.leftAccent),
         box: jsonSpec(
             json["box"],
             BoxSpec.fromJson,
-            const BoxSpec(
-                fill: Color(0xFF223046), borderRadius: 999, padding: 10)),
+            _defaults.box),
         controls: raw is List
             ? [
                 for (var name in raw)
@@ -202,7 +205,7 @@ class AudioElement extends CanvasElement {
               ]
             : const [AudioControl.playPause],
         animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
+            json["anim"], ElementAnimation.fromJson, _defaults.animation));
   }
 }
 

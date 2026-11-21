@@ -203,6 +203,10 @@ class CounterElement extends CanvasElement {
     this.animation = const ElementAnimation(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CounterElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.counter;
 
@@ -337,11 +341,11 @@ class CounterElement extends CanvasElement {
   Map<String, dynamic> props() => {
         "from": from,
         "to": to,
-        if (decimals != 0) "decimals": decimals,
-        if (separator != CounterSeparator.none) "sep": separator.name,
+        if (decimals != _defaults.decimals) "decimals": decimals,
+        if (separator != _defaults.separator) "sep": separator.name,
         if (before.isNotEmpty) "before": before,
         if (after.isNotEmpty) "after": after,
-        if (gap != 0) "gap": gap,
+        if (gap != _defaults.gap) "gap": gap,
         if (loose) "loose": true,
         if (loose) "beforeAt": [beforeAt.dx, beforeAt.dy],
         if (loose) "afterAt": [afterAt.dx, afterAt.dy],
@@ -352,10 +356,10 @@ class CounterElement extends CanvasElement {
         "box": box.toJson(),
         if (!fit) "noFit": true,
         if (!keyed) "live": true,
-        if (source != CounterSource.run) "source": source.name,
+        if (source != _defaults.source) "source": source.name,
         if (gameCount.isNotEmpty) "gameCount": gameCount,
         if (mirrored) "mirrored": true,
-        if (rate != 1) "rate": rate,
+        if (rate != _defaults.rate) "rate": rate,
         if (loop) "loop": true,
         if (running) "running": true,
         if (buttons.isNotEmpty) "buttons": [for (var b in buttons) b.name],
@@ -373,37 +377,30 @@ class CounterElement extends CanvasElement {
   factory CounterElement.fromJson(Map<String, dynamic> json, ElementBase b) {
     var raw = json["buttons"];
     return CounterElement(b,
-        from: jsonDouble(json["from"], 0),
-        to: jsonDouble(json["to"], 100),
-        decimals: jsonInt(json["decimals"], 0).clamp(0, 8),
+        from: jsonDouble(json["from"], _defaults.from),
+        to: jsonDouble(json["to"], _defaults.to),
+        decimals: jsonInt(json["decimals"], _defaults.decimals).clamp(0, 8),
         separator: CounterSeparator.fromName(jsonStr(json["sep"])),
-        before: jsonString(json["before"], ""),
-        after: jsonString(json["after"], ""),
-        gap: jsonDouble(json["gap"], 0),
+        before: jsonString(json["before"], _defaults.before),
+        after: jsonString(json["after"], _defaults.after),
+        gap: jsonDouble(json["gap"], _defaults.gap),
         loose: jsonBool(json["loose"], false),
         beforeAt: _offsetFromJson(json["beforeAt"]),
         afterAt: _offsetFromJson(json["afterAt"]),
         numberSpec: jsonSpec(
-            json["numberSpec"],
-            TextSpec.fromJson,
-            const TextSpec(
-                fontSize: 64, weight: 700, align: TextAlignSpec.center)),
-        affixSpec: jsonSpec(
-            json["affixSpec"],
-            TextSpec.fromJson,
-            const TextSpec(
-                fontSize: 28, weight: 400, align: TextAlignSpec.center)),
-        numberStyle: jsonString(json["numberStyle"], ""),
-        wordStyle: jsonString(json["wordStyle"], ""),
-        box:
-            jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec(padding: 16)),
+            json["numberSpec"], TextSpec.fromJson, _defaults.numberSpec),
+        affixSpec:
+            jsonSpec(json["affixSpec"], TextSpec.fromJson, _defaults.affixSpec),
+        numberStyle: jsonString(json["numberStyle"], _defaults.numberStyle),
+        wordStyle: jsonString(json["wordStyle"], _defaults.wordStyle),
+        box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),
         fit: !jsonBool(json["noFit"], false),
         keyed: !jsonBool(json["live"], false),
         source: CounterSource.fromName(jsonStr(json["source"])),
         gameCount:
             json["gameCount"] is String ? json["gameCount"] as String : "",
         mirrored: jsonBool(json["mirrored"], false),
-        rate: jsonDouble(json["rate"], 1),
+        rate: jsonDouble(json["rate"], _defaults.rate),
         loop: jsonBool(json["loop"], false),
         running: jsonBool(json["running"], false),
         buttons: raw is List
@@ -414,10 +411,7 @@ class CounterElement extends CanvasElement {
               ]
             : const [],
         buttonSpec: jsonSpec(
-            json["buttonSpec"],
-            TextSpec.fromJson,
-            const TextSpec(
-                fontSize: 16, weight: 600, align: TextAlignSpec.center)),
+            json["buttonSpec"], TextSpec.fromJson, _defaults.buttonSpec),
         looseButtons: jsonBool(json["looseButtons"], false),
         buttonAt: json["buttonAt"] is List
             ? [for (var at in json["buttonAt"] as List) _offsetFromJson(at)]
@@ -427,17 +421,10 @@ class CounterElement extends CanvasElement {
             ? Size(jsonDouble((json["buttonSize"] as List)[0], 0.3),
                 jsonDouble((json["buttonSize"] as List)[1], 0.18))
             : const Size(0.3, 0.18),
-        buttonBox: jsonSpec(
-            json["buttonBox"],
-            BoxSpec.fromJson,
-            const BoxSpec(
-                fill: Color(0xFF223046),
-                borderRadius: 6,
-                padding: 8,
-                borderWidth: 1,
-                borderColor: Color(0x33FFFFFF))),
-        animation: jsonSpec(json["animation"], ElementAnimation.fromJson,
-            const ElementAnimation()));
+        buttonBox:
+            jsonSpec(json["buttonBox"], BoxSpec.fromJson, _defaults.buttonBox),
+        animation: jsonSpec(
+            json["animation"], ElementAnimation.fromJson, _defaults.animation));
   }
 }
 

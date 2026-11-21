@@ -126,6 +126,10 @@ class SheetElement extends CanvasElement {
     this.toBar = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SheetElement(ElementBase(id: ""));
+
   /// sheetBox is a new sheet's frame: round, borderless, music to edges.
   static const sheetBox = BoxSpec(borderRadius: 6, padding: 0);
 
@@ -223,11 +227,11 @@ class SheetElement extends CanvasElement {
         if (title.isNotEmpty) "title": title,
         "paper": colorToJson(paper),
         "ink": colorToJson(ink),
-        if (mode != PracticeMode.wait) "mode": mode.name,
-        if (hands != PracticeHands.both) "hands": hands.name,
-        if (tempo != 1) "tempo": tempo,
+        if (mode != _defaults.mode) "mode": mode.name,
+        if (hands != _defaults.hands) "hands": hands.name,
+        if (tempo != _defaults.tempo) "tempo": tempo,
         if (key case var k?) "key": k,
-        if (lines != 2) "lines": lines,
+        if (lines != _defaults.lines) "lines": lines,
         if (!playhead) "playhead": false,
         if (!showTitle) "showTitle": false,
         if (!showSubtitle) "showSubtitle": false,
@@ -246,16 +250,16 @@ class SheetElement extends CanvasElement {
 
   factory SheetElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       SheetElement(b,
-              follows: jsonString(json["follows"], ""),
-              score: jsonString(json["score"], ""),
-              part: jsonString(json["part"], ""),
-              title: jsonString(json["title"], ""),
-              paper: colorFromJson(json["paper"], const Color(0xFFFBFAF6)),
-              ink: colorFromJson(json["ink"], const Color(0xFF1B1B1B)),
+              follows: jsonString(json["follows"], _defaults.follows),
+              score: jsonString(json["score"], _defaults.score),
+              part: jsonString(json["part"], _defaults.part),
+              title: jsonString(json["title"], _defaults.title),
+              paper: colorFromJson(json["paper"], _defaults.paper),
+              ink: colorFromJson(json["ink"], _defaults.ink),
               mode: PracticeMode.fromName(jsonStr(json["mode"])),
               hands: PracticeHands.fromName(jsonStr(json["hands"])))
           .copyWith(
-              tempo: jsonDouble(json["tempo"], 1),
+              tempo: jsonDouble(json["tempo"], _defaults.tempo),
               key: json["key"] is num ? (json["key"] as num).toInt() : null,
               lines: json["lines"] is num ? (json["lines"] as num).toInt() : 2,
               playhead: json["playhead"] != false,

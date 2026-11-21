@@ -153,6 +153,10 @@ class PaintStroke {
     this.points = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PaintStroke(on: "", radius: 0);
+
   PaintStroke withPoint(SculptPoint p) => PaintStroke(
       on: on,
       tool: tool,
@@ -168,7 +172,7 @@ class PaintStroke {
 
   Map<String, dynamic> toJson() => {
         "on": on,
-        if (tool != PaintTool.paint) "tool": tool.name,
+        if (tool != _defaults.tool) "tool": tool.name,
         "colour": colour,
         "radius": radius,
         "opacity": opacity,

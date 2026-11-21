@@ -116,6 +116,10 @@ class SpeechLine {
       this.slots = const [],
       this.chosen = -1});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SpeechLine("");
+
   static const speechSlots = 3;
 
   SpeechTake? slot(int i) => i >= 0 && i < slots.length ? slots[i] : null;
@@ -171,7 +175,7 @@ class SpeechLine {
 
   Map<String, dynamic> toJson() => {
         "text": text,
-        if (direction != SpeechDirection.plain) "direction": direction.name,
+        if (direction != _defaults.direction) "direction": direction.name,
         if (own.isNotEmpty) "own": own,
         if (takes.isNotEmpty)
           "slots": [for (var i = 0; i < speechSlots; i++) slot(i)?.toJson()],
@@ -192,7 +196,7 @@ class SpeechLine {
                 .where((d) => d.name == json["direction"])
                 .firstOrNull ??
             SpeechDirection.plain,
-        own: jsonString(json["own"], ""),
+        own: jsonString(json["own"], _defaults.own),
         slots: slots,
         chosen: chosen >= 0 && chosen < slots.length && slots[chosen] != null
             ? chosen
@@ -647,6 +651,10 @@ class SpeechSpec {
     this.clip = "",
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SpeechSpec();
+
   SpeechSpec copyWith({
     SpeechEngineKind? engine,
     String? voice,
@@ -683,11 +691,11 @@ class SpeechSpec {
       );
 
   Map<String, dynamic> toJson() => {
-        if (engine != SpeechEngineKind.local) "engine": engine.name,
+        if (engine != _defaults.engine) "engine": engine.name,
         if (voice.isNotEmpty) "voice": voice,
         if (voiceName.isNotEmpty) "voiceName": voiceName,
         if (script.isNotEmpty) "script": script,
-        if (speed != 1) "speed": speed,
+        if (speed != _defaults.speed) "speed": speed,
         "expression": expression,
         "steadiness": steadiness,
         if (takes.isNotEmpty) "takes": [for (var t in takes) t.toJson()],
@@ -696,7 +704,7 @@ class SpeechSpec {
         if (language.isNotEmpty) "language": language,
         "room": room,
         if (!boost) "boost": false,
-        if (preset != "natural") "preset": preset,
+        if (preset != _defaults.preset) "preset": preset,
         if (clip.isNotEmpty) "clip": clip,
       };
 
@@ -726,12 +734,12 @@ class SpeechSpec {
       engine: SpeechEngineKind.values
           .where((e) => e.name == json["engine"])
           .firstOrNull,
-      voice: jsonString(json["voice"], ""),
-      voiceName: jsonString(json["voiceName"], ""),
-      script: jsonString(json["script"], ""),
-      speed: jsonDouble(json["speed"], 1),
-      expression: jsonDouble(json["expression"], 0.6),
-      steadiness: jsonDouble(json["steadiness"], 0.45),
+      voice: jsonString(json["voice"], _defaults.voice),
+      voiceName: jsonString(json["voiceName"], _defaults.voiceName),
+      script: jsonString(json["script"], _defaults.script),
+      speed: jsonDouble(json["speed"], _defaults.speed),
+      expression: jsonDouble(json["expression"], _defaults.expression),
+      steadiness: jsonDouble(json["steadiness"], _defaults.steadiness),
       takes: [
         if (json["takes"] case List list)
           for (var t in list)
@@ -745,11 +753,11 @@ class SpeechSpec {
           for (var l in list)
             if (SpeechLine.fromJson(l) case var line?) line,
       ],
-      language: jsonString(json["language"], ""),
-      room: jsonDouble(json["room"], 0),
+      language: jsonString(json["language"], _defaults.language),
+      room: jsonDouble(json["room"], _defaults.room),
       boost: json["boost"] != false,
-      preset: jsonString(json["preset"], "natural"),
-      clip: jsonString(json["clip"], ""),
+      preset: jsonString(json["preset"], _defaults.preset),
+      clip: jsonString(json["clip"], _defaults.clip),
     );
   }
 }
@@ -784,6 +792,10 @@ class VocaliserSpec {
   const VocaliserSpec(
       {this.melody = "", this.vibrato = 0.3, this.glide = 0.06});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = VocaliserSpec();
+
   VocaliserSpec copyWith({String? melody, double? vibrato, double? glide}) =>
       VocaliserSpec(
         melody: melody ?? this.melody,
@@ -800,9 +812,9 @@ class VocaliserSpec {
   static VocaliserSpec fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return const VocaliserSpec();
     return const VocaliserSpec().copyWith(
-      melody: jsonString(json["melody"], ""),
-      vibrato: jsonDouble(json["vibrato"], 0.3),
-      glide: jsonDouble(json["glide"], 0.06),
+      melody: jsonString(json["melody"], _defaults.melody),
+      vibrato: jsonDouble(json["vibrato"], _defaults.vibrato),
+      glide: jsonDouble(json["glide"], _defaults.glide),
     );
   }
 }

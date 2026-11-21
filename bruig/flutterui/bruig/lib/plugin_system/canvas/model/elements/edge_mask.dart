@@ -36,6 +36,10 @@ class EdgeMask {
   const EdgeMask(
       {this.feather = 0, this.fade = EdgeFade.none, this.reach = 0.5});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = EdgeMask();
+
   bool get on => feather > 0 || fade != EdgeFade.none;
 
   EdgeMask copyWith({double? feather, EdgeFade? fade, double? reach}) =>
@@ -46,12 +50,12 @@ class EdgeMask {
 
   Map<String, dynamic> toJson() => {
         if (feather > 0) "feather": feather,
-        if (fade != EdgeFade.none) "fade": fade.name,
+        if (fade != _defaults.fade) "fade": fade.name,
         "reach": reach,
       };
 
   factory EdgeMask.fromJson(Map<String, dynamic> json) => EdgeMask(
-      feather: jsonDouble(json["feather"], 0).clamp(0.0, 0.5),
+      feather: jsonDouble(json["feather"], _defaults.feather).clamp(0.0, 0.5),
       fade: EdgeFade.fromName(jsonStr(json["fade"])),
-      reach: jsonDouble(json["reach"], 0.5).clamp(0.01, 1.0));
+      reach: jsonDouble(json["reach"], _defaults.reach).clamp(0.01, 1.0));
 }

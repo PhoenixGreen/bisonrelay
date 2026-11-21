@@ -196,6 +196,10 @@ class CanvasGuides {
     this.showRulers = true,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CanvasGuides();
+
   /// isDefault is whether every setting is at its default: nothing to save.
   bool get isDefault =>
       !showGrid &&
@@ -264,24 +268,25 @@ class CanvasGuides {
   Map<String, dynamic> toJson() => {
         if (showGrid) "grid": true,
         "gridSize": gridSize,
-        if (subdivisions != 1) "sub": subdivisions,
+        if (subdivisions != _defaults.subdivisions) "sub": subdivisions,
         if (guides.isNotEmpty) "guides": [for (var g in guides) g.toJson()],
         if (!showGuides) "hideGuides": true,
         if (lockGuides) "lockGuides": true,
         if (!snap) "noSnap": true,
         "snapTo": snapTo.toJson(),
-        if (snapWithin != 6) "within": snapWithin,
+        if (snapWithin != _defaults.snapWithin) "within": snapWithin,
         if (stageSnap) "stageSnap": true,
-        if (stageStep != 0.25) "stageStep": stageStep,
-        if (stageTurn != 15) "stageTurn": stageTurn,
+        if (stageStep != _defaults.stageStep) "stageStep": stageStep,
+        if (stageTurn != _defaults.stageTurn) "stageTurn": stageTurn,
         if (rulers.any) "rulers": rulers.toJson(),
         if (!showRulers) "showRulers": false,
       };
 
   factory CanvasGuides.fromJson(Map<String, dynamic> json) => CanvasGuides(
         showGrid: jsonBool(json["grid"], false),
-        gridSize: jsonDouble(json["gridSize"], 40).clamp(2.0, 1000.0),
-        subdivisions: jsonInt(json["sub"], 1).clamp(1, 10),
+        gridSize:
+            jsonDouble(json["gridSize"], _defaults.gridSize).clamp(2.0, 1000.0),
+        subdivisions: jsonInt(json["sub"], _defaults.subdivisions).clamp(1, 10),
         guides: [
           if (json["guides"] case List raw)
             for (var g in raw)
@@ -290,13 +295,16 @@ class CanvasGuides {
         showGuides: !jsonBool(json["hideGuides"], false),
         lockGuides: jsonBool(json["lockGuides"], false),
         snap: !jsonBool(json["noSnap"], false),
-        snapTo: jsonSpec(json["snapTo"], SnapTo.fromJson, const SnapTo()),
-        snapWithin: jsonDouble(json["within"], 6).clamp(1.0, 40.0),
+        snapTo: jsonSpec(json["snapTo"], SnapTo.fromJson, _defaults.snapTo),
+        snapWithin:
+            jsonDouble(json["within"], _defaults.snapWithin).clamp(1.0, 40.0),
         stageSnap: jsonBool(json["stageSnap"], false),
-        stageStep: jsonDouble(json["stageStep"], 0.25).clamp(0.01, 10.0),
-        stageTurn: jsonDouble(json["stageTurn"], 15).clamp(1.0, 90.0),
-        rulers: jsonSpec(
-            json["rulers"], CanvasRulers.fromJson, const CanvasRulers()),
+        stageStep: jsonDouble(json["stageStep"], _defaults.stageStep)
+            .clamp(0.01, 10.0),
+        stageTurn:
+            jsonDouble(json["stageTurn"], _defaults.stageTurn).clamp(1.0, 90.0),
+        rulers:
+            jsonSpec(json["rulers"], CanvasRulers.fromJson, _defaults.rulers),
         showRulers: jsonBool(json["showRulers"], true),
       );
 

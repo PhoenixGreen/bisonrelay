@@ -34,6 +34,10 @@ class MidiNote {
   const MidiNote(this.key, this.start, this.length,
       [this.velocity = 96, this.muted = false, this.chance = 1]);
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MidiNote(0, 0, 0);
+
   double get end => start + length;
 
   MidiNote copyWith(
@@ -68,8 +72,8 @@ class MidiNote {
         key: jsonInt(json[0], 60),
         start: jsonDouble(json[1], 0),
         length: jsonDouble(json[2], 0.5),
-        velocity: json.length > 3 ? jsonInt(json[3], 96) : 96,
-        chance: json.length > 4 ? jsonDouble(json[4], 1) : 1,
+        velocity: json.length > 3 ? jsonInt(json[3], _defaults.velocity) : 96,
+        chance: json.length > 4 ? jsonDouble(json[4], _defaults.chance) : 1,
         muted: json.length > 5 && jsonInt(json[5], 0) == 1);
   }
 
@@ -326,6 +330,10 @@ class InstrumentPart {
     this.patch,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = InstrumentPart();
+
   /// slices are what it plays where its sound is [InstrumentSound.slices].
   final SliceKit? slices;
 
@@ -456,17 +464,17 @@ class InstrumentPart {
   }
 
   Map<String, dynamic> toJson() => {
-        if (look != InstrumentLook.keyboard) "look": look.name,
-        if (sound != InstrumentSound.builtin) "sound": sound.name,
-        if (bank != 0) "bank": bank,
-        if (program != 0) "program": program,
+        if (look != _defaults.look) "look": look.name,
+        if (sound != _defaults.sound) "sound": sound.name,
+        if (bank != _defaults.bank) "bank": bank,
+        if (program != _defaults.program) "program": program,
         "low": lowKey,
         "keys": keys,
         if (notes.isNotEmpty) "notes": [for (var n in notes) n.toJson()],
         if (effects.isNotEmpty) "effects": [for (var e in effects) e.toJson()],
         if (controls.isNotEmpty) "controls": controlsToJson(controls),
         if (input.isNotEmpty) "input": input,
-        if (monitor != MidiMonitor.auto) "monitor": monitor.name,
+        if (monitor != _defaults.monitor) "monitor": monitor.name,
         if (rendered.isNotEmpty) "rendered": rendered,
         if (!shape.plain) "shape": shape.toJson(),
         if (slices case var k?) "slices": k.toJson(),
@@ -480,10 +488,10 @@ class InstrumentPart {
       const InstrumentPart().copyWith(
         look: InstrumentLook.fromName(jsonStr(json["look"])),
         sound: InstrumentSound.fromName(jsonStr(json["sound"])),
-        bank: jsonInt(json["bank"], 0),
-        program: jsonInt(json["program"], 0),
-        lowKey: jsonInt(json["low"], 48),
-        keys: jsonInt(json["keys"], 25),
+        bank: jsonInt(json["bank"], _defaults.bank),
+        program: jsonInt(json["program"], _defaults.program),
+        lowKey: jsonInt(json["low"], _defaults.lowKey),
+        keys: jsonInt(json["keys"], _defaults.keys),
         notes: [
           if (json["notes"] case List list)
             for (var raw in list)
@@ -495,17 +503,17 @@ class InstrumentPart {
               if (MidiEffect.fromJson(raw) case var e?) e,
         ],
         controls: controlsFromJson(json["controls"]),
-        input: jsonString(json["input"], ""),
+        input: jsonString(json["input"], _defaults.input),
         monitor: MidiMonitor.values
                 .where((m) => m.name == json["monitor"])
                 .firstOrNull ??
             MidiMonitor.auto,
-        rendered: jsonString(json["rendered"], ""),
+        rendered: jsonString(json["rendered"], _defaults.rendered),
         shape: InstrumentShape.fromJson(json["shape"]),
         slices: SliceKit.fromJson(json["slices"]),
-        quantise: jsonDouble(json["quantise"], 0),
-        swing: jsonDouble(json["swing"], 0),
-        score: jsonString(json["score"], ""),
+        quantise: jsonDouble(json["quantise"], _defaults.quantise),
+        swing: jsonDouble(json["swing"], _defaults.swing),
+        score: jsonString(json["score"], _defaults.score),
         patch: SynthPatch.fromJson(json["patch"]),
       );
 }

@@ -53,6 +53,10 @@ class ChartLabel {
     this.height = 0.14,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartLabel();
+
   /// hasPlace is whether it has its own coordinates; if not, a floating
   /// label goes where the chart puts it (see defaultTitlePlacement).
   bool get hasPlace => !x.isNaN;
@@ -90,10 +94,10 @@ class ChartLabel {
 
   factory ChartLabel.fromJson(Map<String, dynamic> json) => ChartLabel(
         show: !jsonBool(json["off"], false),
-        x: jsonDouble(json["x"], double.nan),
-        y: jsonDouble(json["y"], 0),
-        width: jsonDouble(json["w"], 1),
-        height: jsonDouble(json["h"], 0.14),
+        x: jsonDouble(json["x"], _defaults.x),
+        y: jsonDouble(json["y"], _defaults.y),
+        width: jsonDouble(json["w"], _defaults.width),
+        height: jsonDouble(json["h"], _defaults.height),
       );
 }
 
@@ -108,6 +112,10 @@ class ChartBody {
   final double height;
 
   const ChartBody({this.x = 0, this.y = 0, this.width = 1, this.height = 1});
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartBody();
 
   bool get isWhole => x == 0 && y == 0 && width == 1 && height == 1;
 
@@ -133,10 +141,10 @@ class ChartBody {
   Map<String, dynamic> toJson() => {"x": x, "y": y, "w": width, "h": height};
 
   factory ChartBody.fromJson(Map<String, dynamic> json) => ChartBody(
-        x: jsonDouble(json["x"], 0),
-        y: jsonDouble(json["y"], 0),
-        width: jsonDouble(json["w"], 1),
-        height: jsonDouble(json["h"], 1),
+        x: jsonDouble(json["x"], _defaults.x),
+        y: jsonDouble(json["y"], _defaults.y),
+        width: jsonDouble(json["w"], _defaults.width),
+        height: jsonDouble(json["h"], _defaults.height),
       );
 }
 
@@ -424,6 +432,10 @@ class ChartElement extends CanvasElement {
     this.style = "",
     this.design = const ChartDesign(),
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartElement(ElementBase(id: ""));
 
   @override
   ElementKind get kind => ElementKind.chart;
@@ -818,8 +830,8 @@ class ChartElement extends CanvasElement {
         if (xLabelColor != null) "xLabelColor": colorToJson(xLabelColor!),
         if (yLabelSize != null) "yLabelSize": yLabelSize,
         if (yLabelColor != null) "yLabelColor": colorToJson(yLabelColor!),
-        if (xLabelGap != 0) "xLabelGap": xLabelGap,
-        if (yLabelGap != 0) "yLabelGap": yLabelGap,
+        if (xLabelGap != _defaults.xLabelGap) "xLabelGap": xLabelGap,
+        if (yLabelGap != _defaults.yLabelGap) "yLabelGap": yLabelGap,
         if (!showXTitle) "noXTitle": true,
         if (!showYTitle) "noYTitle": true,
         "legend": showLegend,
@@ -831,7 +843,7 @@ class ChartElement extends CanvasElement {
         if (numbers.toJson().isNotEmpty) "numbers": numbers.toJson(),
         if (axisNumbers != null) "axisNumbers": axisNumbers!.toJson(),
         if (axisSpec != null) "axisSpec": axisSpec!.toJson(),
-        if (axisGap != 0) "axisGap": axisGap,
+        if (axisGap != _defaults.axisGap) "axisGap": axisGap,
         "riseColor": colorToJson(riseColor),
         if (sliceColors.isNotEmpty)
           "sliceColors": [for (var c in sliceColors) colorToJson(c)],
@@ -847,8 +859,8 @@ class ChartElement extends CanvasElement {
         if (barFloor > 0) "barFloor": barFloor,
         "inner": innerRadius,
         if (centreLabel.isNotEmpty) "centre": centreLabel,
-        if (pictoShape != PictoShape.person) "picto": pictoShape.name,
-        if (pictoCount != 10) "pictoN": pictoCount,
+        if (pictoShape != _defaults.pictoShape) "picto": pictoShape.name,
+        if (pictoCount != _defaults.pictoCount) "pictoN": pictoCount,
         "sw": strokeWidth,
         if (showPoints) "points": true,
         if (pointSize > 0) "pointSize": pointSize,
@@ -861,7 +873,7 @@ class ChartElement extends CanvasElement {
         if (play > 0) "play": play,
         if (steps.isNotEmpty) "steps": [for (var st in steps) st.toJson()],
         if (steps.isNotEmpty) "stepAt": stepAt,
-        if (follow != "time") "follow": follow,
+        if (follow != _defaults.follow) "follow": follow,
         if (panel.a > 0) "panel": colorToJson(panel),
         if (style.isNotEmpty) "style": style,
         if (design.any) "design": design.toJson(),
@@ -870,29 +882,29 @@ class ChartElement extends CanvasElement {
   factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) => ChartElement(
       b,
       type: ChartType.fromName(jsonStr(json["type"])),
-      data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
+      data: jsonSpec(json["data"], ChartData.fromJson, _defaults.data),
       fromTable:
-          jsonSpec(json["fromTable"], TableLink.fromJson, const TableLink()),
-      source: jsonSpec(json["source"], DataSource.fromJson, const DataSource()),
+          jsonSpec(json["fromTable"], TableLink.fromJson, _defaults.fromTable),
+      source: jsonSpec(json["source"], DataSource.fromJson, _defaults.source),
       fromSource: jsonSpec(
-          json["fromSource"], ChartSourceMap.fromJson, const ChartSourceMap()),
-      title: jsonLabel(json["title"], ""),
-      description: jsonString(json["desc"], ""),
+          json["fromSource"], ChartSourceMap.fromJson, _defaults.fromSource),
+      title: jsonLabel(json["title"], _defaults.title),
+      description: jsonString(json["desc"], _defaults.description),
       titleBox:
-          jsonSpec(json["titleBox"], ChartLabel.fromJson, const ChartLabel()),
+          jsonSpec(json["titleBox"], ChartLabel.fromJson, _defaults.titleBox),
       descriptionBox: jsonSpec(
-          json["descBox"], ChartLabel.fromJson, const ChartLabel(height: 0.1)),
-      body: jsonSpec(json["body"], ChartBody.fromJson, const ChartBody()),
-      animation: jsonSpec(
-          json["anim"], ChartAnimation.fromJson, const ChartAnimation()),
-      legend: jsonSpec(
-          json["legendSpec"], ChartLegend.fromJson, const ChartLegend()),
+          json["descBox"], ChartLabel.fromJson, _defaults.descriptionBox),
+      body: jsonSpec(json["body"], ChartBody.fromJson, _defaults.body),
+      animation:
+          jsonSpec(json["anim"], ChartAnimation.fromJson, _defaults.animation),
+      legend:
+          jsonSpec(json["legendSpec"], ChartLegend.fromJson, _defaults.legend),
       floatingLabels: jsonBool(json["floatLabels"], false),
       descriptionSpec: json["descSpec"] is Map<String, dynamic>
           ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
           : null,
-      xAxisLabel: jsonLabel(json["xlabel"], ""),
-      yAxisLabel: jsonLabel(json["ylabel"], ""),
+      xAxisLabel: jsonLabel(json["xlabel"], _defaults.xAxisLabel),
+      yAxisLabel: jsonLabel(json["ylabel"], _defaults.yAxisLabel),
       showGrid: jsonBool(json["grid"], true),
       showAxes: jsonBool(json["axes"], true),
       showXLabels: !jsonBool(json["noAxisLabels"], false) &&
@@ -919,11 +931,11 @@ class ChartElement extends CanvasElement {
       showYTitle: !jsonBool(json["noYTitle"], false),
       showLegend: jsonBool(json["legend"], false),
       showValues: jsonBool(json["values"], false),
-      gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
-      axisSteps: jsonInt(json["axisSteps"], 0).clamp(0, 40),
+      gridColor: colorFromJson(json["gridColor"], _defaults.gridColor),
+      axisSteps: jsonInt(json["axisSteps"], _defaults.axisSteps).clamp(0, 40),
       logScale: jsonBool(json["log"], false),
-      numbers: jsonSpec(
-          json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
+      numbers:
+          jsonSpec(json["numbers"], ChartNumbers.fromJson, _defaults.numbers),
       // Null when nothing is saved: the axis follows the values.
       axisNumbers: json["axisNumbers"] is Map<String, dynamic>
           ? ChartNumbers.fromJson(json["axisNumbers"] as Map<String, dynamic>)
@@ -931,38 +943,39 @@ class ChartElement extends CanvasElement {
       axisSpec: json["axisSpec"] is Map<String, dynamic>
           ? TextSpec.fromJson(json["axisSpec"] as Map<String, dynamic>)
           : null,
-      axisGap: jsonDouble(json["axisGap"], 0),
-      riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
+      axisGap: jsonDouble(json["axisGap"], _defaults.axisGap),
+      riseColor: colorFromJson(json["riseColor"], _defaults.riseColor),
       sliceColors: json["sliceColors"] is List
           ? [
               for (var c in json["sliceColors"] as List)
                 if (c is num) colorFromJson(c),
             ]
           : const [],
-      fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
-      axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),
-      box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec(padding: 0)),
-      titleSpec: jsonSpec(json["titleSpec"], TextSpec.fromJson,
-          const TextSpec(fontSize: 28, weight: 700)),
-      labelSpec: jsonSpec(json["labelSpec"], TextSpec.fromJson,
-          const TextSpec(fontSize: 16, weight: 400)),
-      valueSpec: jsonSpec(json["valueSpec"], TextSpec.fromJson,
-          const TextSpec(fontSize: 14, weight: 600)),
-      yMin: jsonDouble(json["ymin"], double.nan),
-      yMax: jsonDouble(json["ymax"], double.nan),
-      barGap: jsonDouble(json["barGap"], 0.3),
-      barRadius: jsonDouble(json["barRadius"], 4),
-      barFloor: jsonDouble(json["barFloor"], 0),
-      innerRadius: jsonDouble(json["inner"], 0.55),
-      centreLabel: jsonString(json["centre"], ""),
+      fallColor: colorFromJson(json["fallColor"], _defaults.fallColor),
+      axisColor: colorFromJson(json["axisColor"], _defaults.axisColor),
+      box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),
+      titleSpec:
+          jsonSpec(json["titleSpec"], TextSpec.fromJson, _defaults.titleSpec),
+      labelSpec:
+          jsonSpec(json["labelSpec"], TextSpec.fromJson, _defaults.labelSpec),
+      valueSpec:
+          jsonSpec(json["valueSpec"], TextSpec.fromJson, _defaults.valueSpec),
+      yMin: jsonDouble(json["ymin"], _defaults.yMin),
+      yMax: jsonDouble(json["ymax"], _defaults.yMax),
+      barGap: jsonDouble(json["barGap"], _defaults.barGap),
+      barRadius: jsonDouble(json["barRadius"], _defaults.barRadius),
+      barFloor: jsonDouble(json["barFloor"], _defaults.barFloor),
+      innerRadius: jsonDouble(json["inner"], _defaults.innerRadius),
+      centreLabel: jsonString(json["centre"], _defaults.centreLabel),
       pictoShape: PictoShape.fromName(json["picto"]),
       pictoCount: json["pictoN"] is num
           ? (json["pictoN"] as num).toInt().clamp(1, 200)
           : 10,
-      strokeWidth: jsonDouble(json["sw"], 3),
+      strokeWidth: jsonDouble(json["sw"], _defaults.strokeWidth),
       showPoints: jsonBool(json["points"], false),
-      pointSize: jsonDouble(json["pointSize"], 0).clamp(0, 200),
-      pointColor: colorFromJson(json["pointColor"], const Color(0x00000000)),
+      pointSize:
+          jsonDouble(json["pointSize"], _defaults.pointSize).clamp(0, 200),
+      pointColor: colorFromJson(json["pointColor"], _defaults.pointColor),
       smooth: jsonBool(json["smooth"], false),
       sheet: SheetLink.fromJson(json["sheet"]),
       highlights: [
@@ -975,16 +988,16 @@ class ChartElement extends CanvasElement {
           for (var n in ns)
             if (ChartNote.fromJson(n) case var note?) note,
       ],
-      play: jsonDouble(json["play"], 0).clamp(0, 600).toDouble(),
+      play: jsonDouble(json["play"], _defaults.play).clamp(0, 600).toDouble(),
       steps: [
         if (json["steps"] case List ss)
           for (var st in ss)
             if (ChartStep.fromJson(st) case var step?) step,
       ],
-      stepAt: jsonInt(json["stepAt"], 0),
-      follow: jsonString(json["follow"], "time"),
-      panel: colorFromJson(json["panel"], const Color(0x00000000)),
-      style: jsonString(json["style"], ""),
+      stepAt: jsonInt(json["stepAt"], _defaults.stepAt),
+      follow: jsonString(json["follow"], _defaults.follow),
+      panel: colorFromJson(json["panel"], _defaults.panel),
+      style: jsonString(json["style"], _defaults.style),
       design: ChartDesign.fromJson(json["design"]));
 }
 
@@ -1011,6 +1024,10 @@ class ChartSourceMap {
     this.maxPoints = 0,
     this.interval = const ChartInterval(),
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartSourceMap();
 
   ChartSourceMap copyWith({
     int? categoryColumn,
@@ -1050,15 +1067,15 @@ class ChartSourceMap {
       };
 
   factory ChartSourceMap.fromJson(Map<String, dynamic> json) => ChartSourceMap(
-        categoryColumn: jsonInt(json["cat"], 0),
+        categoryColumn: jsonInt(json["cat"], _defaults.categoryColumn),
         valueColumns: [
           if (json["vals"] case List raw)
             for (var v in raw)
               if (v is num) v.toInt(),
         ],
-        maxPoints: jsonInt(json["max"], 0),
+        maxPoints: jsonInt(json["max"], _defaults.maxPoints),
         interval: jsonSpec(
-            json["interval"], ChartInterval.fromJson, const ChartInterval()),
+            json["interval"], ChartInterval.fromJson, _defaults.interval),
       );
 }
 

@@ -63,6 +63,10 @@ class ChromaKey {
     this.spill = 0.5,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChromaKey();
+
   ChromaKey copyWith({
     bool? on,
     Color? color,
@@ -88,10 +92,12 @@ class ChromaKey {
 
   factory ChromaKey.fromJson(Map<String, dynamic> json) => ChromaKey(
         on: jsonBool(json["on"], false),
-        color: colorFromJson(json["color"], const Color(0xFF00B140)),
-        tolerance: jsonDouble(json["tolerance"], 0.3).clamp(0.0, 1.0),
-        softness: jsonDouble(json["softness"], 0.1).clamp(0.0, 1.0),
-        spill: jsonDouble(json["spill"], 0.5).clamp(0.0, 1.0),
+        color: colorFromJson(json["color"], _defaults.color),
+        tolerance:
+            jsonDouble(json["tolerance"], _defaults.tolerance).clamp(0.0, 1.0),
+        softness:
+            jsonDouble(json["softness"], _defaults.softness).clamp(0.0, 1.0),
+        spill: jsonDouble(json["spill"], _defaults.spill).clamp(0.0, 1.0),
       );
 }
 
@@ -183,6 +189,10 @@ class VideoElement extends CanvasElement {
     this.edges = const EdgeMask(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = VideoElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.video;
 
@@ -257,7 +267,7 @@ class VideoElement extends CanvasElement {
         "controls": [for (var c in controls) c.name],
         "accent": colorToJson(accent),
         if (animation.any) "anim": animation.toJson(),
-        if (blend != LayerBlend.normal) "blend": blend.name,
+        if (blend != _defaults.blend) "blend": blend.name,
         if (edges.on) "edges": edges.toJson(),
       };
 
@@ -265,11 +275,10 @@ class VideoElement extends CanvasElement {
     var raw = json["controls"];
     var look = json["look"];
     return VideoElement(b,
-        clip: jsonSpec(
-            json["clip"], MediaClip.fromJson, const MediaClip(volume: 1)),
-        link: jsonString(json["link"], ""),
-        linkStart: jsonDouble(json["linkStart"], 0),
-        key: jsonSpec(json["key"], ChromaKey.fromJson, const ChromaKey()),
+        clip: jsonSpec(json["clip"], MediaClip.fromJson, _defaults.clip),
+        link: jsonString(json["link"], _defaults.link),
+        linkStart: jsonDouble(json["linkStart"], _defaults.linkStart),
+        key: jsonSpec(json["key"], ChromaKey.fromJson, _defaults.key),
         look: look is Map<String, dynamic>
             ? ImageElement.fromJson(look, const ElementBase(id: ""))
             : const ImageElement(ElementBase(id: "")),
@@ -283,10 +292,10 @@ class VideoElement extends CanvasElement {
                 VideoControl.playButton,
                 VideoControl.playbar,
               ],
-        accent: colorFromJson(json["accent"], const Color(0xFF3D7EFF)),
+        accent: colorFromJson(json["accent"], _defaults.accent),
         animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
+            json["anim"], ElementAnimation.fromJson, _defaults.animation),
         blend: LayerBlend.fromName(jsonStr(json["blend"])),
-        edges: jsonSpec(json["edges"], EdgeMask.fromJson, const EdgeMask()));
+        edges: jsonSpec(json["edges"], EdgeMask.fromJson, _defaults.edges));
   }
 }

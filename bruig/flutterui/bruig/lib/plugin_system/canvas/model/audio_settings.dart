@@ -234,6 +234,10 @@ class SongSection {
   const SongSection(this.id,
       {this.name = "Section", this.bars = 8, this.color = 0});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SongSection("");
+
   SongSection copyWith({String? name, int? bars, int? color}) => SongSection(id,
       name: name ?? this.name,
       bars: (bars ?? this.bars).clamp(1, 512),
@@ -245,9 +249,9 @@ class SongSection {
   static SongSection? fromJson(Object? json) {
     if (json is! Map || json["id"] is! String) return null;
     return SongSection(json["id"] as String,
-        name: jsonString(json["name"], "Section"),
-        bars: jsonInt(json["bars"], 8).clamp(1, 512),
-        color: jsonInt(json["color"], 0) % sectionColors.length);
+        name: jsonString(json["name"], _defaults.name),
+        bars: jsonInt(json["bars"], _defaults.bars).clamp(1, 512),
+        color: jsonInt(json["color"], _defaults.color) % sectionColors.length);
   }
 }
 
@@ -313,6 +317,10 @@ class AudioSettings {
     this.quantise = Quantise.quarter,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = AudioSettings();
+
   /// totalBars is how long the structure is.
   int get totalBars => sections.fold(0, (a, s) => a + s.bars);
 
@@ -367,14 +375,14 @@ class AudioSettings {
       quantise == Quantise.quarter;
 
   Map<String, dynamic> toJson() => {
-        if (tempo != 120) "tempo": tempo,
-        if (beatsPerBar != 4) "beats": beatsPerBar,
-        if (beatUnit != 4) "unit": beatUnit,
-        if (export != const AudioOptions()) "export": export.toJson(),
+        if (tempo != _defaults.tempo) "tempo": tempo,
+        if (beatsPerBar != _defaults.beatsPerBar) "beats": beatsPerBar,
+        if (beatUnit != _defaults.beatUnit) "unit": beatUnit,
+        if (export != _defaults.export) "export": export.toJson(),
         if (sections.isNotEmpty)
           "sections": [for (var s in sections) s.toJson()],
-        if (quantise != Quantise.quarter) "quantise": quantise.name,
-        if (speakers != SpeakerLayout.stereo) "speakers": speakers.name,
+        if (quantise != _defaults.quantise) "quantise": quantise.name,
+        if (speakers != _defaults.speakers) "speakers": speakers.name,
         if (controls.isNotEmpty)
           "controls": [for (var c in controls) c.toJson()],
       };
@@ -383,8 +391,8 @@ class AudioSettings {
     if (json is! Map<String, dynamic>) return const AudioSettings();
     var unit = jsonInt(json["unit"], 4);
     return const AudioSettings().copyWith(
-      tempo: jsonDouble(json["tempo"], 120),
-      beatsPerBar: jsonInt(json["beats"], 4),
+      tempo: jsonDouble(json["tempo"], _defaults.tempo),
+      beatsPerBar: jsonInt(json["beats"], _defaults.beatsPerBar),
       beatUnit: const [2, 4, 8, 16].contains(unit) ? unit : 4,
       export: AudioOptions.fromJson(json["export"]),
       sections: [

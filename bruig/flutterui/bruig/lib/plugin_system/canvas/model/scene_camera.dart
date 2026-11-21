@@ -38,6 +38,10 @@ class SceneCamera {
     this.shake = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SceneCamera();
+
   /// at is the framing [t] of the way through the scene: a zoom, and the
   /// point of [page] at the middle of the picture, held in from the edges
   /// so the picture never runs off the page. [seconds] into the scene times
@@ -101,7 +105,7 @@ class SceneCamera {
   Map<String, dynamic> toJson() => {
         "from": [fromZoom, fromX, fromY],
         "to": [toZoom, toX, toY],
-        if (ease != SceneTransitionEase.smooth) "ease": ease.name,
+        if (ease != _defaults.ease) "ease": ease.name,
         if (orbit) "orbit": true,
         if (shake > 0) "shake": shake,
       };
@@ -123,7 +127,7 @@ class SceneCamera {
       toY: to[2].clamp(0.0, 1.0),
       ease: SceneTransitionEase.fromName(jsonStr(json["ease"])),
       orbit: json["orbit"] == true,
-      shake: jsonDouble(json["shake"], 0).clamp(0.0, 1.0),
+      shake: jsonDouble(json["shake"], _defaults.shake).clamp(0.0, 1.0),
     );
   }
 }

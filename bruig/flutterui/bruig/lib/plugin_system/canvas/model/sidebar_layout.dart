@@ -131,6 +131,10 @@ class SidebarLayout {
     this.removed = const [],
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SidebarLayout();
+
   SidebarLayout copyWith({
     SidebarMode? mode,
     SidebarMode? opened,
@@ -431,7 +435,7 @@ class SidebarLayout {
       opened: SidebarMode.fromName(json["opened"]) == SidebarMode.hidden
           ? SidebarMode.full
           : SidebarMode.fromName(json["opened"]),
-      current: jsonString(json["current"], "files"),
+      current: jsonString(json["current"], _defaults.current),
       sidebars: sidebars,
       hidden: hidden,
       hiddenFrom: hiddenFrom,

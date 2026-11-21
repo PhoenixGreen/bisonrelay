@@ -185,6 +185,10 @@ class TextDocumentRef {
     this.wasText = "",
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TextDocumentRef();
+
   bool get on => name.isNotEmpty;
 
   /// says is the document's name, for a settings panel.
@@ -215,13 +219,13 @@ class TextDocumentRef {
 
   factory TextDocumentRef.fromJson(Map<String, dynamic> json) =>
       TextDocumentRef(
-        folder: jsonString(json["folder"], ""),
-        name: jsonString(json["name"], ""),
+        folder: jsonString(json["folder"], _defaults.folder),
+        name: jsonString(json["name"], _defaults.name),
         markdown: jsonBool(json["markdown"], false),
         allow: json["allow"] is Map<String, dynamic>
             ? MarkdownAllow.fromJson(json["allow"] as Map<String, dynamic>)
             : const MarkdownAllow(),
-        wasText: jsonString(json["wasText"], ""),
+        wasText: jsonString(json["wasText"], _defaults.wasText),
       );
 }
 

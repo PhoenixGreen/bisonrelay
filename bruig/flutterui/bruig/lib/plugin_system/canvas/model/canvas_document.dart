@@ -215,6 +215,10 @@ class CanvasDocument {
         _frames = frames,
         _actions = actions;
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CanvasDocument();
+
   // --------------------------------------------------------------------------
   // The mixer as played, and the game's controls
   // --------------------------------------------------------------------------
@@ -1061,7 +1065,7 @@ class CanvasDocument {
       if (scores.isNotEmpty) "scores": [for (var s in scores) s.toJson()],
       if (sheets.isNotEmpty) "sheets": [for (var s in sheets) s.toJson()],
 
-      if (kind != CanvasKind.scenes) "kind": kind.name,
+      if (kind != _defaults.kind) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
       if (!masterMix.isDefault) "masterMix": masterMix.toJson(),
       if (!audio.isDefault) "audio": audio.toJson(),
@@ -1082,7 +1086,7 @@ class CanvasDocument {
       if (counts.isNotEmpty) "counts": [for (var c in counts) c.toJson()],
       if (!one) ...{
         "scenes": [for (var s in allScenes) s.toJson()],
-        if (sceneAt != 0) "sceneAt": at,
+        if (sceneAt != _defaults.sceneAt) "sceneAt": at,
         if (master != null) "master": master!.toJson(),
         if (masterOn) "masterOn": true,
         if (onMaster) "onMaster": true,
@@ -1148,25 +1152,24 @@ class CanvasDocument {
 
     // Tables and charts saved without sheets are given sheets of their own.
     return dataRefreshed(sourcesAdopted(dataAdopted(CanvasDocument(
-      title: jsonString(json["title"], "Untitled canvas"),
-      size: jsonSpec(json["size"], CanvasSize.fromJson, const CanvasSize()),
-      background: jsonSpec(json["background"], CanvasBackground.fromJson,
-          const CanvasBackground()),
-      guides:
-          jsonSpec(json["guides"], CanvasGuides.fromJson, const CanvasGuides()),
+      title: jsonString(json["title"], _defaults.title),
+      size: jsonSpec(json["size"], CanvasSize.fromJson, _defaults.size),
+      background: jsonSpec(
+          json["background"], CanvasBackground.fromJson, _defaults.background),
+      guides: jsonSpec(json["guides"], CanvasGuides.fromJson, _defaults.guides),
       elements: elements,
       estimate: jsonSpec(
-          json["estimate"], CanvasEstimate.fromJson, const CanvasEstimate()),
+          json["estimate"], CanvasEstimate.fromJson, _defaults.estimate),
       frames: frames,
-      frameRate: jsonInt(json["frameRate"], defaultFrameRate)
+      frameRate: jsonInt(json["frameRate"], _defaults.frameRate)
           .clamp(minFrameRate, maxFrameRate),
       actions: actions,
       scenes: scenes,
-      sceneAt: jsonInt(json["sceneAt"], 0),
+      sceneAt: jsonInt(json["sceneAt"], _defaults.sceneAt),
       kind: CanvasKind.fromName(jsonStr(json["kind"])),
-      pages: jsonSpec(json["pages"], PagesSpec.fromJson, const PagesSpec()),
+      pages: jsonSpec(json["pages"], PagesSpec.fromJson, _defaults.pages),
       masterMix:
-          jsonSpec(json["masterMix"], MasterMix.fromJson, const MasterMix()),
+          jsonSpec(json["masterMix"], MasterMix.fromJson, _defaults.masterMix),
       audio: AudioSettings.fromJson(json["audio"]),
       hasCanvas: json["noCanvas"] != true,
       returns: json["returns"] is List
@@ -1174,7 +1177,7 @@ class CanvasDocument {
           : defaultReturns,
       session: SessionGrid.fromJson(json["session"]),
       game: json["game"] == true,
-      gameStart: jsonString(json["gameStart"], ""),
+      gameStart: jsonString(json["gameStart"], _defaults.gameStart),
       masterOver: json["masterOver"] == true,
       playerControls: {
         if (json["playerControls"] case Map raw)

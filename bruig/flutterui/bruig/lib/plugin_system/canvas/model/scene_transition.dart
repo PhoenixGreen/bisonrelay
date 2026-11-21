@@ -363,6 +363,10 @@ class SceneTransition {
     this.soundLead = 6,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = SceneTransition();
+
   /// cut is the default: nothing between one scene and the next.
   static const cut = SceneTransition();
 
@@ -485,35 +489,35 @@ class SceneTransition {
 
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
-        if (frames != 12) "frames": frames,
-        if (overlap != 12) "overlap": overlap,
-        if (color != const Color(0xFF000000)) "color": colorToJson(color),
-        if (ease != SceneTransitionEase.smooth) "ease": ease.name,
-        if (way != SceneTransitionWay.right) "way": way.name,
-        if (shape != ShapeKind.circle) "shape": shape.name,
-        if (count != 6) "count": count,
-        if (spacing != 0.15) "spacing": spacing,
-        if (angle != 0) "angle": angle,
-        if (radius != 0.5) "radius": radius,
-        if (softness != 0) "softness": softness,
-        if (centreX != 0.5) "centreX": centreX,
-        if (centreY != 0.5) "centreY": centreY,
+        if (frames != _defaults.frames) "frames": frames,
+        if (overlap != _defaults.overlap) "overlap": overlap,
+        if (color != _defaults.color) "color": colorToJson(color),
+        if (ease != _defaults.ease) "ease": ease.name,
+        if (way != _defaults.way) "way": way.name,
+        if (shape != _defaults.shape) "shape": shape.name,
+        if (count != _defaults.count) "count": count,
+        if (spacing != _defaults.spacing) "spacing": spacing,
+        if (angle != _defaults.angle) "angle": angle,
+        if (radius != _defaults.radius) "radius": radius,
+        if (softness != _defaults.softness) "softness": softness,
+        if (centreX != _defaults.centreX) "centreX": centreX,
+        if (centreY != _defaults.centreY) "centreY": centreY,
         if (label.isNotEmpty) "label": label,
         if (sound.isNotEmpty) ...{
           "sound": sound,
           if (soundName.isNotEmpty) "soundName": soundName,
           "soundLength": soundLength,
-          if (soundVolume != 0.5) "soundVolume": soundVolume,
-          if (soundLead != 6) "soundLead": soundLead,
+          if (soundVolume != _defaults.soundVolume) "soundVolume": soundVolume,
+          if (soundLead != _defaults.soundLead) "soundLead": soundLead,
         },
       };
 
   factory SceneTransition.fromJson(Map<String, dynamic> json) =>
       SceneTransition(
         kind: SceneTransitionKind.fromName(jsonStr(json["kind"])),
-        frames: jsonInt(json["frames"], 12).clamp(0, 600),
-        overlap: jsonInt(json["overlap"], 12).clamp(0, 600),
-        color: colorFromJson(json["color"], const Color(0xFF000000)),
+        frames: jsonInt(json["frames"], _defaults.frames).clamp(0, 600),
+        overlap: jsonInt(json["overlap"], _defaults.overlap).clamp(0, 600),
+        color: colorFromJson(json["color"], _defaults.color),
         ease: SceneTransitionEase.fromName(jsonStr(json["ease"])),
         way: SceneTransitionWay.fromName(jsonStr(json["way"])),
         // Absent means a circle, which toJson leaves out. ShapeKind.fromName
@@ -521,18 +525,22 @@ class SceneTransition {
         shape: json["shape"] == null
             ? ShapeKind.circle
             : ShapeKind.fromName(jsonStr(json["shape"])),
-        count: jsonInt(json["count"], 6).clamp(1, 40),
-        spacing: jsonDouble(json["spacing"], 0.15).clamp(0.0, 2.0),
-        angle: jsonDouble(json["angle"], 0).clamp(-180.0, 180.0),
-        radius: jsonDouble(json["radius"], 0.5).clamp(0.05, 1.0),
-        softness: jsonDouble(json["softness"], 0).clamp(0.0, 1.0),
-        centreX: jsonDouble(json["centreX"], 0.5).clamp(0.0, 1.0),
-        centreY: jsonDouble(json["centreY"], 0.5).clamp(0.0, 1.0),
-        sound: jsonString(json["sound"], ""),
-        soundName: jsonString(json["soundName"], ""),
-        soundLength: jsonDouble(json["soundLength"], 0).clamp(0.0, 3600.0),
-        soundVolume: jsonDouble(json["soundVolume"], 0.5).clamp(0.0, 2.0),
-        soundLead: jsonInt(json["soundLead"], 6).clamp(-240, 240),
-        label: jsonString(json["label"], ""),
+        count: jsonInt(json["count"], _defaults.count).clamp(1, 40),
+        spacing: jsonDouble(json["spacing"], _defaults.spacing).clamp(0.0, 2.0),
+        angle: jsonDouble(json["angle"], _defaults.angle).clamp(-180.0, 180.0),
+        radius: jsonDouble(json["radius"], _defaults.radius).clamp(0.05, 1.0),
+        softness:
+            jsonDouble(json["softness"], _defaults.softness).clamp(0.0, 1.0),
+        centreX: jsonDouble(json["centreX"], _defaults.centreX).clamp(0.0, 1.0),
+        centreY: jsonDouble(json["centreY"], _defaults.centreY).clamp(0.0, 1.0),
+        sound: jsonString(json["sound"], _defaults.sound),
+        soundName: jsonString(json["soundName"], _defaults.soundName),
+        soundLength: jsonDouble(json["soundLength"], _defaults.soundLength)
+            .clamp(0.0, 3600.0),
+        soundVolume: jsonDouble(json["soundVolume"], _defaults.soundVolume)
+            .clamp(0.0, 2.0),
+        soundLead:
+            jsonInt(json["soundLead"], _defaults.soundLead).clamp(-240, 240),
+        label: jsonString(json["label"], _defaults.label),
       );
 }

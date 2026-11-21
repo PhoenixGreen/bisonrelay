@@ -218,6 +218,10 @@ class CodeTaskElement extends CanvasElement {
     this.textSize = 16,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CodeTaskElement(ElementBase(id: ""));
+
   @override
   ElementKind get kind => ElementKind.codeTask;
 
@@ -278,7 +282,7 @@ class CodeTaskElement extends CanvasElement {
   factory CodeTaskElement.fromJson(Map<String, dynamic> json, ElementBase b) {
     const plain = CodeTaskElement(ElementBase(id: ""));
     return CodeTaskElement(b,
-        code: jsonString(json["code"], ""),
+        code: jsonString(json["code"], _defaults.code),
         title: jsonString(json["title"], plain.title),
         text: jsonString(json["text"], plain.text),
         checks: [
@@ -288,6 +292,7 @@ class CodeTaskElement extends CanvasElement {
         passed: jsonString(json["passed"], plain.passed),
         notYet: jsonString(json["notYet"], plain.notYet),
         accent: colorFromJson(json["accent"], plain.accent),
-        textSize: jsonDouble(json["textSize"], 16).clamp(4.0, 1000.0));
+        textSize: jsonDouble(json["textSize"], _defaults.textSize)
+            .clamp(4.0, 1000.0));
   }
 }

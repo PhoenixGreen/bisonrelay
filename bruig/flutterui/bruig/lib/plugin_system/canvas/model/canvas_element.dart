@@ -246,6 +246,10 @@ class ElementBase {
     this.motion = ElementMotion.none,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ElementBase(id: "");
+
   /// copyWith's parameters are in the fields' order. A field added here is
   /// added to [CanvasElement.withBase] too.
   ElementBase copyWith({
@@ -326,32 +330,34 @@ class ElementBase {
     return ElementBase(
       id: jsonId(json["id"], newElementId()),
       name: jsonLabel(json["name"], defaultName),
-      x: jsonDouble(json["x"], 0).clamp(-_far, _far),
-      y: jsonDouble(json["y"], 0).clamp(-_far, _far),
-      width: jsonDouble(json["w"], 200).clamp(0.0, _far),
-      height: jsonDouble(json["h"], 100).clamp(0.0, _far),
-      rotation: jsonDouble(json["rot"], 0),
-      skewX: jsonDouble(json["skx"], 0).clamp(-maxSkew, maxSkew),
-      skewY: jsonDouble(json["sky"], 0).clamp(-maxSkew, maxSkew),
-      opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
+      x: jsonDouble(json["x"], _defaults.x).clamp(-_far, _far),
+      y: jsonDouble(json["y"], _defaults.y).clamp(-_far, _far),
+      width: jsonDouble(json["w"], _defaults.width).clamp(0.0, _far),
+      height: jsonDouble(json["h"], _defaults.height).clamp(0.0, _far),
+      rotation: jsonDouble(json["rot"], _defaults.rotation),
+      skewX: jsonDouble(json["skx"], _defaults.skewX).clamp(-maxSkew, maxSkew),
+      skewY: jsonDouble(json["sky"], _defaults.skewY).clamp(-maxSkew, maxSkew),
+      opacity: jsonDouble(json["opacity"], _defaults.opacity).clamp(0.0, 1.0),
       blend: LayerBlend.fromName(jsonStr(json["blend"])),
       visible: jsonBool(json["visible"], true),
       locked: jsonBool(json["locked"], false),
       rowColour: json["rowColour"] is int ? json["rowColour"] as int : null,
       lockAspect: jsonBool(json["aspect"], false),
-      anchorX: jsonDouble(json["ax"], 0.5),
-      anchorY: jsonDouble(json["ay"], 0.5),
+      anchorX: jsonDouble(json["ax"], _defaults.anchorX),
+      anchorY: jsonDouble(json["ay"], _defaults.anchorY),
       anchorLocked: jsonBool(json["anchorLocked"], false),
       track: trackJson is Map<String, dynamic>
           ? ElementTrack.fromJson(trackJson)
           : null,
-      typeScale: jsonDouble(json["typeScale"], 1),
-      depth: jsonDouble(json["depth"], 0).clamp(-1.0, 1.0).toDouble(),
+      typeScale: jsonDouble(json["typeScale"], _defaults.typeScale),
+      depth: jsonDouble(json["depth"], _defaults.depth)
+          .clamp(-1.0, 1.0)
+          .toDouble(),
       ownText: jsonBool(json["ownText"], false),
       ownDesign: jsonBool(json["ownDesign"], false),
       shared: jsonMap(json["shared"]),
-      cue: jsonId(json["cue"], ""),
-      cast: jsonId(json["cast"], ""),
+      cue: jsonId(json["cue"], _defaults.cue),
+      cast: jsonId(json["cast"], _defaults.cast),
       // Two ids and the colon between them.
       dock: jsonString(json["dock"], "", most: maxIdLength * 2 + 1),
       dockOut: jsonBool(json["dockOut"], false),
@@ -375,21 +381,21 @@ class ElementBase {
         "y": y,
         "w": width,
         "h": height,
-        if (rotation != 0) "rot": rotation,
-        if (skewX != 0) "skx": skewX,
-        if (skewY != 0) "sky": skewY,
-        if (opacity != 1) "opacity": opacity,
-        if (blend != LayerBlend.normal) "blend": blend.name,
+        if (rotation != _defaults.rotation) "rot": rotation,
+        if (skewX != _defaults.skewX) "skx": skewX,
+        if (skewY != _defaults.skewY) "sky": skewY,
+        if (opacity != _defaults.opacity) "opacity": opacity,
+        if (blend != _defaults.blend) "blend": blend.name,
         if (!visible) "visible": false,
         if (locked) "locked": true,
         if (rowColour != null) "rowColour": rowColour,
         "aspect": lockAspect,
-        if (anchorX != 0.5) "ax": anchorX,
-        if (anchorY != 0.5) "ay": anchorY,
+        if (anchorX != _defaults.anchorX) "ax": anchorX,
+        if (anchorY != _defaults.anchorY) "ay": anchorY,
         if (anchorLocked) "anchorLocked": true,
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
-        if (typeScale != 1) "typeScale": typeScale,
-        if (depth != 0) "depth": depth,
+        if (typeScale != _defaults.typeScale) "typeScale": typeScale,
+        if (depth != _defaults.depth) "depth": depth,
         if (ownText) "ownText": true,
         if (ownDesign) "ownDesign": true,
         if (shared != null) "shared": shared,
@@ -450,6 +456,10 @@ class ElementLayout {
     this.framing,
     this.crop,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ElementLayout(x: 0, y: 0, width: 0, height: 0);
 
   /// of is the layout an element is showing now.
   factory ElementLayout.of(
@@ -519,7 +529,7 @@ class ElementLayout {
         "w": width,
         "h": height,
         if (!visible) "visible": false,
-        if (typeScale != 1) "typeScale": typeScale,
+        if (typeScale != _defaults.typeScale) "typeScale": typeScale,
         if (text != null) "text": text,
         if (ownText) "ownText": true,
         if (own != null) "own": own,
@@ -533,7 +543,7 @@ class ElementLayout {
         width: jsonDouble(json["w"], 200).clamp(0.0, _far),
         height: jsonDouble(json["h"], 100).clamp(0.0, _far),
         visible: jsonBool(json["visible"], true),
-        typeScale: jsonDouble(json["typeScale"], 1),
+        typeScale: jsonDouble(json["typeScale"], _defaults.typeScale),
         text: jsonStr(json["text"]),
         ownText: jsonBool(json["ownText"], false),
         own: jsonMap(json["own"]),

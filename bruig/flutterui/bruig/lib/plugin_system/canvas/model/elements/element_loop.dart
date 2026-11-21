@@ -181,6 +181,10 @@ class ElementLoop {
     this.to,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ElementLoop();
+
   bool get on => preset != LoopPreset.none;
 
   ElementLoop copyWith({
@@ -262,33 +266,33 @@ class ElementLoop {
 
   Map<String, dynamic> toJson() => {
         "preset": preset.name,
-        if (cycle != 24) "cycle": cycle,
-        if (gap != 0) "gap": gap,
-        if (repeats != 0) "repeats": repeats,
-        if (strength != 1) "strength": strength,
-        if (ease != ChartEase.linear) "ease": ease.name,
-        if (colour != const PaintSpec(Color(0xFFFFFFFF)))
-          "colour": colour.toJson(),
-        if (band != 0.3) "band": band,
-        if (angle != 20) "angle": angle,
+        if (cycle != _defaults.cycle) "cycle": cycle,
+        if (gap != _defaults.gap) "gap": gap,
+        if (repeats != _defaults.repeats) "repeats": repeats,
+        if (strength != _defaults.strength) "strength": strength,
+        if (ease != _defaults.ease) "ease": ease.name,
+        if (colour != _defaults.colour) "colour": colour.toJson(),
+        if (band != _defaults.band) "band": band,
+        if (angle != _defaults.angle) "angle": angle,
         if (from != null) "from": from,
         if (to != null) "to": to,
       };
 
   factory ElementLoop.fromJson(Map<String, dynamic> json) => ElementLoop(
         preset: LoopPreset.fromName(jsonStr(json["preset"])),
-        cycle: math.max(1, jsonInt(json["cycle"], 24)),
-        gap: math.max(0, jsonInt(json["gap"], 0)),
-        repeats: math.max(0, jsonInt(json["repeats"], 0)),
-        strength: jsonDouble(json["strength"], 1).clamp(0.0, 5.0),
+        cycle: math.max(1, jsonInt(json["cycle"], _defaults.cycle)),
+        gap: math.max(0, jsonInt(json["gap"], _defaults.gap)),
+        repeats: math.max(0, jsonInt(json["repeats"], _defaults.repeats)),
+        strength:
+            jsonDouble(json["strength"], _defaults.strength).clamp(0.0, 5.0),
         ease: json["ease"] == null
             ? ChartEase.linear
             : ChartEase.fromName(jsonStr(json["ease"])),
         colour: json["colour"] == null
             ? const PaintSpec(Color(0xFFFFFFFF))
             : PaintSpec.fromJson(json["colour"], const Color(0xFFFFFFFF)),
-        band: jsonDouble(json["band"], 0.3).clamp(0.02, 1.0),
-        angle: jsonDouble(json["angle"], 20),
+        band: jsonDouble(json["band"], _defaults.band).clamp(0.02, 1.0),
+        angle: jsonDouble(json["angle"], _defaults.angle),
         from: json["from"] is int ? json["from"] as int : null,
         to: json["to"] is int ? json["to"] as int : null,
       );

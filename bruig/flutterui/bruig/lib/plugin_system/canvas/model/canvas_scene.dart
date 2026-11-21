@@ -116,6 +116,10 @@ class CanvasScene {
     this.bus = const ChannelMix(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = CanvasScene(id: "");
+
   /// saysAt is what the panel calls this canvas: its name, or its kind and
   /// number. A cover is called by its cover label rather than a number.
   String saysAt(int index, [CanvasKind kind = CanvasKind.scenes]) {
@@ -195,11 +199,10 @@ class CanvasScene {
   factory CanvasScene.fromJson(Map<String, dynamic> json) {
     return CanvasScene(
       id: jsonId(json["id"], newSceneId()),
-      name: jsonLabel(json["name"], ""),
+      name: jsonLabel(json["name"], _defaults.name),
       elements: jsonObjects(json["elements"], elementFromJson,
           most: maxSceneElements),
-      frames:
-          jsonInt(json["frames"], defaultFrameCount).clamp(1, maxFrameCount),
+      frames: jsonInt(json["frames"], _defaults.frames).clamp(1, maxFrameCount),
       actions: jsonObjects(json["actions"], TimelineAction.fromJson),
       holds: jsonBool(json["holds"], false),
       background: jsonSpec(json["background"], CanvasBackground.fromJson, null),
@@ -227,7 +230,7 @@ class CanvasScene {
       transition: jsonSpec(json["transition"], SceneTransition.fromJson, null),
       cover: PageCover.fromName(jsonStr(json["cover"])),
       camera: SceneCamera.fromJson(json["camera"]),
-      bus: jsonSpec(json["bus"], ChannelMix.fromJson, const ChannelMix()),
+      bus: jsonSpec(json["bus"], ChannelMix.fromJson, _defaults.bus),
     );
   }
 }

@@ -18,6 +18,10 @@ class TableSortLevel {
 
   const TableSortLevel({this.column = -1, this.descending = true});
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TableSortLevel();
+
   bool get on => column >= 0;
 
   TableSortLevel copyWith({int? column, bool? descending}) => TableSortLevel(
@@ -28,7 +32,7 @@ class TableSortLevel {
   Map<String, dynamic> toJson() => {"c": column, "d": descending};
 
   factory TableSortLevel.fromJson(Map<String, dynamic> json) => TableSortLevel(
-        column: jsonInt(json["c"], -1),
+        column: jsonInt(json["c"], _defaults.column),
         descending: jsonBool(json["d"], true),
       );
 }

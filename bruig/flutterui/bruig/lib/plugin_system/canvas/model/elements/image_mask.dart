@@ -136,6 +136,10 @@ class MaskRefine {
     this.decontaminate = 0,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = MaskRefine();
+
   bool get any =>
       shift != 0 ||
       smooth > 0 ||
@@ -159,7 +163,7 @@ class MaskRefine {
       );
 
   Map<String, dynamic> toJson() => {
-        if (shift != 0) "shift": shift,
+        if (shift != _defaults.shift) "shift": shift,
         if (smooth > 0) "smooth": smooth,
         if (feather > 0) "feather": feather,
         if (contrast > 0) "contrast": contrast,
@@ -168,11 +172,11 @@ class MaskRefine {
 
   factory MaskRefine.fromJson(Map<String, dynamic> json) =>
       const MaskRefine().copyWith(
-        shift: jsonDouble(json["shift"], 0),
-        smooth: jsonDouble(json["smooth"], 0),
-        feather: jsonDouble(json["feather"], 0),
-        contrast: jsonDouble(json["contrast"], 0),
-        decontaminate: jsonDouble(json["decon"], 0),
+        shift: jsonDouble(json["shift"], _defaults.shift),
+        smooth: jsonDouble(json["smooth"], _defaults.smooth),
+        feather: jsonDouble(json["feather"], _defaults.feather),
+        contrast: jsonDouble(json["contrast"], _defaults.contrast),
+        decontaminate: jsonDouble(json["decon"], _defaults.decontaminate),
       );
 }
 
@@ -200,6 +204,10 @@ class ImageMask {
     this.invert = false,
     this.on = true,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ImageMask();
 
   bool get empty => subject.isEmpty && marks.isEmpty && !invert && !refine.any;
 
@@ -238,14 +246,13 @@ class ImageMask {
       };
 
   factory ImageMask.fromJson(Map<String, dynamic> json) => ImageMask(
-        subject: jsonString(json["subject"], ""),
+        subject: jsonString(json["subject"], _defaults.subject),
         marks: [
           if (json["marks"] case List raw)
             for (var m in raw)
               if (m is Map<String, dynamic>) MaskMark.fromJson(m)
         ],
-        refine:
-            jsonSpec(json["refine"], MaskRefine.fromJson, const MaskRefine()),
+        refine: jsonSpec(json["refine"], MaskRefine.fromJson, _defaults.refine),
         invert: jsonBool(json["invert"], false),
         on: !jsonBool(json["off"], false),
       );

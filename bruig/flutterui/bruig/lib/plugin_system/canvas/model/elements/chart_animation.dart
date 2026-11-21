@@ -193,6 +193,10 @@ class ChartAnimation {
     this.loop = const ElementLoop(),
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = ChartAnimation();
+
   /// loop is what the chart goes on doing after it has arrived, or instead
   /// of arriving: see ElementLoop.
   final ElementLoop loop;
@@ -281,9 +285,9 @@ class ChartAnimation {
         preset: ChartAnimationPreset.fromName(jsonStr(json["preset"])),
         exit: ChartAnimationPreset.fromName(jsonStr(json["exit"])),
         exitInOrder: jsonBool(json["exitOrder"], false),
-        gap: jsonDouble(json["gap"], 0.55).clamp(0.0, 4.0),
+        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0.0, 4.0),
         ease: ChartEase.fromName(jsonStr(json["ease"])),
-        length: jsonInt(json["length"], 0).clamp(0, 100000),
+        length: jsonInt(json["length"], _defaults.length).clamp(0, 100000),
         seriesInTurn: jsonBool(json["seriesInTurn"], false),
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)

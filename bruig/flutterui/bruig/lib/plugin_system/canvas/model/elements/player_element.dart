@@ -874,6 +874,10 @@ class PlayerSpot {
     this.crop,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PlayerSpot();
+
   PlayerSpot copyWith({
     String? number,
     String? name,
@@ -926,19 +930,19 @@ class PlayerSpot {
   factory PlayerSpot.fromJson(Map<String, dynamic> json) {
     var track = json["track"];
     return PlayerSpot(
-      number: jsonString(json["n"], ""),
-      name: jsonString(json["name"], ""),
-      dx: jsonDouble(json["dx"], 0.5),
-      dy: jsonDouble(json["dy"], 0.5),
+      number: jsonString(json["n"], _defaults.number),
+      name: jsonString(json["name"], _defaults.name),
+      dx: jsonDouble(json["dx"], _defaults.dx),
+      dy: jsonDouble(json["dy"], _defaults.dy),
       locked: jsonBool(json["locked"], false),
       hidden: jsonBool(json["hidden"], false),
       track:
           track is Map<String, dynamic> ? ElementTrack.fromJson(track) : null,
-      photo: jsonString(json["photo"], ""),
+      photo: jsonString(json["photo"], _defaults.photo),
       captain: jsonBool(json["captain"], false),
       highlight: jsonBool(json["highlight"], false),
       ball: jsonBool(json["ball"], false),
-      role: jsonString(json["role"], ""),
+      role: jsonString(json["role"], _defaults.role),
       crop: json["crop"] is Map<String, dynamic>
           ? PhotoCrop.fromJson(json["crop"] as Map<String, dynamic>)
           : null,
@@ -954,6 +958,10 @@ class PhotoCrop {
   final double x, y, turn;
   final double? radius;
   const PhotoCrop({this.x = 0.5, this.y = 0.5, this.radius, this.turn = 0});
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = PhotoCrop();
 
   /// size is the radius, or a tenth of the picture's width where there is
   /// none (a crop from TeamElement.cropOf always has one).
@@ -990,14 +998,14 @@ class PhotoCrop {
         "x": x,
         "y": y,
         if (radius != null) "r": radius,
-        if (turn != 0) "t": turn
+        if (turn != _defaults.turn) "t": turn
       };
 
   factory PhotoCrop.fromJson(Map<String, dynamic> json) => PhotoCrop(
-        x: jsonDouble(json["x"], 0.5),
-        y: jsonDouble(json["y"], 0.5),
+        x: jsonDouble(json["x"], _defaults.x),
+        y: jsonDouble(json["y"], _defaults.y),
         radius: json["r"] is num ? (json["r"] as num).toDouble() : null,
-        turn: jsonDouble(json["t"], 0),
+        turn: jsonDouble(json["t"], _defaults.turn),
       );
 
   @override
@@ -1053,6 +1061,10 @@ class BallLook {
     this.trail = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = BallLook();
+
   BallLook copyWith({
     BallStyle? style,
     Color? color,
@@ -1075,10 +1087,10 @@ class BallLook {
   bool get isDefault => this == const BallLook();
 
   Map<String, dynamic> toJson() => {
-        if (style != BallStyle.auto) "style": style.name,
+        if (style != _defaults.style) "style": style.name,
         "color": colorToJson(color),
         "second": colorToJson(second),
-        if (size != 1) "size": size,
+        if (size != _defaults.size) "size": size,
         if (!shadow) "shadow": false,
         if (!outline) "outline": false,
         if (trail) "trail": true,
@@ -1086,9 +1098,9 @@ class BallLook {
 
   factory BallLook.fromJson(Map<String, dynamic> json) => BallLook(
         style: BallStyle.fromName(jsonStr(json["style"])),
-        color: colorFromJson(json["color"], const Color(0xFFF7F7F7)),
-        second: colorFromJson(json["second"], const Color(0xFF161616)),
-        size: jsonDouble(json["size"], 1),
+        color: colorFromJson(json["color"], _defaults.color),
+        second: colorFromJson(json["second"], _defaults.second),
+        size: jsonDouble(json["size"], _defaults.size),
         shadow: jsonBool(json["shadow"], true),
         outline: jsonBool(json["outline"], true),
         trail: jsonBool(json["trail"], false),
@@ -1292,6 +1304,10 @@ class TeamElement extends CanvasElement {
     this.teamPhoto = "",
     this.photoCropSize,
   });
+
+  /// _defaults is one as made: what a saved one means by leaving a
+  /// field out.
+  static const _defaults = TeamElement(ElementBase(id: ""));
 
   /// cropOf is the part of the team photo that is player [i], on a photo
   /// [aspect] times as wide as high: their own crop, else the guessed grid
@@ -1592,16 +1608,16 @@ class TeamElement extends CanvasElement {
         "labelSpec": labelSpec.toJson(),
         "namePos": namePosition.name,
         "nameGap": nameGap,
-        if (labelRotation != 0) "labelRot": labelRotation,
+        if (labelRotation != _defaults.labelRotation) "labelRot": labelRotation,
         if (!showNumbers) "showNumbers": false,
         if (!showNames) "showNames": false,
         if (link.isNotEmpty) "link": link,
         "secondary": colorToJson(secondaryColor),
-        if (kitPattern != KitPattern.plain) "kit": kitPattern.name,
-        if (tokenStyle != TokenStyle.dot) "token": tokenStyle.name,
+        if (kitPattern != _defaults.kitPattern) "kit": kitPattern.name,
+        if (tokenStyle != _defaults.tokenStyle) "token": tokenStyle.name,
         if (!faces) "faces": false,
         if (shadow) "shadow": true,
-        if (nameStyle != NameStyle.plain) "nameStyle": nameStyle.name,
+        if (nameStyle != _defaults.nameStyle) "nameStyle": nameStyle.name,
         if (showRuns) "runs": true,
         if (namesByPosition) "positions": true,
         if (!ballLook.isDefault) "ballLook": ballLook.toJson(),
@@ -1622,23 +1638,23 @@ class TeamElement extends CanvasElement {
             for (var p in raw)
               if (p is Map<String, dynamic>) PlayerSpot.fromJson(p),
         ],
-        keeperColor: colorFromJson(json["keeper"], const Color(0xFFF2C230)),
-        playerColor: colorFromJson(json["player"], const Color(0xFFE8362F)),
+        keeperColor: colorFromJson(json["keeper"], _defaults.keeperColor),
+        playerColor: colorFromJson(json["player"], _defaults.playerColor),
         outlineColor: colorFromJson(json["outline"]),
-        dotWidth: jsonDouble(json["dotW"], 34),
-        dotHeight: jsonDouble(json["dotH"], 34),
+        dotWidth: jsonDouble(json["dotW"], _defaults.dotWidth),
+        dotHeight: jsonDouble(json["dotH"], _defaults.dotHeight),
         lockDotAspect: jsonBool(json["lockDot"], true),
-        ringWidth: jsonDouble(json["ring"], 2.4),
-        labelSpec: jsonSpec(json["labelSpec"], TextSpec.fromJson,
-            const TextSpec(fontSize: 15, weight: 700)),
+        ringWidth: jsonDouble(json["ring"], _defaults.ringWidth),
+        labelSpec:
+            jsonSpec(json["labelSpec"], TextSpec.fromJson, _defaults.labelSpec),
         namePosition: LabelPosition.fromName(jsonStr(json["namePos"])),
-        nameGap: jsonDouble(json["nameGap"], 5),
-        labelRotation: jsonDouble(json["labelRot"], 0),
+        nameGap: jsonDouble(json["nameGap"], _defaults.nameGap),
+        labelRotation: jsonDouble(json["labelRot"], _defaults.labelRotation),
         showNumbers: jsonBool(json["showNumbers"], true),
         showNames: jsonBool(json["showNames"], true),
-        link: jsonString(json["link"], ""),
+        link: jsonString(json["link"], _defaults.link),
         secondaryColor:
-            colorFromJson(json["secondary"], const Color(0xFFFFFFFF)),
+            colorFromJson(json["secondary"], _defaults.secondaryColor),
         kitPattern: KitPattern.fromName(jsonStr(json["kit"])),
         tokenStyle: TokenStyle.fromName(jsonStr(json["token"])),
         faces: jsonBool(json["faces"], true),
@@ -1649,7 +1665,7 @@ class TeamElement extends CanvasElement {
         ballLook: json["ballLook"] is Map<String, dynamic>
             ? BallLook.fromJson(json["ballLook"] as Map<String, dynamic>)
             : const BallLook(),
-        teamPhoto: jsonString(json["teamPhoto"], ""),
+        teamPhoto: jsonString(json["teamPhoto"], _defaults.teamPhoto),
         photoCropSize: json["cropSize"] is num
             ? (json["cropSize"] as num).toDouble()
             : null);
