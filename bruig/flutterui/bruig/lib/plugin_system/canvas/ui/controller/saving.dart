@@ -31,6 +31,7 @@ extension CanvasSaving on CanvasController {
     _document = document;
     this.folder = folder;
     this.name = name;
+    _loads++;
     _forgetDocument();
     _undo.clear();
     _redo.clear();

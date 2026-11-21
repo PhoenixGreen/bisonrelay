@@ -36,6 +36,7 @@ import 'package:bruig/plugin_system/canvas/ui/picking/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/score/score_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_dock.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/kept_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/publish_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
@@ -146,72 +147,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
   double get _dockRoom => math.max(
       0.0, _pageSeen - _topSeen - dockBarHeight - (_shown ? canvasLeast : 0));
 
-  /// _keepDock keeps where the panels open, only when it has changed: this
-  /// hears every change, which playing is every frame.
-  void _keepDock() {
-    if (identical(_controller.dock, _dockKept)) return;
-    _dockKept = _controller.dock;
-    _prefs.dock = _controller.dock;
-  }
+  /// _prefs and _kept are made as the page opens: both are needed as it is
+  /// left, when looking the preferences up is no longer allowed.
+  late final CanvasPreferences _prefs;
 
-  DockLayout? _dockKept;
-
-  /// _viewKey is the folder and name of the canvas whose view is kept;
-  /// null for one never saved.
-  String? _viewKey;
-  bool _viewKeyKnown = false;
-  Timer? _keepTimer;
-
-  String? get _canvasKey => _controller.name == null
-      ? null
-      : "${_controller.folder ?? ""}/${_controller.name}";
-
-  /// _keepPanels keeps how the panels were left (panelState, canvasView) a
-  /// moment after they change, not on every change: playing is every frame.
-  /// When another canvas opens, the last one's view is kept and its own put
-  /// back.
-  void _keepPanels() {
-    var key = _canvasKey;
-    if (!_viewKeyKnown || key != _viewKey) {
-      if (_viewKeyKnown) _savePanels();
-      _viewKeyKnown = true;
-      _viewKey = key;
-      // As left, or as it starts for one never looked at -- not the last
-      // canvas's channels and zoom. After this change was told: putting it
-      // back tells again.
-      // One never saved has no view kept: the session holds it as it is
-      // (and forgot the last canvas's as this one opened).
-      if (key == null) return;
-      var view = _prefs.canvasView(key);
-      scheduleMicrotask(() {
-        if (mounted && _canvasKey == key) {
-          _controller.restoreCanvasView(view ?? const {});
-        }
-      });
-      return;
-    }
-    // Not while it plays: what is kept changes at every frame of it (the
-    // view follows the playhead), and it is kept as it stops.
-    if (_controller.playing) return;
-    _keepTimer ??= Timer(const Duration(milliseconds: 800), () {
-      _keepTimer = null;
-      _savePanels();
-    });
-  }
-
-  void _savePanels() {
-    _keepTimer?.cancel();
-    _keepTimer = null;
-    _prefs.panels = _controller.panelState;
-    if (_viewKey case var key?) {
-      _prefs.setCanvasView(key, _controller.canvasView);
-    }
-  }
-
-  /// _prefs is taken once: it is kept as the page is left, when looking it
-  /// up is no longer allowed.
-  late final CanvasPreferences _prefs =
-      Provider.of<CanvasPreferences>(context, listen: false);
+  /// _kept puts back how the page was left and writes it down as it
+  /// changes: the frame, the cues, the mixer, the panels, and how each
+  /// canvas was looked at. What is remembered is listed there.
+  late final KeptView _kept;
 
   /// _pushScale lays a Push's pads out in the played channel's scale.
   void _pushScale() {
@@ -222,16 +165,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
     push.setScale(root, steps);
     // And, in Session mode, the slots' pads as they launch and stop.
     if (push.session) push.refresh();
-  }
-
-  /// _keepShown saves which timeline rows show; unchanged values are skipped.
-  void _keepShown() {
-    var prefs = Provider.of<CanvasPreferences>(context, listen: false);
-    prefs.cuesShown = _controller.cuesShown;
-    // And the mixer's bands (C, D, M) and its returns (R): set up once.
-    prefs.mixerBands = _controller.mixerBandNames;
-    prefs.returnsShown = _controller.returnsShown;
-    prefs.mixerLook = _controller.mixerLook;
   }
 
   /// _midiNote is what this page hands a MIDI keyboard for its keys, made
@@ -257,7 +190,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // A Push's Session mode: its pads the clip slots.
     MidiInput.shared.onClip = _controller.pushClip;
     MidiInput.shared.clipAt = _controller.pushPad;
-    var prefs = Provider.of<CanvasPreferences>(context, listen: false);
+    var prefs = _prefs = Provider.of<CanvasPreferences>(context, listen: false);
     _sidebars = prefs.sidebars;
     // The Game sidebar only for a game.
     if (_sidebars.current == "game" && !_controller.document.game) {
@@ -278,33 +211,19 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _designUsed =
         _sidebars.byId(_sidebars.current)?.panels.contains("settings") == true;
     _timelineOpen = prefs.timeline;
-    // The frame the reader last chose, before anything is drawn: theirs, not
-    // the document's (CanvasPreferences.fit). restoreFit, not the setter:
-    // notifying a provided controller in initState marks an inherited widget
-    // dirty mid-build.
-    _controller.restoreFit(prefs.fit);
-    _controller.restoreShown(cues: prefs.cuesShown);
-    // The mixer as left: bands, returns, its height and the effects panel's.
-    _controller.restoreMixer(prefs.mixerBands, prefs.returnsShown);
-    _controller.restoreMixerLook(prefs.mixerLook);
-    // Where the panels open, as left, before which are open.
-    _controller.restoreDock(prefs.dock);
-    // First visit of the session only: after it, the controller holds the
-    // panels and the work, and reopening the last saved file would throw
-    // away unsaved edits.
-    if (!_controller.opened) _controller.restorePanels(prefs.panels);
-    // Not when a canvas from Files is about to open (below): the two reads
-    // would race, and the one to finish last would be the one left open.
+    // How the page was left, before anything is drawn.
+    _kept = KeptView(_controller, prefs)..open();
+    // First visit of the session only: after it the controller holds the
+    // work, and reopening the last saved file would throw away unsaved
+    // edits. Not when a canvas from Files is about to open (below): the two
+    // reads would race, and the one to finish last would be the one left
+    // open.
     if (!_controller.opened && prefs.pendingOpen == null) _reopenLast(prefs);
     _controller.markOpened();
     _controller.addListener(_onSelectionChanged);
     _gameSeen = _controller.document.game;
     _controller.addListener(_followGame);
-    _controller.addListener(_keepShown);
     _controller.addListener(_pushScale);
-    _controller.addListener(_keepPanels);
-    _controller.addListener(_keepDock);
-    _keepPanels();
     // A text element can take its words from the Writing library, edited
     // elsewhere, so those documents are re-read every few seconds while this
     // page is open; a canvas with none does no work.
@@ -324,11 +243,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// the controller notifies on every edit, and the stage, band and timeline
   /// all listen for themselves.
   void _onSelectionChanged() {
-    // Written down here, the one place that sees every way the frame can
-    // change, the keyboard included.
-    var prefs = Provider.of<CanvasPreferences>(context, listen: false);
-    prefs.fit = _controller.fit;
-
     var next = _controller.backgroundSelected
         ? "background"
         : (_controller.selection.toList()..sort()).join(",");
@@ -385,12 +299,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _documents?.stop();
     _controller.removeListener(_onSelectionChanged);
     _controller.removeListener(_followGame);
-    _controller.removeListener(_keepShown);
     _controller.removeListener(_pushScale);
-    _controller.removeListener(_keepPanels);
-    _controller.removeListener(_keepDock);
-    _keepTimer?.cancel();
-    _savePanels();
+    _kept.close();
     // Everything the page set going stops when it is left (see leavePage):
     // a canvas nobody is looking at has no off switch on screen. Just after
     // this frame: stopping notifies watchers, some being taken down in this
@@ -458,8 +368,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
     _controller.load(document, folder: folder, name: name);
     if (mounted) {
-      Provider.of<CanvasPreferences>(context, listen: false)
-          .remember(folder, name);
+      _prefs.remember(folder, name);
     }
   }
 
@@ -477,8 +386,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       snackbar.error("Unable to make $name.");
       return;
     }
-    Provider.of<CanvasPreferences>(context, listen: false)
-        .remember(folder, name);
+    _prefs.remember(folder, name);
     // Straight to the elements tab, as a preset does.
     _showPanel("add");
     _openCanvasSettings();
@@ -498,7 +406,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (!await _confirmDiscard()) return;
     _controller.load(document);
     if (mounted) {
-      Provider.of<CanvasPreferences>(context, listen: false).remember("", "");
+      _prefs.remember("", "");
       // Straight to the elements tab: the next thing is to add something.
       _showPanel("add");
       // Only the empty preset: see startsWithSettingsOpen.

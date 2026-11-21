@@ -677,6 +677,11 @@ class CanvasController extends ChangeNotifier {
   /// the page, so only the first visit restores the last save.
   bool get opened => _opened;
 
+  /// loads counts the canvases opened in this session (load). What the page
+  /// keeps about one canvas changes hands when it goes up: see KeptView.
+  int get loads => _loads;
+  int _loads = 0;
+
   /// markOpened is called by the page as it builds.
   void markOpened() => _opened = true;
 
