@@ -1,8 +1,7 @@
-part of '../canvas_controller.dart';
-
-// The view's kinds and bounds: the zoom's limits, the tools a drag on the
-// canvas or the 3D stage takes, how the frame is fitted, and the pan as a pair
-// of doubles. Part of canvas_controller.dart.
+// view_types.dart is the view's kinds and bounds: the zoom's limits, the
+// tools a drag on the canvas or the 3D stage takes, how the frame is fitted,
+// and the pan as a pair of doubles. Plain values that know nothing of the
+// controller, which exports them.
 
 /// minZoom and maxZoom bound the view, as multiples of the fitted size (see
 /// [CanvasController.zoom]): 1 is the whole canvas filling the area.

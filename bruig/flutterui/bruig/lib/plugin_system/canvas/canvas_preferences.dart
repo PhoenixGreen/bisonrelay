@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -118,7 +119,9 @@ class CanvasPreferences extends ChangeNotifier {
   final _lastFolder = _SavedText.string("canvasLastFolder");
   final _lastName = _SavedText.string("canvasLastName");
   final _filesFolder = _SavedText.string("canvasFilesFolder");
-  final _fit = _SavedText.string("canvasFit");
+  final _fit = _SavedText<CanvasFit>("canvasFit", CanvasFit.whole,
+      read: (t) => CanvasFit.values.where((f) => f.name == t).firstOrNull,
+      write: (v) => v.name);
   final _canvasViews =
       _SavedText.json<Map<String, Map<String, dynamic>>>("canvasViews", {},
           fromJson: (json) => json is! Map<String, dynamic>
@@ -303,11 +306,10 @@ class CanvasPreferences extends ChangeNotifier {
   set filesFolder(String value) => _change(_filesFolder, value);
 
   /// fit is how the canvas is framed: the whole of it, or the full width.
-  /// A preference because it is about this screen, not the canvas. It is the
-  /// name of a CanvasFit, so reordering the fits does not change a saved
-  /// one; the screen turns it back into one.
-  String get fit => _fit.value;
-  set fit(String value) => _change(_fit, value);
+  /// A preference because it is about this screen, not the canvas. Stored
+  /// by name, so reordering the fits does not change a saved one.
+  CanvasFit get fit => _fit.value;
+  set fit(CanvasFit value) => _change(_fit, value);
 
   /// canvasView is how the canvas saved as [key] ("folder/name") was last
   /// looked at. See CanvasController.canvasView.

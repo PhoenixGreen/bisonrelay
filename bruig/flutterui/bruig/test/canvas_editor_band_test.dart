@@ -1006,13 +1006,13 @@ void main() {
       var prefs = CanvasPreferences();
       addTearDown(prefs.dispose);
 
-      prefs.fit = CanvasFit.width.name;
-      expect(prefs.fit, "width");
+      prefs.fit = CanvasFit.width;
+      expect(prefs.fit, CanvasFit.width);
 
       var back = CanvasPreferences();
       addTearDown(back.dispose);
       await back.load();
-      expect(back.fit, "width");
+      expect(back.fit, CanvasFit.width);
     });
   });
 

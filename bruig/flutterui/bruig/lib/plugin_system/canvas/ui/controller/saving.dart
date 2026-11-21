@@ -31,13 +31,7 @@ extension CanvasSaving on CanvasController {
     _document = document;
     this.folder = folder;
     this.name = name;
-    _offTimeline.clear();
-    motionPlayer.clear();
-    _selectedSlot = null;
-    _selection = {};
-    _backgroundSelected = false;
-    _focusedPlayer = null;
-    _beforePreview = null;
+    _forgetDocument();
     _undo.clear();
     _redo.clear();
     _interaction = null;
@@ -52,6 +46,47 @@ extension CanvasSaving on CanvasController {
     // elements arrive does not open as an empty page.
     _frame = settledFrameOf(_document);
     notifyListeners();
+  }
+
+  /// _forgetDocument lets go of everything kept about the canvas that was
+  /// open: what was picked in it, what was open on it, what was fetched for
+  /// it. All of it names that canvas's elements, scenes or sheets, and the
+  /// session outlives the canvas, so anything left would be met by the next
+  /// one. State that names part of a document belongs in this list.
+  void _forgetDocument() {
+    _offTimeline.clear();
+    motionPlayer.clear();
+    _selectedSlot = null;
+    _selection = {};
+    _offCanvas = const {};
+    _backgroundSelected = false;
+    _focusedPlayer = null;
+    hoveredButton = null;
+    _beforePreview = null;
+    // Clips and scenes picked for the Chain and the timeline.
+    _pickedMotion = _pickedPlacement = _pickedOf = null;
+    _motionPicks = const {};
+    _ownTab = null;
+    _clipSettings.clear();
+    _pickedScene = null;
+    _pickedSceneWith = const {};
+    _joinPicked = _joinPress = false;
+    _previewJoin = null;
+    _chainFocus = null;
+    _sceneFrames.clear();
+    _wordQuery = "";
+    // The studios, each open on one of its elements or sheets.
+    studio3dOpen.value = false;
+    studio3dElement = null;
+    scoreStudio.value = null;
+    codeStudio.value = null;
+    dataStudio.value = null;
+    dataStudioView = null;
+    // What was fetched and compared for its elements and devices.
+    lastFetched.clear();
+    _synthSeen = null;
+    _panelState.forgetDocument();
+    _abB.clear();
   }
 
   /// _openSoundDesk opens the mixer and the effects: what an audio document

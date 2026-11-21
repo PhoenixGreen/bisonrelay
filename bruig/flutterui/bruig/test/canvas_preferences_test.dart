@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,7 +35,7 @@ void main() {
     expect(prefs.lastFolder, "");
     expect(prefs.lastName, "");
     expect(prefs.filesFolder, "");
-    expect(prefs.fit, "");
+    expect(prefs.fit, CanvasFit.whole);
     expect(prefs.canvasView("a/b"), isNull);
     expect(prefs.sidebars.current, "files");
     expect(prefs.sidebarAboveWidth, 0);
@@ -92,7 +93,7 @@ void main() {
     expect(prefs.lastFolder, "Books");
     expect(prefs.lastName, "Piano");
     expect(prefs.filesFolder, "Books");
-    expect(prefs.fit, "width");
+    expect(prefs.fit, CanvasFit.width);
     expect(prefs.canvasView("Books/Piano"), {"zoom": 2});
     expect(prefs.sidebars.current, "design");
     expect(prefs.sidebarAboveWidth, 310.5);
@@ -118,7 +119,7 @@ void main() {
     var prefs = await loaded({});
     prefs.enabled = true;
     prefs.remember("Books", "Piano");
-    prefs.fit = "width";
+    prefs.fit = CanvasFit.width;
     prefs.setCanvasView("Books/Piano", {"zoom": 3});
     prefs.sidebars = const SidebarLayout(current: "assets");
     prefs.panels = {"timeline": true};
@@ -133,7 +134,7 @@ void main() {
     expect(next.enabled, isTrue);
     expect(next.lastFolder, "Books");
     expect(next.lastName, "Piano");
-    expect(next.fit, "width");
+    expect(next.fit, CanvasFit.width);
     expect(next.canvasView("Books/Piano"), {"zoom": 3});
     expect(next.sidebars.current, "assets");
     expect(next.panels, {"timeline": true});
@@ -200,7 +201,7 @@ void main() {
     var heard = 0;
     prefs.addListener(() => heard++);
 
-    prefs.fit = "width";
+    prefs.fit = CanvasFit.width;
     prefs.filesFolder = "Books";
     prefs.dockLower = 200;
     prefs.cuesShown = false;

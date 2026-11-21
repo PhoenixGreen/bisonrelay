@@ -273,9 +273,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // the document's (CanvasPreferences.fit). restoreFit, not the setter:
     // notifying a provided controller in initState marks an inherited widget
     // dirty mid-build.
-    for (var fit in CanvasFit.values) {
-      if (fit.name == prefs.fit) _controller.restoreFit(fit);
-    }
+    _controller.restoreFit(prefs.fit);
     _controller.restoreShown(cues: prefs.cuesShown);
     // The mixer as left: bands, returns, its height and the effects panel's.
     _controller.restoreMixer(prefs.mixerBands, prefs.returnsShown);
@@ -318,7 +316,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // Written down here, the one place that sees every way the frame can
     // change, the keyboard included.
     var prefs = Provider.of<CanvasPreferences>(context, listen: false);
-    if (prefs.fit != _controller.fit.name) prefs.fit = _controller.fit.name;
+    prefs.fit = _controller.fit;
 
     var next = _controller.backgroundSelected
         ? "background"

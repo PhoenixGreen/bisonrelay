@@ -323,4 +323,13 @@ class _PanelState {
 
   /// presetNames are the presets last put on devices, by "strip|device".
   final Map<String, String> presetNames = {};
+
+  /// forgetDocument lets go of what is kept by strip and device: they are
+  /// the canvas's, and another is being opened.
+  void forgetDocument() {
+    analysing.clear();
+    abOther.clear();
+    abSets.clear();
+    presetNames.clear();
+  }
 }

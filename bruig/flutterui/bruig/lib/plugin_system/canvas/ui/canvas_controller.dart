@@ -1,229 +1,186 @@
-import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
-import 'package:bruig/plugin_system/canvas/model/layout_sync.dart';
-import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
-import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
-import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
-import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
-import 'package:bruig/plugin_system/canvas/render/code_painter.dart'
-    show CodeShow, codeShowOf, codeLineHeight, codeScrollRoom, codeShownScroll;
-import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
-import 'package:bruig/plugin_system/canvas/media/code_dart_runner.dart';
-import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
-import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart'
-    show MetronomeShow, metronomeShowOf;
-import 'package:bruig/plugin_system/canvas/model/fretting.dart'
-    show FretPlace, placesAt;
-import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart'
-    show PatchWatch;
-import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart'
-    show SynthShow, synthShowOf, synthPanelFor, synthPanelFit, synthPanelOf;
-import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
-import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'dart:async';
-import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
-import 'package:bruig/plugin_system/canvas/model/automation.dart';
-import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart'
-    show PitchEdit;
-import 'package:bruig/plugin_system/canvas/model/session.dart';
-import 'package:bruig/plugin_system/canvas/media/phrasing.dart';
-import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
-import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
-import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
-import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
-import 'package:bruig/plugin_system/canvas/media/speech_finish.dart';
-import 'package:bruig/plugin_system/canvas/media/warp.dart';
-import 'package:bruig/plugin_system/canvas/media/vocaliser.dart';
-import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
-import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
-import 'package:bruig/plugin_system/canvas/model/musicxml.dart';
-import 'package:bruig/plugin_system/canvas/model/note_tools.dart';
-import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
-import 'package:bruig/plugin_system/canvas/media/push_surface.dart'
-    show PadClip;
-import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
-import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
-import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
-import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
-    show ffmpegDecode, readWholeAway;
-import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart'
-    show StripProcessor, mixRate;
-import 'package:bruig/plugin_system/canvas/ui/sound/element_sound.dart'
-    show ownChannelOf, soundOwnerOf;
-import 'package:bruig/plugin_system/canvas/ui/timeline/row_header.dart'
-    show givenRowColour;
-import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
-import 'dart:math' as math;
 import 'dart:io' show Directory, File;
 import 'dart:isolate' show Isolate;
-
-import 'package:crypto/crypto.dart' show sha256;
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:ui' show Color, Offset, Rect, Size;
 
-import 'package:bruig/components/paint_spec.dart';
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
+import 'package:gamepads/gamepads.dart' show Gamepads, NormalizedGamepadEvent;
+import 'package:path/path.dart' as path;
 
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
-import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
+import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart' show ffmpegHelp, ffmpegPath;
+import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
+import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
+import 'package:bruig/plugin_system/canvas/media/code_dart_runner.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
+import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
+import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart' show Wave, LoudnessReading;
+import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/decode.dart' show ffmpegDecode, readWholeAway;
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show StripProcessor, mixRate;
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart' show PitchReading;
+import 'package:bruig/plugin_system/canvas/media/phrasing.dart';
+import 'package:bruig/plugin_system/canvas/media/push_surface.dart' show PadClip;
+import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
+import 'package:bruig/plugin_system/canvas/media/speech.dart';
+import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
+import 'package:bruig/plugin_system/canvas/media/speech_finish.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/patch_voice.dart' show PatchWatch;
+import 'package:bruig/plugin_system/canvas/media/video_runtime.dart';
+import 'package:bruig/plugin_system/canvas/media/vocaliser.dart';
+import 'package:bruig/plugin_system/canvas/media/warp.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
+import 'package:bruig/plugin_system/canvas/model/automation.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
-import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
-import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/cast.dart';
-import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
-import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
-import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_play.dart';
+import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
+import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
+import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
-import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/sprite_painting.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/tile_painting.dart';
-import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart' show tileMapEditingOf;
-import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart' show spritePaintingOf;
-import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
-import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
-import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
-import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
-import 'package:bruig/plugin_system/canvas/model/font_files.dart';
-import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/image_masking.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart'
-    show channelClip;
-import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/vector_items.dart';
-import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
-import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/model/font_files.dart';
+import 'package:bruig/plugin_system/canvas/model/fretting.dart' show FretPlace, placesAt;
+import 'package:bruig/plugin_system/canvas/model/instances.dart' show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
-import 'package:bruig/plugin_system/canvas/model/data_source.dart';
-import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
-import 'package:bruig/plugin_system/canvas/model/sheet_reshape.dart';
-import 'package:bruig/plugin_system/canvas/model/data_styles.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
+import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart' show macroValue;
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show ClipTriggerKind, ElementMotion, MotionKind;
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart' show MotionPhase;
+import 'package:bruig/plugin_system/canvas/model/music_score.dart';
+import 'package:bruig/plugin_system/canvas/model/musicxml.dart';
+import 'package:bruig/plugin_system/canvas/model/notation.dart' show splitKey;
+import 'package:bruig/plugin_system/canvas/model/note_tools.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/page_style.dart';
-import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
+import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
+import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart' show PitchEdit;
+import 'package:bruig/plugin_system/canvas/model/play.dart' show ControlAction, GameSoundElement, GameSoundSlot, GameSoundStop, gameSoundOf, gameSoundStop;
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/score_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/score_roll.dart';
-import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
-import 'package:bruig/plugin_system/canvas/model/music_score.dart';
-import 'package:bruig/plugin_system/canvas/model/modulation.dart'
-    show macroValue;
-import 'package:bruig/plugin_system/canvas/ui/game/canvas_game.dart';
-import 'package:bruig/plugin_system/canvas/model/play.dart' show
-        ControlAction,
-        GameSoundElement,
-        GameSoundSlot,
-        GameSoundStop,
-        gameSoundOf,
-        gameSoundStop;
-import 'package:gamepads/gamepads.dart' show Gamepads, NormalizedGamepadEvent;
-import 'package:bruig/plugin_system/canvas/ui/element_factory.dart'
-    show newElement, newInstrument, synthRack, synthModule, codeFontFor;
-import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
-import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart'
-    show synthTaskLayout, synthTaskScale;
-import 'package:bruig/plugin_system/canvas/model/notation.dart' show splitKey;
-import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
-import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
-import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart';
-import 'package:path/path.dart' as path;
-import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
-    show Wave, LoudnessReading;
-import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
-    show PitchReading;
-import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
-import 'package:bruig/plugin_system/canvas/export/video_export.dart'
-    show ffmpegHelp, ffmpegPath;
-import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
-import 'package:bruig/plugin_system/canvas/media/speech.dart';
-import 'package:bruig/plugin_system/canvas/media/video_runtime.dart';
-import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
-import 'package:bruig/plugin_system/canvas/model/mix.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
-import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
-import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
-import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
-import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
-import 'package:bruig/plugin_system/canvas/model/surround.dart'
-    show Heard, SpeakerGroup;
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
-import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
-import 'package:bruig/plugin_system/canvas/model/devices.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/model/sheet_files.dart';
+import 'package:bruig/plugin_system/canvas/model/sheet_reshape.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart' show Heard, SpeakerGroup;
+import 'package:bruig/plugin_system/canvas/model/synth_channels.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
+import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
+import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
-
-import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/render/code_painter.dart' show CodeShow, codeShowOf, codeLineHeight, codeScrollRoom, codeShownScroll;
+import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart' show MetronomeShow, metronomeShowOf;
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart' show cameraFraming, designedNow, cameraHalfExtents, cameraLookAt, LiveMotion, MotionPreview, PointerLive, cameraOf, facesPointer, isStageScene, motionSoundPeaks, placedPlaying, poseWithMotion, sceneFraming, settledFrameOf;
+import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
+import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
+import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
+import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart' show spritePaintingOf;
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart' show SynthShow, synthShowOf, synthPanelFor, synthPanelFit, synthPanelOf;
+import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart' show synthTaskLayout, synthTaskScale;
+import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart' show tileMapEditingOf;
+import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_masking.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/sprite_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/tile_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_items.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart' show newElement, newInstrument, synthRack, synthModule, codeFontFor;
+import 'package:bruig/plugin_system/canvas/ui/game/canvas_game.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart' show MotionEditing, motionId, everyMotion;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart';
-import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart'
-    show MotionEditing, motionId, everyMotion;
-import 'package:bruig/plugin_system/canvas/model/instances.dart'
-    show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;
-import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
-    show MotionPhase;
-import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
-import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show ClipTriggerKind, ElementMotion, MotionKind;
-import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show
-        cameraFraming,
-        designedNow,
-        cameraHalfExtents,
-        cameraLookAt,
-        LiveMotion,
-        MotionPreview,
-        PointerLive,
-        cameraOf,
-        facesPointer,
-        isStageScene,
-        motionSoundPeaks,
-        placedPlaying,
-        poseWithMotion,
-        sceneFraming,
-        settledFrameOf;
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart'
-    show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart' show channelClip;
+import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/sound/element_sound.dart' show ownChannelOf, soundOwnerOf;
+import 'package:bruig/plugin_system/canvas/ui/timeline/row_header.dart' show givenRowColour;
+import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
+
+// The view's own types (CanvasTool, CanvasFit, the zoom's limits), so
+// whatever imports the controller has them.
+export 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 
 part 'controller/view_settings.dart';
 part 'controller/element_editing.dart';
@@ -237,7 +194,6 @@ part 'controller/saving.dart';
 
 // The controller's methods live, by area, as extensions in parts of this
 // library; its state stays in the class, where every part can reach it.
-part 'controller/view_types.dart';
 part 'controller/timeline_types.dart';
 part 'controller/clip_play.dart';
 part 'controller/pictures.dart';
@@ -319,6 +275,22 @@ class CanvasController extends ChangeNotifier {
       : _document = document,
         _audioEngine = audioEngine,
         _frameSource = frameSource {
+    // A task card's pattern counted off the UI isolate: drawn again.
+    PatternCounts.counted.addListener(_patternCounted);
+    _hookOwners.add(this);
+    _takeHooks();
+  }
+
+  /// _hookOwners are the sessions alive, the newest last. The painters reach
+  /// the session through hooks (synthShowOf, codeShowOf...) of which the app
+  /// has one each, so they answer for the newest session: a canvas played in
+  /// Files while the editor's is open behind it. When that one is shut,
+  /// [dispose] hands the hooks back to the one before, or the editor's
+  /// panels would go on asking a session that has gone.
+  static final List<CanvasController> _hookOwners = [];
+
+  /// _takeHooks points the painters' hooks at this session.
+  void _takeHooks() {
     // Follow sound reads the recordings this canvas reads.
     motionSoundPeaks = (id) => waveformOf(id);
     // An instrument of slices plays a stored sound.
@@ -327,8 +299,6 @@ class CanvasController extends ChangeNotifier {
     sheetPlaying = () => playing;
     // The synth modules on the stage: their keys held, their time.
     synthShowOf = synthShowFor;
-    // A task card's pattern counted off the UI isolate: drawn again.
-    PatternCounts.counted.addListener(_patternCounted);
     metronomeShowOf = metronomeShowFor;
     codeShowOf = codeShowFor;
     codeRunShowOf = codeRunShowFor;
@@ -342,7 +312,7 @@ class CanvasController extends ChangeNotifier {
   /// lastFetched is what each element's last refresh returned, by element id.
   /// Held here because two panel sections run a refresh; not a global, which
   /// would outlive its canvas and mix up ids. Not saved: it is about this
-  /// sitting.
+  /// sitting, and forgotten when another canvas is opened.
   final Map<String, FetchedRows> lastFetched = {};
 
   final CanvasImageStore images = CanvasImageStore();
@@ -1805,6 +1775,8 @@ class CanvasController extends ChangeNotifier {
   @override
   void dispose() {
     PatternCounts.counted.removeListener(_patternCounted);
+    _hookOwners.remove(this);
+    if (_hookOwners.isNotEmpty) _hookOwners.last._takeHooks();
     _endWait();
     chartGlideBeat.removeListener(_glideBeat);
     chartGlides.clear();
