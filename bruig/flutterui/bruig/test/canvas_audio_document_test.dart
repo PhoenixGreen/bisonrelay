@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/publish_sheet.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -78,6 +79,9 @@ void main() {
     addTearDown(d.dispose);
     d.load(const CanvasDocument(kind: CanvasKind.audio));
     expect((d.mixerOpen, d.effectsOpen), (true, true));
+    // Shown, not only switched on: each in place of what shared its place.
+    expect(d.dockShownIn(DockPlace.main), DockPanel.chain);
+    expect(d.dockShownIn(DockPlace.left), DockPanel.mixer);
   });
 
   testWidgets("a destination sets the format and the loudness at once",

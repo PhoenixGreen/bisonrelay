@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_controller_load_test.dart holds the editing session to letting go
@@ -76,5 +77,35 @@ void main() {
     editor.play();
     expect(sheetPlaying!(), isTrue);
     editor.pause();
+  });
+
+  test("opening another canvas forgets how the last was looked at", () {
+    // Channel heights and the stretch of the timeline in view are a
+    // canvas's own. One never saved has no view kept to put in their place,
+    // so what the last canvas left would be what it opened with.
+    var c = CanvasController(const CanvasDocument(frames: 48));
+    addTearDown(c.dispose);
+    c.setLaneHeight("narrator", 120);
+    c.timelineView = const TimelineView(10, 20);
+    c.openEffects("narrator");
+    expect(c.canvasView, isNotEmpty);
+
+    c.load(const CanvasDocument(frames: 48));
+    expect(c.laneHeights, isEmpty);
+    expect(c.timelineView, isNull);
+    expect(c.canvasView, isEmpty);
+  });
+
+  test("coming back to the page finds the zoom as it was left", () {
+    // The page puts the frame last chosen back each time it opens. The same
+    // frame as now is no change, and must not send the view back to fit.
+    var c = CanvasController(const CanvasDocument());
+    addTearDown(c.dispose);
+    c.restoreFit(CanvasFit.width);
+    c.zoom = 2;
+    c.restoreFit(CanvasFit.width);
+    expect(c.zoom, 2);
+    c.restoreFit(CanvasFit.whole);
+    expect(c.zoom, 1, reason: "another frame starts from the whole of it");
   });
 }

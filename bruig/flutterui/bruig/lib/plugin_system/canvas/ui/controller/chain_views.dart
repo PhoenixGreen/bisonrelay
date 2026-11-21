@@ -81,9 +81,6 @@ extension CanvasChainViews on CanvasController {
 
   void showPitch(String key) {
     _effectsOf = key;
-    _effectsOpen = true;
-    _animationOpen = false;
-    _chainMotion = false;
     _clipEditorShown = false;
     _pianoRollShown = false;
     _speechShown = false;
@@ -91,7 +88,7 @@ extension CanvasChainViews on CanvasController {
     _pitchShown = true;
     _effectsFocus = "pitch";
     _effectsFocusCount++;
-    _dockOpening(DockPanel.chain);
+    _showChain(ChainView.sound);
     notifyListeners();
   }
 
@@ -102,9 +99,6 @@ extension CanvasChainViews on CanvasController {
   /// showInstrument opens [key]'s instrument in the Chain's Instrument editor.
   void showInstrument(String key) {
     _effectsOf = key;
-    _effectsOpen = true;
-    _animationOpen = false;
-    _chainMotion = false;
     _clipEditorShown = false;
     _pianoRollShown = false;
     _speechShown = false;
@@ -112,7 +106,7 @@ extension CanvasChainViews on CanvasController {
     _instrumentShown = true;
     _effectsFocus = "instrument";
     _effectsFocusCount++;
-    _dockOpening(DockPanel.chain);
+    _showChain(ChainView.sound);
     notifyListeners();
   }
 
@@ -130,9 +124,6 @@ extension CanvasChainViews on CanvasController {
   /// of its chain: what they make plays through it.
   void showSpeech(String key) {
     _effectsOf = key;
-    _effectsOpen = true;
-    _animationOpen = false;
-    _chainMotion = false;
     _clipEditorShown = false;
     _pianoRollShown = false;
     _pitchShown = false;
@@ -140,7 +131,7 @@ extension CanvasChainViews on CanvasController {
     _speechShown = true;
     _effectsFocus = "speech";
     _effectsFocusCount++;
-    _dockOpening(DockPanel.chain);
+    _showChain(ChainView.sound);
     notifyListeners();
   }
 }

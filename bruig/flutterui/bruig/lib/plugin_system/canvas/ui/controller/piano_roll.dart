@@ -57,10 +57,9 @@ extension CanvasPianoRoll on CanvasController {
     if (_instrumentOf(channel) == null) return;
     _pianoRoll = PianoRollTarget(channel, row);
     _effectsOf = channel;
-    _effectsOpen = true;
-    // One detail panel: the Chain on its sound.
-    _animationOpen = false;
-    _chainMotion = false;
+    // One detail panel: the Chain on its sound, in place of whatever shared
+    // its place.
+    _showChain(ChainView.sound);
     _pianoRollShown = true;
     _speechShown = false;
     _pitchShown = false;
@@ -289,20 +288,18 @@ extension CanvasPianoRoll on CanvasController {
     var picked = element
         ? _selection.length == 1 && _selection.first == owner
         : _selection.isEmpty;
-    var chainOut = _animationOpen || _effectsOpen;
+    var chainOut = dockOpen(DockPanel.chain);
     // Pressed again -- every press on a strip picks it, a fader grab too --
     // with nothing to change, nothing is told: each press would rebuild the
     // editor. The scene's strip with the Chain on its motion opens the
     // scene's own chain (clips, transition, camera), as a click on the
     // scene on the timeline does; on its sound, its bus.
-    var sceneMotion = key == sceneBusKey && _animationOpen;
+    var sceneMotion = key == sceneBusKey && animationOpen;
     if (picked &&
         selectedChannel == key &&
         _effectsOf == key &&
         (!chainOut ||
-            (sceneMotion
-                ? pickedScene == _document.at
-                : _effectsOpen && !_animationOpen && !_chainMotion))) {
+            (sceneMotion ? pickedScene == _document.at : effectsOpen))) {
       return;
     }
     if (!picked) element ? selectOnly(owner) : clearSelection();

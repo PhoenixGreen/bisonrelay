@@ -158,7 +158,7 @@ class CanvasDockState extends State<CanvasDock> {
         var open = _open(row);
         if (open.length == 1 &&
             open.single == DockPanel.mixer &&
-            !_mixerPulled(h)) {
+            !_mixerPulled(row, h)) {
           return;
         }
         var rows = _rows();
@@ -188,10 +188,11 @@ class CanvasDockState extends State<CanvasDock> {
         }
       });
 
-  /// _mixerPulled steps the mixer's size as its edge is dragged to [h] on a
-  /// band of its own: down past its least to its smallest and back up;
-  /// minimised, up to its least. Returns whether the drag goes on to size it.
-  bool _mixerPulled(double h) {
+  /// _mixerPulled steps the mixer's size as its edge is dragged to [h] on
+  /// [row], a band of its own: down past its least to its smallest and back
+  /// up; minimised, up to its least. Returns whether the drag goes on to
+  /// size it.
+  bool _mixerPulled(_Row row, double h) {
     var tabs = _tabs ? DockPlaceTabs.height : 0.0;
     var least = mixerLeastHeight(controller, bare: false) * _textScale + tabs;
     if (controller.mixerSmallest) {
@@ -200,23 +201,26 @@ class CanvasDockState extends State<CanvasDock> {
       _pull = h > smallest ? _pull + (h - smallest) : 0;
       if (_pull < 16) return false;
       _pull = 0;
-      controller.mixerSmallest = false;
-      controller.mixerMinimised = true;
+      controller.mixerSize = MixerSize.minimised;
       return false;
     }
     if (h < least) {
       _pull += least - h;
       if (_pull < 24) return !controller.mixerMinimised;
       _pull = 0;
-      controller.mixerMinimised = true;
-      controller.mixerSmallest = true;
+      controller.mixerSize = MixerSize.smallest;
       return false;
     }
     _pull = 0;
     if (controller.mixerMinimised) {
       if (h <= least + 2) return false;
-      controller.mixerMinimised = false;
-      _lower = least;
+      controller.mixerSize = MixerSize.full;
+      // The band the mixer is on, which need not be the lower one.
+      if (row == _Row.above) {
+        _above = least;
+      } else {
+        _lower = least;
+      }
     }
     return true;
   }

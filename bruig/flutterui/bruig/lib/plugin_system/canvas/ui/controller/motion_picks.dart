@@ -116,9 +116,7 @@ extension CanvasMotionPicks on CanvasController {
     _pickedScene = index;
     _pickedSceneWith = {..._selection};
     _pickedMotion = _pickedPlacement = null;
-    _animationOpen = true;
-    _effectsOpen = false;
-    _dockOpening(DockPanel.chain);
+    _showChain(ChainView.motion);
     _notifyView();
   }
 }

@@ -1,6 +1,10 @@
 import 'dart:convert';
 
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_sidebar_layout_test.dart is how the sidebars are set out: panels
@@ -115,5 +119,17 @@ void main() {
         .withMode(SidebarMode.hidden);
     expect(l.mode, SidebarMode.hidden);
     expect(l.shownAgain.mode, SidebarMode.above);
+  });
+
+  test("every panel there is can be made", () {
+    // A panel is a name in the layout and a case in canvasSidebarPanel,
+    // which is null for a name it does not know: a panel added to a sidebar
+    // and not made there would be a gap nobody was told about.
+    var controller = CanvasController(const CanvasDocument());
+    addTearDown(controller.dispose);
+    for (var id in sidebarPanelIds) {
+      expect(canvasSidebarPanel(id, controller, const SizedBox()), isNotNull,
+          reason: id);
+    }
   });
 }

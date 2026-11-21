@@ -49,10 +49,9 @@ extension CanvasClipEditing on CanvasController {
     rollSelected.clear();
     _clipCursor = 0;
     _effectsOf = channel;
-    _effectsOpen = true;
-    // One detail panel: the Chain on its sound.
-    _animationOpen = false;
-    _chainMotion = false;
+    // One detail panel: the Chain on its sound, in place of whatever shared
+    // its place.
+    _showChain(ChainView.sound);
     _pianoRollShown = false;
     _speechShown = false;
     _pitchShown = false;

@@ -464,8 +464,12 @@ class CanvasController extends ChangeNotifier {
   void arrived() => notifyListeners();
 
   /// restoreFit puts back the frame last chosen, without notifying: it is
-  /// called from initState, and notifying during a build throws.
+  /// called from initState, and notifying during a build throws. The same
+  /// frame as now changes nothing, so coming back to the page finds the
+  /// zoom and pan as they were left; another frame starts from the whole of
+  /// it, as [fit]'s setter does.
   void restoreFit(CanvasFit value) {
+    if (value == _fit) return;
     _fit = value;
     _zoom = 1;
     _pan = const Offset2(0, 0);
@@ -574,11 +578,6 @@ class CanvasController extends ChangeNotifier {
 
   // ---- controller/chain_panel.dart ----------------------------------------
 
-  bool _animationOpen = false;
-
-  /// _chainMotion is the view the Chain reopens on: the one it was last on.
-  bool _chainMotion = false;
-
   String? _chainFocus;
 
   bool _chainMeters = true;
@@ -591,7 +590,11 @@ class CanvasController extends ChangeNotifier {
 
   // ---- controller/dock_layout.dart ----------------------------------------
 
-  bool _rowsShown = true;
+  /// _dockState is which panels under the canvas are open, the mixer's
+  /// size and the Chain's view (model/dock_layout.dart). Changed through
+  /// _openPanel, _closePanel and _showChain in controller/dock_layout.dart,
+  /// which keep one panel to a place.
+  DockState _dockState = const DockState();
 
   bool _barBelow = false;
 
@@ -608,8 +611,6 @@ class CanvasController extends ChangeNotifier {
   String? _arrangementChosen;
 
   TimelineShow _timelineShow = TimelineShow.everything;
-
-  bool _slotsBeside = false;
 
   /// slotCellWidth and slotCellHeight are a slot's fixed size by the rows.
   static const double slotCellWidth = 72, slotCellHeight = 22;
@@ -1499,20 +1500,12 @@ class CanvasController extends ChangeNotifier {
   /// canvas by the screen (see canvasView).
   final Map<String, double> laneHeights = {};
 
-  bool _mixerOpen = false;
-
-  bool _mixerSmallest = false;
-
-  bool _mixerMinimised = false;
-
   // ---- Kept between visits
 
   /// timelineView is the stretch the timeline is zoomed to (null for all),
   /// as last drawn; timelineViewSet counts restores from outside.
   TimelineView? timelineView;
   int timelineViewSet = 0;
-
-  bool _effectsOpen = false;
 
   /// _speechShown is whether the Chain's sound shows the channel's Speech.
   /// Speech makes clips rather than being a chain step, so it shows on ask.

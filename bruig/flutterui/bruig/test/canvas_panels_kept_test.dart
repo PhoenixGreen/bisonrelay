@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,8 +34,7 @@ void main() {
       var c = _make();
       addTearDown(c.dispose);
       c.mixerOpen = true;
-      c.mixerMinimised = true;
-      c.mixerSmallest = true;
+      c.mixerSize = MixerSize.smallest;
       c.openEffects("a", device: "eq");
       c.foldDevice("comp", true);
       c.nextLaneSize();
@@ -120,14 +120,14 @@ void main() {
                         onResize: (_) {},
                         onClose: () {})))),
           );
-      c.mixerMinimised = true;
+      c.mixerSize = MixerSize.minimised;
       await show();
       await tester.pump();
       var minimised = mixerLeastHeight(c);
       expect(find.text("Narrator"), findsOneWidget);
       expect(find.byKey(const ValueKey("narrow-a")), findsOneWidget);
       expect(find.byKey(const ValueKey("narrowAll")), findsOneWidget);
-      c.mixerSmallest = true;
+      c.mixerSize = MixerSize.smallest;
       await show();
       await tester.pump();
       expect(mixerLeastHeight(c), lessThan(minimised - 30));

@@ -82,6 +82,14 @@ extension CanvasSaving on CanvasController {
     codeStudio.value = null;
     dataStudio.value = null;
     dataStudioView = null;
+    // How it was looked at: its channels' heights, its narrow strips, the
+    // stretch of the timeline in view. The screen puts a saved canvas's own
+    // back (restoreCanvasView); one never saved starts as any does.
+    laneHeights.clear();
+    _narrowStrips.clear();
+    timelineView = null;
+    timelineViewSet++;
+    _effectsOf = null;
     // What was fetched and compared for its elements and devices.
     lastFetched.clear();
     _synthSeen = null;
@@ -92,11 +100,9 @@ extension CanvasSaving on CanvasController {
   /// _openSoundDesk opens the mixer and the effects: what an audio document
   /// is worked on with, there being no canvas to look at.
   void _openSoundDesk() {
-    _mixerOpen = true;
-    _effectsOpen = true;
+    _openPanel(DockPanel.mixer);
     // One detail panel: the Chain on its sound.
-    _animationOpen = false;
-    _chainMotion = false;
+    _showChain(ChainView.sound);
   }
 
   /// scheduleAutosave writes the document out once editing stops for a

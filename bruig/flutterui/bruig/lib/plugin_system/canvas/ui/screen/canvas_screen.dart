@@ -181,7 +181,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
       // As left, or as it starts for one never looked at -- not the last
       // canvas's channels and zoom. After this change was told: putting it
       // back tells again.
-      var view = key == null ? null : _prefs.canvasView(key);
+      // One never saved has no view kept: the session holds it as it is
+      // (and forgot the last canvas's as this one opened).
+      if (key == null) return;
+      var view = _prefs.canvasView(key);
       scheduleMicrotask(() {
         if (mounted && _canvasKey == key) {
           _controller.restoreCanvasView(view ?? const {});
@@ -233,13 +236,21 @@ class _CanvasScreenState extends State<CanvasScreen> {
     prefs.mixerLook = _controller.mixerLook;
   }
 
+  /// _midiNote is what this page hands a MIDI keyboard for its keys, made
+  /// once. midiNote is a method of one of the controller's extensions, and
+  /// one of those torn off is a new closure each time, never equal to the
+  /// last: asked afresh in dispose, it could not be told that the keyboard
+  /// was still this page's, and the keyboard was never given back.
+  late final void Function(int key, int velocity, {String? from}) _midiNote =
+      _controller.midiNote;
+
   @override
   void initState() {
     super.initState();
     // Run panels run code in this app: a hidden browser, Pyodide, Yaegi.
     useAppCodeRunHost();
     // A MIDI keyboard plays this canvas's instruments while it is open.
-    MidiInput.shared.onNote = _controller.midiNote;
+    MidiInput.shared.onNote = _midiNote;
     MidiInput.shared.onControl = _controller.midiControl;
     MidiInput.shared.onCc = _controller.midiCc;
     MidiInput.shared.onPlay = _controller.togglePlay;
@@ -284,7 +295,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // panels and the work, and reopening the last saved file would throw
     // away unsaved edits.
     if (!_controller.opened) _controller.restorePanels(prefs.panels);
-    if (!_controller.opened) _reopenLast(prefs);
+    // Not when a canvas from Files is about to open (below): the two reads
+    // would race, and the one to finish last would be the one left open.
+    if (!_controller.opened && prefs.pendingOpen == null) _reopenLast(prefs);
     _controller.markOpened();
     _controller.addListener(_onSelectionChanged);
     _gameSeen = _controller.document.game;
@@ -360,7 +373,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   void dispose() {
-    if (MidiInput.shared.onNote == _controller.midiNote) {
+    // Only if they are still this page's, and not a newer Canvas page's put
+    // up before this one came down.
+    if (identical(MidiInput.shared.onNote, _midiNote)) {
       MidiInput.shared.onNote = null;
       MidiInput.shared.onControl = null;
       MidiInput.shared.onCc = null;
@@ -782,11 +797,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
                             : () =>
                                 setState(() => _canvasShown = !_canvasShown),
                         timelineOpen: _timelineShown,
-                        onToggleTimeline: () => setState(() {
-                          _timelineOpen = !_timelineOpen;
-                          Provider.of<CanvasPreferences>(context, listen: false)
-                              .timeline = _timelineOpen;
-                        }),
+                        // A piece of sound always shows them: nothing to
+                        // switch, and nothing to keep.
+                        onToggleTimeline: _audioKind
+                            ? null
+                            : () => setState(() {
+                                  _timelineOpen = !_timelineOpen;
+                                  _prefs.timeline = _timelineOpen;
+                                }),
                         // Only while the sidebar is away; on the band, with
                         // every other control on this page.
                         onShowSidebar: _sidebarVisible

@@ -21,13 +21,12 @@ enum SidebarMode {
       values.where((m) => m.name == name).firstOrNull ?? full;
 }
 
-/// sidebarPanelIds are the panels there are, in the order a new sidebar set
-/// out as it starts has them. Kept as names: see SidebarPanel in the UI.
-const sidebarPanelIds = [
-  "files", "presets", //
-  "add", "scenes", "vocalCues", "layers", "colour", "settings", //
-  "picture", "video", "audio", "vector", "model", "characters", "cast", //
-  "stock", "game",
+/// sidebarPanelIds are the panels there are, in the order the sidebars
+/// hold them as they start: worked out from [defaultSidebars], which is
+/// where a panel is added. Kept as names: sidebar_panels.dart
+/// (canvasSidebarPanel) makes the panel each names.
+final List<String> sidebarPanelIds = [
+  for (var s in defaultSidebars) ...s.panels,
 ];
 
 /// requiredPanels can move but not be hidden.
@@ -87,6 +86,9 @@ class RemovedSidebar {
       {"id": id, "name": name, "icon": icon, "at": at};
 }
 
+/// defaultSidebars are the sidebars as they start, each with its panels.
+/// A new panel is added to one of them here, and made in
+/// canvasSidebarPanel (ui/sidebar/sidebar_panels.dart).
 const defaultSidebars = [
   SidebarSet("files", "Files", "folder", ["files", "presets"], fixed: true),
   SidebarSet("design", "Design", "design",
@@ -104,8 +106,12 @@ const defaultSidebars = [
   SidebarSet("game", "Game", "game", ["game"], fixed: true, gameOnly: true),
 ];
 
+/// maxSidebars is the most sidebars there can be, the app's four included.
 const int maxSidebars = 12;
 
+/// SidebarLayout is how the sidebar is set out: see the top of the file.
+/// Every change returns a new one; fromJson puts right whatever was kept
+/// that does not add up.
 class SidebarLayout {
   final SidebarMode mode;
 

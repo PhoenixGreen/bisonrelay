@@ -30,58 +30,38 @@ extension CanvasPanels on CanvasController {
   }
 
   /// mixerOpen is whether the mixer shows; the reader's, kept (panelState).
-  bool get mixerOpen => _mixerOpen;
+  bool get mixerOpen => dockOpen(DockPanel.mixer);
 
   set mixerOpen(bool open) {
-    if (open == _mixerOpen) return;
-    _mixerOpen = open;
-    if (!open) {
-      _mixerMinimised = false;
-      _mixerSmallest = false;
-    } else {
-      _dockOpening(DockPanel.mixer);
-    }
+    if (open == mixerOpen) return;
+    open ? _openPanel(DockPanel.mixer) : _closePanel(DockPanel.mixer);
     notifyListeners();
   }
 
-  /// mixerSmallest is the mixer smaller still than minimised: strips without
-  /// names or the band rail, only what each channel is doing. Reached by
-  /// dragging below minimised, or the Mixer button's step after it.
-  bool get mixerSmallest => _mixerOpen && _mixerSmallest;
+  /// mixerSize is how much of the open mixer shows (MixerSize): all of it,
+  /// one line of channels, or smaller still. Set by dragging the mixer's
+  /// edge in the dock; setting it opens the mixer.
+  MixerSize get mixerSize => _dockState.mixer;
 
-  set mixerSmallest(bool on) {
-    if (on == _mixerSmallest) return;
-    _mixerSmallest = on;
-    if (on) _mixerOpen = true;
+  set mixerSize(MixerSize size) {
+    if (mixerOpen && size == mixerSize) return;
+    _dockState = _dockState.withMixer(size, _dock);
     notifyListeners();
   }
 
   /// mixerMinimised is the mixer folded to one line of channels, each its
-  /// name over its sideways meter, as dragged all the way down. Still open.
-  bool get mixerMinimised => _mixerOpen && _mixerMinimised;
-
-  set mixerMinimised(bool on) {
-    if (on == _mixerMinimised) return;
-    _mixerMinimised = on;
-    if (on) _mixerOpen = true;
-    notifyListeners();
-  }
+  /// name over its sideways meter, as dragged all the way down; and
+  /// mixerSmallest that with the names and the band rail gone too, only
+  /// what each channel is doing. Both are still open.
+  bool get mixerMinimised => mixerOpen && mixerSize != MixerSize.full;
+  bool get mixerSmallest => mixerOpen && mixerSize == MixerSize.smallest;
 
   /// panelState is how the panels under the canvas were left, whatever
-  /// canvas is open -- mixer size, effects, folded devices, channel size and
-  /// strip column width -- for the screen to keep. See restorePanels.
+  /// canvas is open, for the screen to keep: which are open, the mixer's
+  /// size and the Chain's view (DockState.toJson), the folded devices, the
+  /// channels' size and the timeline header's width. See restorePanels.
   Map<String, dynamic> get panelState => {
-        "mixer": !_mixerOpen
-            ? "hidden"
-            : _mixerSmallest
-                ? "smallest"
-                : _mixerMinimised
-                    ? "minimised"
-                    : "shown",
-        "effects": _effectsOpen,
-        "rows": _rowsShown,
-        "slots": _slotsBeside,
-        "animation": _animationOpen,
+        ..._dockState.toJson(),
         "folded": [...foldedDevices]..sort(),
         "laneSize": _laneSize,
         "header": _headerWidth,
@@ -89,20 +69,8 @@ extension CanvasPanels on CanvasController {
 
   /// restorePanels puts back [state] from panelState, without notifying.
   void restorePanels(Map<String, dynamic> state) {
-    switch (state["mixer"]) {
-      case "shown":
-        _mixerOpen = true;
-      case "minimised":
-        _mixerOpen = _mixerMinimised = true;
-      case "smallest":
-        _mixerOpen = _mixerMinimised = _mixerSmallest = true;
-    }
-    if (state["effects"] == true) _effectsOpen = true;
-    if (state["rows"] case bool rows) _rowsShown = rows;
-    if (state["slots"] == true) _slotsBeside = true;
-    if (state["animation"] == true && !_effectsOpen) _animationOpen = true;
-    // As many as fit their places.
-    _dockSettle();
+    // Over what is open already, and as many as fit their places.
+    _dockState = DockState.fromJson(state, _dock, start: _dockState);
     if (state["folded"] case List folded) {
       foldedDevices
         ..clear()
@@ -180,16 +148,11 @@ extension CanvasPanels on CanvasController {
   }
 
   /// effectsOpen is whether the effects panel shows effectsOf's chain.
-  bool get effectsOpen => _effectsOpen;
+  bool get effectsOpen => _dockState.showsSound;
 
   set effectsOpen(bool open) {
-    if (open == _effectsOpen) return;
-    _effectsOpen = open;
-    if (open) {
-      _animationOpen = false;
-      _chainMotion = false;
-      _dockOpening(DockPanel.chain);
-    }
+    if (open == effectsOpen) return;
+    open ? _showChain(ChainView.sound) : _closePanel(DockPanel.chain);
     notifyListeners();
   }
 
@@ -213,10 +176,7 @@ extension CanvasPanels on CanvasController {
       _instrumentShown = false;
     }
     _effectsOf = key;
-    _effectsOpen = true;
-    _animationOpen = false;
-    _chainMotion = false;
-    _dockOpening(DockPanel.chain);
+    _showChain(ChainView.sound);
     notifyListeners();
   }
 

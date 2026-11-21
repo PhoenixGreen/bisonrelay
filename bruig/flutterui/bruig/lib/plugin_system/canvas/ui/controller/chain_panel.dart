@@ -8,16 +8,11 @@ part of '../canvas_controller.dart';
 extension CanvasChainPanel on CanvasController {
   /// animationOpen is whether the Chain panel is open on its motion (see
   /// dock). Opening it puts the Chain's sound away: one view at a time.
-  bool get animationOpen => _animationOpen;
+  bool get animationOpen => _dockState.showsMotion;
 
   set animationOpen(bool value) {
-    if (_animationOpen == value) return;
-    _animationOpen = value;
-    if (value) {
-      _effectsOpen = false;
-      _chainMotion = true;
-      _dockOpening(DockPanel.chain);
-    }
+    if (animationOpen == value) return;
+    value ? _showChain(ChainView.motion) : _closePanel(DockPanel.chain);
     _notifyView();
   }
 
@@ -43,7 +38,7 @@ extension CanvasChainPanel on CanvasController {
   }
 
   /// chainShowsMotion is whether the Chain shows motion rather than sound.
-  bool get chainShowsMotion => _animationOpen;
+  bool get chainShowsMotion => animationOpen;
 
   /// chainMeters, chainBadges and chainMacros show the meters between the
   /// Chain's devices, each device's effect on the level, and the Macros
@@ -89,7 +84,7 @@ extension CanvasChainPanel on CanvasController {
     var picked = selectedElements;
     if (picked.any((e) => e is! AudioElement)) return true;
     if (picked.isNotEmpty || selectedChannel != null) return false;
-    return _chainMotion;
+    return _dockState.chain == ChainView.motion;
   }
 
   /// showChain shows the Chain's motion, or its sound (the last channel's).

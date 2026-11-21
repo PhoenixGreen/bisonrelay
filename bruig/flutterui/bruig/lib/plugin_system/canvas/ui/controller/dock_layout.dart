@@ -7,12 +7,11 @@ part of '../canvas_controller.dart';
 
 extension CanvasDockLayout on CanvasController {
   /// rowsShown is the Timeline panel, open in its place (see dock).
-  bool get rowsShown => _rowsShown;
+  bool get rowsShown => dockOpen(DockPanel.timeline);
 
   set rowsShown(bool value) {
-    if (_rowsShown == value) return;
-    _rowsShown = value;
-    if (value) _dockOpening(DockPanel.timeline);
+    if (rowsShown == value) return;
+    value ? _openPanel(DockPanel.timeline) : _closePanel(DockPanel.timeline);
     _notifyView();
   }
 
@@ -58,12 +57,25 @@ extension CanvasDockLayout on CanvasController {
     _dockSettle();
   }
 
-  bool dockOpen(DockPanel panel) => switch (panel) {
-        DockPanel.timeline => _rowsShown,
-        DockPanel.slots => _slotsBeside,
-        DockPanel.mixer => _mixerOpen,
-        DockPanel.chain => _animationOpen || _effectsOpen,
-      };
+  /// dockOpen is whether [panel] is open.
+  bool dockOpen(DockPanel panel) => _dockState.isOpen(panel);
+
+  /// _openPanel opens [panel], shutting whatever shared its place. Every
+  /// panel is opened through here or [_showChain], so that each place shows
+  /// one; a layout chosen by name no longer describes what is open.
+  void _openPanel(DockPanel panel) {
+    _dockState = _dockState.opened(panel, _dock);
+    _arrangementChosen = null;
+  }
+
+  void _closePanel(DockPanel panel) => _dockState = _dockState.closed(panel);
+
+  /// _showChain opens the Chain on [view], shutting whatever shared its
+  /// place.
+  void _showChain(ChainView view) {
+    _dockState = _dockState.onView(view);
+    _openPanel(DockPanel.chain);
+  }
 
   /// setDockOpen opens or closes [panel], displacing what shares its place.
   void setDockOpen(DockPanel panel, bool open) {
@@ -77,10 +89,9 @@ extension CanvasDockLayout on CanvasController {
       case DockPanel.chain:
         if (open) {
           showChain(motion: _chainOpensOnMotion);
-        } else {
-          _animationOpen = false;
-          effectsOpen = false;
-          _notifyView();
+        } else if (dockOpen(DockPanel.chain)) {
+          _closePanel(DockPanel.chain);
+          notifyListeners();
         }
     }
   }
@@ -109,12 +120,8 @@ extension CanvasDockLayout on CanvasController {
   }
 
   /// dockShownIn is the panel showing in [place], or null.
-  DockPanel? dockShownIn(DockPlace place) {
-    for (var panel in DockPanel.values) {
-      if (dockOpen(panel) && _dock.placeOf(panel) == place) return panel;
-    }
-    return null;
-  }
+  DockPanel? dockShownIn(DockPlace place) =>
+      _dockState.shownIn(place, _dock);
 
   /// dockArrangement is the layout last chosen, until anything changes.
   String? get dockArrangement => _arrangementChosen;
@@ -144,10 +151,11 @@ extension CanvasDockLayout on CanvasController {
       }
     }
     _dock = _dock.copyWith(homes: homes);
-    if (shown.containsValue(DockPanel.chain)) _chainMotion = layout.chainMotion;
-    for (var panel in DockPanel.values) {
-      _setDockRaw(panel, shown.containsValue(panel));
+    if (shown.containsValue(DockPanel.chain)) {
+      _dockState = _dockState
+          .onView(layout.chainMotion ? ChainView.motion : ChainView.sound);
     }
+    _dockState = _dockState.showing(shown.values.toSet());
     _arrangementChosen = layout.name;
     _notifyView();
   }
@@ -184,41 +192,9 @@ extension CanvasDockLayout on CanvasController {
     _notifyView();
   }
 
-  /// _dockOpening closes whatever else shows in [panel]'s place, silently.
-  void _dockOpening(DockPanel panel) {
-    var place = _dock.placeOf(panel);
-    for (var other in DockPanel.values) {
-      if (other != panel && dockOpen(other) && _dock.placeOf(other) == place) {
-        _setDockRaw(other, false);
-      }
-    }
-    _arrangementChosen = null;
-  }
-
-  /// _dockSettle leaves one open panel per place, the first in button order.
-  void _dockSettle() {
-    var taken = <DockPlace>{};
-    for (var panel in DockPanel.values) {
-      if (!dockOpen(panel)) continue;
-      if (!taken.add(_dock.placeOf(panel))) _setDockRaw(panel, false);
-    }
-  }
-
-  /// _setDockRaw opens or closes [panel] and nothing else.
-  void _setDockRaw(DockPanel panel, bool open) {
-    switch (panel) {
-      case DockPanel.timeline:
-        _rowsShown = open;
-      case DockPanel.slots:
-        _slotsBeside = open;
-      case DockPanel.mixer:
-        _mixerOpen = open;
-        if (!open) _mixerMinimised = _mixerSmallest = false;
-      case DockPanel.chain:
-        _animationOpen = open && _chainMotion;
-        _effectsOpen = open && !_chainMotion;
-    }
-  }
+  /// _dockSettle leaves one open panel per place, the first in button
+  /// order, after the places themselves have changed.
+  void _dockSettle() => _dockState = _dockState.settled(_dock);
 
   /// timelineShow is the ⋯ menu's Show, for the timeline and the mixer.
   TimelineShow get timelineShow => _timelineShow;
@@ -231,19 +207,18 @@ extension CanvasDockLayout on CanvasController {
 
   /// slotsBeside is the Slots panel, open in its place (see dock); level
   /// with the timeline's rows when it is on the left and they are in main.
-  bool get slotsBeside => _slotsBeside;
+  bool get slotsBeside => dockOpen(DockPanel.slots);
 
   set slotsBeside(bool value) {
-    if (_slotsBeside == value) return;
-    _slotsBeside = value;
-    if (value) _dockOpening(DockPanel.slots);
+    if (slotsBeside == value) return;
+    value ? _openPanel(DockPanel.slots) : _closePanel(DockPanel.slots);
     _notifyView();
   }
 
   /// slotsWithRows is the slots drawn level with the timeline's rows.
   bool get slotsWithRows =>
-      _slotsBeside &&
-      _rowsShown &&
+      slotsBeside &&
+      rowsShown &&
       _dock.placeOf(DockPanel.slots) == DockPlace.left &&
       _dock.placeOf(DockPanel.timeline) == DockPlace.main;
 

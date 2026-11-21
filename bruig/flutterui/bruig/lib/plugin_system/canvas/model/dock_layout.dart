@@ -11,14 +11,19 @@ import 'dart:convert';
 /// button's. [chain] is the picked channel's or element's devices, its
 /// sound or its motion (see CanvasController.chainShowsMotion).
 enum DockPanel {
-  timeline("Timeline", "rowsToggle"),
-  slots("Slots", "slotsToggle"),
-  mixer("Mixer", "mixerToggle"),
-  chain("Chain", "chainToggle");
+  timeline("Timeline", "rowsToggle", DockPlace.main),
+  slots("Slots", "slotsToggle", DockPlace.left),
+  mixer("Mixer", "mixerToggle", DockPlace.left),
+
+  /// The Chain opens in main, under the mixer or the slots on the left.
+  chain("Chain", "chainToggle", DockPlace.main);
 
   final String label;
   final String key;
-  const DockPanel(this.label, this.key);
+
+  /// home is the place it opens in to begin with.
+  final DockPlace home;
+  const DockPanel(this.label, this.key, this.home);
 
   /// fromName reads a panel saved by name. The Effects and Animation names
   /// both read as the Chain, which has those two views.
@@ -171,6 +176,9 @@ const int maxSavedArrangements = 24;
 /// DockLayout is the whole arrangement: see the top of the file.
 class DockLayout {
   final DockPlaces places;
+
+  /// homes is where each panel that has been moved opens; one not here
+  /// opens in its own [DockPanel.home]. Read through [homeOf].
   final Map<DockPanel, DockPlace> homes;
   final DockSwitcher switcher;
 
@@ -183,26 +191,17 @@ class DockLayout {
 
   const DockLayout({
     this.places = DockPlaces.two,
-    this.homes = defaultHomes,
+    this.homes = const {},
     this.switcher = DockSwitcher.buttons,
     this.showLayouts = true,
     this.saved = const [],
   });
 
-  /// defaultHomes are where the panels open to begin with. The Chain opens
-  /// in main, under the mixer or the slots on the left.
-  static const defaultHomes = {
-    DockPanel.timeline: DockPlace.main,
-    DockPanel.slots: DockPlace.left,
-    DockPanel.mixer: DockPlace.left,
-    DockPanel.chain: DockPlace.main,
-  };
-
   /// placeOf is where [panel] opens as things are: everything in main with
   /// one place, and main for a panel kept above while there is no above.
   DockPlace placeOf(DockPanel panel) {
     if (places == DockPlaces.one) return DockPlace.main;
-    var home = homes[panel] ?? defaultHomes[panel]!;
+    var home = homeOf(panel);
     if (home == DockPlace.above && places != DockPlaces.three) {
       return DockPlace.main;
     }
@@ -210,7 +209,7 @@ class DockLayout {
   }
 
   /// homeOf is where [panel] opens when there are places for it.
-  DockPlace homeOf(DockPanel panel) => homes[panel] ?? defaultHomes[panel]!;
+  DockPlace homeOf(DockPanel panel) => homes[panel] ?? panel.home;
 
   List<DockPlace> get placesShown => switch (places) {
         DockPlaces.one => const [DockPlace.main],
@@ -256,7 +255,6 @@ class DockLayout {
     return DockLayout(
       places: DockPlaces.fromName(json["places"]),
       homes: {
-        ...defaultHomes,
         if (json["homes"] case Map homes)
           for (var e in homes.entries)
             if ((DockPanel.fromName(e.key), DockPlace.fromName(e.value))
@@ -279,4 +277,171 @@ class DockLayout {
 
   @override
   int get hashCode => jsonEncode(toJson()).hashCode;
+}
+
+/// MixerSize is how much of the mixer shows while it is open: all of it,
+/// folded to one line of channels (dragged all the way down), or smaller
+/// still, strips without names or the band rail.
+enum MixerSize { full, minimised, smallest }
+
+/// ChainView is which of its two views the Chain shows: a channel's sound
+/// (its devices) or an element's motion.
+enum ChainView { sound, motion }
+
+/// DockState is which panels under the canvas are open, how big the mixer
+/// is, and which view the Chain is on. Where each opens is the [DockLayout];
+/// this is what is open now.
+///
+/// One rule holds it together: each place shows one panel at a time. So a
+/// panel is opened with [opened], which shuts whatever shared its place, and
+/// never by adding to [open] by hand.
+class DockState {
+  final Set<DockPanel> open;
+
+  /// mixer is the mixer's size; [MixerSize.full] whenever it is shut.
+  final MixerSize mixer;
+
+  /// chain is the view the Chain shows, or shut, the one it will reopen on.
+  final ChainView chain;
+
+  const DockState({
+    this.open = const {DockPanel.timeline},
+    this.mixer = MixerSize.full,
+    this.chain = ChainView.sound,
+  });
+
+  bool isOpen(DockPanel panel) => open.contains(panel);
+
+  /// showsMotion and showsSound are the Chain open on that view.
+  bool get showsMotion => isOpen(DockPanel.chain) && chain == ChainView.motion;
+  bool get showsSound => isOpen(DockPanel.chain) && chain == ChainView.sound;
+
+  /// opened is [panel] open, and whatever shared its place in [layout] shut.
+  DockState opened(DockPanel panel, DockLayout layout) {
+    var place = layout.placeOf(panel);
+    var next = this;
+    for (var other in open) {
+      if (other != panel && layout.placeOf(other) == place) {
+        next = next.closed(other);
+      }
+    }
+    return next._with(open: {...next.open, panel});
+  }
+
+  /// closed is [panel] shut. A mixer shut is full size when next opened.
+  DockState closed(DockPanel panel) => _with(
+      open: {...open}..remove(panel),
+      mixer: panel == DockPanel.mixer ? MixerSize.full : mixer);
+
+  /// showing is exactly [panels] open, none shutting another: for a layout
+  /// that names one panel for each place. Follow with [settled] where the
+  /// places may since have changed.
+  DockState showing(Set<DockPanel> panels) => _with(
+      open: panels,
+      mixer: panels.contains(DockPanel.mixer) && isOpen(DockPanel.mixer)
+          ? mixer
+          : MixerSize.full);
+
+  /// settled is one open panel in each place: where two share one in
+  /// [layout], the first in the panels' order stays.
+  DockState settled(DockLayout layout) {
+    var taken = <DockPlace>{};
+    var next = this;
+    for (var panel in DockPanel.values) {
+      if (!isOpen(panel)) continue;
+      if (!taken.add(layout.placeOf(panel))) next = next.closed(panel);
+    }
+    return next;
+  }
+
+  /// shownIn is the panel showing in [place], or null.
+  DockPanel? shownIn(DockPlace place, DockLayout layout) {
+    for (var panel in DockPanel.values) {
+      if (isOpen(panel) && layout.placeOf(panel) == place) return panel;
+    }
+    return null;
+  }
+
+  /// withMixer is the mixer at [size], open; [layout] says what it shuts.
+  DockState withMixer(MixerSize size, DockLayout layout) =>
+      (isOpen(DockPanel.mixer) ? this : opened(DockPanel.mixer, layout))
+          ._with(mixer: size);
+
+  /// onView is the Chain on [view], open or shut as it is.
+  DockState onView(ChainView view) => _with(chain: view);
+
+  DockState _with({Set<DockPanel>? open, MixerSize? mixer, ChainView? chain}) =>
+      DockState(
+          open: Set.unmodifiable(open ?? this.open),
+          mixer: mixer ?? this.mixer,
+          chain: chain ?? this.chain);
+
+  /// toJson is how it is kept between visits. The keys are older than this
+  /// class: "rows" is the Timeline, "effects" and "animation" the Chain on
+  /// its sound and on its motion.
+  Map<String, dynamic> toJson() => {
+        "mixer": !isOpen(DockPanel.mixer)
+            ? "hidden"
+            : switch (mixer) {
+                MixerSize.full => "shown",
+                MixerSize.minimised => "minimised",
+                MixerSize.smallest => "smallest",
+              },
+        "rows": isOpen(DockPanel.timeline),
+        "slots": isOpen(DockPanel.slots),
+        "effects": showsSound,
+        "animation": showsMotion,
+        "chain": chain.name,
+      };
+
+  /// fromJson reads what [toJson] wrote over [start] (what is open before
+  /// anything was kept), then leaves one panel to a place in [layout].
+  static DockState fromJson(Map<String, dynamic> json, DockLayout layout,
+      {DockState start = const DockState()}) {
+    var open = {...start.open};
+    void set(DockPanel panel, Object? shown) {
+      if (shown == true) open.add(panel);
+      if (shown == false) open.remove(panel);
+    }
+
+    var size = switch (json["mixer"]) {
+      "shown" => MixerSize.full,
+      "minimised" => MixerSize.minimised,
+      "smallest" => MixerSize.smallest,
+      _ => null,
+    };
+    if (size != null) open.add(DockPanel.mixer);
+    if (json["mixer"] == "hidden") open.remove(DockPanel.mixer);
+    set(DockPanel.timeline, json["rows"]);
+    set(DockPanel.slots, json["slots"]);
+    // One written before the view was kept says it by which was open.
+    var view =
+        ChainView.values.where((v) => v.name == json["chain"]).firstOrNull ??
+            (json["animation"] == true && json["effects"] != true
+                ? ChainView.motion
+                : start.chain);
+    if (json["effects"] == true || json["animation"] == true) {
+      open.add(DockPanel.chain);
+    } else if (json["effects"] == false && json["animation"] == false) {
+      open.remove(DockPanel.chain);
+    }
+    return DockState(
+            open: Set.unmodifiable(open),
+            mixer: open.contains(DockPanel.mixer)
+                ? (size ?? start.mixer)
+                : MixerSize.full,
+            chain: view)
+        .settled(layout);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is DockState &&
+      other.mixer == mixer &&
+      other.chain == chain &&
+      other.open.length == open.length &&
+      other.open.containsAll(open);
+
+  @override
+  int get hashCode => Object.hash(mixer, chain, Object.hashAllUnordered(open));
 }

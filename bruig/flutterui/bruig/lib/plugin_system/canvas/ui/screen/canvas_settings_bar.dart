@@ -52,7 +52,10 @@ class CanvasSettingsBar extends StatefulWidget {
   final VoidCallback onToggleGuides;
 
   final bool timelineOpen;
-  final VoidCallback onToggleTimeline;
+
+  /// onToggleTimeline shows or hides the panels under the canvas; null
+  /// where they are always shown (a piece of sound).
+  final VoidCallback? onToggleTimeline;
 
   /// canvasShown is whether the canvas is on screen; onToggleCanvas puts it
   /// away, giving the mixer and effects its room, or brings it back.
@@ -1313,13 +1316,21 @@ class _SceneFieldState extends State<_SceneField> {
     );
   }
 
-  double _widest(TextStyle style) {
-    var painter = TextPainter(
-      text: TextSpan(text: "Master", style: style),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    return painter.width + 4 + 6;
-  }
+  double _widest(TextStyle style) => _readingWidth(context, "Master", style);
+}
+
+/// _readingWidth is the room [text] takes in a field on the band, set in
+/// [style] at the app's text size (which is what it is drawn at), with the
+/// padding either side and the room the caret needs at the end.
+double _readingWidth(BuildContext context, String text, TextStyle style) {
+  var painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: TextDirection.ltr,
+    textScaler: MediaQuery.textScalerOf(context),
+  )..layout();
+  var width = painter.width;
+  painter.dispose();
+  return width + 4 + 6;
 }
 
 /// _ZoomField is the percentage on the band: what is on screen, typed into
@@ -1404,18 +1415,7 @@ class _ZoomFieldState extends State<_ZoomField> {
   /// _boxWidth is the room the widest reading takes, so the box never
   /// changes width as the view moves. Four eights, since eight is this face's
   /// widest digit (1400% would measure narrow because of the one).
-  double _boxWidth(TextStyle style) {
-    var painter = TextPainter(
-      text: TextSpan(text: "8888%", style: style),
-      textDirection: TextDirection.ltr,
-      // At the reader's text size, which is what the reading is drawn at.
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout();
-    var width = painter.width;
-    painter.dispose();
-    // The padding either side, and the room the caret needs at the end.
-    return width + 4 + 6;
-  }
+  double _boxWidth(TextStyle style) => _readingWidth(context, "8888%", style);
 
   @override
   Widget build(BuildContext context) {
