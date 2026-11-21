@@ -57,6 +57,15 @@ class PluginSettingsRegistry {
   /// nothing.
   static final Map<String, PluginSettingsBuilder> _features = {};
 
+  /// forgetForTest empties both, as a new run has them: a test file that
+  /// registers a section must not leave it for the next file in its bundle,
+  /// whose page would then build a section it has no provider for.
+  @visibleForTesting
+  static void forgetForTest() {
+    _sections.clear();
+    _features.clear();
+  }
+
   /// register attaches [builder] to [capability]. Registering the same
   /// capability twice replaces the first, which is what a hot reload does and
   /// is harmless.

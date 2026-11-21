@@ -17,6 +17,10 @@ class FileOpeners {
   static final Map<String, FileOpener> _openers = {};
 
   /// register adds [opener] under [name], replacing one of that name.
+  /// forgetForTest takes every opener away, as a new run has none.
+  @visibleForTesting
+  static void forgetForTest() => _openers.clear();
+
   static void register(String name, FileOpener opener) =>
       _openers[name] = opener;
 

@@ -1,6 +1,7 @@
 // A test helper kept beside the bundles rather than under test/.
 // ignore_for_file: invalid_use_of_visible_for_testing_member
 
+import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -10,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
+import 'package:bruig/plugin_system/plugin_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // reset.dart is what a test file finds as it starts when it runs in a bundle
@@ -40,5 +43,11 @@ void betweenFiles() {
     store.forget();
   }
   forgetFfmpegForTest();
+  // What a feature registers as the app starts, and a test registers to
+  // stand in for that: left behind, the next file's Settings page builds a
+  // section it has given no provider for.
+  PluginSettingsRegistry.forgetForTest();
+  CanvasSidebarExtras.forgetForTest();
+  FileOpeners.forgetForTest();
   SharedPreferences.setMockInitialValues({});
 }

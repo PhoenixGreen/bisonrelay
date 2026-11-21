@@ -45,6 +45,10 @@ class CanvasSidebarExtras {
   static final ValueNotifier<List<CanvasSidebarExtra>> _registered =
       ValueNotifier(const []);
 
+  /// forgetForTest takes every extra away, as a new run has none.
+  @visibleForTesting
+  static void forgetForTest() => _registered.value = const [];
+
   /// register adds [extra], replacing one of the same id (a hot reload).
   static void register(CanvasSidebarExtra extra) {
     _registered.value = [
