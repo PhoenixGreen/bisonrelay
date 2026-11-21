@@ -6,11 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
-    as parts;
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
-    show panelRow, cell, CanvasQuickStrip, CanvasStateNote;
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -338,7 +334,7 @@ List<Widget> codeSettings(
                       for (var f in e.files) fileRow(f),
                       Wrap(children: [
                         for (var (ext, name) in _newFiles)
-                          parts.CanvasChip("+ $name",
+                          CanvasAddChip("+ $name",
                               key: ValueKey("codeAddFile-$ext"), onPressed: () {
                             var n = 1;
                             String nameOf() =>
@@ -566,7 +562,7 @@ List<Widget> codeSettings(
                     children: [
                       for (var (k, s) in e.steps.indexed) stepCard(k, s),
                       Wrap(children: [
-                        parts.CanvasChip("+ Step at the playhead",
+                        CanvasAddChip("+ Step at the playhead",
                             key: const ValueKey("codeAddStep"), onPressed: () {
                           var t =
                               controller.frame / controller.document.frameRate;

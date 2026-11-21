@@ -6,7 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
-import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 

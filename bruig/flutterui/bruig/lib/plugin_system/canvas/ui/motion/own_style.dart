@@ -19,7 +19,7 @@ import 'package:bruig/plugin_system/canvas/ui/timeline/keys_strip.dart'
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
-import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/preset_pair.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageElement;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';

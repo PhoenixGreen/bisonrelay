@@ -1,20 +1,21 @@
-import 'package:bruig/components/color_picker.dart';
-import 'package:bruig/components/paint_spec.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:bruig/storage_manager.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+
+import 'package:bruig/components/color_picker.dart';
+import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/storage_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 part 'controls_layout.dart';
 part 'controls_groups.dart';
 part 'controls_fields.dart';
 part 'controls_buttons.dart';
 part 'controls_pickers.dart';
+part 'controls_steppers.dart';
 
 // controls.dart is the small set of fixed-height, labelled controls the
 // canvas settings are built from, so a panel of many properties stays

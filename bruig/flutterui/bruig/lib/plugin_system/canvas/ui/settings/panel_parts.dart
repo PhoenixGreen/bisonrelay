@@ -9,7 +9,6 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -94,12 +93,12 @@ Widget panelRow(List<(Widget, {int flex, double? width, double min})> cells) =>
         {int flex = 1, double? width, double min = 84}) =>
     (w, flex: flex, width: width, min: min);
 
-/// CanvasChip is a small rounded button for adding one of several things
+/// CanvasAddChip is a small rounded button for adding one of several things
 /// (a look) without a row of full-size buttons.
-class CanvasChip extends StatelessWidget {
+class CanvasAddChip extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
-  const CanvasChip(this.label, {required this.onPressed, super.key});
+  const CanvasAddChip(this.label, {required this.onPressed, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -383,6 +382,10 @@ class LooksGroup extends StatefulWidget {
 /// _open are the look rows opened, by element and look, for the session.
 final Set<String> _open = {};
 
+/// forgetLooksForTest shuts every look's settings, as a new run has them.
+@visibleForTesting
+void forgetLooksForTest() => _open.clear();
+
 class _LooksGroupState extends State<LooksGroup> {
   CanvasController get c => widget.controller;
   String get id => widget.element.id;
@@ -639,7 +642,7 @@ class _LooksGroupState extends State<LooksGroup> {
               width: double.infinity,
               child: Wrap(children: [
                 for (var k in addable)
-                  CanvasChip(
+                  CanvasAddChip(
                     "+ ${k.label}",
                     key: ValueKey(
                         "lookAdd-${widget.layer.isEmpty ? "all" : widget.layer}-${k.name}"),

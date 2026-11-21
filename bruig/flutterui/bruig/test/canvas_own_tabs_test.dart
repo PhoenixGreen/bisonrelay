@@ -14,8 +14,8 @@ import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show ChainGroupColour;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart'
     show StudioDrop;
-import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
-import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/preset_pair.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

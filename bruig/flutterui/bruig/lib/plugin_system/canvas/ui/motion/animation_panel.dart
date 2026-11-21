@@ -25,7 +25,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion/motion_clips_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_curves.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/parts_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/scene_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';

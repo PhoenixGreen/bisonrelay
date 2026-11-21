@@ -708,7 +708,7 @@ Widget studioChips(List<(String, Key, VoidCallback)> chips) => SizedBox(
       width: double.infinity,
       child: Wrap(children: [
         for (var (label, key, go) in chips)
-          pp.CanvasChip(label, key: key, onPressed: go),
+          pp.CanvasAddChip(label, key: key, onPressed: go),
       ]),
     );
 

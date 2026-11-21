@@ -10,8 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_clip_display.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
-import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/preset_pair.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/copies_cards.dart' show CopyButton;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageElement;

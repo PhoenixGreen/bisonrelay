@@ -608,9 +608,16 @@ class CanvasExpander extends StatefulWidget {
 /// State reading the disk asynchronously would show the section shut first.
 final Map<String, bool> _rememberedSections = {};
 
+/// forgetSectionsForTest lets go of everything the controls keep for a run,
+/// as a new run has it: which sections and "more" groups are open, which
+/// side fields are split into four, and the widths measured for dropdowns.
+/// State added to this library that outlasts a widget belongs here.
+@visibleForTesting
 void forgetSectionsForTest() {
   _rememberedSections.clear();
   _CanvasMoreGroupState._remembered.clear();
+  _unlinked.clear();
+  CanvasDropdown._widths.clear();
 }
 
 /// _restoreSection loads a section's saved state and tells [then].

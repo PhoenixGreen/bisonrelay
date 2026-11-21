@@ -17,7 +17,7 @@ import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show DeviceKnob;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart'
     show shapeOf, VectorShapeKind;

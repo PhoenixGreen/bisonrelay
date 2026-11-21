@@ -216,6 +216,11 @@ List<Widget> effectsGroups(
 /// on every edit, and an opened setting must stay open through it.
 final Map<String, Set<EffectKind>> _openEffects = {};
 
+/// forgetEffectsForTest shuts every effect's settings, as a new run has
+/// them.
+@visibleForTesting
+void forgetEffectsForTest() => _openEffects.clear();
+
 /// EffectTiles is a layer's effects as tiles: the first press adds and
 /// opens one; later presses open and shut it, and only its switch turns it
 /// off. A tick marks one on; a lit tile is open.

@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 import 'dart:collection';
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -11,7 +10,6 @@ import 'package:flutter/gestures.dart' show GestureBinding, PointerRemovedEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-part 'panel_kit_steppers.dart';
 part 'panel_kit_tiles.dart';
 part 'panel_kit_hold.dart';
 
@@ -913,11 +911,16 @@ class _CanvasSectionState extends State<CanvasSection> {
   }
 }
 
+/// forgetPanelsForTest lets go of everything the panel kit keeps for a run,
+/// as a new run has it. State added to this library that outlasts a widget
+/// belongs here.
+@visibleForTesting
 void forgetPanelsForTest() {
   TileSnapshot.letGo();
   _lastIn.clear();
-  _unlinked.clear();
   settingsAsMenu.value = false;
+  _layoutRead = false;
+  _menuChosen = null;
   CanvasSection.openAll = false;
 }
 

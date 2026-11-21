@@ -16,7 +16,6 @@ import 'package:bruig/plugin_system/canvas/model/design_device.dart'
 import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show chainMenuItem, chainMenuStyle;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';

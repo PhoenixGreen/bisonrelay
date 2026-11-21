@@ -11,7 +11,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/controls_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/game_controls_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/game_counts_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/game_ready.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/play_settings.dart';

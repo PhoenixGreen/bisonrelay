@@ -10,7 +10,9 @@ import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
 import 'package:bruig/plugin_system/plugin_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,6 +26,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void betweenFiles() {
   forgetSectionsForTest();
   forgetPanelsForTest();
+  forgetLooksForTest();
+  forgetEffectsForTest();
   forgetDataEditorsForTest();
   clearRenderCaches();
   CanvasLibrary.resetForTest();

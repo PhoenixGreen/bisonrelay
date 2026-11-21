@@ -144,6 +144,16 @@ void main() {
             "missing:\n${offenders.join("\n")}");
   });
 
+  test("the controls do not import the panels built from them", () {
+    // ui/controls.dart is the kit; ui/settings/ is built from it. When the
+    // kit imported the panel kit too, neither could be read alone.
+    var offenders = [
+      for (var uri in _importsOf(File("$_canvas/ui/controls.dart")))
+        if (uri.startsWith("${_package}ui/settings/")) uri,
+    ];
+    expect(offenders, isEmpty);
+  });
+
   test("every exception is still needed, and the folders are still there", () {
     var broken = _broken().toSet();
     expect(_exceptions.difference(broken), isEmpty,

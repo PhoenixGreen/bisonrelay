@@ -7,7 +7,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion/chain_icons.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
-import 'package:bruig/plugin_system/canvas/ui/own_style.dart' show OwnTabs;
+import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart'
+    show OwnTabs;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart'
     show MixDevice, withDeviceIds;

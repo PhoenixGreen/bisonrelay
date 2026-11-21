@@ -1,8 +1,8 @@
-part of 'panel_kit.dart';
+part of 'controls.dart';
 
 // CanvasStepper, a number with arrows that repeat while held, and
 // CanvasSidesField, four such numbers that are usually one. Part of
-// panel_kit.dart.
+// controls.dart: in a card a CanvasNumberField is drawn as a stepper.
 
 /// stepperHeight is taller than other controls: arrows are pressed, not aimed.
 const double stepperHeight = 30;

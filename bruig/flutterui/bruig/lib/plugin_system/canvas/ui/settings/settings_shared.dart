@@ -20,7 +20,6 @@ import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/recent_pictures.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:flutter/material.dart';
 
@@ -1576,15 +1575,15 @@ Widget easeDropdown<T>({
       width: width,
       enabled: enabled,
       options: [for (var v in values) (v, name(v))],
-      leading: (v) => EaseCurve(curve(v)),
+      leading: (v) => _EaseCurveIcon(curve(v)),
       onChanged: onChanged,
     );
 
-/// EaseCurve is a small drawing of an easing: time along, progress up, the
+/// _EaseCurveIcon is a small drawing of an easing: time along, progress up, the
 /// start and end levels marked so an overshoot shows.
-class EaseCurve extends StatelessWidget {
+class _EaseCurveIcon extends StatelessWidget {
   final double Function(double) curve;
-  const EaseCurve(this.curve, {super.key});
+  const _EaseCurveIcon(this.curve);
 
   @override
   Widget build(BuildContext context) {

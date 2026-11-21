@@ -15,7 +15,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_curves.dart'
     show curveColour;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
-import 'package:bruig/plugin_system/canvas/ui/own_style.dart' show OwnStyle;
+import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart'
+    show OwnStyle;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
