@@ -1,5 +1,8 @@
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
+import 'package:bruig/plugin_system/canvas/model/json_read.dart';
+
 // canvas_geometry.dart answers "how big is this document, really". A
 // canvas has two sizes: the *design size* is the space every element's x,
 // y, width and height are written in; the *export size* is how many pixels
@@ -118,8 +121,10 @@ const int a4PageWidth = 1240;
 const int minFrameRate = 1;
 const int maxFrameRate = 120;
 
-/// defaultFrameRateFor is a new canvas's rate: 1 for paper, 24 for screen.
-int defaultFrameRateFor(CanvasRatio ratio) => ratio.isPaper ? 1 : 24;
+/// defaultFrameRateFor is a new canvas's rate: 1 for paper, which is a
+/// still, and [defaultFrameRate] for a screen.
+int defaultFrameRateFor(CanvasRatio ratio) =>
+    ratio.isPaper ? 1 : defaultFrameRate;
 
 /// minCanvasWidth and maxCanvasWidth bound the design and export widths.
 /// The ceiling is set by the size limit on a chat or post payload: a much
@@ -212,17 +217,15 @@ class CanvasSize {
       };
 
   factory CanvasSize.fromJson(Map<String, dynamic> json) {
-    num? n(Object? v) => v is num && v.isFinite ? v : null;
     var width =
-        n(json["width"])?.round().clamp(minCanvasWidth, maxCanvasWidth) ??
+        jsonNum(json["width"])?.round().clamp(minCanvasWidth, maxCanvasWidth) ??
             defaultCanvasWidth;
-    var ratio = json["ratio"];
     return CanvasSize(
-      ratio: CanvasRatio.fromName(ratio is String ? ratio : null),
+      ratio: CanvasRatio.fromName(jsonStr(json["ratio"])),
       width: width,
       // The design width itself for anything saved before the two were told
       // apart: it was laid out in the space it was published at.
-      exportWidth: n(json["exportWidth"])
+      exportWidth: jsonNum(json["exportWidth"])
               ?.round()
               .clamp(minCanvasWidth, maxCanvasWidth) ??
           width,
@@ -230,7 +233,7 @@ class CanvasSize {
       // Within the Aspect field's range: nought would make the height infinite,
       // and a sliver a page millions of pixels tall.
       customRatio:
-          n(json["customRatio"])?.toDouble().clamp(0.05, 20.0) ?? 16 / 9,
+          jsonNum(json["customRatio"])?.toDouble().clamp(0.05, 20.0) ?? 16 / 9,
     );
   }
 

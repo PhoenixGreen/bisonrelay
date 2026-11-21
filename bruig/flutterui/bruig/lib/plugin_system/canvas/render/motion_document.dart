@@ -29,8 +29,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
 
 // motion_document.dart joins clips to a document: where every placed clip
 // in the scene plays, worked out once per scene, and an element's pose with
-// its clips' moves on top of any legacy keyframe track it kept (see
-// model/motion_convert.dart). See motion.dart and motion_pose.dart.
+// its clips' moves on top of its keyframe track. See motion.dart and
+// motion_pose.dart.
 
 /// _times keeps each scene's resolved placements, by its list of
 /// elements, with what else they were worked out from: the scene's length,

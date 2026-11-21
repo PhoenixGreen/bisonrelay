@@ -9,7 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // motion_convert.dart turns an element's keyframe track into clips, frame
 // for frame: tests build their clips with it from keys, which are quicker to
-// write. (Canvases themselves keep their tracks: see 95549bb5.)
+// write. Canvases themselves keep their tracks.
 //
 // An element's moves (across, down, size, turn, fade) become one clip from
 // its first keyframe to its last, holding its first pose before and its last

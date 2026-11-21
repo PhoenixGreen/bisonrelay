@@ -128,8 +128,7 @@ void main() {
       expect(SceneTransitionKind.fromName("pageTurn"),
           SceneTransitionKind.pageTurn,
           reason: "a document saved with one opens with it");
-      expect(
-          SceneTransitionKind.pageTurn.familyOf, SceneTransitionFamily.paper);
+      expect(SceneTransitionKind.pageTurn.family, SceneTransitionFamily.paper);
     });
   });
 

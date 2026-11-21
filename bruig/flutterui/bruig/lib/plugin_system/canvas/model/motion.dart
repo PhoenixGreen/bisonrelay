@@ -7,9 +7,10 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 
 // motion.dart is how an element moves: its clips. A clip is one element's
 // piece of animation (an arrival, a loop, a way out, an action) made of keys,
-// played from a slot, a cue or a trigger, or placed on the timeline. Legacy
-// keyframe tracks become clips on open (motion_convert.dart); a preset only
-// writes keys; render/motion_pose.dart works out the pose at a moment.
+// played from a slot, a cue or a trigger, or placed on the timeline. An
+// element's keyframe track (canvas_animation.dart) is kept and played under
+// its clips; a preset only writes keys; render/motion_pose.dart works out
+// the pose at a moment.
 // Clip times are seconds, so the frame rate changes no speeds.
 
 /// MotionProp is one thing a clip's keys move, relative to the element as

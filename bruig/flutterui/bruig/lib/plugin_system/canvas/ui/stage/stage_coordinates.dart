@@ -129,7 +129,7 @@ extension StageCoordinates on CanvasStageState {
 
   /// _facingOnLeft is whether the edited page is the left leaf.
   bool get _facingOnLeft {
-    if (_bookPreview) return document.spreadOf(document.at)?.$1 == document.at;
+    if (_bookPreview) return document.spreadOf(document.at)?.left == document.at;
     if (document.editingMaster) return false;
     return document.facingIsLeft(document.at) ?? false;
   }

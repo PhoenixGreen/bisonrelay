@@ -100,7 +100,7 @@ class SceneTransitionPart extends StatelessWidget {
           CanvasDropdown<SceneTransitionFamily>(
             key: const ValueKey("transitionFamily"),
             label: "Gives way with",
-            value: value.kind.familyOf,
+            value: value.kind.family,
             width: 160,
             options: [
               for (var f in SceneTransitionFamily.values)
@@ -119,7 +119,7 @@ class SceneTransitionPart extends StatelessWidget {
               value: value.kind,
               width: 190,
               options: [
-                for (var k in SceneTransitionKind.inFamily(value.kind.familyOf))
+                for (var k in SceneTransitionKind.inFamily(value.kind.family))
                   (k, k.label)
               ],
               onChanged: (v) => write(_started(value, v)),

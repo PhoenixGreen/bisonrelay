@@ -62,7 +62,7 @@ SequencePlace placeInSequence(CanvasDocument doc, int at) {
   var start = 0;
   for (var i = 0; i < scenes.length; i++) {
     var scene = scenes[i];
-    var (over, held, runs) = doc.sceneStep(i);
+    var (advance: over, shared: held, transition: runs) = doc.sceneStep(i);
     var local = want - start;
 
     if (i == scenes.length - 1) {
@@ -507,8 +507,8 @@ void paintLeaf(
   var here = doc.spreadOf(place.scene);
   var next = place.changing ? doc.spreadOf(place.next) : null;
   return (
-    here?.$1 != null || next?.$1 != null,
-    here?.$2 != null || next?.$2 != null,
+    here?.left != null || next?.left != null,
+    here?.right != null || next?.right != null,
   );
 }
 
@@ -568,11 +568,11 @@ void paintBookFrame(
     );
   }
 
-  void spread((int?, int?)? pair) {
+  void spread(({int? left, int? right})? pair) {
     if (pair == null) return;
-    if (pair.$1 case var l?) leaf(l, true);
-    if (pair.$2 case var r?) leaf(r, false);
-    if (pair.$1 != null && pair.$2 != null) spine();
+    if (pair.left case var l?) leaf(l, true);
+    if (pair.right case var r?) leaf(r, false);
+    if (pair.left != null && pair.right != null) spine();
   }
 
   var here = doc.spreadOf(place.scene);
@@ -581,7 +581,7 @@ void paintBookFrame(
   // The next spread, made ready before it is needed (ProceduralCache.warm).
   // Leaves on screen are asked for as drawn, keeping them most recently used.
   if (backgrounds != null) {
-    var last = [here?.$1, here?.$2, next?.$1, next?.$2]
+    var last = [here?.left, here?.right, next?.left, next?.right]
         .whereType<int>()
         .fold(place.scene, math.max);
     for (var i = last + 1; i <= last + 2 && i < scenes.length; i++) {
@@ -602,7 +602,7 @@ void paintBookFrame(
   var t = over.ease.apply(place.through.clamp(0.0, 1.0));
 
   if (over.kind == SceneTransitionKind.pageTurn && place.next > place.scene) {
-    var turning = here?.$2;
+    var turning = here?.right;
     if (turning == null) {
       // A lone left-hand leaf (only a mid-book cover gives one): nothing to
       // turn, so the pages change as a cut.
@@ -610,9 +610,9 @@ void paintBookFrame(
       return;
     }
     // The leaf on the left lies still until the turned one comes down on it.
-    if (here?.$1 case var l?) leaf(l, true);
-    var arrivingLeft = next?.$1;
-    var arrivingRight = next?.$2;
+    if (here?.left case var l?) leaf(l, true);
+    var arrivingLeft = next?.left;
+    var arrivingRight = next?.right;
     paintPageTurn(
       canvas,
       slot(false),

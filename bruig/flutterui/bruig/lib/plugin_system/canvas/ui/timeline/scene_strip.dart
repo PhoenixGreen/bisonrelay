@@ -201,7 +201,8 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
       for (var i = 0; i + 1 < scenes.length; i++) {
         var t = document.transitionAfter(i);
         if (!t.on) continue;
-        var (_, held, frames) = document.sceneStep(i);
+        var (shared: held, transition: frames, advance: _) =
+            document.sceneStep(i);
         var from = x(ends[i] - (frames - held));
         var to = x(ends[i] + held);
         if (to < 0 || from > width) continue;

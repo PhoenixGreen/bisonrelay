@@ -1,65 +1,41 @@
-import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
-import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
-import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui' show Rect;
 
-import 'package:bruig/plugin_system/canvas/model/music_score.dart';
-import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
-import 'package:bruig/plugin_system/canvas/model/session.dart';
-import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
-import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_background.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
-import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
-import 'package:bruig/plugin_system/canvas/model/mix.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
-import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
+import 'package:bruig/plugin_system/canvas/model/data_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/element_reading.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
-import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/music_score.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
-import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// canvas_document.dart is a whole canvas: its shape, its background, what is
-// on it, and how long it runs for. Immutable: every edit is a new document,
-// so undo is a list and a painter never sees one change under it.
+// What a document is made of and read with, so whatever imports a document
+// has them: its background, its limits, and reading an element by kind.
+export 'package:bruig/plugin_system/canvas/model/canvas_background.dart';
+export 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
+export 'package:bruig/plugin_system/canvas/model/element_reading.dart';
 
 /// canvasFormatVersion is bumped when an older build would misread a saved
 /// document. Never used to refuse one: every field reader has a fallback.
@@ -74,193 +50,18 @@ const String transitionSoundPrefix = "transition-sound:";
 int defaultRateFor(CanvasRatio ratio, CanvasKind kind) =>
     kind.isPages ? defaultFrameRate : defaultFrameRateFor(ratio);
 
-const int defaultFrameRate = 24;
-
-/// defaultFrameCount is one frame: a still.
-const int defaultFrameCount = 1;
-
-/// maxFrameCount is the longest one scene may be: twenty minutes at
-/// [audioFrameRate], a hundred at 24 a second.
-const int maxFrameCount = 144000;
-
-/// maxSceneElements and maxScenes are the most of each a canvas is read
-/// with: far more than any canvas made here, and a received one's million
-/// shapes would be drawn every frame.
-const int maxSceneElements = 10000, maxScenes = 1000;
-
-/// audioFrameRate is the steps a second a piece of sound's timeline counts
-/// in: fine enough that any beat lands within a few milliseconds of a step.
-const int audioFrameRate = 120;
-
-/// maxSequenceFrames is the longest a whole document may run, every scene
-/// end to end. It must stay well above [maxFrameCount], or a run of long
-/// scenes is cut short.
-const int maxSequenceFrames = maxFrameCount * 100;
-
-/// CanvasBackground is what is behind the whole document: a pattern, a
-/// stage or parallax scenery (see [backdrop]), with any picture, drawing and
-/// video over it. Each is kept while another is shown, so trying one loses
-/// nothing.
-class CanvasBackground {
-  final ProceduralSpec spec;
-
-  /// picture, video and sound are elements, so their controls and painters
-  /// serve here too. Each is stretched to the page when drawn, whatever box
-  /// it was saved with; the sound is never drawn.
-  final ImageElement? picture;
-  final VideoElement? video;
-  final AudioElement? sound;
-
-  /// drawing is a vector drawing between the picture and the video.
-  final VectorElement? drawing;
-
-  /// backdrop is whether the pattern, [stage] or [parallax] is drawn.
-  final BackdropKind backdrop;
-
-  /// stage is the 3D stage, where [backdrop] says so; its camera's keys are
-  /// on their own track. Its id is [backgroundStageId], which a character
-  /// standing on it names.
-  final StageElement? stage;
-
-  /// parallax is the scenery, where [backdrop] says so; its camera's keys are
-  /// on their own track under [backgroundParallaxId].
-  final ParallaxElement? parallax;
-
-  const CanvasBackground({
-    this.spec = const ProceduralSpec(),
-    this.picture,
-    this.video,
-    this.sound,
-    this.drawing,
-    this.backdrop = BackdropKind.flat,
-    this.stage,
-    this.parallax,
-  });
-
-  bool get isStage => backdrop == BackdropKind.stage;
-  bool get isParallax => backdrop == BackdropKind.parallax;
-
-  ParallaxElement parallaxOn(Rect rect) {
-    var p = parallax ??
-        const ParallaxElement(ElementBase(id: backgroundParallaxId));
-    return p.withBase(
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height) as ParallaxElement;
-  }
-
-  /// stageOn is the stage stretched to a page of [rect], as the picture and
-  /// video are.
-  StageElement stageOn(Rect rect) {
-    var s = stage ?? defaultBackgroundStage;
-    return s.withBase(
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height) as StageElement;
-  }
-
-  ImageElement? get shownPicture {
-    if (picture case var p? when p.hasImage) return p;
-    return null;
-  }
-
-  bool get isImage => shownPicture != null;
-
-  List<CanvasElement> get media => [
-        if (video case var v? when !v.clip.isEmpty) v,
-        if (sound case var a? when !a.clip.isEmpty) a,
-      ];
-
-  Set<String> get assetIds => {
-        ...?shownPicture?.assetIds,
-        ...?video?.assetIds,
-        ...?drawing?.assetIds,
-        ...?parallax?.assetIds,
-      };
-
-  Set<String> get mediaIds => {
-        ...?video?.mediaIds,
-        ...?sound?.mediaIds,
-        ...?drawing?.mediaIds,
-      };
-
-  CanvasBackground copyWith({
-    ProceduralSpec? spec,
-    ImageElement? picture,
-    VideoElement? video,
-    AudioElement? sound,
-    VectorElement? drawing,
-    bool clearPicture = false,
-    bool clearVideo = false,
-    bool clearSound = false,
-    bool clearDrawing = false,
-    BackdropKind? backdrop,
-    StageElement? stage,
-    ParallaxElement? parallax,
-  }) =>
-      CanvasBackground(
-        backdrop: backdrop ?? this.backdrop,
-        stage: stage ?? this.stage,
-        parallax: parallax ?? this.parallax,
-        spec: spec ?? this.spec,
-        picture: clearPicture ? null : picture ?? this.picture,
-        video: clearVideo ? null : video ?? this.video,
-        sound: clearSound ? null : sound ?? this.sound,
-        drawing: clearDrawing ? null : drawing ?? this.drawing,
-      );
-
-  Map<String, dynamic> toJson() => {
-        "spec": spec.toJson(),
-        if (picture != null) "picture": picture!.toJson(),
-        if (video != null) "video": video!.toJson(),
-        if (sound != null) "sound": sound!.toJson(),
-        if (drawing != null) "drawing": drawing!.toJson(),
-        if (backdrop != BackdropKind.flat) "backdrop": backdrop.name,
-        if (stage != null) "stage": stage!.toJson(),
-        if (parallax != null) "parallax": parallax!.toJson(),
-      };
-
-  factory CanvasBackground.fromJson(Map<String, dynamic> json) {
-    T? element<T>(dynamic raw) =>
-        raw is Map<String, dynamic> && elementFromJson(raw) is T
-            ? elementFromJson(raw) as T
-            : null;
-    return CanvasBackground(
-      spec: jsonSpec(
-          json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
-      picture: element<ImageElement>(json["picture"]),
-      video: element<VideoElement>(json["video"]),
-      sound: element<AudioElement>(json["sound"]),
-      drawing: element<VectorElement>(json["drawing"]),
-      backdrop: BackdropKind.fromName(jsonStr(json["backdrop"])),
-      // Read as a stage directly: elementFromJson reads no stage of its own,
-      // only one inside a Background element.
-      stage: json["stage"] is Map<String, dynamic>
-          ? StageElement.fromJson(
-              json["stage"] as Map<String, dynamic>,
-              ElementBase.fromJson(
-                  json["stage"] as Map<String, dynamic>, "3D stage"))
-          : null,
-      parallax: json["parallax"] is Map<String, dynamic>
-          ? ParallaxElement.fromJson(
-              json["parallax"] as Map<String, dynamic>,
-              ElementBase.fromJson(
-                  json["parallax"] as Map<String, dynamic>, "Parallax"))
-          : null,
-    );
-  }
-}
-
-/// defaultBackgroundStage is the stage a background first becomes.
-const StageElement defaultBackgroundStage =
-    StageElement(ElementBase(id: backgroundStageId, name: "3D stage"));
-
 /// _bareMasters are masters with their elements taken off, as a cover shows
 /// them: one each, so a cover's master keeps its identity across frames.
 final _bareMasters = Expando<CanvasScene>("bareMaster");
 
+/// CanvasDocument is a whole canvas: its page, its scenes and what is on
+/// them, its sound, its data and its game. Immutable: every edit is a new
+/// document, so undo is a list of them and a painter never sees one change
+/// under it.
+///
+/// The fields come first, then the constructor, then what is worked out
+/// from them by topic: the scene being edited, the run of scenes, pages,
+/// backgrounds, what is stored, changing it, and saving.
 class CanvasDocument {
   /// title is the library name, not the filename (canvas_storage.dart
   /// sanitises one into the other).
@@ -281,29 +82,6 @@ class CanvasDocument {
   /// masterMix is the master strip every sound is summed through.
   final MasterMix masterMix;
 
-  /// synced is [devices] with each Sync LFO given its rate at this
-  /// document's tempo, since the engine knows no tempo; used for playing and
-  /// exporting alike.
-  List<MixDevice> synced(List<MixDevice> devices) =>
-      tempoSynced(devices, audio.tempo, beatsPerBar: audio.beatsPerBar);
-
-  /// syncedMaster and syncedReturns are the mixer's as played: the very
-  /// same objects where no LFO is synced, so the runtime knows them again.
-  MasterMix get syncedMaster {
-    var devices = synced(masterMix.devices);
-    return identical(devices, masterMix.devices)
-        ? masterMix
-        : masterMix.copyWith(devices: devices);
-  }
-
-  List<ReturnChannel> get syncedReturns => [
-        for (var r in returns)
-          if (synced(r.devices) case var d when !identical(d, r.devices))
-            r.copyWith(devices: d)
-          else
-            r,
-      ];
-
   /// audio is tempo, time signature, and how the sound is published.
   final AudioSettings audio;
 
@@ -318,24 +96,8 @@ class CanvasDocument {
   /// Null for defaultControls.
   final List<ControlAction>? controls;
 
-  /// controlsNow are its controls, or the defaults where it has none.
-  List<ControlAction> get controlsNow =>
-      controls ??
-      (players.length > 1 ? sharedDefaultControls : defaultControls);
-
   /// playerControls are players two to four's changed controls, by player.
   final Map<int, List<ControlAction>> playerControls;
-
-  List<ControlAction> controlsFor(int player) => player <= 1
-      ? controlsNow
-      : playerControls[player] ?? defaultControlsFor(player);
-
-  /// players are the players it is played by: one, at least.
-  Set<int> get players => {
-        1,
-        for (var e in elements)
-          if (e.base.play.as.moves) e.base.play.player,
-      };
 
   /// counts are the numbers the game keeps, such as coins and lives.
   final List<GameCount> counts;
@@ -453,6 +215,54 @@ class CanvasDocument {
         _frames = frames,
         _actions = actions;
 
+  // --------------------------------------------------------------------------
+  // The mixer as played, and the game's controls
+  // --------------------------------------------------------------------------
+
+  /// synced is [devices] with each Sync LFO given its rate at this
+  /// document's tempo, since the engine knows no tempo; used for playing and
+  /// exporting alike.
+  List<MixDevice> synced(List<MixDevice> devices) =>
+      tempoSynced(devices, audio.tempo, beatsPerBar: audio.beatsPerBar);
+
+  /// syncedMaster and syncedReturns are the mixer's as played: the very
+  /// same objects where no LFO is synced, so the runtime knows them again.
+  MasterMix get syncedMaster {
+    var devices = synced(masterMix.devices);
+    return identical(devices, masterMix.devices)
+        ? masterMix
+        : masterMix.copyWith(devices: devices);
+  }
+
+  List<ReturnChannel> get syncedReturns => [
+        for (var r in returns)
+          if (synced(r.devices) case var d when !identical(d, r.devices))
+            r.copyWith(devices: d)
+          else
+            r,
+      ];
+
+  /// controlsNow are its controls, or the defaults where it has none.
+  List<ControlAction> get controlsNow =>
+      controls ??
+      (players.length > 1 ? sharedDefaultControls : defaultControls);
+
+  /// controlsFor is the controls [player] plays with.
+  List<ControlAction> controlsFor(int player) => player <= 1
+      ? controlsNow
+      : playerControls[player] ?? defaultControlsFor(player);
+
+  /// players are the players it is played by: one, at least.
+  Set<int> get players => {
+        1,
+        for (var e in elements)
+          if (e.base.play.as.moves) e.base.play.player,
+      };
+
+  // --------------------------------------------------------------------------
+  // The scene being edited
+  // --------------------------------------------------------------------------
+
   /// at is the scene being edited, always a valid index.
   int get at => scenes.isEmpty ? 0 : sceneAt.clamp(0, scenes.length - 1);
 
@@ -477,11 +287,18 @@ class CanvasDocument {
   /// edited (allScenes depends on it).
   CanvasScene get scene => scenes.isEmpty
       ? CanvasScene(
-          id: "scene1", elements: _elements, frames: _frames, actions: _actions)
+          id: _onlySceneId,
+          elements: _elements,
+          frames: _frames,
+          actions: _actions)
       : scenes[at];
 
   /// editing is the master where that is showing, and the scene otherwise.
   CanvasScene get editing => editingMaster ? master! : scene;
+
+  // --------------------------------------------------------------------------
+  // The run of scenes: lengths, starts and transitions
+  // --------------------------------------------------------------------------
 
   /// sequenceFrames is every scene's length, less the frames transitions
   /// overlap.
@@ -554,8 +371,8 @@ class CanvasDocument {
       for (var i = 0; i < list.length - 1; i++)
         if (transitionAfter(i) case var t when t.on && t.sound.isNotEmpty)
           () {
-            var (_, held, frames) = sceneStep(i);
-            var starts = startOfScene(i + 1) - (frames - held);
+            var step = sceneStep(i);
+            var starts = startOfScene(i + 1) - (step.transition - step.shared);
             return AudioElement(
               ElementBase(
                   id: "$transitionSoundPrefix$i",
@@ -580,17 +397,19 @@ class CanvasDocument {
   }
 
   /// sceneStep is how scene [index] fits into the run: how far the sequence
-  /// moves on, how many frames it shares with the next, and how long the
-  /// transition lasts. The one answer for length, starts and what is drawn
-  /// when, so export and screen agree.
-  (int, int, int) sceneStep(int index) {
+  /// moves on (advance), how many frames it shares with the next (shared),
+  /// and how long the transition lasts (transition). The one answer for
+  /// length, starts and what is drawn when, so export and screen agree.
+  ({int advance, int shared, int transition}) sceneStep(int index) {
     var list = allScenes;
-    if (index < 0 || index >= list.length) return (0, 0, 0);
+    if (index < 0 || index >= list.length) {
+      return (advance: 0, shared: 0, transition: 0);
+    }
     var scene = list[index];
-    if (index == list.length - 1) return (scene.frames, 0, 0);
-
     var over = transitionAfter(index);
-    if (!over.on) return (scene.frames, 0, 0);
+    if (index == list.length - 1 || !over.on) {
+      return (advance: scene.frames, shared: 0, transition: 0);
+    }
 
     // Never more sharing than there is transition to share, and never more
     // than either scene has to give.
@@ -599,16 +418,24 @@ class CanvasDocument {
     // This scene, less the frames the next one starts early by, plus what is
     // left of the transition after the sharing: its own stretch, the leaving
     // scene held on its last frame and the arriving one not started.
-    return (scene.frames - held + (over.frames - held), held, over.frames);
+    return (
+      advance: scene.frames - held + (over.frames - held),
+      shared: held,
+      transition: over.frames,
+    );
   }
 
-  int _stepOf(int index) => sceneStep(index).$1;
+  int _stepOf(int index) => sceneStep(index).advance;
 
   List<CanvasScene> get allScenes => scenes.isEmpty ? [scene] : scenes;
 
   bool get hasScenes => scenes.length > 1;
 
   bool get isPages => kind.isPages;
+
+  // --------------------------------------------------------------------------
+  // Pages: numbers, covers and spreads
+  // --------------------------------------------------------------------------
 
   /// pageCovers is which canvases are covers, from which numbering and
   /// pairing are worked out. See canvas_pages.dart.
@@ -662,15 +489,19 @@ class CanvasDocument {
   /// spreadOf is the left and right leaves shown with page [index], either
   /// null where empty (a lone leaf still has a side, so its transition is
   /// drawn in the book). Null where facing pages are off.
-  (int?, int?)? spreadOf(int index) {
+  ({int? left, int? right})? spreadOf(int index) {
     if (!isPages || !pages.facing) return null;
     var list = allScenes;
     if (index < 0 || index >= list.length) return null;
     var beside = facingAt(index);
     if (beside != null) {
-      return beside > index ? (index, beside) : (beside, index);
+      return beside > index
+          ? (left: index, right: beside)
+          : (left: beside, right: index);
     }
-    return pageIsLeft(index) ? (index, null) : (null, index);
+    return pageIsLeft(index)
+        ? (left: index, right: null)
+        : (left: null, right: index);
   }
 
   bool get hasSpread {
@@ -680,6 +511,10 @@ class CanvasDocument {
     }
     return false;
   }
+
+  // --------------------------------------------------------------------------
+  // The master, and what is behind a scene
+  // --------------------------------------------------------------------------
 
   /// masterScene is the master when switched on and not left off by this
   /// scene, else null.
@@ -797,6 +632,10 @@ class CanvasDocument {
 
   double get durationSeconds => frames / (frameRate <= 0 ? 1 : frameRate);
 
+  // --------------------------------------------------------------------------
+  // What it keeps in the stores, and finding an element
+  // --------------------------------------------------------------------------
+
   /// assetIds is every stored picture in every scene and the master,
   /// backgrounds and rings included. The picture-store sweep deletes what no
   /// saved document names, so a picture missed here is lost on restart.
@@ -906,6 +745,21 @@ class CanvasDocument {
 
   int indexOf(String id) => elements.indexWhere((e) => e.id == id);
 
+  /// elementInAnyScene is the element with [id] in whichever scene holds
+  /// it, where [elementById] looks only in the one being edited.
+  CanvasElement? elementInAnyScene(String id) {
+    for (var scene in allScenes) {
+      for (var e in scene.elements) {
+        if (e.id == id) return e;
+      }
+    }
+    return null;
+  }
+
+  // --------------------------------------------------------------------------
+  // Changing it
+  // --------------------------------------------------------------------------
+
   /// copyWith sends elements, a length or actions to the scene being edited
   /// (or the master), so callers need not know which.
   CanvasDocument copyWith({
@@ -980,19 +834,18 @@ class CanvasDocument {
       // An edit meant for the master must not also land on the one scene a
       // document with no scene list has.
       elements: list.isEmpty
-          ? (onIt && shared != null ? _elements : (elements ?? _elements))
+          ? (onIt ? _elements : (elements ?? _elements))
           : const [],
       estimate: estimate ?? this.estimate,
       frames: list.isEmpty
-          ? (onIt && shared != null
+          ? (onIt
               ? _frames
               : (frames ?? _frames).clamp(1, maxFrameCount).toInt())
           : 1,
       frameRate:
           (frameRate ?? this.frameRate).clamp(minFrameRate, maxFrameRate),
-      actions: list.isEmpty
-          ? (onIt && shared != null ? _actions : (actions ?? _actions))
-          : const [],
+      actions:
+          list.isEmpty ? (onIt ? _actions : (actions ?? _actions)) : const [],
       scenes: list,
       sceneAt: index,
       kind: kind ?? this.kind,
@@ -1023,42 +876,8 @@ class CanvasDocument {
 
   /// withScenes is this document as a scene list. Everything that adds,
   /// removes or reorders scenes goes through here.
-  CanvasDocument withScenes(List<CanvasScene> next, {int? at}) {
-    if (next.isEmpty) return this;
-    return CanvasDocument(
-      title: title,
-      size: size,
-      background: background,
-      guides: guides,
-      estimate: estimate,
-      frameRate: frameRate,
-      scenes: next,
-      sceneAt: (at ?? sceneAt).clamp(0, next.length - 1).toInt(),
-      kind: kind,
-      pages: pages,
-      masterMix: masterMix,
-      audio: audio,
-      returns: returns,
-      session: session,
-      controls: controls,
-      playerControls: playerControls,
-      game: game,
-      gameStart: gameStart,
-      counts: counts,
-      hasCanvas: hasCanvas,
-      master: master,
-      masterOn: masterOn,
-      masterOver: masterOver,
-      cast: cast,
-      onMaster: onMaster,
-      targets: targets,
-      cues: cues,
-      words: words,
-      textStyles: textStyles,
-      scores: scores,
-      sheets: sheets,
-    );
-  }
+  CanvasDocument withScenes(List<CanvasScene> next, {int? at}) =>
+      next.isEmpty ? this : copyWith(scenes: next, sceneAt: at ?? sceneAt);
 
   /// forShape lays the document out for another page shape, master included:
   /// each element stores its place under the old shape and takes the new
@@ -1211,11 +1030,16 @@ class CanvasDocument {
     return copyWith(elements: next);
   }
 
+  // --------------------------------------------------------------------------
+  // Saving and reading
+  // --------------------------------------------------------------------------
+
   /// toJson writes a document of one plain scene with no master with its
   /// elements, frames and actions at the top level; a scene list appears
   /// only when one scene cannot say something.
   Map<String, dynamic> toJson() {
     var one = scenes.length <= 1 && master == null && _plain(scene);
+    var own = one ? scene.toJson() : const <String, dynamic>{};
     return {
       "version": canvasFormatVersion,
       "title": title,
@@ -1264,85 +1088,61 @@ class CanvasDocument {
       },
       // The scene's own name and settings, so naming it does not make a
       // scene list.
-      if (one && (scene.name.isNotEmpty || scene.holds || scene.custom))
+      if (own.keys.any(_inSceneKey.contains) || scene.id != _onlySceneId)
         "scene": {
-          if (scene.name.isNotEmpty) "name": scene.name,
           "id": scene.id,
-          if (scene.holds) "holds": true,
-          if (scene.custom) "transition": scene.transition!.toJson(),
+          for (var key in _inSceneKey)
+            if (own.containsKey(key)) key: own[key],
         },
     };
   }
 
-  /// _plain is whether [s] holds nothing the top-level fields and "scene"
-  /// cannot carry.
-  static bool _plain(CanvasScene s) =>
-      s.background == null &&
-      !s.backgroundOff &&
-      !s.masterOff &&
-      s.values.isEmpty &&
-      s.gameSounds.isEmpty &&
-      s.gameSoundsAtEnd.isEmpty &&
-      !s.cover.isCover &&
-      s.camera == null;
+  /// _atTopKeys are the keys of a saved scene that a document of one scene
+  /// writes at its own top level, and _inSceneKey those it writes under
+  /// "scene". fromJson reads exactly these back.
+  static const _atTopKeys = {"id", "elements", "frames", "actions"};
+
+  /// _onlySceneId is the id of the scene of a document with no scene list.
+  static const _onlySceneId = "scene1";
+  static const _inSceneKey = {"name", "holds", "transition"};
+
+  /// _plain is whether [s] saves nothing but what the one-scene form
+  /// carries. Worked out from what the scene writes, so a setting added to
+  /// CanvasScene makes a scene list by itself and is never left out.
+  static bool _plain(CanvasScene s) => s
+      .toJson()
+      .keys
+      .every((key) => _atTopKeys.contains(key) || _inSceneKey.contains(key));
 
   String encode() => const JsonEncoder.withIndent("  ").convert(toJson());
 
   factory CanvasDocument.fromJson(Map<String, dynamic> json) {
-    var raw = json["elements"];
-    var acts = json["actions"];
+    var scenes =
+        jsonObjects(json["scenes"], CanvasScene.fromJson, most: maxScenes);
 
-    var sceneList = json["scenes"];
-    var scenes = <CanvasScene>[
-      if (sceneList is List)
-        for (var it in sceneList.take(maxScenes))
-          if (it is Map<String, dynamic>) CanvasScene.fromJson(it),
-    ];
-
-    // The single scene's own settings, for a document that is one canvas.
-    var only = json["scene"];
-    var name = "";
-    var id = "scene1";
-    var holds = false;
-    SceneTransition? transition;
-    if (only is Map<String, dynamic>) {
-      name = jsonString(only["name"], "");
-      id = jsonString(only["id"], "scene1");
-      holds = jsonBool(only["holds"], false);
-      if (only["transition"] is Map<String, dynamic>) {
-        transition = SceneTransition.fromJson(
-            only["transition"] as Map<String, dynamic>);
+    // A document saved as one scene: its elements, length and actions are
+    // at the top level, and its id and own settings (see _inSceneKey)
+    // under "scene". With any of those it is a list of one.
+    var elements = const <CanvasElement>[];
+    var actions = const <TimelineAction>[];
+    var frames = defaultFrameCount;
+    if (scenes.isEmpty) {
+      var only = CanvasScene.fromJson({
+        "id": _onlySceneId,
+        ...?jsonMap(json["scene"]),
+        for (var key in _atTopKeys)
+          if (key != "id") key: json[key],
+      });
+      if (only.name.isNotEmpty ||
+          only.holds ||
+          only.custom ||
+          only.id != _onlySceneId) {
+        scenes = [only];
+      } else {
+        elements = only.elements;
+        actions = only.actions;
+        frames = only.frames;
       }
-    }
-
-    var elements = raw is List
-        ? [
-            for (var e in raw.take(maxSceneElements))
-              if (e is Map<String, dynamic>) elementFromJson(e),
-          ]
-        : const <CanvasElement>[];
-    var actions = acts is List
-        ? [
-            for (var a in acts)
-              if (a is Map<String, dynamic>) TimelineAction.fromJson(a),
-          ]
-        : const <TimelineAction>[];
-    var frames =
-        jsonInt(json["frames"], defaultFrameCount).clamp(1, maxFrameCount);
-
-    if (scenes.isEmpty && (name.isNotEmpty || holds || transition != null)) {
-      // One scene with settings of its own: a list of one.
-      scenes = [
-        CanvasScene(
-          id: id,
-          name: name,
-          elements: elements,
-          frames: frames,
-          actions: actions,
-          holds: holds,
-          transition: transition,
-        ),
-      ];
     }
 
     // Tables and charts saved without sheets are given sheets of their own.
@@ -1353,28 +1153,23 @@ class CanvasDocument {
           const CanvasBackground()),
       guides:
           jsonSpec(json["guides"], CanvasGuides.fromJson, const CanvasGuides()),
-      elements: scenes.isEmpty ? elements : const [],
+      elements: elements,
       estimate: jsonSpec(
           json["estimate"], CanvasEstimate.fromJson, const CanvasEstimate()),
-      frames: scenes.isEmpty ? frames : 1,
+      frames: frames,
       frameRate: jsonInt(json["frameRate"], defaultFrameRate)
           .clamp(minFrameRate, maxFrameRate),
-      actions: scenes.isEmpty ? actions : const [],
+      actions: actions,
       scenes: scenes,
       sceneAt: jsonInt(json["sceneAt"], 0),
       kind: CanvasKind.fromName(jsonStr(json["kind"])),
-      pages: json["pages"] is Map<String, dynamic>
-          ? PagesSpec.fromJson(json["pages"] as Map<String, dynamic>)
-          : const PagesSpec(),
+      pages: jsonSpec(json["pages"], PagesSpec.fromJson, const PagesSpec()),
       masterMix:
           jsonSpec(json["masterMix"], MasterMix.fromJson, const MasterMix()),
       audio: AudioSettings.fromJson(json["audio"]),
       hasCanvas: json["noCanvas"] != true,
       returns: json["returns"] is List
-          ? [
-              for (var r in (json["returns"] as List).take(maxReturns))
-                if (ReturnChannel.fromJson(r) case var ret?) ret,
-            ]
+          ? jsonList(json["returns"], ReturnChannel.fromJson, most: maxReturns)
           : defaultReturns,
       session: SessionGrid.fromJson(json["session"]),
       game: json["game"] == true,
@@ -1384,66 +1179,27 @@ class CanvasDocument {
         if (json["playerControls"] case Map raw)
           for (var MapEntry(key: p, value: list) in raw.entries)
             if (int.tryParse("$p") case var n? when n >= 2 && n <= 4)
-              if (list case List actions)
-                n: [
-                  for (var a in actions)
-                    if (ControlAction.fromJson(a) case var action?) action,
-                ],
+              if (list is List) n: jsonList(list, ControlAction.fromJson),
       },
-      counts: [
-        if (json["counts"] case List raw)
-          for (var c in raw)
-            if (GameCount.fromJson(c) case var count?) count,
-      ],
+      counts: jsonList(json["counts"], GameCount.fromJson),
       controls: json["controls"] is List
-          ? [
-              for (var a in json["controls"] as List)
-                if (ControlAction.fromJson(a) case var action?) action,
-            ]
+          ? jsonList(json["controls"], ControlAction.fromJson)
           : null,
-      master: json["master"] is Map<String, dynamic>
-          ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
-          : null,
+      master: jsonSpec(json["master"], CanvasScene.fromJson, null),
       masterOn: jsonBool(json["masterOn"], false),
-      cast: [
-        if (json["cast"] is List)
-          for (var e in json["cast"] as List)
-            if (e is Map<String, dynamic>) elementFromJson(e),
-      ],
+      cast: jsonObjects(json["cast"], elementFromJson, most: maxSceneElements),
       // Only where there is a master, switched on, to be on.
       onMaster: jsonBool(json["onMaster"], false) &&
           jsonBool(json["masterOn"], false) &&
           json["master"] is Map<String, dynamic>,
-      targets: [
-        if (json["targets"] is List)
-          for (var t in json["targets"] as List)
-            if (t is String) t,
-      ],
-      cues: [
-        if (json["cues"] is List)
-          for (var c in json["cues"] as List)
-            if (TimelineCue.fromJson(c) case var cue?) cue,
-      ]..sort((a, b) => a.frame.compareTo(b.frame)),
-      words: [
-        if (json["words"] is List)
-          for (var w in json["words"] as List)
-            if (SpokenWord.fromJson(w) case var word?) word,
-      ]..sort((a, b) => a.frame.compareTo(b.frame)),
-      textStyles: [
-        if (json["textStyles"] is List)
-          for (var t in json["textStyles"] as List)
-            if (NamedTextStyle.fromJson(t) case var style?) style,
-      ],
-      scores: [
-        if (json["scores"] is List)
-          for (var s in json["scores"] as List)
-            if (s is Map<String, dynamic>) MusicScore.fromJson(s),
-      ],
-      sheets: [
-        if (json["sheets"] is List)
-          for (var s in json["sheets"] as List)
-            if (DataSheet.fromJson(s) case var sheet?) sheet,
-      ],
+      targets: jsonList(json["targets"], jsonStr),
+      cues: jsonList(json["cues"], TimelineCue.fromJson)
+        ..sort((a, b) => a.frame.compareTo(b.frame)),
+      words: jsonList(json["words"], SpokenWord.fromJson)
+        ..sort((a, b) => a.frame.compareTo(b.frame)),
+      textStyles: jsonList(json["textStyles"], NamedTextStyle.fromJson),
+      scores: jsonObjects(json["scores"], MusicScore.fromJson),
+      sheets: jsonList(json["sheets"], DataSheet.fromJson),
     ))));
   }
 
@@ -1460,23 +1216,10 @@ class CanvasDocument {
   }
 }
 
+/// _byId is each list of elements' index by id (see elementById), and
+/// _sceneStarts each document's scene starts (see startOfScene).
 final Expando<Map<String, CanvasElement>> _byId = Expando("elementsById");
-
 final Expando<List<int>> _sceneStarts = Expando("sceneStarts");
-
-/// finiteJson is [json] with non-finite numbers (1e999 reads as infinity)
-/// dropped from maps and made nought in lists.
-Object? finiteJson(Object? json) => switch (json) {
-      Map m => <String, dynamic>{
-          for (var e in m.entries)
-            if (!(e.value is double && !(e.value as double).isFinite))
-              "${e.key}": finiteJson(e.value),
-        },
-      List l => [
-          for (var x in l) x is double && !x.isFinite ? 0 : finiteJson(x),
-        ],
-      _ => json,
-    };
 
 CanvasElement _withoutLinksTo(CanvasElement e, String id) {
   if (e is! TextElement) return e;
@@ -1484,82 +1227,6 @@ CanvasElement _withoutLinksTo(CanvasElement e, String id) {
   if (next.curve?.elementId == id) next = next.copyWith(clearCurve: true);
   if (next.flowTo == id) next = next.copyWith(flowTo: "");
   return next;
-}
-
-/// elementFromJson builds the right subclass. An unknown kind (from a newer
-/// build) becomes a plain shape, a visible placeholder, not dropped.
-CanvasElement elementFromJson(Map<String, dynamic> json) {
-  var kind = ElementKind.values.firstWhere(
-    (k) => k.name == json["kind"],
-    orElse: () => ElementKind.shape,
-  );
-  var base = ElementBase.fromJson(json, kind.label);
-  switch (kind) {
-    case ElementKind.text:
-      // Its type's shadow, glow and outline read as layer looks
-      // (text_looks.dart).
-      return textLooksLifted(TextElement.fromJson(json, base));
-    case ElementKind.image:
-      return ImageElement.fromJson(json, base);
-    case ElementKind.shape:
-      return ShapeElement.fromJson(json, base);
-    case ElementKind.line:
-      return LineElement.fromJson(json, base);
-    case ElementKind.chart:
-      return ChartElement.fromJson(json, base);
-    case ElementKind.table:
-      return TableElement.fromJson(json, base);
-    case ElementKind.button:
-      return ButtonElement.fromJson(json, base);
-    case ElementKind.background:
-      return BackgroundElement.fromJson(json, base);
-    case ElementKind.player:
-      return TeamElement.fromJson(json, base);
-    case ElementKind.path:
-      return PathElement.fromJson(json, base);
-    case ElementKind.counter:
-      return CounterElement.fromJson(json, base);
-    case ElementKind.audio:
-      return AudioElement.fromJson(json, base);
-    case ElementKind.video:
-      return VideoElement.fromJson(json, base);
-    case ElementKind.vector:
-      return VectorElement.fromJson(json, base);
-    case ElementKind.character3d:
-      return Character3dElement.fromJson(json, base);
-    case ElementKind.sheet:
-      return SheetElement.fromJson(json, base);
-    case ElementKind.camera:
-      return CameraElement.fromJson(json, base);
-    case ElementKind.object3d:
-      return Object3dElement.fromJson(json, base);
-    // Never saved alone (a background carries them), so read as an unknown
-    // kind: a placeholder.
-    case ElementKind.stage:
-    case ElementKind.parallax:
-      return ShapeElement.fromJson(json, base);
-    case ElementKind.sprite:
-      return SpriteElement.fromJson(json, base);
-    case ElementKind.tileMap:
-      return TileMapElement.fromJson(json, base);
-    case ElementKind.synth:
-      return SynthModuleElement.fromJson(json, base) ??
-          ShapeElement.fromJson(json, base);
-    case ElementKind.synthTask:
-      return SynthTaskElement.fromJson(json, base);
-    case ElementKind.metronome:
-      return MetronomeElement.fromJson(json, base);
-    case ElementKind.code:
-      return CodeElement.fromJson(json, base);
-    case ElementKind.codeRun:
-      return CodeRunElement.fromJson(json, base);
-    case ElementKind.codeTask:
-      return CodeTaskElement.fromJson(json, base);
-    case ElementKind.playTask:
-      return PlayTaskElement.fromJson(json, base);
-    case ElementKind.layout:
-      return LayoutElement.fromJson(json, base);
-  }
 }
 
 /// NamedTextStyle is one of the document's text styles: a name and its type.

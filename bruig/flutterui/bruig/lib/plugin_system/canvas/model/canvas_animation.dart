@@ -3,11 +3,12 @@ import 'dart:ui' show Offset;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // canvas_animation.dart is keyframe tracks and the timeline's markers.
-// Tracks are the legacy model: motion_convert.dart turns them into clips
-// (motion.dart) when a canvas opens. They remain for what a clip cannot say
-// (backgrounds, stages, scenery, teams), and Keyframe is the pose type clips
-// produce. A track is sparse poses, each holding every animated property,
-// interpolated between, so any frame can be asked for without the others.
+// An element's track holds the keyframes made on the Chain's Keyframes card
+// and everything a clip (motion.dart) cannot say: backgrounds, stages,
+// scenery, teams. Clips play on top of it, and Keyframe is the pose type
+// they produce. A track is sparse poses, each holding every animated
+// property, interpolated between, so any frame can be asked for without the
+// others.
 
 /// KeyframeEasing is how two keyframes are eased between (Material owns
 /// `Easing`).

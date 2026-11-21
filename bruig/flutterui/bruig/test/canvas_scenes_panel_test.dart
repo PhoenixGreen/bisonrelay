@@ -270,7 +270,7 @@ void main() {
           CanvasScene(id: "c"),
           CanvasScene(id: "d"),
         ]);
-    var (left, right) = doc.spreadOf(1)!;
+    var (:left, :right) = doc.spreadOf(1)!;
     expect([left, right], everyElement(isNotNull));
     expect(at(left!).top, closeTo(at(right!).top, 0.5),
         reason: "one row for the spread");
@@ -293,7 +293,7 @@ void main() {
           CanvasScene(id: "c"),
           CanvasScene(id: "d"),
         ]);
-    var (left, right) = doc.spreadOf(1)!;
+    var (:left, :right) = doc.spreadOf(1)!;
     var scenes = [...doc.allScenes];
     scenes[left!] = scenes[left].copyWith(elements: [
       ShapeElement(

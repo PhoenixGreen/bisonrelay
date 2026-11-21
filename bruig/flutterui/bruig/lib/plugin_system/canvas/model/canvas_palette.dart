@@ -11,6 +11,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
 /// _notColours are keys whose numbers are never colours, however much they
 /// look like one: frames, lengths, counts, a chart's numbers, a counter's.
+///
+/// Replacing a colour walks the saved JSON and takes any whole number of
+/// 0x01000000 or more for a colour unless its key is here. So a new setting
+/// that can hold a number that large, and is not a colour, must be added,
+/// or Replace everywhere may change it. test/canvas_palette_keys_test.dart fails
+/// when one turns up in the sample elements.
 const _notColours = {
   "frame",
   "frames",
@@ -74,6 +80,23 @@ Object? _walk(Object? json, int Function(int) visit, {bool skip = false}) {
   }
   if (!skip && _looksLikeColour(json)) return visit(json as int);
   return json;
+}
+
+/// colourKeysOf is the keys under which [json] holds a number that
+/// [recoloured] would take for a colour. For the test that holds
+/// [_notColours] to being complete: a new setting holding a large whole
+/// number shows up here, and is either a colour or belongs in that list.
+Set<String> colourKeysOf(Object? json, {String key = "", bool skip = false}) {
+  if (json is Map<String, dynamic>) {
+    return {
+      for (var e in json.entries)
+        ...colourKeysOf(e.value, key: e.key, skip: _notColours.contains(e.key)),
+    };
+  }
+  if (json is List) {
+    return {for (var v in json) ...colourKeysOf(v, key: key, skip: skip)};
+  }
+  return {if (!skip && _looksLikeColour(json)) key};
 }
 
 /// recoloured is [json] -- a whole document's -- with every use of [from]

@@ -1002,7 +1002,7 @@ class VectorText {
         ? Offset(jsonDouble(v[0], 0), jsonDouble(v[1], 0))
         : Offset.zero;
     return VectorText(
-      text: jsonText(json["t"], ""),
+      text: jsonString(json["t"], ""),
       family: jsonLabel(json["font"], "Inter"),
       weight: json["weight"] is int ? json["weight"] as int : 400,
       italic: json["italic"] == true,

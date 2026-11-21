@@ -488,10 +488,9 @@ void main() {
       var overlay = SceneTransitionKind.inFamily(SceneTransitionFamily.overlay);
       expect(overlay, contains(SceneTransitionKind.band));
       expect(overlay.length, 6);
-      expect(SceneTransitionKind.cut.familyOf, SceneTransitionFamily.none);
-      expect(
-          SceneTransitionKind.slideLeft.familyOf, SceneTransitionFamily.move);
-      expect(SceneTransitionKind.wipeUp.familyOf, SceneTransitionFamily.wipe);
+      expect(SceneTransitionKind.cut.family, SceneTransitionFamily.none);
+      expect(SceneTransitionKind.slideLeft.family, SceneTransitionFamily.move);
+      expect(SceneTransitionKind.wipeUp.family, SceneTransitionFamily.wipe);
     });
 
     test("and their settings survive being saved", () {

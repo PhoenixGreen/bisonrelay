@@ -1,12 +1,17 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -410,5 +415,108 @@ void main() {
     });
     expect((first.elements.single as TextElement).text.length, maxTextLength);
     expect(doc.goToScene(0).elements.length, lessThanOrEqualTo(maxSceneElements));
+  });
+
+  group("a document of one scene", () {
+    /// everything is a scene with every setting a scene has set to
+    /// something other than what it starts as.
+    CanvasScene everything() => CanvasScene(
+          id: "only",
+          name: "Opening",
+          elements: [newElement(ElementKind.shape, const CanvasDocument())],
+          frames: 48,
+          actions: const [
+            TimelineAction(id: "a1", frame: 12, kind: TimelineActionKind.pause)
+          ],
+          holds: true,
+          background: const CanvasBackground(),
+          backgroundOff: true,
+          masterOff: true,
+          values: const {"Chapter": "One"},
+          gameSounds: const {"music": "stop"},
+          gameSoundsAtEnd: const {"music": "slot:a"},
+          cues: const ["Intro"],
+          transition: SceneTransition.bestFor(SceneTransitionKind.fade),
+          cover: PageCover.front,
+          camera: const SceneCamera(toZoom: 2),
+          bus: const ChannelMix(gainDb: -6),
+        );
+
+    test("every setting its scene has survives a save", () {
+      // Each key the scene writes, alone on an otherwise plain scene: the
+      // short form of a one-scene document carries only some of them, and a
+      // setting it cannot carry must make a scene list, never be left out.
+      var full = everything().toJson();
+      expect(full.keys, containsAll(const CanvasScene(id: "x").toJson().keys));
+      for (var key in full.keys) {
+        var one = CanvasScene.fromJson({
+          ...const CanvasScene(id: "only").toJson(),
+          key: full[key],
+        });
+        var doc = const CanvasDocument().withScene(0, one);
+        var back = CanvasDocument.decode(doc.encode())!;
+        expect(back.scene.toJson(), one.toJson(), reason: "its $key");
+      }
+    });
+
+    test("every setting together survives a save", () {
+      var scene = everything();
+      var doc = const CanvasDocument().withScene(0, scene);
+      var back = CanvasDocument.decode(doc.encode())!;
+      expect(back.scene.toJson(), scene.toJson());
+    });
+
+    test("is saved without a scene list while its scene is plain", () {
+      var plain = const CanvasDocument()
+          .addElement(newElement(ElementKind.text, const CanvasDocument()));
+      expect(plain.toJson().containsKey("scenes"), isFalse);
+      expect(plain.toJson().containsKey("scene"), isFalse);
+
+      // A name, a hold and a transition go under "scene", still no list.
+      var named = plain.withScene(
+          0,
+          plain.scene.copyWith(
+              name: "Opening",
+              holds: true,
+              transition: SceneTransition.bestFor(SceneTransitionKind.fade)));
+      var json = named.toJson();
+      expect(json.containsKey("scenes"), isFalse);
+      expect((json["scene"] as Map).keys,
+          containsAll(["id", "name", "holds", "transition"]));
+      var back = CanvasDocument.decode(named.encode())!;
+      expect(back.scene.name, "Opening");
+      expect(back.scene.holds, isTrue);
+      expect(back.scene.transition!.kind, SceneTransitionKind.fade);
+      expect(back.elements.single.kind, ElementKind.text);
+    });
+  });
+
+  test("changing the scene list keeps everything else in the document", () {
+    // withScenes once named each field by hand; a field added to the
+    // document and left off that list was lost at the first scene added.
+    var doc = CanvasDocument(
+      title: "Kept",
+      size: const CanvasSize(ratio: CanvasRatio.square),
+      kind: CanvasKind.pages,
+      game: true,
+      gameStart: "b",
+      masterOver: true,
+      hasCanvas: false,
+      frameRate: 30,
+      targets: const ["square", "wide"],
+      cues: const [TimelineCue(id: "c", name: "Drop", frame: 4)],
+      counts: const [GameCount("coins", "Coins")],
+      master: const CanvasScene(id: "m"),
+      masterOn: true,
+      scenes: const [CanvasScene(id: "a"), CanvasScene(id: "b")],
+    );
+    var before = doc.toJson()
+      ..remove("scenes")
+      ..remove("sceneAt");
+    var after = doc.moveScene(0, 1).toJson()
+      ..remove("scenes")
+      ..remove("sceneAt");
+    expect(after, before);
+    expect([for (var s in doc.moveScene(0, 1).scenes) s.id], ["b", "a"]);
   });
 }

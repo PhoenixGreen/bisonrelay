@@ -161,7 +161,7 @@ class SynthTaskElement extends CanvasElement {
   factory SynthTaskElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       SynthTaskElement(b,
           title: jsonLabel(json["title"], ""),
-          text: jsonText(json["text"], ""),
+          text: jsonString(json["text"], ""),
           target: SynthPatch.fromJson(json["target"]),
           speaker: jsonString(json["speaker"], ""),
           checks: [

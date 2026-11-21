@@ -5,10 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 
-// saved_preset.dart is a saved scene, canvas, brush, look or similar: the
-// thing's own JSON with a name on it (as element_preset.dart does), so
-// nothing here changes as they grow settings. A preset is a copy, not a link.
-
+/// SavedPresetKind is each sort of thing that can be saved as a preset.
 enum SavedPresetKind {
   /// scene is one canvas of a document, with everything on it.
   scene("scenes"),
@@ -39,6 +36,10 @@ enum SavedPresetKind {
   const SavedPresetKind(this.folder);
 }
 
+/// SavedPreset is a saved scene, canvas, brush, look or similar: the thing's
+/// own JSON with a name on it (as ElementPreset is for an element), so
+/// nothing here changes as they grow settings. A preset is a copy, not a
+/// link.
 class SavedPreset {
   /// id names the file this is kept in.
   final String id;
@@ -139,9 +140,7 @@ class SavedPreset {
           (k) => k.name == json["kind"],
           orElse: () => SavedPresetKind.scene,
         ),
-        data: json["data"] is Map<String, dynamic>
-            ? json["data"] as Map<String, dynamic>
-            : const {},
+        data: jsonMap(json["data"]) ?? const {},
         made: DateTime.tryParse(jsonString(json["made"], "")) ??
             DateTime.fromMillisecondsSinceEpoch(0),
         madeOn: sizeFromJson(json["madeOn"]),

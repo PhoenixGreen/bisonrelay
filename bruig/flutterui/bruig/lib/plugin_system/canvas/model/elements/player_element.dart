@@ -834,7 +834,7 @@ class PlayerSpot {
 
   /// track is this player's own run, or null when they do not move: an
   /// [ElementTrack] whose dx and dy are design units on top of the resting
-  /// position. Never converted to clips (see motion_convert.dart).
+  /// position. Always a track: a clip cannot say a player's run.
   final ElementTrack? track;
 
   /// photo is a picture of the player, by asset, shown in the token where

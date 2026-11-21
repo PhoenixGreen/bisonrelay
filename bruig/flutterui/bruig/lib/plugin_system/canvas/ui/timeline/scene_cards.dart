@@ -153,7 +153,7 @@ class _SceneTransitionCardState extends State<SceneTransitionCard>
             StudioDrop<SceneTransitionFamily>(
               key: const ValueKey("transitionFamily"),
               label: "Kind",
-              value: kind.familyOf,
+              value: kind.family,
               options: [
                 for (var f in SceneTransitionFamily.values)
                   (f, f == SceneTransitionFamily.none ? "Cut" : f.label)
@@ -170,7 +170,7 @@ class _SceneTransitionCardState extends State<SceneTransitionCard>
                 label: "Which",
                 value: kind,
                 options: [
-                  for (var k in SceneTransitionKind.inFamily(kind.familyOf))
+                  for (var k in SceneTransitionKind.inFamily(kind.family))
                     (k, k.label)
                 ],
                 onChanged: (k) => write(startedAs(value, k)),

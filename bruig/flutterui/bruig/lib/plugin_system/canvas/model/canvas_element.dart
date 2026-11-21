@@ -1,12 +1,17 @@
 import 'dart:convert';
-import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/json_read.dart';
 import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
+
+// Every element reads its saved fields with the readers in json_read.dart,
+// so whatever imports an element has them.
+export 'package:bruig/plugin_system/canvas/model/json_read.dart';
 
 // canvas_element.dart is what everything on a canvas has in common.
 //
@@ -15,8 +20,8 @@ import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 // kind; only the painter and settings switch on kind. Elements are
 // immutable, so undo is a list of documents.
 
-/// ElementKind names the families. Serialised by name: the order may change,
-/// the names may not.
+/// ElementKind names the families. Saved by name: the order may change, the
+/// names may not.
 enum ElementKind {
   text("Text"),
   image("Image"),
@@ -27,122 +32,67 @@ enum ElementKind {
   button("Button"),
   background("Background"),
   path("Path"),
-  // A whole side (TeamElement); keeps the name "player" so saved documents
-  // load.
+
+  /// player is a whole side (TeamElement); it keeps the name "player" so
+  /// saved documents load.
   player("Team"),
   counter("Counter"),
   audio("Audio"),
   video("Video"),
   vector("Vector"),
   character3d("3D character"),
-  // The 3D set a background carries (BackdropKind.stage), not added by itself.
+
+  /// stage is the 3D set a background carries (BackdropKind.stage), never
+  /// added by itself.
   stage("3D stage"),
   sprite("Sprite"),
   tileMap("Tile map"),
-  // Scenery a background carries (BackdropKind.parallax), not added by itself.
+
+  /// parallax is scenery a background carries (BackdropKind.parallax), never
+  /// added by itself.
   parallax("Parallax"),
   sheet("Sheet music"),
   camera("Camera"),
   object3d("3D object"),
-  // One synth module, patched to others with cables.
+
+  /// synth is one synth module, patched to others with cables.
   synth("Synth module"),
-  // What to make on a synth rack, and checks of the patch.
+
+  /// synthTask is what to make on a synth rack, and checks of the patch.
   synthTask("Synth task"),
   metronome("Metronome"),
-  // A small code project in tabbed panes (code_element.dart).
+
+  /// code is a small code project in tabbed panes (code_element.dart).
   code("Code"),
-  // What a Code panel's project makes, run (code_run_element.dart).
+
+  /// codeRun is what a Code panel's project makes, run
+  /// (code_run_element.dart).
   codeRun("Run panel"),
-  // A task marked against a Code panel's code (code_task_element.dart).
+
+  /// codeTask is a task marked against a Code panel's code
+  /// (code_task_element.dart).
   codeTask("Code task"),
-  // A box divided into cells: comic panels, a grid of cards, free shapes
-  // (layout_element.dart).
+
+  /// layout is a box divided into cells: comic panels, a grid of cards, free
+  /// shapes (layout_element.dart).
   layout("Layout"),
-  // Steps ticked as an instrument's keys are played (play_task_element.dart).
+
+  /// playTask is steps ticked as an instrument's keys are played
+  /// (play_task_element.dart).
   playTask("Play task");
 
   final String label;
   const ElementKind(this.label);
+
+  /// fromName is the kind saved as [name], or null for one this build does
+  /// not know (a newer build's, or nonsense).
+  static ElementKind? fromName(Object? name) =>
+      values.where((k) => k.name == name).firstOrNull;
 }
-
-/// colorToJson and colorFromJson save a colour as 0xAARRGGBB in a plain
-/// integer, so it round-trips exactly (float channels through JSON would not).
-int colorToJson(Color c) =>
-    (_channel(c.a) << 24) |
-    (_channel(c.r) << 16) |
-    (_channel(c.g) << 8) |
-    _channel(c.b);
-
-int _channel(double v) => (v * 255).round().clamp(0, 255);
-
-Color colorFromJson(dynamic v, [Color fallback = const Color(0xFFFFFFFF)]) =>
-    v is num && v.isFinite ? Color(v.toInt() & 0xFFFFFFFF) : fallback;
-
-// Non-finite numbers are refused: JSON reads 1e999 as infinity, which would
-// throw on the first round() and lose the document.
-double _d(dynamic v, double fallback) =>
-    v is num && v.isFinite ? v.toDouble() : fallback;
-int _i(dynamic v, int fallback) =>
-    v is num && v.isFinite ? v.toInt() : fallback;
-
-/// jsonStr and jsonNum are a field as a string or finite number, or null.
-String? jsonStr(Object? v) => v is String ? _cut(v, maxTextLength) : null;
-num? jsonNum(Object? v) => v is num && v.isFinite ? v : null;
 
 /// _far is the furthest out and biggest a received element may be: many
 /// pages, but never a size that cannot be drawn.
 const double _far = 1e6;
-
-bool _b(dynamic v, bool fallback) => v is bool ? v : fallback;
-
-/// _s is [v] as a string, cut to maxTextLength: no field a received canvas
-/// sends is kept at any length it likes.
-String _s(dynamic v, String fallback) =>
-    v is String ? _cut(v, maxTextLength) : fallback;
-
-String _cut(String s, int most) => s.length <= most ? s : s.substring(0, most);
-
-/// jsonDouble, jsonInt, jsonBool and jsonString are the readers above, for
-/// the subclasses. A saved document may be old or from someone else, so
-/// every read survives an absent or mistyped field: a throwing cast loses
-/// the whole document.
-double jsonDouble(dynamic v, double fallback) => _d(v, fallback);
-int jsonInt(dynamic v, int fallback) => _i(v, fallback);
-bool jsonBool(dynamic v, bool fallback) => _b(v, fallback);
-String jsonString(dynamic v, String fallback) => _s(v, fallback);
-
-/// maxTextLength is the most characters one element's words are read with:
-/// far more than a page holds, and a received canvas's ten million would be
-/// laid out every frame.
-const maxTextLength = 200000;
-
-String jsonText(dynamic v, String fallback) => _s(v, fallback);
-
-/// maxIdLength and maxLabelLength bound an id, and a name, label, title or
-/// font, as read: far longer than any real one, while a received canvas's
-/// millions of characters would be compared, hashed and laid out wherever
-/// the field is used.
-const maxIdLength = 200, maxLabelLength = 1000;
-
-String jsonId(dynamic v, String fallback) => _cut(_s(v, fallback), maxIdLength);
-String jsonLabel(dynamic v, String fallback) =>
-    _cut(_s(v, fallback), maxLabelLength);
-
-/// fractionsFromJson reads a flat [x, y, ...] list of points as fractions of
-/// a picture: within a width either side, and at most 100,000, so a sent
-/// stroke cannot ask for billions of dabs.
-List<Offset> fractionsFromJson(Object? flat) {
-  var points = <Offset>[];
-  if (flat is! List) return points;
-  for (var i = 0; i + 1 < flat.length && points.length < 100000; i += 2) {
-    var x = flat[i], y = flat[i + 1];
-    if (x is num && y is num && x.isFinite && y.isFinite) {
-      points.add(
-          Offset(x.toDouble().clamp(-1.0, 2.0), y.toDouble().clamp(-1.0, 2.0)));
-    }
-  }
-  return points;
-}
 
 /// ElementBase is every property every element has. Held by composition, so
 /// a subclass implements only [CanvasElement.rebase] to be fully editable.
@@ -199,9 +149,10 @@ class ElementBase {
   /// anchorLocked keeps the anchor in place, even while shown.
   final bool anchorLocked;
 
-  /// track is the legacy keyframe track, or null. Converted to [motion]
-  /// clips on open (motion_convert.dart), except what a clip cannot say:
-  /// backgrounds, stages, scenery, teams.
+  /// track is its keyframes, or null: those made on the Chain's Keyframes
+  /// card, and everything a clip cannot say (a background's, a stage's,
+  /// scenery's, a team's runs). Played under its [motion] clips, whose moves
+  /// are added on top (poseWithMotion in render/motion_document.dart).
   final ElementTrack? track;
 
   /// typeScale is what the element's own measurements (type, spacing,
@@ -295,6 +246,8 @@ class ElementBase {
     this.motion = ElementMotion.none,
   });
 
+  /// copyWith's parameters are in the fields' order. A field added here is
+  /// added to [CanvasElement.withBase] too.
   ElementBase copyWith({
     String? id,
     String? name,
@@ -334,9 +287,6 @@ class ElementBase {
     ElementMotion? motion,
   }) =>
       ElementBase(
-        play: play ?? this.play,
-        spot: clearSpot ? null : (spot ?? this.spot),
-        motion: motion ?? this.motion,
         id: id ?? this.id,
         name: name ?? this.name,
         x: x ?? this.x,
@@ -366,6 +316,9 @@ class ElementBase {
         cast: cast ?? this.cast,
         dock: dock ?? this.dock,
         dockOut: dockOut ?? this.dockOut,
+        play: play ?? this.play,
+        spot: clearSpot ? null : (spot ?? this.spot),
+        motion: motion ?? this.motion,
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -373,37 +326,35 @@ class ElementBase {
     return ElementBase(
       id: jsonId(json["id"], newElementId()),
       name: jsonLabel(json["name"], defaultName),
-      x: _d(json["x"], 0).clamp(-_far, _far),
-      y: _d(json["y"], 0).clamp(-_far, _far),
-      width: _d(json["w"], 200).clamp(0.0, _far),
-      height: _d(json["h"], 100).clamp(0.0, _far),
-      rotation: _d(json["rot"], 0),
-      skewX: _d(json["skx"], 0).clamp(-maxSkew, maxSkew),
-      skewY: _d(json["sky"], 0).clamp(-maxSkew, maxSkew),
-      opacity: _d(json["opacity"], 1).clamp(0.0, 1.0),
-      blend: LayerBlend.fromName(
-          json["blend"] is String ? json["blend"] as String : null),
-      visible: _b(json["visible"], true),
-      locked: _b(json["locked"], false),
+      x: jsonDouble(json["x"], 0).clamp(-_far, _far),
+      y: jsonDouble(json["y"], 0).clamp(-_far, _far),
+      width: jsonDouble(json["w"], 200).clamp(0.0, _far),
+      height: jsonDouble(json["h"], 100).clamp(0.0, _far),
+      rotation: jsonDouble(json["rot"], 0),
+      skewX: jsonDouble(json["skx"], 0).clamp(-maxSkew, maxSkew),
+      skewY: jsonDouble(json["sky"], 0).clamp(-maxSkew, maxSkew),
+      opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
+      blend: LayerBlend.fromName(jsonStr(json["blend"])),
+      visible: jsonBool(json["visible"], true),
+      locked: jsonBool(json["locked"], false),
       rowColour: json["rowColour"] is int ? json["rowColour"] as int : null,
-      lockAspect: _b(json["aspect"], false),
-      anchorX: _d(json["ax"], 0.5),
-      anchorY: _d(json["ay"], 0.5),
-      anchorLocked: _b(json["anchorLocked"], false),
+      lockAspect: jsonBool(json["aspect"], false),
+      anchorX: jsonDouble(json["ax"], 0.5),
+      anchorY: jsonDouble(json["ay"], 0.5),
+      anchorLocked: jsonBool(json["anchorLocked"], false),
       track: trackJson is Map<String, dynamic>
           ? ElementTrack.fromJson(trackJson)
           : null,
-      typeScale: _d(json["typeScale"], 1),
-      depth: _d(json["depth"], 0).clamp(-1.0, 1.0).toDouble(),
-      ownText: _b(json["ownText"], false),
-      ownDesign: _b(json["ownDesign"], false),
-      shared: json["shared"] is Map<String, dynamic>
-          ? json["shared"] as Map<String, dynamic>
-          : null,
-      cue: _s(json["cue"], ""),
-      cast: _s(json["cast"], ""),
-      dock: _cut(_s(json["dock"], ""), maxIdLength * 2 + 1),
-      dockOut: _b(json["dockOut"], false),
+      typeScale: jsonDouble(json["typeScale"], 1),
+      depth: jsonDouble(json["depth"], 0).clamp(-1.0, 1.0).toDouble(),
+      ownText: jsonBool(json["ownText"], false),
+      ownDesign: jsonBool(json["ownDesign"], false),
+      shared: jsonMap(json["shared"]),
+      cue: jsonId(json["cue"], ""),
+      cast: jsonId(json["cast"], ""),
+      // Two ids and the colon between them.
+      dock: jsonString(json["dock"], "", most: maxIdLength * 2 + 1),
+      dockOut: jsonBool(json["dockOut"], false),
       play: PlaySpec.fromJson(json["play"]),
       spot: StageSpot.fromJson(json["spot"]),
       motion: ElementMotion.fromJson(json["motion"]),
@@ -577,23 +528,17 @@ class ElementLayout {
       };
 
   factory ElementLayout.fromJson(Map<String, dynamic> json) => ElementLayout(
-        x: _d(json["x"], 0).clamp(-_far, _far),
-        y: _d(json["y"], 0).clamp(-_far, _far),
-        width: _d(json["w"], 200).clamp(0.0, _far),
-        height: _d(json["h"], 100).clamp(0.0, _far),
-        visible: _b(json["visible"], true),
-        typeScale: _d(json["typeScale"], 1),
+        x: jsonDouble(json["x"], 0).clamp(-_far, _far),
+        y: jsonDouble(json["y"], 0).clamp(-_far, _far),
+        width: jsonDouble(json["w"], 200).clamp(0.0, _far),
+        height: jsonDouble(json["h"], 100).clamp(0.0, _far),
+        visible: jsonBool(json["visible"], true),
+        typeScale: jsonDouble(json["typeScale"], 1),
         text: jsonStr(json["text"]),
-        ownText: _b(json["ownText"], false),
-        own: json["own"] is Map<String, dynamic>
-            ? json["own"] as Map<String, dynamic>
-            : null,
-        framing: json["framing"] is Map<String, dynamic>
-            ? json["framing"] as Map<String, dynamic>
-            : null,
-        crop: json["crop"] is Map<String, dynamic>
-            ? json["crop"] as Map<String, dynamic>
-            : null,
+        ownText: jsonBool(json["ownText"], false),
+        own: jsonMap(json["own"]),
+        framing: jsonMap(json["framing"]),
+        crop: jsonMap(json["crop"]),
       );
 
   @override
@@ -620,11 +565,6 @@ class ElementLayout {
       identical(a, b) ||
       (a != null && b != null && jsonEncode(a) == jsonEncode(b));
 }
-
-/// jsonSpec reads a nested value object (TextSpec, BoxSpec...) with [parse],
-/// or [fallback] when the field is missing or not a map.
-T jsonSpec<T>(dynamic v, T Function(Map<String, dynamic>) parse, T fallback) =>
-    v is Map<String, dynamic> ? parse(v) : fallback;
 
 /// CanvasElement is one thing on the canvas. Immutable: see the file header.
 abstract class CanvasElement {
@@ -653,6 +593,7 @@ abstract class CanvasElement {
   /// turned, then slanted.
   BoxFrame frameAt(int frame) =>
       BoxFrame(rotationAt(frame), base.skewX, base.skewY);
+
   double get opacity => base.opacity;
   bool get visible => base.visible;
   bool get locked => base.locked;
@@ -771,7 +712,8 @@ abstract class CanvasElement {
   bool get scalesInside => false;
 
   /// withBase is [ElementBase.copyWith] through [rebase], for one-line
-  /// property changes.
+  /// property changes. It takes everything copyWith does but the id, which
+  /// [withId] changes.
   CanvasElement withBase({
     String? name,
     double? x,
@@ -785,6 +727,8 @@ abstract class CanvasElement {
     LayerBlend? blend,
     bool? visible,
     bool? locked,
+    int? rowColour,
+    bool clearRowColour = false,
     bool? lockAspect,
     double? anchorX,
     double? anchorY,
@@ -799,18 +743,15 @@ abstract class CanvasElement {
     Map<String, dynamic>? shared,
     bool clearShared = false,
     String? cue,
+    String? cast,
+    String? dock,
+    bool? dockOut,
+    PlaySpec? play,
     StageSpot? spot,
     bool clearSpot = false,
     ElementMotion? motion,
-    String? dock,
-    bool? dockOut,
   }) =>
       rebase(base.copyWith(
-        dock: dock,
-        dockOut: dockOut,
-        spot: spot,
-        clearSpot: clearSpot,
-        motion: motion,
         name: name,
         x: x,
         y: y,
@@ -823,6 +764,8 @@ abstract class CanvasElement {
         blend: blend,
         visible: visible,
         locked: locked,
+        rowColour: rowColour,
+        clearRowColour: clearRowColour,
         lockAspect: lockAspect,
         anchorX: anchorX,
         anchorY: anchorY,
@@ -837,6 +780,13 @@ abstract class CanvasElement {
         shared: shared,
         clearShared: clearShared,
         cue: cue,
+        cast: cast,
+        dock: dock,
+        dockOut: dockOut,
+        play: play,
+        spot: spot,
+        clearSpot: clearSpot,
+        motion: motion,
       ));
 
   /// withId is a copy under a new id, for duplicating.

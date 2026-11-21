@@ -1,13 +1,12 @@
-import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/element_reading.dart';
 import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 
-// element_preset.dart is a design somebody wants again: an element's own JSON
-// with a name on it, so a new setting needs nothing here. Choosing one puts
-// an ordinary, fully editable element on the canvas.
-
+/// ElementPreset is a design somebody wants again: an element's own JSON
+/// with a name on it, so a new setting needs nothing here. Choosing one puts
+/// an ordinary, fully editable element on the canvas.
 class ElementPreset {
   /// id is how the preset is addressed on disk and in the panel: a name
   /// chosen in code for built-in ones, one from the clock for saved ones.
@@ -70,13 +69,8 @@ class ElementPreset {
       ElementPreset(
         id: jsonString(json["id"], ""),
         name: jsonString(json["name"], "Preset"),
-        kind: ElementKind.values.firstWhere(
-          (k) => k.name == json["kind"],
-          orElse: () => ElementKind.shape,
-        ),
-        element: json["element"] is Map<String, dynamic>
-            ? json["element"] as Map<String, dynamic>
-            : const {},
+        kind: ElementKind.fromName(json["kind"]) ?? ElementKind.shape,
+        element: jsonMap(json["element"]) ?? const {},
         builtIn: builtIn,
         madeOn: sizeFromJson(json["madeOn"]),
       );

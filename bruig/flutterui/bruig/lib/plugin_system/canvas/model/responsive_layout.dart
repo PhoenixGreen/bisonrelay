@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 
 // responsive_layout.dart is one design laid out for several page shapes
 // (4:5, 16:9...): each element has a place and size per shape (see
@@ -41,11 +42,8 @@ String shapeShort(String key) {
 /// canvasScale is how much a design made for one page is sized by for
 /// another: the smaller of the two ratios. For one thing dropped on a page;
 /// seeding a whole shape uses [seedFor], which measures the design.
-double canvasScale(CanvasSize from, CanvasSize to) {
-  if (from.width <= 0 || from.height <= 0) return 1;
-  var by = math.min(to.width / from.width, to.height / from.height);
-  return (by - 1).abs() < 0.001 ? 1 : by;
-}
+double canvasScale(CanvasSize from, CanvasSize to) =>
+    presetScale(from.size, to.size);
 
 /// ShapeSeed is how a design is placed on a shape nobody has laid it out on.
 class ShapeSeed {

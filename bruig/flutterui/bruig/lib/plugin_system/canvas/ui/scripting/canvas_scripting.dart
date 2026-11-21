@@ -130,8 +130,7 @@ class CanvasScripting {
             {"kind": k.name, "label": k.label}
       ];
 
-  static ElementKind? kindNamed(String name) =>
-      ElementKind.values.where((k) => k.name == name).firstOrNull;
+  static ElementKind? kindNamed(String name) => ElementKind.fromName(name);
 
   // ------------------------------------------------------------------------
   // Elements
@@ -147,14 +146,8 @@ class CanvasScripting {
   }
 
   /// elementJson is element [id] as saved, from whichever scene holds it.
-  Map<String, dynamic>? elementJson(String id) {
-    for (var s in _doc.allScenes) {
-      for (var e in s.elements) {
-        if (e.id == id) return e.toJson();
-      }
-    }
-    return null;
-  }
+  Map<String, dynamic>? elementJson(String id) =>
+      _doc.elementInAnyScene(id)?.toJson();
 
   /// newElementJson is a fresh [kind] as the Add panel makes it, centred on
   /// the canvas, ready to be changed before [addElementJson].
@@ -556,10 +549,7 @@ class CanvasScripting {
   /// imageLayers are picture [id]'s layers, top first: each one's id, kind,
   /// and name as a step, and whether an action would keep it.
   Map<String, Object?>? imageLayers(String id) {
-    var e = _doc.allScenes
-        .expand((s) => s.elements)
-        .where((x) => x.id == id)
-        .firstOrNull;
+    var e = _doc.elementInAnyScene(id);
     if (e is! ImageElement) return null;
     return {
       "picture": e.assetId,
@@ -626,10 +616,7 @@ class CanvasScripting {
   Future<({String? action, String? problem})> saveImageAction(
       String id, String name,
       {List<String>? layers}) async {
-    var e = _doc.allScenes
-        .expand((s) => s.elements)
-        .where((x) => x.id == id)
-        .firstOrNull;
+    var e = _doc.elementInAnyScene(id);
     if (e is! ImageElement) {
       return (action: null, problem: "Element $id is not a picture.");
     }

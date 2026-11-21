@@ -192,7 +192,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         out.add(_scene(theme, i, scenes[i], scenes));
         continue;
       }
-      var (left, right) = pair;
+      var (:left, :right) = pair;
       done.addAll([
         if (left != null) left,
         if (right != null) right,

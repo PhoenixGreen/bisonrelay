@@ -422,7 +422,7 @@ class TextElement extends CanvasElement {
 
   factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       TextElement(b,
-          text: jsonText(json["text"], "Text"),
+          text: jsonString(json["text"], "Text"),
           textSpec: jsonSpec(
               json["textSpec"], TextSpec.fromJson, const TextSpec()),
           box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec()),

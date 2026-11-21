@@ -47,7 +47,9 @@ CanvasElement centredOn(CanvasElement element, Size on) => element.withBase(
       y: (on.height - element.height) / 2,
     );
 
-Size? sizeFromJson(dynamic json) {
+/// sizeFromJson is the page a preset was made on, or null where it was
+/// saved without one.
+Size? sizeFromJson(Object? json) {
   if (json is! Map) return null;
   var w = json["w"], h = json["h"];
   if (w is! num || h is! num || w <= 0 || h <= 0) return null;

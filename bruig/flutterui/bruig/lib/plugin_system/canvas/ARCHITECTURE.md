@@ -56,7 +56,10 @@ reason, as debts to pay off; nothing may be added to the list without one.
 
 ## The document
 
-`CanvasDocument` (`model/canvas_document.dart`) is immutable. It holds:
+`CanvasDocument` (`model/canvas_document.dart`) is immutable. Beside it are
+its scene (`canvas_scene.dart`, with `scene_transition.dart` and
+`scene_camera.dart`), its background (`canvas_background.dart`) and what
+every element shares (`canvas_element.dart`). It holds:
 
 - its **scenes** (`CanvasScene`), each with elements, a background, a length
   and a transition, and an optional **master** scene whose elements show
@@ -87,6 +90,24 @@ cells. Strings are cut as they are read: any to `maxTextLength`, an id
 1,000; lists to a count of their own (a chart's points, a tile map's
 layers). Add a limit like these to any new field a received file could make
 huge, and read it through these helpers, never with a cast that throws.
+
+The readers and the limits on one field are in `model/json_read.dart`
+(`jsonString`, `jsonList`, `maxTextLength`...); the limits on a whole canvas
+(scenes, elements, frames) are in `model/canvas_limits.dart`.
+
+Three things about the saved form that are easy to get wrong:
+
+- **A default is also what a file means by leaving the field out.** `toJson`
+  leaves out a field that holds its default, and `fromJson` puts the default
+  back. So changing a default changes every canvas already saved with it.
+- **A document of one scene is saved without a scene list.** Its elements,
+  length and actions go at the top level and its name, hold and transition
+  under `"scene"`. Which settings that form can carry is worked out from
+  what the scene writes (`CanvasDocument._plain`), so a setting added to
+  `CanvasScene` makes a scene list by itself; `test/canvas_document_test.dart`
+  holds every scene setting to coming back.
+- **An element is read by kind in one place**, `elementFromJson`
+  (`model/element_reading.dart`). A new kind is added to its switch.
 
 `test/canvas_element_reading_test.dart` holds every kind to this, from the
 samples in `test/support/element_samples.dart` (every kind, each synth
