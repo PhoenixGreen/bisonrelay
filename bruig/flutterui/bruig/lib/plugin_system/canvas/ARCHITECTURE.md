@@ -137,6 +137,17 @@ keeps what several parts share, its statics and its overrides. A change goes
 through `apply` or one of the helpers built on it (`replaceElement`,
 `addElement`...), which records undo and notifies.
 
+Two rules for whatever is added to it:
+
+- **State about the open canvas is forgotten in `_forgetDocument`**
+  (`controller/saving.dart`). The session outlives the canvas, so a field
+  that names one of its elements, scenes, sheets or devices is met by the
+  next canvas unless it is cleared there.
+- **Working out a new document is the model's job.** A function of the
+  document (`castAdded`, `layoutsSynced`) lives in `model/`, where the quick
+  model tests reach it, and the controller's part calls it and `apply`.
+  `controller/cast.dart` is the pattern.
+
 **Big widgets in parts.** A `State` class that outgrew one file keeps its
 fields, lifecycle and `build` in its own file and puts its behaviour in
 `part` files beside it, each an `extension` on the class: the stage, the
