@@ -16,7 +16,7 @@
  "canvas_audio_element_test.dart": 2.5,
  "canvas_audio_export_test.dart": 1.8,
  "canvas_audio_runtime_test.dart": 0.0,
- "canvas_automation_test.dart": 1.8,
+ "canvas_scripting_test.dart": 1.8,
  "canvas_background_blockchain_test.dart": 1.7,
  "canvas_background_cache_test.dart": 5.5,
  "canvas_background_element_cache_test.dart": 0.7,

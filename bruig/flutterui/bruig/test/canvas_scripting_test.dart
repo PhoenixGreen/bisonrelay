@@ -31,7 +31,7 @@ import 'package:provider/provider.dart';
 
 import 'support/canvas_audio_fake.dart';
 
-// canvas_automation_test.dart is automation: a channel's settings moved
+// canvas_scripting_test.dart is automation: a channel's settings moved
 // along the timeline by lanes of points -- read in straight lines, heard
 // while playing without the strip starting again, held by a hand until it
 // is handed back, written by a hand while armed, and in the export.

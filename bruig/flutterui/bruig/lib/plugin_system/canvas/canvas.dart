@@ -31,8 +31,8 @@ export 'package:bruig/plugin_system/canvas/media/midi_input.dart'
 // change the open canvas as JSON (an assistant, a script): see each file.
 export 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart'
     show CanvasSidebarExtra, CanvasSidebarExtras;
-export 'package:bruig/plugin_system/canvas/ui/automation/canvas_automation.dart'
-    show CanvasAutomation;
+export 'package:bruig/plugin_system/canvas/ui/scripting/canvas_scripting.dart'
+    show CanvasScripting;
 export 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
     show CanvasDocument;
 

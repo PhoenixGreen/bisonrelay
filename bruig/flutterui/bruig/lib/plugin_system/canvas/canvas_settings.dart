@@ -45,7 +45,7 @@ class CanvasSettingsSection extends StatelessWidget {
           ),
         ),
         Row(children: [
-          const Expanded(child: Txt.M("Let a canvas fetch data")),
+          const Expanded(child: Txt.M(CanvasPreferences.allowFetchingLabel)),
           Switch(
             value: prefs.allowFetching,
             onChanged: (v) => prefs.allowFetching = v,
@@ -54,13 +54,15 @@ class CanvasSettingsSection extends StatelessWidget {
         const Padding(
           padding: EdgeInsets.only(right: 60, bottom: 8),
           child: Txt.S(
-            "Off by default. A table or a chart can pull its numbers from a "
-            "web address — a league table, a price, a count — but nothing "
-            "else in this app connects out on its own, and a fetch from a "
-            "canvas does not go through the proxy set in Settings > Network. "
-            "The address you fetch from would see your connection. Nothing "
-            "is ever fetched without you pressing Refresh, and a canvas can "
-            "read the same data from a file with this switched off.",
+            "Off by default. With it on, a canvas can fetch what you ask it "
+            "for: a table's or a chart's numbers from a web address — a "
+            "league table, a price, a count — and pictures, sounds, art "
+            "packs and voices from their libraries. A fetch does not go "
+            "through the proxy set in Settings > Network, so the address "
+            "you fetch from sees your connection; while a proxy is set, "
+            "nothing is fetched at all. Nothing is ever fetched without you "
+            "asking for it, and a canvas can read its data from a file with "
+            "this switched off.",
             color: TextColor.onSurfaceVariant,
           ),
         ),

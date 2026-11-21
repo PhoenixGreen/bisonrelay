@@ -6,7 +6,7 @@ import 'package:bruig/plugin_system/creative_ai/engine/json_edit.dart';
 import 'package:bruig/plugin_system/creative_ai/mcp/mcp_server.dart';
 
 // canvas_ai_tools.dart is the Canvas tools Claude is given: a small set over
-// CanvasAutomation, which reads and changes the open canvas as JSON. A few
+// CanvasScripting, which reads and changes the open canvas as JSON. A few
 // general tools rather than one per control: the controller has hundreds of
 // methods, and the saved format already says everything a canvas is.
 //
@@ -56,13 +56,13 @@ const _editProps = {
 
 List<McpTool> canvasAiTools(CreativeAi ai) {
   bool on() => ai.canvasOn;
-  CanvasAutomation auto() => ai.automation;
+  CanvasScripting script() => ai.scripting;
 
   /// changing runs [body] as one step to undo, after keeping the canvas
   /// from before Claude started.
   Future<McpResult> changing(
-      Future<McpResult> Function(CanvasAutomation a) body) async {
-    var a = auto();
+      Future<McpResult> Function(CanvasScripting a) body) async {
+    var a = script();
     ai.beforeCanvasChange();
     a.begin();
     try {
@@ -98,7 +98,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
           "here.",
       _object({}),
       (args) async =>
-          McpResult.json(auto().overview(), summary: "Looked at the canvas"),
+          McpResult.json(script().overview(), summary: "Looked at the canvas"),
     ),
     tool(
       "canvas_describe",
@@ -124,7 +124,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
         },
       }),
       (args) async {
-        var a = auto();
+        var a = script();
         Object? keys;
         Map<String, Object?> out;
         if (args["document"] == true) {
@@ -134,7 +134,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
           var d = a.describeKind(args["kind"] as String);
           if (d == null) {
             return McpResult.error("There is no kind ${args["kind"]}. Kinds: "
-                "${CanvasAutomation.kinds().map((k) => k["kind"]).join(", ")}.");
+                "${CanvasScripting.kinds().map((k) => k["kind"]).join(", ")}.");
           }
           keys = d["keys"];
           out = {
@@ -144,7 +144,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
           };
         } else {
           return McpResult.json({
-            "kinds": CanvasAutomation.kinds(),
+            "kinds": CanvasScripting.kinds(),
             "document": "Call with document: true to see the document's "
                 "parts (masterMix, audio, session, sheets, size...).",
           }, summary: "Listed the kinds of element");
@@ -170,7 +170,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
         "target"
       ]),
       (args) async {
-        var a = auto();
+        var a = script();
         var target = "${args["target"] ?? ""}";
         var path = args["path"] is String ? args["path"] as String : "";
         Object? json;
@@ -234,9 +234,9 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
         ];
         if (wanted.isEmpty) return McpResult.error("Give a kind, or elements.");
         for (var (kind, _) in wanted) {
-          if (auto().newElementJson(kind) == null) {
+          if (script().newElementJson(kind) == null) {
             return McpResult.error("There is no kind $kind. Kinds: "
-                "${CanvasAutomation.kinds().map((k) => k["kind"]).join(", ")}.");
+                "${CanvasScripting.kinds().map((k) => k["kind"]).join(", ")}.");
           }
         }
         return changing((a) async {
@@ -246,7 +246,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
             var merged = props is Map ? mergePatch(json, props) : json;
             var id = a.addElementJson(merged as Map<String, dynamic>);
             var e = a.controller.document.elementById(id);
-            if (e != null) added.add(CanvasAutomation.summary(e));
+            if (e != null) added.add(CanvasScripting.summary(e));
           }
           if (args["select"] == true) {
             a.select([for (var e in added) "${e["id"]}"]);
@@ -420,7 +420,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
                 summary: "Added a scene");
           });
         }
-        var a = auto();
+        var a = script();
         a.goTo(scene: index, frame: frame);
         return McpResult.json(a.overview(),
             summary:
@@ -445,7 +445,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
           if (args["ids"] case List list)
             for (var i in list) "$i"
         ];
-        auto().select(ids);
+        script().select(ids);
         return McpResult.text("Selected.",
             summary: ids.isEmpty
                 ? "Cleared the selection"
@@ -476,7 +476,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
         },
       }),
       (args) async {
-        var a = auto();
+        var a = script();
         var scene = (args["scene"] as num?)?.toInt();
         var frames = <int?>[
           if (args["frames"] case List list)
@@ -507,7 +507,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
           "channel's mixer settings, effects chain, automation and Speech "
           "device are in its first element's clip > mix.",
       _object({}),
-      (args) async => McpResult.json(auto().channels(),
+      (args) async => McpResult.json(script().channels(),
           summary: "Listed the sound channels"),
     ),
     tool(
@@ -521,7 +521,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
         "channel"
       ]),
       (args) async {
-        var problem = await auto().speak("${args["channel"]}");
+        var problem = await script().speak("${args["channel"]}");
         return problem != null
             ? McpResult.error(problem)
             : McpResult.text("Speaking: the takes will appear on the channel.",
@@ -535,7 +535,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
           "integrated loudness (LUFS), loudness range and true peak (dBTP).",
       _object({}),
       (args) async {
-        var m = await auto().measureAudio();
+        var m = await script().measureAudio();
         return m == null
             ? McpResult.error("Nothing to measure (no sound), or ffmpeg is "
                 "not installed.")
@@ -551,7 +551,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
         "redo": {"type": "boolean"},
       }),
       (args) async {
-        var a = auto();
+        var a = script();
         var steps = ((args["steps"] as num?)?.toInt() ?? 1).clamp(1, 50);
         for (var i = 0; i < steps; i++) {
           args["redo"] == true ? a.redo() : a.undo();
@@ -567,7 +567,7 @@ List<McpTool> canvasAiTools(CreativeAi ai) {
 String _count(int n, String what) => "$n $what${n == 1 ? "" : "s"}";
 
 /// _sceneIndex reads `scene:<n>` (or "scene", the one being edited).
-int? _sceneIndex(CanvasAutomation a, String target) {
+int? _sceneIndex(CanvasScripting a, String target) {
   if (target == "scene") return a.controller.document.at;
   if (!target.startsWith("scene:")) return null;
   return int.tryParse(target.substring(6));
@@ -575,11 +575,11 @@ int? _sceneIndex(CanvasAutomation a, String target) {
 
 /// _briefDocument is the document with its elements and scenes in brief.
 Map<String, dynamic> _briefDocument(
-    CanvasAutomation a, Map<String, dynamic> full) {
+    CanvasScripting a, Map<String, dynamic> full) {
   var d = a.controller.document;
   return {
     ...full,
-    "elements": [for (var e in d.elements) CanvasAutomation.summary(e)],
+    "elements": [for (var e in d.elements) CanvasScripting.summary(e)],
     if (full.containsKey("scenes"))
       "scenes": [
         for (var i = 0; i < d.allScenes.length; i++)

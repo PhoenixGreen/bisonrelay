@@ -13,8 +13,8 @@ List<McpTool> imageAiTools(CreativeAi ai) {
   bool on() => ai.canvasOn;
 
   Future<McpResult> changing(
-      Future<McpResult> Function(CanvasAutomation a) body) async {
-    var a = ai.automation;
+      Future<McpResult> Function(CanvasScripting a) body) async {
+    var a = ai.scripting;
     ai.beforeCanvasChange();
     a.begin();
     try {
@@ -60,7 +60,7 @@ List<McpTool> imageAiTools(CreativeAi ai) {
           "setting's key, range and default), textures, effects, blends and "
           "film colour tables. Read it before writing steps.",
       {},
-      (args) async => McpResult.json(CanvasAutomation.imageReference(),
+      (args) async => McpResult.json(CanvasScripting.imageReference(),
           summary: "Read what a picture's steps can be"),
     ),
     tool(
@@ -70,7 +70,7 @@ List<McpTool> imageAiTools(CreativeAi ai) {
           "screens, drawn and printed looks) and the person's own -- each "
           "with its steps.",
       {},
-      (args) async => McpResult.json(await CanvasAutomation.imageActions(),
+      (args) async => McpResult.json(await CanvasScripting.imageActions(),
           summary: "Listed the picture actions"),
     ),
     tool(
@@ -82,7 +82,7 @@ List<McpTool> imageAiTools(CreativeAi ai) {
         "id": {"type": "string", "description": "The picture element's id."},
       },
       (args) async {
-        var layers = ai.automation.imageLayers("${args["id"]}");
+        var layers = ai.scripting.imageLayers("${args["id"]}");
         return layers == null
             ? McpResult.error("Element ${args["id"]} is not a picture.")
             : McpResult.json(layers, summary: "Read a picture's layers");
@@ -130,7 +130,7 @@ List<McpTool> imageAiTools(CreativeAi ai) {
         "replace": replace,
       },
       (args) => changing((a) async {
-        var (made, problems, problem) = a.addImageSteps(
+        var (:made, skipped: problems, :problem) = a.addImageSteps(
             "${args["id"]}", args["steps"],
             replace: args["replace"] == true);
         if (problem != null) {
@@ -161,7 +161,7 @@ List<McpTool> imageAiTools(CreativeAi ai) {
         },
       },
       (args) async {
-        var (id, problem) = await ai.automation.saveImageAction(
+        var (action: id, :problem) = await ai.scripting.saveImageAction(
             "${args["id"]}", "${args["name"] ?? ""}",
             layers: args["layers"] is List
                 ? [for (var l in args["layers"] as List) "$l"]

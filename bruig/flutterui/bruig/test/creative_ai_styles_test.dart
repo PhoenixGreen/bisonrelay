@@ -34,7 +34,7 @@ const _headline = 0xFFE8590C, _paper = 0xFF101820;
 /// seconds long, the shape arriving with fadeUp.
 CanvasController _styled() {
   var c = CanvasController(emptyCanvas());
-  var a = CanvasAutomation(c);
+  var a = CanvasScripting(c);
   Map<String, dynamic> made(String kind, Map<String, dynamic> props) =>
       Map<String, dynamic>.from(a.newElementJson(kind)!)..addAll(props);
   a.addElementJson(made("text", {
@@ -60,7 +60,7 @@ CanvasController _styled() {
 }
 
 Map<String, Object?> _facts(CanvasController c) =>
-    styleFactsOf(CanvasAutomation(c).documentJson(),
+    styleFactsOf(CanvasScripting(c).documentJson(),
         width: c.document.size.width.toDouble(),
         height: c.document.size.height.toDouble());
 

@@ -34,8 +34,14 @@ import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 
-// canvas_automation.dart is the open canvas read and changed as JSON, for a
+// canvas_scripting.dart is the open canvas read and changed as JSON, for a
 // program rather than a pointer: an assistant connected over MCP, a script.
+//
+// A method that can fail says so in words meant for whoever is driving it.
+// One that only does something returns the problem, or null when it worked.
+// One that also makes something returns a record with what it made and a
+// `problem` field: null when it worked, and set beside a result when the
+// thing was made but not everything asked for could be done.
 //
 // It is Canvas's own answer to "what is on the canvas and how do I change
 // it", so whatever drives it needs to know no class of ours. Everything goes
@@ -52,10 +58,10 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 // asks for, so the list of settings an element understands is the code's own
 // and can never fall behind it.
 
-/// CanvasAutomation works on [controller]'s document.
-class CanvasAutomation {
+/// CanvasScripting reads and changes [controller]'s document as JSON.
+class CanvasScripting {
   final CanvasController controller;
-  CanvasAutomation(this.controller);
+  CanvasScripting(this.controller);
 
   CanvasDocument get _doc => controller.document;
 
@@ -392,46 +398,48 @@ class CanvasAutomation {
 
   /// useAsset puts library file [id] on the scene being edited, as the
   /// Assets panel does when one is clicked (a MIDI file becomes a MIDI
-  /// channel). Returns the new element's id, or an error.
-  Future<(String?, String?)> useAsset(String id) async {
+  /// channel, which has no element). Returns the new element's id.
+  Future<({String? element, String? problem})> useAsset(String id) async {
     var asset =
         (await CanvasLibrary.list()).where((a) => a.id == id).firstOrNull;
-    if (asset == null) return (null, "There is no file $id in the library.");
+    if (asset == null) {
+      return (element: null, problem: "There is no file $id in the library.");
+    }
     if (isMidiId(asset.id)) {
       await controller.addMidiChannelFrom(asset.source);
-      return (null, null);
+      return (element: null, problem: null);
     }
     var element = elementForAsset(asset, _doc);
     controller.addElement(element, select: false);
-    return (element.id, null);
+    return (element: element.id, problem: null);
   }
 
   /// addSvg keeps [svg] in the library as a drawing called [name] and,
   /// when [place], puts it on the scene being edited as a Vector element.
   /// Refused if it is not an SVG, is too large, or carries a script or
-  /// outside content. Returns (library id, element id), or an error.
-  Future<(String?, String?, String?)> addSvg(String name, String svg,
+  /// outside content. Returns its id in the library and the element's.
+  Future<({String? asset, String? element, String? problem})> addSvg(
+      String name, String svg,
       {bool place = true}) async {
+    ({String? asset, String? element, String? problem}) refused(String why) =>
+        (asset: null, element: null, problem: why);
     var text = svg.trim();
     var lower = text.toLowerCase();
-    if (!lower.contains("<svg")) return (null, null, "That is not an SVG.");
+    if (!lower.contains("<svg")) return refused("That is not an SVG.");
     if (lower.contains("<script") ||
         lower.contains("<foreignobject") ||
         RegExp(r"""(href|src)\s*=\s*["']\s*(https?:|file:|//)""")
             .hasMatch(lower)) {
-      return (
-        null,
-        null,
-        "An SVG drawn for a canvas has no scripts, embedded pages or links "
-            "to outside files: draw everything in it."
-      );
+      return refused(
+          "An SVG drawn for a canvas has no scripts, embedded pages or links "
+          "to outside files: draw everything in it.");
     }
     var id = await CanvasMedia.saveVector(utf8.encode(text));
-    if (id == null) return (null, null, "That drawing is too large.");
+    if (id == null) return refused("That drawing is too large.");
     await CanvasLibrary.addVector(id, name.trim().isEmpty ? "Drawing" : name);
-    if (!place) return (id, null, null);
-    var (element, problem) = await useAsset(id);
-    return (id, element, problem);
+    if (!place) return (asset: id, element: null, problem: null);
+    var placed = await useAsset(id);
+    return (asset: id, element: placed.element, problem: placed.problem);
   }
 
   // ------------------------------------------------------------------------
@@ -465,15 +473,17 @@ class CanvasAutomation {
   /// drawCharacter draws a character in [style] -- [seed]'s, or a fresh
   /// one's, with [parts] and [colours] as given (a part null for none) --
   /// keeps it with the drawings, and puts it on the scene being edited.
-  /// Returns (element id, problem): a problem with an id is a part or
-  /// colour left as it was.
-  Future<(String?, String?)> drawCharacter(String style,
+  /// Returns the element's id; a problem beside an id is a part or colour
+  /// left as it was.
+  Future<({String? element, String? problem})> drawCharacter(String style,
       {Map<String, Object?> parts = const {},
       Map<String, Object?> colours = const {},
       int? seed,
       String name = ""}) async {
     var s = (await DrawnStyles.load())[style];
-    if (s == null) return (null, "There is no style $style.");
+    if (s == null) {
+      return (element: null, problem: "There is no style $style.");
+    }
     var character =
         randomCharacter(s, math.Random(seed ?? DateTime.now().microsecond));
     var left = <String>[];
@@ -500,10 +510,13 @@ class CanvasAutomation {
       }
     }
     var id = await keepDrawnCharacter(s, character, name);
-    if (id == null) return (null, "The character could not be kept.");
-    var (element, problem) = await useAsset(id);
-    var said = [if (problem != null) problem, ...left].join("; ");
-    return (element, said.isEmpty ? null : said);
+    if (id == null) {
+      return (element: null, problem: "The character could not be kept.");
+    }
+    var placed = await useAsset(id);
+    var said =
+        [if (placed.problem != null) placed.problem!, ...left].join("; ");
+    return (element: placed.element, problem: said.isEmpty ? null : said);
   }
 
   // ------------------------------------------------------------------------
@@ -529,13 +542,15 @@ class CanvasAutomation {
   static Map<String, Object?> imageReference() => image_steps.imageReference();
 
   /// _picture is image element [id], brought to its scene, or why not.
-  (ImageElement?, String?) _picture(String id) {
+  ({ImageElement? picture, String? problem}) _picture(String id) {
     var at = sceneOf(id);
-    if (at < 0) return (null, "There is no element $id.");
+    if (at < 0) return (picture: null, problem: "There is no element $id.");
     if (at != _doc.at) controller.goToScene(at);
     var e = _doc.elementById(id);
-    if (e is! ImageElement) return (null, "Element $id is not a picture.");
-    return (e, null);
+    if (e is! ImageElement) {
+      return (picture: null, problem: "Element $id is not a picture.");
+    }
+    return (picture: e, problem: null);
   }
 
   /// imageLayers are picture [id]'s layers, top first: each one's id, kind,
@@ -574,45 +589,63 @@ class CanvasAutomation {
         .where((p) => p.id == action || p.name == action)
         .firstOrNull;
     if (p == null) return "There is no action $action.";
-    var (e, problem) = _picture(id);
-    if (e == null) return problem;
-    controller.replaceElement(withLookApplied(e, p.data, replace: replace));
+    var (:picture, :problem) = _picture(id);
+    if (picture == null) return problem;
+    controller
+        .replaceElement(withLookApplied(picture, p.data, replace: replace));
     return null;
   }
 
   /// addImageSteps does [steps] (see imageStepsFrom) to picture [id], added
   /// to what it has or [replace]ing its look. Returns how many steps were
-  /// made and what could not be, or why nothing was.
-  (int, List<String>, String?) addImageSteps(String id, Object? steps,
+  /// made and why each of the others was skipped; the problem is why none
+  /// was made.
+  ({int made, List<String> skipped, String? problem}) addImageSteps(
+      String id, Object? steps,
       {bool replace = false}) {
     var read = imageStepsFrom(steps);
     if (read.count == 0) {
-      return (0, read.problems, "None of the steps could be made.");
+      return (
+        made: 0,
+        skipped: read.problems,
+        problem: "None of the steps could be made."
+      );
     }
-    var (e, problem) = _picture(id);
-    if (e == null) return (0, read.problems, problem);
-    controller.replaceElement(withLookApplied(e, read.data, replace: replace));
-    return (read.count, read.problems, null);
+    var (:picture, :problem) = _picture(id);
+    if (picture == null) {
+      return (made: 0, skipped: read.problems, problem: problem);
+    }
+    controller
+        .replaceElement(withLookApplied(picture, read.data, replace: replace));
+    return (made: read.count, skipped: read.problems, problem: null);
   }
 
   /// saveImageAction keeps picture [id]'s look as the action [name]: the
-  /// layers [layers] names, or every one an action keeps.
-  Future<(String?, String?)> saveImageAction(String id, String name,
+  /// layers [layers] names, or every one an action keeps. Returns the
+  /// action's id.
+  Future<({String? action, String? problem})> saveImageAction(
+      String id, String name,
       {List<String>? layers}) async {
     var e = _doc.allScenes
         .expand((s) => s.elements)
         .where((x) => x.id == id)
         .firstOrNull;
-    if (e is! ImageElement) return (null, "Element $id is not a picture.");
+    if (e is! ImageElement) {
+      return (action: null, problem: "Element $id is not a picture.");
+    }
     var data = lookData(e, only: layers?.toSet());
-    if (lookSteps(data) == 0) return (null, "That picture has no steps yet.");
+    if (lookSteps(data) == 0) {
+      return (action: null, problem: "That picture has no steps yet.");
+    }
     var store = SavedPresetStore.looks;
     await store.load();
     for (var p in store.presets.where((p) => p.name == name.trim()).toList()) {
       await store.remove(p);
     }
     var kept = await store.save(name, data);
-    return kept == null ? (null, "Could not save it.") : (kept.id, null);
+    return kept == null
+        ? (action: null, problem: "Could not save it.")
+        : (action: kept.id, problem: null);
   }
 
   // ------------------------------------------------------------------------
@@ -653,8 +686,8 @@ class CanvasAutomation {
 
   /// usePreset adds preset [id] (as [presets] names it) to the open canvas:
   /// an element on the scene being edited, or a scene's or a canvas's
-  /// scenes after it. Returns what was added, or an error.
-  Future<(String?, String?)> usePreset(String id) async {
+  /// scenes after it. Returns what was added, in words.
+  Future<({String? added, String? problem})> usePreset(String id) async {
     var page = _doc.size.size;
     var colon = id.indexOf(":");
     var kind = colon < 0 ? "" : id.substring(0, colon);
@@ -668,7 +701,7 @@ class CanvasAutomation {
         if (p == null) break;
         var e = p.buildFor(page);
         controller.addElement(e, select: false);
-        return ("element ${e.id}", null);
+        return (added: "element ${e.id}", problem: null);
       case "scene" || "canvas":
         var store = kind == "scene"
             ? SavedPresetStore.scenes
@@ -682,9 +715,12 @@ class CanvasAutomation {
         }
         if (scenes == null || scenes.isEmpty) break;
         controller.addScenes(scenes);
-        return ("${scenes.length} scene${scenes.length == 1 ? "" : "s"}", null);
+        return (
+          added: "${scenes.length} scene${scenes.length == 1 ? "" : "s"}",
+          problem: null
+        );
     }
-    return (null, "There is no preset $id: list them first.");
+    return (added: null, problem: "There is no preset $id: list them first.");
   }
 
   // ------------------------------------------------------------------------
@@ -692,8 +728,9 @@ class CanvasAutomation {
   // ------------------------------------------------------------------------
 
   /// _found are stock results by "source:id", from the last searches, so
-  /// one can be used by its id.
+  /// one can be used by its id. Only the latest [_foundKept] are kept.
   static final Map<String, StockItem> _found = {};
+  static const _foundKept = 500;
 
   /// stockSources are the stock libraries, and whether a key is given for
   /// each (one is needed; they are added in Canvas's Stock panel).
@@ -719,7 +756,13 @@ class CanvasAutomation {
         proxied: await networkIsProxied());
     if (result.problem != null) return {"problem": result.problem};
     for (var i in result.items) {
-      _found["${s.name}:${i.id}"] = i;
+      var id = "${s.name}:${i.id}";
+      // Put in again at the end, so the oldest results are the ones dropped.
+      _found.remove(id);
+      _found[id] = i;
+    }
+    while (_found.length > _foundKept) {
+      _found.remove(_found.keys.first);
     }
     return {
       "results": [
@@ -741,23 +784,29 @@ class CanvasAutomation {
 
   /// stockUse fetches result [id] (from a search) into the library, with
   /// its author and licence, and puts it on the canvas when [place].
-  /// Returns the library file, or an error.
-  Future<(Map<String, Object?>?, String?)> stockUse(String id,
+  /// Returns the library file as [assets] lists one, with the element's id
+  /// when it was placed.
+  Future<({Map<String, Object?>? asset, String? problem})> stockUse(String id,
       {bool place = true, required bool allowFetching}) async {
     var item = _found[id];
     if (item == null) {
-      return (null, "Search for it first: $id is not among the results.");
+      return (
+        asset: null,
+        problem: "Search for it first: $id is not among the results."
+      );
     }
     var (asset, problem) = await importStockItem(item,
         allowFetching: allowFetching, proxied: await networkIsProxied());
-    if (asset == null) return (null, problem ?? "It could not be added.");
+    if (asset == null) {
+      return (asset: null, problem: problem ?? "It could not be added.");
+    }
     var out = _asset(asset);
     if (place) {
-      var (element, why) = await useAsset(asset.id);
-      if (why != null) return (out, why);
-      if (element != null) out["element"] = element;
+      var placed = await useAsset(asset.id);
+      if (placed.problem != null) return (asset: out, problem: placed.problem);
+      if (placed.element != null) out["element"] = placed.element;
     }
-    return (out, null);
+    return (asset: out, problem: null);
   }
 
   // ------------------------------------------------------------------------

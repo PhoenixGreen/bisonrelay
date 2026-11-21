@@ -18,8 +18,8 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
   /// changing is [body] as one step to undo, after keeping the canvas from
   /// before Claude started (as canvas_ai_tools does).
   Future<McpResult> changing(
-      Future<McpResult> Function(CanvasAutomation a) body) async {
-    var a = ai.automation;
+      Future<McpResult> Function(CanvasScripting a) body) async {
+    var a = ai.scripting;
     ai.beforeCanvasChange();
     a.begin();
     try {
@@ -65,7 +65,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "query": {"type": "string", "description": "Part of a name."},
       },
       (args) async => McpResult.json(
-          await CanvasAutomation.assets(
+          await CanvasScripting.assets(
               kind: args["kind"] as String?, query: "${args["query"] ?? ""}"),
           summary: "Looked through the library"),
     ),
@@ -80,7 +80,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "id": {"type": "string"}
       },
       (args) async => changing((a) async {
-        var (element, problem) = await a.useAsset("${args["id"]}");
+        var (:element, :problem) = await a.useAsset("${args["id"]}");
         if (problem != null) return McpResult.error(problem);
         return McpResult.json({if (element != null) "element": element},
             summary: "Used ${args["id"]} from the library");
@@ -97,7 +97,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "query": {"type": "string", "description": "Part of a name."},
       },
       (args) async => McpResult.json(
-          await CanvasAutomation.presets(query: "${args["query"] ?? ""}"),
+          await CanvasScripting.presets(query: "${args["query"] ?? ""}"),
           summary: "Looked through the presets"),
     ),
     tool(
@@ -110,7 +110,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "id": {"type": "string"}
       },
       (args) async => changing((a) async {
-        var (added, problem) = await a.usePreset("${args["id"]}");
+        var (:added, :problem) = await a.usePreset("${args["id"]}");
         if (problem != null) return McpResult.error(problem);
         return McpResult.text("Added $added.",
             summary: "Used the preset ${args["id"]}");
@@ -125,11 +125,11 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
           " Keys are added in Canvas's Stock panel.",
       {},
       (args) async => McpResult.json({
-        "sources": await CanvasAutomation.stockSources(),
+        "sources": await CanvasScripting.stockSources(),
         "fetching": fetching()
             ? "allowed"
             : "switched off: the person turns on Settings > Plugins > "
-                "Canvas > Let a canvas fetch data",
+                "Canvas > ${CanvasPreferences.allowFetchingLabel}",
       }, summary: "Listed the stock libraries"),
     ),
     tool(
@@ -143,7 +143,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "page": {"type": "integer"},
       },
       (args) async {
-        var found = await CanvasAutomation.stockSearch(
+        var found = await CanvasScripting.stockSearch(
             "${args["source"]}", "${args["text"] ?? ""}",
             page: (args["page"] as num?)?.toInt() ?? 1,
             allowFetching: fetching());
@@ -167,7 +167,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "place": {"type": "boolean"},
       },
       (args) async => changing((a) async {
-        var (asset, problem) = await a.stockUse("${args["id"]}",
+        var (:asset, :problem) = await a.stockUse("${args["id"]}",
             place: args["place"] != false, allowFetching: fetching());
         if (asset == null) return McpResult.error(problem!);
         return McpResult.json(
@@ -184,7 +184,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
           "(Lisa Wischofsky), Pixel Art. Each with its parts (and their "
           "choices) and colours (and their palettes).",
       {},
-      (args) async => McpResult.json(await CanvasAutomation.drawnStyles(),
+      (args) async => McpResult.json(await CanvasScripting.drawnStyles(),
           summary: "Listed the drawn character styles"),
     ),
     tool(
@@ -203,7 +203,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "name": {"type": "string"},
       },
       (args) => changing((a) async {
-        var (id, problem) = await a.drawCharacter("${args["style"]}",
+        var (element: id, :problem) = await a.drawCharacter("${args["style"]}",
             parts: args["parts"] is Map
                 ? Map<String, Object?>.from(args["parts"] as Map)
                 : const {},
@@ -236,7 +236,7 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "place": {"type": "boolean"},
       },
       (args) async => changing((a) async {
-        var (id, element, problem) = await a.addSvg(
+        var (asset: id, :element, :problem) = await a.addSvg(
             "${args["name"] ?? ""}", "${args["svg"] ?? ""}",
             place: args["place"] != false);
         if (id == null) return McpResult.error(problem!);

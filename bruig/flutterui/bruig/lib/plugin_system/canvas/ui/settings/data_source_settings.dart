@@ -1098,10 +1098,10 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         ]),
         if (!allowed)
           const CanvasHint(
-              "Fetching is switched off. Turn on \"Let a canvas fetch "
-              "data\" in Settings > Plugins > Canvas — it is off because "
-              "nothing else in this app connects out on its own, and a fetch "
-              "from here would not go through the proxy in Settings."),
+              "Fetching is switched off. Turn on "
+              "\"${CanvasPreferences.allowFetchingLabel}\" in Settings > "
+              "Plugins > Canvas. It is off to begin with because a fetch "
+              "from here does not go through the proxy in Settings."),
       ],
     ];
   }

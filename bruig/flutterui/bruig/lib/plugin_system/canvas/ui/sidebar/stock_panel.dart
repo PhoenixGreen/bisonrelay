@@ -324,8 +324,8 @@ class _StockPanelState extends State<StockPanel> {
             child: const Text("Allow fetching"),
           ),
         ),
-        note("The same switch is in Settings > Plugins > Canvas, as \"Let a "
-            "canvas fetch data\"."),
+        note("The same switch is in Settings > Plugins > Canvas, as "
+            "\"${CanvasPreferences.allowFetchingLabel}\"."),
       ]);
     }
     if (_proxied == true) {

@@ -262,6 +262,10 @@ class CanvasPreferences extends ChangeNotifier {
   /// daemon, so the proxy setting (Tor, say) does not apply and the address
   /// learns who is asking. A file source does the same job offline.
   bool get allowFetching => _allowFetching.value;
+
+  /// allowFetchingLabel is what the switch is called in Settings, for the
+  /// places that send a person there to turn it on.
+  static const allowFetchingLabel = "Let a canvas fetch data";
   set allowFetching(bool value) => _change(_allowFetching, value, notify: true);
 
   /// fetchingAllowed is [allowFetching] as saved, for callers with no

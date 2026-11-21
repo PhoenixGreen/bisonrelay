@@ -87,7 +87,7 @@ void main() {
     prefs.chatModel = ClaudeModel.haiku;
     var canvasPrefs = CanvasPreferences()..enabled = true;
     var canvas = CanvasController(emptyCanvas());
-    var a = CanvasAutomation(canvas);
+    var a = CanvasScripting(canvas);
     a.addElementJson(Map<String, dynamic>.from(a.newElementJson("text")!)
       ..addAll({
         "text": "QUARTERLY REPORT",
@@ -200,7 +200,7 @@ void main() {
     for (var i = 0; i < 50 && !ai.server.running; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
-    var before = await CanvasAutomation(canvas).renderPng(frame: 0);
+    var before = await CanvasScripting(canvas).renderPng(frame: 0);
     File("${Platform.environment["CREATIVE_AI_OUT"]}/live_before.png")
         .writeAsBytesSync(before!);
     await ai.canvasChat.send("Give the photograph a moody cinematic look: "
@@ -211,7 +211,7 @@ void main() {
       // ignore: avoid_print
       print("${e.role.name}: ${e.text}");
     }
-    var after = await CanvasAutomation(canvas).renderPng(frame: 0);
+    var after = await CanvasScripting(canvas).renderPng(frame: 0);
     File("${Platform.environment["CREATIVE_AI_OUT"]}/live_after.png")
         .writeAsBytesSync(after!);
     var e = canvas.document.elementById("photo")! as ImageElement;
@@ -256,7 +256,7 @@ void main() {
       // ignore: avoid_print
       print("${e.role.name}: ${e.text}");
     }
-    var png = await CanvasAutomation(canvas).renderPng(frame: 0);
+    var png = await CanvasScripting(canvas).renderPng(frame: 0);
     File("${Platform.environment["CREATIVE_AI_OUT"]}/live_character.png")
         .writeAsBytesSync(png!);
     expect(ai.activity.calls.map((c) => c.tool.name),

@@ -68,6 +68,8 @@ const _exceptions = <String>{
   // runner builds a widget.
   "$_canvas/media/code_run_host.dart: ${_package}ui/canvas_controller.dart",
   "$_canvas/media/code_dart_runner.dart: package:flutter/widgets.dart",
+  // A character asks the preferences whether it may fetch its hair.
+  "$_canvas/render/vrm/vrm_character.dart: ${_package}canvas_preferences.dart",
   // The live engine borrows a helper from the video export.
   "$_canvas/media/mix/dart_audio_engine.dart: "
       "${_package}export/video_export.dart",
@@ -89,11 +91,13 @@ List<File> _dartFilesIn(String dir) => Directory(dir)
     .toList();
 
 /// _folderOf is the Canvas folder a canvas import [uri] points into, or
-/// null for a file at the top of the Canvas or outside it.
+/// null for a file outside the Canvas. A file at the top of the Canvas
+/// (canvas.dart, the preferences) is in "top": those import ui/, so nothing
+/// beneath ui/ may import them.
 String? _folderOf(String uri) {
   if (!uri.startsWith(_package)) return null;
   var rest = uri.substring(_package.length);
-  return rest.contains("/") ? rest.split("/").first : null;
+  return rest.contains("/") ? rest.split("/").first : "top";
 }
 
 /// _broken is each import that breaks a layer rule, as "file: uri".

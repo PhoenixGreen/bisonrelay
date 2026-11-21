@@ -131,7 +131,7 @@ Future<StyleProfile> saveCanvasStyle(CreativeAi ai,
     String description = "",
     String guide = "",
     int? scene}) async {
-  var a = ai.automation;
+  var a = ai.scripting;
   var doc = a.controller.document;
   var facts = styleFactsOf(a.documentJson(),
       width: doc.size.width.toDouble(), height: doc.size.height.toDouble());

@@ -734,12 +734,12 @@ void main() {
       await pump(tester, const CanvasSettingsSection(), prefs: prefs);
 
       expect(prefs.allowFetching, isFalse);
-      expect(find.text("Let a canvas fetch data"), findsNothing,
+      expect(find.text(CanvasPreferences.allowFetchingLabel), findsNothing,
           reason: "nothing to decide while the feature is off");
 
       prefs.enabled = true;
       await tester.pumpAndSettle();
-      expect(find.text("Let a canvas fetch data"), findsOneWidget);
+      expect(find.text(CanvasPreferences.allowFetchingLabel), findsOneWidget);
       expect(
           find.textContaining("does not go through the proxy"), findsOneWidget,
           reason: "the reason it is off is the reason it is a decision");
@@ -747,7 +747,7 @@ void main() {
       // The switch on the fetching row.
       await tester.tap(find.descendant(
           of: find.ancestor(
-              of: find.text("Let a canvas fetch data"),
+              of: find.text(CanvasPreferences.allowFetchingLabel),
               matching: find.byType(Row)),
           matching: find.byType(Switch)));
       await tester.pumpAndSettle();

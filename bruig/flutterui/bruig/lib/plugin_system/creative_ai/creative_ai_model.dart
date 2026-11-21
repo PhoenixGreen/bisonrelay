@@ -80,7 +80,7 @@ class CreativeAi extends ChangeNotifier {
     required this.library,
     this.serve = true,
     this.locateClaude = ClaudeCode.locate,
-    this.stylesRoot = CanvasAutomation.presetsDir,
+    this.stylesRoot = CanvasScripting.presetsDir,
   }) {
     server = McpServer(
       tools: () => tools,
@@ -98,7 +98,7 @@ class CreativeAi extends ChangeNotifier {
   bool get canvasOn => prefs.canvasOn && canvasPrefs().enabled;
   bool get writingOn => prefs.writingOn;
 
-  CanvasAutomation get automation => CanvasAutomation(canvas());
+  CanvasScripting get scripting => CanvasScripting(canvas());
 
   // ------------------------------------------------------------------------
   // The server
@@ -282,7 +282,7 @@ class CreativeAi extends ChangeNotifier {
   /// before this run of changes is already kept.
   void beforeCanvasChange() {
     if (hasCheckpoint) return;
-    _checkpoint = automation.snapshot();
+    _checkpoint = scripting.snapshot();
     _checkpointFile = _canvasFile();
     _checkpointAt = DateTime.now();
     notifyListeners();
@@ -292,7 +292,7 @@ class CreativeAi extends ChangeNotifier {
   /// as one step (itself undoable).
   void undoCanvas() {
     if (!hasCheckpoint) return;
-    automation.restore(_checkpoint!);
+    scripting.restore(_checkpoint!);
     keepCanvas();
   }
 
