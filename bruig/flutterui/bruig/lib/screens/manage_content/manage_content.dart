@@ -234,7 +234,7 @@ class _SharedContentFileState extends State<SharedContentFile> {
           onPressed: () => copyLink(context),
         ),
         // As Downloads has it: only for the kinds the app can show -- a
-        // picture, a PDF, a video, a canvas played (Ken).
+        // picture, a PDF, a video, a canvas played.
         if (canOpen &&
             widget.onPreview != null &&
             fileKindOf(diskPath) != FileKind.other)

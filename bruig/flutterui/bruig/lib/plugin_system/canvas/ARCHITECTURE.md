@@ -26,8 +26,12 @@ The rule that matters most: `render/` and `export/` know nothing of widgets,
 a `BuildContext` or the app's theme. The stage on screen and the exported
 file are drawn by the same code (`paintCanvasDocument`, in
 `render/scene_renderer.dart`), so what is exported is what was seen, whatever
-the reader's theme. One known exception: `model/canvas_guides.dart` carries
-Material icons on its alignment enum.
+the reader's theme.
+
+`test/canvas_layers_test.dart` holds the code to this table, and to the rule
+that the app outside imports `canvas.dart` and nothing beneath it. The
+imports that break the table today are listed in that test, each with its
+reason, as debts to pay off; nothing may be added to the list without one.
 
 ### `ui/`
 
@@ -161,6 +165,15 @@ how a panel is laid out.
 Drawing is cached where it is expensive: procedural backgrounds
 (`ProceduralCache`), rasterised elements during a gesture (`RasterCache`) and
 pictures (`CanvasImageStore`).
+
+## Preferences
+
+`CanvasPreferences` (`canvas_preferences.dart`) is what is remembered about
+the app on this machine, as against what is saved in a canvas: whether the
+feature is on, the canvas last open, how the panels were left. To add one,
+declare a `_Saved` value there, give it a getter and a setter, and add it to
+`_saved`. `test/canvas_preferences_test.dart` holds each key and the form it
+is stored in, since changing either loses what somebody had set.
 
 ## On disk
 

@@ -3,17 +3,17 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
 import 'package:flutter/material.dart';
 
-// canvas_nav.dart puts the Canvas section in the navigation while the feature
-// is on, through MainMenuModel's dynamic items, which route dispatch, both
-// nav bars and Settings > Appearance > Menu all build off.
-
 /// canvasMenuDrawing and canvasMenuKey are the two halves of Canvas's own
 /// mark: a C drawn as an open path with its dimension lines, and the keyframe
 /// the path ends in, which stays orange.
 const canvasMenuDrawing = "assets/icons/icons-menu-canvas.svg";
 const canvasMenuKey = "assets/icons/icons-menu-canvas-key.svg";
 
-/// CanvasNavModel keeps the Canvas destination in step with the preference.
+/// CanvasNavModel puts the Canvas section in the navigation while the
+/// feature is on, and takes it out when it is turned off. It does so through
+/// MainMenuModel's dynamic items, which route dispatch, both nav bars and
+/// Settings > Appearance > Menu are all built from.
+///
 /// Nothing reads it, so it must be provided eagerly (lazy: false).
 class CanvasNavModel extends ChangeNotifier {
   /// _wanted guards only the removal: a repeat unregistration would clear

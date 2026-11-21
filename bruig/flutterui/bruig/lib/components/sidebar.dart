@@ -14,9 +14,8 @@ import 'package:bruig/screens/feed.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
 import 'package:bruig/models/uistate.dart' show OverviewActivePath;
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart'
-    show CanvasScreen;
+import 'package:bruig/plugin_system/canvas/canvas.dart'
+    show CanvasPreferences, CanvasScreen;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';

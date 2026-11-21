@@ -6,10 +6,10 @@ import 'package:bruig/theming_system/runtime/theme_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// canvas_settings.dart is Canvas's section of Settings > Plugins: choices about
-// the app only (whether the feature exists, network access, playback engine,
-// studio colours). Anything about one canvas belongs on its own settings band.
-
+/// CanvasSettingsSection is Canvas's section of Settings > Plugins: choices
+/// about the app only (whether the feature exists, whether a canvas may fetch
+/// data, the studio colours). Anything about one canvas belongs on that
+/// canvas's own settings band.
 class CanvasSettingsSection extends StatelessWidget {
   const CanvasSettingsSection({super.key});
 

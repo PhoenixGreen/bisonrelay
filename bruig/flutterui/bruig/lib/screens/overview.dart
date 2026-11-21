@@ -3,9 +3,8 @@ import 'dart:math' as math;
 
 import 'package:bruig/components/clipper.dart';
 import 'package:bruig/components/containers.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart'
-    show CanvasScreen;
+import 'package:bruig/plugin_system/canvas/canvas.dart'
+    show CanvasPreferences, CanvasScreen;
 import 'package:bruig/components/mobile_nav_bar.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/page_context_menu.dart';

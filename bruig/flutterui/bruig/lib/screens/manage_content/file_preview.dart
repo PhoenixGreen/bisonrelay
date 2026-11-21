@@ -55,7 +55,7 @@ FileKind fileKindOf(String filePath) {
   if (_imageExts.contains(ext)) return FileKind.image;
   if (_videoExts.contains(ext)) return FileKind.video;
   if (ext == ".pdf") return FileKind.pdf;
-  // A canvas, sent or shared: played, a game as a game (Ken).
+  // A canvas, sent or shared: played, a game as a game.
   if (ext == ".bcanvas") return FileKind.canvas;
   // A book: read in Bison Relay's own reader, pages, spreads and all.
   if (ext == ".epub") return FileKind.epub;

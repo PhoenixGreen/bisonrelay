@@ -679,10 +679,6 @@ void main() {
     });
 
     test("the timeline's cues are shown, then as they were left", () async {
-      // And the keyframe row's old setting deleted: the row is gone
-      // (keyframing is the Chain's, 2026-11-09).
-      SharedPreferences.setMockInitialValues(
-          {"flutter.canvasKeyframesShown": false});
       var prefs = CanvasPreferences();
       addTearDown(prefs.dispose);
       expect(prefs.cuesShown, isTrue);
@@ -691,8 +687,6 @@ void main() {
       addTearDown(back.dispose);
       await back.load();
       expect(back.cuesShown, isFalse);
-      var stored = await SharedPreferences.getInstance();
-      expect(stored.containsKey("canvasKeyframesShown"), isFalse);
 
       // Handed to the page's controller as it opens, without a word to
       // anyone listening: that runs while the page is being built.

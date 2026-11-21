@@ -9,10 +9,11 @@ import 'package:bruig/plugin_system/canvas/model/image_action_file.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_actions.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 
-export 'package:bruig/plugin_system/canvas/canvas_nav.dart';
-export 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-export 'package:bruig/plugin_system/canvas/canvas_settings.dart';
-export 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
+export 'package:bruig/plugin_system/canvas/canvas_nav.dart' show CanvasNavModel;
+export 'package:bruig/plugin_system/canvas/canvas_preferences.dart'
+    show CanvasPreferences;
+export 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart'
+    show CanvasScreen;
 // A canvas file played where Files previews one: see canvas_file_player.dart.
 export 'package:bruig/plugin_system/canvas/ui/screen/canvas_file_player.dart'
     show CanvasFilePlayer, openCanvasFile;
@@ -28,8 +29,10 @@ export 'package:bruig/plugin_system/canvas/media/midi_input.dart'
     show MidiInput;
 // For a feature outside Canvas to add a sidebar of its own, and to read and
 // change the open canvas as JSON (an assistant, a script): see each file.
-export 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
-export 'package:bruig/plugin_system/canvas/ui/automation/canvas_automation.dart';
+export 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart'
+    show CanvasSidebarExtra, CanvasSidebarExtras;
+export 'package:bruig/plugin_system/canvas/ui/automation/canvas_automation.dart'
+    show CanvasAutomation;
 export 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
     show CanvasDocument;
 
