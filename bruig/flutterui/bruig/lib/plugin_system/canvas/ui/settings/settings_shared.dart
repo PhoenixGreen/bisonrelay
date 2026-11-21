@@ -97,41 +97,6 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     ));
   }
 
-  // Text riding a line takes its place and angle from the line, so the
-  // fields would move the words off it; without the line, its own box.
-  if (e is TextElement &&
-      e.curve != null &&
-      controller.document.elementById(e.curve!.elementId) != null) {
-    return CanvasControlGroup(label: e.kind.label, children: [
-      const Padding(
-        padding: EdgeInsets.only(top: controlLabelHeight, right: 6),
-        child: SizedBox(
-          height: controlHeight,
-          child: Center(
-            child: Txt.S("Placed by the line it follows"),
-          ),
-        ),
-      ),
-      CanvasStepper(
-        key: const ValueKey("elementOpacity"),
-        label: "Opacity",
-        min: 0,
-        max: 100,
-        step: 5,
-        dragStep: 1,
-        suffix: "%",
-        defaultValue: 100,
-        width: 104,
-        value: e.opacityAt(frame) * 100,
-        onChanged: (v) {
-          begin();
-          write(e.withBase(opacity: v / 100));
-        },
-        onCommit: commit,
-      ),
-    ]);
-  }
-
   var xField = CanvasStepper(
     key: const ValueKey("elementX"),
     label: "X",
@@ -220,6 +185,25 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     },
     onCommit: commit,
   );
+
+  // Text riding a line takes its place and angle from the line, so the
+  // fields would move the words off it; without the line, its own box.
+  if (e is TextElement &&
+      e.curve != null &&
+      controller.document.elementById(e.curve!.elementId) != null) {
+    return CanvasControlGroup(label: e.kind.label, children: [
+      const Padding(
+        padding: EdgeInsets.only(top: controlLabelHeight, right: 6),
+        child: SizedBox(
+          height: controlHeight,
+          child: Center(
+            child: Txt.S("Placed by the line it follows"),
+          ),
+        ),
+      ),
+      opacityField,
+    ]);
+  }
   var lockButton = CanvasIconButton(
     icon: e.base.lockAspect ? Icons.link : Icons.link_off,
     tooltip: e.base.lockAspect

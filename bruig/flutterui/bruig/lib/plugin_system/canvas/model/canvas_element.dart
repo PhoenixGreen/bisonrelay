@@ -250,6 +250,62 @@ class ElementBase {
   /// field out.
   static const _defaults = ElementBase(id: "");
 
+  /// asDesign is this base as a design kept to be used again (a preset):
+  /// without what ties the element to its place in one document. Those are
+  /// its place and keyframes, and whatever names something else there: its
+  /// cue, its Cast member, the Layout cell it is docked in, and its layouts
+  /// and shared design on the document's other page shapes. Its clips, its
+  /// game part and its stage spot stay: they are what it does.
+  ///
+  /// [withTiesOf] is the other half. A field added to the class belongs in
+  /// one of the two, or in neither where it is design:
+  /// test/canvas_element_presets_test.dart asks which.
+  ElementBase asDesign() => copyWith(
+        x: 0,
+        y: 0,
+        clearTrack: true,
+        cue: "",
+        cast: "",
+        dock: "",
+        dockOut: false,
+        layouts: const {},
+        clearShared: true,
+        ownDesign: false,
+        ownText: false,
+      );
+
+  /// withTiesOf is this base, a design's, on the element [own] was: the
+  /// design's size, turn and look with the element's own identity, place
+  /// and everything that ties it to its document or says what it does
+  /// there. For putting a preset on an element that is already in use.
+  ElementBase withTiesOf(ElementBase own) => copyWith(
+        id: own.id,
+        name: own.name,
+        x: own.x,
+        y: own.y,
+        opacity: own.opacity,
+        visible: own.visible,
+        locked: own.locked,
+        rowColour: own.rowColour,
+        clearRowColour: own.rowColour == null,
+        track: own.track,
+        clearTrack: own.track == null,
+        layouts: own.layouts,
+        depth: own.depth,
+        ownText: own.ownText,
+        ownDesign: own.ownDesign,
+        shared: own.shared,
+        clearShared: own.shared == null,
+        cue: own.cue,
+        cast: own.cast,
+        dock: own.dock,
+        dockOut: own.dockOut,
+        play: own.play,
+        spot: own.spot,
+        clearSpot: own.spot == null,
+        motion: own.motion,
+      );
+
   /// copyWith's parameters are in the fields' order. A field added here is
   /// added to [CanvasElement.withBase] too.
   ElementBase copyWith({

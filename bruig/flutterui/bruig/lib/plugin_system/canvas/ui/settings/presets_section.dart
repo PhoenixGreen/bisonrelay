@@ -111,25 +111,10 @@ class _PresetsSectionState extends State<_PresetsSection> {
     var made = scaledElement(preset.build(),
         presetScale(preset.madeOn, widget.controller.document.size.size));
     var here = widget.element;
-    // At the preset's size, as a design is a shape too; behaviour (clips,
-    // keyframes, cue, game part, stage place) stays the element's.
-    var placed = made.withId(here.id);
-    var hereBase = here.base;
-    widget.controller.replaceElement(placed.rebase(placed.base.copyWith(
-      name: here.name,
-      x: here.x,
-      y: here.y,
-      opacity: here.opacity,
-      visible: here.visible,
-      locked: here.locked,
-      track: hereBase.track,
-      clearTrack: hereBase.track == null,
-      motion: hereBase.motion,
-      cue: hereBase.cue,
-      play: hereBase.play,
-      spot: hereBase.spot,
-      clearSpot: hereBase.spot == null,
-    )));
+    // At the preset's size, as a design is a shape too; the element's place
+    // and what it does on this canvas stay its own (ElementBase.withTiesOf).
+    widget.controller
+        .replaceElement(made.rebase(made.base.withTiesOf(here.base)));
   }
 
   Future<bool> _confirm(ElementPreset preset) => askToConfirm(context,

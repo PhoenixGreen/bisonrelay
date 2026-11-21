@@ -89,13 +89,13 @@ class ElementPresetStore extends ChangeNotifier {
       id: "p${DateTime.now().microsecondsSinceEpoch}",
       name: clean,
       kind: element.kind,
-      // Without its place on the canvas: a preset is dropped where the canvas
-      // decides, and saved coordinates could land it off a smaller page.
-      element: {...element.toJson()}
+      // Without its place on the canvas (a preset is dropped where the
+      // canvas decides) or anything that ties it to this canvas: see
+      // ElementBase.asDesign.
+      element: element.rebase(element.base.asDesign()).toJson()
         ..remove("id")
         ..remove("x")
-        ..remove("y")
-        ..remove("track"),
+        ..remove("y"),
       madeOn: madeOn,
     );
     if (!await _write(preset)) return null;

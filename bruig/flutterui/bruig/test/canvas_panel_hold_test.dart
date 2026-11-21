@@ -116,6 +116,21 @@ void main() {
     });
   }
 
+  testWidgets("a picture's place, a section inside Layout, follows the drag",
+      (tester) async {
+    // A picture's X and Y are in a Position section of their own inside
+    // Layout. A section inside one that follows the canvas follows it too,
+    // or the numbers stand still while the picture moves.
+    var (c, id) = await show(tester, ElementKind.image);
+    var drag = await tester.startGesture(const Offset(100, 100));
+    await steps(tester, c, id);
+    expect(shownX(tester), "${c.document.elementById(id)!.base.x.round()}");
+    c.endInteraction();
+    await drag.up();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("a number scrubbed builds its own section, and the rest after",
       (tester) async {
     var (c, id) = await show(tester, ElementKind.text);

@@ -1,5 +1,7 @@
+import 'dart:collection';
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -167,13 +169,93 @@ void main() {
       // What the settings do with it: the preset's design, in the element's
       // own place and under its own id.
       var made = preset!.build();
-      var next = made.withBase(x: here.x, y: here.y).withId(here.id);
+      var next = made.rebase(made.base.withTiesOf(here.base));
 
       expect(next.id, "t", reason: "the same element, not a second one");
       expect((next as TextElement).text, "The saved design");
       expect(next.x, 120);
       expect(next.y, 240);
       expect(next.bounds.width, 300, reason: "the design's own shape");
+    });
+
+    /// tied is a base with everything set that ties an element to its place
+    /// in one canvas.
+    ElementBase tied(String id) => ElementBase(
+          id: id,
+          name: "Mine",
+          x: 120,
+          y: 240,
+          width: 400,
+          height: 90,
+          opacity: 0.5,
+          locked: true,
+          rowColour: 0xFF112233,
+          track: ElementTrack([const Keyframe(frame: 4, dx: 9)]),
+          layouts: const {
+            "square": ElementLayout(x: 1, y: 2, width: 3, height: 4),
+          },
+          depth: 0.25,
+          ownText: true,
+          ownDesign: true,
+          shared: const {"kind": "text"},
+          cue: "cue1",
+          cast: "member1",
+          dock: "layout1:cellA",
+          dockOut: true,
+        );
+
+    test("a saved design carries nothing that ties it to its canvas", () async {
+      // A Cast link, a Layout cell, a cue and the layouts of the canvas's
+      // other page shapes all name things in the canvas it was saved from.
+      // Carried, they arrive in another canvas pointing at nothing, or in
+      // this one pointing at something of somebody else's.
+      var saved = await ElementPresetStore.instance
+          .save("Tied", TextElement(tied("t"), text: "Words"));
+      var made = saved!.build();
+      expect(made.base.cast, "");
+      expect(made.base.dock, "");
+      expect(made.base.dockOut, isFalse);
+      expect(made.base.cue, "");
+      expect(made.base.layouts, isEmpty);
+      expect(made.base.shared, isNull);
+      expect(made.base.ownDesign, isFalse);
+      expect(made.base.ownText, isFalse);
+      expect(made.base.track, isNull);
+      expect((made as TextElement).text, "Words");
+    });
+
+    test("and put on an element, leaves that element's own ties alone", () {
+      // The design is another element's, ties and all, as an older saved
+      // preset still holds them.
+      var design = const ElementBase(
+        id: "other",
+        width: 300,
+        height: 200,
+        rotation: 30,
+        cue: "theirCue",
+        cast: "theirMember",
+        dock: "theirLayout:cell",
+        layouts: {"wide": ElementLayout(x: 9, y: 9, width: 9, height: 9)},
+      );
+      var own = tied("t");
+      var next = design.withTiesOf(own);
+
+      expect(next.width, 300, reason: "the design's shape");
+      expect(next.rotation, 30, reason: "and its turn");
+      var kept = next.toJson();
+      var mine = own.toJson();
+      for (var key in _ties) {
+        expect(kept[key], mine[key], reason: "its own $key");
+      }
+    });
+
+    test("every field of an element is known to be design or a tie", () {
+      // ElementBase.fromJson asks for each key it reads. One not listed here
+      // is a field added since: decide whether a preset should carry it,
+      // put it in asDesign and withTiesOf if not, and add it to a list.
+      var asked = _Asked();
+      ElementBase.fromJson(asked, "");
+      expect(asked.keys.toSet().difference({..._ties, ..._design}), isEmpty);
     });
   });
 
@@ -193,4 +275,40 @@ void main() {
       expect(back.builtIn, isFalse);
     });
   });
+}
+
+/// _ties are the saved keys that are an element's own on its canvas (its
+/// identity, its place, and what names or belongs to that canvas), which a
+/// preset put on it leaves alone. _design are those a preset brings.
+const _ties = {
+  "id", "name", "x", "y", "opacity", "visible", "locked", "rowColour",
+  "track", "layouts", "depth", "ownText", "ownDesign", "shared", "cue",
+  "cast", "dock", "dockOut", "play", "spot", "motion", //
+};
+const _design = {
+  "w", "h", "rot", "skx", "sky", "blend", "aspect", "ax", "ay",
+  "anchorLocked", "typeScale", //
+};
+
+/// _Asked is a map that holds nothing and remembers each key it is asked for.
+class _Asked extends MapBase<String, dynamic> {
+  final Set<String> _keys = {};
+
+  @override
+  dynamic operator [](Object? key) {
+    if (key is String) _keys.add(key);
+    return null;
+  }
+
+  @override
+  void operator []=(String key, dynamic value) {}
+
+  @override
+  void clear() {}
+
+  @override
+  Iterable<String> get keys => _keys;
+
+  @override
+  dynamic remove(Object? key) => null;
 }

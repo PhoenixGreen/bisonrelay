@@ -94,9 +94,10 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   /// with any picture and marked buttons: at least [width], at most a
   /// sidebar.
   double _menuWidth(BuildContext context) {
+    var scaler = MediaQuery.textScalerOf(context);
     var widest = 0.0;
     for (var (_, text, heading) in _rows()) {
-      widest = math.max(widest, _widthOf(text, heading));
+      widest = math.max(widest, _widthOf(text, heading, scaler));
     }
     var extra = 40.0 + // the item's own padding and the scroll bar's room
         (leading != null ? 42 : 0) +
@@ -106,11 +107,12 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
 
   /// _cardWidth is how wide a card's dropdown must be to show its longest
   /// name whole between its arrows, held to what a sidebar has room for.
-  double _cardWidth() {
+  double _cardWidth(BuildContext context) {
+    var scaler = MediaQuery.textScalerOf(context);
     var widest = 0.0;
     for (var (_, text, heading) in _rows()) {
       if (heading) continue;
-      widest = math.max(widest, _widthOf(text, false));
+      widest = math.max(widest, _widthOf(text, false, scaler));
     }
     // Two arrows and their dividers, and the room either side of the name.
     var chrome = 2 * 33 + 16 + 4 + (leading != null ? 42 : 0);
@@ -118,10 +120,12 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   }
 
   /// _widthOf is how wide [text] is set as an option (or, [heading], as a
-  /// group's heading): measured once and remembered, since a settings panel
-  /// is rebuilt often with the same names in it.
-  static double _widthOf(String text, bool heading) {
-    var key = heading ? "^$text" : text;
+  /// group's heading) at the text size [scaler] gives: measured once and
+  /// remembered, since a settings panel is rebuilt often with the same
+  /// names in it. The text size is part of what is remembered: a name is
+  /// wider at a larger one, and a list measured without it cuts names short.
+  static double _widthOf(String text, bool heading, TextScaler scaler) {
+    var key = "${scaler.scale(100)}${heading ? "^" : "|"}$text";
     var known = _widths[key];
     if (known != null) return known;
     var painter = TextPainter(
@@ -131,6 +135,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
                 fontSize: heading ? 10 : 12,
                 letterSpacing: heading ? 0.8 : null)),
         textDirection: TextDirection.ltr,
+        textScaler: scaler,
         maxLines: 1)
       ..layout();
     var width = painter.width;
@@ -337,7 +342,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     // longest name, so a short line wraps rather than cutting the name.
     if (card && !plain) {
       least = math.max(
-          least, grow && _CanvasWrapScope.of(context) ? _cardWidth() : 120.0);
+          least, grow && _CanvasWrapScope.of(context) ? _cardWidth(context) : 120.0);
     } else if (plain) {
       least = math.max(least, 88.0);
     }

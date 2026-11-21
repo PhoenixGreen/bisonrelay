@@ -32,4 +32,26 @@ void main() {
     expect(tester.getSize(shown).width, greaterThan(150),
         reason: "wider than the button it opened from");
   });
+
+  testWidgets("and at a larger text size too", (tester) async {
+    // The app's text size makes every name wider. A list measured at the
+    // ordinary size is then too narrow for its longest name.
+    setTestTextScale(tester, 1.4);
+    const long = "Gradient map, long";
+    await tester.pumpWidget(canvasApp(Center(
+        child: SizedBox(
+            width: 120,
+            child: CanvasDropdown<int>(
+                key: const ValueKey("menu"),
+                label: "",
+                value: 0,
+                width: 100,
+                options: const [(0, "Fade"), (1, long)],
+                onChanged: (_) {})))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Fade"));
+    await tester.pumpAndSettle();
+    var text = tester.renderObject<RenderParagraph>(find.text(long).last);
+    expect(text.didExceedMaxLines, isFalse, reason: "not cut short");
+  });
 }

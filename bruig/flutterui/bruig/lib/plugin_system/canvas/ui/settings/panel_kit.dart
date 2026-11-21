@@ -506,23 +506,46 @@ class CanvasSection extends StatefulWidget {
   State<CanvasSection> createState() => _CanvasSectionState();
 }
 
+/// _FollowsStage tells the sections under it whether the section they are
+/// in follows the canvas (CanvasSection.followsStage).
+class _FollowsStage extends InheritedWidget {
+  final bool follows;
+  const _FollowsStage({required this.follows, required super.child});
+
+  static bool of(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<_FollowsStage>()?.follows ?? false;
+
+  @override
+  bool updateShouldNotify(_FollowsStage old) => false;
+}
+
 class _CanvasSectionState extends State<CanvasSection> {
   final _held = _HeldBody();
 
   /// _body is the section's controls: kept as they were while a pointer is
   /// held in a gesture elsewhere (see PanelHold).
-  Widget _body() => _held.of(
-      context,
-      widget.remember,
-      () => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var c in widget.children)
-                if (c is! CanvasHint) c
-            ],
-          ),
-      followsStage: widget.followsStage);
+  ///
+  /// A section inside one that follows the canvas follows it too (a
+  /// picture's Position, inside Layout): kept, it would show the place the
+  /// element was dragged from while its parent showed where it is.
+  Widget _body() {
+    var follows = widget.followsStage || _FollowsStage.of(context);
+    return _held.of(
+        context,
+        widget.remember,
+        () => _FollowsStage(
+              follows: follows,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var c in widget.children)
+                    if (c is! CanvasHint) c
+                ],
+              ),
+            ),
+        followsStage: follows);
+  }
 
   late bool _open = CanvasSection.openAll ||
       (rememberedSection(widget.remember) ?? widget.initiallyOpen);

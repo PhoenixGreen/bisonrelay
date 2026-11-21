@@ -433,6 +433,12 @@ class _ScrubLabelState extends State<_ScrubLabel> {
   double _startX = 0;
   bool _dragging = false;
 
+  void _end() {
+    if (!_dragging) return;
+    _dragging = false;
+    widget.onCommit?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -456,12 +462,10 @@ class _ScrubLabelState extends State<_ScrubLabel> {
           widget.onChanged(_scrubbed(_from, event.position.dx - _startX, step,
               min: widget.min, max: widget.max));
         },
-        onPointerUp: (_) {
-          if (!_dragging) return;
-          _dragging = false;
-          widget.onCommit?.call();
-        },
-        onPointerCancel: (_) => _dragging = false,
+        onPointerUp: (_) => _end(),
+        // Cancelled, it has still changed the number: without a commit the
+        // undo step it opened would stay open and take in the next edit.
+        onPointerCancel: (_) => _end(),
         child: SizedBox(
           height: controlLabelHeight,
           child: Text(
