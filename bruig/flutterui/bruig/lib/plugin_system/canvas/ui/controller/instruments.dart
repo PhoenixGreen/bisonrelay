@@ -21,8 +21,8 @@ extension CanvasInstruments on CanvasController {
       frames: _frameSource ?? FfmpegFrames(ffmpegPath),
       audio: audio,
       locate: (id) => CanvasMedia.existingPath(MediaKind.video, id))
-    // A video's frames are not changes to the canvas: see _notifyPlayhead.
-    ..addListener(_notifyView);
+    // A video's frames are not changes to the canvas: see _notifyStep.
+    ..addListener(_notifyStep);
 
   /// videoShow is how [e] should be drawn now: its frame and its play bar.
   VideoShow videoShow(VideoElement e) {

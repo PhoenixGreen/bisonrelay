@@ -413,6 +413,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets("Snapping and Scrubbing, which start off, light once on",
+        (tester) async {
+      var c = CanvasController(sound);
+      addTearDown(c.dispose);
+      await show(tester, c);
+      for (var key in ["snap", "trackpadScrolls"]) {
+        await tapTimelineItem(tester, "$key-item");
+        expect(find.byKey(ValueKey("lit-$key")), findsOneWidget, reason: key);
+      }
+      expect((c.snapping, c.trackpadScrolls), (true, true));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("Add a marker on a frame with one leaves that one be",
+        (tester) async {
+      // As the markers menu and the timeline do: a stop is not lost to a
+      // press meant to add.
+      var c = CanvasController(sound.copyWith(actions: const [
+        TimelineAction(
+            frame: 0, kind: TimelineActionKind.stop, label: "Hold here"),
+      ]));
+      addTearDown(c.dispose);
+      await show(tester, c);
+      await tapTimelineItem(tester, "addMarkerItem");
+      var only = c.document.actions.single;
+      expect((only.kind, only.label), (TimelineActionKind.stop, "Hold here"));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("narrow, it scrolls rather than overflowing", (tester) async {
       var c = CanvasController(sound);
       addTearDown(c.dispose);

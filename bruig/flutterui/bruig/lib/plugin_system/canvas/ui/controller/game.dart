@@ -247,8 +247,8 @@ extension CanvasGame on CanvasController {
     }
     _gameState.view =
         spoken(run.view(_document, frame: _frame, playing: _touchClipPlaying));
-    // A step of the game is not a change to the canvas: see _notifyPlayhead.
-    _notifyView();
+    // A step of the game is not a change to the canvas: see _notifyStep.
+    _notifyStep();
   }
 
   /// waitingFor is the action a stop is waiting for, by id, or null.

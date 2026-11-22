@@ -99,22 +99,35 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   @override
   void initState() {
     super.initState();
-    controller.addListener(_changed);
+    controller.chrome.addListener(_changed);
     _readSettings();
   }
 
   @override
   void dispose() {
-    controller.removeListener(_changed);
+    controller.chrome.removeListener(_changed);
+    controller.removeListener(_edited);
     _focus.dispose();
     super.dispose();
   }
 
-  /// _changed builds the bar again, except for a frame of play: only the
-  /// playhead's readout and marker follow that, on playheadMoved.
+  /// _changed builds the bar again on chrome: not for a frame of play, whose
+  /// readout and marker follow playheadMoved, nor for a game's steps or a
+  /// video's frames, which the bar does not show.
   void _changed() {
-    if (controller.notifyingPlayhead) return;
     if (mounted) setState(() {});
+  }
+
+  /// _followEdits has the bar follow every change while the timing is open:
+  /// its length, frame rate and tempo are dragged as gestures, whose steps
+  /// chrome passes over, and the numbers must run with the drag.
+  void _followEdits(bool on) {
+    controller.removeListener(_edited);
+    if (on) controller.addListener(_edited);
+  }
+
+  void _edited() {
+    if (!controller.notifyingPlayhead && mounted) setState(() {});
   }
 
   /// _readSettings puts back the reader's choices kept on the device:
@@ -395,6 +408,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     // Where the playhead is; pressed, the timing it is counted in.
     var readout = MenuAnchor(
       controller: _timingMenu,
+      onOpen: () => _followEdits(true),
+      onClose: () => _followEdits(false),
       menuChildren: [
         Padding(
           padding: const EdgeInsets.all(10),
@@ -587,8 +602,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           lit: const Color(0xFF3A2F12),
           onPressed: () => controller.timelineShow = TimelineShow.everything,
         ),
-      // Follow, Snap and Scrub start on: the bar lights what has been turned
-      // on, not those.
+      // The bar lights what has been turned on, not what starts on (see
+      // _quietWhenOn).
       for (var (key, icon, tip, on, press) in options)
         if (on && !_quietWhenOn.contains(key))
           TransportButton(
@@ -744,8 +759,10 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     );
   }
 
-  /// _quietWhenOn are the settings on to begin with, not lit on the bar.
-  static const _quietWhenOn = {"follow", "snap", "trackpadScrolls"};
+  /// _quietWhenOn are the settings on to begin with, not lit on the bar:
+  /// Follow, as the controller starts it. Snap and Scrub start off, kept
+  /// choices read back as off where none was made.
+  static const _quietWhenOn = {if (CanvasPlayback.followsAtFirst) "follow"};
 
   static String _trim(String n) =>
       n.contains(".") ? n.replaceFirst(RegExp(r"\.?0+$"), "") : n;

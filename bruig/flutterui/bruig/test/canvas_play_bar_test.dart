@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_audio_fake.dart';
+import 'support/canvas_timeline_menus.dart';
 
 // canvas_play_bar_test.dart is the play bar as Ken redesigned it (2026-11-08):
 // the panels on the left, play and the timer in the middle, Back to the
@@ -205,5 +206,31 @@ void main() {
     c.backToTimelineFor(items.first);
     expect([for (var i in c.offTimelineItems) i.key], ["other"]);
     expect(c.anyOverridden, isTrue, reason: "the other still held");
+  });
+
+  testWidgets("the timing's length, dragged, shows its number as it runs",
+      (tester) async {
+    // The bar is built again on chrome, which passes over a drag's steps;
+    // the length is dragged as one, and its box must keep up.
+    var c = make();
+    addTearDown(c.dispose);
+    await pumpBar(tester, c);
+    await openTiming(tester);
+    var field = find.byKey(const ValueKey("canvasFrames"));
+    String shown() => tester
+        .widget<TextField>(
+            find.descendant(of: field, matching: find.byType(TextField)))
+        .controller!
+        .text;
+
+    var press = await tester.startGesture(tester.getCenter(field));
+    await tester.pump(const Duration(milliseconds: 500));
+    await press.moveBy(const Offset(40, 0));
+    await tester.pump();
+    expect(c.document.frames, 280);
+    expect(shown(), "280", reason: "while it is still being dragged");
+    await press.up();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 }

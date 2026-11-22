@@ -32,11 +32,12 @@ Color markerColour(TimelineActionKind kind) => markerKinds
     .$2;
 
 /// addMarker puts a marker of [kind] under the playhead, in place of any
-/// there. A locator is named as addLocator names it.
+/// there. A locator is named as addLocator names it, and is not put on a
+/// frame that has a marker: the bar's Add a marker is pressed without
+/// seeing what is there, and must not take a stop, a pause or a jump away.
 void addMarker(CanvasController controller, TimelineActionKind kind) {
   var document = controller.document;
-  if (kind == TimelineActionKind.locator &&
-      !document.actions.any((a) => a.frame == controller.frame)) {
+  if (kind == TimelineActionKind.locator) {
     controller.addLocator();
     return;
   }

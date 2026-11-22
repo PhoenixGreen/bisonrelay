@@ -394,17 +394,19 @@ class CanvasController extends ChangeNotifier {
   /// _playbackState is the state playback.dart keeps: see _PlaybackState.
   final _PlaybackState _playbackState = _PlaybackState();
 
-  /// chrome tells of every change but the two that come many times a
-  /// second: the playhead stepping on in play, and a gesture's edits as it
-  /// goes (a drag, typing on the canvas). What shows neither -- the band's
-  /// buttons, the play bar, the page's layout -- listens here rather than to
-  /// the controller, so a drag redraws the canvas and not the buttons round
-  /// it. Both end in an ordinary notification (endInteraction, pause), and
-  /// chrome catches up then.
+  /// chrome tells of every change but those that come many times a second:
+  /// the playhead stepping on in play, what moves by itself (a game's
+  /// steps, a video's frames, a live counter's ticks: see _notifyStep), and
+  /// a gesture's edits as it goes (a drag, typing on the canvas). What shows
+  /// none of them -- the band's buttons, the play bar, the page's layout --
+  /// listens here rather than to the controller, so a drag redraws the
+  /// canvas and not the buttons round it. Play and a gesture end in an
+  /// ordinary notification (pause, endInteraction), and chrome catches up
+  /// then. Nothing chrome's listeners show moves with the rest.
   Listenable get chrome => _chrome;
   final _Chrome _chrome = _Chrome();
 
-  /// _rapid is set only while one of those two is being told of.
+  /// _rapid is set only while one of those is being told of.
   bool _rapid = false;
 
   /// _notifyRapid tells listeners of a change [chrome] passes over.
@@ -416,6 +418,11 @@ class CanvasController extends ChangeNotifier {
       _rapid = false;
     }
   }
+
+  /// _notifyStep tells of a step of something moving by itself: a game, a
+  /// video's frames, a live counter. Not a change to the canvas, nor to
+  /// anything round it (see chrome).
+  void _notifyStep() => _notifyRapid(view: true);
 
   @override
   void notifyListeners() {
@@ -1837,7 +1844,7 @@ class CanvasController extends ChangeNotifier {
     _autosave?.cancel();
     _playback?.cancel();
     _counterTimer?.cancel();
-    _video?.removeListener(notifyListeners);
+    _video?.removeListener(_notifyStep);
     _video?.dispose();
     _audio?.removeListener(notifyListeners);
     _audio?.dispose();

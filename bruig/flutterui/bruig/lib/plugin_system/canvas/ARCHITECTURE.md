@@ -206,12 +206,14 @@ _pickers), `settings/panel_kit.dart`, `settings/text_settings.dart`,
 `render/paint_util.dart`, `render/procedural/pitch.dart` and
 `export/epub_layers.dart`. Code that imports the file still sees all of it.
 
-**Listening.** Most widgets listen to the controller. Two things notify it
+**Listening.** Most widgets listen to the controller. Some things notify it
 many times a second: the steps of a gesture (a drag, typing on the canvas:
-`apply(transient: true)` between `beginInteraction` and `endInteraction`) and
-frames of play. A widget that shows neither listens to `controller.chrome`
-instead, which passes over both and hears the notification at the gesture's
-end or when play stops: the settings band, the page, the dock. A widget that
+`apply(transient: true)` between `beginInteraction` and `endInteraction`),
+frames of play, and what moves by itself (a game's steps, a video's frames,
+a live counter's ticks: `_notifyStep`). A widget that shows none of them
+listens to `controller.chrome` instead, which passes over them all and hears
+the notification at the gesture's end or when play stops: the settings band,
+the page, the dock, the play bar. A widget that
 shows only the playhead follows `playheadMoved` (the play bar's readout, the
 timeline's ruler and line).
 

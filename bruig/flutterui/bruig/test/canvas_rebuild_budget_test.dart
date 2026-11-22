@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
@@ -215,6 +216,29 @@ void main() {
       c.pause();
       expect(told, 1);
     });
+
+    test("passes over a game's steps and a live counter's ticks", () {
+      var counter = CounterElement(const ElementBase(id: "count"),
+          keyed: false, to: 1000, rate: 1);
+      var c = CanvasController(
+          CanvasDocument(frames: 240, game: true, elements: [counter]),
+          audioEngine: FakeEngine({}));
+      addTearDown(() {
+        c.gaming = false;
+        c.dispose();
+      });
+      c.gaming = true;
+      c.pressCounterButton(counter, CounterButton.startStop);
+      var told = 0;
+      c.chrome.addListener(() => told++);
+      for (var i = 0; i < 5; i++) {
+        c.stepGame(1 / 60);
+      }
+      expect(told, 0, reason: "a step of the game is not a change");
+      c.tickCounters(now: DateTime.now().add(const Duration(seconds: 1)));
+      expect(c.counterValue(counter), greaterThan(0), reason: "it counted");
+      expect(told, 0, reason: "nor a count moving on");
+    });
   });
 
   group("the whole editor", () {
@@ -351,6 +375,27 @@ void main() {
         expect(builds.of(still), 0, reason: "$still: ${builds.most}");
       }
       controller.pause();
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets("a game running", (tester) async {
+      var controller = await show(tester, timeline: true);
+      controller.apply(controller.document.copyWith(game: true));
+      controller.gaming = true;
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(controller.playing, isTrue, reason: "its timeline plays too");
+
+      builds.start();
+      for (var i = 0; i < 40; i++) {
+        await step(tester, () async {});
+      }
+      expect(controller.gaming, isTrue);
+      // It was over 700 a step, the settings band, the play bar and the
+      // dock each built again; the timeline still is, 80 of what is left.
+      for (var still in ["CanvasSettingsBar", "CanvasPlayBar", "CanvasDock"]) {
+        expect(builds.of(still), 0, reason: "$still: ${builds.most}");
+      }
+      controller.gaming = false;
       await tester.pump(const Duration(seconds: 1));
     });
   });

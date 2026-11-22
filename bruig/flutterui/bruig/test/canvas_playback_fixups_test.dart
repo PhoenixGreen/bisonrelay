@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -9,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -233,6 +235,117 @@ void main() {
       }
       expect(c.frame, 0);
       expect(c.motionPlayer.isOff("a"), isFalse);
+    });
+  });
+
+  test("Stop after an element's preview leaves the playhead where it is", () {
+    var c = editor(const CanvasDocument(frames: 48)
+        .copyWith(elements: [box("x", slotted())]));
+    c.frame = 10;
+    c.play();
+    c.tickForTest();
+    c.pause();
+    c.frame = 30;
+    c.previewElement("x");
+    c.tickForTest();
+    c.stopPlaying();
+    expect((c.frame, c.playing, c.previewing), (30, false, null),
+        reason: "not back to where the earlier Play began");
+  });
+
+  group("markers", () {
+    TimelineAction stop(String label) =>
+        TimelineAction(frame: 5, kind: TimelineActionKind.stop, label: label);
+
+    test("a stop's label goes as the scene is turned by hand", () {
+      var c = editor(CanvasDocument(scenes: [
+        CanvasScene(id: "s1", frames: 20, actions: [stop("One")]),
+        CanvasScene(id: "s2", frames: 20, actions: [stop("Two")]),
+      ]));
+      c.frame = 3;
+      c.play();
+      for (var i = 0; i < 4 && c.playing; i++) {
+        c.tickForTest();
+      }
+      expect(c.holdingMarker?.label, "One");
+      c.goToScene(1);
+      expect(c.frame, 5, reason: "the same frame on the next scene");
+      expect(c.holdingMarker, isNull, reason: "play never stopped on Two");
+    });
+
+    test("a pause and a loop on one frame keep a count each", () {
+      // The loop goes back once; the second time round, the pause holds
+      // the playhead for its two frames and play goes on.
+      var c = editor(const CanvasDocument(frames: 20, actions: [
+        TimelineAction(frame: 5, kind: TimelineActionKind.pause, holdFrames: 2),
+        TimelineAction(
+            frame: 5, kind: TimelineActionKind.loop, target: 0, repeats: 1),
+      ]));
+      c.play();
+      var seen = <int>[];
+      for (var i = 0; i < 20; i++) {
+        c.tickForTest();
+        seen.add(c.frame);
+      }
+      expect(seen.where((f) => f == 5).length, 3, reason: "$seen");
+      expect(seen, contains(6), reason: "$seen");
+    });
+  });
+
+  group("a scene turned", () {
+    // Clips picked on the timeline name the scene they were picked on.
+    CanvasDocument two() => CanvasDocument(scenes: [
+          CanvasScene(id: "s1", frames: 48, elements: [
+            ShapeElement(const ElementBase(id: "a", width: 40, height: 40)),
+          ]),
+          CanvasScene(id: "s2", frames: 48, elements: [
+            ShapeElement(const ElementBase(id: "b", width: 40, height: 40)),
+            ShapeElement(const ElementBase(id: "c", width: 40, height: 40)),
+          ]),
+        ]);
+
+    test("by hand, clips picked together on the scene left are let go", () {
+      var c = editor(two());
+      for (var i = 0; i < 2; i++) {
+        c.placeClip("a", c.newClip("a", preset: presetNamed("Jump")),
+            seconds: i * 1.0);
+      }
+      var picks = {for (var p in c.motionOf("a").placed) ("a", p.id)};
+      c.pickMotions(picks);
+      expect(c.motionPicks, hasLength(2));
+      c.goToScene(1);
+      // Delete on the next scene deletes what is picked there.
+      c.selectOnly("c");
+      c.deleteSelected();
+      expect(c.document.elementById("c"), isNull);
+      expect(c.motionPicks, isEmpty);
+    });
+
+    test("by hand, a clip picked from another scene is not left picked", () {
+      // Picked from the first scene, "b" is on another canvas; with its own
+      // scene in front it would be lit on the timeline, outside the
+      // selection, where a click on the canvas cannot take it out.
+      var c = editor(two());
+      c.playAll = true;
+      c.pickClip("b");
+      expect(c.clipSelection, {"b"});
+      c.goToScene(1);
+      expect(c.clipSelection, c.selection);
+    });
+
+    test("by play, likewise", () {
+      var c = editor(two());
+      c.playAll = true;
+      c.pickClip("b");
+      c.placeClip("a", c.newClip("a", preset: presetNamed("Jump")), seconds: 0);
+      c.pickMotions({("a", c.motionOf("a").placed.single.id)});
+      c.play();
+      for (var i = 0; i < 48 && c.document.at == 0; i++) {
+        c.tickForTest();
+      }
+      expect(c.document.at, 1);
+      expect(c.clipSelection, isEmpty);
+      expect(c.motionPicks, isEmpty);
     });
   });
 

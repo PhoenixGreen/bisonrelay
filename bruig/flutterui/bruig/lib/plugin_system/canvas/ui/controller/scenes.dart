@@ -484,6 +484,12 @@ extension CanvasScenes on CanvasController {
     // Back where it was left on this scene, rather than one playhead clamped
     // to each scene in turn.
     if (_sceneFrames[_document.scene.id] case var kept?) _frame = kept;
+    // A stop's label is the scene left's, at whatever frame this one is on.
+    _playbackState.stoppedAt = null;
+    // Clips picked on the timeline go with the selection: they name the
+    // scene left's elements, or keep one of this scene's out of it.
+    _motionPicks = const {};
+    _offCanvas = const {};
     _afterSceneChange();
   }
 

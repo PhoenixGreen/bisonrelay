@@ -487,6 +487,48 @@ void main() {
       controller.startCounters();
       expect(controller.counterRunning(_counterIn(controller)), isTrue);
     });
+
+    test("and do on a canvas opened after the first", () {
+      // The page starts them as it opens; another canvas opened on the
+      // page meanwhile must start its own.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      controller.startCounters();
+      controller.load(CanvasDocument(elements: [
+        const CounterElement(_base,
+            keyed: false, running: true, to: 1000, rate: 1),
+      ]));
+      expect(controller.counterRunning(_counterIn(controller)), isTrue);
+    });
+
+    test("one started by hand ticks on after the page is left and come back to",
+        () async {
+      var controller = _with(live(to: 1000, rate: 1));
+      addTearDown(controller.dispose);
+      var e = _counterIn(controller);
+      controller.pressCounterButton(e, CounterButton.startStop);
+      controller.leavePage();
+      // Coming back: the stage starts the counters as it opens.
+      controller.startCounters();
+      expect(controller.counterRunning(e), isTrue);
+      var ticks = controller.counterTicks;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.counterTicks, greaterThan(ticks),
+          reason: "running, and moving");
+    });
+
+    test("and from where it was, not by the time away", () async {
+      var controller = _with(live(to: 1000, rate: 10));
+      addTearDown(controller.dispose);
+      var e = _counterIn(controller);
+      controller.pressCounterButton(e, CounterButton.startStop);
+      controller.leavePage();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      controller.startCounters();
+      controller.tickCounters();
+      expect(controller.counterValue(e), lessThan(1),
+          reason: "ten a second, for no time since coming back");
+    });
   });
 
   group("the start button", () {

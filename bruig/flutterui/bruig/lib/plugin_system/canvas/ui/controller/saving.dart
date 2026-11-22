@@ -6,6 +6,10 @@ part of '../canvas_controller.dart';
 extension CanvasSaving on CanvasController {
   /// load replaces the whole session with a document from disk.
   void load(CanvasDocument document, {String? folder, String? name}) {
+    // A game and a stop waiting for an action are ended, as leaving the
+    // page ends them: each holds a timer or a key hook, not only a field.
+    if (gaming) gaming = false;
+    _endWait();
     pause();
     stopAudio();
     // Empty sounds left as elements are dropped. An empty channel made on
@@ -46,6 +50,8 @@ extension CanvasSaving on CanvasController {
     // Opened on the frame everything has arrived by, so a canvas whose
     // elements arrive does not open as an empty page.
     _frame = settledFrameOf(_document);
+    // Counters set to start running do, as when the page first opens.
+    startCounters();
     notifyListeners();
   }
 
@@ -72,10 +78,26 @@ extension CanvasSaving on CanvasController {
     _pickedScene = null;
     _pickedSceneWith = const {};
     _joinPicked = _joinPress = false;
+    // A join previewed and paused, which pause keeps: frames of that
+    // canvas's run, and the scene to go back to.
     _previewJoin = null;
+    _previewAt = null;
+    _previewEnd = 0;
+    _previewFrom = null;
+    _previewFromMaster = false;
     // The editor's loop, round a stretch of that canvas's frames.
     _playbackState.looping = false;
     _playbackState.loop = null;
+    // The stop played to, whose label shows while the playhead is on it.
+    _playbackState.stoppedAt = null;
+    // Rows folded by their own arrows: the rows are that canvas's.
+    _playbackState.flippedRows.clear();
+    // Its live counters' counts, by its elements' ids.
+    _playbackState.counters.clear();
+    _playbackState.countersRunning.clear();
+    _countersSince.clear();
+    _counterTimer?.cancel();
+    _counterTimer = null;
     _chainFocus = null;
     _sceneFrames.clear();
     _wordQuery = "";

@@ -342,8 +342,9 @@ extension CanvasPlayback on CanvasController {
   /// stopPlaying is the control bar's Stop: playing, back to where Play
   /// started, to go over a take again; stopped, back to the very start.
   void stopPlaying() {
-    // Only the slots playing: they stop, the playhead stays where it is.
-    if (_sessionOnly) {
+    // Only the slots playing, or one element previewed: they stop, and the
+    // playhead, which they did not move, stays where it is.
+    if (_sessionOnly || _previewing != null) {
       pause();
       return;
     }
@@ -653,6 +654,9 @@ extension CanvasPlayback on CanvasController {
     notifyListeners();
   }
 
+  /// followsAtFirst is whether a session starts following the playhead.
+  static const followsAtFirst = true;
+
   /// followPlayhead is whether the timeline scrolls to follow the playhead.
   bool get followPlayhead => _playbackState.followPlayhead;
 
@@ -798,6 +802,8 @@ extension CanvasPlayback on CanvasController {
           }
           _document = _document.goToScene(place.scene);
           _selection = {};
+          _motionPicks = const {};
+          _offCanvas = const {};
           _backgroundSelected = false;
           _focusedPlayer = null;
           turned = true;
@@ -830,13 +836,14 @@ extension CanvasPlayback on CanvasController {
       if (action.kind != TimelineActionKind.pause || action.frame != _frame) {
         continue;
       }
-      var held = _playbackState.loopCounts[action.frame];
+      var key = (action.kind, action.frame);
+      var held = _playbackState.loopCounts[key];
       if (held == null) continue;
       if (held < action.holdFrames) {
-        _playbackState.loopCounts[action.frame] = held + 1;
+        _playbackState.loopCounts[key] = held + 1;
         return;
       }
-      _playbackState.loopCounts.remove(action.frame);
+      _playbackState.loopCounts.remove(key);
     }
     var next = _frame + 1;
     // Round the loop: from its end back to its start -- but only from inside
@@ -872,11 +879,12 @@ extension CanvasPlayback on CanvasController {
         case TimelineActionKind.pause:
           // Arrived: held here from the next tick, for as many as it asks.
           if (action.holdFrames > 0) {
-            _playbackState.loopCounts[action.frame] = 0;
+            _playbackState.loopCounts[(action.kind, action.frame)] = 0;
           }
         case TimelineActionKind.loop:
-          var count = _playbackState.loopCounts
-              .update(action.frame, (v) => v + 1, ifAbsent: () => 1);
+          var count = _playbackState.loopCounts.update(
+              (action.kind, action.frame), (v) => v + 1,
+              ifAbsent: () => 1);
           if (action.repeats == 0 || count <= action.repeats) {
             _frame = action.target.clamp(0, _document.frames - 1).toInt();
           }
@@ -905,7 +913,7 @@ extension CanvasPlayback on CanvasController {
       }
       if (a.kind == TimelineActionKind.pause &&
           playing &&
-          _playbackState.loopCounts.containsKey(a.frame)) {
+          _playbackState.loopCounts.containsKey((a.kind, a.frame))) {
         return a;
       }
     }
@@ -960,8 +968,15 @@ extension CanvasPlayback on CanvasController {
           _playbackState.countersRunning.contains(e.id));
 
   /// startCounters starts every counter set to start running, as opening a
-  /// canvas with a clock on it should.
+  /// canvas with a clock on it should, and sets going again those left
+  /// running when the page was left (see leavePage).
   void startCounters() {
+    // From where each was, not on by the time the page was away.
+    var now = DateTime.now();
+    for (var id in _playbackState.countersRunning) {
+      _countersSince[id] = now;
+    }
+    if (_playbackState.countersRunning.isNotEmpty) _startCounterTimer();
     for (var e in _document.elements) {
       if (e is CounterElement && e.live && e.running) _runCounter(e, true);
     }
@@ -1067,8 +1082,8 @@ extension CanvasPlayback on CanvasController {
     }
     if (moved) {
       _playbackState.counterTicks++;
-      // Counts are not in the canvas: see _notifyPlayhead.
-      _notifyView();
+      // Counts are not in the canvas: see _notifyStep.
+      _notifyStep();
     }
   }
 
@@ -1189,8 +1204,11 @@ class _PlaybackState {
   /// playheadOnly is set only while notifyingPlayhead runs.
   bool playheadOnly = false;
 
-  /// loopCounts is how often each loop marker has fired, for repeat limits.
-  final Map<int, int> loopCounts = {};
+  /// loopCounts is how often each loop marker has fired, for repeat limits,
+  /// and how long each pause marker has held. By kind and frame, so a pause
+  /// and a loop on one frame count apart: a marker's id can be empty in an
+  /// older file.
+  final Map<(TimelineActionKind, int), int> loopCounts = {};
 
   /// stoppedAt is the frame a stop marker last stopped playback on.
   int? stoppedAt;
@@ -1230,7 +1248,7 @@ class _PlaybackState {
 
   bool returnsShown = true;
 
-  bool followPlayhead = true;
+  bool followPlayhead = CanvasPlayback.followsAtFirst;
 
   bool looping = false;
 
