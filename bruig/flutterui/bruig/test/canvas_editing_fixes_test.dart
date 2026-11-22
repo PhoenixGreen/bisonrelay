@@ -1,5 +1,10 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:bruig/components/color_picker.dart';
-import 'support/canvas_app.dart';
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/components/saved_colors.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -15,10 +20,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/canvas_app.dart';
 
 // canvas_editing_fixes_test.dart is a pass over the editor after a video was
 // made with it: several layers picked at once, the Colour section reaching
@@ -178,6 +181,19 @@ void main() {
       c.undo();
       expect((c.document.allScenes[0].elements.single as ShapeElement).fill,
           _teal);
+    });
+
+    test("a fade's second colour too", () {
+      // It is saved under "to", which is a plain number everywhere else (a
+      // counter's, a range's), so the walk over the saved form passed it by.
+      var c = CanvasController(const CanvasDocument().addElement(
+          const ShapeElement(ElementBase(id: "a"),
+              fill: _teal, fillFade: GradientSpec(to: _teal))));
+      addTearDown(c.dispose);
+      c.replaceColour(_teal, _pink);
+      var shape = c.document.elements.single as ShapeElement;
+      expect(shape.fill, _pink);
+      expect(shape.fillFade!.to, _pink);
     });
 
     testWidgets("from the picker: Replace, then the saved colour",

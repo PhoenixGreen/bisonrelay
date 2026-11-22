@@ -21,20 +21,55 @@ enum SidebarMode {
       values.where((m) => m.name == name).firstOrNull ?? full;
 }
 
-/// sidebarPanelIds are the panels there are, in the order the sidebars
-/// hold them as they start: worked out from [defaultSidebars], which is
-/// where a panel is added. Kept as names: sidebar_panels.dart
-/// (canvasSidebarPanel) makes the panel each names.
-final List<String> sidebarPanelIds = [
-  for (var s in defaultSidebars) ...s.panels,
-];
+/// SidebarPanel is a panel a sidebar can hold. Its name is how it is kept
+/// (in CanvasPreferences.sidebars, and in the panel stacks' own keys).
+///
+/// To add one: a value here, in one of [defaultSidebars]; then its heading
+/// and its body in ui/sidebar/sidebar_panels.dart, where the compiler asks
+/// for both.
+enum SidebarPanel {
+  files("Files", only: SidebarSet.filesId, canHide: false),
+  presets("Presets", only: SidebarSet.filesId),
+  add("Add"),
 
-/// requiredPanels can move but not be hidden.
-const requiredPanels = {"files", "settings"};
+  /// scenes is headed for what the canvas has: scenes, pages, or the
+  /// sections of a piece of sound.
+  scenes("Scenes"),
+  vocalCues("Vocal cues"),
+  layers("Layers"),
+  colour("Colour"),
 
-/// _filesPanels live in the Files sidebar only, and _gamePanels in Game's.
-const _filesPanels = {"files", "presets"};
-const _gamePanels = {"game"};
+  /// settings is the selection's settings, headed for what is selected.
+  settings("Settings", canHide: false),
+
+  // One for each kind of asset in the library (AssetKind, in storage/).
+  picture("Pictures"),
+  video("Videos"),
+  audio("Audio"),
+  vector("Vectors"),
+  model("3D objects"),
+  characters("Characters"),
+  cast("Cast"),
+  stock("Stock"),
+  game("Game", only: SidebarSet.gameId, canHide: false);
+
+  /// title is its name where it is not headed for the canvas or the
+  /// selection: in a menu, on a chip, as a new sidebar's name.
+  final String title;
+
+  /// only is the id of the one sidebar it may be in; null for a panel that
+  /// may be in any but Files and Game.
+  final String? only;
+
+  /// canHide is whether it can be taken out of every sidebar.
+  final bool canHide;
+
+  const SidebarPanel(this.title, {this.only, this.canHide = true});
+
+  /// fromName reads a panel kept by name; null for one not known.
+  static SidebarPanel? fromName(Object? name) =>
+      values.where((p) => p.name == name).firstOrNull;
+}
 
 /// sidebarIconNames are the icons a sidebar can wear (see sidebarIcon).
 const sidebarIconNames = [
@@ -44,10 +79,13 @@ const sidebarIconNames = [
 
 /// SidebarSet is one sidebar: its name, its icon and its panels in order.
 class SidebarSet {
+  /// filesId and gameId are the two sidebars that are always there.
+  static const filesId = "files", gameId = "game";
+
   final String id;
   final String name;
   final String icon;
-  final List<String> panels;
+  final List<SidebarPanel> panels;
 
   /// fixed is the Files or Game sidebar: its panels its own, never removed.
   final bool fixed;
@@ -58,7 +96,8 @@ class SidebarSet {
   const SidebarSet(this.id, this.name, this.icon, this.panels,
       {this.fixed = false, this.gameOnly = false});
 
-  SidebarSet copyWith({String? name, String? icon, List<String>? panels}) =>
+  SidebarSet copyWith(
+          {String? name, String? icon, List<SidebarPanel>? panels}) =>
       SidebarSet(
           id, name ?? this.name, icon ?? this.icon, panels ?? this.panels,
           fixed: fixed, gameOnly: gameOnly);
@@ -67,7 +106,7 @@ class SidebarSet {
         "id": id,
         "name": name,
         "icon": icon,
-        "panels": panels,
+        "panels": [for (var p in panels) p.name],
       };
 }
 
@@ -84,24 +123,32 @@ class RemovedSidebar {
       {"id": id, "name": name, "icon": icon, "at": at};
 }
 
-/// defaultSidebars are the sidebars as they start, each with its panels.
-/// A new panel is added to one of them here, and made in
-/// canvasSidebarPanel (ui/sidebar/sidebar_panels.dart).
+/// defaultSidebars are the sidebars as they start, each with its panels:
+/// every [SidebarPanel] is in one of them.
 const defaultSidebars = [
-  SidebarSet("files", "Files", "folder", ["files", "presets"], fixed: true),
-  SidebarSet("design", "Design", "design",
-      ["add", "scenes", "vocalCues", "layers", "colour", "settings"]),
-  SidebarSet("assets", "Assets", "media", [
-    "picture",
-    "video",
-    "audio",
-    "vector",
-    "model",
-    "characters",
-    "cast",
-    "stock"
+  SidebarSet(SidebarSet.filesId, "Files", "folder",
+      [SidebarPanel.files, SidebarPanel.presets],
+      fixed: true),
+  SidebarSet("design", "Design", "design", [
+    SidebarPanel.add,
+    SidebarPanel.scenes,
+    SidebarPanel.vocalCues,
+    SidebarPanel.layers,
+    SidebarPanel.colour,
+    SidebarPanel.settings,
   ]),
-  SidebarSet("game", "Game", "game", ["game"], fixed: true, gameOnly: true),
+  SidebarSet("assets", "Assets", "media", [
+    SidebarPanel.picture,
+    SidebarPanel.video,
+    SidebarPanel.audio,
+    SidebarPanel.vector,
+    SidebarPanel.model,
+    SidebarPanel.characters,
+    SidebarPanel.cast,
+    SidebarPanel.stock,
+  ]),
+  SidebarSet(SidebarSet.gameId, "Game", "game", [SidebarPanel.game],
+      fixed: true, gameOnly: true),
 ];
 
 /// maxSidebars is the most sidebars there can be, the app's four included.
@@ -119,16 +166,16 @@ class SidebarLayout {
   final String current;
 
   final List<SidebarSet> sidebars;
-  final List<String> hidden;
+  final List<SidebarPanel> hidden;
 
   /// hiddenFrom is the sidebar each hidden panel came from.
-  final Map<String, String> hiddenFrom;
+  final Map<SidebarPanel, String> hiddenFrom;
   final List<RemovedSidebar> removed;
 
   const SidebarLayout({
     this.mode = SidebarMode.full,
     this.opened = SidebarMode.full,
-    this.current = "files",
+    this.current = SidebarSet.filesId,
     this.sidebars = defaultSidebars,
     this.hidden = const [],
     this.hiddenFrom = const {},
@@ -144,8 +191,8 @@ class SidebarLayout {
     SidebarMode? opened,
     String? current,
     List<SidebarSet>? sidebars,
-    List<String>? hidden,
-    Map<String, String>? hiddenFrom,
+    List<SidebarPanel>? hidden,
+    Map<SidebarPanel, String>? hiddenFrom,
     List<RemovedSidebar>? removed,
   }) =>
       SidebarLayout(
@@ -167,16 +214,13 @@ class SidebarLayout {
   SidebarSet? byId(String id) => sidebars.where((s) => s.id == id).firstOrNull;
 
   /// sidebarOf is the sidebar holding [panel], or null for a hidden one.
-  SidebarSet? sidebarOf(String panel) =>
+  SidebarSet? sidebarOf(SidebarPanel panel) =>
       sidebars.where((s) => s.panels.contains(panel)).firstOrNull;
 
   /// canGoIn is whether [panel] may be in [sidebar]: Files' panels in Files
   /// only, the game's in Game only, and everything else anywhere else.
-  static bool canGoIn(String panel, SidebarSet sidebar) {
-    if (_filesPanels.contains(panel)) return sidebar.id == "files";
-    if (_gamePanels.contains(panel)) return sidebar.id == "game";
-    return !sidebar.fixed;
-  }
+  static bool canGoIn(SidebarPanel panel, SidebarSet sidebar) =>
+      panel.only == null ? !sidebar.fixed : sidebar.id == panel.only;
 
   /// withMode is the sidebar shown [mode]; a shown mode is kept for later.
   SidebarLayout withMode(SidebarMode mode) =>
@@ -186,7 +230,7 @@ class SidebarLayout {
   SidebarLayout get shownAgain => copyWith(mode: opened);
 
   /// movePanel is [panel] moved to the end of [to], from wherever it was.
-  SidebarLayout movePanel(String panel, String to) {
+  SidebarLayout movePanel(SidebarPanel panel, String to) {
     var target = byId(to);
     if (target == null || !canGoIn(panel, target)) return this;
     if (target.panels.contains(panel)) return this;
@@ -204,8 +248,8 @@ class SidebarLayout {
   }
 
   /// hidePanel is [panel] taken out of its sidebar, remembered as from there.
-  SidebarLayout hidePanel(String panel) {
-    if (requiredPanels.contains(panel)) return this;
+  SidebarLayout hidePanel(SidebarPanel panel) {
+    if (!panel.canHide) return this;
     var from = sidebarOf(panel);
     if (from == null) return this;
     return copyWith(
@@ -222,7 +266,7 @@ class SidebarLayout {
 
   /// restorePanel is a hidden [panel] put back: where it came from, while
   /// that sidebar is there, and otherwise the first that will take it.
-  SidebarLayout restorePanel(String panel, {String? into}) {
+  SidebarLayout restorePanel(SidebarPanel panel, {String? into}) {
     if (!hidden.contains(panel)) return this;
     var to = byId(into ?? hiddenFrom[panel] ?? "");
     to = to != null && canGoIn(panel, to)
@@ -232,7 +276,7 @@ class SidebarLayout {
   }
 
   /// addSidebar adds an empty sidebar called [name], holding [panel] if given.
-  SidebarLayout addSidebar({String? name, String? panel}) {
+  SidebarLayout addSidebar({String? name, SidebarPanel? panel}) {
     if (sidebars.length >= maxSidebars) return this;
     var n = 1;
     bool taken(String id) =>
@@ -257,7 +301,7 @@ class SidebarLayout {
     if (gone == null || gone.fixed) return this;
     var keep = [
       for (var p in gone.panels)
-        if (requiredPanels.contains(p)) p
+        if (!p.canHide) p
     ];
     var refuge = sidebars
         .where((s) => s.id != id && !s.fixed && !s.gameOnly)
@@ -275,18 +319,18 @@ class SidebarLayout {
       hidden: [
         ...hidden,
         for (var p in gone.panels)
-          if (!requiredPanels.contains(p)) p
+          if (p.canHide) p
       ],
       hiddenFrom: {
         ...hiddenFrom,
         for (var p in gone.panels)
-          if (!requiredPanels.contains(p)) p: id
+          if (p.canHide) p: id
       },
       removed: [
         ...removed.where((r) => r.id != id),
         RemovedSidebar(id, gone.name, gone.icon, at),
       ],
-      current: current == id ? (refuge?.id ?? "files") : current,
+      current: current == id ? (refuge?.id ?? SidebarSet.filesId) : current,
     );
   }
 
@@ -345,16 +389,16 @@ class SidebarLayout {
   }
 
   /// asStarted is the sidebars as they start, kept shown as they are.
-  SidebarLayout get asStarted =>
-      SidebarLayout(mode: mode, opened: opened, current: "files");
+  SidebarLayout get asStarted => SidebarLayout(mode: mode, opened: opened);
 
   Map<String, dynamic> toJson() => {
         "mode": mode.name,
         "opened": opened.name,
         "current": current,
         "sidebars": [for (var s in sidebars) s.toJson()],
-        if (hidden.isNotEmpty) "hidden": hidden,
-        if (hiddenFrom.isNotEmpty) "hiddenFrom": hiddenFrom,
+        if (hidden.isNotEmpty) "hidden": [for (var p in hidden) p.name],
+        if (hiddenFrom.isNotEmpty)
+          "hiddenFrom": {for (var e in hiddenFrom.entries) e.key.name: e.value},
         if (removed.isNotEmpty) "removed": [for (var r in removed) r.toJson()],
       };
 
@@ -364,12 +408,12 @@ class SidebarLayout {
   /// sidebars missing.
   static SidebarLayout fromJson(Object? json) {
     if (json is! Map) return const SidebarLayout();
-    var seen = <String>{};
-    var known = sidebarPanelIds.toSet();
-    List<String> panelsOf(Object? list) => [
+    // Each panel once: the first place it is met is where it is.
+    var seen = <SidebarPanel>{};
+    List<SidebarPanel> panelsOf(Object? list) => [
           if (list is List)
-            for (var p in list)
-              if (p is String && known.contains(p) && seen.add(p)) p
+            for (var name in list)
+              if (SidebarPanel.fromName(name) case var p? when seen.add(p)) p
         ];
     var sidebars = <SidebarSet>[];
     if (json["sidebars"] case List list) {
@@ -391,7 +435,7 @@ class SidebarLayout {
         var panels = [
           for (var p in panelsOf(raw["panels"]))
             if (SidebarLayout.canGoIn(p, probe)) p else _misplaced(p, seen),
-        ].whereType<String>().toList();
+        ].nonNulls.toList();
         sidebars.add(builtIn != null
             ? SidebarSet(id, builtIn.fixed ? builtIn.name : name,
                 builtIn.fixed ? builtIn.icon : icon, panels,
@@ -404,7 +448,7 @@ class SidebarLayout {
     for (var fixed in defaultSidebars.where((s) => s.fixed)) {
       if (sidebars.any((s) => s.id == fixed.id)) continue;
       sidebars.insert(
-          fixed.id == "files" ? 0 : sidebars.length,
+          fixed.id == SidebarSet.filesId ? 0 : sidebars.length,
           fixed.copyWith(panels: [
             for (var p in fixed.panels)
               if (seen.add(p)) p
@@ -412,13 +456,14 @@ class SidebarLayout {
     }
     var hidden = [
       for (var p in panelsOf(json["hidden"]))
-        if (!requiredPanels.contains(p)) p else _misplaced(p, seen),
-    ].whereType<String>().toList();
-    var hiddenFrom = <String, String>{
+        if (p.canHide) p else _misplaced(p, seen),
+    ].nonNulls.toList();
+    var hiddenFrom = <SidebarPanel, String>{
       if (json["hiddenFrom"] case Map from)
         for (var e in from.entries)
-          if (e.key is String && e.value is String && hidden.contains(e.key))
-            e.key as String: e.value as String,
+          if ((SidebarPanel.fromName(e.key), e.value) case (var p?, String id)
+              when hidden.contains(p))
+            p: id,
     };
     var removed = <RemovedSidebar>[
       if (json["removed"] case List list)
@@ -447,7 +492,7 @@ class SidebarLayout {
     );
     // Whatever is not anywhere -- a panel new since this was written, or one
     // put right above -- goes where it starts.
-    for (var p in sidebarPanelIds) {
+    for (var p in SidebarPanel.values) {
       if (layout.sidebarOf(p) != null || layout.hidden.contains(p)) continue;
       var home = defaultSidebars.firstWhere((s) => s.panels.contains(p));
       var to = layout.byId(home.id) ??
@@ -459,14 +504,14 @@ class SidebarLayout {
       ]);
     }
     if (layout.byId(layout.current) == null) {
-      layout = layout.copyWith(current: "files");
+      layout = layout.copyWith(current: SidebarSet.filesId);
     }
     return layout;
   }
 
   /// _misplaced is a panel found where it may not be: let go, to be put
   /// back where it starts by fromJson.
-  static String? _misplaced(String panel, Set<String> seen) {
+  static SidebarPanel? _misplaced(SidebarPanel panel, Set<SidebarPanel> seen) {
     seen.remove(panel);
     return null;
   }

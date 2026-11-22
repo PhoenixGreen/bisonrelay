@@ -1,16 +1,18 @@
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:flutter/material.dart';
+
+import 'package:bruig/components/panel_stack.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
-import 'package:bruig/components/panel_stack.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
-import 'package:flutter/material.dart';
 
 // design_panel.dart is the three things used to build a canvas, in one
 // column: what can be added, what is already there, and the selection's
@@ -43,17 +45,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   @override
   void initState() {
     super.initState();
-    // Tiles keep their pictures during a control drag: TileSnapshot.holding.
-    TileSnapshot.holding = () => widget.controller.interacting;
-    readSettingsLayout();
     _makeBodies();
-  }
-
-  @override
-  void dispose() {
-    // The hook above would hold this panel and its document for the session.
-    TileSnapshot.letGo();
-    super.dispose();
   }
 
   @override
@@ -86,29 +78,30 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   Widget _stack(BuildContext context) => PanelStack(
         storageKey: "canvasDesign",
         panels: [
-          for (var id in designPanelIds)
-            canvasSidebarPanel(id, controller, _body(id))!,
+          for (var panel in designPanelIds)
+            canvasSidebarPanel(panel, controller, _body(panel)),
         ],
       );
 
-  Widget _body(String id) => switch (id) {
-        "add" => _add,
-        "scenes" => controller.document.kind.isAudio ? _structure : _scenes,
-        "vocalCues" => _cues,
-        "layers" => _layers,
-        "colour" => _colour,
+  Widget _body(SidebarPanel panel) => switch (panel) {
+        SidebarPanel.add => _add,
+        SidebarPanel.scenes =>
+          controller.document.kind.isAudio ? _structure : _scenes,
+        SidebarPanel.vocalCues => _cues,
+        SidebarPanel.layers => _layers,
+        SidebarPanel.colour => _colour,
         _ => _settings,
       };
 }
 
 /// designPanelIds are the Design column's panels, in order.
 const designPanelIds = [
-  "add",
-  "scenes",
-  "vocalCues",
-  "layers",
-  "colour",
-  "settings",
+  SidebarPanel.add,
+  SidebarPanel.scenes,
+  SidebarPanel.vocalCues,
+  SidebarPanel.layers,
+  SidebarPanel.colour,
+  SidebarPanel.settings,
 ];
 
 /// SettingsPanelBody is the selection's settings: its own widget with its
@@ -155,6 +148,10 @@ class _SettingsBodyState extends State<SettingsPanelBody> {
   @override
   void initState() {
     super.initState();
+    // Sections or a menu, as it was left.
+    readSettingsLayout();
+    // Tiles keep their pictures during a control drag: TileSnapshot.holding.
+    TileSnapshot.holding = () => controller.interacting;
     _showing = controller.selected?.id;
     controller.addListener(_onSelectionChanged);
     controller.chrome.addListener(_settled);
@@ -162,6 +159,8 @@ class _SettingsBodyState extends State<SettingsPanelBody> {
 
   @override
   void dispose() {
+    // The hook above would hold this panel and its document for the session.
+    TileSnapshot.letGo();
     _remember();
     controller.removeListener(_onSelectionChanged);
     controller.chrome.removeListener(_settled);

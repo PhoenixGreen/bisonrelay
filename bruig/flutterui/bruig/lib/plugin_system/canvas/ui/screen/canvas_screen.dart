@@ -193,14 +193,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
     var prefs = _prefs = Provider.of<CanvasPreferences>(context, listen: false);
     _sidebars = prefs.sidebars;
     // The Game sidebar only for a game.
-    if (_sidebars.current == "game" && !_controller.document.game) {
-      _sidebars = _sidebars.copyWith(current: _holding("settings"));
+    if (_sidebars.current == SidebarSet.gameId && !_controller.document.game) {
+      _sidebars = _sidebars.copyWith(current: _holding(SidebarPanel.settings));
     }
     // Told after the first frame: notified during initState, a listener's
     // setState would land mid-build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _controller.gameTabOpen = _sidebars.current == "game";
+      _controller.gameTabOpen = _sidebars.current == SidebarSet.gameId;
       // A canvas opened from Files: put in the library, and opened here.
       if (prefs.pendingOpen case (var folder, var name)) {
         prefs.pendingOpen = null;
@@ -208,8 +208,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
       }
     });
     // Returning to a page left on the settings counts as having used them.
-    _designUsed =
-        _sidebars.byId(_sidebars.current)?.panels.contains("settings") == true;
+    _designUsed = _sidebars
+            .byId(_sidebars.current)
+            ?.panels
+            .contains(SidebarPanel.settings) ==
+        true;
     _timelineOpen = prefs.timeline;
     // How the page was left, before anything is drawn.
     _kept = KeptView(_controller, prefs)..open();
@@ -257,12 +260,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // Not from the Game panel, which shows the chosen element's game settings.
     if (chose &&
         _designUsed &&
-        _sidebars.current != _holding("settings") &&
-        _sidebars.current != "game" &&
+        _sidebars.current != _holding(SidebarPanel.settings) &&
+        _sidebars.current != SidebarSet.gameId &&
         // A feature's own sidebar (an assistant picking what it works on)
         // keeps the column: see sidebar_extras.dart.
         !CanvasSidebarExtras.isExtra(_sidebars.current)) {
-      _showPanel("settings");
+      _showPanel(SidebarPanel.settings);
     }
   }
 
@@ -275,9 +278,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (game == _gameSeen || !mounted) return;
     _gameSeen = game;
     if (game) {
-      _showSidebar("game");
-    } else if (_sidebars.current == "game") {
-      _showPanel("settings");
+      _showSidebar(SidebarSet.gameId);
+    } else if (_sidebars.current == SidebarSet.gameId) {
+      _showPanel(SidebarPanel.settings);
     } else {
       setState(() {});
     }
@@ -318,10 +321,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
   bool _designUsed = false;
 
   /// _holding is the sidebar [panel] is in, or the first there is.
-  String _holding(String panel) =>
+  String _holding(SidebarPanel panel) =>
       _sidebars.sidebarOf(panel)?.id ?? _sidebars.sidebars.first.id;
 
-  void _showPanel(String panel) => _showSidebar(_holding(panel));
+  void _showPanel(SidebarPanel panel) => _showSidebar(_holding(panel));
 
   void _showSidebar(String id) => _setSidebars(_sidebars.copyWith(current: id));
 
@@ -333,14 +336,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
       return;
     }
     var shows = next.byId(next.current);
-    if (shows?.panels.contains("settings") == true) _designUsed = true;
+    if (shows?.panels.contains(SidebarPanel.settings) == true) {
+      _designUsed = true;
+    }
     setState(() => _sidebars = next);
-    _controller.gameTabOpen = next.current == "game";
+    _controller.gameTabOpen = next.current == SidebarSet.gameId;
     _prefs.sidebars = next;
   }
 
-  void _customise() => showCustomiseSidebars(context,
-      controller: _controller, read: () => _sidebars, write: _setSidebars);
+  void _customise() =>
+      showCustomiseSidebars(context, layout: _sidebars, write: _setSidebars);
 
   /// _confirmDiscard keeps unsaved work before another canvas or a preset
   /// opens, asking only where it cannot: a canvas with a file is saved (it
@@ -388,7 +393,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
     _prefs.remember(folder, name);
     // Straight to the elements tab, as a preset does.
-    _showPanel("add");
+    _showPanel(SidebarPanel.add);
     _openCanvasSettings();
   }
 
@@ -408,7 +413,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (mounted) {
       _prefs.remember("", "");
       // Straight to the elements tab: the next thing is to add something.
-      _showPanel("add");
+      _showPanel(SidebarPanel.add);
       // Only the empty preset: see startsWithSettingsOpen.
       if (startsWithSettingsOpen(document)) _openCanvasSettings();
     }

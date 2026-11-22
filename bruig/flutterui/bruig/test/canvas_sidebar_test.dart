@@ -1,18 +1,22 @@
-import 'support/canvas_app.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/customise_sidebars.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/customise_sidebars.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
+import 'package:bruig/storage_manager.dart';
+
+import 'support/canvas_app.dart';
+
 // canvas_sidebar_test.dart is the sidebar set out by the reader: a sidebar
-// chosen by its icon, panels moved and hidden from their headings and put
-// back from a sidebar's foot, the toggle between full height and above the
-// panels, and the sheet that sets out every sidebar at once.
+// chosen by its icon, panels moved and hidden from their headings, the
+// toggle between full height and above the panels, and the sheet that sets
+// out every sidebar at once and puts hidden panels back.
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -20,10 +24,11 @@ void main() {
   /// shown pumps the sidebar on [layout], keeping what it is set out as.
   Future<ValueNotifier<SidebarLayout>> shown(WidgetTester tester,
       {SidebarLayout layout = const SidebarLayout(current: "design"),
-      bool canSitAbove = true}) async {
+      bool canSitAbove = true,
+      CanvasController? controller}) async {
     setTestScreen(tester, const Size(1200, 1000));
-    var c = CanvasController(const CanvasDocument());
-    addTearDown(c.dispose);
+    var c = controller ?? CanvasController(const CanvasDocument());
+    if (controller == null) addTearDown(c.dispose);
     var laid = ValueNotifier(layout);
     var bodies = SidebarPanelBodies(
       controller: c,
@@ -44,8 +49,7 @@ void main() {
                       bodies: bodies,
                       canSitAbove: canSitAbove,
                       onCustomise: () => showCustomiseSidebars(context,
-                          controller: c,
-                          read: () => laid.value,
+                          layout: laid.value,
                           write: (next) => laid.value = next))),
               const Expanded(child: SizedBox())
             ]))));
@@ -70,13 +74,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text("Move to Assets"));
     await tester.pumpAndSettle();
-    expect(laid.value.sidebarOf("colour")!.id, "assets");
+    expect(laid.value.sidebarOf(SidebarPanel.colour)!.id, "assets");
 
     await tester.tap(find.byKey(const ValueKey("panelMenu:layers")));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Hide this panel"));
     await tester.pumpAndSettle();
-    expect(laid.value.hidden, ["layers"]);
+    expect(laid.value.hidden, [SidebarPanel.layers]);
     expect(find.byKey(const ValueKey("panelMenu:layers")), findsNothing);
   });
 
@@ -93,12 +97,18 @@ void main() {
     expect(laid.value.hidden, isEmpty);
   });
 
-  testWidgets("a hidden panel leaves no line at the sidebar's foot",
+  testWidgets("a sidebar of a panel's own is named for the panel",
       (tester) async {
-    await shown(tester,
-        layout: const SidebarLayout(current: "design").hidePanel("colour"));
-    expect(find.textContaining("Add a panel"), findsNothing);
-    expect(find.byKey(const ValueKey("sidebarAddPanel-design")), findsNothing);
+    // Not for what its heading says at the time: the settings are headed
+    // for whatever is selected, and the sidebar was named "Background
+    // settings".
+    var laid = await shown(tester);
+    await tester.tap(find.byKey(const ValueKey("panelMenu:settings")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("A new sidebar of its own"));
+    await tester.pumpAndSettle();
+    expect(laid.value.sidebars.last.name, "Settings");
+    expect(laid.value.sidebars.last.panels, [SidebarPanel.settings]);
   });
 
   testWidgets("the row along the top lines up: one height, one middle",
@@ -161,12 +171,6 @@ void main() {
     expect(find.text("Hide the sidebar"), findsOneWidget);
   });
 
-  testWidgets("no + along the top: sidebars are added in Customise",
-      (tester) async {
-    await shown(tester);
-    expect(find.byKey(const ValueKey("sidebarAdd")), findsNothing);
-  });
-
   testWidgets("the sheet takes a panel out with its ×, and puts it back",
       (tester) async {
     var laid = await shown(tester);
@@ -176,7 +180,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("customiseHide-stock")));
     await tester.pumpAndSettle();
-    expect(laid.value.hidden, ["stock"]);
+    expect(laid.value.hidden, [SidebarPanel.stock]);
     expect(find.byKey(const ValueKey("customiseHide-settings")), findsNothing,
         reason: "the settings have no ×");
     await tester
@@ -184,7 +188,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("customisePutBack-stock")));
     await tester.pumpAndSettle();
-    expect(laid.value.sidebarOf("stock")!.id, "assets");
+    expect(laid.value.sidebarOf(SidebarPanel.stock)!.id, "assets");
 
     await tester
         .ensureVisible(find.byKey(const ValueKey("customiseRemove-assets")));
@@ -204,5 +208,37 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("customiseDone")));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("customiseDone")), findsNothing);
+  });
+
+  group("what the settings panel needs of the sidebar it is in", () {
+    // Both were once done by a Design column the app no longer mounts, and
+    // so were done only in tests.
+    testWidgets("settings as a menu is as it was left", (tester) async {
+      await tester
+          .runAsync(() => StorageManager.saveData("canvasSettingsMenu", true));
+      forgetPanelsForTest();
+      addTearDown(forgetPanelsForTest);
+      await shown(tester);
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+      expect(settingsAsMenu.value, isTrue);
+    });
+
+    testWidgets("tiles keep their pictures while a control is dragged",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument());
+      addTearDown(c.dispose);
+      await shown(tester, controller: c);
+      expect(TileSnapshot.holding(), isFalse);
+      c.beginInteraction();
+      expect(TileSnapshot.holding(), isTrue);
+      c.endInteraction();
+
+      // And the hook goes with the panel: it would hold the document.
+      await tester.pumpWidget(const SizedBox());
+      c.beginInteraction();
+      expect(TileSnapshot.holding(), isFalse);
+      c.endInteraction();
+    });
   });
 }

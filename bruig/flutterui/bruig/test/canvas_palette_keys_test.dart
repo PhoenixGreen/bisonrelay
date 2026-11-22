@@ -42,6 +42,9 @@ const _colourKeys = {
   "sc",
   "secondary",
   "sky",
+  // A fade's second colour (GradientSpec), told from the many plain
+  // numbers saved as "to" by the angle beside it.
+  "to",
   "wallColor",
   "zebraFill",
 };

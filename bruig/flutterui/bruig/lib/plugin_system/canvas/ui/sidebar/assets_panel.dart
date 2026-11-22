@@ -1,22 +1,24 @@
 import 'dart:typed_data';
 
-import 'package:bruig/plugin_system/canvas/ui/picking/model_picking.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
 import 'package:bruig/components/panel_stack.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/media_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/model_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 // assets_panel.dart is the Assets sidebar: the library's pictures, videos
 // and sounds, one panel each in a panel stack. An asset is clicked to put it
@@ -48,8 +50,8 @@ class _CanvasAssetsPanelState extends State<CanvasAssetsPanel> {
         builder: (context, _, __) => PanelStack(
           storageKey: "canvasAssets",
           panels: [
-            for (var id in assetPanelIds)
-              canvasSidebarPanel(id, controller, _bodies.body(id))!,
+            for (var panel in assetPanelIds)
+              canvasSidebarPanel(panel, controller, _bodies.body(panel)),
           ],
         ),
       );
@@ -57,13 +59,13 @@ class _CanvasAssetsPanelState extends State<CanvasAssetsPanel> {
 
 /// assetPanelIds are the Assets column's panels, in order.
 const assetPanelIds = [
-  "picture",
-  "video",
-  "audio",
-  "vector",
-  "model",
-  "characters",
-  "stock",
+  SidebarPanel.picture,
+  SidebarPanel.video,
+  SidebarPanel.audio,
+  SidebarPanel.vector,
+  SidebarPanel.model,
+  SidebarPanel.characters,
+  SidebarPanel.stock,
 ];
 
 /// audioTypeOf is what kind of file stored sound [id] is: ".mid", ".mp3".

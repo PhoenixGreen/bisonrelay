@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
@@ -6,7 +8,6 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
 
 // canvas_sidebar.dart is the Canvas sidebar: a row of icons, a sidebar each
 // (sidebar_layout.dart), and the chosen one's panels in a panel stack, with
@@ -188,10 +189,18 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
   Widget _icon(ThemeNotifier theme, SidebarSet s, bool selected) {
     var colors = theme.colors;
     var face = DragTarget<PanelDrag>(
+      // A heading drags as its stack's id for it, which is the panel's name.
       onWillAcceptWithDetails: (d) =>
-          SidebarLayout.canGoIn(d.data.id, s) && !s.panels.contains(d.data.id),
-      onAcceptWithDetails: (d) =>
-          _set(layout.movePanel(d.data.id, s.id).copyWith(current: s.id)),
+          switch (SidebarPanel.fromName(d.data.id)) {
+        var panel? =>
+          SidebarLayout.canGoIn(panel, s) && !s.panels.contains(panel),
+        null => false,
+      },
+      onAcceptWithDetails: (d) {
+        if (SidebarPanel.fromName(d.data.id) case var panel?) {
+          _set(layout.movePanel(panel, s.id).copyWith(current: s.id));
+        }
+      },
       builder: (context, over, _) => Tooltip(
         message: s.name,
         child: InkWell(
@@ -326,15 +335,13 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
         ]),
       );
 
-  /// _column is sidebar [s]: its panels, and at its foot those it could take.
+  /// _column is sidebar [s]: its panels in a stack.
   Widget _column(BuildContext context, SidebarSet s, bool showing) {
     var panels = [
-      for (var id in s.panels)
-        if (canvasSidebarPanel(
-                id, controller, widget.bodies.body(id, showing: showing),
-                menu: _panelMenu(id, s))
-            case var panel?)
-          panel
+      for (var panel in s.panels)
+        canvasSidebarPanel(
+            panel, controller, widget.bodies.body(panel, showing: showing),
+            menu: _panelMenu(panel, s))
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(
@@ -353,24 +360,25 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
     ]);
   }
 
-  /// _panelMenu is the ⋯ on panel [id]'s heading, in sidebar [s].
-  List<PanelAction> _panelMenu(String id, SidebarSet s) {
-    var name = sidebarPanelLabel(id, controller);
+  /// _panelMenu is the ⋯ on [panel]'s heading, in sidebar [s].
+  List<PanelAction> _panelMenu(SidebarPanel panel, SidebarSet s) {
     var hide = PanelAction(
-        requiredPanels.contains(id)
-            ? "$name stays: it cannot be hidden"
-            : "Hide this panel",
-        requiredPanels.contains(id) ? null : () => _set(layout.hidePanel(id)));
+        panel.canHide
+            ? "Hide this panel"
+            : "${panel.title} stays: it cannot be hidden",
+        panel.canHide ? () => _set(layout.hidePanel(panel)) : null);
     if (s.fixed) return s.gameOnly ? const [] : [hide];
     return [
       for (var other in _shown)
-        if (other.id != s.id && SidebarLayout.canGoIn(id, other))
+        if (other.id != s.id && SidebarLayout.canGoIn(panel, other))
           PanelAction("Move to ${other.name}",
-              () => _set(layout.movePanel(id, other.id))),
+              () => _set(layout.movePanel(panel, other.id))),
       PanelAction(
           "A new sidebar of its own",
           layout.sidebars.length < maxSidebars
-              ? () => _set(layout.addSidebar(name: name, panel: id))
+              // Named for the panel, not for what its heading says now (the
+              // settings are headed for whatever is selected).
+              ? () => _set(layout.addSidebar(name: panel.title, panel: panel))
               : null),
       hide,
     ];

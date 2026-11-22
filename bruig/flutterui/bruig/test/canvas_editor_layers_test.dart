@@ -1,23 +1,26 @@
-import 'support/canvas_app.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/components/panel_stack.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
-import 'support/canvas_panel_helpers.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+
+import 'support/canvas_app.dart';
+import 'support/canvas_panel_helpers.dart';
 
 // canvas_editor_layers_test.dart is the sidebar's layers and design panels:
 // listing, naming, dragging and picking layers, and what the sidebar rebuilds
@@ -500,10 +503,10 @@ void main() {
           tester,
           PanelStack(storageKey: "presetsHint", panels: [
             canvasSidebarPanel(
-                "presets",
+                SidebarPanel.presets,
                 controller,
                 CanvasPresetsLibrary(
-                    controller: controller, onChoose: (_, __) {}))!,
+                    controller: controller, onChoose: (_, __) {})),
           ]));
       // One list of every kind now, under the files: a canvas to start
       // from, a scene to add, an element to drop on, and the rest.

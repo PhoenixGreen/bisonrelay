@@ -65,6 +65,16 @@ int _rgb(int argb) => argb & 0xFFFFFF;
 bool _looksLikeColour(Object? v) =>
     v is int && v >= 0x01000000 && v <= 0xFFFFFFFF;
 
+/// _ruledOut is whether what [map] holds under [key] is not a colour.
+///
+/// "to" is a number nearly everywhere (a counter's, a range's), and a
+/// colour in one place: a fade's second colour (GradientSpec), which is
+/// known by the angle saved beside it.
+bool _ruledOut(String key, Map<String, dynamic> map) {
+  if (key == "to" && map.containsKey("angle")) return false;
+  return _notColours.contains(key);
+}
+
 /// _walk visits every colour-shaped number in [json] that is not under a
 /// key that rules it out, handing it to [visit] and putting back whatever
 /// that returns.
@@ -72,7 +82,7 @@ Object? _walk(Object? json, int Function(int) visit, {bool skip = false}) {
   if (json is Map<String, dynamic>) {
     return {
       for (var e in json.entries)
-        e.key: _walk(e.value, visit, skip: _notColours.contains(e.key)),
+        e.key: _walk(e.value, visit, skip: _ruledOut(e.key, json)),
     };
   }
   if (json is List) {
@@ -90,7 +100,7 @@ Set<String> colourKeysOf(Object? json, {String key = "", bool skip = false}) {
   if (json is Map<String, dynamic>) {
     return {
       for (var e in json.entries)
-        ...colourKeysOf(e.value, key: e.key, skip: _notColours.contains(e.key)),
+        ...colourKeysOf(e.value, key: e.key, skip: _ruledOut(e.key, json)),
     };
   }
   if (json is List) {

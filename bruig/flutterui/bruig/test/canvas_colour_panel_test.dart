@@ -1,22 +1,27 @@
 import 'dart:ui' as ui;
-import 'support/canvas_app.dart';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:bruig/components/color_picker.dart';
-import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
-import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart';
-import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+
+import 'support/canvas_app.dart';
 
 // canvas_colour_panel_test.dart is the Design sidebar's Colour section: the
 // selected element's colours as a pair of swatches, the picker for the one
@@ -67,7 +72,7 @@ void main() {
     expect(v().shapes![1].fill, const Color(0xFF000000));
     expect(v().shapes![0].fill, const Color(0xFFE53935));
     // And a fade, which a drawing's shape takes now as well.
-    colourSlotsFor(c).first.setGradient(
+    colourSlotsFor(c).first.setGradient!(
         const GradientSpec(to: Color(0xFFFFFFFF)),
         transient: false);
     expect(v().shapes![1].fillFade, isNotNull);
@@ -93,7 +98,7 @@ void main() {
     var slots = colourSlotsFor(c);
     expect([for (var s in slots) s.label], ["Base", "Main", "Accent"]);
     slots[2].setColour(const Color(0xFF00FF00), transient: false);
-    colourSlotsFor(c)[1].setGradient(const GradientSpec(to: Color(0xFFFF00FF)),
+    colourSlotsFor(c)[1].setGradient!(const GradientSpec(to: Color(0xFFFF00FF)),
         transient: false);
     var spec = c.document.editedBackground.spec;
     expect(spec.accent, const Color(0xFF00FF00));
@@ -366,5 +371,68 @@ void main() {
     var shapes = (c.document.elementById("n") as VectorElement).shapes!;
     expect(shapes.single.stroke, const Color(0xFFFF6D00));
     expect(tester.takeException(), isNull);
+  });
+
+  test("several selected: no colours, and never the background's", () {
+    // "The one selected element" is null for several as it is for none,
+    // and the background's colours were offered, and changed, in their
+    // place.
+    var c = CanvasController(const CanvasDocument()
+        .addElement(const ShapeElement(ElementBase(id: "a")))
+        .addElement(const ShapeElement(ElementBase(id: "b"))));
+    addTearDown(c.dispose);
+    c.selectMany({"a", "b"});
+    expect(colourSlotsFor(c), isEmpty);
+    c.clearSelection();
+    expect([for (var s in colourSlotsFor(c)) s.id], ["base", "main", "accent"]);
+  });
+
+  testWidgets("a fade is offered only for a colour that can fade",
+      (tester) async {
+    var document = const CanvasDocument();
+    var table = newElement(ElementKind.table, document);
+    var c = CanvasController(document
+        .addElement(table)
+        .addElement(const ShapeElement(ElementBase(id: "s"))));
+    addTearDown(c.dispose);
+    AppColorPicker picker() =>
+        tester.widget<AppColorPicker>(find.byType(AppColorPicker));
+
+    c.selectOnly(table.id);
+    await tester.pumpWidget(host(c));
+    await tester.pump();
+    expect(picker().onGradientChanged, isNull,
+        reason: "a table's heading is one colour");
+    c.selectOnly("s");
+    await tester.pump();
+    expect(picker().onGradientChanged, isNotNull,
+        reason: "a shape's fill fades");
+  });
+
+  testWidgets("no swap between no colour and a colour that must be one",
+      (tester) async {
+    // A text with no box: swapping gave the box the words' colour and left
+    // the words as they were, since words cannot be "none".
+    var c = CanvasController(const CanvasDocument()
+        .addElement(const TextElement(ElementBase(id: "t"), text: "Hi")));
+    addTearDown(c.dispose);
+    c.selectOnly("t");
+    await tester.pumpWidget(host(c));
+    await tester.pump();
+    var before = c.document.elementById("t")!.toJson();
+    await tester.tap(find.byKey(const ValueKey("colourSwap")));
+    await tester.pump();
+    expect(c.document.elementById("t")!.toJson(), before);
+
+    // With a box, the two change places.
+    colourSlotsFor(c)
+        .first
+        .setColour(const Color(0xFF112233), transient: false);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("colourSwap")));
+    await tester.pump();
+    var text = c.document.elementById("t") as TextElement;
+    expect(text.textSpec.color, const Color(0xFF112233));
+    expect(text.box.fill, const Color(0xFFFFFFFF));
   });
 }

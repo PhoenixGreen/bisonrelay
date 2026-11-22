@@ -1,25 +1,26 @@
-import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
-import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'dart:async';
 import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
 
 import 'package:bruig/components/color_picker.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_items.dart';
-import 'package:flutter/material.dart';
 
 // colour_panel.dart is the Design sidebar's Colour section: the selection's
 // colours (or the background's three) as swatches, the chosen one in front;
@@ -37,35 +38,42 @@ class ColourSlot {
   final GradientSpec? gradient;
   final bool canBeNone;
   final void Function(Color? c, {required bool transient}) setColour;
-  final void Function(GradientSpec? g, {required bool transient}) setGradient;
+
+  /// setGradient sets its fade; null for a colour that cannot fade.
+  final void Function(GradientSpec? g, {required bool transient})? setGradient;
 
   const ColourSlot({
     required this.id,
     required this.label,
     required this.ring,
     required this.color,
-    required this.gradient,
+    this.gradient,
     required this.setColour,
-    required this.setGradient,
+    this.setGradient,
     this.canBeNone = true,
   });
 }
 
 /// colourSlotsFor is the colours the Colour section offers: the selected
 /// element's area and line or words colours, or the background's three when
-/// nothing (or the background) is selected.
+/// nothing (or the background) is selected. None for several elements
+/// selected together, which have no one colour to show.
 List<ColourSlot> colourSlotsFor(CanvasController controller) {
+  if (controller.selection.length > 1) return const [];
   var e = controller.selected;
   if (e == null) return _backgroundSlots(controller);
 
-  ColourSlot slot(
-    String id,
-    String label,
-    bool ring,
-    Color? color,
+  // One of the element's colours: [withColour] is the element in another
+  // colour (null for none), [withGradient] the element fading to another,
+  // left out where that colour cannot fade.
+  ColourSlot slot({
+    required String id,
+    required String label,
+    required bool ring,
+    required Color? color,
+    required CanvasElement Function(Color? c) withColour,
     GradientSpec? gradient,
-    CanvasElement Function(Color? c) withColour,
-    CanvasElement Function(GradientSpec? g) withGradient, {
+    CanvasElement Function(GradientSpec? g)? withGradient,
     bool canBeNone = true,
   }) =>
       ColourSlot(
@@ -77,8 +85,10 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
         canBeNone: canBeNone,
         setColour: (c, {required transient}) =>
             controller.replaceElement(withColour(c), transient: transient),
-        setGradient: (g, {required transient}) =>
-            controller.replaceElement(withGradient(g), transient: transient),
+        setGradient: withGradient == null
+            ? null
+            : (g, {required transient}) => controller
+                .replaceElement(withGradient(g), transient: transient),
       );
 
   switch (e) {
@@ -92,24 +102,20 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
           label: "Fill",
           ring: false,
           color: controller.vectorShapeFill,
-          gradient: null,
           setColour: (c, {required transient}) {
             controller.vectorShapeFill = c;
             if (c != null) controller.vectorPencilFill = c;
           },
-          setGradient: (_, {required transient}) {},
         ),
         ColourSlot(
           id: "line",
           label: "Line",
           ring: true,
           color: controller.vectorShapeLine,
-          gradient: null,
           setColour: (c, {required transient}) {
             controller.vectorShapeLine = c;
             if (c != null) controller.vectorPencilColour = c;
           },
-          setGradient: (_, {required transient}) {},
         ),
       ];
     case VectorElement v when (v.shapes ?? const []).isNotEmpty:
@@ -136,27 +142,27 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
           ]);
       return [
         slot(
-            "fill",
-            "Fill",
-            false,
-            first.fill,
-            first.fillFade,
-            (c) => each((s) =>
+            id: "fill",
+            label: "Fill",
+            ring: false,
+            color: first.fill,
+            gradient: first.fillFade,
+            withColour: (c) => each((s) =>
                 c == null ? s.copyWith(clearFill: true) : s.copyWith(fill: c)),
-            (g) => each((s) => g == null
+            withGradient: (g) => each((s) => g == null
                 ? s.copyWith(flatFill: true)
                 : s.copyWith(fill: s.fill ?? g.to, fillFade: g))),
         slot(
-            "line",
-            "Line",
-            true,
-            first.stroke,
-            first.strokeFade,
-            (c) => each((s) => c == null
+            id: "line",
+            label: "Line",
+            ring: true,
+            color: first.stroke,
+            gradient: first.strokeFade,
+            withColour: (c) => each((s) => c == null
                 ? s.copyWith(clearStroke: true)
                 : s.copyWith(
                     stroke: c, strokeWidth: s.strokeWidth > 0 ? null : 1)),
-            (g) => each((s) => g == null
+            withGradient: (g) => each((s) => g == null
                 ? s.copyWith(flatStroke: true)
                 : s.copyWith(
                     stroke: s.stroke ?? g.to,
@@ -168,14 +174,12 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
     case VectorElement v:
       return [
         slot(
-            "tint",
-            "Tint",
-            false,
-            v.tint,
-            null,
-            (c) =>
-                c == null ? v.copyWith(clearTint: true) : v.copyWith(tint: c),
-            (_) => v),
+            id: "tint",
+            label: "Tint",
+            ring: false,
+            color: v.tint,
+            withColour: (c) =>
+                c == null ? v.copyWith(clearTint: true) : v.copyWith(tint: c)),
       ];
     // A chart's colours are its series' (a pie's slices'), up to a row.
     case ChartElement c when c.type.isCircular:
@@ -183,16 +187,16 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
       return [
         for (var i = 0; i < slices; i++)
           slot(
-              "slice$i",
-              c.data.categories[i].isEmpty ? "${i + 1}" : c.data.categories[i],
-              false,
-              sliceColour(c, i),
-              null,
-              (x) => c.copyWith(sliceColors: [
+              id: "slice$i",
+              label: c.data.categories[i].isEmpty
+                  ? "${i + 1}"
+                  : c.data.categories[i],
+              ring: false,
+              color: sliceColour(c, i),
+              withColour: (x) => c.copyWith(sliceColors: [
                     for (var j = 0; j < c.data.categories.length; j++)
                       j == i ? (x ?? sliceColour(c, j)) : sliceColour(c, j),
                   ]),
-              (_) => c,
               canBeNone: false),
       ];
     case ChartElement c:
@@ -200,110 +204,97 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
       return [
         for (var (i, one) in series.take(8).indexed)
           slot(
-              "series$i",
-              one.name.isEmpty ? "Series ${i + 1}" : one.name,
-              false,
-              one.color,
-              null,
-              (x) => c.copyWith(
+              id: "series$i",
+              label: one.name.isEmpty ? "Series ${i + 1}" : one.name,
+              ring: false,
+              color: one.color,
+              withColour: (x) => c.copyWith(
                       data: c.data.copyWith(series: [
                     for (var (j, s) in series.indexed)
                       j == i ? s.copyWith(color: x ?? s.color) : s,
                   ])),
-              (_) => c,
               canBeNone: false),
       ];
     // A counter: its number, the words either side of it, and its box.
     case CounterElement n:
       return [
         slot(
-            "number",
-            "Number",
-            false,
-            n.numberSpec.color,
-            null,
-            (x) => n.copyWith(
+            id: "number",
+            label: "Number",
+            ring: false,
+            color: n.numberSpec.color,
+            withColour: (x) => n.copyWith(
                 numberSpec:
                     n.numberSpec.copyWith(color: x ?? n.numberSpec.color)),
-            (_) => n,
             canBeNone: false),
         slot(
-            "words",
-            "Words",
-            false,
-            n.affixSpec.color,
-            null,
-            (x) => n.copyWith(
+            id: "words",
+            label: "Words",
+            ring: false,
+            color: n.affixSpec.color,
+            withColour: (x) => n.copyWith(
                 affixSpec: n.affixSpec.copyWith(color: x ?? n.affixSpec.color)),
-            (_) => n,
             canBeNone: false),
         slot(
-            "box",
-            "Box",
-            false,
-            n.box.fill.a == 0 ? null : n.box.fill,
-            null,
-            (x) => n.copyWith(
-                box: n.box.copyWith(fill: x ?? const Color(0x00000000))),
-            (_) => n),
+            id: "box",
+            label: "Box",
+            ring: false,
+            color: n.box.fill.a == 0 ? null : n.box.fill,
+            withColour: (x) => n.copyWith(
+                box: n.box.copyWith(fill: x ?? const Color(0x00000000)))),
       ];
     // A table: its heading row's fill, and the words in it and below it.
     case TableElement t:
       return [
         slot(
-            "header",
-            "Heading",
-            false,
-            t.headerFill,
-            null,
-            (x) => t.copyWith(headerFill: x ?? const Color(0x00000000)),
-            (_) => t),
+            id: "header",
+            label: "Heading",
+            ring: false,
+            color: t.headerFill,
+            withColour: (x) =>
+                t.copyWith(headerFill: x ?? const Color(0x00000000))),
         slot(
-            "headerText",
-            "Heading words",
-            false,
-            t.headerSpec.color,
-            null,
-            (x) => t.copyWith(
+            id: "headerText",
+            label: "Heading words",
+            ring: false,
+            color: t.headerSpec.color,
+            withColour: (x) => t.copyWith(
                 headerSpec:
                     t.headerSpec.copyWith(color: x ?? t.headerSpec.color)),
-            (_) => t,
             canBeNone: false),
         slot(
-            "cellText",
-            "Words",
-            false,
-            t.cellSpec.color,
-            null,
-            (x) => t.copyWith(
+            id: "cellText",
+            label: "Words",
+            ring: false,
+            color: t.cellSpec.color,
+            withColour: (x) => t.copyWith(
                 cellSpec: t.cellSpec.copyWith(color: x ?? t.cellSpec.color)),
-            (_) => t,
             canBeNone: false),
       ];
     case ShapeElement s:
       return [
         slot(
-            "fill",
-            "Fill",
-            false,
-            s.fill.a == 0 ? null : s.fill,
-            s.fillFade,
-            (c) => s.copyWith(fill: c ?? const Color(0x00000000)),
-            (g) => g == null
+            id: "fill",
+            label: "Fill",
+            ring: false,
+            color: s.fill.a == 0 ? null : s.fill,
+            gradient: s.fillFade,
+            withColour: (c) => s.copyWith(fill: c ?? const Color(0x00000000)),
+            withGradient: (g) => g == null
                 ? s.copyWith(flatFill: true)
                 : s.copyWith(fillFade: g)),
         slot(
-            "line",
-            "Outline",
-            true,
-            s.strokeWidth > 0 ? s.strokeColor : null,
-            s.strokeFade,
-            (c) => c == null
+            id: "line",
+            label: "Outline",
+            ring: true,
+            color: s.strokeWidth > 0 ? s.strokeColor : null,
+            gradient: s.strokeFade,
+            withColour: (c) => c == null
                 ? s.copyWith(strokeWidth: 0)
                 : s.copyWith(
                     strokeColor: c,
                     strokeWidth: s.strokeWidth > 0 ? null : strokeToSee(s)),
-            (g) => g == null
+            withGradient: (g) => g == null
                 ? s.copyWith(flatStroke: true)
                 : s.copyWith(
                     strokeFade: g,
@@ -312,50 +303,52 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
     case LineElement l:
       return [
         slot(
-            "line",
-            "Line",
-            true,
-            l.color,
-            l.fade,
-            (c) => l.copyWith(color: c ?? l.color),
-            (g) => g == null ? l.copyWith(flat: true) : l.copyWith(fade: g),
+            id: "line",
+            label: "Line",
+            ring: true,
+            color: l.color,
+            gradient: l.fade,
+            withColour: (c) => l.copyWith(color: c ?? l.color),
+            withGradient: (g) =>
+                g == null ? l.copyWith(flat: true) : l.copyWith(fade: g),
             canBeNone: false),
       ];
     case PathElement p:
       return [
         slot(
-            "line",
-            "Line",
-            true,
-            p.color,
-            p.fade,
-            (c) => p.copyWith(color: c ?? p.color),
-            (g) => g == null ? p.copyWith(flat: true) : p.copyWith(fade: g),
+            id: "line",
+            label: "Line",
+            ring: true,
+            color: p.color,
+            gradient: p.fade,
+            withColour: (c) => p.copyWith(color: c ?? p.color),
+            withGradient: (g) =>
+                g == null ? p.copyWith(flat: true) : p.copyWith(fade: g),
             canBeNone: false),
       ];
     case TextElement t:
       return [
         slot(
-            "fill",
-            "Box",
-            false,
-            t.box.fill.a == 0 ? null : t.box.fill,
-            t.box.fillFade,
-            (c) => t.copyWith(
+            id: "fill",
+            label: "Box",
+            ring: false,
+            color: t.box.fill.a == 0 ? null : t.box.fill,
+            gradient: t.box.fillFade,
+            withColour: (c) => t.copyWith(
                 box: t.box.copyWith(fill: c ?? const Color(0x00000000))),
-            (g) => t.copyWith(
+            withGradient: (g) => t.copyWith(
                 box: g == null
                     ? t.box.copyWith(flatFill: true)
                     : t.box.copyWith(fillFade: g))),
         slot(
-            "line",
-            "Text",
-            true,
-            t.textSpec.color,
-            t.textSpec.fade,
-            (c) => t.copyWith(
+            id: "line",
+            label: "Text",
+            ring: true,
+            color: t.textSpec.color,
+            gradient: t.textSpec.fade,
+            withColour: (c) => t.copyWith(
                 textSpec: t.textSpec.copyWith(color: c ?? t.textSpec.color)),
-            (g) => t.copyWith(
+            withGradient: (g) => t.copyWith(
                 textSpec: g == null
                     ? t.textSpec.copyWith(flatText: true)
                     : t.textSpec.copyWith(fade: g)),
@@ -364,26 +357,26 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
     case ButtonElement b:
       return [
         slot(
-            "fill",
-            "Fill",
-            false,
-            b.box.fill.a == 0 ? null : b.box.fill,
-            b.box.fillFade,
-            (c) => b.copyWith(
+            id: "fill",
+            label: "Fill",
+            ring: false,
+            color: b.box.fill.a == 0 ? null : b.box.fill,
+            gradient: b.box.fillFade,
+            withColour: (c) => b.copyWith(
                 box: b.box.copyWith(fill: c ?? const Color(0x00000000))),
-            (g) => b.copyWith(
+            withGradient: (g) => b.copyWith(
                 box: g == null
                     ? b.box.copyWith(flatFill: true)
                     : b.box.copyWith(fillFade: g))),
         slot(
-            "line",
-            "Text",
-            true,
-            b.textSpec.color,
-            b.textSpec.fade,
-            (c) => b.copyWith(
+            id: "line",
+            label: "Text",
+            ring: true,
+            color: b.textSpec.color,
+            gradient: b.textSpec.fade,
+            withColour: (c) => b.copyWith(
                 textSpec: b.textSpec.copyWith(color: c ?? b.textSpec.color)),
-            (g) => b.copyWith(
+            withGradient: (g) => b.copyWith(
                 textSpec: g == null
                     ? b.textSpec.copyWith(flatText: true)
                     : b.textSpec.copyWith(fade: g)),
@@ -494,6 +487,12 @@ class _ColourPanelState extends State<ColourPanel> {
     controller.endInteraction();
   }
 
+  /// _canSwap is whether [a] and [b] can change colours: not when one has
+  /// no colour and the other must have one (a text's words cannot take its
+  /// box's "none").
+  static bool _canSwap(ColourSlot a, ColourSlot b) =>
+      (b.color != null || a.canBeNone) && (a.color != null || b.canBeNone);
+
   /// _slot is slot [id] as it is now, after whatever was just written.
   ColourSlot? _slot(String id) =>
       colourSlotsFor(controller).where((s) => s.id == id).firstOrNull;
@@ -509,14 +508,19 @@ class _ColourPanelState extends State<ColourPanel> {
           if (slots.isEmpty) {
             return Padding(
               padding: const EdgeInsets.all(8),
-              child: Text("Its colours are in its settings.",
+              child: Text(
+                  controller.selection.length > 1
+                      ? "Each one's colours are in its settings."
+                      : "Its colours are in its settings.",
                   style: Theme.of(context).textTheme.bodySmall),
             );
           }
           var active = slots.firstWhere((s) => s.id == _active,
               orElse: () => slots.first);
           var owner = controller.selected?.id ?? "background";
-          var two = slots.length == 2;
+          // With two colours, the other one, to swap with.
+          var other =
+              slots.length == 2 ? slots.firstWhere((s) => s != active) : null;
           // The swatches, then the eyedropper and the colour it last took.
           var leading = Row(
             mainAxisSize: MainAxisSize.min,
@@ -526,10 +530,10 @@ class _ColourPanelState extends State<ColourPanel> {
                 slots: slots,
                 active: active,
                 onPick: (s) => setState(() => _active = s.id),
-                onSwap: !two
+                swaps: other != null,
+                onSwap: other == null || !_canSwap(active, other)
                     ? null
                     : () {
-                        var other = slots.firstWhere((s) => s != active);
                         var a = active.color, b = other.color;
                         _now(() {
                           active.setColour(b, transient: true);
@@ -593,8 +597,12 @@ class _ColourPanelState extends State<ColourPanel> {
                       width: box.maxWidth,
                       onChanged: (c) =>
                           _write(() => active.setColour(c, transient: true)),
-                      onGradientChanged: (g) =>
-                          _write(() => active.setGradient(g, transient: true)),
+                      // Offered only for a colour that can fade.
+                      onGradientChanged: switch (active.setGradient) {
+                        var set? => (g) =>
+                            _write(() => set(g, transient: true)),
+                        null => null,
+                      },
                       // A saved colour replaced everywhere: replaceColour.
                       onReplaceEverywhere: (from, to) {
                         _done();
@@ -615,6 +623,10 @@ class _Swatches extends StatelessWidget {
   final List<ColourSlot> slots;
   final ColourSlot active;
   final ValueChanged<ColourSlot> onPick;
+
+  /// swaps is whether the arrows are drawn (there are two colours); onSwap
+  /// is null while those two cannot change places, and the arrows are faint.
+  final bool swaps;
   final VoidCallback? onSwap;
   final VoidCallback? onNone;
 
@@ -622,6 +634,7 @@ class _Swatches extends StatelessWidget {
       {required this.slots,
       required this.active,
       required this.onPick,
+      required this.swaps,
       required this.onSwap,
       required this.onNone});
 
@@ -657,12 +670,12 @@ class _Swatches extends StatelessWidget {
         if (s == active) (i, s),
     ];
     return SizedBox(
-      width: span + (onSwap == null ? 2 : 17),
+      width: span + (swaps ? 17 : 2),
       height: tall + 4,
       child: Stack(clipBehavior: Clip.none, children: [
         for (var (i, s) in order)
           Positioned(left: _step.dx * i, top: _step.dy * i, child: swatch(s)),
-        if (onSwap != null)
+        if (swaps)
           Positioned(
             left: span + 2,
             top: 0,
@@ -671,7 +684,11 @@ class _Swatches extends StatelessWidget {
               onTap: onSwap,
               child: Tooltip(
                 message: "Swap",
-                child: Icon(Icons.swap_horiz, size: 14, color: outline),
+                child: Icon(Icons.swap_horiz,
+                    size: 14,
+                    color: onSwap == null
+                        ? outline.withValues(alpha: 0.35)
+                        : outline),
               ),
             ),
           ),

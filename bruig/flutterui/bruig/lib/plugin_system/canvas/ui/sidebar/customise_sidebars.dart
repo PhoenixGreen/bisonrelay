@@ -1,21 +1,19 @@
-import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 // customise_sidebars.dart is every sidebar at once, for setting them out: a
 // column each, its panels as chips to drag between them or take away with their
 // ×, and the panels taken away in a column of their own, each with a + that
 // puts it back. Sidebars are added, renamed, given an icon and taken away here.
 
-/// showCustomiseSidebars opens the sheet. [read] is the layout as it is,
-/// and [write] keeps a change: every change is kept as it is made.
+/// showCustomiseSidebars opens the sheet on [layout], the sidebars as
+/// they are. [write] keeps a change: every change is kept as it is made.
 Future<void> showCustomiseSidebars(
   BuildContext context, {
-  required CanvasController controller,
-  required SidebarLayout Function() read,
+  required SidebarLayout layout,
   required ValueChanged<SidebarLayout> write,
 }) =>
     showDialog<void>(
@@ -24,38 +22,32 @@ Future<void> showCustomiseSidebars(
         insetPadding: const EdgeInsets.all(32),
         child: SizedBox(
           width: 1000,
-          child: CustomiseSidebars(
-              controller: controller, read: read, write: write),
+          child: _CustomiseSidebars(layout: layout, write: write),
         ),
       ),
     );
 
-class CustomiseSidebars extends StatefulWidget {
-  final CanvasController controller;
-  final SidebarLayout Function() read;
+/// _CustomiseSidebars is the sheet: a column for each sidebar, and one for
+/// the panels taken out of them all.
+class _CustomiseSidebars extends StatefulWidget {
+  final SidebarLayout layout;
   final ValueChanged<SidebarLayout> write;
-  const CustomiseSidebars(
-      {required this.controller,
-      required this.read,
-      required this.write,
-      super.key});
+  const _CustomiseSidebars({required this.layout, required this.write});
 
   @override
-  State<CustomiseSidebars> createState() => _CustomiseSidebarsState();
+  State<_CustomiseSidebars> createState() => _CustomiseSidebarsState();
 }
 
 /// _hiddenColumn names the column of panels taken away, as a drop target.
 const _hiddenColumn = "__hidden";
 
-class _CustomiseSidebarsState extends State<CustomiseSidebars> {
-  late SidebarLayout _layout = widget.read();
+class _CustomiseSidebarsState extends State<_CustomiseSidebars> {
+  late SidebarLayout _layout = widget.layout;
 
   void _set(SidebarLayout next) {
     widget.write(next);
     setState(() => _layout = next);
   }
-
-  String _name(String panel) => sidebarPanelLabel(panel, widget.controller);
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +121,7 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
   }
 
   /// _dropped is [panel] let go on column [into].
-  void _dropped(String panel, String into) {
+  void _dropped(SidebarPanel panel, String into) {
     if (into == _hiddenColumn) {
       _set(_layout.hidePanel(panel));
     } else if (_layout.hidden.contains(panel)) {
@@ -139,11 +131,11 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
     }
   }
 
-  Widget _target(String id, {required Widget child}) => DragTarget<String>(
+  Widget _target(String id, {required Widget child}) =>
+      DragTarget<SidebarPanel>(
         onWillAcceptWithDetails: (d) {
           if (id == _hiddenColumn) {
-            return !requiredPanels.contains(d.data) &&
-                !_layout.hidden.contains(d.data);
+            return d.data.canHide && !_layout.hidden.contains(d.data);
           }
           var s = _layout.byId(id);
           return s != null &&
@@ -254,10 +246,10 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
                   const Divider(height: 10),
                   for (var p in s.panels)
                     _chip(colors, p,
-                        movable: !s.gameOnly &&
-                            !(s.fixed && requiredPanels.contains(p)),
-                        removable: !requiredPanels.contains(p) && !s.gameOnly),
-                  if (s.id == "files")
+                        // Somewhere to go: another sidebar, or out of them.
+                        movable: p.only == null || p.canHide,
+                        removable: p.canHide),
+                  if (s.id == SidebarSet.filesId)
                     _note(
                         colors,
                         "Files and Presets stay here. Presets can "
@@ -322,10 +314,10 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
             style: TextStyle(fontSize: 10.5, color: colors.onSurfaceVariant)),
       );
 
-  Widget _chip(ColorScheme colors, String panel,
+  Widget _chip(ColorScheme colors, SidebarPanel panel,
       {bool movable = true, bool removable = false, bool restorable = false}) {
     var face = Container(
-      key: ValueKey("customiseChip-$panel"),
+      key: ValueKey("customiseChip-${panel.name}"),
       height: 30,
       margin: const EdgeInsets.only(bottom: 5),
       padding: const EdgeInsets.only(left: 8),
@@ -339,12 +331,12 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
           Icon(Icons.drag_indicator, size: 13, color: colors.onSurfaceVariant),
         const SizedBox(width: 6),
         Expanded(
-          child: Text(_name(panel),
+          child: Text(panel.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 11.5)),
         ),
-        if (requiredPanels.contains(panel))
+        if (!panel.canHide)
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Text("needed",
@@ -353,8 +345,8 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
           ),
         if (removable)
           IconButton(
-            key: ValueKey("customiseHide-$panel"),
-            tooltip: "Take ${_name(panel)} out of the sidebar",
+            key: ValueKey("customiseHide-${panel.name}"),
+            tooltip: "Take ${panel.title} out of the sidebar",
             iconSize: 14,
             visualDensity: VisualDensity.compact,
             onPressed: () => _set(_layout.hidePanel(panel)),
@@ -362,8 +354,8 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
           ),
         if (restorable)
           IconButton(
-            key: ValueKey("customisePutBack-$panel"),
-            tooltip: "Put ${_name(panel)} back where it was",
+            key: ValueKey("customisePutBack-${panel.name}"),
+            tooltip: "Put ${panel.title} back where it was",
             iconSize: 14,
             visualDensity: VisualDensity.compact,
             onPressed: () => _set(_layout.restorePanel(panel)),
@@ -372,7 +364,7 @@ class _CustomiseSidebarsState extends State<CustomiseSidebars> {
       ]),
     );
     if (!movable) return face;
-    return Draggable<String>(
+    return Draggable<SidebarPanel>(
       data: panel,
       feedback: Material(
         color: Colors.transparent,

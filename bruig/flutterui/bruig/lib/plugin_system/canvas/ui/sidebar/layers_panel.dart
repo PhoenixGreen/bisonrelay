@@ -1,11 +1,14 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 // layers_panel.dart is the layer list: what is on the canvas, top to bottom,
 // as one of the Design column's panels (see design_panel.dart).
@@ -27,16 +30,17 @@ class CanvasLayersPanel extends StatelessWidget {
   /// be compared with == on every notification (see CanvasWatch).
   String _shape() {
     var document = controller.document;
-    // The background row's state too (style, colour, whether the shared
-    // backdrop is off), or its eye keeps the state it was built with.
+    // The background row's state too (what it is, its colour, whether the
+    // shared backdrop is off), or its eye keeps the state it was built with.
     var out = StringBuffer("${controller.backgroundSelected}"
-        "|${document.ownBackground.spec.style.name}"
+        "|${_backgroundName(document)}"
         "|${document.ownBackground.spec.background.toARGB32()}"
         "|${document.editingMaster}"
         "|${document.master?.backgroundOff}");
     for (var e in controller.document.elements) {
-      out.write("|${e.id}:${e.name}:${e.visible}:${e.locked}:"
-          "${controller.selection.contains(e.id)}");
+      // Whether it is listed at all, then what its row shows.
+      out.write("|${e.id}:${isTimelineSound(e)}:${e.name}:${e.visible}:"
+          "${e.locked}:${controller.selection.contains(e.id)}");
     }
     return out.toString();
   }
@@ -77,7 +81,6 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var selected = controller.backgroundSelected;
     var document = controller.document;
-    var spec = document.ownBackground.spec;
     var onMaster = document.editingMaster;
     var off = onMaster && document.master!.backgroundOff;
 
@@ -97,7 +100,7 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
                 width: 16,
                 height: 16,
                 decoration: BoxDecoration(
-                  color: spec.background,
+                  color: document.ownBackground.spec.background,
                   borderRadius: BorderRadius.circular(3),
                   border: Border.all(color: theme.colors.outlineVariant),
                 ),
@@ -107,7 +110,7 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
                 child: Text(
                   off
                       ? "Background — off, each scene shows its own"
-                      : "Background — ${spec.style.label}",
+                      : "Background — ${_backgroundName(document)}",
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
@@ -225,8 +228,10 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var selected = controller.selection.contains(element.id);
-    var count = controller.document.elements.length;
     var index = widget.index;
+    var elements = controller.document.elements;
+    var over = _rowBeside(elements, index, 1);
+    var under = _rowBeside(elements, index, -1);
 
     var row = Material(
       // Its own Material inside the list: the sidebar's would let the
@@ -258,18 +263,18 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
                 theme,
                 Icons.keyboard_arrow_up,
                 "Move forward",
-                index < count - 1
-                    ? () => controller
-                        .apply(controller.document.reorder(index, index + 1))
-                    : null),
+                over == null
+                    ? null
+                    : () => controller
+                        .apply(controller.document.reorder(index, over))),
             _rowButton(
                 theme,
                 Icons.keyboard_arrow_down,
                 "Move back",
-                index > 0
-                    ? () => controller
-                        .apply(controller.document.reorder(index, index - 1))
-                    : null),
+                under == null
+                    ? null
+                    : () => controller
+                        .apply(controller.document.reorder(index, under))),
             _rowButton(
               theme,
               element.visible
@@ -479,11 +484,31 @@ class _CancelRenameIntent extends Intent {
   const _CancelRenameIntent();
 }
 
+/// _backgroundName is what this canvas's own background is
+/// (CanvasDocument.ownBackground): a pattern by its style, a 3D stage or a
+/// parallax backdrop by its kind.
+String _backgroundName(CanvasDocument document) {
+  var own = document.ownBackground;
+  return own.backdrop == BackdropKind.flat
+      ? own.spec.style.label
+      : own.backdrop.label;
+}
+
+/// _rowBeside is where in [elements] the layer listed next over the one at
+/// [index] is ([step] 1), or next under it (-1); null at that end of the
+/// list. A sound on the timeline has no row here, so it is passed over.
+int? _rowBeside(List<CanvasElement> elements, int index, int step) {
+  for (var i = index + step; i >= 0 && i < elements.length; i += step) {
+    if (!isTimelineSound(elements[i])) return i;
+  }
+  return null;
+}
+
 /// _layerAnchor is the layer last clicked alone, where Shift-click starts.
 String? _layerAnchor;
 
 /// pickLayer is a click on layer [id]: alone, one layer; with Cmd or Ctrl,
-/// it toggled; with Shift, every layer from the last clicked to it.
+/// it toggled; with Shift, every layer listed from the last clicked to it.
 void pickLayer(CanvasController controller, String id) {
   var keys = HardwareKeyboard.instance;
   if (keys.isMetaPressed || keys.isControlPressed) {
@@ -497,7 +522,11 @@ void pickLayer(CanvasController controller, String id) {
   var to = list.indexWhere((e) => e.id == id);
   if (keys.isShiftPressed && from >= 0 && to >= 0) {
     var lo = from < to ? from : to, hi = from < to ? to : from;
-    controller.selectMany({for (var i = lo; i <= hi; i++) list[i].id});
+    controller.selectMany({
+      for (var i = lo; i <= hi; i++)
+        // Only what the list shows: not a sound on the timeline between.
+        if (!isTimelineSound(list[i])) list[i].id
+    });
     return;
   }
   controller.selectOnly(id);
