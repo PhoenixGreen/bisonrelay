@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/character_browser.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/stock_import.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +29,8 @@ import 'canvas_video_element_test.dart' show FakeFrames;
 // searches, a filter that searches again, and a result used -- fetched,
 // stored, credited and put on the canvas.
 
-/// A single transparent pixel, as a PNG: what every "download" delivers.
+/// A single transparent pixel, as a PNG: what a "download" delivers unless a
+/// test sets FakeStock.delivers.
 final _png = base64.decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
 
@@ -99,13 +101,16 @@ class FakeStock extends StockClient {
   /// a slow network.
   Completer<void>? held;
 
+  /// delivers is the file every download writes.
+  List<int> delivers = _png;
+
   @override
   Future<bool> download(String url, File to,
       {required int maxBytes,
       required bool allowFetching,
       required bool proxied}) async {
     downloads++;
-    await to.writeAsBytes(_png);
+    await to.writeAsBytes(delivers);
     return true;
   }
 
@@ -422,6 +427,36 @@ void main() {
     expect(asset.id, image.assetId);
     expect([asset.name, asset.author, asset.from, asset.origin],
         ["Red fox", "Ann", "Pixabay", "https://pixabay.com/fox-1/"]);
+  });
+
+  // An icon library's drawing arrives unseen, so it is held to the rule a
+  // script's drawing is: nothing in it that runs, embeds a page or reaches
+  // outside itself.
+  test("a stock drawing with a script is refused; a plain one is kept",
+      () async {
+    StockItem icon(String id) => StockItem(
+        source: StockSource.iconify,
+        id: id,
+        title: "Icon $id",
+        media: "https://api.iconify.design/x/$id.svg");
+    Future<StockImport> fetch(String svg) {
+      fake.delivers = utf8.encode(svg);
+      return importStockItem(icon(svg.length.toString()),
+          allowFetching: true, proxied: false);
+    }
+
+    var scripted = await fetch('<svg xmlns="http://www.w3.org/2000/svg">'
+        '<script>alert(1)</script><rect width="4" height="4"/></svg>');
+    expect(scripted.asset, isNull);
+    expect(scripted.problem,
+        contains("has a script, an embedded page or a link to an outside"));
+    expect(await CanvasLibrary.list(), isEmpty);
+
+    var plain = await fetch('<svg xmlns="http://www.w3.org/2000/svg" '
+        'viewBox="0 0 4 4"><rect width="4" height="4"/></svg>');
+    expect(plain.problem, isNull);
+    expect(plain.asset?.kind, AssetKind.vector);
+    expect((await CanvasLibrary.list()).single.id, plain.asset?.id);
   });
 
   // A video is watched in its tile before it is chosen: a small copy fetched

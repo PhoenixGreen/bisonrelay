@@ -1,16 +1,18 @@
 import 'package:bruig/components/text.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// recent_pictures.dart is the row of pictures already in the store, for
-// putting one on a second canvas without finding the file again. A picture's
-// name is a hash of its contents, so both elements share the one file.
+// recent_pictures.dart is "use one already added": the Library's pictures,
+// or its drawings, for putting one on a second canvas without finding the
+// file again. Listed from the Library and not from the stores, which also
+// hold what nobody added, such as a video's poster frame and the pictures
+// that came inside a canvas somebody shared. A picture's name is a hash of
+// its contents, so both elements share the one file.
 
 /// showRecentPictures opens the picker and returns the chosen picture's id,
-/// or null. [drawings] shows the Vectors store instead of the pictures.
+/// or null. [drawings] shows the Library's drawings instead of its pictures.
 Future<String?> showRecentPictures(BuildContext context,
         {bool drawings = false}) =>
     showDialog<String>(
@@ -27,39 +29,35 @@ class _RecentPicturesDialog extends StatefulWidget {
 }
 
 class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
-  /// _ids is the store's contents, pictures newest first and drawings in no
-  /// order; null while being read.
-  List<String>? _ids;
+  /// _assets is the Library's pictures or drawings, newest first; null while
+  /// being read.
+  List<LibraryAsset>? _assets;
 
   @override
   void initState() {
     super.initState();
-    var read = widget.drawings
-        ? CanvasMedia.stored(MediaKind.vector)
-        : CanvasAssets.stored().then((ids) => [
-              for (var id in ids)
-                if (!isMaskId(id)) id
-            ]);
-    read.then((ids) {
-      if (mounted) setState(() => _ids = ids);
+    CanvasLibrary.list(
+            kind: widget.drawings ? AssetKind.vector : AssetKind.picture)
+        .then((assets) {
+      if (mounted) setState(() => _assets = assets);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var ids = _ids;
+    var assets = _assets;
 
     return AlertDialog(
       title: Txt.L(widget.drawings
-          ? "Drawings you have used"
-          : "Pictures you have used"),
+          ? "Drawings you have added"
+          : "Pictures you have added"),
       content: SizedBox(
         width: 520,
         height: 360,
-        child: ids == null
+        child: assets == null
             ? const Center(child: CircularProgressIndicator())
-            : ids.isEmpty
+            : assets.isEmpty
                 ? Center(
                     child: Txt.S(widget.drawings
                         ? "No drawings yet. Add one and it will be here for "
@@ -73,10 +71,10 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
                     ),
-                    itemCount: ids.length,
+                    itemCount: assets.length,
                     itemBuilder: (context, i) => _Thumbnail(
-                      id: ids[i],
-                      onTap: () => Navigator.of(context).pop(ids[i]),
+                      asset: assets[i],
+                      onTap: () => Navigator.of(context).pop(assets[i].id),
                     ),
                   ),
       ),
@@ -92,10 +90,10 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
 }
 
 class _Thumbnail extends StatelessWidget {
-  final String id;
+  final LibraryAsset asset;
   final VoidCallback onTap;
 
-  const _Thumbnail({required this.id, required this.onTap});
+  const _Thumbnail({required this.asset, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -103,17 +101,28 @@ class _Thumbnail extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: theme.colors.outlineVariant),
-          color: theme.colors.surfaceContainerLow,
+      child: Column(children: [
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: theme.colors.outlineVariant),
+              color: theme.colors.surfaceContainerLow,
+            ),
+            clipBehavior: Clip.antiAlias,
+            // Decoded small, as the Assets panel's tiles are: a tile is 120
+            // pixels, and a picture at full size is tens of megabytes a tile.
+            child: AssetThumb(key: ValueKey(asset.id), id: asset.id),
+          ),
         ),
-        clipBehavior: Clip.antiAlias,
-        // Decoded small, as the Assets panel's tiles are: a tile is 120
-        // pixels, and a picture at full size is tens of megabytes a tile.
-        child: AssetThumb(key: ValueKey(id), id: id),
-      ),
+        // Named as the Library names it, since two pictures can look alike
+        // at this size.
+        Text(asset.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: theme.colors.onSurface)),
+      ]),
     );
   }
 }

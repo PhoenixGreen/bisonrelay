@@ -131,15 +131,16 @@ Future<StockImport> importStockItem(
     String? warning;
     switch (item.kind) {
       case AssetKind.picture || AssetKind.vector:
-        // Kept as it arrives, by what it holds: a drawing (as an icon
-        // library's are) goes with the drawings, whatever the library
-        // called it.
+        // Kept by what it holds: a drawing (as an icon library's are) goes
+        // with the drawings, whatever the library called it. Strict, as
+        // nobody has looked at it before it arrives.
         var kept = await importPicture(await file.readAsBytes(),
             name: item.title,
             author: item.author,
             license: item.license,
             origin: item.page,
-            from: item.source.from);
+            from: item.source.from,
+            strict: true);
         if (kept.asset == null) {
           return (asset: null, problem: kept.problem, notice: null);
         }

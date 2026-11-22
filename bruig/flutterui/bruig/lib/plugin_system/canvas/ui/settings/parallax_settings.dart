@@ -464,7 +464,7 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
               CanvasIconButton(
                 key: const ValueKey("parallaxFromPictures"),
                 icon: Icons.photo_library_outlined,
-                tooltip: "Use a picture from the Pictures folder",
+                tooltip: "Use a picture you have already added",
                 onPressed: () async {
                   var id = await showRecentPictures(context);
                   if (id == null) return;
@@ -474,7 +474,7 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
               CanvasIconButton(
                 key: const ValueKey("parallaxFromVectors"),
                 icon: Icons.gesture,
-                tooltip: "Use a drawing from the Vectors folder",
+                tooltip: "Use a drawing you have already added",
                 onPressed: () async {
                   var id = await showRecentPictures(context, drawings: true);
                   if (id == null) return;

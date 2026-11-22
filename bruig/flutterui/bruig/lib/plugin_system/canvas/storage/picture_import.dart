@@ -10,7 +10,8 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 // result, or a drawing a script supplies. Each road asks its own questions
 // first (a large file's size controls, stock's fetching rules) and reports
 // in its own way; from the bytes on, they are the same, so a file is judged
-// alike whoever brought it.
+// alike whoever brought it -- but for a drawing nobody has looked at before
+// it arrives (a script's, a stock result), which is held to a stricter rule.
 
 /// PictureImport is what bringing a picture or a drawing in came to: its
 /// [asset] in the library, or the [problem] that kept it out, worded for
@@ -23,7 +24,8 @@ typedef PictureImport = ({LibraryAsset? asset, String? problem});
 /// decode. [author], [license], [origin] and [from] credit it, as for a
 /// stock result. [drawingOnly] refuses anything but a drawing, for a road
 /// whose caller can place nothing else; [strict] holds a drawing to the
-/// rule for a script's drawings (see [_holdsItself]). Shows nothing: the
+/// rule for drawings nobody has looked at, a script's or a stock library's
+/// (see [_holdsItself]), and does nothing to a picture. Shows nothing: the
 /// caller says the problem in its own way.
 Future<PictureImport> importPicture(
   Uint8List bytes, {
@@ -105,15 +107,15 @@ Future<(int, int)?> _measure(Uint8List bytes) async {
   }
 }
 
-/// _holdsItself is whether drawing [bytes] keep to the rule a script's
-/// drawing is held to: no script, no foreignObject (a web page set inside
+/// _holdsItself is whether drawing [bytes] keep to the rule for drawings
+/// nobody has looked at: no script, no foreignObject (a web page set inside
 /// the drawing), and no href or src naming another site or a file on the
 /// computer. The canvas runs no scripts, draws no embedded page and fetches
 /// no outside file, so a drawing leaning on them arrives with parts missing,
 /// and an outside link would be followed by whoever opens it elsewhere.
-/// Only a script's drawing is held to it, as nobody has looked at one before
-/// it arrives; a drawing a person chose is seen the moment it is placed, and
-/// the icons stock libraries serve are kept as they come.
+/// A script's drawing and a stock library's are held to it, as nobody has
+/// looked at one before it arrives; a drawing a person chose from disk is
+/// seen the moment it is placed.
 bool _holdsItself(Uint8List bytes) {
   var lower = String.fromCharCodes(bytes).toLowerCase();
   return !(lower.contains("<script") ||
