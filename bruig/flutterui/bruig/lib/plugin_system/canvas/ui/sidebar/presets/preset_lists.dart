@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/preset_row.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 

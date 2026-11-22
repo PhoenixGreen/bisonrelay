@@ -7,12 +7,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
 // layers_panel.dart is the Layers panel of the sidebar: what is on the
 // canvas, top to bottom, with the background as its last row.
 
+/// CanvasLayersPanel is the Layers panel's body.
 class CanvasLayersPanel extends StatelessWidget {
   final CanvasController controller;
   const CanvasLayersPanel({required this.controller, super.key});
@@ -149,6 +150,8 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
   }
 }
 
+/// CanvasLayerRow is one element's row in Layers: its name (double-clicked
+/// to rename it), and its buttons to move, hide and lock it.
 class CanvasLayerRow extends StatefulWidget {
   final CanvasController controller;
   final CanvasElement element;

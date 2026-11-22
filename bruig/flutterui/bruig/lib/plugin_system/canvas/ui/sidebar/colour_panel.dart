@@ -442,6 +442,8 @@ List<ColourSlot> _backgroundSlots(CanvasController controller) {
   ];
 }
 
+/// ColourPanel is the Colour panel's body: the selection's colours as
+/// swatches (see colourSlotsFor), and a picker for the one in front.
 class ColourPanel extends StatefulWidget {
   final CanvasController controller;
   const ColourPanel({required this.controller, super.key});

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
-import 'dart:ui';
+
+import 'package:flutter/material.dart';
 
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -545,3 +546,38 @@ List<SynthModuleElement> synthRack(CanvasDocument document,
 /// on a 1080p page.
 double codeFontFor(CanvasDocument document) =>
     (document.size.height.toDouble() * 0.016).clamp(6.0, 120.0);
+
+/// iconForKind is the icon an element of [kind] wears wherever it is
+/// listed: on the Add panel, in Layers, on a preset's row.
+IconData iconForKind(ElementKind kind) => switch (kind) {
+      ElementKind.text => Icons.title,
+      ElementKind.image => Icons.image_outlined,
+      ElementKind.vector => Icons.draw_outlined,
+      ElementKind.shape => Icons.category_outlined,
+      ElementKind.line => Icons.timeline,
+      ElementKind.chart => Icons.bar_chart,
+      ElementKind.table => Icons.table_chart_outlined,
+      ElementKind.button => Icons.smart_button_outlined,
+      ElementKind.counter => Icons.timer_outlined,
+      ElementKind.audio => Icons.volume_up_outlined,
+      ElementKind.video => Icons.smart_display_outlined,
+      ElementKind.background => Icons.blur_on,
+      ElementKind.player => Icons.person_pin_circle_outlined,
+      ElementKind.path => Icons.gesture,
+      ElementKind.character3d => Icons.view_in_ar_outlined,
+      ElementKind.stage => Icons.view_in_ar_outlined,
+      ElementKind.sprite => Icons.directions_run,
+      ElementKind.tileMap => Icons.grid_view,
+      ElementKind.parallax => Icons.landscape_outlined,
+      ElementKind.sheet => Icons.queue_music,
+      ElementKind.camera => Icons.videocam_outlined,
+      ElementKind.object3d => Icons.view_in_ar,
+      ElementKind.synth => Icons.cable,
+      ElementKind.synthTask => Icons.checklist,
+      ElementKind.metronome => Icons.av_timer,
+      ElementKind.code => Icons.code,
+      ElementKind.codeRun => Icons.play_circle_outline,
+      ElementKind.codeTask => Icons.fact_check_outlined,
+      ElementKind.playTask => Icons.piano,
+      ElementKind.layout => Icons.dashboard_outlined,
+    };

@@ -36,6 +36,10 @@ IconData sidebarIcon(String name) => switch (name) {
       _ => Icons.star_outline,
     };
 
+/// CanvasSidebar is the sidebar: the row of sidebars' icons, and under it
+/// the panels of the one chosen. It holds nothing of how it is set out:
+/// [layout] is the page's, and every change is asked for through
+/// [onLayout].
 class CanvasSidebar extends StatefulWidget {
   final CanvasController controller;
   final SidebarLayout layout;

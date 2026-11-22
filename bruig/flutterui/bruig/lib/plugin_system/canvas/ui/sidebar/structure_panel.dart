@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 // timeline rather than cut it: a sound running from verse into chorus plays
 // on. With no sections the piece is its master structure.
 
+/// CanvasStructurePanel is the Scenes panel's body for a piece of sound:
+/// its sections.
 class CanvasStructurePanel extends StatelessWidget {
   final CanvasController controller;
   const CanvasStructurePanel({required this.controller, super.key});
