@@ -118,10 +118,16 @@ import 'package:flutter/services.dart';
 
 part 'stage_coordinates.dart';
 part 'stage_hit_testing.dart';
+part 'stage_synth_controls.dart';
+part 'stage_code_controls.dart';
+part 'stage_element_controls.dart';
 part 'stage_press.dart';
 part 'stage_vector_tools.dart';
 part 'stage_picture_tools.dart';
 part 'stage_framing.dart';
+part 'stage_guides.dart';
+part 'stage_retouch.dart';
+part 'stage_team_players.dart';
 part 'stage_drag.dart';
 part 'stage_release.dart';
 part 'stage_3d_view.dart';
@@ -982,6 +988,9 @@ class CanvasStageState extends State<CanvasStage>
     return _buildStage();
   }
 
+  /// _buildStage lays the stage out in the room it is given: the painted
+  /// page, in scroll views when it overflows, with the rulers and the 3D
+  /// view controls held still over it.
   Widget _buildStage() => LayoutBuilder(
         builder: (context, constraints) {
           _visible = Size(constraints.maxWidth, constraints.maxHeight);
@@ -991,241 +1000,7 @@ class CanvasStageState extends State<CanvasStage>
           // How much the canvas shrank to fit, for the band's percentage.
           _tellControllerTheScale();
 
-          Widget painter = SizedBox(
-            width: content.width,
-            height: content.height,
-            // Not clipped: a long caption in the text editor grows past it.
-            child: Stack(clipBehavior: Clip.none, children: [
-              Positioned.fill(
-                  child: Listener(
-                // One pointer at a time: see _gesturePointer.
-                onPointerDown: (e) {
-                  if (_gesturePointer != null) return;
-                  _gesturePointer = e.pointer;
-                  _onPointerDown(e);
-                },
-                onPointerMove: (e) {
-                  if (e.pointer == _gesturePointer) _onPointerMove(e);
-                },
-                onPointerUp: (e) {
-                  if (e.pointer != _gesturePointer) return;
-                  _gesturePointer = null;
-                  _onPointerUp(e);
-                },
-                // A cancelled pointer ends its gesture without its click.
-                onPointerCancel: (e) {
-                  if (e.pointer != _gesturePointer) return;
-                  _gesturePointer = null;
-                  _onPointerUp(e, cancelled: true);
-                },
-                onPointerHover: (e) {
-                  _updateHover(e.localPosition);
-                  _moveBrush(e.localPosition);
-                },
-                onPointerSignal: _onPointerSignal,
-                onPointerPanZoomStart: _onPinchStart,
-                onPointerPanZoomUpdate: _onPinchUpdate,
-                onPointerPanZoomEnd: _onPinchEnd,
-                child: MouseRegion(
-                  cursor: _cursor(),
-                  onExit: (_) {
-                    controller.stagePointer = null;
-                    if (_codeOver != null) setState(() => _codeOver = null);
-                  },
-                  // Clipped to the stage's box too: a CustomPainter may draw
-                  // outside its bounds, and a zoomed canvas would paint over
-                  // the sidebar, band and timeline.
-                  child: ClipRect(
-                    child: CustomPaint(
-                      painter: StagePainter(
-                        between: _between,
-                        // A tile tried on under the pointer is drawn as a
-                        // gesture is, then properly once picked or left.
-                        drafting: controller.interacting || controller.trying,
-                        backgrounds: _backgrounds,
-                        page: _pageRect,
-                        view: _viewRect,
-                        levelShown: _levelShown,
-                        facing: _facingPage,
-                        facingFrame: _facingPage == null
-                            ? 0
-                            : controller.frameOn(_facingPage!),
-                        facingOnLeft: _facingOnLeft,
-                        facingShown: _spreadShown,
-                        // A game's own view; playing, without guide paths.
-                        document: controller.gaming || controller.playing
-                            ? withoutGuides(controller.gameView ??
-                                controller.spoken(document))
-                            : controller.spoken(document),
-                        frame: controller.frame,
-                        previewAt: controller.previewAt,
-                        previewing: controller.previewing,
-                        markerNote: controller.holdingMarker,
-                        markerNoteGrip: !controller.gaming,
-                        anchors: _anchorsShown(),
-                        scale: _scale,
-                        origin: _origin,
-                        images: controller.images,
-                        hoveredButton: controller.hoveredButton,
-                        counterValue: controller.counterValue,
-                        liveMotion: controller.liveMotion,
-                        motionTick: controller.motionTick,
-                        directed:
-                            (controller.playing || controller.cameraView) &&
-                                !document.editingMaster,
-                        counterPressed: (e) =>
-                            e.id == _hoveredCounter ? _hoveredCounterAt : -1,
-                        counterRunning: controller.counterRunning,
-                        counterTick: controller.counterTicks,
-                        audioState: controller.audioState,
-                        videoShow: controller.videoShow,
-                        audioRevision: controller.audioRevision,
-                        keysTick: controller.keysHeld.value,
-                        selection: {for (var e in _chosen) e.id},
-                        // Trail and onion skin while the Chain shows motion.
-                        trail: controller.motionTrail &&
-                            controller.chainShowsMotion,
-                        gameChange: controller.gameChange,
-                        pickedCopies: controller.selected == null
-                            ? const {}
-                            : controller
-                                .pickedCopiesOf(controller.selected!.id),
-                        showHelpers: controller.showHelpers,
-                        // The scene's slow move while it plays (see
-                        // SceneCamera); still while editing, so a press lands
-                        // where the page looks to be. A game frames the page
-                        // its own way, following the player.
-                        camera: controller.gaming
-                            ? controller.gameFraming
-                            : (controller.playing || controller.cameraView) &&
-                                    !document.editingMaster
-                                // Its Camera, or its slow move: see sceneFraming.
-                                ? sceneFraming(document, controller.frame,
-                                    live: controller.liveMotion)
-                                : null,
-                        selectedPath: _selectedPath(),
-                        rulersApart: _viewport.width > _visible.width + 0.5 ||
-                            _viewport.height > _visible.height + 0.5,
-                        spritePaintTick: controller.spritePaint?.tick ?? -1,
-                        tilePaintTick: controller.tilePaint?.tick ?? -1,
-                        editingLayers: _layerBoxes(),
-                        editingVector: switch (controller.editingVector) {
-                          var v? => (
-                              element: v,
-                              shape: controller.vectorShape,
-                              pick: controller.vectorPick,
-                              picks: controller.vectorPicks,
-                              // Points and their box are put away for tools
-                              // that pick nothing (and the pencil, unless set
-                              // to show them), and while a line's thickness
-                              // is dragged, so the line can be watched.
-                              bare: _mode == _DragMode.vectorScale ||
-                                  _picksShapes ||
-                                  !(controller.vectorTool.showsPoints ||
-                                      (controller.vectorTool ==
-                                              VectorTool.pencil &&
-                                          controller.vectorPencilPoints)),
-                              turnable: _picksShapes,
-                              shapeBox: _picksShapes
-                                  ? itemsExtent(v, controller.vectorItems)
-                                  : controller.vectorTool ==
-                                              VectorTool.shapes &&
-                                          controller.vectorShapeMade >= 0
-                                      ? groupExtent(
-                                          v,
-                                          groupStarts(v).indexOf(groupOf(
-                                              v, controller.vectorShapeMade)))
-                                      : null,
-                              mirror: controller.vectorTool == VectorTool.pencil
-                                  ? (
-                                      across: controller.vectorMirrorAcross,
-                                      down: controller.vectorMirrorDown
-                                    )
-                                  : null,
-                              combining:
-                                  controller.vectorTool == VectorTool.boolean
-                                      ? controller.vectorCombining
-                                      : null,
-                              // While a box is dragged, all points show.
-                              boxing: _mode == _DragMode.vectorMarquee &&
-                                  _marquee != null,
-                              boxed: _mode == _DragMode.vectorMarquee &&
-                                      _marquee != null
-                                  ? picksIn(v, _marquee!)
-                                  : const <VectorPick>{},
-                            ),
-                          null => null,
-                        },
-                        chartLabels: _selectedChartLabels(),
-                        layoutMarks: _layoutMarks(),
-                        tableColumns: _selectedTableColumns(),
-                        editingText: _editingText,
-                        editingItem: _editingItem,
-                        preview: _preview,
-                        previewOn: _previewPlacement(),
-                        liveStroke: _liveCanvas,
-                        knife: _knife,
-                        caret: _caret(),
-                        liveStrokeRadius: _liveRadius,
-                        liveStrokeKeeps: controller.retouch.keeps,
-                        selectionBounds: _selectionBounds,
-                        framing: _framingView(),
-                        guides: document.guides,
-                        snapped: _snappedTo,
-                        showHandles: _selectionHasOwnGeometry,
-                        selectionRotation: _rotationOfSelection,
-                        touchAreas: _touchAreas(),
-                        selectionSkew: _skewOfSelection,
-                        handleFor: _handlePosition,
-                        flowGrips: _flowGrips(),
-                        flowLines: _flowLines(),
-                        showAllBounds: controller.showAllBounds,
-                        flowDrag: _flowDragLine(),
-                        marquee: _marquee,
-                      ),
-                      size: Size.infinite,
-                    ),
-                  ),
-                ),
-              )),
-              if (_gizmo() case var g?)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: StageGizmoPainter(g,
-                          hot: _gizmoDrag?.$2 ?? _gizmoHot,
-                          scale: _scale,
-                          origin: _origin),
-                    ),
-                  ),
-                ),
-              if (_synthCable case var c?)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: CarriedSynthCable(
-                          synthJackAt(c.from, c.port, out: c.out),
-                          c.at,
-                          synthSignalColour((c.out
-                                  ? c.from.module.output(c.port)
-                                  : c.from.module.input(c.port))!
-                              .signal),
-                          synthScaleOf(c.from),
-                          _scale,
-                          _origin),
-                    ),
-                  ),
-                ),
-              if (_editorFor() case var editor?) editor,
-              if (_codeEditorFor() case var code?) code,
-              if (_codeLiveFor() case var live?) live,
-              ..._codeTabCarried(),
-              if (_typingField() case var typing?) typing,
-              if (_brushRing() case var ring?) ring,
-              if (_cellEditorFor() case var cell?) cell,
-              if (_counterInputFor() case var setting?) setting,
-            ]),
-          );
+          Widget painter = _paintedPage(content);
 
           // Scrollable only when there is something to scroll: a scroll view
           // that never scrolls still claims the wheel, which the pan tool
@@ -1233,104 +1008,375 @@ class CanvasStageState extends State<CanvasStage>
           // window's edge.
           var down = content.height > _visible.height + 0.5;
           var across = content.width > _visible.width + 0.5;
-          if (down && across) {
-            painter = Scrollbar(
-              controller: _scroll,
-              thumbVisibility: true,
-              notificationPredicate: (n) => n.depth == 1,
-              child: Scrollbar(
-                controller: _scrollX,
-                thumbVisibility: true,
-                child: SingleChildScrollView(
-                  controller: _scrollX,
-                  scrollDirection: Axis.horizontal,
-                  physics: _scrollPhysics,
-                  child: SizedBox(
-                    width: content.width,
-                    height: _visible.height,
-                    child: SingleChildScrollView(
-                      controller: _scroll,
-                      physics: _scrollPhysics,
-                      child: painter,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          } else if (down) {
-            painter = Scrollbar(
-              controller: _scroll,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _scroll,
-                physics: _scrollPhysics,
-                child: painter,
-              ),
-            );
-          } else if (across) {
-            painter = Scrollbar(
-              controller: _scrollX,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _scrollX,
-                scrollDirection: Axis.horizontal,
-                physics: _scrollPhysics,
-                child: painter,
-              ),
-            );
-          }
-          // A drag on the page (finger, pen or mouse) is the canvas's; the
-          // page scrolls by its bars, the wheel and two trackpad fingers.
-          if (down || across) {
-            painter = ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context)
-                  .copyWith(dragDevices: {PointerDeviceKind.trackpad}),
-              child: painter,
-            );
-          }
+          painter =
+              _scrolling(context, painter, content, down: down, across: across);
           // Over a page that scrolls, the rulers in a layer that does not.
           if ((down || across) &&
               document.guides.showRulers &&
               document.guides.rulers.any) {
-            painter = Stack(children: [
-              Positioned.fill(child: painter),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: Listenable.merge([_scroll, _scrollX]),
-                    builder: (context, _) => CustomPaint(
-                      painter: _RulerLayer(
-                          guides: document.guides,
-                          sheet: document.size.size,
-                          scale: _scale,
-                          origin: _origin - _scrolled,
-                          page: _pageRect.shift(-_scrolled)),
-                    ),
-                  ),
-                ),
-              ),
-            ]);
+            painter = _overRulers(painter);
           }
 
           // The 3D view controls, top right of a scene with a stage, fixed
           // over the scrolling page, hidden while playing. Always in a Stack,
           // so the page is not rebuilt as they come and go.
-          painter = Stack(children: [
-            Positioned.fill(child: painter),
-            if (controller.onStage3d &&
-                controller.stageNav != StageNav.none &&
-                !controller.playing &&
-                !controller.gaming)
-              Positioned(
-                right: 10,
-                top: 10,
-                child: StageNavControls(controller: controller),
-              ),
-          ]);
+          painter = _withNavControls(painter);
 
           return Focus(focusNode: _focus, onKeyEvent: _onKey, child: painter);
         },
       );
+
+  /// _paintedPage is the page at its laid-out [content] size: the painted
+  /// page that takes the pointer, with the editors and carried things laid
+  /// over it.
+  Widget _paintedPage(Size content) {
+    return SizedBox(
+      width: content.width,
+      height: content.height,
+      // Not clipped: a long caption in the text editor grows past it.
+      child: Stack(clipBehavior: Clip.none, children: [
+        _pointerLayer(),
+        ..._overlays(),
+      ]),
+    );
+  }
+
+  /// _pointerLayer is the painted page and the pointer's handlers over it,
+  /// clipped to the stage's box.
+  Widget _pointerLayer() {
+    return Positioned.fill(
+        child: Listener(
+      // One pointer at a time: see _gesturePointer.
+      onPointerDown: (e) {
+        if (_gesturePointer != null) return;
+        _gesturePointer = e.pointer;
+        _onPointerDown(e);
+      },
+      onPointerMove: (e) {
+        if (e.pointer == _gesturePointer) _onPointerMove(e);
+      },
+      onPointerUp: (e) {
+        if (e.pointer != _gesturePointer) return;
+        _gesturePointer = null;
+        _onPointerUp(e);
+      },
+      // A cancelled pointer ends its gesture without its click.
+      onPointerCancel: (e) {
+        if (e.pointer != _gesturePointer) return;
+        _gesturePointer = null;
+        _onPointerUp(e, cancelled: true);
+      },
+      onPointerHover: (e) {
+        _updateHover(e.localPosition);
+        _moveBrush(e.localPosition);
+      },
+      onPointerSignal: _onPointerSignal,
+      onPointerPanZoomStart: _onPinchStart,
+      onPointerPanZoomUpdate: _onPinchUpdate,
+      onPointerPanZoomEnd: _onPinchEnd,
+      child: MouseRegion(
+        cursor: _cursor(),
+        onExit: (_) {
+          controller.stagePointer = null;
+          if (_codeOver != null) setState(() => _codeOver = null);
+        },
+        // Clipped to the stage's box too: a CustomPainter may draw
+        // outside its bounds, and a zoomed canvas would paint over
+        // the sidebar, band and timeline.
+        child: ClipRect(
+          child: CustomPaint(
+            painter: _stagePainter(),
+            size: Size.infinite,
+          ),
+        ),
+      ),
+    ));
+  }
+
+  /// _stagePainter is what paints the page, made afresh each build from the
+  /// controller and the stage's gestures.
+  StagePainter _stagePainter() {
+    return StagePainter(
+      between: _between,
+      // A tile tried on under the pointer is drawn as a
+      // gesture is, then properly once picked or left.
+      drafting: controller.interacting || controller.trying,
+      backgrounds: _backgrounds,
+      page: _pageRect,
+      view: _viewRect,
+      levelShown: _levelShown,
+      facing: _facingPage,
+      facingFrame: _facingPage == null ? 0 : controller.frameOn(_facingPage!),
+      facingOnLeft: _facingOnLeft,
+      facingShown: _spreadShown,
+      // A game's own view; playing, without guide paths.
+      document: controller.gaming || controller.playing
+          ? withoutGuides(controller.gameView ?? controller.spoken(document))
+          : controller.spoken(document),
+      frame: controller.frame,
+      previewAt: controller.previewAt,
+      previewing: controller.previewing,
+      markerNote: controller.holdingMarker,
+      markerNoteGrip: !controller.gaming,
+      anchors: _anchorsShown(),
+      scale: _scale,
+      origin: _origin,
+      images: controller.images,
+      hoveredButton: controller.hoveredButton,
+      counterValue: controller.counterValue,
+      liveMotion: controller.liveMotion,
+      motionTick: controller.motionTick,
+      directed: (controller.playing || controller.cameraView) &&
+          !document.editingMaster,
+      counterPressed: (e) => e.id == _hoveredCounter ? _hoveredCounterAt : -1,
+      counterRunning: controller.counterRunning,
+      counterTick: controller.counterTicks,
+      audioState: controller.audioState,
+      videoShow: controller.videoShow,
+      audioRevision: controller.audioRevision,
+      keysTick: controller.keysHeld.value,
+      selection: {for (var e in _chosen) e.id},
+      // Trail and onion skin while the Chain shows motion.
+      trail: controller.motionTrail && controller.chainShowsMotion,
+      gameChange: controller.gameChange,
+      pickedCopies: controller.selected == null
+          ? const {}
+          : controller.pickedCopiesOf(controller.selected!.id),
+      showHelpers: controller.showHelpers,
+      // The scene's slow move while it plays (see
+      // SceneCamera); still while editing, so a press lands
+      // where the page looks to be. A game frames the page
+      // its own way, following the player.
+      camera: controller.gaming
+          ? controller.gameFraming
+          : (controller.playing || controller.cameraView) &&
+                  !document.editingMaster
+              // Its Camera, or its slow move: see sceneFraming.
+              ? sceneFraming(document, controller.frame,
+                  live: controller.liveMotion)
+              : null,
+      selectedPath: _selectedPath(),
+      rulersApart: _viewport.width > _visible.width + 0.5 ||
+          _viewport.height > _visible.height + 0.5,
+      spritePaintTick: controller.spritePaint?.tick ?? -1,
+      tilePaintTick: controller.tilePaint?.tick ?? -1,
+      editingLayers: _layerBoxes(),
+      editingVector: switch (controller.editingVector) {
+        var v? => (
+            element: v,
+            shape: controller.vectorShape,
+            pick: controller.vectorPick,
+            picks: controller.vectorPicks,
+            // Points and their box are put away for tools
+            // that pick nothing (and the pencil, unless set
+            // to show them), and while a line's thickness
+            // is dragged, so the line can be watched.
+            bare: _mode == _DragMode.vectorScale ||
+                _picksShapes ||
+                !(controller.vectorTool.showsPoints ||
+                    (controller.vectorTool == VectorTool.pencil &&
+                        controller.vectorPencilPoints)),
+            turnable: _picksShapes,
+            shapeBox: _picksShapes
+                ? itemsExtent(v, controller.vectorItems)
+                : controller.vectorTool == VectorTool.shapes &&
+                        controller.vectorShapeMade >= 0
+                    ? groupExtent(
+                        v,
+                        groupStarts(v)
+                            .indexOf(groupOf(v, controller.vectorShapeMade)))
+                    : null,
+            mirror: controller.vectorTool == VectorTool.pencil
+                ? (
+                    across: controller.vectorMirrorAcross,
+                    down: controller.vectorMirrorDown
+                  )
+                : null,
+            combining: controller.vectorTool == VectorTool.boolean
+                ? controller.vectorCombining
+                : null,
+            // While a box is dragged, all points show.
+            boxing: _mode == _DragMode.vectorMarquee && _marquee != null,
+            boxed: _mode == _DragMode.vectorMarquee && _marquee != null
+                ? picksIn(v, _marquee!)
+                : const <VectorPick>{},
+          ),
+        null => null,
+      },
+      chartLabels: _selectedChartLabels(),
+      layoutMarks: _layoutMarks(),
+      tableColumns: _selectedTableColumns(),
+      editingText: _editingText,
+      editingItem: _editingItem,
+      preview: _preview,
+      previewOn: _previewPlacement(),
+      liveStroke: _liveCanvas,
+      knife: _knife,
+      caret: _caret(),
+      liveStrokeRadius: _liveRadius,
+      liveStrokeKeeps: controller.retouch.keeps,
+      selectionBounds: _selectionBounds,
+      framing: _framingView(),
+      guides: document.guides,
+      snapped: _snappedTo,
+      showHandles: _selectionHasOwnGeometry,
+      selectionRotation: _rotationOfSelection,
+      touchAreas: _touchAreas(),
+      selectionSkew: _skewOfSelection,
+      handleFor: _handlePosition,
+      flowGrips: _flowGrips(),
+      flowLines: _flowLines(),
+      showAllBounds: controller.showAllBounds,
+      flowDrag: _flowDragLine(),
+      marquee: _marquee,
+    );
+  }
+
+  /// _overlays are the widgets laid over the painted page: the 3D gizmo, a
+  /// carried synth cable, and whichever editors, carried tab, typing field,
+  /// brush ring and counter field are open, in the order they stack.
+  List<Widget> _overlays() {
+    return [
+      if (_gizmo() case var g?)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: StageGizmoPainter(g,
+                  hot: _gizmoDrag?.$2 ?? _gizmoHot,
+                  scale: _scale,
+                  origin: _origin),
+            ),
+          ),
+        ),
+      if (_synthCable case var c?)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: CarriedSynthCable(
+                  synthJackAt(c.from, c.port, out: c.out),
+                  c.at,
+                  synthSignalColour((c.out
+                          ? c.from.module.output(c.port)
+                          : c.from.module.input(c.port))!
+                      .signal),
+                  synthScaleOf(c.from),
+                  _scale,
+                  _origin),
+            ),
+          ),
+        ),
+      if (_editorFor() case var editor?) editor,
+      if (_codeEditorFor() case var code?) code,
+      if (_codeLiveFor() case var live?) live,
+      ..._codeTabCarried(),
+      if (_typingField() case var typing?) typing,
+      if (_brushRing() case var ring?) ring,
+      if (_cellEditorFor() case var cell?) cell,
+      if (_counterInputFor() case var setting?) setting,
+    ];
+  }
+
+  /// _scrolling puts [painter] in scroll views for the directions the page
+  /// at [content] size overflows the room: [down], [across], or both.
+  Widget _scrolling(BuildContext context, Widget painter, Size content,
+      {required bool down, required bool across}) {
+    if (down && across) {
+      painter = Scrollbar(
+        controller: _scroll,
+        thumbVisibility: true,
+        notificationPredicate: (n) => n.depth == 1,
+        child: Scrollbar(
+          controller: _scrollX,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _scrollX,
+            scrollDirection: Axis.horizontal,
+            physics: _scrollPhysics,
+            child: SizedBox(
+              width: content.width,
+              height: _visible.height,
+              child: SingleChildScrollView(
+                controller: _scroll,
+                physics: _scrollPhysics,
+                child: painter,
+              ),
+            ),
+          ),
+        ),
+      );
+    } else if (down) {
+      painter = Scrollbar(
+        controller: _scroll,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _scroll,
+          physics: _scrollPhysics,
+          child: painter,
+        ),
+      );
+    } else if (across) {
+      painter = Scrollbar(
+        controller: _scrollX,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _scrollX,
+          scrollDirection: Axis.horizontal,
+          physics: _scrollPhysics,
+          child: painter,
+        ),
+      );
+    }
+    // A drag on the page (finger, pen or mouse) is the canvas's; the
+    // page scrolls by its bars, the wheel and two trackpad fingers.
+    if (down || across) {
+      painter = ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context)
+            .copyWith(dragDevices: {PointerDeviceKind.trackpad}),
+        child: painter,
+      );
+    }
+    return painter;
+  }
+
+  /// _overRulers lays the rulers over a page that scrolls, in a layer that
+  /// does not, so they stay at the window's edges.
+  Widget _overRulers(Widget painter) {
+    return Stack(children: [
+      Positioned.fill(child: painter),
+      Positioned.fill(
+        child: IgnorePointer(
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_scroll, _scrollX]),
+            builder: (context, _) => CustomPaint(
+              painter: _RulerLayer(
+                  guides: document.guides,
+                  sheet: document.size.size,
+                  scale: _scale,
+                  origin: _origin - _scrolled,
+                  page: _pageRect.shift(-_scrolled)),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  /// _withNavControls lays the 3D view controls over the page, when they
+  /// show.
+  Widget _withNavControls(Widget painter) {
+    return Stack(children: [
+      Positioned.fill(child: painter),
+      if (controller.onStage3d &&
+          controller.stageNav != StageNav.none &&
+          !controller.playing &&
+          !controller.gaming)
+        Positioned(
+          right: 10,
+          top: 10,
+          child: StageNavControls(controller: controller),
+        ),
+    ]);
+  }
 
   /// _touchAreas are what a game touches of each played element, shown with
   /// the Game tab open.

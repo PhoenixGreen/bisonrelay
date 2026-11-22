@@ -1,7 +1,8 @@
 part of 'canvas_stage.dart';
 
 // A drag on the canvas: moving, resizing, skewing and turning what was pressed,
-// and the parts of charts, tables and synths. Part of CanvasStageState: its
+// from the press that begins it (_beginTransform) to each step that applies
+// it, and the parts of charts, tables and synths. Part of CanvasStageState: its
 // fields, lifecycle and build are in canvas_stage.dart.
 
 extension StageDrag on CanvasStageState {
@@ -340,6 +341,40 @@ extension StageDrag on CanvasStageState {
       default:
         break;
     }
+  }
+
+  /// _beginTransform begins a move, resize, slant or turn of the selection
+  /// by [handle] (none for a move): it notes where each selected element
+  /// started, which every step of the drag works from, and opens the undo
+  /// step that the release closes.
+  void _beginTransform(_DragMode mode, StageHandle? handle) {
+    _mode = mode;
+    _handle = handle;
+    _startBounds = {
+      for (var e in controller.selectedElements) e.id: e.bounds,
+    };
+    // And the elements themselves, for a resize that scales what is inside:
+    // its factor is measured from the drag's start.
+    _startElements = {
+      for (var e in controller.selectedElements) e.id: e,
+    };
+    // Where each element is on this frame, which a move works from. A resize
+    // works from the resting bounds instead: it writes the base size, and a
+    // posed size would bake a scale in. A move from the resting bounds would
+    // lose the frame's pose.
+    _startPosed = {
+      for (var e in controller.selectedElements) e.id: _hit.posed(e),
+    };
+    // The box the handles are on, bigger than the element's own for a line
+    // or path (see _visualBounds). A resize is measured against it and
+    // applied to the real rectangle in proportion.
+    _startVisual = {
+      for (var e in controller.selectedElements) e.id: _visualBounds(e),
+    };
+    _startRotation = {
+      for (var e in controller.selectedElements) e.id: e.rotation,
+    };
+    controller.beginInteraction();
   }
 
   /// _otherBounds is everything not dragged, locked included, to snap to:

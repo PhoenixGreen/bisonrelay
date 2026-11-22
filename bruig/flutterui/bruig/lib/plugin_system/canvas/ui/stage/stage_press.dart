@@ -7,8 +7,46 @@ part of 'canvas_stage.dart';
 extension StagePress on CanvasStageState {
   bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
+  /// _onPointerDown is a press on the stage, tried against each step in
+  /// turn until one takes it. The order is the order of what is drawn over
+  /// what, and of what must win where two would answer the same press.
   void _onPointerDown(PointerDownEvent event) {
     _pointer = event;
+    // An editor or live preview open, or the camera's view, before anything
+    // else: the press is not on the page as it looks.
+    if (_pressOverlays(event)) return;
+    var press = _beginPress(event);
+    // Placing copies, and the facing page, before the tools: the page itself
+    // answers these, whatever tool is out.
+    if (_pressPage(press)) return;
+    // The tools that take a press before anything on the page.
+    if (_pressTools(press)) return;
+    // Option takes a camera, after the tools that have their own use for it.
+    if (_pressAltCamera(press)) return;
+    // The selection's grips, before what lies under them.
+    if (_pressSelectionGrips(press)) return;
+    // The flow grips and handles round the selection.
+    if (_pressHandles(press)) return;
+    // Parts of the selected element, before the element whose box holds
+    // them.
+    if (_pressSelectionParts(press)) return;
+    var element = _pressedElement(press);
+    if (element == null) return;
+    // An element's own controls that answer a press at once.
+    if (_pressElementControls(press, element)) return;
+    // A selected element's controls whose click waits for the release.
+    if (_pressSelectedControls(press, element)) return;
+    // A second click opens what the first selected.
+    if (_pressSecondClick(press, element)) return;
+    // Last, select what was pressed and begin moving it.
+    _pressSelectAndMove(press, element);
+  }
+
+  /// _pressOverlays takes a press while an editor or a live preview is open,
+  /// or the page is seen through the camera: none of them is the page as it
+  /// is drawn. It also takes the keyboard's focus for the stage. True if it
+  /// took the press.
+  bool _pressOverlays(PointerDownEvent event) {
     // Not while typing: an editor is a real text field with its own
     // pointers, and clicking off it moves focus, which closes it (see
     // CanvasTextEditor._onFocus). Taking focus would also close a cell editor
@@ -16,14 +54,14 @@ extension StagePress on CanvasStageState {
     if (_editingText != null ||
         _editingCell != null ||
         controller.codeEditing != null) {
-      return;
+      return true;
     }
     // A press off a live preview shuts it. One on it belongs to the preview:
     // shutting it would pull the page from under the click.
     if (controller.codeLive != null) {
       if (_codeLiveRect()?.contains(event.localPosition) ?? false) {
         _inLive = true;
-        return;
+        return true;
       }
       controller.endLiveCode();
     }
@@ -33,21 +71,34 @@ extension StagePress on CanvasStageState {
     // CanvasController.cameraView.
     if (controller.cameraView) {
       controller.cameraView = false;
-      return;
+      return true;
     }
+    return false;
+  }
+
+  /// _beginPress resets what the last press left and works out, once, the
+  /// points every later step reads.
+  _Press _beginPress(PointerDownEvent event) {
     var stage = event.localPosition;
     _pressedAt = stage;
     _travelled = false;
     var doc = _toDocument(stage);
     _dragStart = doc;
     _pressedCopy = null;
+    return _Press(event, stage, doc);
+  }
+
+  /// _pressPage takes a press that places copies, or one on the facing page,
+  /// which opens it. True if it took the press.
+  bool _pressPage(_Press press) {
+    var _Press(:event, :stage, :doc) = press;
     if (controller.placingCopies case var placing?
         when event.buttons == kPrimaryMouseButton) {
       controller.beginInteraction();
       controller.placeCopyAt(placing, doc);
       controller.endInteraction();
       _mode = _DragMode.none;
-      return;
+      return true;
     }
 
     // A press on the facing page opens it, before the pan check (panning is
@@ -58,28 +109,37 @@ extension StagePress on CanvasStageState {
         when _onFacingPage(stage) && !_onSelectionGrip(stage, doc)) {
       controller.goToScene(beside);
       _mode = _DragMode.none;
-      return;
+      return true;
     }
+    return false;
+  }
 
+  /// _pressTools takes a press for a tool or session that comes before
+  /// anything on the page: the marker's label, sampling a colour, the
+  /// stylus, the 3D gizmo, a locked stage, panning, a picture's open layers,
+  /// a guide, an anchor point, a sprite or tile map being painted, and a
+  /// drawing being edited. True if one took the press.
+  bool _pressTools(_Press press) {
+    var _Press(:event, :stage, :doc) = press;
     // A held marker's canvas label: dragged to move, or sized by its grip.
     // Not in a game, where the page is the player's.
-    if (_pressMarkerNote(doc)) return;
+    if (_pressMarkerNote(doc)) return true;
 
     if (controller.sampling) {
       _mode = _DragMode.none;
       _sampleAt(doc);
-      return;
+      return true;
     }
 
     // The pen's buttons and eraser end, with the pencil out, before the
     // middle button's pan.
-    if (_stylusPress(event, doc)) return;
+    if (_stylusPress(event, doc)) return true;
 
     // The stage gizmo, drawn on top, before anything under it.
-    if (_pressGizmo(doc)) return;
+    if (_pressGizmo(doc)) return true;
 
     // With the page locked, a press on a stage takes its camera.
-    if (_pressLockedStage(event, doc)) return;
+    if (_pressLockedStage(event, doc)) return true;
 
     // The pan tool and middle button pan (Space plays). Not with the page
     // locked, and not the pan tool on a 3D stage, which has its own tools.
@@ -89,26 +149,26 @@ extension StagePress on CanvasStageState {
       _mode = _DragMode.pan;
       _startPan = _clampedPan;
       _panStartOnStage = stage;
-      return;
+      return true;
     }
 
     // With a picture's layers open, a press on it works on them; elsewhere
     // it finishes editing.
     if (controller.editingImage case var picture?) {
-      if (_pressLayers(picture, doc)) return;
+      if (_pressLayers(picture, doc)) return true;
       controller.editImage(null);
     }
 
     // A guide before anything on the canvas: it is a hairline, so its reach
     // is tight (see guideGrabSlop), but within it the guide wins.
-    if (_startGuideDrag(stage, doc)) return;
+    if (_startGuideDrag(stage, doc)) return true;
 
     // An anchor point shown and unlocked, before the element it sits on.
     if (_anchorUnder(stage) case var id?) {
       _anchorOf = id;
       _mode = _DragMode.anchor;
       controller.beginInteraction();
-      return;
+      return true;
     }
 
     // A sprite or tile map being painted takes a press on it first.
@@ -116,14 +176,14 @@ extension StagePress on CanvasStageState {
       if (session.sprite case var e? when !e.locked && e.bounds.contains(doc)) {
         _mode = _DragMode.spritePaint;
         unawaited(session.strokeStart(doc));
-        return;
+        return true;
       }
     }
     if (controller.tilePaint case var session?) {
       if (session.map case var e? when !e.locked && e.bounds.contains(doc)) {
         _mode = _DragMode.tilePaint;
         session.strokeStart(doc);
-        return;
+        return true;
       }
     }
 
@@ -131,9 +191,15 @@ extension StagePress on CanvasStageState {
     // ends and the press goes on.
     if (controller.editingVector case var vector?
         when _pressVector(vector, doc)) {
-      return;
+      return true;
     }
+    return false;
+  }
 
+  /// _pressAltCamera takes a press with Option held for the camera of a 3D
+  /// stage or a parallax backdrop under it. True if it took the press.
+  bool _pressAltCamera(_Press press) {
+    var _Press(:stage, :doc) = press;
     // Option on a 3D stage takes its camera: across orbits, down looks from
     // higher. On a Background element showing one, or, hitting nothing else,
     // the background's own.
@@ -156,7 +222,7 @@ extension StagePress on CanvasStageState {
         _orbitAt = stage;
         _mode = _DragMode.parallaxPan;
         controller.beginInteraction();
-        return;
+        return true;
       }
       if (held case var s? when !s.locked) {
         _orbiting = s.id;
@@ -164,10 +230,18 @@ extension StagePress on CanvasStageState {
         _orbitAt = stage;
         _mode = _DragMode.stageOrbit;
         controller.beginInteraction();
-        return;
+        return true;
       }
     }
+    return false;
+  }
 
+  /// _pressSelectionGrips takes a press on a selected path's points, inside
+  /// the box of a selected element whose box is not its shape, outside the
+  /// frame (which clears the selection), or on a picture piece's or a
+  /// Layout's own grips. True if it took the press.
+  bool _pressSelectionGrips(_Press press) {
+    var _Press(:stage, :doc) = press;
     // A selected path's points and handles first: they are over the curve.
     var path = _selectedPath();
     if (path != null) {
@@ -178,7 +252,7 @@ extension StagePress on CanvasStageState {
         _nodeHandleOut = isOut;
         _mode = isHandle ? _DragMode.handle : _DragMode.node;
         controller.beginInteraction();
-        return;
+        return true;
       }
     }
 
@@ -194,7 +268,7 @@ extension StagePress on CanvasStageState {
           _visualBounds(chosen).contains(doc) &&
           _hitElement(doc) == null) {
         _beginTransform(_DragMode.move, null);
-        return;
+        return true;
       }
     }
 
@@ -202,14 +276,21 @@ extension StagePress on CanvasStageState {
     if (!_viewRect.contains(stage) && _hitHandle(stage) == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.none;
-      return;
+      return true;
     }
 
     // A picture piece's own box first: its handles, or a drag inside it.
-    if (_pressPiece(stage, doc)) return;
+    if (_pressPiece(stage, doc)) return true;
     // A Layout's lines and picked Free cell (stage_layouts.dart).
-    if (_pressLayout(stage, doc)) return;
+    if (_pressLayout(stage, doc)) return true;
+    return false;
+  }
 
+  /// _pressHandles takes a press on a text's flow grip, which starts a link,
+  /// or on a resize, slant or turn handle of the selection or its one picked
+  /// copy. True if it took the press.
+  bool _pressHandles(_Press press) {
+    var _Press(:stage, :doc) = press;
     // No flow grips or resize handles when the press is on a piece of text
     // drawn outside its box: see _looseTextPiece.
     if (_looseTextPiece(doc) == null) {
@@ -221,7 +302,7 @@ extension StagePress on CanvasStageState {
         var selected = document.elementById(controller.selection.first);
         // A locked connector shows, as a chain is read by it, but ignores
         // the pointer.
-        if (controller.lockJoins) return;
+        if (controller.lockJoins) return true;
         // The incoming grip takes the arriving link, which belongs to the
         // box in front; where its loose end drops says what it means.
         var from = grip.out
@@ -235,7 +316,7 @@ extension StagePress on CanvasStageState {
             _flowAt = stage;
             _mode = _DragMode.flow;
           });
-          return;
+          return true;
         }
       }
 
@@ -256,7 +337,7 @@ extension StagePress on CanvasStageState {
                   ? _DragMode.copyTurn
                   : _DragMode.copySize,
               handle);
-          return;
+          return true;
         }
         var skewing = side &&
             _chosen.length == 1 &&
@@ -268,10 +349,18 @@ extension StagePress on CanvasStageState {
                     ? _DragMode.skew
                     : _DragMode.resize,
             handle);
-        return;
+        return true;
       }
     }
+    return false;
+  }
 
+  /// _pressSelectionParts takes a press for the retouching brush, a team's
+  /// player, or a part of the selected element drawn inside its box: a
+  /// chart's placed label, a table's column rule. True if it took the
+  /// press.
+  bool _pressSelectionParts(_Press press) {
+    var _Press(:doc) = press;
     // The retouching brush first: while on, a drag is a stroke.
     if (controller.retouch.on) {
       var picture = _selectedPicture();
@@ -280,7 +369,7 @@ extension StagePress on CanvasStageState {
         _mode = _DragMode.none;
         controller.beginInteraction();
         _paintStrokeAt(doc, start: true);
-        return;
+        return true;
       }
     }
 
@@ -302,7 +391,7 @@ extension StagePress on CanvasStageState {
       // Clicking a player points the timeline at them: they have no id.
       controller.focusedPlayer = index;
       controller.beginInteraction();
-      return;
+      return true;
     }
 
     // A selected chart's placed label, before the chart whose box holds it.
@@ -323,7 +412,7 @@ extension StagePress on CanvasStageState {
         _labelGrab = grab;
         _mode = _DragMode.chartLabel;
         controller.beginInteraction();
-        return;
+        return true;
       }
     }
 
@@ -335,10 +424,18 @@ extension StagePress on CanvasStageState {
         _columnGrab = divider;
         _mode = _DragMode.tableColumn;
         controller.beginInteraction();
-        return;
+        return true;
       }
     }
+    return false;
+  }
 
+  /// _pressedElement finds the element the press is on, for the steps that
+  /// follow. It returns null when it took the press itself: a master
+  /// speaker or video pressed from a page, or a press on no element, which
+  /// begins a marquee.
+  CanvasElement? _pressedElement(_Press press) {
+    var _Press(:doc) = press;
     // The selection comes first: pressed anywhere on it, it is what moves,
     // whatever is drawn over it, so a drag after picking in Layers moves
     // what was picked. With nothing selected under the pointer, the topmost
@@ -352,12 +449,12 @@ extension StagePress on CanvasStageState {
       if (_masterAudioAt(doc) case (var sound, var part)?) {
         _pressAudio(sound, part, doc);
         _mode = _DragMode.none;
-        return;
+        return null;
       }
       if (_masterVideoAt(doc) case (var film, var part)?) {
         _pressVideo(film, part, doc);
         _mode = _DragMode.none;
-        return;
+        return null;
       }
     }
 
@@ -368,46 +465,65 @@ extension StagePress on CanvasStageState {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.marquee;
       setState(() => _marquee = Rect.fromPoints(doc, doc));
-      return;
+      return null;
     }
+    return element;
+  }
 
+  /// _pressElementControls takes a press on the controls of [element] that
+  /// act at once, picked or not: a synth module's, a metronome's, a Code or
+  /// Run panel's, and a play, code or synth task's. True if one took the
+  /// press.
+  bool _pressElementControls(_Press press, CanvasElement element) {
+    var _Press(:doc) = press;
     // A synth module's controls answer a press picked or not, as a rack's
     // do; its panel picks and moves it.
-    if (element is SynthModuleElement && _pressSynth(element, doc)) return;
+    if (element is SynthModuleElement && _pressSynth(element, doc)) return true;
     if (element is MetronomeElement) {
       if (metronomePartAt(element, doc) case var part?) {
         _pressMetronome(element, part);
         _mode = _DragMode.none;
-        return;
+        return true;
       }
     }
     // A Code panel's tabs, files and pane dividers, and a Run panel's Run
     // button, answer a press picked or not.
-    if (element is CodeElement && _pressCode(element, doc)) return;
-    if (element is CodeRunElement && _pressCodeRun(element, doc)) return;
+    if (element is CodeElement && _pressCode(element, doc)) return true;
+    if (element is CodeRunElement && _pressCodeRun(element, doc)) return true;
     // A play task's own steps, ticked by the student, and its Start again.
-    if (element is PlayTaskElement && _pressPlayTask(element, doc)) return;
+    if (element is PlayTaskElement && _pressPlayTask(element, doc)) {
+      return true;
+    }
     if (element is CodeTaskElement && codeTaskButtonAt(element, doc)) {
       controller.selectAlone(element.id);
       controller.checkCodeTask(element);
       _mode = _DragMode.none;
-      return;
+      return true;
     }
     if (element is SynthTaskElement) {
       if (synthTaskButtonAt(element, doc) case var b?) {
         _pressSynthTask(element, b);
         _mode = _DragMode.none;
-        return;
+        return true;
       }
     }
+    return false;
+  }
 
+  /// _pressSelectedControls takes a press on the controls of a selected
+  /// [element] whose click waits for the release, when the travel is known:
+  /// a button, a video's or speaker's controls, a sheet, an instrument's
+  /// keys, a live counter's buttons and pieces, a chart's key. A press that
+  /// travels moves the element instead. True if one took the press.
+  bool _pressSelectedControls(_Press press, CanvasElement element) {
+    var _Press(:doc) = press;
     // A selected button is tried by a click and moved by a drag, so its
     // action waits for pointer-up, when the travel is known. See
     // _onPointerUp.
     if (element is ButtonElement && controller.isOnlySelected(element.id)) {
       _pendingButton = element;
       _beginTransform(_DragMode.move, null);
-      return;
+      return true;
     }
 
     // A selected speaker's or video's controls, on the same terms: a press
@@ -420,7 +536,7 @@ extension StagePress on CanvasStageState {
         _pendingVideoPart = part;
         _pendingVideoAt = doc;
         _beginTransform(_DragMode.move, null);
-        return;
+        return true;
       }
     }
 
@@ -436,7 +552,7 @@ extension StagePress on CanvasStageState {
       _pendingSheet = element;
       _pendingSheetAt = doc;
       _beginTransform(_DragMode.move, null);
-      return;
+      return true;
     }
 
     // A selected instrument's keys sound on press and stop on release; a
@@ -452,7 +568,7 @@ extension StagePress on CanvasStageState {
             place: neckPlaceAt(keys, element.instrument!, doc));
         _keyDown = (element, key);
         _beginTransform(_DragMode.move, null);
-        return;
+        return true;
       }
     }
 
@@ -463,7 +579,7 @@ extension StagePress on CanvasStageState {
         _pendingAudioPart = part;
         _pendingAudioAt = doc;
         _beginTransform(_DragMode.move, null);
-        return;
+        return true;
       }
     }
 
@@ -483,13 +599,13 @@ extension StagePress on CanvasStageState {
           _pendingCounterAt = at;
         }
         setState(() => _mode = _DragMode.counterPart);
-        return;
+        return true;
       }
       if (at >= 0) {
         _pendingCounter = element;
         _pendingCounterAt = at;
         _beginTransform(_DragMode.move, null);
-        return;
+        return true;
       }
     }
 
@@ -503,10 +619,19 @@ extension StagePress on CanvasStageState {
         _legendHold = Timer(
             CanvasStageState._legendHoldDelay, () => _holdLegend(element));
         _beginTransform(_DragMode.move, null);
-        return;
+        return true;
       }
     }
+    return false;
+  }
 
+  /// _pressSecondClick takes the second click of a double click on a
+  /// selected [element], which opens it: a drawing or a picture for
+  /// editing, a table's cell or a text for typing, a Layout's cell. A press
+  /// it does not take is remembered as a first click. True if it took the
+  /// press.
+  bool _pressSecondClick(_Press press, CanvasElement element) {
+    var _Press(:doc) = press;
     // A second click on a selected drawing opens it for editing.
     if (element is VectorElement &&
         !element.locked &&
@@ -520,7 +645,7 @@ extension StagePress on CanvasStageState {
         var shape = shapeAt(e, at, reach);
         if (shape >= 0) controller.pickVectorShape(shape);
       }));
-      return;
+      return true;
     }
 
     // A second click on a selected picture opens its layers, the one under
@@ -529,7 +654,7 @@ extension StagePress on CanvasStageState {
     if (element is ImageElement && !element.locked && _secondClickOn(element)) {
       controller.editImage(element.id, layer: layerAt(element, doc).id);
       _mode = _DragMode.none;
-      return;
+      return true;
     }
 
     // A second click on a selected table's cell opens it for typing.
@@ -538,7 +663,7 @@ extension StagePress on CanvasStageState {
       if (at != null) {
         setState(() => _editingCell = (element.id, at.$1, at.$2));
         _mode = _DragMode.none;
-        return;
+        return true;
       }
     }
 
@@ -546,7 +671,7 @@ extension StagePress on CanvasStageState {
     if (element is LayoutElement && _secondClickOn(element)) {
       _doubleClickLayout(element, doc);
       _mode = _DragMode.none;
-      return;
+      return true;
     }
 
     // A second click on a selected text element opens it for typing; the
@@ -563,7 +688,7 @@ extension StagePress on CanvasStageState {
       if (piece != null && piece.isIcon) {
         controller.pickTextLayer(element.id, piece.id);
         _mode = _DragMode.none;
-        return;
+        return true;
       }
       setState(() {
         _editingText = element.id;
@@ -573,10 +698,17 @@ extension StagePress on CanvasStageState {
       // Pick the typed piece in Layers, so its settings show.
       controller.pickTextLayer(element.id, _editingItem);
       _mode = _DragMode.none;
-      return;
+      return true;
     }
     _lastClickAt = clock.now();
+    return false;
+  }
 
+  /// _pressSelectAndMove is the press no earlier step took: a reused
+  /// element's copy, or else [element] selected (or, with Shift, toggled)
+  /// and its move begun.
+  void _pressSelectAndMove(_Press press, CanvasElement element) {
+    var _Press(:doc) = press;
     if (_pressCopy(element, doc)) return;
 
     if (_shiftHeld) {
@@ -708,4 +840,16 @@ extension StagePress on CanvasStageState {
         ]),
         transient: true);
   }
+}
+
+/// _Press is what every step of a press reads: the event, where it landed
+/// on the stage, and the same point in the document. It is made once, as
+/// the press begins, so no step works the point out again after another
+/// has changed the view.
+class _Press {
+  const _Press(this.event, this.stage, this.doc);
+
+  final PointerDownEvent event;
+  final Offset stage;
+  final Offset doc;
 }
