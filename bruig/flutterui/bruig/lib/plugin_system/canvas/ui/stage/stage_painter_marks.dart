@@ -90,8 +90,8 @@ extension _StagePainterMarks on StagePainter {
       canvas.drawCircle(k.turn, 5.5 / scale, white);
       canvas.drawCircle(k.turn, 5.5 / scale, ring);
       canvas.drawCircle(k.turn, 1.8 / scale, blue);
-      var square =
-          Rect.fromCenter(center: k.gutter, width: 11 / scale, height: 11 / scale);
+      var square = Rect.fromCenter(
+          center: k.gutter, width: 11 / scale, height: 11 / scale);
       canvas.drawRect(square, white);
       canvas.drawRect(square.deflate(1.5 / scale), blue);
     }
@@ -246,7 +246,8 @@ extension _StagePainterMarks on StagePainter {
       ..color = const Color(0xCC5AA9FF);
     for (var r in touchAreas) {
       canvas.drawRect(
-          Rect.fromPoints(r.topLeft * scale + origin, r.bottomRight * scale + origin),
+          Rect.fromPoints(
+              r.topLeft * scale + origin, r.bottomRight * scale + origin),
           line);
     }
   }

@@ -163,8 +163,7 @@ class StagePainter extends CustomPainter {
   /// gameChange is the scene a game is leaving while its transition plays
   /// (as seen, its frame, the transition and how far through), drawn giving
   /// way to [document].
-  final (CanvasDocument, int, SceneTransition, double, LiveMotion)?
-      gameChange;
+  final (CanvasDocument, int, SceneTransition, double, LiveMotion)? gameChange;
 
   /// trail shows the selected element's trail and onion skin while the
   /// Chain is open on its motion (see _paintTrail).
@@ -437,8 +436,8 @@ class StagePainter extends CustomPainter {
     this.selectionSkew = Offset.zero,
     required this.handleFor,
     required this.marquee,
-  }) : liveStrokeLength = liveStroke.length,
-       super(
+  })  : liveStrokeLength = liveStroke.length,
+        super(
             repaint: Listenable.merge([
           // Pictures and the background arrive after the frame that asked
           // for them, and nothing else changes then, so without these a

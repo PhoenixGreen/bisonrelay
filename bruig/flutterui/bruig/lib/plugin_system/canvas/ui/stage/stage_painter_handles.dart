@@ -97,8 +97,10 @@ extension _StagePainterHandles on StagePainter {
     for (var (i, copy) in set.items.indexed) {
       var box = e.boundsWith(
           poseWithMotion(e, frame, document, live: liveMotion, instance: i));
-      var r = Rect.fromLTRB(box.left * scale + origin.dx,
-          box.top * scale + origin.dy, box.right * scale + origin.dx,
+      var r = Rect.fromLTRB(
+          box.left * scale + origin.dx,
+          box.top * scale + origin.dy,
+          box.right * scale + origin.dx,
           box.bottom * scale + origin.dy);
       var picked = pickedCopies.contains(copy.id);
       // A lone pick has the selection's box instead (see CanvasStage's
@@ -106,8 +108,8 @@ extension _StagePainterHandles on StagePainter {
       var boxed = picked && pickedCopies.length == 1;
       if (!boxed) {
         canvas.drawRRect(
-          RRect.fromRectAndRadius(r.inflate(picked ? 3 : 1),
-              const Radius.circular(3)),
+            RRect.fromRectAndRadius(
+                r.inflate(picked ? 3 : 1), const Radius.circular(3)),
             picked ? ring : faint);
       }
       if (!picked) continue;
@@ -447,7 +449,8 @@ extension _StagePainterHandles on StagePainter {
             ..color = colour);
     }
     for (var h in layers.handles) {
-      var r = Rect.fromCenter(center: screen(h), width: handleSize, height: handleSize);
+      var r = Rect.fromCenter(
+          center: screen(h), width: handleSize, height: handleSize);
       canvas.drawRect(r, Paint()..color = const Color(0xFFFFFFFF));
       canvas.drawRect(
           r,
