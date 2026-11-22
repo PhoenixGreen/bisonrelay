@@ -7,6 +7,9 @@ import 'package:flutter/painting.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/storage_manager.dart';
@@ -169,6 +172,35 @@ class CanvasPreferences extends ChangeNotifier {
   final _publish = _SavedText.json<Map<String, dynamic>>(
       "canvasPublish", const {},
       fromJson: _jsonMap, toJson: (v) => v);
+  final _assetViews =
+      _SavedText.json<Map<AssetKind, AssetView>>("canvasAssetViews", const {},
+          fromJson: (json) => json is! Map
+              ? null
+              : Map.unmodifiable({
+                  for (var kind in AssetKind.values)
+                    if (AssetView.values.asNameMap()[json[kind.name]]
+                        case var view?)
+                      kind: view,
+                }),
+          toJson: (v) => {for (var e in v.entries) e.key.name: e.value.name});
+  final _stockLibrary = _SavedText<StockLibrary>(
+      "canvasStockLibrary", StockLibrary.initial,
+      read: StockLibrary.fromName, write: (v) => v.name);
+  final _stockFilters = _SavedText.json<Map<StockSource, Map<String, String>>>(
+      "canvasStockFilters", const {},
+      fromJson: (json) => json is! Map
+          ? null
+          : Map.unmodifiable({
+              for (var e in json.entries)
+                // A source this build does not know is passed by, not read as
+                // the default one, whose own filters it would overwrite.
+                if ((StockSource.values.asNameMap()[e.key], e.value)
+                    case (var source?, Map chosen))
+                  source: Map<String, String>.unmodifiable({
+                    for (var f in chosen.entries) "${f.key}": "${f.value}",
+                  }),
+            }),
+      toJson: (v) => {for (var e in v.entries) e.key.name: e.value});
 
   /// _saved is every value above, which is what [load] reads. [_change]
   /// refuses one that is missing, so a test that sets it says so.
@@ -196,6 +228,9 @@ class CanvasPreferences extends ChangeNotifier {
     _studioLook,
     _studioOverrides,
     _publish,
+    _assetViews,
+    _stockLibrary,
+    _stockFilters,
   ];
 
   /// load reads what was saved, once at startup; until then every value is
@@ -433,4 +468,35 @@ class CanvasPreferences extends ChangeNotifier {
   Map<String, dynamic> get publish => _publish.value;
   set publish(Map<String, dynamic> value) =>
       _change(_publish, Map<String, dynamic>.unmodifiable(value));
+
+  // --------------------------------------------------------------------------
+  // The Assets sidebar
+  // --------------------------------------------------------------------------
+
+  /// assetView is how the Assets sidebar shows [kind]'s assets.
+  AssetView assetView(AssetKind kind) =>
+      _assetViews.value[kind] ?? AssetView.defaultFor(kind);
+
+  /// setAssetView changes one kind's view, leaving the others as they are.
+  void setAssetView(AssetKind kind, AssetView view) => _change(
+      _assetViews,
+      Map<AssetKind, AssetView>.unmodifiable(
+          {..._assetViews.value, kind: view}));
+
+  /// stockLibrary is the library the Stock panel shows.
+  StockLibrary get stockLibrary => _stockLibrary.value;
+  set stockLibrary(StockLibrary value) => _change(_stockLibrary, value);
+
+  /// stockFilters is each source's filters as last chosen in the Stock
+  /// panel, by filter id. A source or filter not in it has its default.
+  Map<StockSource, Map<String, String>> get stockFilters => _stockFilters.value;
+
+  /// setStockFilter chooses [value] for [source]'s filter [id].
+  void setStockFilter(StockSource source, String id, String value) => _change(
+      _stockFilters,
+      Map<StockSource, Map<String, String>>.unmodifiable({
+        ..._stockFilters.value,
+        source: Map<String, String>.unmodifiable(
+            {...?_stockFilters.value[source], id: value}),
+      }));
 }

@@ -42,6 +42,19 @@ enum AssetKind {
       values.firstWhere((k) => k.name == name, orElse: () => picture);
 }
 
+/// AssetView is how the Assets sidebar shows one kind's assets: as icons, or
+/// as a list. Chosen per kind, and kept in CanvasPreferences.
+enum AssetView {
+  icons,
+  list;
+
+  /// AssetView.defaultFor is [kind]'s view until another is chosen. Sounds
+  /// start as a list: they have no picture to make an icon of, so as icons
+  /// they would all look alike.
+  static AssetView defaultFor(AssetKind kind) =>
+      kind == AssetKind.audio ? list : icons;
+}
+
 class LibraryAsset {
   /// id is the stored file's: a picture's in the picture store, a video's or
   /// a sound's in the media store.

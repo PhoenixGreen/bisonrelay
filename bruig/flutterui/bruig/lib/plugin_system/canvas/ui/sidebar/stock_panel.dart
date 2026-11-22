@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:ui' as ui;
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:bruig/models/snackbar.dart';
@@ -12,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
@@ -21,7 +21,6 @@ import 'package:bruig/plugin_system/canvas/ui/picking/character_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/kaykit_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/kenney_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/stock_import.dart';
-import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -37,17 +36,6 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 // searches again. A
 // result is a preview until it is used (clicked, dragged, or added with its +);
 // then it is fetched, stored and credited: see stock_import.dart.
-
-const _sourceKey = "canvasStock.source";
-
-/// _kenneyKey is what the library is saved as when it is Kenney's sprites;
-/// _charactersKey the drawn characters made here, _kayKitKey KayKit's 3D
-/// characters to download. None is searched.
-const _kenneyKey = "kenney";
-const _charactersKey = "characters";
-const _kayKitKey = "kaykit";
-const _browsers = {_kenneyKey, _charactersKey, _kayKitKey};
-const _filtersKey = "canvasStock.filters";
 
 /// _previewMaxBytes bounds a preview. Jamendo's is the whole track as a
 /// stream, a few megabytes; anything far past that is not a preview.
@@ -65,13 +53,10 @@ class StockPanel extends StatefulWidget {
 }
 
 class _StockPanelState extends State<StockPanel> {
-  StockSource _source = StockSource.pixabayPictures;
-
-  /// _browser is what is shown in place of a library to search, if
-  /// anything: Kenney's free sprites (kenney_browser.dart), characters drawn
-  /// here (character_browser.dart), or KayKit's to download (kaykit_packs).
-  String? _browser;
-  final Map<StockSource, Map<String, String>> _filters = {};
+  /// _library is the library shown: a source to search, or a browser
+  /// (kenney_browser.dart, character_browser.dart, kaykit_browser.dart).
+  /// Kept in the preferences, as are each source's filters.
+  late StockLibrary _library;
   final TextEditingController _search = TextEditingController();
   final TextEditingController _key = TextEditingController();
   final TextEditingController _secret = TextEditingController();
@@ -106,6 +91,8 @@ class _StockPanelState extends State<StockPanel> {
   @override
   void initState() {
     super.initState();
+    _library =
+        Provider.of<CanvasPreferences>(context, listen: false).stockLibrary;
     _restore();
   }
 
@@ -130,79 +117,80 @@ class _StockPanelState extends State<StockPanel> {
     super.dispose();
   }
 
+  /// _restore finds out what is not kept with the preferences: whether a
+  /// proxy is set, and whether the library has its key.
   Future<void> _restore() async {
+    var library = _library;
     var proxied = await networkIsProxied();
-    var saved = await StorageManager.readString(_sourceKey);
-    var browser = _browsers.contains(saved) ? saved : null;
-    var source = StockSource.fromName(browser != null ? null : saved);
-    try {
-      var filters = jsonDecode(await StorageManager.readString(_filtersKey));
-      if (filters is Map) {
-        for (var e in filters.entries) {
-          // A source this build does not know is skipped, not read as the
-          // default one, whose own filters it would overwrite.
-          var known =
-              StockSource.values.where((s) => s.name == e.key).firstOrNull;
-          if (known == null || e.value is! Map) continue;
-          _filters[known] = {
-            for (var f in (e.value as Map).entries) "${f.key}": "${f.value}",
-          };
-        }
-      }
-    } catch (_) {
-      // Nothing saved yet, or something unreadable: the defaults.
-    }
-    var hasKey = await StockKeys.has(source);
+    var hasKey = switch (library) {
+      StockSourceLibrary(:var source) => await StockKeys.has(source),
+      StockBrowserLibrary() => null,
+    };
     if (!mounted) return;
     setState(() {
       _proxied = proxied;
-      _source = source;
-      _hasKey = hasKey;
-      _browser = browser;
+      // Another library chosen meanwhile has asked about its own key.
+      if (library == _library) _hasKey = hasKey;
     });
   }
 
-  void _saveFilters() => StorageManager.saveString(
-      _filtersKey,
-      jsonEncode({
-        for (var e in _filters.entries) e.key.name: e.value,
-      }));
+  /// _gate is whether this panel may reach the libraries now, worked out
+  /// here alone. With [listen], for build, the panel is redrawn when
+  /// fetching is turned on or off.
+  _StockGate _gate({bool listen = false}) => _StockGate(
+      allowFetching:
+          Provider.of<CanvasPreferences>(context, listen: listen).allowFetching,
+      proxied: _proxied);
 
-  Future<void> _choose(StockSource source) async {
-    if (_browser != null) setState(() => _browser = null);
-    if (source == _source) {
-      unawaited(StorageManager.saveString(_sourceKey, source.name));
-      return;
-    }
+  /// _source is the library being searched, or null while a browser shows.
+  StockSource? get _source => switch (_library) {
+        StockSourceLibrary(:var source) => source,
+        StockBrowserLibrary() => null,
+      };
+
+  Future<void> _choose(StockLibrary library) async {
+    if (library == _library) return;
     _previewer.stop();
-    unawaited(StorageManager.saveString(_sourceKey, source.name));
-    var hasKey = await StockKeys.has(source);
-    if (!mounted) return;
-    setState(() {
-      _source = source;
-      _hasKey = hasKey;
-      _editingKey = false;
-      _items = const [];
-      _last = null;
-      _problem = null;
-      // A search still on its way was for the library left: its answer is
-      // set aside when it comes (see _run), so nothing is waited for.
-      _loading = false;
-    });
-    if (_query != null && hasKey) unawaited(_run());
+    context.read<CanvasPreferences>().stockLibrary = library;
+    switch (library) {
+      case StockBrowserLibrary():
+        // What the last source found is kept, for coming back to it.
+        setState(() => _library = library);
+      case StockSourceLibrary(:var source):
+        var hasKey = await StockKeys.has(source);
+        if (!mounted) return;
+        // Back from a browser to the source last searched, its results (or
+        // the search on its way) are still its own.
+        var same = source == _query?.source && (_last != null || _loading);
+        setState(() {
+          _library = library;
+          _hasKey = hasKey;
+          _editingKey = false;
+          if (!same) {
+            _items = const [];
+            _last = null;
+            _problem = null;
+            // A search still on its way was for the library left: its
+            // answer is set aside when it comes (see _run), so nothing is
+            // waited for.
+            _loading = false;
+          }
+        });
+        if (!same && _query != null && hasKey) unawaited(_run());
+    }
   }
 
-  void _setFilter(String id, String value) {
-    setState(() => (_filters[_source] ??= {})[id] = value);
-    _saveFilters();
+  void _setFilter(StockSource source, String id, String value) {
+    var prefs = context.read<CanvasPreferences>();
+    setState(() => prefs.setStockFilter(source, id, value));
     if (_query != null && _hasKey == true) _run();
   }
 
-  Future<void> _saveKey() async {
+  Future<void> _saveKey(StockSource source) async {
     var key = _key.text.trim();
     var secret = _secret.text.trim();
-    if (key.isEmpty || (_source.needsSecret && secret.isEmpty)) return;
-    await StockKeys.save(_source, key, secret);
+    if (key.isEmpty || (source.needsSecret && secret.isEmpty)) return;
+    await StockKeys.save(source, key, secret);
     _key.clear();
     _secret.clear();
     if (!mounted) return;
@@ -212,8 +200,8 @@ class _StockPanelState extends State<StockPanel> {
     });
   }
 
-  Future<void> _forgetKey() async {
-    await StockKeys.forget(_source);
+  Future<void> _forgetKey(StockSource source) async {
+    await StockKeys.forget(source);
     if (!mounted) return;
     setState(() {
       _hasKey = false;
@@ -225,12 +213,14 @@ class _StockPanelState extends State<StockPanel> {
 
   /// _run searches afresh, or with [more] fetches the next page.
   Future<void> _run({bool more = false}) async {
+    var source = _source;
+    if (source == null) return;
     var prefs = context.read<CanvasPreferences>();
     var last = _last;
     var q = more && _query != null && last != null
         ? _query!.next(last)
-        : StockQuery(_source,
-            text: _search.text, filters: {...?_filters[_source]});
+        : StockQuery(source,
+            text: _search.text, filters: {...?prefs.stockFilters[source]});
     if (!more) _previewer.stop();
     setState(() {
       _query = q;
@@ -238,10 +228,13 @@ class _StockPanelState extends State<StockPanel> {
       _problem = null;
       if (!more) _items = const [];
     });
+    var gate = _gate();
     var page = await StockClient.instance.search(q,
-        allowFetching: prefs.allowFetching, proxied: _proxied ?? true);
-    // Dropped if another search has begun, or another library been chosen.
-    if (!mounted || _query != q || q.source != _source) return;
+        allowFetching: gate.allowFetching, proxied: gate.mayBeProxied);
+    // Dropped if another search has begun, or another source been chosen.
+    // Kept while a browser shows, for coming back to the source.
+    if (!mounted || _query != q) return;
+    if (_source case var shown? when shown != q.source) return;
     setState(() {
       _loading = false;
       _last = page;
@@ -284,18 +277,14 @@ class _StockPanelState extends State<StockPanel> {
   }
 
   Future<void> _watch(StockItem item) async {
-    var prefs = context.read<CanvasPreferences>();
     _previewer.stop();
-    var problem = await _watching.toggle(item,
-        allowFetching: prefs.allowFetching, proxied: _proxied ?? true);
+    var problem = await _watching.toggle(item, _gate());
     if (problem != null && mounted) SnackBarModel.of(context).error(problem);
   }
 
   Future<void> _listen(StockItem item) async {
-    var prefs = context.read<CanvasPreferences>();
     _watching.stop();
-    var ok = await _previewer.toggle(item,
-        allowFetching: prefs.allowFetching, proxied: _proxied ?? true);
+    var ok = await _previewer.toggle(item, _gate());
     if (!ok && mounted) {
       SnackBarModel.of(context)
           .error("The preview of ${item.title} could not be played.");
@@ -304,239 +293,201 @@ class _StockPanelState extends State<StockPanel> {
 
   @override
   Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    var prefs = context.watch<CanvasPreferences>();
-    var muted = TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant);
-
-    Widget note(String text, {Key? key}) => Padding(
-          key: key,
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(text, style: muted),
-        );
-
-    if (_proxied == null) return const SizedBox.shrink();
-
-    // The licence choice is behind the licence button rather than among
-    // the filters: it is set once, not changed every search.
-    var filters = [
-      for (var f in filtersFor(_source))
-        if (!f.isLicence) f,
-    ];
-    var licence = [
-      for (var f in filtersFor(_source))
-        if (f.isLicence) f,
-    ];
-    var chosen = _filters[_source] ?? const {};
-    var visual = _source.kind != AssetKind.audio;
-    var keyed = _hasKey == true && !_editingKey;
-
-    // The libraries to search, and Kenney's free sprites (no key, no
-    // search: pick a pack and see its sprites).
-    var library = CanvasDropdown<String>(
-      key: const ValueKey("stockSource"),
-      label: "Library",
-      value: _browser ?? _source.name,
-      width: 160,
-      options: [
-        for (var s in StockSource.values) (s.name, s.label),
-        (_kenneyKey, "Kenney's sprites"),
-        (_charactersKey, "Drawn characters"),
-        (_kayKitKey, "KayKit 3D characters"),
-      ],
-      onChanged: (v) {
-        if (_browsers.contains(v)) {
-          _previewer.stop();
-          StorageManager.saveString(_sourceKey, v);
-          setState(() => _browser = v);
-        } else {
-          _choose(StockSource.fromName(v));
-        }
-      },
-    );
-    if (_browser case var browser?) {
-      return ListView(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-          children: [
-            CanvasWrap(children: [library]),
-            const SizedBox(height: 6),
-            switch (browser) {
-              _charactersKey => CharacterBrowser(controller: widget.controller),
-              _kayKitKey => KayKitBrowser(controller: widget.controller),
-              _ => KenneyBrowser(controller: widget.controller),
-            },
-          ]);
+    var gate = _gate(listen: true);
+    var library = _libraryPicker();
+    StockSource source;
+    switch (_library) {
+      case StockBrowserLibrary(:var browser):
+        return _BrowserView(
+            library: library, browser: browser, controller: widget.controller);
+      case StockSourceLibrary(source: var searched):
+        source = searched;
     }
 
     // The two gates, for the libraries searched over the network only: the
     // browsers above fetch nothing, or gate their own downloads. Say why
     // there is no search, not a box saying no, under the Library row so
     // another library can still be chosen.
-    if (!prefs.allowFetching) {
-      return ListView(padding: const EdgeInsets.all(8), children: [
-        CanvasWrap(children: [library]),
-        note(
-            key: const ValueKey("stockOff"),
-            "Searching Pixabay, the Noun Project, Freesound and Jamendo "
-            "connects to them directly -- not through the proxy in Settings "
-            "> Network -- so they see your connection. Nothing is sent until "
-            "you search, and nothing is downloaded until you use a result. "
-            "Each needs a free key of your own."),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            key: const ValueKey("stockAllowFetching"),
-            onPressed: () => prefs.allowFetching = true,
-            child: const Text("Allow fetching"),
-          ),
-        ),
-        note("The same switch is in Settings > Plugins > Canvas, as "
-            "\"${CanvasPreferences.allowFetchingLabel}\"."),
-      ]);
-    }
-    if (_proxied == true) {
-      return ListView(padding: const EdgeInsets.all(8), children: [
-        CanvasWrap(children: [library]),
-        note(
-            key: const ValueKey("stockProxied"),
-            StockClient.refusal(allowFetching: true, proxied: true)!),
-      ]);
+    if (!gate.allowFetching) return _FetchingOff(library: library);
+    if (gate.proxied != false) {
+      return _Proxied(library: library, proxied: gate.proxied);
     }
 
+    var theme = ThemeNotifier.of(context);
+    var muted = TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant);
+    // The licence choice is behind the licence button rather than among
+    // the filters: it is set once, not changed every search.
+    var filters = [
+      for (var f in filtersFor(source))
+        if (!f.isLicence) f,
+    ];
+    var chosen = Provider.of<CanvasPreferences>(context, listen: false)
+            .stockFilters[source] ??
+        const {};
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       children: [
-        CanvasWrap(children: [
-          library,
-          if (keyed) ...[
-            CanvasIconButton(
-              key: const ValueKey("stockChangeKey"),
-              icon: Icons.key,
-              tooltip: "Change the ${_source.from} key",
-              onPressed: () => setState(() => _editingKey = true),
-            ),
-            CanvasIconButton(
-              key: const ValueKey("stockForgetKey"),
-              icon: Icons.key_off,
-              tooltip: "Forget the ${_source.from} key",
-              onPressed: _forgetKey,
-            ),
-          ],
-          CanvasIconButton(
-            key: const ValueKey("stockLicence"),
-            icon: Icons.copyright_outlined,
-            tooltip: "Licence",
-            active: _licenceOpen,
-            onPressed: () => setState(() => _licenceOpen = !_licenceOpen),
-          ),
-        ]),
-        if (_licenceOpen) _licencePanel(theme, muted, licence, chosen),
+        _libraryRow(library, source),
+        if (_licenceOpen) _licencePanel(theme, muted, source, chosen),
         if (_hasKey == false || _editingKey)
-          ..._keyForm(theme, muted)
+          ..._keyForm(theme, muted, source)
         else if (_hasKey == true) ...[
           const SizedBox(height: 6),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                key: const ValueKey("stockSearch"),
-                controller: _search,
-                style: const TextStyle(fontSize: 13),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: "Search ${_source.label}",
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  prefixIconConstraints:
-                      const BoxConstraints(minWidth: 32, minHeight: 32),
-                ),
-                onSubmitted: (_) => _run(),
-              ),
-            ),
-            CanvasIconButton(
-              key: const ValueKey("stockGo"),
-              icon: Icons.arrow_forward,
-              tooltip: "Search",
-              tight: true,
-              onPressed: _loading ? null : () => _run(),
-            ),
-          ]),
+          _searchRow(source),
           if (filters.isNotEmpty) const SizedBox(height: 6),
-          CanvasWrap(children: [
-            for (var f in filters)
-              CanvasDropdown<String>(
-                key: ValueKey("stockFilter-${f.id}"),
-                label: f.label,
-                value: f.options.any((o) => o.$1 == chosen[f.id])
-                    ? chosen[f.id]!
-                    : f.options.first.$1,
-                width: 110,
-                options: f.options,
-                onChanged: (v) => _setFilter(f.id, v),
-              ),
-          ]),
+          _Filters(
+              filters: filters,
+              chosen: chosen,
+              onChanged: (id, value) => _setFilter(source, id, value)),
           const SizedBox(height: 6),
           if (_problem != null)
-            note(key: const ValueKey("stockProblem"), _problem!),
-          if (visual)
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (var item in _items) _draggable(item, _tile(item, theme)),
-            ])
-          else
-            for (var item in _items) _draggable(item, _row(item, theme)),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Center(
-                  child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))),
-            )
-          else if (_last?.more == true)
-            Center(
-              child: TextButton(
-                key: const ValueKey("stockMore"),
-                onPressed: () => _run(more: true),
-                child: const Text("More"),
-              ),
-            ),
+            _Note(key: const ValueKey("stockProblem"), _problem!),
+          ..._results(source, theme),
+          if (_loading || _last?.more == true) _moreButton(),
         ],
       ],
     );
   }
 
-  /// _licencePanel is what the licence button opens: the library's licence
-  /// choice, if any, and what its licences ask of those using a result.
-  Widget _licencePanel(ThemeNotifier theme, TextStyle muted,
-          List<StockFilter> licence, Map<String, String> chosen) =>
-      Container(
-        key: const ValueKey("stockLicencePanel"),
-        margin: const EdgeInsets.only(top: 4),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: theme.colors.outlineVariant),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (var f in licence)
-            Wrap(spacing: 4, runSpacing: 4, children: [
-              for (var (value, label) in f.options)
-                _Pill(
-                  key: ValueKey("stockLicence-${f.id}-$value"),
-                  label: label,
-                  on: (chosen[f.id] ?? f.options.first.$1) == value,
-                  onTap: () => _setFilter(f.id, value),
-                ),
-            ]),
-          if (licence.isNotEmpty) const SizedBox(height: 6),
-          Text(_source.terms, style: muted),
-        ]),
+  /// _libraryPicker is the Library dropdown: the libraries to search, and
+  /// those browsed instead (no key, no search: Kenney's packs, say, picked
+  /// and their sprites seen). A CanvasDropdown itself, not wrapped, so the
+  /// row it is put in can let it grow.
+  CanvasDropdown<StockLibrary> _libraryPicker() => CanvasDropdown<StockLibrary>(
+        key: const ValueKey("stockSource"),
+        label: "Library",
+        value: _library,
+        width: 160,
+        options: [for (var l in StockLibrary.all) (l, l.label)],
+        onChanged: _choose,
       );
 
-  List<Widget> _keyForm(ThemeNotifier theme, TextStyle muted) => [
+  /// _libraryRow is the Library dropdown above a searched library, with the
+  /// key's buttons once there is a key, and the licence button.
+  Widget _libraryRow(CanvasDropdown<StockLibrary> library, StockSource source) {
+    var keyed = _hasKey == true && !_editingKey;
+    return CanvasWrap(children: [
+      library,
+      if (keyed) ...[
+        CanvasIconButton(
+          key: const ValueKey("stockChangeKey"),
+          icon: Icons.key,
+          tooltip: "Change the ${source.from} key",
+          onPressed: () => setState(() => _editingKey = true),
+        ),
+        CanvasIconButton(
+          key: const ValueKey("stockForgetKey"),
+          icon: Icons.key_off,
+          tooltip: "Forget the ${source.from} key",
+          onPressed: () => _forgetKey(source),
+        ),
+      ],
+      CanvasIconButton(
+        key: const ValueKey("stockLicence"),
+        icon: Icons.copyright_outlined,
+        tooltip: "Licence",
+        active: _licenceOpen,
+        onPressed: () => setState(() => _licenceOpen = !_licenceOpen),
+      ),
+    ]);
+  }
+
+  Widget _searchRow(StockSource source) => Row(children: [
+        Expanded(
+          child: TextField(
+            key: const ValueKey("stockSearch"),
+            controller: _search,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: "Search ${source.label}",
+              prefixIcon: const Icon(Icons.search, size: 18),
+              prefixIconConstraints:
+                  const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+            onSubmitted: (_) => _run(),
+          ),
+        ),
+        CanvasIconButton(
+          key: const ValueKey("stockGo"),
+          icon: Icons.arrow_forward,
+          tooltip: "Search",
+          tight: true,
+          onPressed: _loading ? null : () => _run(),
+        ),
+      ]);
+
+  /// _results is what the search found: pictures and videos as tiles side
+  /// by side, sounds as rows.
+  List<Widget> _results(StockSource source, ThemeNotifier theme) =>
+      source.kind != AssetKind.audio
+          ? [
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (var item in _items) _draggable(item, _tile(item, theme)),
+              ]),
+            ]
+          : [for (var item in _items) _draggable(item, _row(item, theme))];
+
+  /// _moreButton is the next page asked for, or the spinner while a page
+  /// is coming.
+  Widget _moreButton() => _loading
+      ? const Padding(
+          padding: EdgeInsets.all(12),
+          child: Center(
+              child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))),
+        )
+      : Center(
+          child: TextButton(
+            key: const ValueKey("stockMore"),
+            onPressed: () => _run(more: true),
+            child: const Text("More"),
+          ),
+        );
+
+  /// _licencePanel is what the licence button opens: the library's licence
+  /// choice, if any, and what its licences ask of those using a result.
+  Widget _licencePanel(ThemeNotifier theme, TextStyle muted, StockSource source,
+      Map<String, String> chosen) {
+    var licence = [
+      for (var f in filtersFor(source))
+        if (f.isLicence) f,
+    ];
+    return Container(
+      key: const ValueKey("stockLicencePanel"),
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: theme.colors.outlineVariant),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var f in licence)
+          Wrap(spacing: 4, runSpacing: 4, children: [
+            for (var (value, label) in f.options)
+              _Pill(
+                key: ValueKey("stockLicence-${f.id}-$value"),
+                label: label,
+                on: (chosen[f.id] ?? f.options.first.$1) == value,
+                onTap: () => _setFilter(source, f.id, value),
+              ),
+          ]),
+        if (licence.isNotEmpty) const SizedBox(height: 6),
+        Text(source.terms, style: muted),
+      ]),
+    );
+  }
+
+  List<Widget> _keyForm(
+          ThemeNotifier theme, TextStyle muted, StockSource source) =>
+      [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: SelectableText(
-            "${_source.from} needs a key of your own, free from "
-            "${_source.keyPage}${_source.needsSecret ? " (a key and a secret)" : ""}. "
+            "${source.from} needs a key of your own, free from "
+            "${source.keyPage}${source.needsSecret ? " (a key and a secret)" : ""}. "
             "It is kept on this computer, never in a canvas.",
             style: muted,
           ),
@@ -547,9 +498,9 @@ class _StockPanelState extends State<StockPanel> {
           obscureText: true,
           style: const TextStyle(fontSize: 13),
           decoration: const InputDecoration(isDense: true, hintText: "Key"),
-          onSubmitted: (_) => _saveKey(),
+          onSubmitted: (_) => _saveKey(source),
         ),
-        if (_source.needsSecret)
+        if (source.needsSecret)
           TextField(
             key: const ValueKey("stockSecret"),
             controller: _secret,
@@ -557,12 +508,12 @@ class _StockPanelState extends State<StockPanel> {
             style: const TextStyle(fontSize: 13),
             decoration:
                 const InputDecoration(isDense: true, hintText: "Secret"),
-            onSubmitted: (_) => _saveKey(),
+            onSubmitted: (_) => _saveKey(source),
           ),
         Row(children: [
           TextButton(
             key: const ValueKey("stockSaveKey"),
-            onPressed: _saveKey,
+            onPressed: () => _saveKey(source),
             child: const Text("Save key"),
           ),
           if (_editingKey)
@@ -747,6 +698,135 @@ class _StockPanelState extends State<StockPanel> {
   }
 }
 
+/// _StockGate is what stands between the panel and the libraries searched
+/// over the network: fetching must be allowed, and no proxy set, since the
+/// requests do not go through it. Whether there is a proxy is not known
+/// until the panel has asked.
+class _StockGate {
+  final bool allowFetching;
+
+  /// proxied is whether a proxy is set, or null until that is known.
+  final bool? proxied;
+
+  const _StockGate({required this.allowFetching, required this.proxied});
+
+  /// mayBeProxied is what a request is told: until it is known that there
+  /// is no proxy, there may be one.
+  bool get mayBeProxied => proxied ?? true;
+}
+
+/// _Note is a line of explanation in the panel's small, quiet type.
+class _Note extends StatelessWidget {
+  final String text;
+  const _Note(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Text(text,
+          style: TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
+    );
+  }
+}
+
+/// _BrowserView is a library browsed rather than searched, under the
+/// Library row.
+class _BrowserView extends StatelessWidget {
+  final CanvasDropdown<StockLibrary> library;
+  final StockBrowser browser;
+  final CanvasController controller;
+  const _BrowserView(
+      {required this.library, required this.browser, required this.controller});
+
+  @override
+  Widget build(BuildContext context) =>
+      ListView(padding: const EdgeInsets.fromLTRB(8, 6, 8, 8), children: [
+        CanvasWrap(children: [library]),
+        const SizedBox(height: 6),
+        switch (browser) {
+          StockBrowser.kenney => KenneyBrowser(controller: controller),
+          StockBrowser.characters => CharacterBrowser(controller: controller),
+          StockBrowser.kayKit => KayKitBrowser(controller: controller),
+        },
+      ]);
+}
+
+/// _FetchingOff is the page in place of a search while fetching is off:
+/// what turning it on means, and the switch.
+class _FetchingOff extends StatelessWidget {
+  final CanvasDropdown<StockLibrary> library;
+  const _FetchingOff({required this.library});
+
+  @override
+  Widget build(BuildContext context) =>
+      ListView(padding: const EdgeInsets.all(8), children: [
+        CanvasWrap(children: [library]),
+        const _Note(
+            key: ValueKey("stockOff"),
+            "Searching Pixabay, the Noun Project, Freesound and Jamendo "
+            "connects to them directly -- not through the proxy in Settings "
+            "> Network -- so they see your connection. Nothing is sent until "
+            "you search, and nothing is downloaded until you use a result. "
+            "Each needs a free key of your own."),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey("stockAllowFetching"),
+            onPressed: () =>
+                context.read<CanvasPreferences>().allowFetching = true,
+            child: const Text("Allow fetching"),
+          ),
+        ),
+        const _Note("The same switch is in Settings > Plugins > Canvas, as "
+            "\"${CanvasPreferences.allowFetchingLabel}\"."),
+      ]);
+}
+
+/// _Proxied is the page in place of a search while a proxy is set, saying
+/// why; until it is known whether one is, the Library row alone.
+class _Proxied extends StatelessWidget {
+  final CanvasDropdown<StockLibrary> library;
+  final bool? proxied;
+  const _Proxied({required this.library, required this.proxied});
+
+  @override
+  Widget build(BuildContext context) =>
+      ListView(padding: const EdgeInsets.all(8), children: [
+        CanvasWrap(children: [library]),
+        if (proxied == true)
+          _Note(
+              key: const ValueKey("stockProxied"),
+              StockClient.refusal(allowFetching: true, proxied: true)!),
+      ]);
+}
+
+/// _Filters is a searched library's filters other than its licence choice,
+/// each showing the value [chosen] for it, or its default.
+class _Filters extends StatelessWidget {
+  final List<StockFilter> filters;
+  final Map<String, String> chosen;
+  final void Function(String id, String value) onChanged;
+  const _Filters(
+      {required this.filters, required this.chosen, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => CanvasWrap(children: [
+        for (var f in filters)
+          CanvasDropdown<String>(
+            key: ValueKey("stockFilter-${f.id}"),
+            label: f.label,
+            value: f.options.any((o) => o.$1 == chosen[f.id])
+                ? chosen[f.id]!
+                : f.options.first.$1,
+            width: 110,
+            options: f.options,
+            onChanged: (v) => onChanged(f.id, v),
+          ),
+      ]);
+}
+
 /// _Pill is one choice of a few, pressed to choose it.
 class _Pill extends StatelessWidget {
   final String label;
@@ -892,8 +972,7 @@ class _Previewer {
   bool _gone = false;
 
   /// toggle stops [item] if playing, or plays it; false when it could not.
-  Future<bool> toggle(StockItem item,
-      {required bool allowFetching, required bool proxied}) async {
+  Future<bool> toggle(StockItem item, _StockGate gate) async {
     if (playing == item.key) {
       stop();
       return true;
@@ -907,8 +986,8 @@ class _Previewer {
       if (!await file.exists()) {
         var got = await StockClient.instance.download(item.preview, file,
             maxBytes: _previewMaxBytes,
-            allowFetching: allowFetching,
-            proxied: proxied);
+            allowFetching: gate.allowFetching,
+            proxied: gate.mayBeProxied);
         if (!got) return false;
       }
       // Another preview asked for while this one was fetching wins.
@@ -984,8 +1063,7 @@ class _VideoPreviewer {
   int _run = 0;
 
   /// toggle stops [item] if playing, or plays it, answering why not if not.
-  Future<String?> toggle(StockItem item,
-      {required bool allowFetching, required bool proxied}) async {
+  Future<String?> toggle(StockItem item, _StockGate gate) async {
     if (playing == item.key || loading == item.key) {
       stop();
       return null;
@@ -1000,8 +1078,8 @@ class _VideoPreviewer {
       if (!await file.exists()) {
         var got = await StockClient.instance.download(item.preview, file,
             maxBytes: _previewMaxBytes,
-            allowFetching: allowFetching,
-            proxied: proxied);
+            allowFetching: gate.allowFetching,
+            proxied: gate.mayBeProxied);
         if (!got) return "The preview of ${item.title} could not be fetched.";
       }
       if (run != _run) return null;

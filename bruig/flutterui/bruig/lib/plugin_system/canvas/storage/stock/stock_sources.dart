@@ -206,9 +206,6 @@ enum StockSource {
         polyHavenPictures => "Powered by Poly Haven. Its skies and textures "
             "are CC0: free for any use, no credit needed.",
       };
-
-  static StockSource fromName(String? name) =>
-      values.firstWhere((s) => s.name == name, orElse: () => pixabayPictures);
 }
 
 class StockFilter {

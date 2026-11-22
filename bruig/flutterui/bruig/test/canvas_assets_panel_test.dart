@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'support/canvas_app.dart';
 import 'support/canvas_sidebar_host.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -11,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
@@ -76,13 +79,14 @@ void main() {
 
   Future<CanvasController> show(
       WidgetTester tester, Widget Function(CanvasController) body,
-      {CanvasDocument document = const CanvasDocument(frames: 100)}) async {
+      {CanvasDocument document = const CanvasDocument(frames: 100),
+      CanvasPreferences? prefs}) async {
     // Tall enough that each of the Assets sidebar's panels shows its first
     // row whole.
     setTestScreen(tester, const Size(1400, 1400));
     var c = CanvasController(document, audioEngine: FakeEngine(const {}));
     addTearDown(c.dispose);
-    await tester.pumpWidget(canvasApp(body(c)));
+    await tester.pumpWidget(canvasApp(body(c), prefs: prefs));
     await idle(tester);
     return c;
   }
@@ -393,7 +397,8 @@ void main() {
 
   testWidgets("icons or a list, each section its own, and remembered",
       (tester) async {
-    await show(tester, sidebar);
+    var prefs = CanvasPreferences();
+    await show(tester, sidebar, prefs: prefs);
     Finder still(String id) => find.descendant(
         of: find.byKey(ValueKey("asset-$id")),
         matching: find.byType(AssetThumb));
@@ -406,13 +411,43 @@ void main() {
     expect(small.right,
         lessThanOrEqualTo(tester.getRect(find.text("Club badge")).left),
         reason: "the picture sits left of the name");
-    var prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString("canvasAssets.view.picture"), "list");
-    expect(prefs.getString("canvasAssets.view.video"), isNull);
+    expect(prefs.assetView(AssetKind.picture), AssetView.list);
+    expect(prefs.assetView(AssetKind.video), AssetView.icons);
+    var stored = await SharedPreferences.getInstance();
+    expect(
+        jsonDecode(stored.getString("canvasAssetViews")!), {"picture": "list"},
+        reason: "the videos' view is not touched");
 
-    // Shown again, it is still a list.
+    // Shown again, by the next session, it is still a list.
     await tester.pumpWidget(const SizedBox());
-    await show(tester, sidebar);
+    var next = CanvasPreferences();
+    await tester.runAsync(next.load);
+    await show(tester, sidebar, prefs: next);
     expect(tester.getSize(still(picture)).width, lessThan(50));
+  });
+
+  // The view was read from storage after the panel was first built, so the
+  // panel was drawn in its default view and then changed to the one saved.
+  testWidgets("the first frame is already in the view chosen last",
+      (tester) async {
+    var c = CanvasController(const CanvasDocument(frames: 100),
+        audioEngine: FakeEngine(const {}));
+    addTearDown(c.dispose);
+    var prefs = CanvasPreferences();
+    // Sounds start as a list; icons were chosen.
+    prefs.setAssetView(AssetKind.audio, AssetView.icons);
+    await tester.pumpWidget(canvasApp(
+        SizedBox(
+            width: 280,
+            height: 800,
+            child: AssetSection(
+                key: const ValueKey("assets-audio"),
+                controller: c,
+                kind: AssetKind.audio)),
+        prefs: prefs));
+    bool active(String key) =>
+        tester.widget<CanvasIconButton>(find.byKey(ValueKey(key))).active;
+    expect(active("assetIcons-audio"), isTrue);
+    expect(active("assetList-audio"), isFalse);
   });
 }

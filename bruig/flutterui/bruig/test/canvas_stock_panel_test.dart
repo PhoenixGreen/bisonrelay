@@ -10,8 +10,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/character_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
 import 'package:flutter/material.dart';
@@ -140,8 +142,13 @@ void main() {
     }
   }
 
+  /// show puts the panel up on [library]. With [load], its preferences are
+  /// first read from what the test stored.
   Future<(CanvasController, CanvasPreferences)> show(WidgetTester tester,
-      {bool fetching = true, bool key = true}) async {
+      {bool fetching = true,
+      bool key = true,
+      StockLibrary? library,
+      bool load = false}) async {
     if (key) {
       SharedPreferences.setMockInitialValues(
           {"canvasApiKey:pixabay.com": "abc"});
@@ -151,8 +158,10 @@ void main() {
         audioEngine: FakeEngine(const {}));
     addTearDown(c.dispose);
     var prefs = CanvasPreferences();
+    if (load) await tester.runAsync(prefs.load);
     await idle(tester, 5);
     prefs.allowFetching = fetching;
+    if (library != null) prefs.stockLibrary = library;
     await tester.pumpWidget(canvasApp(
         SizedBox(width: 300, child: StockPanel(controller: c)),
         prefs: prefs));
@@ -179,14 +188,37 @@ void main() {
     testWidgets("with $gate, a library that fetches nothing still opens",
         (tester) async {
       proxiedForTest = proxied;
-      SharedPreferences.setMockInitialValues(
-          {"canvasStock.source": "characters"});
-      await show(tester, fetching: proxied, key: false);
+      await show(tester,
+          fetching: proxied,
+          key: false,
+          library: const StockBrowserLibrary(StockBrowser.characters));
       expect(find.byKey(const ValueKey("stockOff")), findsNothing);
       expect(find.byKey(const ValueKey("stockProxied")), findsNothing);
       expect(find.byType(CharacterBrowser), findsOneWidget);
     });
   }
+
+  // The library was read from storage after the panel was first built, so
+  // it showed nothing until then, and then the library saved.
+  testWidgets("the first frame is already on the library chosen last",
+      (tester) async {
+    var c = CanvasController(const CanvasDocument(),
+        audioEngine: FakeEngine(const {}));
+    addTearDown(c.dispose);
+    var prefs = CanvasPreferences();
+    const characters = StockBrowserLibrary(StockBrowser.characters);
+    prefs.stockLibrary = characters;
+    await tester.pumpWidget(canvasApp(
+        SizedBox(width: 300, child: StockPanel(controller: c)),
+        prefs: prefs));
+    expect(
+        tester
+            .widget<CanvasDropdown<StockLibrary>>(
+                find.byKey(const ValueKey("stockSource")))
+            .value,
+        characters);
+    expect(find.byType(CharacterBrowser), findsOneWidget);
+  });
 
   testWidgets(
       "with fetching off, another library can be chosen from the gate's "
@@ -226,9 +258,9 @@ void main() {
     SharedPreferences.setMockInitialValues({
       "canvasApiKey:api.thenounproject.com": "k",
       "canvasApiKey:api.thenounproject.com#secret": "s",
-      "canvasStock.source": "nounProject",
     });
-    await show(tester, key: false);
+    var (_, prefs) = await show(tester,
+        key: false, library: const StockSourceLibrary(StockSource.nounProject));
     var library = tester.getRect(find.byKey(const ValueKey("stockSource")));
     for (var k in ["stockChangeKey", "stockForgetKey", "stockLicence"]) {
       var r = tester.getRect(find.byKey(ValueKey(k)));
@@ -247,8 +279,10 @@ void main() {
     await tester.tap(
         find.byKey(const ValueKey("stockLicence-limit_to_public_domain-0")));
     await idle(tester);
+    expect(prefs.stockFilters[StockSource.nounProject],
+        {"limit_to_public_domain": "0"});
     var saved = await SharedPreferences.getInstance();
-    expect(saved.getString("canvasStock.filters"),
+    expect(saved.getString("canvasStockFilters"),
         contains('"limit_to_public_domain":"0"'));
   });
 
@@ -259,8 +293,9 @@ void main() {
     testWidgets(
         "$source's licence choice is behind the licence button, whatever "
         "it calls it", (tester) async {
-      SharedPreferences.setMockInitialValues({"canvasStock.source": source});
-      await show(tester, key: false);
+      await show(tester,
+          key: false,
+          library: StockSourceLibrary(StockSource.values.byName(source)));
       expect(find.byKey(const ValueKey("stockFilter-licence")), findsNothing,
           reason: "not among the filters");
       await tester.tap(find.byKey(const ValueKey("stockLicence")));
@@ -277,12 +312,12 @@ void main() {
       (tester) async {
     SharedPreferences.setMockInitialValues({
       "canvasApiKey:pixabay.com": "abc",
-      "canvasStock.filters": jsonEncode({
+      "canvasStockFilters": jsonEncode({
         "pixabayPictures": {"image_type": "photo"},
         "gone": {"image_type": "vector"},
       }),
     });
-    await show(tester, key: false);
+    await show(tester, key: false, load: true);
     await tester.enterText(find.byKey(const ValueKey("stockSearch")), "fox");
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await idle(tester);
@@ -399,11 +434,8 @@ void main() {
     var frames = StockPanel.videoFrames;
     StockPanel.videoFrames = FakeFrames(60);
     addTearDown(() => StockPanel.videoFrames = frames);
-    SharedPreferences.setMockInitialValues({
-      "canvasApiKey:pixabay.com": "abc",
-      "canvasStock.source": "pixabayVideos",
-    });
-    var (c, _) = await show(tester, key: false);
+    var (c, _) = await show(tester,
+        library: const StockSourceLibrary(StockSource.pixabayVideos));
     await tester.enterText(find.byKey(const ValueKey("stockSearch")), "sea");
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await idle(tester);

@@ -7,6 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 
@@ -53,6 +56,13 @@ void main() {
     expect(prefs.studioLook, StudioLook.studio);
     expect(prefs.studioOverrides, isEmpty);
     expect(prefs.publish, isEmpty);
+    for (var kind in AssetKind.values) {
+      expect(prefs.assetView(kind),
+          kind == AssetKind.audio ? AssetView.list : AssetView.icons,
+          reason: kind.name);
+    }
+    expect(prefs.stockLibrary, StockLibrary.initial);
+    expect(prefs.stockFilters, isEmpty);
   });
 
   test("each value is read from its key, in the form it was stored", () async {
@@ -84,6 +94,12 @@ void main() {
       "canvasStudioLook": "theme",
       "canvasStudioColours": jsonEncode({role.name: 0xFF102030}),
       "canvasPublish": jsonEncode({"format": "png"}),
+      "canvasAssetViews": jsonEncode({"audio": "icons", "picture": "list"}),
+      "canvasStockLibrary": "browser:characters",
+      "canvasStockFilters": jsonEncode({
+        "freesound": {"license": "cc0"},
+        "gone": {"license": "any"},
+      }),
     });
     expect(prefs.enabled, isTrue);
     expect(prefs.allowFetching, isTrue);
@@ -109,6 +125,33 @@ void main() {
     expect(prefs.studioLook, StudioLook.theme);
     expect(prefs.studioOverrides, {role: const Color(0xFF102030)});
     expect(prefs.publish, {"format": "png"});
+    expect(prefs.assetView(AssetKind.audio), AssetView.icons);
+    expect(prefs.assetView(AssetKind.picture), AssetView.list);
+    expect(prefs.assetView(AssetKind.video), AssetView.icons);
+    expect(
+        prefs.stockLibrary, const StockBrowserLibrary(StockBrowser.characters));
+    expect(
+        prefs.stockFilters,
+        {
+          StockSource.freesound: {"license": "cc0"},
+        },
+        reason: "a source this build does not know is passed by");
+  });
+
+  test("a stock source is stored by its name, a browser apart from them",
+      () async {
+    for (var library in StockLibrary.all) {
+      expect(StockLibrary.fromName(library.name), library,
+          reason: library.name);
+    }
+    expect(
+        const StockSourceLibrary(StockSource.nounProject).name, "nounProject");
+    expect(const StockBrowserLibrary(StockBrowser.characters).name,
+        "browser:characters");
+    // Saved by an earlier build, before browsers were kept apart.
+    expect(StockLibrary.fromName("characters"), StockLibrary.initial);
+    expect(StockLibrary.fromName("browser:gone"), StockLibrary.initial);
+    expect(StockLibrary.fromName(null), StockLibrary.initial);
   });
 
   test("a value set is stored at once and read back by the next session",
@@ -125,6 +168,16 @@ void main() {
     prefs.studioLook = StudioLook.theme;
     prefs.setStudioColour(role, const Color(0xFF445566));
     prefs.publish = {"format": "gif"};
+    prefs.setAssetView(AssetKind.picture, AssetView.list);
+    prefs.stockLibrary = const StockSourceLibrary(StockSource.jamendo);
+    prefs.setStockFilter(StockSource.jamendo, "order", "popular");
+    prefs.setStockFilter(StockSource.jamendo, "speed", "high");
+
+    var stored = await SharedPreferences.getInstance();
+    expect(stored.getString("canvasAssetViews"), '{"picture":"list"}');
+    expect(stored.getString("canvasStockLibrary"), "jamendo");
+    expect(stored.getString("canvasStockFilters"),
+        '{"jamendo":{"order":"popular","speed":"high"}}');
 
     var next = CanvasPreferences();
     addTearDown(next.dispose);
@@ -140,6 +193,12 @@ void main() {
     expect(next.studioLook, StudioLook.theme);
     expect(next.studioOverrides, {role: const Color(0xFF445566)});
     expect(next.publish, {"format": "gif"});
+    expect(next.assetView(AssetKind.picture), AssetView.list);
+    expect(next.assetView(AssetKind.audio), AssetView.list);
+    expect(next.stockLibrary, const StockSourceLibrary(StockSource.jamendo));
+    expect(next.stockFilters, {
+      StockSource.jamendo: {"order": "popular", "speed": "high"},
+    });
 
     next.clearStudioColours();
     var last = CanvasPreferences();
@@ -183,6 +242,9 @@ void main() {
       "canvasStudioColours": "\"red\"",
       "canvasDockLower": "tall",
       "canvasStudioLook": "neon",
+      "canvasAssetViews": "[\"list\"]",
+      "canvasStockLibrary": "neon",
+      "canvasStockFilters": "{",
     });
     expect(prefs.sidebars.current, "files");
     expect(prefs.dock, const DockLayout());
@@ -191,6 +253,10 @@ void main() {
     expect(prefs.studioOverrides, isEmpty);
     expect(prefs.dockLower, 0);
     expect(prefs.studioLook, StudioLook.studio);
+    expect(prefs.assetView(AssetKind.picture), AssetView.icons);
+    expect(prefs.assetView(AssetKind.audio), AssetView.list);
+    expect(prefs.stockLibrary, StockLibrary.initial);
+    expect(prefs.stockFilters, isEmpty);
   });
 
   test("only what the menu, Settings or the app's frame shows notifies",
@@ -204,6 +270,9 @@ void main() {
     prefs.dockLower = 200;
     prefs.cuesShown = false;
     prefs.remember("Books", "Piano");
+    prefs.setAssetView(AssetKind.video, AssetView.list);
+    prefs.stockLibrary = const StockBrowserLibrary(StockBrowser.kenney);
+    prefs.setStockFilter(StockSource.freesound, "license", "cc0");
     expect(heard, 0);
 
     prefs.enabled = true;

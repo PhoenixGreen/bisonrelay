@@ -2,7 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:provider/provider.dart';
 
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
@@ -14,7 +16,6 @@ import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/model_picking.dart';
-import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
 // assets_panel.dart is the sidebar's panels of the library's assets:
@@ -48,9 +49,6 @@ IconData assetKindIcon(AssetKind kind) => switch (kind) {
       AssetKind.model => Icons.view_in_ar,
     };
 
-/// AssetView is how a section shows its assets.
-enum AssetView { icons, list }
-
 /// AssetSection is the panel of one kind's assets: Add, the view switch,
 /// and the assets. It is for one kind for its whole life, so it must be
 /// keyed by that kind wherever panels can swap places.
@@ -69,18 +67,16 @@ class _AssetSectionState extends State<AssetSection> {
   /// _type is the sounds shown, by file type (".mid", ".mp3"), or "" for all.
   String _type = "";
 
-  /// _view is this section's view, saved per kind.
-  AssetView _view = AssetView.icons;
-
-  String get _viewKey => "canvasAssets.view.${widget.kind.name}";
+  /// _view is this section's view, kept per kind in the preferences.
+  late AssetView _view;
 
   @override
   void initState() {
     super.initState();
-    if (widget.kind == AssetKind.audio) _view = AssetView.list;
+    _view = Provider.of<CanvasPreferences>(context, listen: false)
+        .assetView(widget.kind);
     CanvasLibrary.changes.addListener(_load);
     _load();
-    _readView();
   }
 
   @override
@@ -111,15 +107,9 @@ class _AssetSectionState extends State<AssetSection> {
                     ? 1
                     : a.compareTo(b)));
 
-  Future<void> _readView() async {
-    var saved = await StorageManager.readString(_viewKey);
-    var view = AssetView.values.where((v) => v.name == saved).firstOrNull;
-    if (mounted && view != null) setState(() => _view = view);
-  }
-
   void _setView(AssetView view) {
     setState(() => _view = view);
-    StorageManager.saveString(_viewKey, view.name);
+    context.read<CanvasPreferences>().setAssetView(widget.kind, view);
   }
 
   Future<void> _add() async {
