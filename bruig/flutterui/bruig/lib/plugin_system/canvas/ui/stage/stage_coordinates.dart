@@ -71,11 +71,11 @@ extension StageCoordinates on CanvasStageState {
   Rect? _levelNow() {
     var page = Offset.zero & document.size.size;
     var reach = page;
-    var frame = controller.frame;
+    var hit = _hit;
     for (var e in document.elements) {
       // Sounds are kept off the canvas, and a backdrop fills the page.
       if (e is AudioElement || e is BackgroundElement) continue;
-      reach = reach.expandToInclude(e.movedBoundsAt(frame, document, live: controller.liveMotion));
+      reach = reach.expandToInclude(hit.posed(e));
     }
     return reach == page ? null : reach;
   }

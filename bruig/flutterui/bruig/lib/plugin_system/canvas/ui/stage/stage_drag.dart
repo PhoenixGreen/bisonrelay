@@ -9,8 +9,7 @@ extension StageDrag on CanvasStageState {
   List<Rect> _selectedChartLabels() {
     var element = controller.selected;
     if (element is! ChartElement || !controller.showHelpers) return const [];
-    return chartLabelPlaces(element, element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion))
+    return chartLabelPlaces(element, _hit.posed(element))
         .values
         .where((r) => !r.isEmpty)
         .toList();
@@ -25,8 +24,7 @@ extension StageDrag on CanvasStageState {
   void _applyPart(Offset doc, {required bool chartLabel}) {
     var element = controller.selected;
     if (element == null) return;
-    var bounds = element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion);
+    var bounds = _hit.posed(element);
     CanvasElement? next;
     if (chartLabel) {
       var grab = _labelGrab;
@@ -339,14 +337,16 @@ extension StageDrag on CanvasStageState {
     }
   }
 
-  /// _otherBounds is everything not dragged, locked included, to snap to.
+  /// _otherBounds is everything not dragged, locked included, to snap to:
+  /// where each is drawn now, which is where it is seen.
   List<Rect> _otherBounds() {
     if (!document.guides.snapTo.objects) return const [];
     var moving = _startPosed.keys.toSet();
+    var hit = _hit;
     return [
       for (var element in document.elements)
         if (!moving.contains(element.base.id) && element.base.visible)
-          element.bounds,
+          hit.posed(element),
     ];
   }
 

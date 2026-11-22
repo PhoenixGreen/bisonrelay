@@ -94,8 +94,7 @@ extension StageRelease on CanvasStageState {
       _handle = null;
       controller.sheetPressed(
           sheet,
-          sheet.movedBoundsAt(controller.frame, controller.document,
-              live: controller.liveMotion),
+          _hit.posed(sheet),
           _pendingSheetAt);
       return;
     }
@@ -221,8 +220,10 @@ extension StageRelease on CanvasStageState {
     if (_mode == _DragMode.marquee) {
       var box = _marquee;
       if (!cancelled && box != null && box.width > 3 && box.height > 3) {
+        // What the box is drawn round on screen: where each is drawn now.
+        var hit = _hit;
         for (var e in document.elements) {
-          if (!e.locked && e.visible && box.overlaps(e.bounds)) {
+          if (!e.locked && e.visible && box.overlaps(hit.posed(e))) {
             controller.toggleSelected(e.id);
           }
         }

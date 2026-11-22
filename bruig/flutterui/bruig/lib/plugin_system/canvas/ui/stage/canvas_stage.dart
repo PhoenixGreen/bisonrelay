@@ -36,6 +36,7 @@ import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_gizmo.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_hit_test.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_nav_controls.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/marker_note.dart';
@@ -81,7 +82,6 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/video_key.dart';
@@ -895,8 +895,7 @@ class CanvasStageState extends State<CanvasStage>
     if (element is! TableElement || element.locked || !controller.showHelpers) {
       return const [];
     }
-    var bounds = element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion);
+    var bounds = _hit.posed(element);
     return [
       for (var x in tableColumnDividers(element, bounds))
         (x, bounds.top, bounds.bottom),
@@ -1604,11 +1603,11 @@ class CanvasStageState extends State<CanvasStage>
     if (!controller.gameTabOpen || controller.gaming || !document.game) {
       return const [];
     }
-    var frame = controller.frame;
+    var hit = _hit;
     return [
       for (var e in document.elements)
         if (e.visible && e.base.play.as != PlayAs.none)
-          gameTouchArea(e, e.movedBoundsAt(frame, document, live: controller.liveMotion)),
+          gameTouchArea(e, hit.posed(e)),
     ];
   }
 
@@ -1621,8 +1620,7 @@ class CanvasStageState extends State<CanvasStage>
     if (element is! TableElement) return null;
 
     var box =
-        tableCellRect(element, element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion), row, col);
+        tableCellRect(element, _hit.posed(element), row, col);
     var topLeft = _toStage(box.topLeft);
     return Positioned(
       left: topLeft.dx,
@@ -1675,8 +1673,7 @@ class CanvasStageState extends State<CanvasStage>
     // Where the words are laid out, worked out again on every keystroke as
     // the painter does, so the field stays on them -- except text on a line,
     // whose box is frozen where it opened (the letters move as they come).
-    var bounds = element.movedBoundsAt(controller.frame, controller.document,
-        live: controller.liveMotion);
+    var bounds = _hit.posed(element);
     var box = element.curve != null
         ? (_editorRect ??= _editorBoxFor(element))
         : item != null

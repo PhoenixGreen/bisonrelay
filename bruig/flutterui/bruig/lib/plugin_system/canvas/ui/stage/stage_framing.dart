@@ -18,8 +18,7 @@ extension StageFramingDrag on CanvasStageState {
   /// layered, its own place in the frame, which is less than the whole once
   /// the frame grows round a layer or stroke.
   Rect _framingRect(ImageElement e) {
-    var inner = e.box.inner(e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion));
+    var inner = e.box.inner(_hit.posed(e));
     if (!e.layered) return inner;
     var base =
         e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
@@ -38,8 +37,7 @@ extension StageFramingDrag on CanvasStageState {
       return StageFraming(image, placement.whole, placement.wholeDst,
           _framingRect(e), e.movedRotationAt(controller.frame, controller.document,
             live: controller.liveMotion) * math.pi / 180,
-          pivot: e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion).center,
+          pivot: _hit.posed(e).center,
           flipX: base.flipX,
           flipY: base.flipY);
     }
@@ -187,8 +185,7 @@ extension StageFramingDrag on CanvasStageState {
     if (id == null || _preview == null) return null;
     var picture = document.elementById(id);
     if (picture is! ImageElement) return null;
-    var inner = picture.box.inner(picture.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion));
+    var inner = picture.box.inner(_hit.posed(picture));
     var size = Size(_preview!.width.toDouble(), _preview!.height.toDouble());
     return placeImage(size, inner, picture.fit,
         crop: picture.crop, framing: picture.framing);
@@ -273,38 +270,14 @@ extension StageFramingDrag on CanvasStageState {
   /// are ignored: a player is placed as a fraction of one but not confined
   /// to it, and two teams on one pitch overlap.
   (TeamElement, int)? _hitAnyPlayer(Offset doc) {
+    var hit = _hit;
     for (var i = document.elements.length - 1; i >= 0; i--) {
       var element = document.elements[i];
       if (element is! TeamElement || element.locked || !element.visible) {
         continue;
       }
-      var index = _hitPlayer(element, doc);
+      var index = hit.playerOf(element, doc);
       if (index != null) return (element, index);
-    }
-    return null;
-  }
-
-  /// _hitPlayer is the topmost of [team]'s players under [doc], or null. A
-  /// locked player cannot be hit, so a run can be dragged through a pinned
-  /// back four.
-  int? _hitPlayer(TeamElement team, Offset doc) {
-    var rx = team.dotWidth / 2;
-    var ry = team.dotHeight / 2;
-    if (rx <= 0 || ry <= 0) return null;
-    var ground = teamGround(document, team, controller.frame);
-
-    for (var i = team.players.length - 1; i >= 0; i--) {
-      var spot = team.players[i];
-      if (spot.locked || spot.hidden) continue;
-      // Where the pitch draws them on this frame.
-      var at = playerPlace(ground, team, spot, controller.frame);
-      if (!at.shown) continue;
-      var d = doc - at.centre;
-      var own = spot.ball ? team.radiusOf(spot) : null;
-      var sx = (own ?? rx) * at.size, sy = (own ?? ry) * at.size;
-      // Tested against the ellipse, so gaps between dots in a tight back four
-      // stay gaps.
-      if ((d.dx * d.dx) / (sx * sx) + (d.dy * d.dy) / (sy * sy) <= 1) return i;
     }
     return null;
   }
@@ -416,8 +389,7 @@ extension StageFramingDrag on CanvasStageState {
     // lose the frame's pose.
     _startPosed = {
       for (var e in controller.selectedElements)
-        e.id: e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion),
+        e.id: _hit.posed(e),
     };
     // The box the handles are on, bigger than the element's own for a line
     // or path (see _visualBounds). A resize is measured against it and

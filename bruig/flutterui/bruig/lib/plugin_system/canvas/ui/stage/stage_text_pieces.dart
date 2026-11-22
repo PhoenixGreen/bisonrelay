@@ -28,8 +28,7 @@ extension StageTextPieces on CanvasStageState {
   /// _pieceBounds is the picture's square on the page, upright: its middle
   /// turned with the element, its own turn left to _rotationOfSelection.
   Rect _pieceBounds(TextElement e, int i) {
-    var bounds = e.movedBoundsAt(controller.frame, controller.document,
-        live: controller.liveMotion);
+    var bounds = _hit.posed(e);
     var rect = e.items[i].box.inner(textItemRects(e, bounds)[i]);
     var turn = _pieceElementTurn(e) * math.pi / 180;
     var d = rect.center - bounds.center;

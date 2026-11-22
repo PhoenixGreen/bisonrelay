@@ -25,8 +25,7 @@ extension StagePictureTools on CanvasStageState {
     var image = controller.images.original(picture.assetId);
     if (image == null) return;
 
-    var inner = picture.box.inner(picture.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion));
+    var inner = picture.box.inner(_hit.posed(picture));
     var size = Size(image.width.toDouble(), image.height.toDouble());
     var placement = placeImage(size, inner, picture.fit,
         crop: picture.crop, framing: picture.framing);

@@ -4,15 +4,16 @@ part of 'canvas_stage.dart';
 // CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
 
 extension StageHitTesting on CanvasStageState {
+  /// _hit is what is where on the page now. Made afresh each time, being a
+  /// few reads: one kept would go stale as the frame or document changes.
+  StageHitTest get _hit => StageHitTest(
+      document: document,
+      frame: controller.frame,
+      live: controller.liveMotion,
+      scale: _scale);
+
   /// _hitElement is the topmost element under a document point.
-  CanvasElement? _hitElement(Offset point) {
-    for (var i = document.elements.length - 1; i >= 0; i--) {
-      var e = document.elements[i];
-      if (!e.visible || e.locked) continue;
-      if (_containsPoint(e, point)) return e;
-    }
-    return null;
-  }
+  CanvasElement? _hitElement(Offset point) => _hit.topmost(point);
 
   /// _selectedAt is the topmost selected element under [point], which a
   /// press takes before anything drawn over it. Not a hidden one: picked in
@@ -20,108 +21,13 @@ extension StageHitTesting on CanvasStageState {
   CanvasElement? _selectedAt(Offset point) {
     var picked = controller.selection;
     if (picked.isEmpty) return null;
-    for (var i = document.elements.length - 1; i >= 0; i--) {
-      var e = document.elements[i];
-      if (!picked.contains(e.id) || e.locked || !e.visible) continue;
-      if (_containsPoint(e, point)) return e;
-    }
-    return null;
-  }
-
-  /// _strokeReach is how near a line, in document units, counts as on it.
-  double _strokeReach(double strokeWidth) =>
-      math.max(strokeWidth / 2, 0) + strokeHitSlop / _scale;
-
-  bool _nearPolyline(List<Offset> points, Offset point, double reach) {
-    for (var i = 1; i < points.length; i++) {
-      var a = points[i - 1], b = points[i];
-      var ab = b - a;
-      var lengthSquared = ab.dx * ab.dx + ab.dy * ab.dy;
-      var t = lengthSquared == 0
-          ? 0.0
-          : (((point.dx - a.dx) * ab.dx + (point.dy - a.dy) * ab.dy) /
-                  lengthSquared)
-              .clamp(0.0, 1.0);
-      var closest = Offset(a.dx + ab.dx * t, a.dy + ab.dy * t);
-      if ((point - closest).distance <= reach) return true;
-    }
-    return false;
+    return _hit.topmost(point, where: (e) => picked.contains(e.id));
   }
 
   /// _containsPoint is whether [point] is inside [e] as drawn, turn and slant
   /// undone.
-  bool _containsPoint(CanvasElement e, Offset point) {
-    // A camera is hit by its frame's edge: what it shows inside is picked as
-    // if it were not there.
-    if (e is CameraElement) {
-      var frame = e.movedBoundsAt(controller.frame, controller.document,
-          live: controller.liveMotion);
-      var reach = _strokeReach(2) + 4 / _scale;
-      if (frame.inflate(reach).contains(point) &&
-          !frame.deflate(reach).contains(point)) {
-        return true;
-      }
-      // Its name tab and corner brackets too: an edge on the page's edge is
-      // hard to pick.
-      if (cameraTab(e, frame, _scale).contains(point)) return true;
-      var corner = math.min(22 / _scale, frame.shortestSide / 4);
-      for (var c in [
-        frame.topLeft,
-        frame.topRight,
-        frame.bottomLeft,
-        frame.bottomRight,
-      ]) {
-        var inside = Rect.fromCenter(
-            center: Offset(c.dx + (c.dx == frame.left ? 1 : -1) * corner / 2,
-                c.dy + (c.dy == frame.top ? 1 : -1) * corner / 2),
-            width: corner,
-            height: corner);
-        if (inside.contains(point)) return true;
-      }
-      return false;
-    }
-    // A team on a pitch is wherever the pitch puts its players.
-    if (e is TeamElement && e.linked) return _hitPlayer(e, point) != null;
-    // Something on a stage is inside the four corners the camera sees.
-    if (e.base.spot != null) {
-      if (stagedIn(document, e, controller.frame) case var at?) {
-        return (Path()..addPolygon(at.quad, true)).contains(point);
-      }
-    }
-    // A curve is hit by its stroke, not its box: a bowed line or path bulges
-    // out of its box, and text on a line is wherever the line is.
-    if (e is LineElement || e is PathElement) {
-      var curve = curveOfElement(
-          e is LineElement ? lineWithPose(e, controller.frame) : e);
-      if (curve != null && curve.length >= 2) {
-        var width =
-            e is LineElement ? e.strokeWidth : (e as PathElement).strokeWidth;
-        return _nearPolyline(curve, point, _strokeReach(width));
-      }
-    }
-    if (e is TextElement) {
-      var curve = curveUnderText(e, document, controller.frame);
-      if (curve != null && curve.length >= 2) {
-        // Generous: the target is a row of letters on the line.
-        return _nearPolyline(
-            curve, point, _strokeReach(e.textSpec.fontSize * 1.2));
-      }
-    }
-
-    var box = e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion);
-    var shape = e.movedFrameAt(controller.frame, controller.document,
-        live: controller.liveMotion);
-    var local = point;
-    if (!shape.upright) local = box.center + shape.invert(point - box.center);
-    if (!box.contains(local)) return false;
-
-    if (e is ShapeElement && e.shape == ShapeKind.circle) {
-      var r = box.shortestSide / 2;
-      return (local - box.center).distance <= r;
-    }
-    return true;
-  }
+  bool _containsPoint(CanvasElement e, Offset point) =>
+      _hit.contains(e, point);
 
   /// _onSelectionGrip is whether a press takes hold of the selection: a
   /// handle, a flow grip, or a path's points.
@@ -216,8 +122,7 @@ extension StageHitTesting on CanvasStageState {
     var from = _flowFrom == null ? null : document.elementById(_flowFrom!);
     if (at == null || from == null) return null;
     return FlowLine(
-        _toStage(_flowPointOf(from.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion), top: false)),
+        _toStage(_flowPointOf(_hit.posed(from), top: false)),
         at);
   }
 
@@ -246,10 +151,8 @@ extension StageHitTesting on CanvasStageState {
       var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
           frame: controller.frame);
       out.add(FlowLine(
-        _toStage(_flowPointOf(e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion), top: false)),
-        _toStage(_flowPointOf(into.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion), top: true)),
+        _toStage(_flowPointOf(_hit.posed(e), top: false)),
+        _toStage(_flowPointOf(_hit.posed(into), top: true)),
         overflowing: flow.overflows,
       ));
     }
@@ -291,8 +194,7 @@ extension StageHitTesting on CanvasStageState {
   TextElement? _looseTextPiece(Offset doc) {
     var owner = _textPieceOwner(doc);
     if (owner == null) return null;
-    return owner.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion).contains(doc) ? null : owner;
+    return _hit.posed(owner).contains(doc) ? null : owner;
   }
 
   /// _textItemAt is [e]'s extra piece at a document point, or null, from
@@ -301,8 +203,7 @@ extension StageHitTesting on CanvasStageState {
     if (e.items.isEmpty) return null;
     // Where it is drawn, its fields filled in.
     e = textWithFields(e, document);
-    var bounds = e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion);
+    var bounds = _hit.posed(e);
     var rects = textItemRects(e, bounds);
     // Backwards: the last drawn is on top.
     for (var i = e.items.length - 1; i >= 0; i--) {
@@ -356,7 +257,7 @@ extension StageHitTesting on CanvasStageState {
       if (at >= 0) return at;
     }
     if (!e.loose) return null;
-    var inner = e.box.inner(e.bounds);
+    var inner = e.box.inner(_hit.posed(e));
     for (var (which, text, at) in [
       (-2, e.before, e.beforeAt),
       (-3, e.after, e.afterAt),
@@ -513,7 +414,7 @@ extension StageHitTesting on CanvasStageState {
   bool _pressCodeRun(CodeRunElement e, Offset doc) {
     var code = document.elementById(e.code);
     var runner = runnerOf(e, code is CodeElement ? code : null);
-    var boxes = codeRunBoxes(e, e.bounds, runner: runner);
+    var boxes = codeRunBoxes(e, _hit.posed(e), runner: runner);
     var picked =
         controller.selection.length == 1 && controller.selection.first == e.id;
     if (picked &&
@@ -691,7 +592,7 @@ extension StageHitTesting on CanvasStageState {
     if (e is! CodeRunElement) return null;
     var code = document.elementById(e.code);
     var runner = runnerOf(e, code is CodeElement ? code : null);
-    var preview = codeRunBoxes(e, e.bounds, runner: runner).preview;
+    var preview = codeRunBoxes(e, _hit.posed(e), runner: runner).preview;
     if (preview == null) return null;
     var tl = _toStage(preview.topLeft);
     return Rect.fromLTWH(
@@ -707,7 +608,7 @@ extension StageHitTesting on CanvasStageState {
     if (code is! CodeElement) return null;
     var entry = entryFile(e, code);
     var runner = runnerOf(e, code);
-    var preview = codeRunBoxes(e, e.bounds, runner: runner).preview;
+    var preview = codeRunBoxes(e, _hit.posed(e), runner: runner).preview;
     if (entry == null || preview == null) return null;
     var tl = _toStage(preview.topLeft);
     return CodeLivePreview(
@@ -856,7 +757,7 @@ extension StageHitTesting on CanvasStageState {
     var element = id == null ? null : document.elementById(id);
     if (element is! CounterElement) return;
 
-    var inner = element.box.inner(element.bounds);
+    var inner = element.box.inner(_hit.posed(element));
     if (inner.width <= 0 || inner.height <= 0) return;
     // A fraction of the box from its middle, so it stays put on resize.
     var at = Offset(
@@ -879,7 +780,7 @@ extension StageHitTesting on CanvasStageState {
   /// _legendSeriesAt is the series whose key entry is at a document point,
   /// from the painter, or -1.
   int _legendSeriesAt(ChartElement e, Offset doc) {
-    for (var (series, box) in chartLegendRects(e, e.bounds)) {
+    for (var (series, box) in chartLegendRects(e, _hit.posed(e))) {
       if (box.contains(doc)) return series;
     }
     return -1;
@@ -904,8 +805,7 @@ extension StageHitTesting on CanvasStageState {
     _legendHold = null;
     var current = document.elementById(e.id);
     if (current is! ChartElement || current.locked) return;
-    var bounds = current.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion);
+    var bounds = _hit.posed(current);
     if (bounds.width <= 0 || bounds.height <= 0) return;
     var block = chartLegendBlock(current, bounds);
     if (block.isEmpty) return;
@@ -931,8 +831,7 @@ extension StageHitTesting on CanvasStageState {
   /// _audioPartAt is the speaker control at a document point, or null (see
   /// audioParts).
   AudioControl? _audioPartAt(AudioElement e, Offset doc) {
-    var parts = audioParts(e, e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion));
+    var parts = audioParts(e, _hit.posed(e));
     if (parts.volume case var v? when v.contains(doc)) {
       return AudioControl.volume;
     }
@@ -959,8 +858,7 @@ extension StageHitTesting on CanvasStageState {
   /// _videoPartAt is the video part at a document point. A link answers
   /// anywhere on it.
   VideoPart? _videoPartAt(VideoElement e, Offset doc) =>
-      videoPartAt(videoParts(e, e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion)), doc,
+      videoPartAt(videoParts(e, _hit.posed(e)), doc,
           clickable:
               e.isLink || (e.has(VideoControl.clickToggle) && !e.clip.timed));
 
@@ -978,8 +876,7 @@ extension StageHitTesting on CanvasStageState {
   }
 
   void _pressVideo(VideoElement e, VideoPart part, Offset doc) {
-    var parts = videoParts(e, e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion));
+    var parts = videoParts(e, _hit.posed(e));
     var along = switch (part) {
       VideoPart.track => alongBar(parts.track!, doc.dx),
       VideoPart.volume => alongBar(parts.volume!, doc.dx),
@@ -993,8 +890,7 @@ extension StageHitTesting on CanvasStageState {
   void _pressAudio(AudioElement e, AudioControl part, Offset doc) {
     double? volume;
     if (part == AudioControl.volume) {
-      var bar = audioParts(e, e.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion)).volume;
+      var bar = audioParts(e, _hit.posed(e)).volume;
       if (bar != null) volume = volumeAt(bar, doc.dx);
     }
     controller.pressAudio(e, part, volume: volume);
@@ -1002,7 +898,7 @@ extension StageHitTesting on CanvasStageState {
 
   /// _counterButtonAt is the counter button at a document point, or -1.
   int _counterButtonAt(CounterElement e, Offset doc) {
-    var rects = counterButtonRects(e, e.bounds);
+    var rects = counterButtonRects(e, _hit.posed(e));
     for (var i = 0; i < rects.length; i++) {
       if (rects[i].contains(doc)) return i;
     }
@@ -1028,7 +924,7 @@ extension StageHitTesting on CanvasStageState {
     if (id == null) return null;
     var element = document.elementById(id);
     if (element is! CounterElement) return null;
-    var rects = counterButtonRects(element, element.bounds);
+    var rects = counterButtonRects(element, _hit.posed(element));
     if (_settingAt < 0 || _settingAt >= rects.length) return null;
 
     var box = rects[_settingAt];
@@ -1068,15 +964,8 @@ extension StageHitTesting on CanvasStageState {
     if (from == null || controller.lockJoins) return;
 
     var doc = _toDocument(stage);
-    TextElement? onto;
-    for (var element in document.elements.reversed) {
-      if (element is! TextElement || element.id == from.id) continue;
-      if (element.locked || !element.visible) continue;
-      if (_containsPoint(element, doc)) {
-        onto = element;
-        break;
-      }
-    }
+    var onto = _hit.topmost(doc,
+        where: (e) => e is TextElement && e.id != from.id) as TextElement?;
 
     if (onto != null && wouldLoop(from, onto.id, document)) {
       // A ring of boxes has no first box to read from: refused.

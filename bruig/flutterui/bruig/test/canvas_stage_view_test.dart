@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -3952,6 +3954,119 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.document.elementById("c"), isNotNull);
       expect(find.byType(CounterInput), findsNothing);
+    });
+  });
+
+  group("an element its motion has moved", () {
+    // Hit where it is drawn, its controls were looked for where it rests: a
+    // press on them, where they are drawn, missed them.
+
+    /// moved is [elements] on a page with [id] keyed to travel [by] by frame
+    /// 20, shown at frame 20 with nothing selected.
+    Future<(CanvasController, CanvasStageState)> moved(WidgetTester tester,
+        List<CanvasElement> elements, String id, Offset by) async {
+      var document = const CanvasDocument(frames: 40);
+      for (var e in elements) {
+        document = document.addElement(e);
+      }
+      var controller = CanvasController(document);
+      addTearDown(controller.dispose);
+      controller.selectOnly(id);
+      controller.setKeyframe(id, const Keyframe(frame: 0));
+      controller.setKeyframe(id, Keyframe(frame: 20, dx: by.dx, dy: by.dy));
+      controller.frame = 20;
+      controller.clearSelection();
+      var stage = await pump(tester, controller);
+      return (controller, stage);
+    }
+
+    Rect drawn(CanvasController c, String id) =>
+        c.document.elementById(id)!.movedBoundsAt(20, c.document);
+
+    testWidgets("a chart's key entry switches its series where it is drawn",
+        (tester) async {
+      var chart = ChartElement(
+        const ElementBase(id: "c", x: 40, y: 40, width: 400, height: 240),
+        showLegend: true,
+        data: ChartData.parse("Cat\tOne\tTwo\n2019\t10\t200\n2020\t20\t400"),
+      );
+      var (controller, stage) =
+          await moved(tester, [chart], "c", const Offset(700, 400));
+      var at = drawn(controller, "c");
+      expect(at.overlaps(chart.bounds), isFalse, reason: "well away from rest");
+      controller.selectOnly("c");
+      await tester.pumpAndSettle();
+
+      var now = controller.document.elementById("c") as ChartElement;
+      var entry = chartLegendRects(now, at)[1].$2;
+      await tester.tapAt(stage.toStagePoint(entry.center));
+      await tester.pumpAndSettle();
+      now = controller.document.elementById("c") as ChartElement;
+      expect(now.data.series[1].hidden, isTrue);
+      expect(now.data.series[0].hidden, isFalse);
+    });
+
+    testWidgets("a box dragged round where it is drawn selects it",
+        (tester) async {
+      var shape = const ShapeElement(
+          ElementBase(id: "s", x: 100, y: 100, width: 200, height: 150));
+      var (controller, stage) =
+          await moved(tester, [shape], "s", const Offset(800, 400));
+      var at = drawn(controller, "s");
+
+      Future<void> drag(Rect round) async {
+        var box = await tester.startGesture(stage.toStagePoint(round.topLeft));
+        await box.moveTo(stage.toStagePoint(round.bottomRight));
+        await box.up();
+        await tester.pumpAndSettle();
+      }
+
+      await drag(shape.bounds.inflate(20));
+      expect(controller.selection, isEmpty,
+          reason: "nothing is drawn where it rests");
+
+      await drag(at.inflate(20));
+      expect(controller.selection, {"s"});
+    });
+
+    testWidgets("a counter's button is pressed where it is drawn",
+        (tester) async {
+      var counter = const CounterElement(
+          ElementBase(id: "n", x: 100, y: 100, width: 300, height: 120),
+          keyed: false,
+          buttons: [CounterButton.input]);
+      var (controller, stage) =
+          await moved(tester, [counter], "n", const Offset(600, 300));
+      controller.selectOnly("n");
+      await tester.pumpAndSettle();
+      var button = counterButtonRects(counter, drawn(controller, "n")).single;
+
+      await tester.tapAt(stage.toStagePoint(button.center));
+      await tester.pumpAndSettle();
+      expect(find.byType(CounterInput), findsOneWidget);
+      var field = tester.getTopLeft(find.byType(CounterInput));
+      var want = stage.toStagePoint(button.topLeft);
+      expect(field.dx, closeTo(want.dx, 1), reason: "on the button as drawn");
+      expect(field.dy, closeTo(want.dy, 1));
+    });
+
+    testWidgets("a dragged element snaps to another where it is drawn",
+        (tester) async {
+      // a ends up with its right edge at 850; b's left edge is dragged to
+      // 853, within reach of it and of nothing else.
+      var a = const ShapeElement(
+          ElementBase(id: "a", x: 100, y: 100, width: 150, height: 150));
+      var b = const ShapeElement(
+          ElementBase(id: "b", x: 950, y: 450, width: 100, height: 100));
+      var (controller, stage) =
+          await moved(tester, [a, b], "a", const Offset(600, 0));
+      expect(drawn(controller, "a").right, 850);
+
+      var from = stage.toStagePoint(b.center);
+      var by = stage.toStagePoint(b.center - const Offset(97, 0)) - from;
+      await tester.dragFrom(from, by);
+      await tester.pumpAndSettle();
+      expect(drawn(controller, "b").left, closeTo(850, 0.01));
     });
   });
 }

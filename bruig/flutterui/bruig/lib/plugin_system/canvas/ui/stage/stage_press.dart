@@ -309,9 +309,7 @@ extension StagePress on CanvasStageState {
     // A selected chart's placed label, before the chart whose box holds it.
     var chart = controller.selected;
     if (chart is ChartElement && !chart.locked) {
-      var grab = chartLabelGrabAt(
-          chart, chart.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion), doc, _docSlop);
+      var grab = chartLabelGrabAt(chart, _hit.posed(chart), doc, _docSlop);
       if (grab != null) {
         // A placed key both moves and holds switches: decided on release by
         // how far the pointer went.
@@ -333,9 +331,7 @@ extension StagePress on CanvasStageState {
     // A selected table's column rule, before the table.
     var table = controller.selected;
     if (table is TableElement && !table.locked) {
-      var divider =
-          tableColumnAt(table, table.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion), doc, _docSlop);
+      var divider = tableColumnAt(table, _hit.posed(table), doc, _docSlop);
       if (divider != null) {
         _columnGrab = divider;
         _mode = _DragMode.tableColumn;
@@ -441,12 +437,7 @@ extension StagePress on CanvasStageState {
     // playhead to the note there; one that travels moves the sheet. Its
     // playbar takes a press picked or not.
     var onBar = element is SheetElement &&
-        (sheetBarRect(
-                    element,
-                    element.movedBoundsAt(controller.frame, controller.document,
-                        live: controller.liveMotion))
-                ?.contains(doc) ??
-            false);
+        (sheetBarRect(element, _hit.posed(element))?.contains(doc) ?? false);
     if (onBar &&
         (controller.selection.length != 1 ||
             controller.selection.first != element.id)) {
@@ -469,9 +460,7 @@ extension StagePress on CanvasStageState {
         element.instrument != null &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
-      var keys =
-          keyboardLayout(element.instrument!, element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion));
+      var keys = keyboardLayout(element.instrument!, _hit.posed(element));
       if (keys.keyAt(doc) case (var key, var depth)?) {
         controller.noteOn(element, key,
             velocity: (50 + depth * 77).round(),
@@ -581,8 +570,7 @@ extension StagePress on CanvasStageState {
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
         clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow) {
-      var at = tableCellAt(element, element.movedBoundsAt(controller.frame, controller.document,
-            live: controller.liveMotion), doc);
+      var at = tableCellAt(element, _hit.posed(element), doc);
       if (at != null) {
         setState(() => _editingCell = (element.id, at.$1, at.$2));
         _mode = _DragMode.none;
